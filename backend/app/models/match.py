@@ -6,12 +6,17 @@ Represents a single match with opponent, date, venue, and final scores.
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped
 from app.database import Base
 import enum
+
+if TYPE_CHECKING:
+    from app.models.match_event import MatchEvent
+    from app.models.possession_event import PossessionEvent
+    from app.models.player_match_stats import PlayerMatchStats
 
 
 class MatchVenue(enum.Enum):
@@ -68,21 +73,21 @@ class Match(Base):
     updated_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
-    events: List["MatchEvent"] = relationship(
+    events = relationship(
         "MatchEvent",
         back_populates="match",
         lazy="selectin",
         cascade="all, delete-orphan"
     )
     
-    possession_events: List["PossessionEvent"] = relationship(
+    possession_events = relationship(
         "PossessionEvent",
         back_populates="match",
         lazy="selectin",
         cascade="all, delete-orphan"
     )
     
-    player_stats: List["PlayerMatchStats"] = relationship(
+    player_stats = relationship(
         "PlayerMatchStats",
         back_populates="match",
         lazy="selectin",
