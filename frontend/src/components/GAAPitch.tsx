@@ -61,14 +61,9 @@ export default function GAAPitch({
         {/* Pitch background */}
         <rect width="1000" height="625" fill="#1a5f1a" />
         
-        {/* 2-Point Zone Overlay (40m zones) */}
+        {/* 2-Point Zone Overlay (40m zones) - NO LABEL */}
         {showZones && (
-          <>
-            <rect x="400" y="0" width="200" height="625" fill="rgba(251, 191, 36, 0.1)" />
-            <text x="500" y="320" textAnchor="middle" fill="rgba(251, 191, 36, 0.5)" fontSize="24" fontWeight="bold">
-              2-POINT ZONE
-            </text>
-          </>
+          <rect x="400" y="0" width="200" height="625" fill="rgba(251, 191, 36, 0.08)" />
         )}
 
         {/* Outer boundary */}
@@ -103,14 +98,28 @@ export default function GAAPitch({
         <rect x="50" y="250" width="50" height="125" className="pitch-line" />
         <rect x="900" y="250" width="50" height="125" className="pitch-line" />
 
-        {/* D-zones (13m arcs) */}
+        {/* Semi-circles (20.5m - large arcs behind goals) */}
         <path
-          d="M 180 575 Q 180 490, 180 312.5 Q 180 235, 180 50"
+          d="M 180 175 A 130 130 0 0 0 180 450"
           className="pitch-line"
+          fill="none"
         />
         <path
-          d="M 820 50 Q 820 135, 820 312.5 Q 820 390, 820 575"
+          d="M 820 175 A 130 130 0 0 1 820 450"
           className="pitch-line"
+          fill="none"
+        />
+
+        {/* D-zones (13m arcs - smaller arcs inside semi-circles) */}
+        <path
+          d="M 180 240 A 80 80 0 0 0 180 385"
+          className="pitch-line"
+          fill="none"
+        />
+        <path
+          d="M 820 240 A 80 80 0 0 1 820 385"
+          className="pitch-line"
+          fill="none"
         />
 
         {/* Penalty spots */}

@@ -11,8 +11,11 @@ import {
   User,
   Users,
   Clock,
-  Activity
+  Activity,
+  Play
 } from 'lucide-react'
+
+type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
 
 export default function MatchRecording() {
   const { matchId } = useParams()
@@ -22,20 +25,22 @@ export default function MatchRecording() {
     y: 50,
     team: PossessionTeam.DUNGLOE
   })
+  const [matchPhase, setMatchPhase] = useState<MatchPhase>('not_started')
+  const [minute, setMinute] = useState(0)
 
   // Mock match data
   const match = {
     opponent: 'Glenties',
     score: { dungloe: { goals: 2, points: 8 }, opponent: { goals: 1, points: 12 } },
-    minute: 34,
-    status: 'in_progress'
+    minute: minute,
+    status: matchPhase
   }
 
   const stats = {
-    possession: 58,
-    shots: 18,
-    scores: 10,
-    wides: 5,
+    possession: { dungloe: 58, opponent: 42 },
+    shots: { dungloe: 18, opponent: 14 },
+    scores: { dungloe: 10, opponent: 13 },
+    wides: { dungloe: 5, opponent: 3 },
     accuracy: 55.6,
     conversionRate: 62.5,
     turnovers: { won: 9, lost: 6 },
@@ -48,6 +53,24 @@ export default function MatchRecording() {
     alert(`${eventType} - Player selection modal coming next!`)
   }
 
+  const startHalf = () => {
+    if (matchPhase === 'not_started') {
+      setMatchPhase('first_half')
+      // TODO: Start timer
+      alert('First half started! Timer will begin counting up to 30 minutes.')
+    } else if (matchPhase === 'half_time') {
+      setMatchPhase('second_half')
+      // TODO: Continue timer
+      alert('Second half started! Timer continues.')
+    }
+  }
+
+  const getPhaseButtonText = () => {
+    if (matchPhase === 'not_started') return 'Start First Half'
+    if (matchPhase === 'half_time') return 'Start Second Half'
+    return null
+  }
+
   return (
     <div className="min-h-screen pb-8">
       {/* Match Header */}
@@ -57,13 +80,21 @@ export default function MatchRecording() {
             <h1 className="text-3xl font-bold text-gradient">
               Dungloe vs {match.opponent}
             </h1>
-            <p className="text-white/60 mt-1">League Match - Live</p>
+            <p className="text-white/60 mt-1">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
           </div>
           <div className="flex items-center space-x-4">
-            <div className="badge badge-success flex items-center space-x-2">
-              <Clock size={14} />
-              <span>{match.minute}'</span>
-            </div>
+            {matchPhase !== 'not_started' && (
+              <div className="badge badge-success flex items-center space-x-2">
+                <Clock size={14} />
+                <span>{match.minute}'</span>
+              </div>
+            )}
+            {getPhaseButtonText() && (
+              <button className="btn-primary flex items-center space-x-2" onClick={startHalf}>
+                <Play size={18} />
+                <span>{getPhaseButtonText()}</span>
+              </button>
+            )}
             <button className="btn-danger" onClick={() => navigate('/')}>
               End Match
             </button>
@@ -92,13 +123,6 @@ export default function MatchRecording() {
         {/* Main Pitch Area */}
         <div className="lg:col-span-2 space-y-4">
           <div className="glass-card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Pitch</h2>
-              <div className="flex items-center space-x-2 text-sm text-white/60">
-                <Activity size={16} />
-                <span>Tap pitch to move ball</span>
-              </div>
-            </div>
             <GAAPitch
               ballPosition={ballPosition}
               onBallMove={setBallPosition}
@@ -156,50 +180,71 @@ export default function MatchRecording() {
         {/* Live Stats Sidebar */}
         <div className="space-y-4">
           <div className="glass-card p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2">
-              <Activity size={20} />
+            <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
+              <Activity size={20} className="text-white" />
               <span>Match Stats</span>
             </h3>
 
-            {/* Possession */}
+            {/* Possession - Split Bar */}
             <div className="mb-6">
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-white/80">Possession</span>
-                <span className="text-gradient font-semibold">{stats.possession}%</span>
+              <div className="flex justify-between text-xs font-semibold mb-2 text-slate-900">
+                <span>Dungloe</span>
+                <span>Possession</span>
+                <span>{match.opponent}</span>
               </div>
-              <div className="h-3 bg-white/10 rounded-full overflow-hidden">
+              <div className="h-8 bg-white/10 rounded-lg overflow-hidden flex">
                 <div 
-                  className="h-full bg-gradient-to-r from-indigo-600 to-purple-600 transition-all duration-500"
-                  style={{ width: `${stats.possession}%` }}
-                />
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center text-white text-sm font-bold transition-all duration-500"
+                  style={{ width: `${stats.possession.dungloe}%` }}
+                >
+                  {stats.possession.dungloe}%
+                </div>
+                <div 
+                  className="bg-red-600 flex items-center justify-center text-white text-sm font-bold transition-all duration-500"
+                  style={{ width: `${stats.possession.opponent}%` }}
+                >
+                  {stats.possession.opponent}%
+                </div>
               </div>
             </div>
 
             {/* Stats Grid */}
             <div className="space-y-3">
               <div className="stat-card bg-white/5 !p-4">
-                <div className="stat-label">Shots</div>
-                <div className="stat-value text-2xl">{stats.shots}</div>
+                <div className="text-slate-900 text-xs font-semibold mb-2">Shots</div>
+                <div className="flex justify-between text-lg font-bold">
+                  <span className="text-indigo-400">{stats.shots.dungloe}</span>
+                  <span className="text-white/40">-</span>
+                  <span className="text-red-400">{stats.shots.opponent}</span>
+                </div>
               </div>
 
               <div className="stat-card bg-white/5 !p-4">
-                <div className="stat-label">Scores</div>
-                <div className="stat-value text-2xl text-emerald-400">{stats.scores}</div>
+                <div className="text-slate-900 text-xs font-semibold mb-2">Scores</div>
+                <div className="flex justify-between text-lg font-bold">
+                  <span className="text-emerald-400">{stats.scores.dungloe}</span>
+                  <span className="text-white/40">-</span>
+                  <span className="text-red-400">{stats.scores.opponent}</span>
+                </div>
               </div>
 
               <div className="stat-card bg-white/5 !p-4">
-                <div className="stat-label">Accuracy</div>
-                <div className="stat-value text-2xl">{stats.accuracy}%</div>
+                <div className="text-slate-900 text-xs font-semibold mb-2">Accuracy</div>
+                <div className="stat-value text-2xl text-white">{stats.accuracy}%</div>
               </div>
 
               <div className="stat-card bg-white/5 !p-4">
-                <div className="stat-label">Conversion Rate</div>
+                <div className="text-slate-900 text-xs font-semibold mb-2">Conversion Rate</div>
                 <div className="stat-value text-2xl text-amber-400">{stats.conversionRate}%</div>
               </div>
 
               <div className="stat-card bg-white/5 !p-4">
-                <div className="stat-label">Wides</div>
-                <div className="stat-value text-2xl text-red-400">{stats.wides}</div>
+                <div className="text-slate-900 text-xs font-semibold mb-2">Wides</div>
+                <div className="flex justify-between text-lg font-bold">
+                  <span className="text-indigo-400">{stats.wides.dungloe}</span>
+                  <span className="text-white/40">-</span>
+                  <span className="text-red-400">{stats.wides.opponent}</span>
+                </div>
               </div>
 
               <div className="stat-card bg-white/5 !p-4">
