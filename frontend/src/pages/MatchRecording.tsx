@@ -12,7 +12,8 @@ import {
   Users,
   Clock,
   Activity,
-  Play
+  Play,
+  Zap
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -122,57 +123,96 @@ export default function MatchRecording() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Pitch Area */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="glass-card p-6">
+          {/* Pitch with overlaid quick actions */}
+          <div className="glass-card p-6 relative">
             <GAAPitch
               ballPosition={ballPosition}
               onBallMove={setBallPosition}
               showZones={true}
             />
+            
+            {/* Quick Actions Overlay */}
+            <div className="absolute top-4 right-4 glass-card p-4 space-y-2 z-10">
+              <h3 className="text-xs font-semibold text-white mb-3">Quick Actions</h3>
+              <div className="flex flex-col space-y-2">
+                <button 
+                  className="btn-primary !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.GOAL)}
+                >
+                  <Target size={16} />
+                  <span>Goal</span>
+                </button>
+                
+                <button 
+                  className="btn-primary !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.POINT)}
+                >
+                  <TrendingUp size={16} />
+                  <span>Point</span>
+                </button>
+
+                <button 
+                  className="btn-glass !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.WIDE)}
+                >
+                  <XCircle size={16} />
+                  <span>Wide</span>
+                </button>
+
+                <button 
+                  className="btn-glass !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.TURNOVER_WON)}
+                >
+                  <CheckCircle size={16} />
+                  <span>T/O Won</span>
+                </button>
+
+                <button 
+                  className="btn-glass !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.TURNOVER_LOST)}
+                >
+                  <AlertCircle size={16} />
+                  <span>T/O Lost</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Action Buttons */}
+          {/* In-Game Analysis Section */}
           <div className="glass-card p-6">
-            <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-              <button 
-                className="btn-primary flex flex-col items-center space-y-2 py-4"
-                onClick={() => handleQuickAction(EventType.GOAL)}
-              >
-                <Target size={24} />
-                <span className="text-sm">Goal</span>
-              </button>
+            <h3 className="text-lg font-semibold mb-4 text-white flex items-center space-x-2">
+              <Activity size={20} className="text-white" />
+              <span>Live Analysis & Insights</span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Placeholder for charts */}
+              <div className="bg-white/5 rounded-lg p-4 text-center text-white/60">
+                <div className="text-sm mb-2">Possession Flow</div>
+                <div className="h-24 flex items-center justify-center">
+                  <span className="text-xs">Chart: Line graph coming soon</span>
+                </div>
+              </div>
               
-              <button 
-                className="btn-primary flex flex-col items-center space-y-2 py-4"
-                onClick={() => handleQuickAction(EventType.POINT)}
-              >
-                <TrendingUp size={24} />
-                <span className="text-sm">Point</span>
-              </button>
-
-              <button 
-                className="btn-glass flex flex-col items-center space-y-2 py-4"
-                onClick={() => handleQuickAction(EventType.WIDE)}
-              >
-                <XCircle size={24} />
-                <span className="text-sm">Wide</span>
-              </button>
-
-              <button 
-                className="btn-glass flex flex-col items-center space-y-2 py-4"
-                onClick={() => handleQuickAction(EventType.TURNOVER_WON)}
-              >
-                <CheckCircle size={24} />
-                <span className="text-sm">T/O Won</span>
-              </button>
-
-              <button 
-                className="btn-glass flex flex-col items-center space-y-2 py-4"
-                onClick={() => handleQuickAction(EventType.TURNOVER_LOST)}
-              >
-                <AlertCircle size={24} />
-                <span className="text-sm">T/O Lost</span>
-              </button>
+              <div className="bg-white/5 rounded-lg p-4 text-center text-white/60">
+                <div className="text-sm mb-2">Shot Accuracy Trend</div>
+                <div className="h-24 flex items-center justify-center">
+                  <span className="text-xs">Chart: Area chart coming soon</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* AI Insights Placeholder */}
+            <div className="mt-4 p-4 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 rounded-lg border border-indigo-500/30">
+              <div className="flex items-start space-x-3">
+                <Zap size={20} className="text-amber-400 flex-shrink-0 mt-1" />
+                <div>
+                  <h4 className="font-semibold text-white mb-1">AI Insight</h4>
+                  <p className="text-sm text-white/70">
+                    Dungloe's possession in the attacking third is 12% higher than their season average. 
+                    Continue applying pressure - conversion rate suggests goals are coming.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
