@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv
+
+# FastAPI
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Database
+*.db
+*.sqlite3
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# MacOS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Node (Frontend)
+node_modules/
+dist/
+build/
+.cache/
+
+# Docker
+*.dockerignore
+docker-compose.override.yml
+
+# Data
+/data/*.pdf
+/data/*.csv
+!/data/*_template.csv
+!/data/*_sample.*
+
+# Alembic
+/backend/alembic/versions/*.py
+!/backend/alembic/versions/.gitkeep
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Uploads
+/uploads/
+/temp/
+
