@@ -8,7 +8,7 @@ Updated automatically as events are recorded during the match.
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, Float, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, Integer, Float, Boolean, ForeignKey, JSON, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from app.database import Base
