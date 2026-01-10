@@ -9,15 +9,17 @@ This is the main application file that:
 - Configures error handling and logging
 """
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from contextlib import asynccontextmanager
 import logging
 import os
 
 # Import database functions
-from app.database import init_db, engine
+from app.database import engine, Base, get_db
 
 # Import routes
 from app.routes import players
@@ -48,10 +50,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     
     # Initialize database tables (in dev - use Alembic in production)
-    if os.getenv("ENVIRONMENT") == "development":
-        logger.info("Initializing database tables...")
-        await init_db()
-        logger.info("✅ Database initialized")
+    logger.info("Creating database tables...")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("✅ Database tables created")
     
     logger.info("✅ Application startup complete")
     
