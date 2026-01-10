@@ -1,0 +1,137 @@
+"""
+MatchEvent model for tracking individual actions during a match.
+
+Records every significant event: goals, points, turnovers, kickouts, etc.
+Includes player attribution and exact pitch coordinates.
+"""
+
+import uuid
+from datetime import datetime
+from typing import Optional
+from sqlalchemy import Column, String, DateTime, Float, Boolean, Enum, ForeignKey, Integer
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+from app.database import Base
+import enum
+
+
+class EventType(enum.Enum):
+    """Types of events that can occur during a match."""
+    GOAL = "goal"  # Goal scored (3 points)
+    POINT = "point"  # Point scored (1 point)
+    TWO_POINT = "two_point"  # Point from 40m+ (2 points)
+    WIDE = "wide"  # Shot that goes wide
+    SHORT = "short"  # Shot that falls short
+    SAVED = "saved"  # Shot saved by goalkeeper
+    TURNOVER_LOST = "turnover_lost"  # Lost possession
+    TURNOVER_WON = "turnover_won"  # Won possession back
+    KICKOUT_WON = "kickout_won"  # Won kickout
+    KICKOUT_LOST = "kickout_lost"  # Lost kickout
+    BREAKING_BALL_WON = "breaking_ball_won"  # Won breaking ball
+    YELLOW_CARD = "yellow_card"  # Player booked
+    RED_CARD = "red_card"  # Player sent off
+    FREE_WON = "free_won"  # Won a free kick
+    FREE_CONCEDED = "free_conceded"  # Conceded a free kick
+    BLOCK = "block"  # Blocked shot/pass
+    INTERCEPTION = "interception"  # Intercepted pass
+    OTHER = "other"  # Other event type
+
+
+class Team(enum.Enum):
+    """Which team the event belongs to."""
+    DUNGLOE = "dungloe"
+    OPPONENT = "opponent"
+
+
+class MatchEvent(Base):
+    """
+    SQLAlchemy model for a Match Event.
+    
+    Records every significant action during a match with:
+    - Event type (goal, point, turnover, etc.)
+    - Player attribution (who did it)
+    - Assist attribution (who assisted)
+    - Exact pitch coordinates
+    - Timestamp during match
+    """
+    __tablename__ = "match_events"
+
+    # Primary key
+    id: Column[uuid.UUID] = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    
+    # Foreign keys
+    match_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True)
+    player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)
+    assist_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True)
+    
+    # Event details
+    event_type: Column[EventType] = Column(Enum(EventType), nullable=False, index=True)
+    team: Column[Team] = Column(Enum(Team), nullable=False)
+    
+    # Timing (minutes and seconds into match)
+    minute: Column[Optional[int]] = Column(Integer, nullable=True)  # e.g., 23 for 23rd minute
+    
+    # Pitch coordinates (0-100 scale for percentage positioning)
+    # x: 0 = Dungloe goal line, 100 = Opponent goal line
+    # y: 0 = Left sideline, 100 = Right sideline
+    pitch_x: Column[Optional[float]] = Column(Float, nullable=True)
+    pitch_y: Column[Optional[float]] = Column(Float, nullable=True)
+    
+    # Optional notes
+    notes: Column[Optional[str]] = Column(String, nullable=True)
+    
+    # Timestamp
+    created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    match = relationship("Match", back_populates="events")
+    player = relationship("Player", foreign_keys=[player_id], lazy="selectin")
+    assist_player = relationship("Player", foreign_keys=[assist_player_id], lazy="selectin")
+
+    def __repr__(self):
+        player_name = self.player.name if self.player else "Unknown"
+        return f"<MatchEvent(id={self.id}, type='{self.event_type.value}', player='{player_name}')>"
+
+    @property
+    def is_score(self) -> bool:
+        """Check if this event is a scoring event."""
+        return self.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
+
+    @property
+    def points_value(self) -> int:
+        """Get the point value of this event."""
+        if self.event_type == EventType.GOAL:
+            return 3
+        elif self.event_type == EventType.TWO_POINT:
+            return 2
+        elif self.event_type == EventType.POINT:
+            return 1
+        else:
+            return 0
+
+    @property
+    def is_in_two_point_zone(self) -> bool:
+        """
+        Check if event occurred in 2-point zone (40m+ from goal).
+        
+        Pitch coordinates: x from 0-100 (0 = Dungloe goal, 100 = opponent goal)
+        40m from goal ≈ 40% from either end
+        
+        For Dungloe attacking (high x values):
+        - 2-point zone if x < 60 (40m+ from opponent goal)
+        
+        For opponent attacking (low x values):
+        - 2-point zone if x > 40 (40m+ from Dungloe goal)
+        """
+        if self.pitch_x is None:
+            return False
+        
+        if self.team == Team.DUNGLOE:
+            # Dungloe attacking toward x=100
+            # 2-point if shooting from x < 60 (40m+ from goal)
+            return self.pitch_x < 60
+        else:
+            # Opponent attacking toward x=0
+            # 2-point if shooting from x > 40 (40m+ from goal)
+            return self.pitch_x > 40
+

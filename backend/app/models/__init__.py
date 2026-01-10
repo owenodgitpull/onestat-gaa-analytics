@@ -7,6 +7,10 @@ This ensures all models are registered with SQLAlchemy.
 
 from app.models.player import Player, PlayerStatus, PlayerPosition
 from app.models.fitness_test import FitnessTest
+from app.models.match import Match, MatchVenue, MatchStatus
+from app.models.match_event import MatchEvent, EventType, Team
+from app.models.possession_event import PossessionEvent, PossessionTeam
+from app.models.player_match_stats import PlayerMatchStats
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -16,5 +20,14 @@ __all__ = [
     "PlayerStatus",
     "PlayerPosition",
     "FitnessTest",
+    "Match",
+    "MatchVenue",
+    "MatchStatus",
+    "MatchEvent",
+    "EventType",
+    "Team",
+    "PossessionEvent",
+    "PossessionTeam",
+    "PlayerMatchStats",
 ]
 
