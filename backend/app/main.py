@@ -21,7 +21,8 @@ from app.database import init_db, engine
 
 # Import routes
 from app.routes import players
-# from app.routes import fitness, matches, gps, ai  # Will add these next
+from app.routes import matches, match_events
+# from app.routes import possession, fitness, gps, ai  # Will add these next
 
 # Configure logging
 logging.basicConfig(
@@ -185,9 +186,11 @@ async def health_check():
 
 # Register API routes
 app.include_router(players.router, prefix="/api/players", tags=["Players"])
+app.include_router(matches.router, prefix="/api/matches", tags=["Matches"])
+app.include_router(match_events.router, prefix="/api/match-events", tags=["Match Events"])
 # Will add these next:
+# app.include_router(possession.router, prefix="/api/possession", tags=["Possession Tracking"])
 # app.include_router(fitness.router, prefix="/api/fitness", tags=["Fitness Tests"])
-# app.include_router(matches.router, prefix="/api/matches", tags=["Matches"])
 # app.include_router(gps.router, prefix="/api/gps", tags=["GPS Data"])
 # app.include_router(ai.router, prefix="/api/ai", tags=["AI Analysis"])
 
