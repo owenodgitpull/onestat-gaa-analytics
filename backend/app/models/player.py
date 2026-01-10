@@ -84,26 +84,27 @@ class Player(Base):
         cascade="all, delete-orphan"  # Delete tests if player deleted
     )
     
-    match_performances = relationship(
-        "PlayerMatchPerformance",
-        back_populates="player",
-        lazy="selectin",
-        cascade="all, delete-orphan"
-    )
+    # Commented out until we create these models
+    # match_performances = relationship(
+    #     "PlayerMatchPerformance",
+    #     back_populates="player",
+    #     lazy="selectin",
+    #     cascade="all, delete-orphan"
+    # )
     
-    gps_data = relationship(
-        "GPSData",
-        back_populates="player",
-        lazy="selectin",
-        cascade="all, delete-orphan"
-    )
+    # gps_data = relationship(
+    #     "GPSData",
+    #     back_populates="player",
+    #     lazy="selectin",
+    #     cascade="all, delete-orphan"
+    # )
     
-    season_stats = relationship(
-        "PlayerSeasonStats",
-        back_populates="player",
-        lazy="selectin",
-        cascade="all, delete-orphan"
-    )
+    # season_stats = relationship(
+    #     "PlayerSeasonStats",
+    #     back_populates="player",
+    #     lazy="selectin",
+    #     cascade="all, delete-orphan"
+    # )
     
     def __repr__(self) -> str:
         """String representation for debugging."""

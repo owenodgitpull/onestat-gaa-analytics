@@ -11,12 +11,13 @@ Usage:
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.models.player import Player, PlayerStatus
+from app.database import Base  # Import Base to create tables
 import os
 
-# Database URL
+# Database URL - uses default PostgreSQL user (current system user)
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://dungloe:dungloe_dev_password@localhost:5432/dungloe_gaa"
+    "postgresql+asyncpg://owenodonnell@localhost:5432/dungloe_gaa"
 )
 
 # All 30 players from fitness test CSV
@@ -59,6 +60,13 @@ async def seed_players():
     
     # Create engine and session
     engine = create_async_engine(DATABASE_URL)
+    
+    # Create all database tables
+    async with engine.begin() as conn:
+        print("🔧 Creating database tables...")
+        await conn.run_sync(Base.metadata.create_all)
+        print("✅ Database tables created!\n")
+    
     AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     
     async with AsyncSessionLocal() as session:

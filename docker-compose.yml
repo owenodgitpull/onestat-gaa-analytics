@@ -1,9 +1,8 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
+    pull_policy: if_not_present
     environment:
       POSTGRES_USER: dungloe
       POSTGRES_PASSWORD: dungloe_dev_password
