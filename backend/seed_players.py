@@ -14,10 +14,10 @@ from app.models.player import Player, PlayerStatus
 from app.database import Base  # Import Base to create tables
 import os
 
-# Database URL - uses default PostgreSQL user (current system user)
+# Database URL - Docker PostgreSQL (matches docker-compose.yml)
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://owenodonnell@localhost:5432/dungloe_gaa"
+    "postgresql+asyncpg://dungloe:dungloe_dev_password@localhost:5432/dungloe_gaa"
 )
 
 # All 30 players from fitness test CSV
