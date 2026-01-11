@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import GAAPitch from '@/components/GAAPitch'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
@@ -28,11 +28,28 @@ export default function MatchRecording() {
   })
   const [matchPhase, setMatchPhase] = useState<MatchPhase>('not_started')
   const [minute, setMinute] = useState(0)
+  const [seconds, setSeconds] = useState(0)
 
-  // Mock match data
+  // Timer effect
+  useEffect(() => {
+    if (matchPhase === 'first_half' || matchPhase === 'second_half') {
+      const interval = setInterval(() => {
+        setSeconds((prev) => {
+          if (prev >= 59) {
+            setMinute((m) => m + 1)
+            return 0
+          }
+          return prev + 1
+        })
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [matchPhase])
+
+  // Mock match data - START AT 0-00
   const match = {
     opponent: 'Glenties',
-    score: { dungloe: { goals: 2, points: 8 }, opponent: { goals: 1, points: 12 } },
+    score: { dungloe: { goals: 0, points: 0 }, opponent: { goals: 0, points: 0 } },
     minute: minute,
     status: matchPhase
   }
@@ -57,12 +74,10 @@ export default function MatchRecording() {
   const startHalf = () => {
     if (matchPhase === 'not_started') {
       setMatchPhase('first_half')
-      // TODO: Start timer
-      alert('First half started! Timer will begin counting up to 30 minutes.')
+      setMinute(0)
+      setSeconds(0)
     } else if (matchPhase === 'half_time') {
       setMatchPhase('second_half')
-      // TODO: Continue timer
-      alert('Second half started! Timer continues.')
     }
   }
 
@@ -70,6 +85,10 @@ export default function MatchRecording() {
     if (matchPhase === 'not_started') return 'Start First Half'
     if (matchPhase === 'half_time') return 'Start Second Half'
     return null
+  }
+
+  const formatTime = () => {
+    return `${minute}:${seconds.toString().padStart(2, '0')}`
   }
 
   return (
@@ -84,9 +103,9 @@ export default function MatchRecording() {
             </h1>
             <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
             {matchPhase !== 'not_started' && (
-              <div className="badge badge-success flex items-center space-x-2 inline-flex">
+              <div className="badge badge-success flex items-center space-x-2 inline-flex animate-pulse">
                 <Clock size={14} />
-                <span>{match.minute}'</span>
+                <span className="font-mono">{formatTime()}</span>
               </div>
             )}
           </div>
