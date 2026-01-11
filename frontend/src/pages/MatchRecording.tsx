@@ -339,38 +339,6 @@ export default function MatchRecording() {
             </div>
           </div>
 
-              <div className="stat-card bg-white/5 !p-4">
-                <div className="stat-label">Turnovers</div>
-                <div className="flex items-center justify-center space-x-4 mt-2">
-                  <div className="text-center">
-                    <div className="text-xl font-bold text-emerald-400">{stats.turnovers.won}</div>
-                    <div className="text-xs text-white/60">Won</div>
-                  </div>
-                  <div className="text-white/40">/</div>
-                  <div className="text-center">
-                    <div className="text-xl font-bold text-red-400">{stats.turnovers.lost}</div>
-                    <div className="text-xs text-white/60">Lost</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="stat-card bg-white/5 !p-4">
-                <div className="stat-label">Kickouts</div>
-                <div className="flex items-center justify-center space-x-4 mt-2">
-                  <div className="text-center">
-                    <div className="text-xl font-bold text-emerald-400">{stats.kickouts.won}</div>
-                    <div className="text-xs text-white/60">Won</div>
-                  </div>
-                  <div className="text-white/40">/</div>
-                  <div className="text-center">
-                    <div className="text-xl font-bold text-red-400">{stats.kickouts.lost}</div>
-                    <div className="text-xs text-white/60">Lost</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Recent Events */}
           <div className="glass-card p-6">
             <h3 className="text-lg font-semibold mb-4">Recent Events</h3>
