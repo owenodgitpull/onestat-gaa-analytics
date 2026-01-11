@@ -7,6 +7,13 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Darker glassmorphism palette
+        slate: {
+          950: '#0a0e1a',
+        },
+        purple: {
+          950: '#16082e',
+        },
         // Glassmorphism dark theme
         primary: {
           50: '#f0f4ff',

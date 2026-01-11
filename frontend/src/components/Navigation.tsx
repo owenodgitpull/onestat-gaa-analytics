@@ -16,8 +16,20 @@ export default function Navigation() {
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-3 group">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center transform group-hover:scale-105 transition-transform">
-              <span className="text-2xl font-bold">D</span>
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center transform group-hover:scale-105 transition-transform overflow-hidden">
+              <img 
+                src="/clg-logo.png" 
+                alt="Dungloe GAA" 
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Fallback to letter D if image not found
+                  const target = e.currentTarget as HTMLImageElement;
+                  target.style.display = 'none';
+                  if (target.parentElement) {
+                    target.parentElement.innerHTML = '<span class="text-2xl font-bold">D</span>';
+                  }
+                }}
+              />
             </div>
             <div>
               <h1 className="text-xl font-bold text-white group-hover:text-gradient transition-colors">Dungloe GAA</h1>
