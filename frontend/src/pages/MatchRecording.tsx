@@ -123,7 +123,7 @@ export default function MatchRecording() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Pitch Area */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Pitch with overlaid quick actions */}
+          {/* Pitch */}
           <div className="glass-card p-6 relative">
             <GAAPitch
               ballPosition={ballPosition}
@@ -131,12 +131,11 @@ export default function MatchRecording() {
               showZones={true}
             />
             
-            {/* Quick Actions Overlay */}
-            <div className="absolute top-4 right-4 glass-card p-4 space-y-2 z-10">
-              <h3 className="text-xs font-semibold text-white mb-3">Quick Actions</h3>
-              <div className="flex flex-col space-y-2">
+            {/* Quick Actions at Bottom */}
+            <div className="mt-4 flex justify-center">
+              <div className="glass-card p-3 inline-flex space-x-2">
                 <button 
-                  className="btn-primary !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.GOAL)}
                 >
                   <Target size={16} />
@@ -144,7 +143,7 @@ export default function MatchRecording() {
                 </button>
                 
                 <button 
-                  className="btn-primary !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.POINT)}
                 >
                   <TrendingUp size={16} />
@@ -152,7 +151,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.WIDE)}
                 >
                   <XCircle size={16} />
@@ -160,7 +159,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.TURNOVER_WON)}
                 >
                   <CheckCircle size={16} />
@@ -168,7 +167,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-3 flex items-center space-x-2 text-sm"
+                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.TURNOVER_LOST)}
                 >
                   <AlertCircle size={16} />
@@ -219,73 +218,126 @@ export default function MatchRecording() {
 
         {/* Live Stats Sidebar */}
         <div className="space-y-4">
+          {/* Match Statistics Table */}
           <div className="glass-card p-6">
             <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
               <Activity size={20} className="text-white" />
-              <span>Match Stats</span>
+              <span>Match Statistics</span>
             </h3>
 
-            {/* Possession - Split Bar */}
-            <div className="mb-6">
-              <div className="flex justify-between text-xs font-semibold mb-2 text-slate-900">
-                <span>Dungloe</span>
-                <span>Possession</span>
-                <span>{match.opponent}</span>
+            <div className="overflow-hidden rounded-lg border border-white/10">
+              {/* Table Header */}
+              <div className="grid grid-cols-3 bg-white/5">
+                <div className="p-3 text-center text-sm font-bold text-white border-r border-white/10">Dungloe</div>
+                <div className="p-3 text-center text-sm font-bold text-white border-r border-white/10">Stat</div>
+                <div className="p-3 text-center text-sm font-bold text-white">{match.opponent}</div>
               </div>
-              <div className="h-8 bg-white/10 rounded-lg overflow-hidden flex">
-                <div 
-                  className="bg-gradient-to-r from-indigo-600 to-purple-600 flex items-center justify-center text-white text-sm font-bold transition-all duration-500"
-                  style={{ width: `${stats.possession.dungloe}%` }}
-                >
+
+              {/* Possession */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="p-3 text-center bg-white text-lg font-bold text-indigo-600 border-r border-white/10">
                   {stats.possession.dungloe}%
                 </div>
-                <div 
-                  className="bg-red-600 flex items-center justify-center text-white text-sm font-bold transition-all duration-500"
-                  style={{ width: `${stats.possession.opponent}%` }}
-                >
+                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                  POSSESSION
+                </div>
+                <div className="p-3 text-center bg-white text-lg font-bold text-red-600">
                   {stats.possession.opponent}%
                 </div>
               </div>
+
+              {/* Shots */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="p-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10">
+                  {stats.shots.dungloe}
+                </div>
+                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                  SHOTS
+                </div>
+                <div className="p-3 text-center bg-white text-lg font-bold text-slate-900">
+                  {stats.shots.opponent}
+                </div>
+              </div>
+
+              {/* Scores */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="p-3 text-center bg-white text-lg font-bold text-emerald-600 border-r border-white/10">
+                  {stats.scores.dungloe}
+                </div>
+                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                  SCORES
+                </div>
+                <div className="p-3 text-center bg-white text-lg font-bold text-emerald-600">
+                  {stats.scores.opponent}
+                </div>
+              </div>
+
+              {/* Wides */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="p-3 text-center bg-white text-lg font-bold text-red-600 border-r border-white/10">
+                  {stats.wides.dungloe}
+                </div>
+                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                  WIDES
+                </div>
+                <div className="p-3 text-center bg-white text-lg font-bold text-red-600">
+                  {stats.wides.opponent}
+                </div>
+              </div>
+
+              {/* Accuracy */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="p-3 text-center bg-white text-lg font-bold text-indigo-600 border-r border-white/10">
+                  {stats.accuracy}%
+                </div>
+                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                  ACCURACY
+                </div>
+                <div className="p-3 text-center bg-white text-lg font-bold text-indigo-600">
+                  {(stats.scores.opponent / stats.shots.opponent * 100).toFixed(1)}%
+                </div>
+              </div>
+
+              {/* Conversion Rate */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="p-3 text-center bg-white text-lg font-bold text-amber-600 border-r border-white/10">
+                  {stats.conversionRate}%
+                </div>
+                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                  CONVERSION
+                </div>
+                <div className="p-3 text-center bg-white text-lg font-bold text-amber-600">
+                  {((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1)}%
+                </div>
+              </div>
+
+              {/* Turnovers */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="p-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10">
+                  {stats.turnovers.won}
+                </div>
+                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                  TURNOVERS WON
+                </div>
+                <div className="p-3 text-center bg-white text-lg font-bold text-slate-900">
+                  {stats.turnovers.lost}
+                </div>
+              </div>
+
+              {/* Kickouts */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="p-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10">
+                  {stats.kickouts.won}
+                </div>
+                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                  KICKOUTS WON
+                </div>
+                <div className="p-3 text-center bg-white text-lg font-bold text-slate-900">
+                  {stats.kickouts.lost}
+                </div>
+              </div>
             </div>
-
-            {/* Stats Grid */}
-            <div className="space-y-3">
-              <div className="stat-card bg-white/5 !p-4">
-                <div className="text-slate-900 text-xs font-semibold mb-2">Shots</div>
-                <div className="flex justify-between text-lg font-bold">
-                  <span className="text-indigo-400">{stats.shots.dungloe}</span>
-                  <span className="text-white/40">-</span>
-                  <span className="text-red-400">{stats.shots.opponent}</span>
-                </div>
-              </div>
-
-              <div className="stat-card bg-white/5 !p-4">
-                <div className="text-slate-900 text-xs font-semibold mb-2">Scores</div>
-                <div className="flex justify-between text-lg font-bold">
-                  <span className="text-emerald-400">{stats.scores.dungloe}</span>
-                  <span className="text-white/40">-</span>
-                  <span className="text-red-400">{stats.scores.opponent}</span>
-                </div>
-              </div>
-
-              <div className="stat-card bg-white/5 !p-4">
-                <div className="text-slate-900 text-xs font-semibold mb-2">Accuracy</div>
-                <div className="stat-value text-2xl text-white">{stats.accuracy}%</div>
-              </div>
-
-              <div className="stat-card bg-white/5 !p-4">
-                <div className="text-slate-900 text-xs font-semibold mb-2">Conversion Rate</div>
-                <div className="stat-value text-2xl text-amber-400">{stats.conversionRate}%</div>
-              </div>
-
-              <div className="stat-card bg-white/5 !p-4">
-                <div className="text-slate-900 text-xs font-semibold mb-2">Wides</div>
-                <div className="flex justify-between text-lg font-bold">
-                  <span className="text-indigo-400">{stats.wides.dungloe}</span>
-                  <span className="text-white/40">-</span>
-                  <span className="text-red-400">{stats.wides.opponent}</span>
-                </div>
-              </div>
+          </div>
 
               <div className="stat-card bg-white/5 !p-4">
                 <div className="stat-label">Turnovers</div>

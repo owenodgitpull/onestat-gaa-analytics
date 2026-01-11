@@ -98,26 +98,26 @@ export default function GAAPitch({
         <rect x="50" y="250" width="50" height="125" className="pitch-line" />
         <rect x="900" y="250" width="50" height="125" className="pitch-line" />
 
-        {/* Semi-circles (20.5m - large arcs behind goals) */}
+        {/* Large Semi-circles (20.5m arcs - at each end, curving INTO the pitch) */}
         <path
-          d="M 180 175 A 130 130 0 0 0 180 450"
+          d="M 180 175 A 130 130 0 0 1 180 450"
           className="pitch-line"
           fill="none"
         />
         <path
-          d="M 820 175 A 130 130 0 0 1 820 450"
+          d="M 820 175 A 130 130 0 0 0 820 450"
           className="pitch-line"
           fill="none"
         />
 
-        {/* D-zones (13m arcs - smaller arcs inside semi-circles) */}
+        {/* Smaller D-zones (13m arcs - inside the semi-circles) */}
         <path
-          d="M 180 240 A 80 80 0 0 0 180 385"
+          d="M 180 240 A 80 80 0 0 1 180 385"
           className="pitch-line"
           fill="none"
         />
         <path
-          d="M 820 240 A 80 80 0 0 1 820 385"
+          d="M 820 240 A 80 80 0 0 0 820 385"
           className="pitch-line"
           fill="none"
         />
