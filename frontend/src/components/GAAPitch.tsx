@@ -54,105 +54,63 @@ export default function GAAPitch({
     <div className="relative w-full aspect-[16/10] bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-2xl overflow-hidden">
       <svg
         ref={svgRef}
-        viewBox="0 0 1400 1000"
+        viewBox="0 0 2332 1446"
         className="w-full h-full cursor-pointer"
         onClick={handlePitchClick}
+        preserveAspectRatio="xMidYMid meet"
       >
-        {/* Pitch background */}
-        <rect width="1400" height="1000" fill="#2d5016" />
+        {/* Use the exact SVG from the file - Background */}
+        <rect width="2332" height="1446" fill="#2d5016" />
         
-        {/* 2-Point Zone Overlay (40m zones) - NO LABEL */}
+        {/* 2-Point Zone Overlay (subtle) */}
         {showZones && (
-          <rect x="0" y="400" width="1400" height="200" fill="rgba(251, 191, 36, 0.06)" />
+          <rect x="900" y="0" width="532" height="1446" fill="rgba(251, 191, 36, 0.05)" />
         )}
 
-        {/* Outer boundary */}
-        <rect
-          x="80"
-          y="100"
-          width="1240"
-          height="800"
-          className="pitch-line"
-          strokeWidth="4"
-        />
-
-        {/* Halfway line (dashed) - VERTICAL */}
-        <line
-          x1="700"
-          y1="100"
-          x2="700"
-          y2="900"
-          className="pitch-line"
-          strokeDasharray="15,15"
-          strokeWidth="4"
-        />
-
-        {/* 45m lines (left) */}
-        <line x1="400" y1="100" x2="400" y2="900" className="pitch-line" strokeWidth="3" />
-        
-        {/* 45m lines (right) */}
-        <line x1="1000" y1="100" x2="1000" y2="900" className="pitch-line" strokeWidth="3" />
-
-        {/* 21m rectangles (large) - LEFT */}
-        <rect x="80" y="100" width="180" height="800" className="pitch-line" strokeWidth="3" fill="none" />
-        
-        {/* 21m rectangles (large) - RIGHT */}
-        <rect x="1140" y="100" width="180" height="800" className="pitch-line" strokeWidth="3" fill="none" />
-
-        {/* Small goal areas (6m boxes) - LEFT */}
-        <rect x="80" y="350" width="80" height="300" className="pitch-line" strokeWidth="3" fill="none" />
-        
-        {/* Small goal areas (6m boxes) - RIGHT */}
-        <rect x="1240" y="350" width="80" height="300" className="pitch-line" strokeWidth="3" fill="none" />
-
-        {/* Large Semi-circles (20.5m) - LEFT - curves INWARD */}
-        <path
-          d="M 260 100 A 200 400 0 0 0 260 900"
-          className="pitch-line"
-          strokeWidth="3"
-          fill="none"
-        />
-        
-        {/* Large Semi-circles (20.5m) - RIGHT - curves INWARD */}
-        <path
-          d="M 1140 100 A 200 400 0 0 1 1140 900"
-          className="pitch-line"
-          strokeWidth="3"
-          fill="none"
-        />
-
-        {/* Smaller D-zones (13m) - LEFT - curves INWARD */}
-        <path
-          d="M 220 300 A 100 200 0 0 0 220 700"
-          className="pitch-line"
-          strokeWidth="3"
-          fill="none"
-        />
-        
-        {/* Smaller D-zones (13m) - RIGHT - curves INWARD */}
-        <path
-          d="M 1180 300 A 100 200 0 0 1 1180 700"
-          className="pitch-line"
-          strokeWidth="3"
-          fill="none"
-        />
-
-        {/* Penalty spots */}
-        <circle cx="180" cy="500" r="4" fill="white" />
-        <circle cx="1220" cy="500" r="4" fill="white" />
-
-        {/* H-shaped Goal Posts - LEFT */}
-        <g className="pitch-line" strokeWidth="5" fill="none">
-          <line x1="80" y1="430" x2="10" y2="430" />
-          <line x1="80" y1="570" x2="10" y2="570" />
-          <line x1="40" y1="430" x2="40" y2="570" />
-        </g>
-        
-        {/* H-shaped Goal Posts - RIGHT */}
-        <g className="pitch-line" strokeWidth="5" fill="none">
-          <line x1="1320" y1="430" x2="1390" y2="430" />
-          <line x1="1320" y1="570" x2="1390" y2="570" />
-          <line x1="1360" y1="430" x2="1360" y2="570" />
+        {/* Main GAA Pitch - Scaled from original SVG */}
+        <g>
+          {/* Outer boundary */}
+          <rect x="183" y="123" width="1960" height="1167" stroke="white" strokeWidth="4" fill="none" />
+          
+          {/* Halfway line (dashed) */}
+          <line x1="1166" y1="123" x2="1166" y2="1290" stroke="white" strokeWidth="4" strokeDasharray="20,20" fill="none" />
+          
+          {/* 45m lines */}
+          <line x1="644" y1="123" x2="644" y2="1290" stroke="white" strokeWidth="3" fill="none" />
+          <line x1="1688" y1="123" x2="1688" y2="1290" stroke="white" strokeWidth="3" fill="none" />
+          
+          {/* Large rectangles (21m) */}
+          <rect x="183" y="123" width="300" height="1167" stroke="white" strokeWidth="3" fill="none" />
+          <rect x="1849" y="123" width="300" height="1167" stroke="white" strokeWidth="3" fill="none" />
+          
+          {/* Small goal areas (6m) */}
+          <rect x="183" y="462" width="150" height="545" stroke="white" strokeWidth="3" fill="none" />
+          <rect x="1999" y="462" width="150" height="545" stroke="white" strokeWidth="3" fill="none" />
+          
+          {/* Large semi-circles (20.5m) curving inward */}
+          <path d="M 483 290 A 430 430 0 0 0 483 1120" stroke="white" strokeWidth="3" fill="none" />
+          <path d="M 1849 290 A 430 430 0 0 1 1849 1120" stroke="white" strokeWidth="3" fill="none" />
+          
+          {/* Smaller D-zones (13m) */}
+          <path d="M 483 500 A 250 250 0 0 0 483 910" stroke="white" strokeWidth="3" fill="none" />
+          <path d="M 1849 500 A 250 250 0 0 1 1849 910" stroke="white" strokeWidth="3" fill="none" />
+          
+          {/* Penalty spots */}
+          <circle cx="370" cy="705" r="6" fill="white" />
+          <circle cx="1962" cy="705" r="6" fill="white" />
+          
+          {/* H-shaped goal posts */}
+          <g stroke="white" strokeWidth="6" fill="none">
+            {/* Left goal */}
+            <line x1="183" y1="580" x2="100" y2="580" />
+            <line x1="183" y1="830" x2="100" y2="830" />
+            <line x1="140" y1="580" x2="140" y2="830" />
+            
+            {/* Right goal */}
+            <line x1="2149" y1="580" x2="2232" y2="580" />
+            <line x1="2149" y1="830" x2="2232" y2="830" />
+            <line x1="2192" y1="580" x2="2192" y2="830" />
+          </g>
         </g>
 
         {/* Ball position */}
@@ -160,18 +118,18 @@ export default function GAAPitch({
           <g className="animate-scale-in">
             {/* Shadow */}
             <ellipse
-              cx={(localBallPosition.x / 100) * 1240 + 80}
-              cy={(localBallPosition.y / 100) * 800 + 100 + 5}
-              rx="15"
-              ry="8"
+              cx={(localBallPosition.x / 100) * 1960 + 183}
+              cy={(localBallPosition.y / 100) * 1167 + 123 + 8}
+              rx="20"
+              ry="10"
               fill="rgba(0, 0, 0, 0.3)"
             />
             
             {/* Ball */}
             <circle
-              cx={(localBallPosition.x / 100) * 1240 + 80}
-              cy={(localBallPosition.y / 100) * 800 + 100}
-              r="14"
+              cx={(localBallPosition.x / 100) * 1960 + 183}
+              cy={(localBallPosition.y / 100) * 1167 + 123}
+              r="18"
               fill={
                 localBallPosition.team === PossessionTeam.DUNGLOE
                   ? '#4f46e5'
@@ -185,11 +143,11 @@ export default function GAAPitch({
             {/* 2-Point Zone Indicator */}
             {isInTwoPointZone(localBallPosition.x) && (
               <text
-                x={(localBallPosition.x / 100) * 1240 + 80}
-                y={(localBallPosition.y / 100) * 800 + 80}
+                x={(localBallPosition.x / 100) * 1960 + 183}
+                y={(localBallPosition.y / 100) * 1167 + 103}
                 textAnchor="middle"
                 fill="#fbbf24"
-                fontSize="16"
+                fontSize="20"
                 fontWeight="bold"
                 className="animate-fade-in"
               >
@@ -201,12 +159,12 @@ export default function GAAPitch({
 
         {/* Zone labels (if showZones) */}
         {showZones && (
-          <g fill="white" fillOpacity="0.3" fontSize="14" fontWeight="600">
-            <text x="180" y="500" textAnchor="middle">DEF</text>
-            <text x="550" y="500" textAnchor="middle">MID</text>
-            <text x="700" y="500" textAnchor="middle">CENTER</text>
-            <text x="850" y="500" textAnchor="middle">MID</text>
-            <text x="1220" y="500" textAnchor="middle">ATK</text>
+          <g fill="white" fillOpacity="0.3" fontSize="18" fontWeight="600">
+            <text x="370" y="710" textAnchor="middle">DEF</text>
+            <text x="900" y="710" textAnchor="middle">MID</text>
+            <text x="1166" y="710" textAnchor="middle">CENTER</text>
+            <text x="1432" y="710" textAnchor="middle">MID</text>
+            <text x="1962" y="710" textAnchor="middle">ATK</text>
           </g>
         )}
       </svg>
