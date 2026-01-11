@@ -74,48 +74,63 @@ export default function MatchRecording() {
 
   return (
     <div className="min-h-screen pb-8">
-      {/* Match Header */}
-      <div className="glass-card p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gradient">
+      {/* Compact Match Header */}
+      <div className="glass-card p-4 mb-6">
+        <div className="grid grid-cols-3 gap-4 items-center">
+          {/* Left: Match Info & Timer */}
+          <div className="space-y-2">
+            <h1 className="text-xl font-bold text-white">
               Dungloe vs {match.opponent}
             </h1>
-            <p className="text-white/60 mt-1">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
-          </div>
-          <div className="flex items-center space-x-4">
+            <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
             {matchPhase !== 'not_started' && (
-              <div className="badge badge-success flex items-center space-x-2">
+              <div className="badge badge-success flex items-center space-x-2 inline-flex">
                 <Clock size={14} />
                 <span>{match.minute}'</span>
               </div>
             )}
-            {getPhaseButtonText() && (
-              <button className="btn-primary flex items-center space-x-2" onClick={startHalf}>
-                <Play size={18} />
-                <span>{getPhaseButtonText()}</span>
-              </button>
-            )}
-            <button className="btn-danger" onClick={() => navigate('/')}>
-              End Match
-            </button>
           </div>
-        </div>
 
-        {/* Score */}
-        <div className="flex items-center justify-center space-x-8 text-center">
-          <div>
-            <div className="text-5xl font-bold text-gradient-gold">
-              {match.score.dungloe.goals}-{String(match.score.dungloe.points).padStart(2, '0')}
+          {/* Center: Score */}
+          <div className="flex items-center justify-center space-x-4 text-center">
+            <div>
+              <div className="text-4xl font-bold text-gradient-gold">
+                {match.score.dungloe.goals}-{String(match.score.dungloe.points).padStart(2, '0')}
+              </div>
+              <div className="text-white/60 text-xs mt-1">Dungloe</div>
             </div>
-            <div className="text-white/60 text-sm mt-2">Dungloe</div>
+            <div className="text-xl text-white/40">vs</div>
+            <div>
+              <div className="text-4xl font-bold text-white/80">
+                {match.score.opponent.goals}-{String(match.score.opponent.points).padStart(2, '0')}
+              </div>
+              <div className="text-white/60 text-xs mt-1">{match.opponent}</div>
+            </div>
           </div>
-          <div className="text-2xl text-white/40">vs</div>
-          <div>
-            <div className="text-5xl font-bold text-white/80">
-              {match.score.opponent.goals}-{String(match.score.opponent.points).padStart(2, '0')}
+
+          {/* Right: Quick Stats & Actions */}
+          <div className="flex flex-col items-end space-y-2">
+            <div className="flex items-center space-x-2">
+              <div className="text-right">
+                <div className="text-xs text-white/60">Possession</div>
+                <div className="text-sm font-bold text-indigo-400">{stats.possession.dungloe}%</div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-white/60">Accuracy</div>
+                <div className="text-sm font-bold text-emerald-400">{stats.accuracy}%</div>
+              </div>
             </div>
-            <div className="text-white/60 text-sm mt-2">{match.opponent}</div>
+            <div className="flex items-center space-x-2">
+              {getPhaseButtonText() && (
+                <button className="btn-primary flex items-center space-x-1 !py-1 !px-3 text-sm" onClick={startHalf}>
+                  <Play size={14} />
+                  <span>{getPhaseButtonText()}</span>
+                </button>
+              )}
+              <button className="btn-danger !py-1 !px-3 text-sm" onClick={() => navigate('/')}>
+                End Match
+              </button>
+            </div>
           </div>
         </div>
       </div>

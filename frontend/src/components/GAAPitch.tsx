@@ -125,26 +125,6 @@ export default function GAAPitch({
           </g>
         )}
       </svg>
-
-      {/* Legend */}
-      {!readonly && (
-        <div className="absolute bottom-4 right-4 glass-card p-3 space-y-2 text-xs">
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 rounded-full bg-indigo-600 border-2 border-white"></div>
-            <span>Dungloe</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 rounded-full bg-red-600 border-2 border-white"></div>
-            <span>Opponent</span>
-          </div>
-          {showZones && (
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 rounded-full bg-amber-500 border-2 border-white"></div>
-              <span>2-Point Zone</span>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   )
 }
