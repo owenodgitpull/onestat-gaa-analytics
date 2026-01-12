@@ -310,7 +310,7 @@ export default function MatchRecording() {
                 <div className="p-3 text-center bg-white text-lg font-bold text-indigo-600 border-r border-white/10">
                   {stats.possession.dungloe}%
                 </div>
-                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                <div className="p-3 text-center bg-blue-600/30 text-sm font-semibold text-blue-300 border border-blue-500/50 border-r border-white/10">
                   POSSESSION
                 </div>
                 <div className="p-3 text-center bg-white text-lg font-bold text-red-600">
@@ -323,7 +323,7 @@ export default function MatchRecording() {
                 <div className="p-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10">
                   {stats.shots.dungloe}
                 </div>
-                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                <div className="p-3 text-center bg-blue-600/30 text-sm font-semibold text-blue-300 border border-blue-500/50 border-r border-white/10">
                   SHOTS
                 </div>
                 <div className="p-3 text-center bg-white text-lg font-bold text-slate-900">
@@ -336,7 +336,7 @@ export default function MatchRecording() {
                 <div className="p-3 text-center bg-white text-lg font-bold text-emerald-600 border-r border-white/10">
                   {stats.scores.dungloe}
                 </div>
-                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                <div className="p-3 text-center bg-blue-600/30 text-sm font-semibold text-blue-300 border border-blue-500/50 border-r border-white/10">
                   SCORES
                 </div>
                 <div className="p-3 text-center bg-white text-lg font-bold text-emerald-600">
@@ -349,7 +349,7 @@ export default function MatchRecording() {
                 <div className="p-3 text-center bg-white text-lg font-bold text-red-600 border-r border-white/10">
                   {stats.wides.dungloe}
                 </div>
-                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                <div className="p-3 text-center bg-blue-600/30 text-sm font-semibold text-blue-300 border border-blue-500/50 border-r border-white/10">
                   WIDES
                 </div>
                 <div className="p-3 text-center bg-white text-lg font-bold text-red-600">
@@ -362,7 +362,7 @@ export default function MatchRecording() {
                 <div className="p-3 text-center bg-white text-lg font-bold text-indigo-600 border-r border-white/10">
                   {stats.accuracy}%
                 </div>
-                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                <div className="p-3 text-center bg-blue-600/30 text-sm font-semibold text-blue-300 border border-blue-500/50 border-r border-white/10">
                   ACCURACY
                 </div>
                 <div className="p-3 text-center bg-white text-lg font-bold text-indigo-600">
@@ -375,7 +375,7 @@ export default function MatchRecording() {
                 <div className="p-3 text-center bg-white text-lg font-bold text-amber-600 border-r border-white/10">
                   {stats.conversionRate}%
                 </div>
-                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                <div className="p-3 text-center bg-blue-600/30 text-sm font-semibold text-blue-300 border border-blue-500/50 border-r border-white/10">
                   CONVERSION
                 </div>
                 <div className="p-3 text-center bg-white text-lg font-bold text-amber-600">
@@ -388,7 +388,7 @@ export default function MatchRecording() {
                 <div className="p-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10">
                   {stats.turnovers.won}
                 </div>
-                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                <div className="p-3 text-center bg-blue-600/30 text-sm font-semibold text-blue-300 border border-blue-500/50 border-r border-white/10">
                   TURNOVERS WON
                 </div>
                 <div className="p-3 text-center bg-white text-lg font-bold text-slate-900">
@@ -401,7 +401,7 @@ export default function MatchRecording() {
                 <div className="p-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10">
                   {stats.kickouts.won}
                 </div>
-                <div className="p-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10">
+                <div className="p-3 text-center bg-blue-600/30 text-sm font-semibold text-blue-300 border border-blue-500/50 border-r border-white/10">
                   KICKOUTS WON
                 </div>
                 <div className="p-3 text-center bg-white text-lg font-bold text-slate-900">
