@@ -223,7 +223,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.WIDE)}
                 >
                   <XCircle size={16} />
@@ -231,7 +231,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.TURNOVER_WON)}
                 >
                   <CheckCircle size={16} />
@@ -239,7 +239,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.TURNOVER_LOST)}
                 >
                   <AlertCircle size={16} />
@@ -247,7 +247,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.OWN_KICKOUT_WON)}
                 >
                   <CheckCircle size={16} />
@@ -255,7 +255,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.OWN_KICKOUT_LOST)}
                 >
                   <XCircle size={16} />
@@ -263,7 +263,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.OPP_KICKOUT_WON)}
                 >
                   <CheckCircle size={16} />
@@ -271,7 +271,7 @@ export default function MatchRecording() {
                 </button>
 
                 <button 
-                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.OPP_KICKOUT_LOST)}
                 >
                   <XCircle size={16} />
