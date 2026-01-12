@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import GAAPitch from '@/components/GAAPitch'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
+import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { 
   Target, 
@@ -207,113 +208,9 @@ export default function MatchRecording() {
               showZones={true}
             />
             
-            {/* Quick Actions - Overlapping Bottom of Pitch - OPAQUE */}
-            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 z-10">
-              <div className="bg-slate-900 backdrop-blur-xl border border-white/20 rounded-2xl p-3 inline-flex space-x-2 shadow-2xl">
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.GOAL)}
-                >
-                  <Target size={16} />
-                  <span>Goal</span>
-                </button>
-                
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.POINT)}
-                >
-                  <TrendingUp size={16} />
-                  <span>Point</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.WIDE)}
-                >
-                  <XCircle size={16} />
-                  <span>Wide</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.TURNOVER_WON)}
-                >
-                  <CheckCircle size={16} />
-                  <span>T/O Won</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.TURNOVER_LOST)}
-                >
-                  <AlertCircle size={16} />
-                  <span>T/O Lost</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.OWN_KICKOUT_WON)}
-                >
-                  <CheckCircle size={16} />
-                  <span>Our K/O Won</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.OWN_KICKOUT_LOST)}
-                >
-                  <XCircle size={16} />
-                  <span>Our K/O Lost</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.OPP_KICKOUT_WON)}
-                >
-                  <CheckCircle size={16} />
-                  <span>Opp K/O Won</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.OPP_KICKOUT_LOST)}
-                >
-                  <XCircle size={16} />
-                  <span>Opp K/O Lost</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.OWN_KICKOUT_BREAK_WON)}
-                >
-                  <Zap size={16} />
-                  <span>Our K/O Break Won</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.OWN_KICKOUT_BREAK_LOST)}
-                >
-                  <XCircle size={16} />
-                  <span>Our K/O Break Lost</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.OPP_KICKOUT_BREAK_WON)}
-                >
-                  <Zap size={16} />
-                  <span>Opp K/O Break Won</span>
-                </button>
-
-                <button 
-                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
-                  onClick={() => handleQuickAction(EventType.OPP_KICKOUT_BREAK_LOST)}
-                >
-                  <XCircle size={16} />
-                  <span>Opp K/O Break Lost</span>
-                </button>
-              </div>
+            {/* Categorized Action Buttons - Overlapping Bottom of Pitch */}
+            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 z-10 w-full max-w-2xl px-4">
+              <CategorizedActionButtons onActionSelect={handleQuickAction} />
             </div>
           </div>
 
