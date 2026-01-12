@@ -203,9 +203,9 @@ export default function MatchRecording() {
               showZones={true}
             />
             
-            {/* Quick Actions at Bottom */}
-            <div className="mt-4 flex justify-center">
-              <div className="glass-card p-3 inline-flex space-x-2">
+            {/* Quick Actions - Overlapping Bottom of Pitch */}
+            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 z-10">
+              <div className="glass-card p-3 inline-flex space-x-2 shadow-2xl">
                 <button 
                   className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.GOAL)}
