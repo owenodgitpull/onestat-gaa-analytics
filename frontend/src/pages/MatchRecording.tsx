@@ -80,6 +80,10 @@ export default function MatchRecording() {
     kickouts: { won: 8, lost: 5 }
   }
 
+  // Calculate kickout retention %
+  const dungloeKickoutRetention = ((stats.kickouts.won / (stats.kickouts.won + stats.kickouts.lost)) * 100).toFixed(1)
+  const opponentKickoutRetention = ((stats.kickouts.lost / (stats.kickouts.won + stats.kickouts.lost)) * 100).toFixed(1)
+
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     // Open player selection modal
@@ -470,6 +474,19 @@ export default function MatchRecording() {
                 </div>
                 <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {stats.kickouts.lost}
+                </div>
+              </div>
+
+              {/* Kickout Retention % */}
+              <div className="grid grid-cols-3 border-t border-white/10">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
+                  {dungloeKickoutRetention}%
+                </div>
+                <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                  KICKOUT RETENTION
+                </div>
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
+                  {opponentKickoutRetention}%
                 </div>
               </div>
             </div>
