@@ -1,13 +1,41 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Home, Activity, BarChart3, PlusCircle } from 'lucide-react'
+import { useCreateMatch } from '../hooks/useMatches'
+import { useState } from 'react'
 
 export default function Navigation() {
   const location = useLocation()
+  const navigate = useNavigate()
+  const createMatch = useCreateMatch()
+  const [isCreatingMatch, setIsCreatingMatch] = useState(false)
 
   const isActive = (path: string) => {
     if (path === '/' && location.pathname === '/') return true
     if (path !== '/' && location.pathname.startsWith(path)) return true
     return false
+  }
+
+  const handleNewMatch = async () => {
+    // TODO: Show a modal to get opponent name, venue, etc.
+    // For now, use defaults
+    const opponent = prompt('Enter opponent name:', 'Glenties') || 'Glenties'
+    const venue = prompt('Enter venue:', 'The Banks') || 'The Banks'
+    
+    setIsCreatingMatch(true)
+    try {
+      const match = await createMatch.mutateAsync({
+        opponent,
+        venue,
+        is_home: true,
+        competition: 'League'
+      })
+      navigate(`/match/${match.id}`)
+    } catch (error) {
+      console.error('Failed to create match:', error)
+      alert('Failed to create match. Please try again.')
+    } finally {
+      setIsCreatingMatch(false)
+    }
   }
 
   return (
@@ -69,13 +97,14 @@ export default function Navigation() {
             </button>
 
             {/* CTA Button - Teal */}
-            <Link
-              to="/match/new"
-              className="hidden lg:flex items-center space-x-2 px-6 py-3 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-teal-700 hover:to-cyan-700 transition-all ml-4"
+            <button
+              onClick={handleNewMatch}
+              disabled={isCreatingMatch}
+              className="hidden lg:flex items-center space-x-2 px-6 py-3 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-teal-700 hover:to-cyan-700 transition-all ml-4 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <PlusCircle size={20} />
-              <span>New Match</span>
-            </Link>
+              <PlusCircle size={20} className={isCreatingMatch ? 'animate-spin' : ''} />
+              <span>{isCreatingMatch ? 'Creating...' : 'New Match'}</span>
+            </button>
           </div>
         </div>
       </div>

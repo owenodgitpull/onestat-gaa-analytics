@@ -1,12 +1,6 @@
 import { useState } from 'react'
 import { X, Search, User, Trophy } from 'lucide-react'
-
-interface Player {
-  id: number
-  name: string
-  jerseyNumber: number
-  position?: string
-}
+import type { Player } from '../types'
 
 interface PlayerSelectionModalProps {
   isOpen: boolean
@@ -14,18 +8,16 @@ interface PlayerSelectionModalProps {
   onSelectPlayer: (player: Player) => void
   eventType: 'goal' | 'point' | 'assist' | 'turnover' | 'kickout' | 'wide'
   team: 'dungloe' | 'opponent'
+  players: Player[]
 }
 
 // Mock players - TODO: Replace with API call
-const DUNGLOE_PLAYERS: Player[] = [
-  { id: 1, name: 'Barry Curran', jerseyNumber: 8, position: 'Midfielder' },
-  { id: 2, name: 'Oran Gallagher', jerseyNumber: 12, position: 'Forward' },
-  { id: 3, name: 'Ryan Grannell', jerseyNumber: 14, position: 'Forward' },
-  { id: 4, name: 'Shaun McGee', jerseyNumber: 11, position: 'Forward' },
-  { id: 5, name: 'Paddy Bonner', jerseyNumber: 3, position: 'Defender' },
-  { id: 6, name: 'Conor McBrearty', jerseyNumber: 10, position: 'Midfielder' },
-  { id: 7, name: 'Danny McBrearty', jerseyNumber: 9, position: 'Forward' },
-  { id: 8, name: 'Eoin McGee', jerseyNumber: 4, position: 'Defender' },
+const OPPONENT_PLAYERS: Player[] = [
+  { id: 101, name: 'Opposition Player 1', jersey_number: 1, position: 'GOALKEEPER' },
+  { id: 102, name: 'Opposition Player 2', jersey_number: 2, position: 'DEFENDER' },
+  { id: 103, name: 'Opposition Player 3', jersey_number: 3, position: 'DEFENDER' },
+  { id: 104, name: 'Opposition Player 4', jersey_number: 4, position: 'MIDFIELDER' },
+  { id: 105, name: 'Opposition Player 5', jersey_number: 5, position: 'FORWARD' },
 ]
 
 const EVENT_LABELS = {
@@ -53,6 +45,7 @@ export default function PlayerSelectionModal({
   onSelectPlayer,
   eventType,
   team,
+  players: providedPlayers
 }: PlayerSelectionModalProps) {
   const [search, setSearch] = useState('')
   const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null)
@@ -62,10 +55,10 @@ export default function PlayerSelectionModal({
   const eventInfo = EVENT_LABELS[eventType]
   const Icon = eventInfo.icon
 
-  const players = team === 'dungloe' ? DUNGLOE_PLAYERS : []
+  const players = team === 'dungloe' ? providedPlayers : OPPONENT_PLAYERS
   const filteredPlayers = players.filter((player) =>
     player.name.toLowerCase().includes(search.toLowerCase()) ||
-    player.jerseyNumber.toString().includes(search)
+    (player.jersey_number?.toString() || '').includes(search)
   )
 
   const handleSelect = (player: Player) => {
@@ -143,13 +136,13 @@ export default function PlayerSelectionModal({
                 <div className="flex items-center space-x-3">
                   {/* Jersey Number */}
                   <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
-                    <span className="text-xl font-bold">{player.jerseyNumber}</span>
+                    <span className="text-xl font-bold">{player.jersey_number || '?'}</span>
                   </div>
                   {/* Player Info */}
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-white truncate">{player.name}</h3>
                     {player.position && (
-                      <p className="text-xs text-white/60">{player.position}</p>
+                      <p className="text-xs text-white/60 capitalize">{player.position.toLowerCase().replace('_', ' ')}</p>
                     )}
                   </div>
                 </div>

@@ -3,15 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import GAAPitch from '@/components/GAAPitch'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
-import { BallPosition, PossessionTeam, EventType } from '@/types'
+import { BallPosition, PossessionTeam, EventType, Player } from '@/types'
+import { useMatch, useMatchStats, useStartMatch, useCompleteMatch } from '@/hooks/useMatches'
+import { useRecordEvent } from '@/hooks/useMatchEvents'
+import { usePlayers } from '@/hooks/usePlayers'
 import { 
-  Target, 
-  TrendingUp, 
-  AlertCircle, 
-  CheckCircle, 
-  XCircle,
-  User,
-  Users,
   Clock,
   Activity,
   Play,
@@ -20,12 +16,6 @@ import {
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
 
-interface Player {
-  id: number
-  name: string
-  jerseyNumber: number
-}
-
 interface PendingEvent {
   eventType: EventType
   team: 'dungloe' | 'opponent'
@@ -33,8 +23,21 @@ interface PendingEvent {
 }
 
 export default function MatchRecording() {
-  const { matchId } = useParams()
+  const { matchId: matchIdParam } = useParams()
+  const matchId = matchIdParam ? parseInt(matchIdParam) : null
   const navigate = useNavigate()
+  
+  // Fetch data from backend
+  const { data: match, isLoading: matchLoading } = useMatch(matchId)
+  const { data: matchStats, isLoading: statsLoading } = useMatchStats(matchId)
+  const { data: players = [] } = usePlayers()
+  
+  // Mutations
+  const startMatch = useStartMatch()
+  const completeMatch = useCompleteMatch()
+  const recordEvent = useRecordEvent()
+  
+  // Local state
   const [ballPosition, setBallPosition] = useState<BallPosition>({
     x: 50,
     y: 50,
@@ -43,16 +46,40 @@ export default function MatchRecording() {
   const [matchPhase, setMatchPhase] = useState<MatchPhase>('not_started')
   const [minute, setMinute] = useState(0)
   const [seconds, setSeconds] = useState(0)
+  const [currentHalf, setCurrentHalf] = useState<1 | 2>(1)
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false)
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
 
+  // Sync match status with backend
+  useEffect(() => {
+    if (match) {
+      if (match.status === 'in_progress' && matchPhase === 'not_started') {
+        setMatchPhase('first_half')
+      } else if (match.status === 'completed' && matchPhase !== 'finished') {
+        setMatchPhase('finished')
+      }
+    }
+  }, [match])
+  
   // Timer effect
   useEffect(() => {
     if (matchPhase === 'first_half' || matchPhase === 'second_half') {
       const interval = setInterval(() => {
         setSeconds((prev) => {
           if (prev >= 59) {
-            setMinute((m) => m + 1)
+            setMinute((m) => {
+              // Auto-pause at 30 minutes (half-time)
+              if (m >= 29 && matchPhase === 'first_half') {
+                setMatchPhase('half_time')
+                return m + 1
+              }
+              // Auto-finish at 60 minutes
+              if (m >= 59 && matchPhase === 'second_half') {
+                setMatchPhase('finished')
+                return m + 1
+              }
+              return m + 1
+            })
             return 0
           }
           return prev + 1
@@ -62,42 +89,105 @@ export default function MatchRecording() {
     }
   }, [matchPhase])
 
-  // Mock match data - START AT 0-00
-  const match = {
-    opponent: 'Glenties',
-    score: { dungloe: { goals: 0, points: 0 }, opponent: { goals: 0, points: 0 } },
+  // Calculate real-time stats from backend data
+  const events = matchStats?.events || []
+  const possessionEvents = matchStats?.possession_events || []
+  
+  // Calculate scores
+  const dungloeGoals = events.filter(e => e.event_type === 'GOAL' && e.is_home_team).length
+  const dungloePoints = events.filter(e => e.event_type === 'POINT' && e.is_home_team).length
+  const opponentGoals = events.filter(e => e.event_type === 'GOAL' && !e.is_home_team).length
+  const opponentPoints = events.filter(e => e.event_type === 'POINT' && !e.is_home_team).length
+  
+  // Calculate shots
+  const dungloeShots = events.filter(e => 
+    (['GOAL', 'POINT', 'WIDE', 'SAVED'].includes(e.event_type)) 
+    && e.is_home_team
+  ).length
+  const opponentShots = events.filter(e => 
+    (['GOAL', 'POINT', 'WIDE', 'SAVED'].includes(e.event_type)) 
+    && !e.is_home_team
+  ).length
+  
+  // Calculate wides
+  const dungloeWides = events.filter(e => e.event_type === 'WIDE' && e.is_home_team).length
+  const opponentWides = events.filter(e => e.event_type === 'WIDE' && !e.is_home_team).length
+  
+  // Calculate scores (goals + points)
+  const dungloeScores = dungloeGoals + dungloePoints
+  const opponentScores = opponentGoals + opponentPoints
+  
+  // Calculate accuracy
+  const dungloeAccuracy = dungloeShots > 0 ? ((dungloeScores / dungloeShots) * 100).toFixed(1) : '0.0'
+  
+  // Calculate possession %
+  const dungloePossession = possessionEvents.filter(e => e.is_home_team).length
+  const opponentPossession = possessionEvents.filter(e => !e.is_home_team).length
+  const totalPossession = dungloePossession + opponentPossession
+  const dungloePossessionPct = totalPossession > 0 ? ((dungloePossession / totalPossession) * 100).toFixed(0) : '50'
+  const opponentPossessionPct = totalPossession > 0 ? ((opponentPossession / totalPossession) * 100).toFixed(0) : '50'
+  
+  // Calculate turnovers
+  const dungloeTurnoversWon = events.filter(e => 
+    (['TURNOVER_WON', 'OPP_UNFORCED_ERROR'].includes(e.event_type)) && e.is_home_team
+  ).length
+  const dungloeTurnoversLost = events.filter(e => 
+    (['TURNOVER_LOST', 'OUR_UNFORCED_ERROR'].includes(e.event_type)) && e.is_home_team
+  ).length
+  
+  // Calculate kickouts
+  const dungloeKickoutsWon = events.filter(e => 
+    (['OWN_KICKOUT_WON', 'OPP_KICKOUT_WON'].includes(e.event_type)) && e.is_home_team
+  ).length
+  const dungloeKickoutsLost = events.filter(e => 
+    (['OWN_KICKOUT_LOST', 'OPP_KICKOUT_LOST'].includes(e.event_type)) && e.is_home_team
+  ).length
+  const totalKickouts = dungloeKickoutsWon + dungloeKickoutsLost
+  const dungloeKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsWon / totalKickouts) * 100).toFixed(1) : '0.0'
+  const opponentKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsLost / totalKickouts) * 100).toFixed(1) : '0.0'
+  
+  // Recent events (last 10)
+  const recentEvents = [...events].reverse().slice(0, 10)
+  
+  // Match display data
+  const matchDisplay = {
+    opponent: match?.opponent || 'Loading...',
+    score: { 
+      dungloe: { goals: dungloeGoals, points: dungloePoints }, 
+      opponent: { goals: opponentGoals, points: opponentPoints } 
+    },
     minute: minute,
     status: matchPhase
   }
 
   const stats = {
-    possession: { dungloe: 58, opponent: 42 },
-    shots: { dungloe: 18, opponent: 14 },
-    scores: { dungloe: 10, opponent: 13 },
-    wides: { dungloe: 5, opponent: 3 },
-    accuracy: 55.6,
-    conversionRate: 62.5,
-    turnovers: { won: 9, lost: 6 },
-    kickouts: { won: 8, lost: 5 }
+    possession: { dungloe: parseInt(dungloePossessionPct), opponent: parseInt(opponentPossessionPct) },
+    shots: { dungloe: dungloeShots, opponent: opponentShots },
+    scores: { dungloe: dungloeScores, opponent: opponentScores },
+    wides: { dungloe: dungloeWides, opponent: opponentWides },
+    accuracy: parseFloat(dungloeAccuracy),
+    conversionRate: dungloeShots > 0 ? parseFloat(((dungloeScores / dungloeShots) * 100).toFixed(1)) : 0,
+    turnovers: { won: dungloeTurnoversWon, lost: dungloeTurnoversLost },
+    kickouts: { won: dungloeKickoutsWon, lost: dungloeKickoutsLost }
   }
-
-  // Calculate kickout retention %
-  const dungloeKickoutRetention = ((stats.kickouts.won / (stats.kickouts.won + stats.kickouts.lost)) * 100).toFixed(1)
-  const opponentKickoutRetention = ((stats.kickouts.lost / (stats.kickouts.won + stats.kickouts.lost)) * 100).toFixed(1)
 
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
+    
+    // Determine team based on event type
+    const isHomeTeam = !eventType.startsWith('OPP_')
+    
     // Open player selection modal
     setPendingEvent({
       eventType: eventType as EventType,
-      team: 'dungloe', // TODO: Determine team based on context
+      team: isHomeTeam ? 'dungloe' : 'opponent',
       position: ballPosition
     })
     setIsPlayerModalOpen(true)
   }
 
-  const handlePlayerSelected = (player: Player) => {
-    if (!pendingEvent) return
+  const handlePlayerSelected = async (player: Player) => {
+    if (!pendingEvent || !matchId) return
     
     console.log('Event recorded:', {
       ...pendingEvent,
@@ -106,21 +196,71 @@ export default function MatchRecording() {
       second: seconds
     })
     
-    // TODO: Call API to record event
-    // await recordMatchEvent(matchId, { ...pendingEvent, playerId: player.id })
+    // Record event to backend
+    try {
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        player_id: player.id,
+        event_type: pendingEvent.eventType,
+        minute: minute,
+        half: currentHalf,
+        x_coord: pendingEvent.position.x,
+        y_coord: pendingEvent.position.y,
+        is_home_team: pendingEvent.team === 'dungloe',
+        notes: undefined
+      })
+      
+      // Auto-change possession for turnover events
+      if (pendingEvent.eventType.includes('TURNOVER') || pendingEvent.eventType.includes('UNFORCED_ERROR')) {
+        // Switch possession
+        const newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+        setBallPosition(prev => ({ ...prev, team: newTeam }))
+      }
+      
+      console.log('Event recorded successfully!')
+    } catch (error) {
+      console.error('Failed to record event:', error)
+      alert('Failed to record event. Please try again.')
+    }
     
     // Close modal and reset
     setIsPlayerModalOpen(false)
     setPendingEvent(null)
   }
 
-  const startHalf = () => {
+  const startHalf = async () => {
+    if (!matchId) return
+    
     if (matchPhase === 'not_started') {
-      setMatchPhase('first_half')
-      setMinute(0)
-      setSeconds(0)
+      // Start the match in the backend
+      try {
+        await startMatch.mutateAsync(matchId)
+        setMatchPhase('first_half')
+        setCurrentHalf(1)
+        setMinute(0)
+        setSeconds(0)
+      } catch (error) {
+        console.error('Failed to start match:', error)
+        alert('Failed to start match. Please try again.')
+      }
     } else if (matchPhase === 'half_time') {
       setMatchPhase('second_half')
+      setCurrentHalf(2)
+      setMinute(30)
+      setSeconds(0)
+    }
+  }
+
+  const endMatch = async () => {
+    if (!matchId) return
+    
+    try {
+      await completeMatch.mutateAsync(matchId)
+      setMatchPhase('finished')
+      navigate('/')
+    } catch (error) {
+      console.error('Failed to end match:', error)
+      alert('Failed to end match. Please try again.')
     }
   }
 
@@ -136,13 +276,20 @@ export default function MatchRecording() {
 
   return (
     <div className="min-h-screen pb-8">
+      {/* Loading State */}
+      {(matchLoading || statsLoading) && (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-white text-lg">Loading match data...</div>
+        </div>
+      )}
+      
       {/* Compact Match Header */}
       <div className="glass-card p-4 mb-6">
         <div className="grid grid-cols-3 gap-4 items-center">
           {/* Left: Match Info & Timer */}
           <div className="space-y-2">
             <h1 className="text-xl font-bold text-white">
-              Dungloe vs {match.opponent}
+              Dungloe vs {matchDisplay.opponent}
             </h1>
             <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
             {matchPhase !== 'not_started' && (
@@ -157,16 +304,16 @@ export default function MatchRecording() {
           <div className="flex items-center justify-center space-x-4 text-center">
             <div>
               <div className="text-4xl font-bold text-white">
-                {match.score.dungloe.goals}-{String(match.score.dungloe.points).padStart(2, '0')}
+                {matchDisplay.score.dungloe.goals}-{String(matchDisplay.score.dungloe.points).padStart(2, '0')}
               </div>
               <div className="text-white/60 text-xs mt-1">Dungloe</div>
             </div>
             <div className="text-xl text-white/40">vs</div>
             <div>
               <div className="text-4xl font-bold text-white/80">
-                {match.score.opponent.goals}-{String(match.score.opponent.points).padStart(2, '0')}
+                {matchDisplay.score.opponent.goals}-{String(matchDisplay.score.opponent.points).padStart(2, '0')}
               </div>
-              <div className="text-white/60 text-xs mt-1">{match.opponent}</div>
+              <div className="text-white/60 text-xs mt-1">{matchDisplay.opponent}</div>
             </div>
           </div>
 
@@ -189,7 +336,7 @@ export default function MatchRecording() {
                   <span>{getPhaseButtonText()}</span>
                 </button>
               )}
-              <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-orange-700 hover:to-amber-700 transition-all text-sm" onClick={() => navigate('/')}>
+              <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-orange-700 hover:to-amber-700 transition-all text-sm" onClick={endMatch}>
                 End Match
               </button>
             </div>
@@ -267,7 +414,7 @@ export default function MatchRecording() {
               <div className="grid grid-cols-3 bg-blue-600/30 border border-blue-500/50">
                 <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Dungloe</div>
                 <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Stat</div>
-                <div className="py-2 px-3 text-center text-sm font-bold text-white">{match.opponent}</div>
+                <div className="py-2 px-3 text-center text-sm font-bold text-white">{matchDisplay.opponent}</div>
               </div>
 
               {/* Possession */}
@@ -393,23 +540,31 @@ export default function MatchRecording() {
           <div className="glass-card p-6">
             <h3 className="text-lg font-semibold mb-4 text-white">Recent Events</h3>
             <div className="space-y-2 text-sm">
-              {[
-                { time: "34'", event: 'Point - Barry Curran', type: 'score' },
-                { time: "32'", event: 'Turnover Won - Oran Gallagher', type: 'positive' },
-                { time: "29'", event: 'Wide - Ryan Grannell', type: 'negative' },
-                { time: "27'", event: 'Goal - Shaun McGee', type: 'score' },
-                { time: "24'", event: 'Kickout Won - Paddy Bonner', type: 'positive' },
-              ].map((event, i) => (
-                <div 
-                  key={i} 
-                  className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${
-                    i % 2 === 0 ? 'bg-white/[0.07]' : 'bg-white/[0.03]'
-                  } hover:bg-white/10`}
-                >
-                  <div className="badge badge-info w-12 text-center text-white">{event.time}</div>
-                  <div className="flex-1 text-white/90">{event.event}</div>
+              {recentEvents.length > 0 ? (
+                recentEvents.map((event, i) => {
+                  const eventPlayer = players.find(p => p.id === event.player_id)
+                  const eventTypeLabel = event.event_type.replace(/_/g, ' ')
+                  const teamLabel = event.is_home_team ? '' : `(${matchDisplay.opponent})`
+                  
+                  return (
+                    <div 
+                      key={event.id} 
+                      className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${
+                        i % 2 === 0 ? 'bg-white/[0.07]' : 'bg-white/[0.03]'
+                      } hover:bg-white/10`}
+                    >
+                      <div className="badge badge-info w-12 text-center text-white">{event.minute}'</div>
+                      <div className="flex-1 text-white/90">
+                        {eventTypeLabel} - {eventPlayer?.name || 'Unknown'} {teamLabel}
+                      </div>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="text-center text-white/60 py-8">
+                  No events recorded yet. Start the match and record your first action!
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -426,6 +581,7 @@ export default function MatchRecording() {
           onSelectPlayer={handlePlayerSelected}
           eventType={pendingEvent.eventType as any}
           team={pendingEvent.team}
+          players={players}
         />
       )}
     </div>

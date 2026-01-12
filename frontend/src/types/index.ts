@@ -1,13 +1,15 @@
 // Type definitions for the Dungloe GAA Analytics app
 
 export interface Player {
-  id: string;
+  id: number;
   name: string;
-  position: PlayerPosition;
+  position: string;  // Using string to match backend
   jersey_number: number | null;
   date_of_birth: string | null;
-  status: PlayerStatus;
+  status: string;  // Using string to match backend
   active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export enum PlayerPosition {
@@ -31,21 +33,21 @@ export enum PlayerStatus {
 }
 
 export interface Match {
-  id: string;
+  id: number;
   opponent: string;
   match_date: string;
-  venue: MatchVenue;
-  status: MatchStatus;
+  venue: string;
+  is_home: boolean;
+  status: string;
+  competition?: string;
   dungloe_goals: number;
   dungloe_points: number;
   opponent_goals: number;
   opponent_points: number;
   started_at: string | null;
   completed_at: string | null;
-  dungloe_total_score: number;
-  opponent_total_score: number;
-  result: 'win' | 'loss' | 'draw' | 'pending';
-  notes: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export enum MatchVenue {
@@ -62,22 +64,17 @@ export enum MatchStatus {
 }
 
 export interface MatchEvent {
-  id: string;
-  match_id: string;
-  player_id: string | null;
-  assist_player_id: string | null;
-  event_type: EventType;
-  team: Team;
-  minute: number | null;
-  pitch_x: number | null;
-  pitch_y: number | null;
+  id: number;
+  match_id: number;
+  player_id: number | null;
+  event_type: string;
+  minute: number;
+  half: number;
+  x_coord: number | null;
+  y_coord: number | null;
+  is_home_team: boolean;
   notes: string | null;
   created_at: string;
-  is_score: boolean;
-  points_value: number;
-  is_in_two_point_zone: boolean;
-  player_name: string | null;
-  assist_player_name: string | null;
 }
 
 export enum EventType {
@@ -123,16 +120,14 @@ export enum PossessionTeam {
 }
 
 export interface PossessionEvent {
-  id: string;
-  match_id: string;
-  team: PossessionTeam;
-  pitch_x: number;
-  pitch_y: number;
-  minute: number | null;
-  duration_seconds: number | null;
+  id: number;
+  match_id: number;
+  is_home_team: boolean;
+  x_coord: number;
+  y_coord: number;
+  minute: number;
+  half: number;
   created_at: string;
-  zone_name: string;
-  is_in_two_point_zone: boolean;
 }
 
 export interface MatchStats {
@@ -164,35 +159,19 @@ export interface MatchStats {
 }
 
 export interface PlayerMatchStats {
-  id: string;
-  match_id: string;
-  player_id: string;
-  player_name: string;
+  id: number;
+  match_id: number;
+  player_id: number;
   goals: number;
   points: number;
-  two_pointers: number;
   assists: number;
   wides: number;
-  shots_short: number;
-  shots_saved: number;
-  turnovers_lost: number;
   turnovers_won: number;
+  turnovers_lost: number;
   kickouts_won: number;
   kickouts_lost: number;
-  breaking_balls_won: number;
-  blocks: number;
-  interceptions: number;
-  yellow_cards: number;
-  red_cards: number;
-  frees_won: number;
-  frees_conceded: number;
-  minutes_played: number | null;
-  started: boolean;
-  total_score: number;
-  accuracy: number | null;
-  turnover_ratio: number | null;
-  impact_score: number;
-  ai_insights: Record<string, any> | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // UI-specific types
