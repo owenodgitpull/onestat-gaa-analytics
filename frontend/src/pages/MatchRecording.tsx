@@ -300,9 +300,9 @@ export default function MatchRecording() {
             <div className="overflow-hidden rounded-lg border border-white/10">
               {/* Table Header - Container-Header Highlight */}
               <div className="grid grid-cols-3 bg-blue-600/30 border border-blue-500/50">
-                <div className="py-2 px-3 text-center text-sm font-bold text-blue-300 border-r border-blue-500/50">Dungloe</div>
-                <div className="py-2 px-3 text-center text-sm font-bold text-blue-300 border-r border-blue-500/50">Stat</div>
-                <div className="py-2 px-3 text-center text-sm font-bold text-blue-300">{match.opponent}</div>
+                <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Dungloe</div>
+                <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Stat</div>
+                <div className="py-2 px-3 text-center text-sm font-bold text-white">{match.opponent}</div>
               </div>
 
               {/* Possession */}
@@ -428,7 +428,7 @@ export default function MatchRecording() {
                     i % 2 === 0 ? 'bg-white/[0.07]' : 'bg-white/[0.03]'
                   } hover:bg-white/10`}
                 >
-                  <div className="badge badge-info w-12 text-center">{event.time}</div>
+                  <div className="badge badge-info w-12 text-center text-white">{event.time}</div>
                   <div className="flex-1 text-white/90">{event.event}</div>
                 </div>
               ))}
