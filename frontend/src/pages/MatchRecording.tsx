@@ -151,7 +151,7 @@ export default function MatchRecording() {
           {/* Center: Score */}
           <div className="flex items-center justify-center space-x-4 text-center">
             <div>
-              <div className="text-4xl font-bold text-gradient-gold">
+              <div className="text-4xl font-bold text-white">
                 {match.score.dungloe.goals}-{String(match.score.dungloe.points).padStart(2, '0')}
               </div>
               <div className="text-white/60 text-xs mt-1">Dungloe</div>
@@ -184,7 +184,7 @@ export default function MatchRecording() {
                   <span>{getPhaseButtonText()}</span>
                 </button>
               )}
-              <button className="btn-danger !py-1 !px-3 text-sm" onClick={() => navigate('/')}>
+              <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-orange-700 hover:to-amber-700 transition-all text-sm" onClick={() => navigate('/')}>
                 End Match
               </button>
             </div>

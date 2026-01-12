@@ -68,10 +68,10 @@ export default function Navigation() {
               <span className="hidden sm:inline">Reports</span>
             </button>
 
-            {/* CTA Button */}
+            {/* CTA Button - Teal */}
             <Link
               to="/match/new"
-              className="hidden lg:flex items-center space-x-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-emerald-700 hover:to-teal-700 transition-all ml-4"
+              className="hidden lg:flex items-center space-x-2 px-6 py-3 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-teal-700 hover:to-cyan-700 transition-all ml-4"
             >
               <PlusCircle size={20} />
               <span>New Match</span>
