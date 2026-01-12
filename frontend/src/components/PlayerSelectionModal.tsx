@@ -35,6 +35,10 @@ const EVENT_LABELS = {
   turnover: { title: 'Who Won?', icon: User, color: 'text-amber-400' },
   kickout: { title: 'Who Won?', icon: User, color: 'text-indigo-400' },
   wide: { title: 'Who Took?', icon: User, color: 'text-red-400' },
+  own_kickout_won: { title: 'Who Won Own Kickout?', icon: User, color: 'text-emerald-400' },
+  own_kickout_lost: { title: 'Who Lost Own Kickout?', icon: User, color: 'text-red-400' },
+  opp_kickout_won: { title: 'Who Won Opposition Kickout?', icon: User, color: 'text-emerald-400' },
+  opp_kickout_lost: { title: 'Who Lost Opposition Kickout?', icon: User, color: 'text-red-400' },
 }
 
 export default function PlayerSelectionModal({

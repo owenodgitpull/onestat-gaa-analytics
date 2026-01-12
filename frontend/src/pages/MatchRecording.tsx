@@ -245,6 +245,38 @@ export default function MatchRecording() {
                   <AlertCircle size={16} />
                   <span>T/O Lost</span>
                 </button>
+
+                <button 
+                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.OWN_KICKOUT_WON)}
+                >
+                  <CheckCircle size={16} />
+                  <span>Own K/O Won</span>
+                </button>
+
+                <button 
+                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.OWN_KICKOUT_LOST)}
+                >
+                  <XCircle size={16} />
+                  <span>Own K/O Lost</span>
+                </button>
+
+                <button 
+                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.OPP_KICKOUT_WON)}
+                >
+                  <CheckCircle size={16} />
+                  <span>Opp K/O Won</span>
+                </button>
+
+                <button 
+                  className="btn-glass !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.OPP_KICKOUT_LOST)}
+                >
+                  <XCircle size={16} />
+                  <span>Opp K/O Lost</span>
+                </button>
               </div>
             </div>
           </div>
