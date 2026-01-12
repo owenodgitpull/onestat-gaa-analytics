@@ -251,7 +251,7 @@ export default function MatchRecording() {
                   onClick={() => handleQuickAction(EventType.OWN_KICKOUT_WON)}
                 >
                   <CheckCircle size={16} />
-                  <span>Own K/O Won</span>
+                  <span>Our K/O Won</span>
                 </button>
 
                 <button 
@@ -259,7 +259,7 @@ export default function MatchRecording() {
                   onClick={() => handleQuickAction(EventType.OWN_KICKOUT_LOST)}
                 >
                   <XCircle size={16} />
-                  <span>Own K/O Lost</span>
+                  <span>Our K/O Lost</span>
                 </button>
 
                 <button 
@@ -276,6 +276,38 @@ export default function MatchRecording() {
                 >
                   <XCircle size={16} />
                   <span>Opp K/O Lost</span>
+                </button>
+
+                <button 
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.OWN_KICKOUT_BREAK_WON)}
+                >
+                  <Zap size={16} />
+                  <span>Our K/O Break Won</span>
+                </button>
+
+                <button 
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.OWN_KICKOUT_BREAK_LOST)}
+                >
+                  <XCircle size={16} />
+                  <span>Our K/O Break Lost</span>
+                </button>
+
+                <button 
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.OPP_KICKOUT_BREAK_WON)}
+                >
+                  <Zap size={16} />
+                  <span>Opp K/O Break Won</span>
+                </button>
+
+                <button 
+                  className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
+                  onClick={() => handleQuickAction(EventType.OPP_KICKOUT_BREAK_LOST)}
+                >
+                  <XCircle size={16} />
+                  <span>Opp K/O Break Lost</span>
                 </button>
               </div>
             </div>
