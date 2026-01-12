@@ -89,6 +89,8 @@ export enum EventType {
   SAVED = 'saved',
   TURNOVER_LOST = 'turnover_lost',
   TURNOVER_WON = 'turnover_won',
+  OUR_UNFORCED_ERROR = 'our_unforced_error',
+  OPP_UNFORCED_ERROR = 'opp_unforced_error',
   KICKOUT_WON = 'kickout_won',
   KICKOUT_LOST = 'kickout_lost',
   OWN_KICKOUT_WON = 'own_kickout_won',

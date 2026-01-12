@@ -35,6 +35,8 @@ const EVENT_LABELS = {
   turnover: { title: 'Who Won?', icon: User, color: 'text-amber-400' },
   kickout: { title: 'Who Won?', icon: User, color: 'text-indigo-400' },
   wide: { title: 'Who Took?', icon: User, color: 'text-red-400' },
+  our_unforced_error: { title: 'Who Made Unforced Error?', icon: User, color: 'text-red-400' },
+  opp_unforced_error: { title: 'Who Made Unforced Error?', icon: User, color: 'text-red-400' },
   own_kickout_won: { title: 'Who Won Our Kickout?', icon: User, color: 'text-emerald-400' },
   own_kickout_lost: { title: 'Who Lost Our Kickout?', icon: User, color: 'text-red-400' },
   opp_kickout_won: { title: 'Who Won Opposition Kickout?', icon: User, color: 'text-emerald-400' },

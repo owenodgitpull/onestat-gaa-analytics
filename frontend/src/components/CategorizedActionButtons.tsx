@@ -37,6 +37,8 @@ const categories = [
     buttons: [
       { eventType: EventType.TURNOVER_WON, label: 'T/O Won', icon: CheckCircle },
       { eventType: EventType.TURNOVER_LOST, label: 'T/O Lost', icon: AlertCircle },
+      { eventType: EventType.OUR_UNFORCED_ERROR, label: 'Our Unforced Error', icon: XCircle },
+      { eventType: EventType.OPP_UNFORCED_ERROR, label: 'Opp Unforced Error', icon: CheckCircle },
     ]
   },
   {
