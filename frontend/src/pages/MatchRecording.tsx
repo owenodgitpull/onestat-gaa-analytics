@@ -194,9 +194,9 @@ export default function MatchRecording() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Pitch Area */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-2">
           {/* Pitch */}
-          <div className="glass-card p-6 relative">
+          <div className="glass-card p-6 relative mb-4">
             <GAAPitch
               ballPosition={ballPosition}
               onBallMove={setBallPosition}
@@ -249,8 +249,8 @@ export default function MatchRecording() {
             </div>
           </div>
 
-          {/* In-Game Analysis Section - Pushed Down More */}
-          <div className="glass-card p-6 mt-16">
+          {/* In-Game Analysis Section - Extra spacing added */}
+          <div className="glass-card p-6" style={{ marginTop: '4rem' }}>
             <h3 className="text-lg font-semibold mb-4 text-white flex items-center space-x-2">
               <Activity size={20} className="text-white" />
               <span>Live Analysis & Insights</span>
