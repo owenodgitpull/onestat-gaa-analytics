@@ -208,8 +208,8 @@ export default function MatchRecording() {
               showZones={true}
             />
             
-            {/* Categorized Action Buttons - Overlapping Bottom of Pitch */}
-            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 z-10 w-full max-w-2xl px-4">
+            {/* Categorized Action Buttons - Smaller & Lower */}
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 w-full max-w-xl px-4">
               <CategorizedActionButtons onActionSelect={handleQuickAction} />
             </div>
           </div>

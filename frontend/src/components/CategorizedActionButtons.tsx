@@ -69,25 +69,25 @@ export default function CategorizedActionButtons({ onActionSelect }: Categorized
   const currentCategory = categories.find(cat => cat.id === activeCategory)
 
   return (
-    <div className="bg-slate-900 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden">
-      {/* Action Buttons */}
-      <div className="p-3 flex flex-wrap gap-2 justify-center min-h-[60px]">
+    <div className="bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden">
+      {/* Action Buttons - Smaller */}
+      <div className="p-2 flex flex-wrap gap-1.5 justify-center min-h-[48px]">
         {currentCategory?.buttons.map((button) => {
           const Icon = button.icon
           return (
             <button
               key={button.eventType}
               onClick={() => onActionSelect(button.eventType)}
-              className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
+              className="btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs"
             >
-              <Icon size={16} />
+              <Icon size={14} />
               <span>{button.label}</span>
             </button>
           )
         })}
       </div>
 
-      {/* Category Tabs */}
+      {/* Category Tabs - Smaller */}
       <div className="flex border-t border-white/10 bg-slate-900/80">
         {categories.map((category) => {
           const Icon = category.icon
@@ -97,14 +97,14 @@ export default function CategorizedActionButtons({ onActionSelect }: Categorized
             <button
               key={category.id}
               onClick={() => setActiveCategory(category.id)}
-              className={`flex-1 flex flex-col items-center justify-center py-3 space-y-1 transition-all duration-200 ${
+              className={`flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 ${
                 isActive 
                   ? 'bg-indigo-600 text-white' 
                   : 'text-white/60 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Icon size={20} />
-              <span className="text-xs font-medium">{category.label}</span>
+              <Icon size={16} />
+              <span className="text-[10px] font-medium">{category.label}</span>
             </button>
           )
         })}
