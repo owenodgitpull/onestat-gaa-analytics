@@ -208,14 +208,14 @@ export default function MatchRecording() {
               showZones={true}
             />
             
-            {/* Categorized Action Buttons - Smaller & Lower */}
-            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 z-10 w-full max-w-xl px-4">
+            {/* Categorized Action Buttons - Lower position */}
+            <div className="absolute z-10 w-full max-w-xl px-4 left-1/2 -translate-x-1/2" style={{ bottom: '-2.75rem' }}>
               <CategorizedActionButtons onActionSelect={handleQuickAction} />
             </div>
           </div>
 
-          {/* In-Game Analysis Section - Extra spacing added */}
-          <div className="glass-card p-6" style={{ marginTop: '4rem' }}>
+          {/* In-Game Analysis Section - Extra spacing for buttons */}
+          <div className="glass-card p-6" style={{ marginTop: '5rem' }}>
             <h3 className="text-lg font-semibold mb-4 text-white flex items-center space-x-2">
               <Activity size={20} className="text-white" />
               <span>Live Analysis & Insights</span>
