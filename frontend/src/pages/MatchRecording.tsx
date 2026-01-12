@@ -339,104 +339,104 @@ export default function MatchRecording() {
 
               {/* Possession */}
               <div className="grid grid-cols-3 border-t border-white/10">
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-indigo-600 border-r border-white/10 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                   {stats.possession.dungloe}%
                 </div>
                 <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                   POSSESSION
                 </div>
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-red-600 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {stats.possession.opponent}%
                 </div>
               </div>
 
               {/* Shots */}
               <div className="grid grid-cols-3 border-t border-white/10">
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                   {stats.shots.dungloe}
                 </div>
                 <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                   SHOTS
                 </div>
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-slate-900 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {stats.shots.opponent}
                 </div>
               </div>
 
               {/* Scores */}
               <div className="grid grid-cols-3 border-t border-white/10">
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-emerald-600 border-r border-white/10 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                   {stats.scores.dungloe}
                 </div>
                 <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                   SCORES
                 </div>
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-emerald-600 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {stats.scores.opponent}
                 </div>
               </div>
 
               {/* Wides */}
               <div className="grid grid-cols-3 border-t border-white/10">
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-red-600 border-r border-white/10 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                   {stats.wides.dungloe}
                 </div>
                 <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                   WIDES
                 </div>
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-red-600 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {stats.wides.opponent}
                 </div>
               </div>
 
               {/* Accuracy */}
               <div className="grid grid-cols-3 border-t border-white/10">
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-indigo-600 border-r border-white/10 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                   {stats.accuracy}%
                 </div>
                 <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                   ACCURACY
                 </div>
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-indigo-600 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {(stats.scores.opponent / stats.shots.opponent * 100).toFixed(1)}%
                 </div>
               </div>
 
               {/* Conversion Rate */}
               <div className="grid grid-cols-3 border-t border-white/10">
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-amber-600 border-r border-white/10 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                   {stats.conversionRate}%
                 </div>
                 <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                   CONVERSION
                 </div>
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-amber-600 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1)}%
                 </div>
               </div>
 
               {/* Turnovers */}
               <div className="grid grid-cols-3 border-t border-white/10">
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                   {stats.turnovers.won}
                 </div>
                 <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                   TURNOVERS WON
                 </div>
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-slate-900 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {stats.turnovers.lost}
                 </div>
               </div>
 
               {/* Kickouts */}
               <div className="grid grid-cols-3 border-t border-white/10">
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-slate-900 border-r border-white/10 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                   {stats.kickouts.won}
                 </div>
                 <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                   KICKOUTS WON
                 </div>
-                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-slate-900 flex items-center justify-center">
+                <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
                   {stats.kickouts.lost}
                 </div>
               </div>
