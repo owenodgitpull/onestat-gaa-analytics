@@ -203,9 +203,9 @@ export default function MatchRecording() {
               showZones={true}
             />
             
-            {/* Quick Actions - Overlapping Bottom of Pitch */}
+            {/* Quick Actions - Overlapping Bottom of Pitch - OPAQUE */}
             <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 z-10">
-              <div className="glass-card p-3 inline-flex space-x-2 shadow-2xl">
+              <div className="bg-slate-900 backdrop-blur-xl border border-white/20 rounded-2xl p-3 inline-flex space-x-2 shadow-2xl">
                 <button 
                   className="btn-primary !py-2 !px-4 flex items-center space-x-2 text-sm"
                   onClick={() => handleQuickAction(EventType.GOAL)}
@@ -249,8 +249,8 @@ export default function MatchRecording() {
             </div>
           </div>
 
-          {/* In-Game Analysis Section */}
-          <div className="glass-card p-6">
+          {/* In-Game Analysis Section - Pushed Down */}
+          <div className="glass-card p-6 mt-8">
             <h3 className="text-lg font-semibold mb-4 text-white flex items-center space-x-2">
               <Activity size={20} className="text-white" />
               <span>Live Analysis & Insights</span>
