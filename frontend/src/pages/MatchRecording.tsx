@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import GAAPitch from '@/components/GAAPitch'
+import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { 
   Target, 
@@ -18,6 +19,18 @@ import {
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
 
+interface Player {
+  id: number
+  name: string
+  jerseyNumber: number
+}
+
+interface PendingEvent {
+  eventType: EventType
+  team: 'dungloe' | 'opponent'
+  position: BallPosition
+}
+
 export default function MatchRecording() {
   const { matchId } = useParams()
   const navigate = useNavigate()
@@ -29,6 +42,8 @@ export default function MatchRecording() {
   const [matchPhase, setMatchPhase] = useState<MatchPhase>('not_started')
   const [minute, setMinute] = useState(0)
   const [seconds, setSeconds] = useState(0)
+  const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false)
+  const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
 
   // Timer effect
   useEffect(() => {
@@ -67,8 +82,31 @@ export default function MatchRecording() {
 
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
-    // TODO: Open player selection modal
-    alert(`${eventType} - Player selection modal coming next!`)
+    // Open player selection modal
+    setPendingEvent({
+      eventType: eventType as EventType,
+      team: 'dungloe', // TODO: Determine team based on context
+      position: ballPosition
+    })
+    setIsPlayerModalOpen(true)
+  }
+
+  const handlePlayerSelected = (player: Player) => {
+    if (!pendingEvent) return
+    
+    console.log('Event recorded:', {
+      ...pendingEvent,
+      player: player,
+      minute: minute,
+      second: seconds
+    })
+    
+    // TODO: Call API to record event
+    // await recordMatchEvent(matchId, { ...pendingEvent, playerId: player.id })
+    
+    // Close modal and reset
+    setIsPlayerModalOpen(false)
+    setPendingEvent(null)
   }
 
   const startHalf = () => {
@@ -375,8 +413,8 @@ export default function MatchRecording() {
 
           {/* Recent Events */}
           <div className="glass-card p-6">
-            <h3 className="text-lg font-semibold mb-4">Recent Events</h3>
-            <div className="space-y-3 text-sm">
+            <h3 className="text-lg font-semibold mb-4 text-white">Recent Events</h3>
+            <div className="space-y-2 text-sm">
               {[
                 { time: "34'", event: 'Point - Barry Curran', type: 'score' },
                 { time: "32'", event: 'Turnover Won - Oran Gallagher', type: 'positive' },
@@ -384,15 +422,34 @@ export default function MatchRecording() {
                 { time: "27'", event: 'Goal - Shaun McGee', type: 'score' },
                 { time: "24'", event: 'Kickout Won - Paddy Bonner', type: 'positive' },
               ].map((event, i) => (
-                <div key={i} className="flex items-center space-x-3 p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+                <div 
+                  key={i} 
+                  className={`flex items-center space-x-3 p-3 rounded-lg transition-colors ${
+                    i % 2 === 0 ? 'bg-white/[0.07]' : 'bg-white/[0.03]'
+                  } hover:bg-white/10`}
+                >
                   <div className="badge badge-info w-12 text-center">{event.time}</div>
-                  <div className="flex-1 text-white/80">{event.event}</div>
+                  <div className="flex-1 text-white/90">{event.event}</div>
                 </div>
               ))}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Player Selection Modal */}
+      {pendingEvent && (
+        <PlayerSelectionModal
+          isOpen={isPlayerModalOpen}
+          onClose={() => {
+            setIsPlayerModalOpen(false)
+            setPendingEvent(null)
+          }}
+          onSelectPlayer={handlePlayerSelected}
+          eventType={pendingEvent.eventType as any}
+          team={pendingEvent.team}
+        />
+      )}
     </div>
   )
 }
