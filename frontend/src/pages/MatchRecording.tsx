@@ -249,8 +249,8 @@ export default function MatchRecording() {
             </div>
           </div>
 
-          {/* In-Game Analysis Section - Pushed Down */}
-          <div className="glass-card p-6 mt-8">
+          {/* In-Game Analysis Section - Pushed Down More */}
+          <div className="glass-card p-6 mt-16">
             <h3 className="text-lg font-semibold mb-4 text-white flex items-center space-x-2">
               <Activity size={20} className="text-white" />
               <span>Live Analysis & Insights</span>
