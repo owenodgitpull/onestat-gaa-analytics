@@ -188,14 +188,14 @@ async def health_check():
 
 
 # Register API routes
-app.include_router(players.router, prefix="/api/players", tags=["Players"])
-app.include_router(matches.router, prefix="/api/matches", tags=["Matches"])
-app.include_router(match_events.router, prefix="/api/match-events", tags=["Match Events"])
+app.include_router(players.router, prefix="/api/v1/players", tags=["Players"])
+app.include_router(matches.router, prefix="/api/v1/matches", tags=["Matches"])
+app.include_router(match_events.router, prefix="/api/v1/match-events", tags=["Match Events"])
 # Will add these next:
-# app.include_router(possession.router, prefix="/api/possession", tags=["Possession Tracking"])
-# app.include_router(fitness.router, prefix="/api/fitness", tags=["Fitness Tests"])
-# app.include_router(gps.router, prefix="/api/gps", tags=["GPS Data"])
-# app.include_router(ai.router, prefix="/api/ai", tags=["AI Analysis"])
+# app.include_router(possession.router, prefix="/api/v1/possession", tags=["Possession Tracking"])
+# app.include_router(fitness.router, prefix="/api/v1/fitness", tags=["Fitness Tests"])
+# app.include_router(gps.router, prefix="/api/v1/gps", tags=["GPS Data"])
+# app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI Analysis"])
 
 
 if __name__ == "__main__":
