@@ -117,9 +117,9 @@ export const matchesAPI = {
    */
   create: async (match: {
     opponent: string;
-    venue: string;
-    is_home: boolean;
-    competition?: string;
+    match_date: string;
+    venue: 'home' | 'away' | 'neutral';
+    notes?: string | null;
   }): Promise<Match> => {
     return fetchAPI<Match>('/matches/', {
       method: 'POST',

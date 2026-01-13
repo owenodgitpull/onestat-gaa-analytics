@@ -19,15 +19,14 @@ export default function Navigation() {
     // TODO: Show a modal to get opponent name, venue, etc.
     // For now, use defaults
     const opponent = prompt('Enter opponent name:', 'Glenties') || 'Glenties'
-    const venue = prompt('Enter venue:', 'The Banks') || 'The Banks'
     
     setIsCreatingMatch(true)
     try {
       const match = await createMatch.mutateAsync({
         opponent,
-        venue,
-        is_home: true,
-        competition: 'League'
+        match_date: new Date().toISOString(),
+        venue: 'home', // 'home', 'away', or 'neutral'
+        notes: null
       })
       navigate(`/match/${match.id}`)
     } catch (error) {

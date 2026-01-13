@@ -66,9 +66,9 @@ export function useCreateMatch() {
   return useMutation({
     mutationFn: (data: {
       opponent: string;
-      venue: string;
-      is_home: boolean;
-      competition?: string;
+      match_date: string;
+      venue: 'home' | 'away' | 'neutral';
+      notes?: string | null;
     }) => api.matches.create(data),
     onSuccess: () => {
       // Invalidate matches list to refetch
