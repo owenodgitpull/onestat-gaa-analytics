@@ -18,7 +18,7 @@ from typing import AsyncGenerator
 # Format: postgresql+asyncpg://user:password@host:port/database
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://dungloe:dungloe_dev_password@localhost:5432/dungloe_gaa"
+    "postgresql+asyncpg://owenodonnell@localhost:5432/dungloe_gaa"
 )
 
 # Create async engine with connection pooling
