@@ -4,7 +4,7 @@ Pydantic schemas for Match data validation and serialization.
 These schemas define the structure of API requests and responses for matches.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_validator
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
@@ -17,6 +17,14 @@ class MatchBase(BaseModel):
     match_date: datetime = Field(..., description="Date and time of the match")
     venue: MatchVenue = Field(..., description="Match venue (home/away/neutral)")
     notes: Optional[str] = Field(None, max_length=1000, description="Optional match notes")
+    
+    @field_validator('match_date')
+    @classmethod
+    def remove_timezone(cls, v: datetime) -> datetime:
+        """Remove timezone info to match database TIMESTAMP WITHOUT TIME ZONE."""
+        if v and v.tzinfo is not None:
+            return v.replace(tzinfo=None)
+        return v
 
 
 class MatchCreate(MatchBase):
