@@ -16,12 +16,12 @@ export default function PossessionSelectionModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg glass-card overflow-hidden animate-scale-in">
+      <div className="relative w-full max-w-lg bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="p-8 border-b border-white/10 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 text-center">
           <div className="inline-flex p-3 rounded-full bg-indigo-600/30 mb-4">

@@ -45,15 +45,15 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/90 backdrop-blur-md"
         onClick={handleClose}
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md glass-card overflow-hidden animate-scale-in">
+      <div className="relative w-full max-w-md bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-indigo-600/20 to-purple-600/20">
           <div className="flex items-center space-x-3">
