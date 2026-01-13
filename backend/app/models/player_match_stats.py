@@ -75,8 +75,8 @@ class PlayerMatchStats(Base):
     updated_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
-    match = relationship("Match", backref="player_stats", lazy="selectin")
-    player = relationship("Player", backref="match_stats", lazy="selectin")
+    match = relationship("Match", back_populates="player_stats", lazy="selectin")
+    player = relationship("Player", back_populates="match_stats", lazy="selectin")
 
     def __repr__(self):
         player_name = self.player.name if self.player else "Unknown"
