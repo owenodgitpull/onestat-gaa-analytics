@@ -45,17 +45,15 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
   }
 
   return (
-    <div className="fixed top-0 left-0 right-0 bottom-0 z-[100] overflow-y-auto">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/90 backdrop-blur-md"
+        className="absolute inset-0 bg-black/90 backdrop-blur-md"
         onClick={handleClose}
       />
 
-      {/* Modal Container - Centered */}
-      <div className="min-h-screen px-4 flex items-center justify-center">
-        {/* Modal */}
-        <div className="relative w-full max-w-md bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden my-8">
+      {/* Modal */}
+      <div className="relative w-full max-w-md bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-indigo-600/20 to-purple-600/20">
           <div className="flex items-center space-x-3">
@@ -143,7 +141,6 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
             </button>
           </div>
         </form>
-      </div>
       </div>
     </div>
   )
