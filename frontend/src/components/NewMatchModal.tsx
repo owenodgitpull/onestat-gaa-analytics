@@ -63,7 +63,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">New Match</h2>
-              <p className="text-sm text-white/60">Set up a new match recording</p>
+              <p className="text-sm text-white/60">Configure match details to begin tracking</p>
             </div>
           </div>
           <button
