@@ -2,12 +2,14 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Home, Activity, BarChart3, PlusCircle } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useState } from 'react'
+import NewMatchModal from './NewMatchModal'
 
 export default function Navigation() {
   const location = useLocation()
   const navigate = useNavigate()
   const createMatch = useCreateMatch()
   const [isCreatingMatch, setIsCreatingMatch] = useState(false)
+  const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
 
   const isActive = (path: string) => {
     if (path === '/' && location.pathname === '/') return true
@@ -15,19 +17,16 @@ export default function Navigation() {
     return false
   }
 
-  const handleNewMatch = async () => {
-    // TODO: Show a modal to get opponent name, venue, etc.
-    // For now, use defaults
-    const opponent = prompt('Enter opponent name:', 'Glenties') || 'Glenties'
-    
+  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral' }) => {
     setIsCreatingMatch(true)
     try {
       const match = await createMatch.mutateAsync({
-        opponent,
+        opponent: data.opponent,
         match_date: new Date().toISOString(),
-        venue: 'home', // 'home', 'away', or 'neutral'
+        venue: data.venue,
         notes: null
       })
+      setIsNewMatchModalOpen(false)
       navigate(`/match/${match.id}`)
     } catch (error) {
       console.error('Failed to create match:', error)
@@ -97,7 +96,7 @@ export default function Navigation() {
 
             {/* CTA Button - Teal */}
             <button
-              onClick={handleNewMatch}
+              onClick={() => setIsNewMatchModalOpen(true)}
               disabled={isCreatingMatch}
               className="hidden lg:flex items-center space-x-2 px-6 py-3 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-teal-700 hover:to-cyan-700 transition-all ml-4 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -107,6 +106,13 @@ export default function Navigation() {
           </div>
         </div>
       </div>
+
+      {/* New Match Modal */}
+      <NewMatchModal
+        isOpen={isNewMatchModalOpen}
+        onClose={() => setIsNewMatchModalOpen(false)}
+        onCreate={handleNewMatch}
+      />
     </nav>
   )
 }

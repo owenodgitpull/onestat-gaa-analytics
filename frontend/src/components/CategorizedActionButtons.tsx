@@ -11,6 +11,7 @@ import {
 
 interface CategorizedActionButtonsProps {
   onActionSelect: (eventType: EventType) => void
+  disabled?: boolean
 }
 
 interface ActionButton {
@@ -65,13 +66,13 @@ const categories = [
   },
 ]
 
-export default function CategorizedActionButtons({ onActionSelect }: CategorizedActionButtonsProps) {
+export default function CategorizedActionButtons({ onActionSelect, disabled = false }: CategorizedActionButtonsProps) {
   const [activeCategory, setActiveCategory] = useState('scoring')
 
   const currentCategory = categories.find(cat => cat.id === activeCategory)
 
   return (
-    <div className="bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden">
+    <div className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       {/* Action Buttons - Smaller */}
       <div className="p-2 flex flex-wrap gap-1.5 justify-center min-h-[48px]">
         {currentCategory?.buttons.map((button) => {
@@ -80,7 +81,8 @@ export default function CategorizedActionButtons({ onActionSelect }: Categorized
             <button
               key={button.eventType}
               onClick={() => onActionSelect(button.eventType)}
-              className="btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs"
+              disabled={disabled}
+              className="btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Icon size={14} />
               <span>{button.label}</span>

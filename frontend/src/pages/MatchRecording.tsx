@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import GAAPitch from '@/components/GAAPitch'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
+import PossessionSelectionModal from '@/components/PossessionSelectionModal'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType, Player } from '@/types'
 import { useMatch, useMatchStats, useStartMatch, useCompleteMatch } from '@/hooks/useMatches'
@@ -48,6 +49,7 @@ export default function MatchRecording() {
   const [seconds, setSeconds] = useState(0)
   const [currentHalf, setCurrentHalf] = useState<1 | 2>(1)
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false)
+  const [isPossessionModalOpen, setIsPossessionModalOpen] = useState(false)
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
 
   // Sync match status with backend
@@ -232,9 +234,29 @@ export default function MatchRecording() {
     if (!matchId) return
     
     if (matchPhase === 'not_started') {
-      // Start the match in the backend
+      // Show possession modal instead of starting immediately
+      setIsPossessionModalOpen(true)
+    } else if (matchPhase === 'half_time') {
+      // Show possession modal for second half
+      setIsPossessionModalOpen(true)
+    }
+  }
+
+  const handlePossessionSelected = async (team: 'home' | 'away') => {
+    setIsPossessionModalOpen(false)
+    
+    // Set initial possession
+    setBallPosition(prev => ({
+      ...prev,
+      team: team === 'home' ? PossessionTeam.DUNGLOE : PossessionTeam.OPPONENT
+    }))
+    
+    // Start the match/half
+    if (matchPhase === 'not_started') {
       try {
-        await startMatch.mutateAsync(matchId)
+        if (matchId) {
+          await startMatch.mutateAsync(matchId)
+        }
         setMatchPhase('first_half')
         setCurrentHalf(1)
         setMinute(0)
@@ -357,7 +379,10 @@ export default function MatchRecording() {
             
             {/* Categorized Action Buttons - Lower position */}
             <div className="absolute z-10 w-full max-w-xl px-4 left-1/2 -translate-x-1/2" style={{ bottom: '-2.75rem' }}>
-              <CategorizedActionButtons onActionSelect={handleQuickAction} />
+              <CategorizedActionButtons 
+                onActionSelect={handleQuickAction}
+                disabled={matchPhase !== 'first_half' && matchPhase !== 'second_half'}
+              />
             </div>
           </div>
 
@@ -584,6 +609,14 @@ export default function MatchRecording() {
           players={players}
         />
       )}
+
+      {/* Possession Selection Modal */}
+      <PossessionSelectionModal
+        isOpen={isPossessionModalOpen}
+        homeTeam="Dungloe"
+        awayTeam={matchDisplay.opponent}
+        onSelect={handlePossessionSelected}
+      />
     </div>
   )
 }
