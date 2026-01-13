@@ -84,6 +84,13 @@ class Player(Base):
         cascade="all, delete-orphan"  # Delete tests if player deleted
     )
     
+    match_stats = relationship(
+        "PlayerMatchStats",
+        back_populates="player",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
+    
     # Commented out until we create these models
     # match_performances = relationship(
     #     "PlayerMatchPerformance",
