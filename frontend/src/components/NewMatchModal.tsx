@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Users } from 'lucide-react'
+import { X, Home, Bus, Globe, Football } from 'lucide-react'
 
 interface NewMatchModalProps {
   isOpen: boolean
@@ -59,7 +59,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
           <div className="flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-indigo-600/20 to-purple-600/20">
           <div className="flex items-center space-x-3">
             <div className="p-2 rounded-lg bg-indigo-600/30">
-              <Users size={24} className="text-indigo-300" />
+              <Football size={24} className="text-indigo-300" />
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">New Match</h2>
@@ -103,25 +103,44 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
               Match Venue
             </label>
             <div className="grid grid-cols-3 gap-3">
-              {[
-                { value: 'home', label: 'Home', emoji: '🏠' },
-                { value: 'away', label: 'Away', emoji: '✈️' },
-                { value: 'neutral', label: 'Neutral', emoji: '⚖️' },
-              ].map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setVenue(option.value as 'home' | 'away' | 'neutral')}
-                  className={`p-4 rounded-xl border-2 transition-all ${
-                    venue === option.value
-                      ? 'border-indigo-500 bg-indigo-500/20 scale-105'
-                      : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
-                  }`}
-                >
-                  <div className="text-2xl mb-1">{option.emoji}</div>
-                  <div className="text-sm font-medium text-white">{option.label}</div>
-                </button>
-              ))}
+              <button
+                type="button"
+                onClick={() => setVenue('home')}
+                className={`p-4 rounded-xl border-2 transition-all ${
+                  venue === 'home'
+                    ? 'border-indigo-500 bg-indigo-500/20 scale-105'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
+                }`}
+              >
+                <Home size={24} className={`mx-auto mb-2 ${venue === 'home' ? 'text-indigo-400' : 'text-white/60'}`} />
+                <div className="text-sm font-medium text-white">Home</div>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setVenue('away')}
+                className={`p-4 rounded-xl border-2 transition-all ${
+                  venue === 'away'
+                    ? 'border-indigo-500 bg-indigo-500/20 scale-105'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
+                }`}
+              >
+                <Bus size={24} className={`mx-auto mb-2 ${venue === 'away' ? 'text-indigo-400' : 'text-white/60'}`} />
+                <div className="text-sm font-medium text-white">Away</div>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setVenue('neutral')}
+                className={`p-4 rounded-xl border-2 transition-all ${
+                  venue === 'neutral'
+                    ? 'border-indigo-500 bg-indigo-500/20 scale-105'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
+                }`}
+              >
+                <Globe size={24} className={`mx-auto mb-2 ${venue === 'neutral' ? 'text-indigo-400' : 'text-white/60'}`} />
+                <div className="text-sm font-medium text-white">Neutral</div>
+              </button>
             </div>
           </div>
 
