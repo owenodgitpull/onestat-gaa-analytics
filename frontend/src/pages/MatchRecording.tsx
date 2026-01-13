@@ -120,13 +120,13 @@ export default function MatchRecording() {
   const opponentScores = opponentGoals + opponentPoints
   
   // Calculate accuracy
-  const dungloeAccuracy = dungloeShots > 0 ? ((dungloeScores / dungloeShots) * 100).toFixed(1) : '0.0'
+  const dungloeAccuracy = dungloeShots > 0 ? ((dungloeScores / dungloeShots) * 100).toFixed(1) : '0'
   
   // Calculate possession %
   const dungloePossession = possessionEvents.filter(e => e.is_home_team).length
   const opponentPossession = possessionEvents.filter(e => !e.is_home_team).length
   const totalPossession = dungloePossession + opponentPossession
-  const dungloePossessionPct = totalPossession > 0 ? ((dungloePossession / totalPossession) * 100).toFixed(0) : '50'
+  const dungloePossessionPct = totalPossession > 0 ? ((dungloePossession / totalPossession) * 100).toFixed(0) : '0'
   const opponentPossessionPct = totalPossession > 0 ? ((opponentPossession / totalPossession) * 100).toFixed(0) : '50'
   
   // Calculate turnovers
