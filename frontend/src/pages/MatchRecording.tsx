@@ -55,6 +55,7 @@ export default function MatchRecording() {
   // Sync match status with backend
   useEffect(() => {
     if (match) {
+      console.log('Match data loaded:', match) // Debug log
       if (match.status === 'in_progress' && matchPhase === 'not_started') {
         setMatchPhase('first_half')
       } else if (match.status === 'completed' && matchPhase !== 'finished') {
