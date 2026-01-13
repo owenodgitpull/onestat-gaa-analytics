@@ -82,6 +82,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",  # Local development
+        "http://localhost:3001",  # Local development (alternative port)
         "http://localhost:5173",  # Vite default port
         "https://dungloe-gaa-analytics.vercel.app",  # Production frontend
         os.getenv("FRONTEND_URL", ""),  # From environment
