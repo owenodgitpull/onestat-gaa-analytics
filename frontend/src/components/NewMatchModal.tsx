@@ -1,17 +1,22 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Home, Bus, Globe, Football } from 'lucide-react'
+import { X, Home, Bus, Globe, Circle, Calendar } from 'lucide-react'
 
 interface NewMatchModalProps {
   isOpen: boolean
   onClose: () => void
-  onCreate: (data: { opponent: string; venue: 'home' | 'away' | 'neutral' }) => void
+  onCreate: (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date }) => void
 }
 
 export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchModalProps) {
   const [opponent, setOpponent] = useState('')
   const [venue, setVenue] = useState<'home' | 'away' | 'neutral'>('home')
-  const [errors, setErrors] = useState<{ opponent?: string }>({})
+  const [matchDate, setMatchDate] = useState(() => {
+    // Default to today's date
+    const today = new Date()
+    return today.toISOString().split('T')[0]
+  })
+  const [errors, setErrors] = useState<{ opponent?: string; matchDate?: string }>({})
 
   if (!isOpen) return null
 
@@ -19,9 +24,12 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
     e.preventDefault()
     
     // Validation
-    const newErrors: { opponent?: string } = {}
+    const newErrors: { opponent?: string; matchDate?: string } = {}
     if (!opponent.trim()) {
       newErrors.opponent = 'Opponent name is required'
+    }
+    if (!matchDate) {
+      newErrors.matchDate = 'Match date is required'
     }
     
     if (Object.keys(newErrors).length > 0) {
@@ -30,17 +38,23 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
     }
     
     // Create match
-    onCreate({ opponent: opponent.trim(), venue })
+    onCreate({ 
+      opponent: opponent.trim(), 
+      venue,
+      matchDate: new Date(matchDate)
+    })
     
     // Reset form
     setOpponent('')
     setVenue('home')
+    setMatchDate(new Date().toISOString().split('T')[0])
     setErrors({})
   }
 
   const handleClose = () => {
     setOpponent('')
     setVenue('home')
+    setMatchDate(new Date().toISOString().split('T')[0])
     setErrors({})
     onClose()
   }
@@ -59,7 +73,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
           <div className="flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-indigo-600/20 to-purple-600/20">
           <div className="flex items-center space-x-3">
             <div className="p-2 rounded-lg bg-indigo-600/30">
-              <Football size={24} className="text-indigo-300" />
+              <Circle size={24} className="text-indigo-300" fill="currentColor" />
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">New Match</h2>
@@ -94,6 +108,30 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
             />
             {errors.opponent && (
               <p className="mt-1 text-sm text-red-400">{errors.opponent}</p>
+            )}
+          </div>
+
+          {/* Match Date */}
+          <div>
+            <label htmlFor="matchDate" className="block text-sm font-medium text-white mb-2">
+              Match Date <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <input
+                id="matchDate"
+                type="date"
+                value={matchDate}
+                onChange={(e) => setMatchDate(e.target.value)}
+                className={`w-full px-4 py-3 pl-11 rounded-lg bg-white/5 border ${
+                  errors.matchDate ? 'border-red-500/50' : 'border-white/10'
+                } text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all
+                [color-scheme:dark]
+                `}
+              />
+              <Calendar size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+            </div>
+            {errors.matchDate && (
+              <p className="mt-1 text-sm text-red-400">{errors.matchDate}</p>
             )}
           </div>
 

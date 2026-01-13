@@ -17,12 +17,12 @@ export default function Navigation() {
     return false
   }
 
-  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral' }) => {
+  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date }) => {
     setIsCreatingMatch(true)
     try {
       const match = await createMatch.mutateAsync({
         opponent: data.opponent,
-        match_date: new Date().toISOString(),
+        match_date: data.matchDate.toISOString(),
         venue: data.venue,
         notes: null
       })
