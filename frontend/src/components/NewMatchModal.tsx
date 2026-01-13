@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X, Users } from 'lucide-react'
 
 interface NewMatchModalProps {
@@ -44,7 +45,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
     onClose()
   }
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
@@ -144,5 +145,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
       </div>
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }
 

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { Users, ChevronRight } from 'lucide-react'
 
 interface PossessionSelectionModalProps {
@@ -15,7 +16,7 @@ export default function PossessionSelectionModal({
 }: PossessionSelectionModalProps) {
   if (!isOpen) return null
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
@@ -90,5 +91,7 @@ export default function PossessionSelectionModal({
       </div>
     </div>
   )
+
+  return createPortal(modalContent, document.body)
 }
 
