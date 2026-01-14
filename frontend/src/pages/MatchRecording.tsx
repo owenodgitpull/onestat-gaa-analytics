@@ -26,7 +26,7 @@ interface PendingEvent {
 
 export default function MatchRecording() {
   const { matchId: matchIdParam } = useParams()
-  const matchId = matchIdParam ? parseInt(matchIdParam) : null
+  const matchId = matchIdParam || null
   const navigate = useNavigate()
   
   // Fetch data from backend

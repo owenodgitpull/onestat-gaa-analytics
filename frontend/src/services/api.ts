@@ -108,7 +108,7 @@ export const matchesAPI = {
   /**
    * Get a single match by ID
    */
-  getById: async (id: number): Promise<Match> => {
+  getById: async (id: string): Promise<Match> => {
     return fetchAPI<Match>(`/matches/${id}`);
   },
 
@@ -130,7 +130,7 @@ export const matchesAPI = {
   /**
    * Start a match (updates status to 'in_progress')
    */
-  start: async (matchId: number): Promise<Match> => {
+  start: async (matchId: string): Promise<Match> => {
     return fetchAPI<Match>(`/matches/${matchId}/start`, {
       method: 'POST',
     });
@@ -139,7 +139,7 @@ export const matchesAPI = {
   /**
    * Complete a match (updates status to 'completed')
    */
-  complete: async (matchId: number): Promise<Match> => {
+  complete: async (matchId: string): Promise<Match> => {
     return fetchAPI<Match>(`/matches/${matchId}/complete`, {
       method: 'POST',
     });
@@ -148,7 +148,7 @@ export const matchesAPI = {
   /**
    * Get match statistics
    */
-  getStats: async (matchId: number): Promise<{
+  getStats: async (matchId: string): Promise<{
     match: Match;
     events: MatchEvent[];
     possession_events: PossessionEvent[];

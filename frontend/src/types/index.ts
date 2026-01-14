@@ -33,7 +33,7 @@ export enum PlayerStatus {
 }
 
 export interface Match {
-  id: number;
+  id: string; // UUID
   opponent: string;
   match_date: string;
   venue: string;
@@ -65,7 +65,7 @@ export enum MatchStatus {
 
 export interface MatchEvent {
   id: number;
-  match_id: number;
+  match_id: string; // UUID
   player_id: number | null;
   event_type: string;
   minute: number;

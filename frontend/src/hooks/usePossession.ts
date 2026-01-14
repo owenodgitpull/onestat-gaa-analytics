@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/services/api'
 
 interface RecordPossessionParams {
-  match_id: number
+  match_id: string
   x_coord: number
   y_coord: number
   team: 'home' | 'away'

@@ -12,8 +12,8 @@ import type { Match } from '../types';
 
 export const matchKeys = {
   all: ['matches'] as const,
-  detail: (id: number) => ['matches', id] as const,
-  stats: (id: number) => ['matches', id, 'stats'] as const,
+  detail: (id: string) => ['matches', id] as const,
+  stats: (id: string) => ['matches', id, 'stats'] as const,
 };
 
 // ============================================================================
@@ -33,7 +33,7 @@ export function useMatches() {
 /**
  * Get a single match by ID
  */
-export function useMatch(matchId: number | null) {
+export function useMatch(matchId: string | null) {
   return useQuery({
     queryKey: matchKeys.detail(matchId!),
     queryFn: () => api.matches.getById(matchId!),
@@ -44,12 +44,12 @@ export function useMatch(matchId: number | null) {
 /**
  * Get match statistics (includes events, possession, player stats)
  */
-export function useMatchStats(matchId: number | null) {
+export function useMatchStats(matchId: string | null) {
   return useQuery({
     queryKey: matchKeys.stats(matchId!),
     queryFn: () => api.matches.getStats(matchId!),
     enabled: !!matchId,
-    refetchInterval: 5000, // Refresh every 5 seconds during live match
+    refetchInterval: 60000, // Refresh every 60 seconds for possession updates
   });
 }
 
@@ -84,7 +84,7 @@ export function useStartMatch() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (matchId: number) => api.matches.start(matchId),
+    mutationFn: (matchId: string) => api.matches.start(matchId),
     onSuccess: (data) => {
       // Update the specific match in cache
       queryClient.setQueryData<Match>(matchKeys.detail(data.id), data);
@@ -101,7 +101,7 @@ export function useCompleteMatch() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (matchId: number) => api.matches.complete(matchId),
+    mutationFn: (matchId: string) => api.matches.complete(matchId),
     onSuccess: (data) => {
       // Update the specific match in cache
       queryClient.setQueryData<Match>(matchKeys.detail(data.id), data);

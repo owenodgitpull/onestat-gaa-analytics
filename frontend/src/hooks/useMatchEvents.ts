@@ -13,12 +13,12 @@ import { matchKeys } from './useMatches';
 
 export const matchEventKeys = {
   all: ['match-events'] as const,
-  byMatch: (matchId: number) => ['match-events', 'match', matchId] as const,
+  byMatch: (matchId: string) => ['match-events', 'match', matchId] as const,
 };
 
 export const possessionKeys = {
   all: ['possession'] as const,
-  byMatch: (matchId: number) => ['possession', 'match', matchId] as const,
+  byMatch: (matchId: string) => ['possession', 'match', matchId] as const,
 };
 
 // ============================================================================
@@ -28,12 +28,12 @@ export const possessionKeys = {
 /**
  * Get all match events for a specific match
  */
-export function useMatchEvents(matchId: number | null) {
+export function useMatchEvents(matchId: string | null) {
   return useQuery({
     queryKey: matchEventKeys.byMatch(matchId!),
     queryFn: () => api.matchEvents.getByMatch(matchId!),
     enabled: !!matchId,
-    refetchInterval: 3000, // Refresh every 3 seconds during live match
+    refetchInterval: 0, // Don't auto-refetch - we invalidate on mutations
   });
 }
 
@@ -49,7 +49,7 @@ export function useRecordEvent() {
 
   return useMutation({
     mutationFn: (data: {
-      match_id: number;
+      match_id: string;
       player_id?: number;
       event_type: string;
       minute: number;
@@ -65,7 +65,7 @@ export function useRecordEvent() {
         queryKey: matchEventKeys.byMatch(variables.match_id) 
       });
       
-      // Invalidate match stats to update score and statistics
+      // Invalidate match stats to update score and statistics immediately
       queryClient.invalidateQueries({ 
         queryKey: matchKeys.stats(variables.match_id) 
       });
