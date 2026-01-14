@@ -98,25 +98,25 @@ export default function MatchRecording() {
   const events = matchStats?.events || []
   const possessionEvents = matchStats?.possession_events || []
   
-  // Calculate scores
-  const dungloeGoals = events.filter(e => e.event_type === 'GOAL' && e.is_home_team).length
-  const dungloePoints = events.filter(e => e.event_type === 'POINT' && e.is_home_team).length
-  const opponentGoals = events.filter(e => e.event_type === 'GOAL' && !e.is_home_team).length
-  const opponentPoints = events.filter(e => e.event_type === 'POINT' && !e.is_home_team).length
+  // Calculate scores (case-insensitive event type matching)
+  const dungloeGoals = events.filter(e => e.event_type?.toLowerCase() === 'goal' && e.is_home_team).length
+  const dungloePoints = events.filter(e => ['point', 'two_point'].includes(e.event_type?.toLowerCase()) && e.is_home_team).length
+  const opponentGoals = events.filter(e => e.event_type?.toLowerCase() === 'goal' && !e.is_home_team).length
+  const opponentPoints = events.filter(e => ['point', 'two_point'].includes(e.event_type?.toLowerCase()) && !e.is_home_team).length
   
-  // Calculate shots
+  // Calculate shots (case-insensitive)
   const dungloeShots = events.filter(e => 
-    (['GOAL', 'POINT', 'WIDE', 'SAVED'].includes(e.event_type)) 
+    (['goal', 'point', 'two_point', 'wide', 'saved'].includes(e.event_type?.toLowerCase())) 
     && e.is_home_team
   ).length
   const opponentShots = events.filter(e => 
-    (['GOAL', 'POINT', 'WIDE', 'SAVED'].includes(e.event_type)) 
+    (['goal', 'point', 'two_point', 'wide', 'saved'].includes(e.event_type?.toLowerCase())) 
     && !e.is_home_team
   ).length
   
   // Calculate wides
-  const dungloeWides = events.filter(e => e.event_type === 'WIDE' && e.is_home_team).length
-  const opponentWides = events.filter(e => e.event_type === 'WIDE' && !e.is_home_team).length
+  const dungloeWides = events.filter(e => e.event_type?.toLowerCase() === 'wide' && e.is_home_team).length
+  const opponentWides = events.filter(e => e.event_type?.toLowerCase() === 'wide' && !e.is_home_team).length
   
   // Calculate scores (goals + points)
   const dungloeScores = dungloeGoals + dungloePoints
@@ -129,21 +129,12 @@ export default function MatchRecording() {
   const dungloePossessionPct = matchStats?.dungloe_possession_percentage?.toFixed(0) || '0'
   const opponentPossessionPct = matchStats?.opponent_possession_percentage?.toFixed(0) || '0'
   
-  // Calculate turnovers
-  const dungloeTurnoversWon = events.filter(e => 
-    (['TURNOVER_WON', 'OPP_UNFORCED_ERROR'].includes(e.event_type)) && e.is_home_team
-  ).length
-  const dungloeTurnoversLost = events.filter(e => 
-    (['TURNOVER_LOST', 'OUR_UNFORCED_ERROR'].includes(e.event_type)) && e.is_home_team
-  ).length
+  // Use backend matchStats for all statistics (already calculated correctly)
+  const dungloeTurnoversWon = matchStats?.dungloe_turnovers_won || 0
+  const dungloeTurnoversLost = matchStats?.dungloe_turnovers_lost || 0
+  const dungloeKickoutsWon = matchStats?.dungloe_kickouts_won || 0
+  const dungloeKickoutsLost = matchStats?.dungloe_kickouts_lost || 0
   
-  // Calculate kickouts
-  const dungloeKickoutsWon = events.filter(e => 
-    (['OWN_KICKOUT_WON', 'OPP_KICKOUT_WON'].includes(e.event_type)) && e.is_home_team
-  ).length
-  const dungloeKickoutsLost = events.filter(e => 
-    (['OWN_KICKOUT_LOST', 'OPP_KICKOUT_LOST'].includes(e.event_type)) && e.is_home_team
-  ).length
   const totalKickouts = dungloeKickoutsWon + dungloeKickoutsLost
   const dungloeKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsWon / totalKickouts) * 100).toFixed(1) : '0.0'
   const opponentKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsLost / totalKickouts) * 100).toFixed(1) : '0.0'
