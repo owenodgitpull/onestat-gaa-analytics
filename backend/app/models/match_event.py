@@ -23,17 +23,31 @@ class EventType(enum.Enum):
     WIDE = "wide"  # Shot that goes wide
     SHORT = "short"  # Shot that falls short
     SAVED = "saved"  # Shot saved by goalkeeper
-    TURNOVER_LOST = "turnover_lost"  # Lost possession
-    TURNOVER_WON = "turnover_won"  # Won possession back
+    
+    # Turnovers - Opposition forced
+    TURNOVER_LOST = "turnover_lost"  # Lost possession due to opposition pressure
+    TURNOVER_WON = "turnover_won"  # Won possession back via tackle/pressure
+    
+    # Unforced Errors - Own mistakes (NO opposition pressure)
+    UNFORCED_ERROR = "unforced_error"  # Player's own mistake (drop, bad pass)
+    
+    # Kickouts
     KICKOUT_WON = "kickout_won"  # Won kickout
     KICKOUT_LOST = "kickout_lost"  # Lost kickout
-    BREAKING_BALL_WON = "breaking_ball_won"  # Won breaking ball
+    BREAKING_BALL_WON = "breaking_ball_won"  # Won breaking ball after kickout
+    
+    # Cards
     YELLOW_CARD = "yellow_card"  # Player booked
     RED_CARD = "red_card"  # Player sent off
+    
+    # Frees
     FREE_WON = "free_won"  # Won a free kick
     FREE_CONCEDED = "free_conceded"  # Conceded a free kick
+    
+    # Defensive
     BLOCK = "block"  # Blocked shot/pass
     INTERCEPTION = "interception"  # Intercepted pass
+    
     OTHER = "other"  # Other event type
 
 

@@ -254,10 +254,15 @@ class MatchService:
             elif event.event_type in [EventType.SHORT, EventType.SAVED]:
                 stats[f"{team_prefix}_total_shots"] += 1
             
-            # Turnovers
+            # Turnovers (opposition forced)
             elif event.event_type == EventType.TURNOVER_WON:
                 stats[f"{team_prefix}_turnovers_won"] += 1
             elif event.event_type == EventType.TURNOVER_LOST:
+                stats[f"{team_prefix}_turnovers_lost"] += 1
+            
+            # Unforced Errors (own mistakes) - count towards turnovers lost
+            elif event.event_type == EventType.UNFORCED_ERROR:
+                # Unforced error counts as possession lost
                 stats[f"{team_prefix}_turnovers_lost"] += 1
             
             # Kickouts

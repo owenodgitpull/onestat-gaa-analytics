@@ -203,11 +203,13 @@ export default function MatchRecording() {
       'point': 'point',
       'wide': 'wide',
       
-      // Turnovers
-      'turnover_won': 'turnover_won',
-      'turnover_lost': 'turnover_lost',
-      'our_unforced_error': 'turnover_lost',  // Unforced error is a type of turnover
-      'opp_unforced_error': 'turnover_won',   // Their error is our win
+      // Turnovers - Opposition forced
+      'turnover_won': 'turnover_won',      // We won via tackle/pressure
+      'turnover_lost': 'turnover_lost',    // They won via tackle/pressure
+      
+      // Unforced Errors - Own mistakes (distinct from forced turnovers!)
+      'our_unforced_error': 'unforced_error',   // Our player's mistake
+      'opp_unforced_error': 'unforced_error',   // Their player's mistake
       
       // Kickouts - strip OWN_/OPP_ prefix, use team field to distinguish
       'own_kickout_won': 'kickout_won',
