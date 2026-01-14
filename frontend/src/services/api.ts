@@ -154,7 +154,7 @@ export const matchesAPI = {
     possession_events: PossessionEvent[];
     player_stats: PlayerMatchStats[];
   }> => {
-    return fetchAPI(`/matches/${matchId}/statistics`);
+    return fetchAPI(`/matches/${matchId}/stats`);
   },
 };
 
