@@ -222,15 +222,13 @@ class MatchService:
         
         # Calculate possession percentages
         if possession_events:
-            total_duration = sum(p.duration_seconds or 0 for p in possession_events)
-            if total_duration > 0:
-                dungloe_duration = sum(
-                    p.duration_seconds or 0
-                    for p in possession_events
-                    if p.team == PossessionTeam.DUNGLOE
-                )
-                stats["dungloe_possession_percentage"] = (dungloe_duration / total_duration) * 100
-                stats["opponent_possession_percentage"] = 100 - stats["dungloe_possession_percentage"]
+            # Use count-based possession (duration_seconds is not yet implemented)
+            total_events = len(possession_events)
+            dungloe_events = sum(1 for p in possession_events if p.team == PossessionTeam.DUNGLOE)
+            
+            if total_events > 0:
+                stats["dungloe_possession_percentage"] = round((dungloe_events / total_events) * 100, 1)
+                stats["opponent_possession_percentage"] = round(100 - stats["dungloe_possession_percentage"], 1)
         
         # Calculate event stats
         for event in events:

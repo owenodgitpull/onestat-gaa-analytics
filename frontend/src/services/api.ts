@@ -174,8 +174,8 @@ export const matchEventsAPI = {
    * Record a match event (goal, point, turnover, etc.)
    */
   create: async (event: {
-    match_id: number;
-    player_id?: number;
+    match_id: string; // UUID
+    player_id?: string; // UUID
     event_type: string;
     minute: number;
     half: number;
@@ -184,9 +184,14 @@ export const matchEventsAPI = {
     is_home_team: boolean;
     notes?: string;
   }): Promise<MatchEvent> => {
+    // Convert is_home_team to team field expected by backend
+    const { is_home_team, ...rest } = event;
     return fetchAPI<MatchEvent>('/match-events/', {
       method: 'POST',
-      body: JSON.stringify(event),
+      body: JSON.stringify({
+        ...rest,
+        team: is_home_team ? 'dungloe' : 'opponent'
+      }),
     });
   },
 
@@ -230,9 +235,16 @@ export const possessionAPI = {
     x_coord: number;
     y_coord: number;
   }): Promise<PossessionEvent> => {
+    // Convert is_home_team to team field expected by backend
+    const { is_home_team, half, ...rest } = event;
     return fetchAPI<PossessionEvent>('/possession-events/', {
       method: 'POST',
-      body: JSON.stringify(event),
+      body: JSON.stringify({
+        ...rest,
+        team: is_home_team ? 'dungloe' : 'opponent',
+        pitch_x: rest.x_coord,
+        pitch_y: rest.y_coord
+      }),
     });
   },
 
