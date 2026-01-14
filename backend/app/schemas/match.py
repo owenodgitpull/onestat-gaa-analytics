@@ -18,11 +18,16 @@ class MatchBase(BaseModel):
     venue: MatchVenue = Field(..., description="Match venue (home/away/neutral)")
     notes: Optional[str] = Field(None, max_length=1000, description="Optional match notes")
     
-    @field_validator('match_date')
+    @field_validator('match_date', mode='before')
     @classmethod
-    def remove_timezone(cls, v: datetime) -> datetime:
+    def remove_timezone(cls, v):
         """Remove timezone info to match database TIMESTAMP WITHOUT TIME ZONE."""
-        if v and v.tzinfo is not None:
+        if v is None:
+            return v
+        if isinstance(v, str):
+            # Parse ISO string first
+            v = datetime.fromisoformat(v.replace('Z', '+00:00'))
+        if isinstance(v, datetime) and v.tzinfo is not None:
             return v.replace(tzinfo=None)
         return v
 
@@ -43,6 +48,19 @@ class MatchUpdate(BaseModel):
     opponent_goals: Optional[int] = Field(None, ge=0)
     opponent_points: Optional[int] = Field(None, ge=0)
     notes: Optional[str] = Field(None, max_length=1000)
+    
+    @field_validator('match_date', mode='before')
+    @classmethod
+    def remove_timezone(cls, v):
+        """Remove timezone info to match database TIMESTAMP WITHOUT TIME ZONE."""
+        if v is None:
+            return v
+        if isinstance(v, str):
+            # Parse ISO string first
+            v = datetime.fromisoformat(v.replace('Z', '+00:00'))
+        if isinstance(v, datetime) and v.tzinfo is not None:
+            return v.replace(tzinfo=None)
+        return v
 
 
 class MatchResponse(MatchBase):
@@ -70,12 +88,38 @@ class MatchResponse(MatchBase):
 class MatchStartRequest(BaseModel):
     """Schema for starting a match (changes status to IN_PROGRESS)."""
     started_at: Optional[datetime] = Field(default_factory=datetime.utcnow, description="Match start time")
+    
+    @field_validator('started_at', mode='before')
+    @classmethod
+    def remove_timezone(cls, v):
+        """Remove timezone info to match database TIMESTAMP WITHOUT TIME ZONE."""
+        if v is None:
+            return v
+        if isinstance(v, str):
+            # Parse ISO string first
+            v = datetime.fromisoformat(v.replace('Z', '+00:00'))
+        if isinstance(v, datetime) and v.tzinfo is not None:
+            return v.replace(tzinfo=None)
+        return v
 
 
 class MatchCompleteRequest(BaseModel):
     """Schema for completing a match (changes status to COMPLETED)."""
     completed_at: Optional[datetime] = Field(default_factory=datetime.utcnow, description="Match completion time")
     notes: Optional[str] = Field(None, max_length=1000, description="Post-match notes")
+    
+    @field_validator('completed_at', mode='before')
+    @classmethod
+    def remove_timezone(cls, v):
+        """Remove timezone info to match database TIMESTAMP WITHOUT TIME ZONE."""
+        if v is None:
+            return v
+        if isinstance(v, str):
+            # Parse ISO string first
+            v = datetime.fromisoformat(v.replace('Z', '+00:00'))
+        if isinstance(v, datetime) and v.tzinfo is not None:
+            return v.replace(tzinfo=None)
+        return v
 
 
 class MatchScoreUpdate(BaseModel):
