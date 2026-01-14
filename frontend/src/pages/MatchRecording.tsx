@@ -192,7 +192,9 @@ export default function MatchRecording() {
         x_coord: newPosition.x,
         y_coord: newPosition.y,
         team: newPosition.team === PossessionTeam.DUNGLOE ? 'home' : 'away',
-        timestamp: new Date()
+        timestamp: new Date(),
+        minute: minute,
+        half: currentHalf
       })
       console.log('Possession recorded:', newPosition)
     } catch (error) {
@@ -254,7 +256,9 @@ export default function MatchRecording() {
             x_coord: newBallPosition.x,
             y_coord: newBallPosition.y,
             team: newTeam === PossessionTeam.DUNGLOE ? 'home' : 'away',
-            timestamp: new Date()
+            timestamp: new Date(),
+            minute: minute,
+            half: currentHalf
           })
           console.log('Turnover possession change recorded')
         } catch (error) {

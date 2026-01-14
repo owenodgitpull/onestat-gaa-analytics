@@ -7,6 +7,8 @@ interface RecordPossessionParams {
   y_coord: number
   team: 'home' | 'away'
   timestamp: Date
+  minute: number
+  half: number
 }
 
 export function useRecordPossession() {
@@ -14,12 +16,13 @@ export function useRecordPossession() {
   
   return useMutation({
     mutationFn: async (data: RecordPossessionParams) => {
-      return api.possession.record({
+      return api.possession.create({
         match_id: data.match_id,
         x_coord: data.x_coord,
         y_coord: data.y_coord,
-        team: data.team,
-        timestamp: data.timestamp.toISOString(),
+        is_home_team: data.team === 'home',
+        minute: data.minute,
+        half: data.half,
       })
     },
     onSuccess: (_, variables) => {

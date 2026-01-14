@@ -55,10 +55,11 @@ export default function PlayerSelectionModal({
   const eventInfo = EVENT_LABELS[eventType]
   const Icon = eventInfo.icon
 
-  const players = team === 'dungloe' ? providedPlayers : OPPONENT_PLAYERS
+  // Ensure players is an array
+  const playerList = team === 'dungloe' ? (Array.isArray(providedPlayers) ? providedPlayers : []) : OPPONENT_PLAYERS
   
   // Show message if no players available
-  if (!players || players.length === 0) {
+  if (!playerList || playerList.length === 0) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
         {/* Backdrop */}
@@ -82,7 +83,7 @@ export default function PlayerSelectionModal({
     )
   }
   
-  const filteredPlayers = players.filter((player) =>
+  const filteredPlayers = playerList.filter((player) =>
     player.name.toLowerCase().includes(search.toLowerCase()) ||
     (player.jersey_number?.toString() || '').includes(search)
   )

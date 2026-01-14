@@ -222,7 +222,7 @@ export const possessionAPI = {
    * Record a possession event
    */
   create: async (event: {
-    match_id: number;
+    match_id: string; // UUID
     minute: number;
     half: number;
     is_home_team: boolean;
@@ -238,7 +238,7 @@ export const possessionAPI = {
   /**
    * Get all possession events for a match
    */
-  getByMatch: async (matchId: number): Promise<PossessionEvent[]> => {
+  getByMatch: async (matchId: string): Promise<PossessionEvent[]> => {
     return fetchAPI<PossessionEvent[]>(`/possession-events/?match_id=${matchId}`);
   },
 };
