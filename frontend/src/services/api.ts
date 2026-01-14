@@ -155,13 +155,8 @@ export const matchesAPI = {
   /**
    * Get match statistics
    */
-  getStats: async (matchId: string): Promise<{
-    match: Match;
-    events: MatchEvent[];
-    possession_events: PossessionEvent[];
-    player_stats: PlayerMatchStats[];
-  }> => {
-    return fetchAPI(`/matches/${matchId}/stats`);
+  getStats: async (matchId: string): Promise<MatchStats> => {
+    return fetchAPI<MatchStats>(`/matches/${matchId}/stats`);
   },
 };
 

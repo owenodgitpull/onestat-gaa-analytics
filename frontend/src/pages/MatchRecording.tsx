@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PossessionSelectionModal from '@/components/PossessionSelectionModal'
@@ -53,6 +54,9 @@ export default function MatchRecording() {
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false)
   const [isPossessionModalOpen, setIsPossessionModalOpen] = useState(false)
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
+  
+  // Query client for manual refetching
+  const queryClient = useQueryClient()
 
   // Sync match status with backend
   useEffect(() => {
@@ -94,36 +98,23 @@ export default function MatchRecording() {
     }
   }, [matchPhase])
 
-  // Calculate real-time stats from backend data
-  const events = matchStats?.events || []
-  const possessionEvents = matchStats?.possession_events || []
+  // Calculate real-time stats from backend - now using MatchStats directly
+  // Backend calculates scores as (goals*3 + points), so we need to reverse-engineer for display
+  const dungloeGoals = match?.dungloe_goals || 0
+  const dungloePoints = match?.dungloe_points || 0
+  const opponentGoals = match?.opponent_goals || 0
+  const opponentPoints = match?.opponent_points || 0
   
-  // Calculate scores (case-insensitive event type matching)
-  const dungloeGoals = events.filter(e => e.event_type?.toLowerCase() === 'goal' && e.is_home_team).length
-  const dungloePoints = events.filter(e => ['point', 'two_point'].includes(e.event_type?.toLowerCase()) && e.is_home_team).length
-  const opponentGoals = events.filter(e => e.event_type?.toLowerCase() === 'goal' && !e.is_home_team).length
-  const opponentPoints = events.filter(e => ['point', 'two_point'].includes(e.event_type?.toLowerCase()) && !e.is_home_team).length
-  
-  // Calculate shots (case-insensitive)
-  const dungloeShots = events.filter(e => 
-    (['goal', 'point', 'two_point', 'wide', 'saved'].includes(e.event_type?.toLowerCase())) 
-    && e.is_home_team
-  ).length
-  const opponentShots = events.filter(e => 
-    (['goal', 'point', 'two_point', 'wide', 'saved'].includes(e.event_type?.toLowerCase())) 
-    && !e.is_home_team
-  ).length
-  
-  // Calculate wides
-  const dungloeWides = events.filter(e => e.event_type?.toLowerCase() === 'wide' && e.is_home_team).length
-  const opponentWides = events.filter(e => e.event_type?.toLowerCase() === 'wide' && !e.is_home_team).length
-  
-  // Calculate scores (goals + points)
-  const dungloeScores = dungloeGoals + dungloePoints
-  const opponentScores = opponentGoals + opponentPoints
+  // Get other stats directly from matchStats API response
+  const dungloeShots = matchStats?.dungloe_total_shots || 0
+  const opponentShots = matchStats?.opponent_total_shots || 0
+  const dungloeWides = matchStats?.dungloe_wides || 0
+  const opponentWides = matchStats?.opponent_wides || 0
+  const dungloeScores = matchStats?.dungloe_scores || 0
+  const opponentScores = matchStats?.opponent_scores || 0
   
   // Calculate accuracy
-  const dungloeAccuracy = dungloeShots > 0 ? ((dungloeScores / dungloeShots) * 100).toFixed(1) : '0'
+  const dungloeAccuracy = matchStats?.dungloe_accuracy?.toFixed(1) || '0'
   
   // Calculate possession % from backend stats (time-based, not event count)
   const dungloePossessionPct = matchStats?.dungloe_possession_percentage?.toFixed(0) || '0'
@@ -139,8 +130,8 @@ export default function MatchRecording() {
   const dungloeKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsWon / totalKickouts) * 100).toFixed(1) : '0.0'
   const opponentKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsLost / totalKickouts) * 100).toFixed(1) : '0.0'
   
-  // Recent events (last 10)
-  const recentEvents = [...events].reverse().slice(0, 10)
+  // Recent events - for now show empty array until we add a separate events endpoint
+  const recentEvents: any[] = []
   
   // Match display data
   const matchDisplay = {
@@ -233,13 +224,54 @@ export default function MatchRecording() {
     // Determine team based on event type
     const isHomeTeam = !eventType.startsWith('OPP_')
     
-    // Open player selection modal
-    setPendingEvent({
-      eventType: eventType as EventType,
-      team: isHomeTeam ? 'dungloe' : 'opponent',
-      position: ballPosition
-    })
-    setIsPlayerModalOpen(true)
+    // Events that don't require player selection (contested/team events)
+    const noPlayerNeeded = [
+      EventType.OWN_KICKOUT_LOST,
+      EventType.OPP_KICKOUT_LOST,
+      EventType.OWN_KICKOUT_BREAK_LOST,
+      EventType.OPP_KICKOUT_BREAK_LOST,
+    ]
+    
+    if (noPlayerNeeded.includes(eventType as EventType)) {
+      // Record immediately without player selection
+      recordEventWithoutPlayer(eventType, isHomeTeam)
+    } else {
+      // Open player selection modal
+      setPendingEvent({
+        eventType: eventType as EventType,
+        team: isHomeTeam ? 'dungloe' : 'opponent',
+        position: ballPosition
+      })
+      setIsPlayerModalOpen(true)
+    }
+  }
+  
+  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean) => {
+    if (!matchId) return
+    
+    try {
+      const backendEventType = mapEventTypeToBackend(eventType)
+      
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        player_id: undefined, // No player for contested events
+        event_type: backendEventType,
+        minute: minute,
+        half: currentHalf,
+        x_coord: ballPosition.x,
+        y_coord: ballPosition.y,
+        is_home_team: isHomeTeam,
+        notes: undefined
+      })
+      
+      // Force refetch stats immediately after event
+      await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
+      
+      console.log('Event recorded without player selection')
+    } catch (error) {
+      console.error('Failed to record event:', error)
+      alert('Failed to record event. Please try again.')
+    }
   }
 
   const handlePlayerSelected = async (player: Player) => {
@@ -269,6 +301,20 @@ export default function MatchRecording() {
         notes: undefined
       })
       
+      // Check if this was a scoring event (goal or point)
+      const scoringEvents = [EventType.GOAL, EventType.POINT]
+      const isScore = scoringEvents.includes(pendingEvent.eventType as EventType)
+      
+      if (isScore) {
+        // Reset ball to center midfield after score
+        setBallPosition({
+          x: 50,  // Center horizontally
+          y: 50,  // Center vertically (midfield)
+          team: pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE  // Other team gets kickout
+        })
+        console.log('Ball reset to center midfield for kickout')
+      }
+      
       // Auto-change possession for turnover events
       if (pendingEvent.eventType.includes('TURNOVER') || pendingEvent.eventType.includes('UNFORCED_ERROR')) {
         // Switch possession
@@ -292,6 +338,9 @@ export default function MatchRecording() {
           console.error('Failed to record turnover possession:', error)
         }
       }
+      
+      // Force refetch stats immediately after event
+      await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
       
       console.log('Event recorded successfully!')
     } catch (error) {

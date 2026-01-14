@@ -1,7 +1,7 @@
 // Type definitions for the Dungloe GAA Analytics app
 
 export interface Player {
-  id: number;
+  id: string;  // UUID
   name: string;
   position: string;  // Using string to match backend
   jersey_number: number | null;
@@ -159,9 +159,9 @@ export interface MatchStats {
 }
 
 export interface PlayerMatchStats {
-  id: number;
-  match_id: number;
-  player_id: number;
+  id: string;  // UUID
+  match_id: string;  // UUID
+  player_id: string;  // UUID
   goals: number;
   points: number;
   assists: number;
