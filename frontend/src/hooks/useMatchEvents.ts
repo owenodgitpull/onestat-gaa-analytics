@@ -50,7 +50,7 @@ export function useRecordEvent() {
   return useMutation({
     mutationFn: (data: {
       match_id: string;
-      player_id?: number;
+      player_id?: string; // UUID
       event_type: string;
       minute: number;
       half: number;
