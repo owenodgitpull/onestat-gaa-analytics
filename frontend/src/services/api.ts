@@ -133,6 +133,9 @@ export const matchesAPI = {
   start: async (matchId: string): Promise<Match> => {
     return fetchAPI<Match>(`/matches/${matchId}/start`, {
       method: 'POST',
+      body: JSON.stringify({
+        started_at: new Date().toISOString()
+      })
     });
   },
 
@@ -142,6 +145,9 @@ export const matchesAPI = {
   complete: async (matchId: string): Promise<Match> => {
     return fetchAPI<Match>(`/matches/${matchId}/complete`, {
       method: 'POST',
+      body: JSON.stringify({
+        completed_at: new Date().toISOString()
+      })
     });
   },
 
