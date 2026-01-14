@@ -7,6 +7,7 @@ import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType, Player } from '@/types'
 import { useMatch, useMatchStats, useStartMatch, useCompleteMatch } from '@/hooks/useMatches'
 import { useRecordEvent } from '@/hooks/useMatchEvents'
+import { useRecordPossession } from '@/hooks/usePossession'
 import { usePlayers } from '@/hooks/usePlayers'
 import { 
   Clock,
@@ -37,6 +38,7 @@ export default function MatchRecording() {
   const startMatch = useStartMatch()
   const completeMatch = useCompleteMatch()
   const recordEvent = useRecordEvent()
+  const recordPossession = useRecordPossession()
   
   // Local state
   const [ballPosition, setBallPosition] = useState<BallPosition>({
@@ -174,6 +176,31 @@ export default function MatchRecording() {
     kickouts: { won: dungloeKickoutsWon, lost: dungloeKickoutsLost }
   }
 
+  const handleBallMove = async (newPosition: BallPosition) => {
+    // Only record if match is in progress
+    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time') {
+      return
+    }
+
+    // Update local ball position
+    setBallPosition(newPosition)
+
+    // Record possession event to backend
+    try {
+      await recordPossession.mutateAsync({
+        match_id: matchId,
+        x_coord: newPosition.x,
+        y_coord: newPosition.y,
+        team: newPosition.team === PossessionTeam.DUNGLOE ? 'home' : 'away',
+        timestamp: new Date()
+      })
+      console.log('Possession recorded:', newPosition)
+    } catch (error) {
+      console.error('Failed to record possession:', error)
+      // Don't show alert for possession tracking errors (too disruptive)
+    }
+  }
+
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     
@@ -217,7 +244,22 @@ export default function MatchRecording() {
       if (pendingEvent.eventType.includes('TURNOVER') || pendingEvent.eventType.includes('UNFORCED_ERROR')) {
         // Switch possession
         const newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
-        setBallPosition(prev => ({ ...prev, team: newTeam }))
+        const newBallPosition = { ...pendingEvent.position, team: newTeam }
+        setBallPosition(newBallPosition)
+        
+        // Record the possession change to backend
+        try {
+          await recordPossession.mutateAsync({
+            match_id: matchId,
+            x_coord: newBallPosition.x,
+            y_coord: newBallPosition.y,
+            team: newTeam === PossessionTeam.DUNGLOE ? 'home' : 'away',
+            timestamp: new Date()
+          })
+          console.log('Turnover possession change recorded')
+        } catch (error) {
+          console.error('Failed to record turnover possession:', error)
+        }
       }
       
       console.log('Event recorded successfully!')
@@ -374,8 +416,9 @@ export default function MatchRecording() {
           <div className="glass-card p-6 relative mb-4">
             <GAAPitch
               ballPosition={ballPosition}
-              onBallMove={setBallPosition}
+              onBallMove={handleBallMove}
               showZones={true}
+              readonly={matchPhase === 'not_started' || matchPhase === 'finished'}
             />
             
             {/* Categorized Action Buttons - Lower position */}
