@@ -13,11 +13,11 @@ interface PlayerSelectionModalProps {
 
 // Mock players - TODO: Replace with API call
 const OPPONENT_PLAYERS: Player[] = [
-  { id: 101, name: 'Opposition Player 1', jersey_number: 1, position: 'GOALKEEPER' },
-  { id: 102, name: 'Opposition Player 2', jersey_number: 2, position: 'DEFENDER' },
-  { id: 103, name: 'Opposition Player 3', jersey_number: 3, position: 'DEFENDER' },
-  { id: 104, name: 'Opposition Player 4', jersey_number: 4, position: 'MIDFIELDER' },
-  { id: 105, name: 'Opposition Player 5', jersey_number: 5, position: 'FORWARD' },
+  { id: 'opp-1', name: 'Opposition Player 1', jersey_number: 1, position: 'GOALKEEPER' },
+  { id: 'opp-2', name: 'Opposition Player 2', jersey_number: 2, position: 'DEFENDER' },
+  { id: 'opp-3', name: 'Opposition Player 3', jersey_number: 3, position: 'DEFENDER' },
+  { id: 'opp-4', name: 'Opposition Player 4', jersey_number: 4, position: 'MIDFIELDER' },
+  { id: 'opp-5', name: 'Opposition Player 5', jersey_number: 5, position: 'FORWARD' },
 ]
 
 const EVENT_LABELS = {
@@ -48,7 +48,7 @@ export default function PlayerSelectionModal({
   players: providedPlayers
 }: PlayerSelectionModalProps) {
   const [search, setSearch] = useState('')
-  const [selectedPlayerId, setSelectedPlayerId] = useState<number | null>(null)
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
 
   if (!isOpen) return null
 
@@ -56,6 +56,32 @@ export default function PlayerSelectionModal({
   const Icon = eventInfo.icon
 
   const players = team === 'dungloe' ? providedPlayers : OPPONENT_PLAYERS
+  
+  // Show message if no players available
+  if (!players || players.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+        {/* Backdrop */}
+        <div
+          className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+          onClick={onClose}
+        />
+
+        {/* Modal */}
+        <div className="relative w-full max-w-md glass-card p-8 text-center">
+          <User size={48} className="mx-auto text-white/20 mb-4" />
+          <h2 className="text-xl font-bold text-white mb-2">No Players Found</h2>
+          <p className="text-white/60 mb-6">
+            Please add players to the database before recording match events.
+          </p>
+          <button onClick={onClose} className="btn-glass w-full">
+            Close
+          </button>
+        </div>
+      </div>
+    )
+  }
+  
   const filteredPlayers = players.filter((player) =>
     player.name.toLowerCase().includes(search.toLowerCase()) ||
     (player.jersey_number?.toString() || '').includes(search)

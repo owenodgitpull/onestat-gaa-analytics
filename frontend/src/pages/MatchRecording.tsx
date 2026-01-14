@@ -360,9 +360,9 @@ export default function MatchRecording() {
             </h1>
             <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
             {matchPhase !== 'not_started' && (
-              <div className="badge badge-success flex items-center space-x-2 inline-flex animate-pulse">
-                <Clock size={14} />
-                <span className="font-mono">{formatTime()}</span>
+              <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 animate-pulse">
+                <Clock size={20} className="text-emerald-400" />
+                <span className="font-mono text-2xl font-bold text-white">{formatTime()}</span>
               </div>
             )}
           </div>

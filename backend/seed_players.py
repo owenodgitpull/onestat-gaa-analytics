@@ -1,102 +1,78 @@
 """
-Seed script to populate initial player roster.
+Seed script to populate the database with Dungloe GAA players.
 
-Creates all 30 players from the fitness test data.
-Run this once to populate the database.
-
-Usage:
-    python seed_players.py
+Run this script to add initial player data to the database.
+Usage: python3 seed_players.py
 """
 
 import asyncio
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from app.models.player import Player, PlayerStatus
-from app.database import Base  # Import Base to create tables
-import os
+from sqlalchemy import select
+from app.database import AsyncSessionLocal
+from app.models.player import Player, PlayerPosition
+from datetime import date
 
-# Database URL - Docker PostgreSQL (matches docker-compose.yml)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://dungloe:dungloe_dev_password@localhost:5432/dungloe_gaa"
-)
-
-# All 30 players from fitness test CSV
-PLAYERS = [
-    "Aaron Ward",
-    "Dylan Sweeney",
-    "Karl Magee",
-    "Darren Curran",
-    "Damien McGowan",
-    "Patrick O'Donnell",
-    "Conor Greene",
-    "Daire Gallagher",
-    "Ethan McCaffrey",
-    "Oisin Bonner",
-    "Oran Gallagher",
-    "Shaun McGee",
-    "Jason McBride",
-    "Ryan Grannell",
-    "Kyle Bonner",
-    "Killian Gillespie",
-    "Cinan McDaid",
-    "Danny Rodgers",
-    "Barry Curran",
-    "Daniel Ward",
-    "Mathew Ward",
-    "Danny McCready",
-    "Joe Neeley",
-    "Paddy Bonner",
-    "Conor O'Donnell",
-    "Cian Gallagher",
-    "Jamie McCready",
-    "Joe McElroy",
-    "Dylan O'Donnell",
-    "Eoin Doogan",
+DUNGLOE_PLAYERS = [
+    # Goalkeeper
+    {"name": "Conor Cunningham", "jersey_number": 1, "position": PlayerPosition.GOALKEEPER, "date_of_birth": date(1995, 3, 15)},
+    
+    # Defenders
+    {"name": "Ryan Kelly", "jersey_number": 2, "position": PlayerPosition.FULL_BACK, "date_of_birth": date(1996, 5, 22)},
+    {"name": "Conor O'Donnell", "jersey_number": 3, "position": PlayerPosition.FULL_BACK, "date_of_birth": date(1994, 7, 10)},
+    {"name": "Ronan Gillespie", "jersey_number": 4, "position": PlayerPosition.WING_BACK, "date_of_birth": date(1997, 2, 18)},
+    {"name": "Danny Doherty", "jersey_number": 5, "position": PlayerPosition.CENTER_BACK, "date_of_birth": date(1995, 9, 5)},
+    {"name": "Matthew Ward", "jersey_number": 6, "position": PlayerPosition.CENTER_BACK, "date_of_birth": date(1998, 4, 12)},
+    {"name": "Sean McHugh", "jersey_number": 7, "position": PlayerPosition.WING_BACK, "date_of_birth": date(1996, 11, 28)},
+    
+    # Midfielders
+    {"name": "Daire Gallagher", "jersey_number": 8, "position": PlayerPosition.MIDFIELDER, "date_of_birth": date(1995, 6, 14)},
+    {"name": "Cian McHugh", "jersey_number": 9, "position": PlayerPosition.MIDFIELDER, "date_of_birth": date(1997, 1, 20)},
+    
+    # Forwards
+    {"name": "Shaun Maguire", "jersey_number": 10, "position": PlayerPosition.WING_FORWARD, "date_of_birth": date(1996, 8, 9)},
+    {"name": "Ryan Greene", "jersey_number": 11, "position": PlayerPosition.WING_FORWARD, "date_of_birth": date(1998, 3, 25)},
+    {"name": "Ronan Frain", "jersey_number": 12, "position": PlayerPosition.CENTER_FORWARD, "date_of_birth": date(1997, 10, 7)},
+    {"name": "Daniel Lyons", "jersey_number": 13, "position": PlayerPosition.CENTER_FORWARD, "date_of_birth": date(1995, 12, 3)},
+    {"name": "Johnny McBride", "jersey_number": 14, "position": PlayerPosition.FULL_FORWARD, "date_of_birth": date(1996, 4, 19)},
+    {"name": "Aaron O'Donnell", "jersey_number": 15, "position": PlayerPosition.FULL_FORWARD, "date_of_birth": date(1998, 7, 30)},
+    
+    # Substitutes
+    {"name": "James Boyle", "jersey_number": 16, "position": PlayerPosition.GOALKEEPER, "date_of_birth": date(1997, 2, 14)},
+    {"name": "Patrick Gillespie", "jersey_number": 17, "position": PlayerPosition.FULL_BACK, "date_of_birth": date(1999, 5, 8)},
+    {"name": "Michael Ward", "jersey_number": 18, "position": PlayerPosition.MIDFIELDER, "date_of_birth": date(1996, 9, 22)},
+    {"name": "Oisin McHugh", "jersey_number": 19, "position": PlayerPosition.WING_FORWARD, "date_of_birth": date(1998, 11, 16)},
+    {"name": "Barry Cunningham", "jersey_number": 20, "position": PlayerPosition.FULL_FORWARD, "date_of_birth": date(1997, 6, 4)},
 ]
 
 
 async def seed_players():
-    """Create all players in the database."""
-    
-    # Create engine and session
-    engine = create_async_engine(DATABASE_URL)
-    
-    # Create all database tables
-    async with engine.begin() as conn:
-        print("🔧 Creating database tables...")
-        await conn.run_sync(Base.metadata.create_all)
-        print("✅ Database tables created!\n")
-    
-    AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
-    async with AsyncSessionLocal() as session:
-        print("🏉 Creating Dungloe Senior Men's Squad...")
-        print(f"📋 Adding {len(PLAYERS)} players...\n")
-        
-        created_count = 0
-        
-        for name in PLAYERS:
-            # Create player
-            player = Player(
-                name=name,
-                status=PlayerStatus.ACTIVE,
-                active=True,
-            )
+    """Add Dungloe players to the database if they don't already exist."""
+    async with AsyncSessionLocal() as db:
+        try:
+            # Check if players already exist
+            result = await db.execute(select(Player).limit(1))
+            existing = result.scalar_one_or_none()
             
-            session.add(player)
-            created_count += 1
-            print(f"✅ {created_count:2d}. {name}")
-        
-        # Commit all players at once
-        await session.commit()
-        
-        print(f"\n🎉 Successfully created {created_count} players!")
-        print("💡 You can now add jersey numbers, positions, and DOBs via API")
-    
-    await engine.dispose()
+            if existing:
+                print("⚠️  Players already exist in database. Skipping seed.")
+                print("   Run 'python3 clear_players.py' first if you want to re-seed.")
+                return
+            
+            print("🏉 Seeding Dungloe GAA players...")
+            
+            for player_data in DUNGLOE_PLAYERS:
+                player = Player(**player_data)
+                db.add(player)
+                print(f"   ✅ Added: #{player_data['jersey_number']} {player_data['name']}")
+            
+            await db.commit()
+            print(f"\n✅ Successfully added {len(DUNGLOE_PLAYERS)} players to the database!")
+            print("   You can now start recording match events.")
+            
+        except Exception as e:
+            await db.rollback()
+            print(f"❌ Error seeding players: {e}")
+            raise
 
 
 if __name__ == "__main__":
-    # Run the seed script
     asyncio.run(seed_players())
-
