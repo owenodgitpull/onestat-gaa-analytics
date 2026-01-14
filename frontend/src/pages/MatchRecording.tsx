@@ -341,15 +341,17 @@ export default function MatchRecording() {
 
   return (
     <div className="min-h-screen pb-8">
-      {/* Loading State */}
-      {(matchLoading || statsLoading) && (
+      {/* Loading State - Only on initial load, not refetches */}
+      {(matchLoading || statsLoading) && !match && (
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-white text-lg">Loading match data...</div>
         </div>
       )}
       
       {/* Compact Match Header */}
-      <div className="glass-card p-4 mb-6">
+      {match && (
+        <>
+        <div className="glass-card p-4 mb-6">
         <div className="grid grid-cols-3 gap-4 items-center">
           {/* Left: Match Info & Timer */}
           <div className="space-y-2">
@@ -638,6 +640,8 @@ export default function MatchRecording() {
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* Player Selection Modal */}
       {pendingEvent && (
