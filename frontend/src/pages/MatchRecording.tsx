@@ -54,6 +54,7 @@ export default function MatchRecording() {
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false)
   const [isPossessionModalOpen, setIsPossessionModalOpen] = useState(false)
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
+  const [activeKickoutTab, setActiveKickoutTab] = useState<string>('scoring')
   
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -221,22 +222,31 @@ export default function MatchRecording() {
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     
-    // Determine team based on event type
-    const isHomeTeam = !eventType.startsWith('OPP_')
+    // Determine team based on event type prefix OR current possession
+    const isHomeTeam = eventType.startsWith('OPP_') 
+      ? false  // OPP_ prefix = opponent action
+      : eventType.startsWith('OWN_')
+        ? true  // OWN_ prefix = home action
+        : ballPosition.team === PossessionTeam.DUNGLOE  // No prefix = use possession
     
-    // Events that don't require player selection (contested/team events)
+    // Events that don't require player selection
     const noPlayerNeeded = [
+      // Contested kickout events (no clear winner)
       EventType.OWN_KICKOUT_LOST,
       EventType.OPP_KICKOUT_LOST,
       EventType.OWN_KICKOUT_BREAK_LOST,
       EventType.OPP_KICKOUT_BREAK_LOST,
     ]
     
-    if (noPlayerNeeded.includes(eventType as EventType)) {
+    // Opponent scoring events - don't need player (we only track our players)
+    const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.WIDE]
+    const isOpponentScoring = scoringEvents.includes(eventType) && !isHomeTeam
+    
+    if (noPlayerNeeded.includes(eventType as EventType) || isOpponentScoring) {
       // Record immediately without player selection
       recordEventWithoutPlayer(eventType, isHomeTeam)
     } else {
-      // Open player selection modal
+      // Open player selection modal for Dungloe players only
       setPendingEvent({
         eventType: eventType as EventType,
         team: isHomeTeam ? 'dungloe' : 'opponent',
@@ -263,6 +273,25 @@ export default function MatchRecording() {
         is_home_team: isHomeTeam,
         notes: undefined
       })
+      
+      // Check if this was a scoring event - reset ball and auto-select kickout tab
+      const scoringEvents = [EventType.GOAL, EventType.POINT]
+      const isScore = scoringEvents.includes(eventType)
+      
+      if (isScore) {
+        // Reset ball to center midfield after score
+        const kickoutTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+        setBallPosition({
+          x: 50,  // Center horizontally
+          y: 50,  // Center vertically (midfield)
+          team: kickoutTeam  // Other team gets kickout
+        })
+        
+        // Auto-select appropriate kickout tab
+        setActiveKickoutTab(isHomeTeam ? 'opp_kickouts' : 'our_kickouts')
+        
+        console.log('Ball reset to center midfield for kickout, tab auto-selected')
+      }
       
       // Force refetch stats immediately after event
       await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
@@ -307,12 +336,17 @@ export default function MatchRecording() {
       
       if (isScore) {
         // Reset ball to center midfield after score
+        const kickoutTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
         setBallPosition({
           x: 50,  // Center horizontally
           y: 50,  // Center vertically (midfield)
-          team: pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE  // Other team gets kickout
+          team: kickoutTeam  // Other team gets kickout
         })
-        console.log('Ball reset to center midfield for kickout')
+        
+        // Auto-select appropriate kickout tab
+        setActiveKickoutTab(pendingEvent.team === 'dungloe' ? 'opp_kickouts' : 'our_kickouts')
+        
+        console.log('Ball reset to center midfield for kickout, tab auto-selected')
       }
       
       // Auto-change possession for turnover events
@@ -508,6 +542,9 @@ export default function MatchRecording() {
               <CategorizedActionButtons 
                 onActionSelect={handleQuickAction}
                 disabled={matchPhase !== 'first_half' && matchPhase !== 'second_half'}
+                activeCategory={activeKickoutTab}
+                onCategoryChange={setActiveKickoutTab}
+                currentPossession={ballPosition.team}
               />
             </div>
           </div>

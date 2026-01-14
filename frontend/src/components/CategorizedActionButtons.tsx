@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { EventType } from '@/types'
+import { useState, useEffect } from 'react'
+import { EventType, PossessionTeam } from '@/types'
 import { 
   Target, 
   TrendingUp, 
@@ -12,6 +12,9 @@ import {
 interface CategorizedActionButtonsProps {
   onActionSelect: (eventType: EventType) => void
   disabled?: boolean
+  activeCategory?: string
+  onCategoryChange?: (category: string) => void
+  currentPossession?: PossessionTeam
 }
 
 interface ActionButton {
@@ -66,10 +69,46 @@ const categories = [
   },
 ]
 
-export default function CategorizedActionButtons({ onActionSelect, disabled = false }: CategorizedActionButtonsProps) {
-  const [activeCategory, setActiveCategory] = useState('scoring')
+export default function CategorizedActionButtons({ 
+  onActionSelect, 
+  disabled = false,
+  activeCategory: externalActiveCategory,
+  onCategoryChange,
+  currentPossession = PossessionTeam.DUNGLOE
+}: CategorizedActionButtonsProps) {
+  const [internalActiveCategory, setInternalActiveCategory] = useState('scoring')
+  
+  // Use external control if provided, otherwise use internal state
+  const activeCategory = externalActiveCategory ?? internalActiveCategory
+  const setActiveCategory = onCategoryChange ?? setInternalActiveCategory
+  
+  // Sync internal state when external prop changes
+  useEffect(() => {
+    if (externalActiveCategory) {
+      setInternalActiveCategory(externalActiveCategory)
+    }
+  }, [externalActiveCategory])
 
   const currentCategory = categories.find(cat => cat.id === activeCategory)
+  
+  // Determine if a button should be disabled based on possession
+  const isButtonDisabled = (eventType: EventType): boolean => {
+    const hasPossession = currentPossession === PossessionTeam.DUNGLOE
+    
+    // If Dungloe has possession, disable these opponent-focused events:
+    if (hasPossession) {
+      return [
+        EventType.TURNOVER_WON,      // Can't win turnover if we have ball
+        EventType.OPP_UNFORCED_ERROR // Opponent can't error if we have ball
+      ].includes(eventType)
+    } else {
+      // If opponent has possession, disable these Dungloe-focused events:
+      return [
+        EventType.TURNOVER_LOST,     // Can't lose turnover if opponent has ball
+        EventType.OUR_UNFORCED_ERROR // We can't error if opponent has ball
+      ].includes(eventType)
+    }
+  }
 
   return (
     <div className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -77,12 +116,18 @@ export default function CategorizedActionButtons({ onActionSelect, disabled = fa
       <div className="p-2 flex flex-wrap gap-1.5 justify-center min-h-[48px]">
         {currentCategory?.buttons.map((button) => {
           const Icon = button.icon
+          const isContextDisabled = isButtonDisabled(button.eventType)
+          const isDisabled = disabled || isContextDisabled
+          
           return (
             <button
               key={button.eventType}
               onClick={() => onActionSelect(button.eventType)}
-              disabled={disabled}
-              className="btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isDisabled}
+              title={isContextDisabled ? 'Not applicable with current possession' : ''}
+              className={`btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs ${
+                isDisabled ? 'opacity-30 cursor-not-allowed' : ''
+              }`}
             >
               <Icon size={14} />
               <span>{button.label}</span>
