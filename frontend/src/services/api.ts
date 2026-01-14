@@ -185,31 +185,13 @@ export const matchEventsAPI = {
     notes?: string;
   }): Promise<MatchEvent> => {
     // Convert is_home_team to team field expected by backend
-    const { is_home_team, event_type, ...rest } = event;
-    
-    // Map frontend event types to backend enum values
-    // Frontend has OUR_/OPP_ prefixes, backend uses generic types
-    let backendEventType = event_type.toLowerCase();
-    
-    // Strip prefixes and map to backend enum
-    if (backendEventType.startsWith('our_') || backendEventType.startsWith('opp_')) {
-      // Remove prefix
-      backendEventType = backendEventType.replace(/^(our_|opp_)/, '');
-      
-      // Map specific types
-      if (backendEventType === 'unforced_error') {
-        backendEventType = 'turnover_lost';
-      } else if (backendEventType.includes('kickout_break')) {
-        backendEventType = 'breaking_ball_won';
-      }
-    }
+    const { is_home_team, ...rest } = event;
     
     return fetchAPI<MatchEvent>('/match-events/', {
       method: 'POST',
       body: JSON.stringify({
         ...rest,
-        team: is_home_team ? 'dungloe' : 'opponent',
-        event_type: backendEventType
+        team: is_home_team ? 'dungloe' : 'opponent'
       }),
     });
   },

@@ -191,6 +191,40 @@ export default function MatchRecording() {
     }
   }
 
+  // Map frontend event types (from UI buttons) to backend API event types
+  const mapEventTypeToBackend = (frontendEventType: string): string => {
+    // Remove case sensitivity
+    const eventLower = frontendEventType.toLowerCase()
+    
+    // Map frontend button types to backend enum values
+    const mapping: Record<string, string> = {
+      // Scoring (already match backend)
+      'goal': 'goal',
+      'point': 'point',
+      'wide': 'wide',
+      
+      // Turnovers
+      'turnover_won': 'turnover_won',
+      'turnover_lost': 'turnover_lost',
+      'our_unforced_error': 'turnover_lost',  // Unforced error is a type of turnover
+      'opp_unforced_error': 'turnover_won',   // Their error is our win
+      
+      // Kickouts - strip OWN_/OPP_ prefix, use team field to distinguish
+      'own_kickout_won': 'kickout_won',
+      'own_kickout_lost': 'kickout_lost',
+      'opp_kickout_won': 'kickout_won',
+      'opp_kickout_lost': 'kickout_lost',
+      
+      // Breaking balls - strip prefix
+      'own_kickout_break_won': 'breaking_ball_won',
+      'own_kickout_break_lost': 'breaking_ball_won',  // Lost break is still a breaking ball event
+      'opp_kickout_break_won': 'breaking_ball_won',
+      'opp_kickout_break_lost': 'breaking_ball_won',
+    }
+    
+    return mapping[eventLower] || eventLower  // Fallback to original if no mapping
+  }
+
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     
@@ -218,10 +252,13 @@ export default function MatchRecording() {
     
     // Record event to backend
     try {
+      // Map frontend event type to backend API enum
+      const backendEventType = mapEventTypeToBackend(pendingEvent.eventType)
+      
       await recordEvent.mutateAsync({
         match_id: matchId,
         player_id: player.id,
-        event_type: pendingEvent.eventType,
+        event_type: backendEventType,  // Use mapped backend type
         minute: minute,
         half: currentHalf,
         x_coord: pendingEvent.position.x,
