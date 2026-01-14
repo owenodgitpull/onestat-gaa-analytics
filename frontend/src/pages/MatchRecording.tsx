@@ -222,20 +222,42 @@ export default function MatchRecording() {
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     
-    // Determine team based on event type prefix OR current possession
-    const isHomeTeam = eventType.startsWith('OPP_') 
-      ? false  // OPP_ prefix = opponent action
-      : eventType.startsWith('OWN_')
-        ? true  // OWN_ prefix = home action
-        : ballPosition.team === PossessionTeam.DUNGLOE  // No prefix = use possession
+    // Special handling for breaking balls:
+    // "Break Won" = Dungloe won it (always our player)
+    // "Break Lost" = Opponent won it (no player needed)
+    const isBreakWon = eventType.includes('BREAK_WON')
+    const isBreakLost = eventType.includes('BREAK_LOST')
+    
+    // Determine team based on event type
+    let isHomeTeam: boolean
+    
+    if (isBreakWon) {
+      // Any "Break Won" means Dungloe won the breaking ball
+      isHomeTeam = true
+    } else if (isBreakLost) {
+      // Any "Break Lost" means opponent won it (we'll skip player selection)
+      isHomeTeam = false
+    } else if (eventType.startsWith('OPP_')) {
+      // OPP_ prefix for other events (kickout won/lost)
+      isHomeTeam = false
+    } else if (eventType.startsWith('OWN_')) {
+      // OWN_ prefix for other events
+      isHomeTeam = true
+    } else {
+      // No prefix (scoring, turnovers) = use possession
+      isHomeTeam = ballPosition.team === PossessionTeam.DUNGLOE
+    }
     
     // Events that don't require player selection
     const noPlayerNeeded = [
       // Contested kickout events (no clear winner)
       EventType.OWN_KICKOUT_LOST,
       EventType.OPP_KICKOUT_LOST,
+      // Breaking ball lost (opponent won, we don't track their players)
       EventType.OWN_KICKOUT_BREAK_LOST,
       EventType.OPP_KICKOUT_BREAK_LOST,
+      // Opponent won their own kickout (we don't track opponent players)
+      EventType.OPP_KICKOUT_WON,
     ]
     
     // Opponent scoring events - don't need player (we only track our players)
