@@ -35,6 +35,7 @@ class EventType(enum.Enum):
     KICKOUT_WON = "kickout_won"  # Won kickout
     KICKOUT_LOST = "kickout_lost"  # Lost kickout
     BREAKING_BALL_WON = "breaking_ball_won"  # Won breaking ball after kickout
+    BREAKING_BALL_LOST = "breaking_ball_lost"  # Lost breaking ball after kickout
     
     # Cards
     YELLOW_CARD = "yellow_card"  # Player booked

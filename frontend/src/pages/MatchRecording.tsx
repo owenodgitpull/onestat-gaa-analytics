@@ -219,9 +219,9 @@ export default function MatchRecording() {
       
       // Breaking balls - strip prefix
       'own_kickout_break_won': 'breaking_ball_won',
-      'own_kickout_break_lost': 'breaking_ball_won',  // Lost break is still a breaking ball event
+      'own_kickout_break_lost': 'breaking_ball_lost',  // Lost break is distinct!
       'opp_kickout_break_won': 'breaking_ball_won',
-      'opp_kickout_break_lost': 'breaking_ball_won',
+      'opp_kickout_break_lost': 'breaking_ball_lost',
     }
     
     return mapping[eventLower] || eventLower  // Fallback to original if no mapping
