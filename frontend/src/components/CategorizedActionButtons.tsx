@@ -26,22 +26,12 @@ interface ActionButton {
 const categories = [
   {
     id: 'scoring',
-    label: 'Our Scoring',
+    label: 'Scoring',
     icon: Target,
     buttons: [
       { eventType: EventType.GOAL, label: 'Goal', icon: Target },
       { eventType: EventType.POINT, label: 'Point', icon: TrendingUp },
       { eventType: EventType.WIDE, label: 'Wide', icon: XCircle },
-    ]
-  },
-  {
-    id: 'opp_scoring',
-    label: 'Opp Scoring',
-    icon: AlertCircle,
-    buttons: [
-      { eventType: EventType.OPP_GOAL, label: 'Opp Goal', icon: Target },
-      { eventType: EventType.OPP_POINT, label: 'Opp Point', icon: TrendingUp },
-      { eventType: EventType.OPP_WIDE, label: 'Opp Wide', icon: XCircle },
     ]
   },
   {

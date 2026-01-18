@@ -78,17 +78,13 @@ export interface MatchEvent {
 }
 
 export enum EventType {
-  // Dungloe scoring
+  // Scoring (team determined by possession)
   GOAL = 'goal',
   POINT = 'point',
   TWO_POINT = 'two_point',
   WIDE = 'wide',
   SHORT = 'short',
   SAVED = 'saved',
-  // Opponent scoring
-  OPP_GOAL = 'opp_goal',
-  OPP_POINT = 'opp_point',
-  OPP_WIDE = 'opp_wide',
   // Turnovers
   TURNOVER_LOST = 'turnover_lost',
   TURNOVER_WON = 'turnover_won',
