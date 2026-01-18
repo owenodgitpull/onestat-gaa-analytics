@@ -54,7 +54,7 @@ export default function MatchRecording() {
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false)
   const [isPossessionModalOpen, setIsPossessionModalOpen] = useState(false)
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
-  const [activeKickoutTab, setActiveKickoutTab] = useState<string>('scoring')
+  const [activeKickoutTab, setActiveKickoutTab] = useState<string | null>('scoring')
   
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -203,17 +203,21 @@ export default function MatchRecording() {
       'our_unforced_error': 'unforced_error',   // Our player's mistake
       'opp_unforced_error': 'unforced_error',   // Their player's mistake
       
-      // Kickouts - strip OWN_/OPP_ prefix, use team field to distinguish
+      // Kickouts - semantic mapping based on who WON the ball
+      // "OWN K/O Won" = Dungloe's kickout, Dungloe won → kickout_won
       'own_kickout_won': 'kickout_won',
+      // "OWN K/O Lost" = Dungloe's kickout, Opponent won → kickout_lost
       'own_kickout_lost': 'kickout_lost',
+      // "OPP K/O Won" = Opponent's kickout, Dungloe won → kickout_won (for Dungloe)
       'opp_kickout_won': 'kickout_won',
-      'opp_kickout_lost': 'kickout_lost',
+      // "OPP K/O Lost" = Opponent's kickout, Opponent won → kickout_won (for opponent)
+      'opp_kickout_lost': 'kickout_won',  // Changed from kickout_lost!
       
-      // Breaking balls - strip prefix
+      // Breaking balls - same logic
       'own_kickout_break_won': 'breaking_ball_won',
-      'own_kickout_break_lost': 'breaking_ball_lost',  // Lost break is distinct!
+      'own_kickout_break_lost': 'breaking_ball_lost',
       'opp_kickout_break_won': 'breaking_ball_won',
-      'opp_kickout_break_lost': 'breaking_ball_lost',
+      'opp_kickout_break_lost': 'breaking_ball_won',  // Changed! Opponent won the break
     }
     
     return mapping[eventLower] || eventLower  // Fallback to original if no mapping
@@ -222,12 +226,17 @@ export default function MatchRecording() {
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     
-    // KEY PRINCIPLE: "WON" and "LOST" are ALWAYS from Dungloe's perspective
-    // "WON" = Dungloe got possession (needs player selection)
-    // "LOST" = Opponent got possession (no player selection)
+    // KEY PRINCIPLE FOR KICKOUTS:
+    // "OWN K/O Won" = Dungloe's kickout, Dungloe won → dungloe_kickouts_won++ (needs player)
+    // "OWN K/O Lost" = Dungloe's kickout, Opponent won → dungloe_kickouts_lost++ (no player)
+    // "OPP K/O Won" = Opponent's kickout, Dungloe won → dungloe_kickouts_won++ (needs player)
+    // "OPP K/O Lost" = Opponent's kickout, Opponent won → opponent_kickouts_won++ (no player)
     
-    const isWonEvent = eventType.includes('WON')
-    const isLostEvent = eventType.includes('LOST')
+    const eventStr = String(eventType).toUpperCase()
+    const isWonEvent = eventStr.includes('WON')
+    const isLostEvent = eventStr.includes('LOST')
+    const isOppEvent = eventStr.startsWith('OPP_')
+    const isOwnEvent = eventStr.startsWith('OWN_')
     
     // Determine team based on event type
     let isHomeTeam: boolean
@@ -236,9 +245,19 @@ export default function MatchRecording() {
       // ANY "Won" event means Dungloe won it (kickout or breaking ball)
       isHomeTeam = true
     } else if (isLostEvent) {
-      // ANY "Lost" event means opponent won it
-      isHomeTeam = false
-    } else if (eventType.startsWith('OWN_')) {
+      // "Lost" events - who won depends on the prefix
+      if (isOwnEvent) {
+        // "OWN K/O Lost" = Dungloe's kickout was lost → opponent won
+        isHomeTeam = false
+      } else if (isOppEvent) {
+        // "OPP K/O Lost" = Opponent's kickout was lost → BUT opponent still kept it
+        // This means opponent took their own kickout and maintained possession (short kickout)
+        isHomeTeam = false
+      } else {
+        // Generic "Lost" = opponent won
+        isHomeTeam = false
+      }
+    } else if (eventStr.startsWith('OWN_')) {
       // OWN_ prefix = Dungloe action
       isHomeTeam = true
     } else {
@@ -297,8 +316,9 @@ export default function MatchRecording() {
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(eventType)
       
-      // Check if this was a "Won" or "Lost" kickout/breaking ball event
-      const isKickoutEvent = eventType.includes('KICKOUT') || eventType.includes('BREAK')
+      // Check if this was a kickout/breaking ball event (check the actual eventType enum value)
+      const eventTypeStr = String(eventType).toUpperCase()
+      const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
       
       if (isScore) {
         // Reset ball to center midfield after score
@@ -362,7 +382,8 @@ export default function MatchRecording() {
       const isScore = scoringEvents.includes(pendingEvent.eventType as EventType)
       
       // Check if this was a kickout/breaking ball event with player selection
-      const isKickoutEvent = pendingEvent.eventType.includes('KICKOUT') || pendingEvent.eventType.includes('BREAK')
+      const eventTypeStr = String(pendingEvent.eventType).toUpperCase()
+      const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
       
       if (isScore) {
         // Reset ball to center midfield after score
@@ -577,7 +598,7 @@ export default function MatchRecording() {
               <CategorizedActionButtons 
                 onActionSelect={handleQuickAction}
                 disabled={matchPhase !== 'first_half' && matchPhase !== 'second_half'}
-                activeCategory={activeKickoutTab}
+                activeCategory={activeKickoutTab ?? undefined}
                 onCategoryChange={setActiveKickoutTab}
                 currentPossession={ballPosition.team}
               />
