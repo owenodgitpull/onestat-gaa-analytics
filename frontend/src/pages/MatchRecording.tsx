@@ -227,26 +227,27 @@ export default function MatchRecording() {
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     
-    // Special handling for breaking balls:
-    // "Break Won" = Dungloe won it (always our player)
-    // "Break Lost" = Opponent won it (no player needed)
-    const isBreakWon = eventType.includes('BREAK_WON')
-    const isBreakLost = eventType.includes('BREAK_LOST')
+    // KEY PRINCIPLE: "WON" and "LOST" are ALWAYS from Dungloe's perspective
+    // "WON" = Dungloe got possession (needs player selection)
+    // "LOST" = Opponent got possession (no player selection)
+    
+    const isWonEvent = eventType.includes('WON')
+    const isLostEvent = eventType.includes('LOST')
     
     // Determine team based on event type
     let isHomeTeam: boolean
     
-    if (isBreakWon) {
-      // Any "Break Won" means Dungloe won the breaking ball
+    if (isWonEvent) {
+      // ANY "Won" event means Dungloe won it (kickout or breaking ball)
       isHomeTeam = true
-    } else if (isBreakLost) {
-      // Any "Break Lost" means opponent won it (we'll skip player selection)
+    } else if (isLostEvent) {
+      // ANY "Lost" event means opponent won it
       isHomeTeam = false
     } else if (eventType.startsWith('OPP_')) {
-      // OPP_ prefix = opponent action (includes OPP_GOAL, OPP_POINT, OPP_WIDE, etc.)
+      // OPP_ prefix for scoring events = opponent action
       isHomeTeam = false
     } else if (eventType.startsWith('OWN_')) {
-      // OWN_ prefix = Dungloe action
+      // OWN_ prefix = Dungloe action (shouldn't happen for kickouts, but defensive)
       isHomeTeam = true
     } else {
       // No prefix (GOAL, POINT, WIDE, turnovers) = always Dungloe
@@ -254,15 +255,13 @@ export default function MatchRecording() {
     }
     
     // Events that don't require player selection
+    // ONLY "LOST" events and opponent scoring
     const noPlayerNeeded = [
-      // Contested kickout events (no clear winner)
+      // ALL "Lost" events = opponent won, we don't track their players
       EventType.OWN_KICKOUT_LOST,
       EventType.OPP_KICKOUT_LOST,
-      // Breaking ball lost (opponent won, we don't track their players)
       EventType.OWN_KICKOUT_BREAK_LOST,
       EventType.OPP_KICKOUT_BREAK_LOST,
-      // Opponent won their own kickout (we don't track opponent players)
-      EventType.OPP_KICKOUT_WON,
       // Opponent scoring (we don't track opponent players)
       EventType.OPP_GOAL,
       EventType.OPP_POINT,
@@ -273,7 +272,8 @@ export default function MatchRecording() {
       // Record immediately without player selection
       recordEventWithoutPlayer(eventType, isHomeTeam)
     } else {
-      // Open player selection modal for Dungloe players only
+      // Open player selection modal for Dungloe players
+      // This includes ALL "Won" events and Dungloe scoring
       setPendingEvent({
         eventType: eventType as EventType,
         team: isHomeTeam ? 'dungloe' : 'opponent',
@@ -305,14 +305,8 @@ export default function MatchRecording() {
       const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.OPP_GOAL, EventType.OPP_POINT]
       const isScore = scoringEvents.includes(eventType)
       
-      // Check if this was a kickout event - return to scoring tab
-      const kickoutEvents = [
-        EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_LOST,
-        EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_LOST,
-        EventType.OWN_KICKOUT_BREAK_WON, EventType.OWN_KICKOUT_BREAK_LOST,
-        EventType.OPP_KICKOUT_BREAK_WON, EventType.OPP_KICKOUT_BREAK_LOST
-      ]
-      const isKickoutEvent = kickoutEvents.includes(eventType)
+      // Check if this was a "Lost" event (opponent won) - return to scoring tab
+      const isLostEvent = eventType.toString().includes('LOST')
       
       if (isScore) {
         // Reset ball to center midfield after score
@@ -327,11 +321,11 @@ export default function MatchRecording() {
         setActiveKickoutTab(isHomeTeam ? 'opp_kickouts' : 'our_kickouts')
         
         console.log('Ball reset to center midfield for kickout, tab auto-selected')
-      } else if (isKickoutEvent) {
-        // After kickout is resolved, return to scoring tab
+      } else if (isLostEvent) {
+        // After ANY "Lost" event, return to scoring tab
         setActiveKickoutTab(null)
         
-        console.log('Kickout resolved, returning to scoring tab')
+        console.log('Lost event (opponent won), returning to scoring tab')
       }
       
       // Force refetch stats immediately after event
@@ -375,11 +369,8 @@ export default function MatchRecording() {
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(pendingEvent.eventType as EventType)
       
-      // Check if this was a kickout event that required player selection
-      const kickoutEventsWithPlayer = [
-        EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_BREAK_WON, EventType.OPP_KICKOUT_BREAK_WON
-      ]
-      const isKickoutWithPlayer = kickoutEventsWithPlayer.includes(pendingEvent.eventType as EventType)
+      // Check if this was ANY "Won" event (kickout or breaking ball)
+      const isWonEvent = pendingEvent.eventType.includes('WON')
       
       if (isScore) {
         // Reset ball to center midfield after score
@@ -394,11 +385,11 @@ export default function MatchRecording() {
         setActiveKickoutTab(pendingEvent.team === 'dungloe' ? 'opp_kickouts' : 'our_kickouts')
         
         console.log('Ball reset to center midfield for kickout, tab auto-selected')
-      } else if (isKickoutWithPlayer) {
-        // After kickout with player is resolved, return to scoring tab
+      } else if (isWonEvent) {
+        // After ANY "Won" event is resolved, return to scoring tab
         setActiveKickoutTab(null)
         
-        console.log('Kickout with player resolved, returning to scoring tab')
+        console.log('Kickout/Breaking ball won event resolved, returning to scoring tab')
       }
       
       // Auto-change possession for turnover events
