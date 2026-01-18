@@ -50,10 +50,10 @@ const categories = [
     label: 'Our K/O',
     icon: CheckCircle,
     buttons: [
-      { eventType: EventType.OWN_KICKOUT_WON, label: 'K/O Won', icon: CheckCircle },
-      { eventType: EventType.OWN_KICKOUT_LOST, label: 'K/O Lost', icon: XCircle },
-      { eventType: EventType.OWN_KICKOUT_BREAK_WON, label: 'Break Won', icon: Zap },
-      { eventType: EventType.OWN_KICKOUT_BREAK_LOST, label: 'Break Lost', icon: XCircle },
+      { eventType: EventType.OWN_KICKOUT_DUNGLOE_WON, label: 'Dungloe Won', icon: CheckCircle },
+      { eventType: EventType.OWN_KICKOUT_OPPOSITION_WON, label: 'Opposition Won', icon: XCircle },
+      { eventType: EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK, label: 'Dungloe Won Break', icon: Zap },
+      { eventType: EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK, label: 'Opposition Won Break', icon: XCircle },
     ]
   },
   {
@@ -61,10 +61,10 @@ const categories = [
     label: 'Opp K/O',
     icon: AlertCircle,
     buttons: [
-      { eventType: EventType.OPP_KICKOUT_WON, label: 'K/O Won', icon: CheckCircle },
-      { eventType: EventType.OPP_KICKOUT_LOST, label: 'K/O Lost', icon: XCircle },
-      { eventType: EventType.OPP_KICKOUT_BREAK_WON, label: 'Break Won', icon: Zap },
-      { eventType: EventType.OPP_KICKOUT_BREAK_LOST, label: 'Break Lost', icon: XCircle },
+      { eventType: EventType.OPP_KICKOUT_DUNGLOE_WON, label: 'Dungloe Won', icon: CheckCircle },
+      { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON, label: 'Opposition Won', icon: XCircle },
+      { eventType: EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK, label: 'Dungloe Won Break', icon: Zap },
+      { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK, label: 'Opposition Won Break', icon: XCircle },
     ]
   },
 ]
