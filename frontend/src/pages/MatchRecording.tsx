@@ -300,7 +300,7 @@ export default function MatchRecording() {
       // Check if this was a kickout/breaking ball event (check the actual eventType enum value)
       const eventTypeStr = String(eventType).toUpperCase()
       const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
-      
+
       // Check who won the kickout/break
       const isDungloeWonKickout = eventTypeStr.includes('DUNGLOE_WON')
       const isOppositionWonKickout = eventTypeStr.includes('OPPOSITION_WON')
@@ -318,36 +318,38 @@ export default function MatchRecording() {
         setActiveKickoutTab(isHomeTeam ? 'opp_kickouts' : 'our_kickouts')
 
         console.log('Ball reset to center midfield for kickout, tab auto-selected')
-      } else if (isKickoutEvent) {
-        // After kickout/break event without player, update possession based on who won
-        if (isOppositionWonKickout) {
-          // Opposition won the kickout/break → Opposition gets possession
-          setBallPosition(prev => ({
-            ...prev,
-            team: PossessionTeam.OPPONENT
-          }))
-          
-          // Record possession change to backend
-          try {
-            await recordPossession.mutateAsync({
-              match_id: matchId,
-              x_coord: ballPosition.x,
-              y_coord: ballPosition.y,
-              team: 'away',  // Opposition
-              timestamp: new Date(),
-              minute: minute,
-              half: currentHalf
-            })
-            console.log('Opposition won kickout - possession updated')
-          } catch (error) {
-            console.error('Failed to record kickout possession:', error)
-          }
-        }
-        
-        // Return to scoring tab after kickout event
+      } else {
+        // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
+        
+        if (isKickoutEvent) {
+          // After kickout/break event without player, update possession based on who won
+          if (isOppositionWonKickout) {
+            // Opposition won the kickout/break → Opposition gets possession
+            setBallPosition(prev => ({
+              ...prev,
+              team: PossessionTeam.OPPONENT
+            }))
 
-        console.log('Kickout event resolved, returning to scoring tab')
+            // Record possession change to backend
+            try {
+              await recordPossession.mutateAsync({
+                match_id: matchId,
+                x_coord: ballPosition.x,
+                y_coord: ballPosition.y,
+                team: 'away',  // Opposition
+                timestamp: new Date(),
+                minute: minute,
+                half: currentHalf
+              })
+              console.log('Opposition won kickout - possession updated')
+            } catch (error) {
+              console.error('Failed to record kickout possession:', error)
+            }
+          }
+
+          console.log('Kickout event resolved, returning to scoring tab')
+        }
       }
 
       // Force refetch stats immediately after event
@@ -394,7 +396,7 @@ export default function MatchRecording() {
       // Check if this was a kickout/breaking ball event with player selection
       const eventTypeStr = String(pendingEvent.eventType).toUpperCase()
       const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
-      
+
       // Check who won the kickout/break
       const isDungloeWonKickout = eventTypeStr.includes('DUNGLOE_WON')
       const isOppositionWonKickout = eventTypeStr.includes('OPPOSITION_WON')
@@ -412,58 +414,60 @@ export default function MatchRecording() {
         setActiveKickoutTab(pendingEvent.team === 'dungloe' ? 'opp_kickouts' : 'our_kickouts')
 
         console.log('Ball reset to center midfield for kickout, tab auto-selected')
-      } else if (isKickoutEvent) {
-        // After kickout/break event, update possession based on who won
-        if (isDungloeWonKickout) {
-          // Dungloe won the kickout/break → Dungloe gets possession
-          setBallPosition(prev => ({
-            ...prev,
-            team: PossessionTeam.DUNGLOE
-          }))
-          
-          // Record possession change to backend
-          try {
-            await recordPossession.mutateAsync({
-              match_id: matchId,
-              x_coord: pendingEvent.position.x,
-              y_coord: pendingEvent.position.y,
-              team: 'home',  // Dungloe
-              timestamp: new Date(),
-              minute: minute,
-              half: currentHalf
-            })
-            console.log('Dungloe won kickout - possession updated')
-          } catch (error) {
-            console.error('Failed to record kickout possession:', error)
-          }
-        } else if (isOppositionWonKickout) {
-          // Opposition won the kickout/break → Opposition gets possession
-          setBallPosition(prev => ({
-            ...prev,
-            team: PossessionTeam.OPPONENT
-          }))
-          
-          // Record possession change to backend
-          try {
-            await recordPossession.mutateAsync({
-              match_id: matchId,
-              x_coord: pendingEvent.position.x,
-              y_coord: pendingEvent.position.y,
-              team: 'away',  // Opposition
-              timestamp: new Date(),
-              minute: minute,
-              half: currentHalf
-            })
-            console.log('Opposition won kickout - possession updated')
-          } catch (error) {
-            console.error('Failed to record kickout possession:', error)
-          }
-        }
-        
-        // Return to scoring tab after kickout event
+      } else {
+        // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
+        
+        if (isKickoutEvent) {
+          // After kickout/break event, update possession based on who won
+          if (isDungloeWonKickout) {
+            // Dungloe won the kickout/break → Dungloe gets possession
+            setBallPosition(prev => ({
+              ...prev,
+              team: PossessionTeam.DUNGLOE
+            }))
 
-        console.log('Kickout/breaking ball event with player resolved, returning to scoring tab')
+            // Record possession change to backend
+            try {
+              await recordPossession.mutateAsync({
+                match_id: matchId,
+                x_coord: pendingEvent.position.x,
+                y_coord: pendingEvent.position.y,
+                team: 'home',  // Dungloe
+                timestamp: new Date(),
+                minute: minute,
+                half: currentHalf
+              })
+              console.log('Dungloe won kickout - possession updated')
+            } catch (error) {
+              console.error('Failed to record kickout possession:', error)
+            }
+          } else if (isOppositionWonKickout) {
+            // Opposition won the kickout/break → Opposition gets possession
+            setBallPosition(prev => ({
+              ...prev,
+              team: PossessionTeam.OPPONENT
+            }))
+
+            // Record possession change to backend
+            try {
+              await recordPossession.mutateAsync({
+                match_id: matchId,
+                x_coord: pendingEvent.position.x,
+                y_coord: pendingEvent.position.y,
+                team: 'away',  // Opposition
+                timestamp: new Date(),
+                minute: minute,
+                half: currentHalf
+              })
+              console.log('Opposition won kickout - possession updated')
+            } catch (error) {
+              console.error('Failed to record kickout possession:', error)
+            }
+          }
+
+          console.log('Kickout/breaking ball event with player resolved, returning to scoring tab')
+        }
       }
 
       // Auto-change possession for turnover events
