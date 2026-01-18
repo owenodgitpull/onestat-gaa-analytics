@@ -27,6 +27,10 @@ const EVENT_LABELS = {
   turnover: { title: 'Who Won?', icon: User, color: 'text-amber-400' },
   kickout: { title: 'Who Won?', icon: User, color: 'text-indigo-400' },
   wide: { title: 'Who Took?', icon: User, color: 'text-red-400' },
+  // Turnovers
+  turnover_won: { title: 'Who Won Turnover?', icon: User, color: 'text-emerald-400' },
+  turnover_lost: { title: 'Who Lost Possession?', icon: User, color: 'text-red-400' },
+  // Unforced errors
   our_unforced_error: { title: 'Who Made Unforced Error?', icon: User, color: 'text-red-400' },
   opp_unforced_error: { title: 'Who Made Unforced Error?', icon: User, color: 'text-red-400' },
   // New explicit kickout labels
@@ -53,7 +57,11 @@ export default function PlayerSelectionModal({
 
   if (!isOpen) return null
 
-  const eventInfo = EVENT_LABELS[eventType]
+  const eventInfo = EVENT_LABELS[eventType] || { 
+    title: 'Select Player', 
+    icon: User, 
+    color: 'text-white' 
+  }
   const Icon = eventInfo.icon
 
   // Ensure players is an array
