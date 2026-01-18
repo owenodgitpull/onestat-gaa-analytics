@@ -26,12 +26,22 @@ interface ActionButton {
 const categories = [
   {
     id: 'scoring',
-    label: 'Scoring',
+    label: 'Our Scoring',
     icon: Target,
     buttons: [
       { eventType: EventType.GOAL, label: 'Goal', icon: Target },
       { eventType: EventType.POINT, label: 'Point', icon: TrendingUp },
       { eventType: EventType.WIDE, label: 'Wide', icon: XCircle },
+    ]
+  },
+  {
+    id: 'opp_scoring',
+    label: 'Opp Scoring',
+    icon: AlertCircle,
+    buttons: [
+      { eventType: EventType.OPP_GOAL, label: 'Opp Goal', icon: Target },
+      { eventType: EventType.OPP_POINT, label: 'Opp Point', icon: TrendingUp },
+      { eventType: EventType.OPP_WIDE, label: 'Opp Wide', icon: XCircle },
     ]
   },
   {
@@ -78,13 +88,16 @@ export default function CategorizedActionButtons({
 }: CategorizedActionButtonsProps) {
   const [internalActiveCategory, setInternalActiveCategory] = useState('scoring')
   
-  // Use external control if provided, otherwise use internal state
-  const activeCategory = externalActiveCategory ?? internalActiveCategory
+  // Use external control if provided (and not null), otherwise use internal state
+  // When externalActiveCategory is explicitly null, return to 'scoring'
+  const activeCategory = externalActiveCategory === null ? 'scoring' : (externalActiveCategory ?? internalActiveCategory)
   const setActiveCategory = onCategoryChange ?? setInternalActiveCategory
   
   // Sync internal state when external prop changes
   useEffect(() => {
-    if (externalActiveCategory) {
+    if (externalActiveCategory === null) {
+      setInternalActiveCategory('scoring')
+    } else if (externalActiveCategory) {
       setInternalActiveCategory(externalActiveCategory)
     }
   }, [externalActiveCategory])

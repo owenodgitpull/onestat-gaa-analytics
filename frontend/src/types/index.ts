@@ -78,16 +78,23 @@ export interface MatchEvent {
 }
 
 export enum EventType {
+  // Dungloe scoring
   GOAL = 'goal',
   POINT = 'point',
   TWO_POINT = 'two_point',
   WIDE = 'wide',
   SHORT = 'short',
   SAVED = 'saved',
+  // Opponent scoring
+  OPP_GOAL = 'opp_goal',
+  OPP_POINT = 'opp_point',
+  OPP_WIDE = 'opp_wide',
+  // Turnovers
   TURNOVER_LOST = 'turnover_lost',
   TURNOVER_WON = 'turnover_won',
   OUR_UNFORCED_ERROR = 'our_unforced_error',
   OPP_UNFORCED_ERROR = 'opp_unforced_error',
+  // Kickouts
   KICKOUT_WON = 'kickout_won',
   KICKOUT_LOST = 'kickout_lost',
   OWN_KICKOUT_WON = 'own_kickout_won',
@@ -99,6 +106,7 @@ export enum EventType {
   OPP_KICKOUT_BREAK_WON = 'opp_kickout_break_won',
   OPP_KICKOUT_BREAK_LOST = 'opp_kickout_break_lost',
   BREAKING_BALL_WON = 'breaking_ball_won',
+  // Cards & fouls
   YELLOW_CARD = 'yellow_card',
   RED_CARD = 'red_card',
   FREE_WON = 'free_won',
