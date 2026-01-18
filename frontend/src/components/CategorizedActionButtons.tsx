@@ -12,8 +12,8 @@ import {
 interface CategorizedActionButtonsProps {
   onActionSelect: (eventType: EventType) => void
   disabled?: boolean
-  activeCategory?: string
-  onCategoryChange?: (category: string) => void
+  activeCategory?: string | null
+  onCategoryChange?: (category: string | null) => void
   currentPossession?: PossessionTeam
 }
 

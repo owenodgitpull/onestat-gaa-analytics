@@ -321,7 +321,7 @@ export default function MatchRecording() {
       } else {
         // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
-        
+
         if (isKickoutEvent) {
           // After kickout/break event without player, update possession based on who won
           if (isOppositionWonKickout) {
@@ -417,7 +417,7 @@ export default function MatchRecording() {
       } else {
         // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
-        
+
         if (isKickoutEvent) {
           // After kickout/break event, update possession based on who won
           if (isDungloeWonKickout) {
@@ -663,7 +663,7 @@ export default function MatchRecording() {
                   <CategorizedActionButtons
                     onActionSelect={handleQuickAction}
                     disabled={matchPhase !== 'first_half' && matchPhase !== 'second_half'}
-                    activeCategory={activeKickoutTab ?? undefined}
+                    activeCategory={activeKickoutTab}
                     onCategoryChange={setActiveKickoutTab}
                     currentPossession={ballPosition.team}
                   />
