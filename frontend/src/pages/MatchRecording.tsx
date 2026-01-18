@@ -239,11 +239,17 @@ export default function MatchRecording() {
     } else if (isOppositionWon) {
       // ANY "Opposition Won" event → opponent team
       isHomeTeam = false
+    } else if (eventType === EventType.TURNOVER_WON) {
+      // Turnover Won → Always Dungloe (we won the ball)
+      isHomeTeam = true
+    } else if (eventType === EventType.TURNOVER_LOST) {
+      // Turnover Lost → Always Opponent (they won the ball from us)
+      isHomeTeam = false
     } else if (eventStr.startsWith('OWN_')) {
       // OWN_ prefix = Dungloe action
       isHomeTeam = true
     } else {
-      // No prefix (GOAL, POINT, WIDE, turnovers) = use POSSESSION
+      // No prefix (GOAL, POINT, WIDE) = use POSSESSION
       isHomeTeam = ballPosition.team === PossessionTeam.DUNGLOE
     }
 

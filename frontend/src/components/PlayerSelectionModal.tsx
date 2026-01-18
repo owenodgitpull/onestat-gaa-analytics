@@ -200,7 +200,7 @@ export default function PlayerSelectionModal({
             onClick={onClose}
             className="btn-glass w-full"
           >
-            Cancel
+            Skip
           </button>
         </div>
       </div>
