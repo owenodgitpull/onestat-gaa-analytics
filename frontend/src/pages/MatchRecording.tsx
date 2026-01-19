@@ -14,7 +14,8 @@ import {
   Clock,
   Activity,
   Play,
-  Zap
+  Zap,
+  AlertCircle
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -55,6 +56,7 @@ export default function MatchRecording() {
   const [isPossessionModalOpen, setIsPossessionModalOpen] = useState(false)
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
   const [activeKickoutTab, setActiveKickoutTab] = useState<string | null>('scoring')
+  const [awaitingKickout, setAwaitingKickout] = useState(false) // Lock ball until kickout resolved
 
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -157,6 +159,12 @@ export default function MatchRecording() {
   }
 
   const handleBallMove = async (newPosition: BallPosition) => {
+    // Block ball movement if awaiting kickout resolution
+    if (awaitingKickout) {
+      console.log('Ball movement blocked - awaiting kickout resolution')
+      return
+    }
+    
     // Only record if match is in progress
     if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time') {
       return
@@ -311,7 +319,7 @@ export default function MatchRecording() {
       // Check if this was a scoring event - reset ball and auto-select kickout tab
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(eventType)
-      
+
       // Check if this was a dead ball event - only WIDE results in kickout
       // SAVED stays in play (keeper can run with it or pass)
       const deadBallEvents = [EventType.WIDE]
@@ -336,6 +344,9 @@ export default function MatchRecording() {
 
         // Auto-select appropriate kickout tab
         setActiveKickoutTab(isHomeTeam ? 'opp_kickouts' : 'our_kickouts')
+        
+        // Lock ball until kickout is resolved
+        setAwaitingKickout(true)
 
         console.log('Ball reset to center midfield for kickout, tab auto-selected after:', eventType)
       } else {
@@ -367,6 +378,9 @@ export default function MatchRecording() {
               console.error('Failed to record kickout possession:', error)
             }
           }
+          
+          // Unlock ball - kickout resolved!
+          setAwaitingKickout(false)
 
           console.log('Kickout event resolved, returning to scoring tab')
         }
@@ -412,7 +426,7 @@ export default function MatchRecording() {
       // Check if this was a scoring event (goal or point)
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(pendingEvent.eventType as EventType)
-      
+
       // Check if this was a dead ball event - only WIDE results in kickout
       // SAVED stays in play (keeper can run with it or pass)
       const deadBallEvents = [EventType.WIDE]
@@ -438,6 +452,9 @@ export default function MatchRecording() {
 
         // Auto-select appropriate kickout tab
         setActiveKickoutTab(pendingEvent.team === 'dungloe' ? 'opp_kickouts' : 'our_kickouts')
+        
+        // Lock ball until kickout is resolved
+        setAwaitingKickout(true)
 
         console.log('Ball reset to center midfield for kickout, tab auto-selected after:', pendingEvent.eventType)
       } else {
@@ -491,6 +508,9 @@ export default function MatchRecording() {
               console.error('Failed to record kickout possession:', error)
             }
           }
+          
+          // Unlock ball - kickout resolved!
+          setAwaitingKickout(false)
 
           console.log('Kickout/breaking ball event with player resolved, returning to scoring tab')
         }
@@ -694,13 +714,25 @@ export default function MatchRecording() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Pitch Area */}
             <div className="lg:col-span-2">
+              {/* Kickout Warning Banner */}
+              {awaitingKickout && (
+                <div className="glass-card p-4 mb-4 bg-gradient-to-r from-amber-600/20 to-orange-600/20 border-2 border-amber-500/50 animate-pulse">
+                  <div className="flex items-center justify-center space-x-3">
+                    <AlertCircle size={24} className="text-amber-400" />
+                    <p className="text-white font-semibold text-lg">
+                      ⚽ Select kickout winner to continue
+                    </p>
+                  </div>
+                </div>
+              )}
+              
               {/* Pitch */}
               <div className="glass-card p-6 relative mb-4">
                 <GAAPitch
                   ballPosition={ballPosition}
                   onBallMove={handleBallMove}
                   showZones={true}
-                  readonly={matchPhase === 'not_started' || matchPhase === 'finished'}
+                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || awaitingKickout}
                 />
 
                 {/* Categorized Action Buttons - Lower position */}
