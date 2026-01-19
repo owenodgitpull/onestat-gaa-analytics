@@ -211,7 +211,7 @@ export default function MatchRecording() {
 
       // Breaking balls - same logic
       'own_kickout_dungloe_won_break': 'breaking_ball_won',      // Dungloe won break
-      'own_kickout_opposition_won_break': 'breaking_ball_lost',  // Opposition won break (Dungloe lost)
+      'own_kickout_opposition_won_break': 'breaking_ball_won',   // Opposition won break
       'opp_kickout_dungloe_won_break': 'breaking_ball_won',      // Dungloe won break
       'opp_kickout_opposition_won_break': 'breaking_ball_won',   // Opposition won break
     }
@@ -289,6 +289,12 @@ export default function MatchRecording() {
 
     try {
       const backendEventType = mapEventTypeToBackend(eventType)
+      
+      console.log('Recording event without player:', {
+        frontendType: eventType,
+        backendType: backendEventType,
+        isHomeTeam
+      })
 
       await recordEvent.mutateAsync({
         match_id: matchId,
