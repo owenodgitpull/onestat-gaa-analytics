@@ -394,6 +394,8 @@ export default function MatchRecording() {
           if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
             // Determine new possession based on event type
             let newTeam: PossessionTeam
+            let newX = ballPosition.x
+            let newY = ballPosition.y
             
             if (turnoverEventStr.includes('TURNOVER_WON')) {
               // Dungloe won the ball → Dungloe gets possession
@@ -401,8 +403,22 @@ export default function MatchRecording() {
             } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
               // Dungloe lost the ball → Opponent gets possession
               newTeam = PossessionTeam.OPPONENT
-            } else if (turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
-              // Shot dropped short or saved → Opponent gets possession
+            } else if (turnoverEventStr.includes('SAVED')) {
+              // Shot saved → Defending team gets possession at goalkeeper position
+              newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+              
+              // Move ball to goalkeeper position (inside small rectangle/goal area)
+              if (newTeam === PossessionTeam.DUNGLOE) {
+                // Dungloe keeper saved it → Ball at Dungloe goal
+                newX = 5  // Inside Dungloe goal area (x=0 is goal line)
+                newY = 50 // Center of goal
+              } else {
+                // Opponent keeper saved it → Ball at opponent goal
+                newX = 95 // Inside opponent goal area (x=100 is goal line)
+                newY = 50 // Center of goal
+              }
+            } else if (turnoverEventStr.includes('SHORT')) {
+              // Shot dropped short → Opponent gets possession (stays where it is)
               newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
             } else if (turnoverEventStr.includes('OPP_UNFORCED_ERROR')) {
               // Opponent unforced error → Dungloe gets possession
@@ -415,7 +431,7 @@ export default function MatchRecording() {
               newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
             }
             
-            const newBallPosition = { ...ballPosition, team: newTeam }
+            const newBallPosition = { x: newX, y: newY, team: newTeam }
             setBallPosition(newBallPosition)
             
             // Record the possession change to backend
@@ -579,6 +595,8 @@ export default function MatchRecording() {
       if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
         // Determine new possession based on event type
         let newTeam: PossessionTeam
+        let newX = pendingEvent.position.x
+        let newY = pendingEvent.position.y
 
         if (turnoverEventStr.includes('TURNOVER_WON')) {
           // Dungloe won the ball → Dungloe gets possession
@@ -586,8 +604,22 @@ export default function MatchRecording() {
         } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
           // Dungloe lost the ball → Opponent gets possession
           newTeam = PossessionTeam.OPPONENT
-        } else if (turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
-          // Shot dropped short or saved (keeper has it) → Opponent gets possession
+        } else if (turnoverEventStr.includes('SAVED')) {
+          // Shot saved → Defending team gets possession at goalkeeper position
+          newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+          
+          // Move ball to goalkeeper position (inside small rectangle/goal area)
+          if (newTeam === PossessionTeam.DUNGLOE) {
+            // Dungloe keeper saved it → Ball at Dungloe goal
+            newX = 5  // Inside Dungloe goal area (x=0 is goal line)
+            newY = 50 // Center of goal
+          } else {
+            // Opponent keeper saved it → Ball at opponent goal
+            newX = 95 // Inside opponent goal area (x=100 is goal line)
+            newY = 50 // Center of goal
+          }
+        } else if (turnoverEventStr.includes('SHORT')) {
+          // Shot dropped short → Opponent gets possession (stays where it is)
           newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
         } else if (turnoverEventStr.includes('UNFORCED_ERROR')) {
           // Unforced error → Other team gets possession
@@ -597,7 +629,7 @@ export default function MatchRecording() {
           newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
         }
 
-        const newBallPosition = { ...pendingEvent.position, team: newTeam }
+        const newBallPosition = { x: newX, y: newY, team: newTeam }
         setBallPosition(newBallPosition)
 
         // Record the possession change to backend
