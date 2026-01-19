@@ -275,8 +275,9 @@ export default function MatchRecording() {
       EventType.OPP_UNFORCED_ERROR,  // Opponent's mistake - we don't track their players
     ]
 
-    // Opponent scoring - check if opponent has possession
-    const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.WIDE]
+    // Opponent scoring/shooting - check if opponent has possession
+    // We don't track opponent players for ANY events
+    const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.WIDE, EventType.SAVED]
     const isOpponentScoring = scoringEvents.includes(eventType) && !isHomeTeam
 
     if (noPlayerNeeded.includes(eventType as EventType) || isOpponentScoring) {
