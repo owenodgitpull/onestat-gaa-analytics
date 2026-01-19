@@ -289,7 +289,7 @@ export default function MatchRecording() {
 
     try {
       const backendEventType = mapEventTypeToBackend(eventType)
-      
+
       console.log('Recording event without player:', {
         frontendType: eventType,
         backendType: backendEventType,
@@ -311,6 +311,10 @@ export default function MatchRecording() {
       // Check if this was a scoring event - reset ball and auto-select kickout tab
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(eventType)
+      
+      // Check if this was a dead ball event (wide, short, saved) - results in kickout
+      const deadBallEvents = [EventType.WIDE, EventType.SHORT, EventType.SAVED]
+      const isDeadBall = deadBallEvents.includes(eventType)
 
       // Check if this was a kickout/breaking ball event (check the actual eventType enum value)
       const eventTypeStr = String(eventType).toUpperCase()
@@ -320,8 +324,8 @@ export default function MatchRecording() {
       const isDungloeWonKickout = eventTypeStr.includes('DUNGLOE_WON')
       const isOppositionWonKickout = eventTypeStr.includes('OPPOSITION_WON')
 
-      if (isScore) {
-        // Reset ball to center midfield after score
+      if (isScore || isDeadBall) {
+        // Reset ball to center midfield after score or dead ball
         const kickoutTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
         setBallPosition({
           x: 50,  // Center horizontally
@@ -332,7 +336,7 @@ export default function MatchRecording() {
         // Auto-select appropriate kickout tab
         setActiveKickoutTab(isHomeTeam ? 'opp_kickouts' : 'our_kickouts')
 
-        console.log('Ball reset to center midfield for kickout, tab auto-selected')
+        console.log('Ball reset to center midfield for kickout, tab auto-selected after:', eventType)
       } else {
         // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
@@ -407,6 +411,10 @@ export default function MatchRecording() {
       // Check if this was a scoring event (goal or point)
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(pendingEvent.eventType as EventType)
+      
+      // Check if this was a dead ball event (wide, short, saved) - results in kickout
+      const deadBallEvents = [EventType.WIDE, EventType.SHORT, EventType.SAVED]
+      const isDeadBall = deadBallEvents.includes(pendingEvent.eventType as EventType)
 
       // Check if this was a kickout/breaking ball event with player selection
       const eventTypeStr = String(pendingEvent.eventType).toUpperCase()
@@ -416,8 +424,9 @@ export default function MatchRecording() {
       const isDungloeWonKickout = eventTypeStr.includes('DUNGLOE_WON')
       const isOppositionWonKickout = eventTypeStr.includes('OPPOSITION_WON')
 
-      if (isScore) {
-        // Reset ball to center midfield after score
+      if (isScore || isDeadBall) {
+        // Reset ball to center midfield after score or dead ball
+        // After score/wide/short/saved, the defending team takes kickout
         const kickoutTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
         setBallPosition({
           x: 50,  // Center horizontally
@@ -428,7 +437,7 @@ export default function MatchRecording() {
         // Auto-select appropriate kickout tab
         setActiveKickoutTab(pendingEvent.team === 'dungloe' ? 'opp_kickouts' : 'our_kickouts')
 
-        console.log('Ball reset to center midfield for kickout, tab auto-selected')
+        console.log('Ball reset to center midfield for kickout, tab auto-selected after:', pendingEvent.eventType)
       } else {
         // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
