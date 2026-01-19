@@ -266,12 +266,13 @@ export default function MatchRecording() {
     console.log('Determined isHomeTeam:', isHomeTeam, 'for event:', eventType)
 
     // Events that don't require player selection
-    // Only "Opposition Won" events (we don't track their players)
+    // Only "Opposition Won" events and opponent errors (we don't track their players)
     const noPlayerNeeded = [
       EventType.OWN_KICKOUT_OPPOSITION_WON,
       EventType.OPP_KICKOUT_OPPOSITION_WON,
       EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
       EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+      EventType.OPP_UNFORCED_ERROR,  // Opponent's mistake - we don't track their players
     ]
 
     // Opponent scoring - check if opponent has possession
@@ -384,6 +385,54 @@ export default function MatchRecording() {
           setAwaitingKickout(false)
 
           console.log('Kickout event resolved, returning to scoring tab')
+        } else {
+          // Handle possession change for non-kickout, non-scoring events
+          // (e.g., turnovers, unforced errors, saved shots)
+          const turnoverEventStr = String(eventType).toUpperCase()
+          
+          if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
+            // Determine new possession based on event type
+            let newTeam: PossessionTeam
+            
+            if (turnoverEventStr.includes('TURNOVER_WON')) {
+              // Dungloe won the ball → Dungloe gets possession
+              newTeam = PossessionTeam.DUNGLOE
+            } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
+              // Dungloe lost the ball → Opponent gets possession
+              newTeam = PossessionTeam.OPPONENT
+            } else if (turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
+              // Shot dropped short or saved → Opponent gets possession
+              newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+            } else if (turnoverEventStr.includes('OPP_UNFORCED_ERROR')) {
+              // Opponent unforced error → Dungloe gets possession
+              newTeam = PossessionTeam.DUNGLOE
+            } else if (turnoverEventStr.includes('OUR_UNFORCED_ERROR')) {
+              // Our unforced error → Opponent gets possession
+              newTeam = PossessionTeam.OPPONENT
+            } else {
+              // Fallback (shouldn't reach here)
+              newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+            }
+            
+            const newBallPosition = { ...ballPosition, team: newTeam }
+            setBallPosition(newBallPosition)
+            
+            // Record the possession change to backend
+            try {
+              await recordPossession.mutateAsync({
+                match_id: matchId,
+                x_coord: newBallPosition.x,
+                y_coord: newBallPosition.y,
+                team: newTeam === PossessionTeam.DUNGLOE ? 'home' : 'away',
+                timestamp: new Date(),
+                minute: minute,
+                half: currentHalf
+              })
+              console.log('Possession change recorded:', newTeam, 'after:', eventType)
+            } catch (error) {
+              console.error('Failed to record possession:', error)
+            }
+          }
         }
       }
 
