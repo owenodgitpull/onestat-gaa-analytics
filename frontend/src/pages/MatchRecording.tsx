@@ -253,7 +253,7 @@ export default function MatchRecording() {
       // No prefix (GOAL, POINT, WIDE) = use POSSESSION
       isHomeTeam = ballPosition.team === PossessionTeam.DUNGLOE
     }
-    
+
     console.log('Determined isHomeTeam:', isHomeTeam, 'for event:', eventType)
 
     // Events that don't require player selection
@@ -480,18 +480,18 @@ export default function MatchRecording() {
       }
 
       // Auto-change possession for turnover events
-      if (pendingEvent.eventType.includes('TURNOVER') || pendingEvent.eventType.includes('UNFORCED_ERROR')) {
+      const turnoverEventStr = String(pendingEvent.eventType).toUpperCase()
+      if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR')) {
         // Determine new possession based on event type
         let newTeam: PossessionTeam
 
-        const eventTypeStr = String(pendingEvent.eventType).toUpperCase()
-        if (eventTypeStr.includes('TURNOVER_WON')) {
+        if (turnoverEventStr.includes('TURNOVER_WON')) {
           // Dungloe won the ball → Dungloe gets possession
           newTeam = PossessionTeam.DUNGLOE
-        } else if (eventTypeStr.includes('TURNOVER_LOST')) {
+        } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
           // Dungloe lost the ball → Opponent gets possession
           newTeam = PossessionTeam.OPPONENT
-        } else if (eventTypeStr.includes('UNFORCED_ERROR')) {
+        } else if (turnoverEventStr.includes('UNFORCED_ERROR')) {
           // Unforced error → Other team gets possession
           newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
         } else {
