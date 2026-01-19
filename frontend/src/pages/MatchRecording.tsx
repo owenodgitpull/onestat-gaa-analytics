@@ -164,7 +164,7 @@ export default function MatchRecording() {
       console.log('Ball movement blocked - awaiting kickout resolution')
       return
     }
-    
+
     // Only record if match is in progress
     if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time') {
       return
@@ -202,6 +202,7 @@ export default function MatchRecording() {
       'goal': 'goal',
       'point': 'point',
       'wide': 'wide',
+      'saved': 'saved',
 
       // Turnovers - Opposition forced
       'turnover_won': 'turnover_won',      // We won via tackle/pressure
@@ -344,7 +345,7 @@ export default function MatchRecording() {
 
         // Auto-select appropriate kickout tab
         setActiveKickoutTab(isHomeTeam ? 'opp_kickouts' : 'our_kickouts')
-        
+
         // Lock ball until kickout is resolved
         setAwaitingKickout(true)
 
@@ -378,7 +379,7 @@ export default function MatchRecording() {
               console.error('Failed to record kickout possession:', error)
             }
           }
-          
+
           // Unlock ball - kickout resolved!
           setAwaitingKickout(false)
 
@@ -410,6 +411,13 @@ export default function MatchRecording() {
     try {
       // Map frontend event type to backend API enum
       const backendEventType = mapEventTypeToBackend(pendingEvent.eventType)
+      
+      console.log('Recording event with player:', {
+        frontendType: pendingEvent.eventType,
+        backendType: backendEventType,
+        player: player.name,
+        team: pendingEvent.team
+      })
 
       await recordEvent.mutateAsync({
         match_id: matchId,
@@ -452,7 +460,7 @@ export default function MatchRecording() {
 
         // Auto-select appropriate kickout tab
         setActiveKickoutTab(pendingEvent.team === 'dungloe' ? 'opp_kickouts' : 'our_kickouts')
-        
+
         // Lock ball until kickout is resolved
         setAwaitingKickout(true)
 
@@ -508,7 +516,7 @@ export default function MatchRecording() {
               console.error('Failed to record kickout possession:', error)
             }
           }
-          
+
           // Unlock ball - kickout resolved!
           setAwaitingKickout(false)
 
@@ -725,7 +733,7 @@ export default function MatchRecording() {
                   </div>
                 </div>
               )}
-              
+
               {/* Pitch */}
               <div className="glass-card p-6 relative mb-4">
                 <GAAPitch
