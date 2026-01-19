@@ -80,8 +80,16 @@ class MatchEvent(Base):
     assist_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True)
     
     # Event details
-    event_type: Column[EventType] = Column(Enum(EventType), nullable=False, index=True)
-    team: Column[Team] = Column(Enum(Team), nullable=False)
+    # Use values_callable to ensure SQLAlchemy uses enum VALUES (lowercase) not NAMES (uppercase)
+    event_type: Column[EventType] = Column(
+        Enum(EventType, values_callable=lambda x: [e.value for e in x]),
+        nullable=False, 
+        index=True
+    )
+    team: Column[Team] = Column(
+        Enum(Team, values_callable=lambda x: [e.value for e in x]),
+        nullable=False
+    )
     
     # Timing (minutes and seconds into match)
     minute: Column[Optional[int]] = Column(Integer, nullable=True)  # e.g., 23 for 23rd minute
