@@ -243,8 +243,8 @@ export default function MatchRecording() {
       // Turnover Won → Always Dungloe (we won the ball)
       isHomeTeam = true
     } else if (eventType === EventType.TURNOVER_LOST) {
-      // Turnover Lost → Always Opponent (they won the ball from us)
-      isHomeTeam = false
+      // Turnover Lost → Dungloe player lost it (we want to track which Dungloe player made the error)
+      isHomeTeam = true
     } else if (eventStr.startsWith('OWN_')) {
       // OWN_ prefix = Dungloe action
       isHomeTeam = true
@@ -478,8 +478,24 @@ export default function MatchRecording() {
 
       // Auto-change possession for turnover events
       if (pendingEvent.eventType.includes('TURNOVER') || pendingEvent.eventType.includes('UNFORCED_ERROR')) {
-        // Switch possession
-        const newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+        // Determine new possession based on event type
+        let newTeam: PossessionTeam
+        
+        const eventTypeStr = String(pendingEvent.eventType).toUpperCase()
+        if (eventTypeStr.includes('TURNOVER_WON')) {
+          // Dungloe won the ball → Dungloe gets possession
+          newTeam = PossessionTeam.DUNGLOE
+        } else if (eventTypeStr.includes('TURNOVER_LOST')) {
+          // Dungloe lost the ball → Opponent gets possession
+          newTeam = PossessionTeam.OPPONENT
+        } else if (eventTypeStr.includes('UNFORCED_ERROR')) {
+          // Unforced error → Other team gets possession
+          newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+        } else {
+          // Fallback (shouldn't reach here)
+          newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+        }
+        
         const newBallPosition = { ...pendingEvent.position, team: newTeam }
         setBallPosition(newBallPosition)
 
@@ -494,7 +510,7 @@ export default function MatchRecording() {
             minute: minute,
             half: currentHalf
           })
-          console.log('Turnover possession change recorded')
+          console.log('Turnover possession change recorded:', newTeam)
         } catch (error) {
           console.error('Failed to record turnover possession:', error)
         }
