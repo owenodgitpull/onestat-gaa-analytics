@@ -221,6 +221,7 @@ export default function MatchRecording() {
 
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
+    console.log('Ball possession team:', ballPosition.team)
 
     // NEW PRINCIPLE: Buttons explicitly say "Dungloe Won" or "Opposition Won"
     // "Dungloe Won" → needs Dungloe player selection, is_home_team: true
@@ -252,6 +253,8 @@ export default function MatchRecording() {
       // No prefix (GOAL, POINT, WIDE) = use POSSESSION
       isHomeTeam = ballPosition.team === PossessionTeam.DUNGLOE
     }
+    
+    console.log('Determined isHomeTeam:', isHomeTeam, 'for event:', eventType)
 
     // Events that don't require player selection
     // Only "Opposition Won" events (we don't track their players)
@@ -480,7 +483,7 @@ export default function MatchRecording() {
       if (pendingEvent.eventType.includes('TURNOVER') || pendingEvent.eventType.includes('UNFORCED_ERROR')) {
         // Determine new possession based on event type
         let newTeam: PossessionTeam
-        
+
         const eventTypeStr = String(pendingEvent.eventType).toUpperCase()
         if (eventTypeStr.includes('TURNOVER_WON')) {
           // Dungloe won the ball → Dungloe gets possession
@@ -495,7 +498,7 @@ export default function MatchRecording() {
           // Fallback (shouldn't reach here)
           newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
         }
-        
+
         const newBallPosition = { ...pendingEvent.position, team: newTeam }
         setBallPosition(newBallPosition)
 
