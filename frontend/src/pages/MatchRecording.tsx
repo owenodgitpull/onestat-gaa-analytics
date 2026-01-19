@@ -411,7 +411,7 @@ export default function MatchRecording() {
     try {
       // Map frontend event type to backend API enum
       const backendEventType = mapEventTypeToBackend(pendingEvent.eventType)
-      
+
       console.log('Recording event with player:', {
         frontendType: pendingEvent.eventType,
         backendType: backendEventType,

@@ -4,7 +4,7 @@ Pydantic schemas for MatchEvent data validation and serialization.
 These schemas define the structure of API requests and responses for match events.
 """
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_validator
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
@@ -21,6 +21,38 @@ class MatchEventBase(BaseModel):
     pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=Dungloe goal, 100=opponent goal)")
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
     notes: Optional[str] = Field(None, max_length=500, description="Optional event notes")
+
+    @field_validator('event_type', mode='before')
+    @classmethod
+    def parse_event_type(cls, v):
+        """Parse event_type by enum VALUE, not name."""
+        if isinstance(v, str):
+            # Try to find enum by value (e.g., "unforced_error")
+            for member in EventType:
+                if member.value == v.lower():
+                    return member
+            # If not found by value, try by name (e.g., "UNFORCED_ERROR")
+            try:
+                return EventType[v.upper()]
+            except KeyError:
+                raise ValueError(f"Invalid event_type: {v}")
+        return v
+
+    @field_validator('team', mode='before')
+    @classmethod
+    def parse_team(cls, v):
+        """Parse team by enum VALUE, not name."""
+        if isinstance(v, str):
+            # Try to find enum by value (e.g., "dungloe")
+            for member in Team:
+                if member.value == v.lower():
+                    return member
+            # If not found by value, try by name (e.g., "DUNGLOE")
+            try:
+                return Team[v.upper()]
+            except KeyError:
+                raise ValueError(f"Invalid team: {v}")
+        return v
 
 
 class MatchEventCreate(MatchEventBase):
