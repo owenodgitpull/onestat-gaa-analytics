@@ -311,10 +311,10 @@ export default function MatchRecording() {
       // Check if this was a scoring event - reset ball and auto-select kickout tab
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(eventType)
-
-      // Check if this was a dead ball event - only WIDE and SAVED result in kickout
-      // SHORT stays in play (keeper catches it), so it's just a possession change
-      const deadBallEvents = [EventType.WIDE, EventType.SAVED]
+      
+      // Check if this was a dead ball event - only WIDE results in kickout
+      // SAVED stays in play (keeper can run with it or pass)
+      const deadBallEvents = [EventType.WIDE]
       const isDeadBall = deadBallEvents.includes(eventType)
 
       // Check if this was a kickout/breaking ball event (check the actual eventType enum value)
@@ -412,10 +412,10 @@ export default function MatchRecording() {
       // Check if this was a scoring event (goal or point)
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(pendingEvent.eventType as EventType)
-
-      // Check if this was a dead ball event - only WIDE and SAVED result in kickout
-      // SHORT stays in play (keeper catches it), so it's just a possession change
-      const deadBallEvents = [EventType.WIDE, EventType.SAVED]
+      
+      // Check if this was a dead ball event - only WIDE results in kickout
+      // SAVED stays in play (keeper can run with it or pass)
+      const deadBallEvents = [EventType.WIDE]
       const isDeadBall = deadBallEvents.includes(pendingEvent.eventType as EventType)
 
       // Check if this was a kickout/breaking ball event with player selection
@@ -496,9 +496,9 @@ export default function MatchRecording() {
         }
       }
 
-      // Auto-change possession for turnover events and shots that drop short
+      // Auto-change possession for turnover events, shots that drop short, and saved shots
       const turnoverEventStr = String(pendingEvent.eventType).toUpperCase()
-      if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT')) {
+      if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
         // Determine new possession based on event type
         let newTeam: PossessionTeam
 
@@ -508,8 +508,8 @@ export default function MatchRecording() {
         } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
           // Dungloe lost the ball → Opponent gets possession
           newTeam = PossessionTeam.OPPONENT
-        } else if (turnoverEventStr.includes('SHORT')) {
-          // Shot dropped short (usually into keeper's hands) → Opponent gets possession
+        } else if (turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
+          // Shot dropped short or saved (keeper has it) → Opponent gets possession
           newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
         } else if (turnoverEventStr.includes('UNFORCED_ERROR')) {
           // Unforced error → Other team gets possession
