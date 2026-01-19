@@ -86,8 +86,8 @@ export function useQuickScore() {
 
   return useMutation({
     mutationFn: (data: {
-      match_id: number;
-      player_id: number;
+      match_id: string;
+      player_id: string;
       event_type: 'GOAL' | 'POINT';
       minute: number;
       half: number;
@@ -114,7 +114,7 @@ export function useQuickScore() {
 /**
  * Get all possession events for a specific match
  */
-export function usePossessionEvents(matchId: number | null) {
+export function usePossessionEvents(matchId: string | null) {
   return useQuery({
     queryKey: possessionKeys.byMatch(matchId!),
     queryFn: () => api.possession.getByMatch(matchId!),
@@ -135,7 +135,7 @@ export function useRecordPossession() {
 
   return useMutation({
     mutationFn: (data: {
-      match_id: number;
+      match_id: string;
       minute: number;
       half: number;
       is_home_team: boolean;

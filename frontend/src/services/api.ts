@@ -210,8 +210,8 @@ export const matchEventsAPI = {
   /**
    * Get all events for a match
    */
-  getByMatch: async (matchId: number): Promise<MatchEvent[]> => {
-    return fetchAPI<MatchEvent[]>(`/match-events/?match_id=${matchId}`);
+  getByMatch: async (matchId: string): Promise<{ events: MatchEvent[], total: number, page: number, page_size: number }> => {
+    return fetchAPI<{ events: MatchEvent[], total: number, page: number, page_size: number }>(`/match-events/match/${matchId}`);
   },
 };
 

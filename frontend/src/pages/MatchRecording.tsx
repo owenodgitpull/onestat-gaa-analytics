@@ -7,7 +7,7 @@ import PossessionSelectionModal from '@/components/PossessionSelectionModal'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType, Player } from '@/types'
 import { useMatch, useMatchStats, useStartMatch, useCompleteMatch } from '@/hooks/useMatches'
-import { useRecordEvent } from '@/hooks/useMatchEvents'
+import { useRecordEvent, useMatchEvents } from '@/hooks/useMatchEvents'
 import { useRecordPossession } from '@/hooks/usePossession'
 import { usePlayers } from '@/hooks/usePlayers'
 import {
@@ -134,7 +134,9 @@ export default function MatchRecording() {
   const opponentKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsLost / totalKickouts) * 100).toFixed(1) : '0.0'
 
   // Recent events - for now show empty array until we add a separate events endpoint
-  const recentEvents: any[] = []
+  // Fetch match events for recent events display
+  const { data: matchEventsData } = useMatchEvents(matchId)
+  const recentEvents = matchEventsData?.events?.slice(0, 5) || []
 
   // Match display data
   const matchDisplay = {
@@ -706,6 +708,14 @@ export default function MatchRecording() {
     }
   }
 
+  const endFirstHalf = () => {
+    if (!matchId || minute < 30) return
+    
+    // Pause the timer
+    setMatchPhase('half_time')
+    console.log('First half ended at', minute, ':', seconds)
+  }
+
   const endMatch = async () => {
     if (!matchId) return
 
@@ -717,6 +727,18 @@ export default function MatchRecording() {
       console.error('Failed to end match:', error)
       alert('Failed to end match. Please try again.')
     }
+  }
+
+  const getEndButtonText = () => {
+    if (matchPhase === 'first_half') return 'End First Half'
+    if (matchPhase === 'second_half') return 'End Match'
+    return null
+  }
+
+  const isEndButtonEnabled = () => {
+    if (matchPhase === 'first_half') return minute >= 30
+    if (matchPhase === 'second_half') return true
+    return false
   }
 
   const getPhaseButtonText = () => {
@@ -793,9 +815,17 @@ export default function MatchRecording() {
                       <span>{getPhaseButtonText()}</span>
                     </button>
                   )}
-                  <button className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white font-medium shadow-lg hover:shadow-xl hover:from-orange-700 hover:to-amber-700 transition-all text-sm" onClick={endMatch}>
-                    End Match
-                  </button>
+                  {getEndButtonText() && (
+                    <button 
+                      className={`px-4 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white font-medium shadow-lg hover:shadow-xl transition-all text-sm ${
+                        !isEndButtonEnabled() ? 'opacity-50 cursor-not-allowed' : 'hover:from-orange-700 hover:to-amber-700'
+                      }`}
+                      onClick={matchPhase === 'first_half' ? endFirstHalf : endMatch}
+                      disabled={!isEndButtonEnabled()}
+                    >
+                      {getEndButtonText()}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
