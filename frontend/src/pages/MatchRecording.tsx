@@ -311,7 +311,7 @@ export default function MatchRecording() {
       // Check if this was a scoring event - reset ball and auto-select kickout tab
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(eventType)
-      
+
       // Check if this was a dead ball event - only WIDE and SAVED result in kickout
       // SHORT stays in play (keeper catches it), so it's just a possession change
       const deadBallEvents = [EventType.WIDE, EventType.SAVED]
@@ -412,7 +412,7 @@ export default function MatchRecording() {
       // Check if this was a scoring event (goal or point)
       const scoringEvents = [EventType.GOAL, EventType.POINT]
       const isScore = scoringEvents.includes(pendingEvent.eventType as EventType)
-      
+
       // Check if this was a dead ball event - only WIDE and SAVED result in kickout
       // SHORT stays in play (keeper catches it), so it's just a possession change
       const deadBallEvents = [EventType.WIDE, EventType.SAVED]

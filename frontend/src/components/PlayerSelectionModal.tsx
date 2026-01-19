@@ -27,6 +27,7 @@ const EVENT_LABELS = {
   turnover: { title: 'Who Won?', icon: User, color: 'text-amber-400' },
   kickout: { title: 'Who Won?', icon: User, color: 'text-indigo-400' },
   wide: { title: 'Who Took?', icon: User, color: 'text-red-400' },
+  saved: { title: 'Who Shot (Saved)?', icon: User, color: 'text-blue-400' },
   // Turnovers
   turnover_won: { title: 'Who Won Turnover?', icon: User, color: 'text-emerald-400' },
   turnover_lost: { title: 'Who Lost Possession?', icon: User, color: 'text-red-400' },

@@ -26,12 +26,13 @@ interface ActionButton {
 const categories = [
   {
     id: 'scoring',
-    label: 'Scoring',
+    label: 'Shooting',
     icon: Target,
     buttons: [
       { eventType: EventType.GOAL, label: 'Goal', icon: Target },
       { eventType: EventType.POINT, label: 'Point', icon: TrendingUp },
       { eventType: EventType.WIDE, label: 'Wide', icon: XCircle },
+      { eventType: EventType.SAVED, label: 'Saved', icon: CheckCircle },
     ]
   },
   {
