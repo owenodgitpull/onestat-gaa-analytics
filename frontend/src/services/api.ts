@@ -179,14 +179,16 @@ export const matchEventsAPI = {
     is_home_team: boolean;
     notes?: string;
   }): Promise<MatchEvent> => {
-    // Convert is_home_team to team field expected by backend
-    const { is_home_team, ...rest } = event;
-    
+    // Convert is_home_team to team field and x_coord/y_coord to pitch_x/pitch_y
+    const { is_home_team, x_coord, y_coord, ...rest } = event;
+
     return fetchAPI<MatchEvent>('/match-events/', {
       method: 'POST',
       body: JSON.stringify({
         ...rest,
-        team: is_home_team ? 'dungloe' : 'opponent'
+        team: is_home_team ? 'dungloe' : 'opponent',
+        pitch_x: x_coord,
+        pitch_y: y_coord
       }),
     });
   },
@@ -212,6 +214,39 @@ export const matchEventsAPI = {
    */
   getByMatch: async (matchId: string): Promise<{ events: MatchEvent[], total: number, page: number, page_size: number }> => {
     return fetchAPI<{ events: MatchEvent[], total: number, page: number, page_size: number }>(`/match-events/match/${matchId}`);
+  },
+
+  /**
+   * Delete a match event
+   */
+  delete: async (eventId: string): Promise<void> => {
+    return fetchAPI<void>(`/match-events/${eventId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Update a match event
+   */
+  update: async (eventId: string, data: Partial<{
+    event_type: string;
+    minute: number;
+    half: number;
+    player_id: string | null;
+    x_coord: number | null;
+    y_coord: number | null;
+    notes: string | null;
+  }>): Promise<MatchEvent> => {
+    // Transform x_coord/y_coord to pitch_x/pitch_y for backend
+    const { x_coord, y_coord, ...rest } = data;
+    return fetchAPI<MatchEvent>(`/match-events/${eventId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...rest,
+        pitch_x: x_coord,
+        pitch_y: y_coord
+      }),
+    });
   },
 };
 
@@ -253,6 +288,56 @@ export const possessionAPI = {
 };
 
 // ============================================================================
+// Match Lineups API
+// ============================================================================
+
+interface MatchLineupEntry {
+  player_id: string;
+  position_id: string;
+  is_substitute: boolean;
+}
+
+interface MatchLineupResponse {
+  id: string;
+  match_id: string;
+  player_id: string;
+  position_id: string;
+  is_substitute: boolean;
+  is_on_field: boolean;
+  player_name: string;
+  player_jersey_number: number | null;
+}
+
+const matchLineupsAPI = {
+  /**
+   * Save lineup for a match
+   */
+  saveLineup: async (matchId: string, lineup: MatchLineupEntry[]): Promise<MatchLineupResponse[]> => {
+    return fetchAPI<MatchLineupResponse[]>(`/match-lineups/matches/${matchId}/lineup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(lineup),
+    });
+  },
+
+  /**
+   * Get lineup for a match
+   */
+  getLineup: async (matchId: string): Promise<MatchLineupResponse[]> => {
+    return fetchAPI<MatchLineupResponse[]>(`/match-lineups/matches/${matchId}/lineup`);
+  },
+
+  /**
+   * Update player field status (for substitutions)
+   */
+  updateFieldStatus: async (matchId: string, playerId: string): Promise<{ message: string; is_on_field: boolean }> => {
+    return fetchAPI<{ message: string; is_on_field: boolean }>(`/match-lineups/matches/${matchId}/lineup/${playerId}/substitute`, {
+      method: 'PATCH',
+    });
+  },
+};
+
+// ============================================================================
 // Combined Exports
 // ============================================================================
 
@@ -261,6 +346,7 @@ export const api = {
   matches: matchesAPI,
   matchEvents: matchEventsAPI,
   possession: possessionAPI,
+  matchLineups: matchLineupsAPI,
 };
 
 export default api;

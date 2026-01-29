@@ -94,6 +94,13 @@ class Match(Base):
         cascade="all, delete-orphan"
     )
 
+    lineup = relationship(
+        "MatchLineup",
+        back_populates="match",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
+
     def __repr__(self):
         score = f"{self.dungloe_goals}-{self.dungloe_points} vs {self.opponent_goals}-{self.opponent_points}"
         return f"<Match(id={self.id}, opponent='{self.opponent}', score='{score}', status='{self.status.value}')>"

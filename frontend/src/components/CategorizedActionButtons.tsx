@@ -1,20 +1,23 @@
 import { useState, useEffect } from 'react'
 import { EventType, PossessionTeam } from '@/types'
-import { 
-  Target, 
-  TrendingUp, 
+import {
+  Target,
+  TrendingUp,
   XCircle,
   CheckCircle,
   AlertCircle,
   Zap,
+  AlertTriangle,
 } from 'lucide-react'
 
 interface CategorizedActionButtonsProps {
   onActionSelect: (eventType: EventType) => void
+  onFoulClick?: () => void
   disabled?: boolean
   activeCategory?: string | null
   onCategoryChange?: (category: string | null) => void
   currentPossession?: PossessionTeam
+  isIn2PointZone?: boolean
 }
 
 interface ActionButton {
@@ -31,6 +34,7 @@ const categories = [
     buttons: [
       { eventType: EventType.GOAL, label: 'Goal', icon: Target },
       { eventType: EventType.POINT, label: 'Point', icon: TrendingUp },
+      { eventType: EventType.TWO_POINT, label: '2 Pointer', icon: TrendingUp },
       { eventType: EventType.WIDE, label: 'Wide', icon: XCircle },
       { eventType: EventType.SAVED, label: 'Saved', icon: CheckCircle },
     ]
@@ -68,22 +72,35 @@ const categories = [
       { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK, label: 'Opposition Won Break', icon: XCircle },
     ]
   },
+  {
+    id: 'fouls',
+    label: 'Fouls',
+    icon: AlertTriangle,
+    buttons: [
+      { eventType: 'FOUL' as EventType, label: 'Foul', icon: AlertTriangle },
+      { eventType: EventType.POINT_FREE, label: 'Point (Free)', icon: Target },
+      { eventType: EventType.TWO_POINT_FREE, label: '2PT (Free)', icon: Target },
+      { eventType: EventType.WIDE_FREE, label: 'Wide (Free)', icon: XCircle },
+    ]
+  },
 ]
 
-export default function CategorizedActionButtons({ 
-  onActionSelect, 
+export default function CategorizedActionButtons({
+  onActionSelect,
+  onFoulClick,
   disabled = false,
   activeCategory: externalActiveCategory,
   onCategoryChange,
-  currentPossession = PossessionTeam.DUNGLOE
+  currentPossession = PossessionTeam.DUNGLOE,
+  isIn2PointZone = false
 }: CategorizedActionButtonsProps) {
   const [internalActiveCategory, setInternalActiveCategory] = useState('scoring')
-  
+
   // Use external control if provided (and not null), otherwise use internal state
   // When externalActiveCategory is explicitly null, return to 'scoring'
   const activeCategory = externalActiveCategory === null ? 'scoring' : (externalActiveCategory ?? internalActiveCategory)
   const setActiveCategory = onCategoryChange ?? setInternalActiveCategory
-  
+
   // Sync internal state when external prop changes
   useEffect(() => {
     if (externalActiveCategory === null) {
@@ -94,11 +111,21 @@ export default function CategorizedActionButtons({
   }, [externalActiveCategory])
 
   const currentCategory = categories.find(cat => cat.id === activeCategory)
-  
+
   // Determine if a button should be disabled based on possession
   const isButtonDisabled = (eventType: EventType): boolean => {
+    // Disable 2-pointer if not in 2-point zone
+    if (eventType === EventType.TWO_POINT && !isIn2PointZone) {
+      return true
+    }
+
+    // Disable regular point if IN 2-point zone (must use 2-pointer button)
+    if (eventType === EventType.POINT && isIn2PointZone) {
+      return true
+    }
+
     const hasPossession = currentPossession === PossessionTeam.DUNGLOE
-    
+
     // If Dungloe has possession, disable these opponent-focused events:
     if (hasPossession) {
       return [
@@ -126,7 +153,14 @@ export default function CategorizedActionButtons({
           return (
             <button
               key={button.eventType}
-              onClick={() => onActionSelect(button.eventType)}
+              onClick={() => {
+                // Special handling for Foul button
+                if (button.eventType === 'FOUL' as EventType && onFoulClick) {
+                  onFoulClick()
+                } else {
+                  onActionSelect(button.eventType)
+                }
+              }}
               disabled={isDisabled}
               title={isContextDisabled ? 'Not applicable with current possession' : ''}
               className={`btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs ${

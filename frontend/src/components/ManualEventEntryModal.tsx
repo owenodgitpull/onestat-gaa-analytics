@@ -1,0 +1,274 @@
+import { useState } from 'react'
+import { Plus, X } from 'lucide-react'
+import { Player, EventType, PossessionTeam } from '@/types'
+
+interface MatchLineupEntry {
+  id: string
+  match_id: string
+  player_id: string
+  position_id: string
+  is_substitute: boolean
+  is_on_field: boolean
+  player_name: string
+  player_jersey_number: number | null
+}
+
+interface ManualEventEntryModalProps {
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (data: {
+    eventType: EventType
+    playerId: string | null
+    playerComingOn?: string | null
+    minute: number
+    half: number
+    team: PossessionTeam
+    pitchX?: number
+    pitchY?: number
+  }) => void
+  players: Player[]
+  opponentName: string
+  matchLineup?: MatchLineupEntry[]
+}
+
+export default function ManualEventEntryModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  players,
+  opponentName,
+  matchLineup = []
+}: ManualEventEntryModalProps) {
+  const [eventType, setEventType] = useState<EventType>(EventType.POINT)
+  const [playerId, setPlayerId] = useState<string>('')
+  const [playerComingOn, setPlayerComingOn] = useState<string>('')
+  const [minute, setMinute] = useState<number>(1)
+  const [half, setHalf] = useState<number>(1)
+  const [team, setTeam] = useState<PossessionTeam>(PossessionTeam.DUNGLOE)
+
+  if (!isOpen) return null
+
+  // Get players on field (for coming off)
+  const getPlayersOnField = () => {
+    if (!matchLineup.length) return players.filter(p => p.active)
+    const onFieldIds = matchLineup.filter(l => l.is_on_field).map(l => l.player_id)
+    return players.filter(p => p.active && onFieldIds.includes(p.id))
+  }
+
+  // Get players on bench (for coming on)
+  const getPlayersOnBench = () => {
+    if (!matchLineup.length) return players.filter(p => p.active)
+    const onBenchIds = matchLineup.filter(l => !l.is_on_field).map(l => l.player_id)
+    return players.filter(p => p.active && onBenchIds.includes(p.id))
+  }
+
+  const handleSubmit = () => {
+    onSubmit({
+      eventType,
+      playerId: playerId || null,
+      playerComingOn: eventType === EventType.SUBSTITUTION ? (playerComingOn || null) : null,
+      minute,
+      half,
+      team,
+    })
+    onClose()
+  }
+
+  // Event types that require player selection
+  const requiresPlayer = ![
+    EventType.OPP_UNFORCED_ERROR,
+    EventType.WIDE,
+    EventType.SHORT,
+    EventType.SAVED
+  ].includes(eventType) || team === PossessionTeam.DUNGLOE
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="relative w-full max-w-2xl glass-card p-8 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="p-3 rounded-full bg-blue-500/20">
+              <Plus className="text-blue-400" size={28} />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Manual Event Entry</h2>
+          </div>
+          <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Team Selection */}
+          <div>
+            <label className="block text-white/80 font-semibold mb-2">Team</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => setTeam(PossessionTeam.DUNGLOE)}
+                className={`p-4 rounded-xl font-semibold transition-all ${
+                  team === PossessionTeam.DUNGLOE
+                    ? 'bg-indigo-600 text-white'
+                    : 'glass-card text-white/70 hover:text-white'
+                }`}
+              >
+                Dungloe
+              </button>
+              <button
+                onClick={() => setTeam(PossessionTeam.OPPONENT)}
+                className={`p-4 rounded-xl font-semibold transition-all ${
+                  team === PossessionTeam.OPPONENT
+                    ? 'bg-red-600 text-white'
+                    : 'glass-card text-white/70 hover:text-white'
+                }`}
+              >
+                {opponentName}
+              </button>
+            </div>
+          </div>
+
+          {/* Event Type */}
+          <div>
+            <label className="block text-white/80 font-semibold mb-2">Event Type</label>
+            <select
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value as EventType)}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <optgroup label="Scoring">
+                <option value={EventType.GOAL}>Goal</option>
+                <option value={EventType.POINT}>Point</option>
+                <option value={EventType.TWO_POINT}>2-Pointer</option>
+                <option value={EventType.POINT_FREE}>Point (Free)</option>
+                <option value={EventType.TWO_POINT_FREE}>2-Pointer (Free)</option>
+                <option value={EventType.WIDE}>Wide</option>
+                <option value={EventType.WIDE_FREE}>Wide (Free)</option>
+                <option value={EventType.SHORT}>Short</option>
+                <option value={EventType.SAVED}>Saved</option>
+              </optgroup>
+              <optgroup label="Turnovers">
+                <option value={EventType.TURNOVER_WON}>Turnover Won</option>
+                <option value={EventType.TURNOVER_LOST}>Turnover Lost</option>
+                <option value={EventType.OUR_UNFORCED_ERROR}>Unforced Error</option>
+              </optgroup>
+              <optgroup label="Fouls">
+                <option value={EventType.FOUL_WON}>Foul Won</option>
+                <option value={EventType.FOUL_COMMITTED}>Foul Committed</option>
+                <option value={EventType.FREE_WON}>Free Won</option>
+                <option value={EventType.FREE_CONCEDED}>Free Conceded</option>
+              </optgroup>
+              <optgroup label="Cards">
+                <option value={EventType.YELLOW_CARD}>Yellow Card</option>
+                <option value={EventType.RED_CARD}>Red Card</option>
+              </optgroup>
+              <optgroup label="Defense">
+                <option value={EventType.BLOCK}>Block</option>
+                <option value={EventType.INTERCEPTION}>Interception</option>
+              </optgroup>
+              <optgroup label="Substitutions">
+                <option value={EventType.SUBSTITUTION}>Substitution</option>
+              </optgroup>
+            </select>
+          </div>
+
+          {/* Player Selection (conditional) */}
+          {eventType === EventType.SUBSTITUTION && team === PossessionTeam.DUNGLOE ? (
+            <>
+              {/* Player Coming Off */}
+              <div>
+                <label className="block text-white/80 font-semibold mb-2">Player Coming Off (On Field)</label>
+                <select
+                  value={playerId}
+                  onChange={(e) => setPlayerId(e.target.value)}
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Select player...</option>
+                  {getPlayersOnField().map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Player Coming On */}
+              <div>
+                <label className="block text-white/80 font-semibold mb-2">Player Coming On (On Bench)</label>
+                <select
+                  value={playerComingOn}
+                  onChange={(e) => setPlayerComingOn(e.target.value)}
+                  disabled={!playerId}
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select player...</option>
+                  {getPlayersOnBench().map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : requiresPlayer && team === PossessionTeam.DUNGLOE ? (
+            <div>
+              <label className="block text-white/80 font-semibold mb-2">Player</label>
+              <select
+                value={playerId}
+                onChange={(e) => setPlayerId(e.target.value)}
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">Select player...</option>
+                {players.filter(p => p.active).map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {/* Time */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-white/80 font-semibold mb-2">Minute</label>
+              <input
+                type="number"
+                min="1"
+                max="60"
+                value={minute}
+                onChange={(e) => setMinute(parseInt(e.target.value) || 1)}
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-white/80 font-semibold mb-2">Half</label>
+              <select
+                value={half}
+                onChange={(e) => setHalf(parseInt(e.target.value))}
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value={1}>1st Half</option>
+                <option value={2}>2nd Half</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex space-x-4 pt-4">
+            <button onClick={onClose} className="flex-1 btn-glass">
+              Cancel
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="flex-1 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95"
+            >
+              Add Event
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

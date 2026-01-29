@@ -203,15 +203,17 @@ class MatchEventService:
         if event.team == Team.DUNGLOE:
             if event.event_type == EventType.GOAL:
                 match.dungloe_goals += 1
-            elif event.event_type in [EventType.POINT, EventType.TWO_POINT]:
-                # Both regular points and 2-pointers increment the points counter
-                # The 2-point distinction is for statistics and visualization
+            elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
                 match.dungloe_points += 1
+            elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
+                match.dungloe_points += 2
         else:
             if event.event_type == EventType.GOAL:
                 match.opponent_goals += 1
-            elif event.event_type in [EventType.POINT, EventType.TWO_POINT]:
+            elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
                 match.opponent_points += 1
+            elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
+                match.opponent_points += 2
         
         await db.flush()
     
@@ -248,13 +250,17 @@ class MatchEventService:
             if event.team == Team.DUNGLOE:
                 if event.event_type == EventType.GOAL:
                     match.dungloe_goals += 1
-                elif event.event_type in [EventType.POINT, EventType.TWO_POINT]:
+                elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
                     match.dungloe_points += 1
+                elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
+                    match.dungloe_points += 2
             else:
                 if event.event_type == EventType.GOAL:
                     match.opponent_goals += 1
-                elif event.event_type in [EventType.POINT, EventType.TWO_POINT]:
+                elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
                     match.opponent_points += 1
+                elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
+                    match.opponent_points += 2
         
         await db.flush()
     

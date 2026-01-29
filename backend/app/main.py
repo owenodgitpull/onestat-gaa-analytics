@@ -23,7 +23,7 @@ from app.database import engine, Base, get_db
 
 # Import routes
 from app.routes import players
-from app.routes import matches, match_events, possession_events
+from app.routes import matches, match_events, possession_events, match_lineups
 # from app.routes import fitness, gps, ai  # Will add these next
 
 # Configure logging
@@ -192,6 +192,7 @@ app.include_router(players.router, prefix="/api/v1/players", tags=["Players"])
 app.include_router(matches.router, prefix="/api/v1/matches", tags=["Matches"])
 app.include_router(match_events.router, prefix="/api/v1/match-events", tags=["Match Events"])
 app.include_router(possession_events.router, prefix="/api/v1/possession-events", tags=["Possession Tracking"])
+app.include_router(match_lineups.router)  # Uses prefix from router definition
 # Will add these next:
 # app.include_router(fitness.router, prefix="/api/v1/fitness", tags=["Fitness Tests"])
 # app.include_router(gps.router, prefix="/api/v1/gps", tags=["GPS Data"])

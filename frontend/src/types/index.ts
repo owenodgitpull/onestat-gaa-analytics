@@ -70,8 +70,8 @@ export interface MatchEvent {
   event_type: string;
   minute: number;
   half: number;
-  x_coord: number | null;
-  y_coord: number | null;
+  pitch_x: number | null;
+  pitch_y: number | null;
   is_home_team: boolean;
   notes: string | null;
   created_at: string;
@@ -85,6 +85,10 @@ export enum EventType {
   WIDE = 'wide',
   SHORT = 'short',
   SAVED = 'saved',
+  // Free kick scoring
+  POINT_FREE = 'point_free',
+  TWO_POINT_FREE = 'two_point_free',
+  WIDE_FREE = 'wide_free',
   // Turnovers
   TURNOVER_LOST = 'turnover_lost',
   TURNOVER_WON = 'turnover_won',
@@ -102,10 +106,14 @@ export enum EventType {
   // Cards & fouls
   YELLOW_CARD = 'yellow_card',
   RED_CARD = 'red_card',
+  FOUL_COMMITTED = 'foul_committed',
+  FOUL_WON = 'foul_won',
   FREE_WON = 'free_won',
   FREE_CONCEDED = 'free_conceded',
   BLOCK = 'block',
   INTERCEPTION = 'interception',
+  // Substitutions
+  SUBSTITUTION = 'substitution',
   OTHER = 'other',
 }
 

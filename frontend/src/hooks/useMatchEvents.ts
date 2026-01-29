@@ -94,14 +94,42 @@ export function useQuickScore() {
     }) => api.matchEvents.quickScore(data),
     onSuccess: (data, variables) => {
       // Same invalidation as regular event recording
-      queryClient.invalidateQueries({ 
-        queryKey: matchEventKeys.byMatch(variables.match_id) 
+      queryClient.invalidateQueries({
+        queryKey: matchEventKeys.byMatch(variables.match_id)
       });
-      queryClient.invalidateQueries({ 
-        queryKey: matchKeys.stats(variables.match_id) 
+      queryClient.invalidateQueries({
+        queryKey: matchKeys.stats(variables.match_id)
       });
-      queryClient.invalidateQueries({ 
-        queryKey: matchKeys.detail(variables.match_id) 
+      queryClient.invalidateQueries({
+        queryKey: matchKeys.detail(variables.match_id)
+      });
+    },
+  });
+}
+
+/**
+ * Delete a match event
+ */
+export function useDeleteEvent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { eventId: string; matchId: string }) =>
+      api.matchEvents.delete(data.eventId),
+    onSuccess: (data, variables) => {
+      // Invalidate match events to refetch
+      queryClient.invalidateQueries({
+        queryKey: matchEventKeys.byMatch(variables.matchId)
+      });
+
+      // Invalidate match stats to update score and statistics
+      queryClient.invalidateQueries({
+        queryKey: matchKeys.stats(variables.matchId)
+      });
+
+      // Invalidate the match itself to update scores
+      queryClient.invalidateQueries({
+        queryKey: matchKeys.detail(variables.matchId)
       });
     },
   });

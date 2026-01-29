@@ -44,11 +44,19 @@ class EventType(enum.Enum):
     # Frees
     FREE_WON = "free_won"  # Won a free kick
     FREE_CONCEDED = "free_conceded"  # Conceded a free kick
-    
+    POINT_FREE = "point_free"  # Point scored from free kick
+    TWO_POINT_FREE = "two_point_free"  # 2-pointer scored from free kick
+    WIDE_FREE = "wide_free"  # Free kick went wide
+    FOUL_COMMITTED = "foul_committed"  # Player committed a foul
+    FOUL_WON = "foul_won"  # Player was fouled
+
     # Defensive
     BLOCK = "block"  # Blocked shot/pass
     INTERCEPTION = "interception"  # Intercepted pass
-    
+
+    # Substitutions
+    SUBSTITUTION = "substitution"  # Player substitution
+
     OTHER = "other"  # Other event type
 
 

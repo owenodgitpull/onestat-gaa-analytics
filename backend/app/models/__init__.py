@@ -11,6 +11,7 @@ from app.models.match import Match, MatchVenue, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.models.player_match_stats import PlayerMatchStats
+from app.models.match_lineup import MatchLineup
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -29,5 +30,6 @@ __all__ = [
     "PossessionEvent",
     "PossessionTeam",
     "PlayerMatchStats",
+    "MatchLineup",
 ]
 
