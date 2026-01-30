@@ -306,7 +306,7 @@ async def get_dashboard_data(
                 zone_stats[zone]['lost'] += 1
             elif event.event_type == EventType.TURNOVER_WON:
                 zone_stats[zone]['won'] += 1
-            elif event.event_type == EventType.OUR_UNFORCED_ERROR:
+            elif event.event_type == EventType.UNFORCED_ERROR:
                 zone_stats[zone]['errors'] += 1
 
     possession_zones = [
