@@ -149,6 +149,49 @@ async def get_match_lineup(
     return response
 
 
+@router.get("/last-lineup", response_model=List[MatchLineupResponse])
+async def get_last_match_lineup(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get the lineup from the most recent match that had a lineup set.
+
+    Useful for quickly re-using a previous lineup.
+    """
+    # Find the most recent match with a lineup
+    result = await db.execute(
+        select(Match)
+        .join(MatchLineup, Match.id == MatchLineup.match_id)
+        .order_by(Match.match_date.desc())
+        .limit(1)
+    )
+    match = result.scalar_one_or_none()
+
+    if not match:
+        return []
+
+    # Get that match's lineup
+    result = await db.execute(
+        select(MatchLineup).where(MatchLineup.match_id == match.id)
+    )
+    lineup = result.scalars().all()
+
+    response = []
+    for lineup_entry in lineup:
+        response.append(MatchLineupResponse(
+            id=str(lineup_entry.id),
+            match_id=str(lineup_entry.match_id),
+            player_id=str(lineup_entry.player_id),
+            position_id=lineup_entry.position_id,
+            is_substitute=lineup_entry.is_substitute,
+            is_on_field=lineup_entry.is_on_field,
+            player_name=lineup_entry.player.name,
+            player_jersey_number=lineup_entry.player.jersey_number
+        ))
+
+    return response
+
+
 @router.patch("/matches/{match_id}/lineup/{player_id}/substitute")
 async def record_substitution(
     match_id: str,

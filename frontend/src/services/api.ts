@@ -328,12 +328,174 @@ const matchLineupsAPI = {
   },
 
   /**
+   * Get the last match's lineup (for quick re-use)
+   */
+  getLastLineup: async (): Promise<MatchLineupResponse[]> => {
+    return fetchAPI<MatchLineupResponse[]>(`/match-lineups/last-lineup`);
+  },
+
+  /**
    * Update player field status (for substitutions)
    */
   updateFieldStatus: async (matchId: string, playerId: string): Promise<{ message: string; is_on_field: boolean }> => {
     return fetchAPI<{ message: string; is_on_field: boolean }>(`/match-lineups/matches/${matchId}/lineup/${playerId}/substitute`, {
       method: 'PATCH',
     });
+  },
+};
+
+// ============================================================================
+// Analytics API
+// ============================================================================
+
+export interface SeasonSummary {
+  matches_played: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  win_rate: number;
+  total_goals_scored: number;
+  total_points_scored: number;
+  total_goals_conceded: number;
+  total_points_conceded: number;
+  avg_score_per_match: number;
+  avg_conceded_per_match: number;
+}
+
+export interface TopScorer {
+  player_id: string;
+  player_name: string;
+  goals: number;
+  points: number;
+  two_pointers: number;
+  total_score: number;
+  matches_played: number;
+}
+
+export interface TopTurnover {
+  player_id: string;
+  player_name: string;
+  turnovers_won: number;
+  turnovers_lost: number;
+  net_turnovers: number;
+}
+
+export interface ShotLocation {
+  x: number;
+  y: number;
+  event_type: string;
+  is_score: boolean;
+  team: string;
+}
+
+export interface PossessionZone {
+  zone: string;
+  turnovers_lost: number;
+  turnovers_won: number;
+  unforced_errors: number;
+}
+
+export interface MatchTrend {
+  match_id: string;
+  opponent: string;
+  match_date: string;
+  dungloe_score: number;
+  opponent_score: number;
+  result: string;
+}
+
+export interface DashboardData {
+  season_summary: SeasonSummary;
+  top_scorers: TopScorer[];
+  top_turnovers: TopTurnover[];
+  shot_locations: ShotLocation[];
+  possession_zones: PossessionZone[];
+  match_trends: MatchTrend[];
+}
+
+const analyticsAPI = {
+  getDashboard: async (): Promise<DashboardData> => {
+    return fetchAPI<DashboardData>('/analytics/dashboard');
+  },
+
+  getSeasonSummary: async (): Promise<SeasonSummary> => {
+    return fetchAPI<SeasonSummary>('/analytics/season-summary');
+  },
+
+  getTopScorers: async (limit: number = 10): Promise<TopScorer[]> => {
+    return fetchAPI<TopScorer[]>(`/analytics/top-scorers?limit=${limit}`);
+  },
+
+  getShotLocations: async (team?: string): Promise<ShotLocation[]> => {
+    const params = team ? `?team=${team}` : '';
+    return fetchAPI<ShotLocation[]>(`/analytics/shot-locations${params}`);
+  },
+};
+
+// ============================================================================
+// AI Analysis API
+// ============================================================================
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface AnalysisResponse {
+  analysis: string;
+  match_id?: string;
+}
+
+export interface ChatResponse {
+  response: string;
+}
+
+export interface PostMatchReport {
+  match: {
+    opponent: string;
+    date: string;
+    venue: string;
+    status: string;
+  };
+  score: {
+    dungloe: string;
+    dungloe_total: number;
+    opponent: string;
+    opponent_total: number;
+    result: string;
+  };
+  analysis: string;
+  generated_at: string;
+}
+
+const aiAPI = {
+  analyzeMatch: async (matchId: string, question?: string): Promise<AnalysisResponse> => {
+    return fetchAPI<AnalysisResponse>('/ai/analyze-match', {
+      method: 'POST',
+      body: JSON.stringify({ match_id: matchId, question }),
+    });
+  },
+
+  getLiveInsight: async (matchId: string, recentEvents: object[]): Promise<AnalysisResponse> => {
+    return fetchAPI<AnalysisResponse>('/ai/live-insight', {
+      method: 'POST',
+      body: JSON.stringify({ match_id: matchId, recent_events: recentEvents }),
+    });
+  },
+
+  chat: async (conversationHistory: ChatMessage[], message: string): Promise<ChatResponse> => {
+    return fetchAPI<ChatResponse>('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ conversation_history: conversationHistory, message }),
+    });
+  },
+
+  getPostMatchReport: async (matchId: string): Promise<PostMatchReport> => {
+    return fetchAPI<PostMatchReport>(`/ai/post-match-report/${matchId}`);
+  },
+
+  healthCheck: async (): Promise<{ status: string; message: string }> => {
+    return fetchAPI<{ status: string; message: string }>('/ai/health');
   },
 };
 
@@ -347,6 +509,8 @@ export const api = {
   matchEvents: matchEventsAPI,
   possession: possessionAPI,
   matchLineups: matchLineupsAPI,
+  analytics: analyticsAPI,
+  ai: aiAPI,
 };
 
 export default api;

@@ -71,6 +71,7 @@ export default function MatchRecording() {
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
   const [startingLineup, setStartingLineup] = useState<Record<string, string>>({})
+  const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, string> | undefined>(undefined)
 
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -108,6 +109,25 @@ export default function MatchRecording() {
     }
     loadLineup()
   }, [matchId])
+
+  // Load last match lineup for quick re-use
+  useEffect(() => {
+    const loadLastLineup = async () => {
+      try {
+        const lastLineup = await api.matchLineups.getLastLineup()
+        if (lastLineup && lastLineup.length > 0) {
+          const lineupObj: Record<string, string> = {}
+          lastLineup.forEach((entry) => {
+            lineupObj[entry.position_id] = entry.player_id
+          })
+          setLastMatchLineup(lineupObj)
+        }
+      } catch (error) {
+        console.log('No previous lineup found')
+      }
+    }
+    loadLastLineup()
+  }, [])
 
   // Timer effect
   useEffect(() => {
@@ -302,11 +322,13 @@ export default function MatchRecording() {
   // Helper function to format event description
   const formatEventDescription = (event: MatchEvent): string => {
     const player = players.find(p => p.id === String(event.player_id))
-    const playerName = player?.name || 'Unknown'
     const area = getPitchArea(event.pitch_x, event.pitch_y)
-    // Dungloe is home team if match.is_home is true, so event.is_home_team === match.is_home means it's Dungloe
-    const isDungloe = event.is_home_team === match?.is_home
     const teamName = match?.opponent || 'Opposition'
+    // Backend returns team as 'dungloe' or 'opponent', fallback to is_home_team logic
+    const eventTeam = (event as any).team
+    const isDungloe = eventTeam ? eventTeam === 'dungloe' : (event.is_home_team === match?.is_home)
+    // For Dungloe events, use player name; for opponent events, use team name
+    const playerName = isDungloe ? (player?.name || 'Dungloe player') : teamName
 
     switch (event.event_type) {
       case 'point':
@@ -765,12 +787,14 @@ export default function MatchRecording() {
       const isOppositionWonKickout = eventTypeStr.includes('OPPOSITION_WON')
 
       if (isScore || isDeadBall) {
-        // After score/wide, ball moves to center for kickout
+        // After score/wide, ball moves to goalkeeper area for kickout
         const kickoutTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+        // Ball goes to the goal area of the team taking the kickout
+        const kickoutX = kickoutTeam === PossessionTeam.DUNGLOE ? 5 : 95
 
         setBallPosition({
-          x: 50,  // Center horizontally
-          y: 50,  // Center vertically
+          x: kickoutX,  // Edge of small rectangle (goalkeeper area)
+          y: 50,        // Center vertically
           team: kickoutTeam  // Other team gets kickout
         })
 
@@ -780,7 +804,7 @@ export default function MatchRecording() {
         // Lock ball until kickout is resolved
         setAwaitingKickout(true)
 
-        console.log('Ball moved to center for kickout after:', eventType)
+        console.log('Ball moved to goalkeeper area for kickout after:', eventType)
       } else {
         // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
@@ -944,12 +968,14 @@ export default function MatchRecording() {
       const isOppositionWonKickout = eventTypeStr.includes('OPPOSITION_WON')
 
       if (isScore || isDeadBall) {
-        // Reset ball to center midfield after score or dead ball
+        // After score/wide/short, ball moves to goalkeeper area for kickout
         // After score/wide/short/saved, the defending team takes kickout
         const kickoutTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+        // Ball goes to the goal area of the team taking the kickout
+        const kickoutX = kickoutTeam === PossessionTeam.DUNGLOE ? 5 : 95
         setBallPosition({
-          x: 50,  // Center horizontally
-          y: 50,  // Center vertically (midfield)
+          x: kickoutX,  // Edge of small rectangle (goalkeeper area)
+          y: 50,        // Center vertically
           team: kickoutTeam  // Other team gets kickout
         })
 
@@ -959,7 +985,7 @@ export default function MatchRecording() {
         // Lock ball until kickout is resolved
         setAwaitingKickout(true)
 
-        console.log('Ball reset to center midfield for kickout, tab auto-selected after:', pendingEvent.eventType)
+        console.log('Ball moved to goalkeeper area for kickout after:', pendingEvent.eventType)
       } else {
         // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
@@ -1622,7 +1648,7 @@ export default function MatchRecording() {
         onClose={() => setIsLineupModalOpen(false)}
         onConfirm={handleLineupConfirm}
         players={players}
-        lastMatchLineup={undefined}
+        lastMatchLineup={lastMatchLineup}
       />
     </div>
   )

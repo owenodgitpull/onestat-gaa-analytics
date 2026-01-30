@@ -168,10 +168,10 @@ export default function StartingLineupModal({
                     {/* Jersey Icon */}
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
                       assignedPlayer
-                        ? 'bg-indigo-600 text-white ring-2 ring-white'
-                        : 'bg-red-600/80 text-white/90 hover:bg-red-500 hover:scale-110'
+                        ? 'bg-red-600 text-white ring-2 ring-white shadow-lg'
+                        : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
                     }`}>
-                      {assignedPlayer?.jersey_number || pos.label}
+                      {pos.label}
                     </div>
 
                     {/* Player Name */}
@@ -201,10 +201,10 @@ export default function StartingLineupModal({
                     {/* Jersey Icon - Smaller for subs */}
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
                       assignedPlayer
-                        ? 'bg-indigo-600 text-white ring-2 ring-white'
-                        : 'bg-red-600/80 text-white/90 hover:bg-red-500 hover:scale-110'
+                        ? 'bg-red-600 text-white ring-2 ring-white shadow-lg'
+                        : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
                     }`}>
-                      {assignedPlayer?.jersey_number || `S${index + 1}`}
+                      {`S${index + 1}`}
                     </div>
 
                     {/* Player Name */}
@@ -234,19 +234,9 @@ export default function StartingLineupModal({
                       <button
                         key={player.id}
                         onClick={() => handlePlayerSelect(player.id)}
-                        className="w-full glass-card-hover p-4 text-left flex items-center space-x-3"
+                        className="w-full glass-card-hover p-4 text-left"
                       >
-                        {player.jersey_number && (
-                          <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">
-                            {player.jersey_number}
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <p className="text-white font-semibold">{player.name}</p>
-                          {player.position && (
-                            <p className="text-white/60 text-sm capitalize">{player.position.replace(/_/g, ' ')}</p>
-                          )}
-                        </div>
+                        <p className="text-white font-semibold">{player.name}</p>
                       </button>
                     ))
                   ) : (

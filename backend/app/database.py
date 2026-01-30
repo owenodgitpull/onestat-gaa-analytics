@@ -13,6 +13,10 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
 import os
 from typing import AsyncGenerator
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Get database URL from environment
 # Format: postgresql+asyncpg://user:password@host:port/database
