@@ -6,9 +6,9 @@ import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PossessionSelectionModal from '@/components/PossessionSelectionModal'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import ConfirmationModal from '@/components/ConfirmationModal'
-import FoulModal from '@/components/FoulModal'
 import ManualEventEntryModal from '@/components/ManualEventEntryModal'
 import StartingLineupModal from '@/components/StartingLineupModal'
+import LiveInsightDisplay from '@/components/LiveInsightDisplay'
 import { BallPosition, PossessionTeam, EventType, Player, MatchEvent } from '@/types'
 import { useMatch, useMatchStats, useStartMatch, useCompleteMatch } from '@/hooks/useMatches'
 import { useRecordEvent, useMatchEvents, useDeleteEvent } from '@/hooks/useMatchEvents'
@@ -65,13 +65,21 @@ export default function MatchRecording() {
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
   const [activeKickoutTab, setActiveKickoutTab] = useState<string | null>('scoring')
   const [awaitingKickout, setAwaitingKickout] = useState(false) // Lock ball until kickout resolved
+  const [pendingKickoutEvent, setPendingKickoutEvent] = useState<{
+    eventType: EventType
+    isHomeTeam: boolean
+    playerId?: string
+  } | null>(null) // Kickout event waiting for position selection
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
-  const [isFoulModalOpen, setIsFoulModalOpen] = useState(false)
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
   const [startingLineup, setStartingLineup] = useState<Record<string, string>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, string> | undefined>(undefined)
+  const [dungloeAttackingRight, setDungloeAttackingRight] = useState<boolean>(true) // true = attacking towards x=100
+  const [pendingFreeKick, setPendingFreeKick] = useState<{ position: BallPosition; player: Player } | null>(null) // Track free kick state with player
+  const [pending45, setPending45] = useState<{ position: BallPosition } | null>(null) // Track 45 state
+  const [selectingFreePlayer, setSelectingFreePlayer] = useState<boolean>(false) // True when selecting player for free kick
 
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -259,13 +267,18 @@ export default function MatchRecording() {
   }
 
   // Helper function to get pitch area description from coordinates
+  // Now contextual based on attack direction and which team the event is for
   // GAA pitch is ~145m long, with key zones at 13m, 20m, 40m arc, 45m from each end
-  // Coordinates: x=0 (own goal), x=100 (opposition goal), y=0 (left), y=100 (right)
-  const getPitchArea = (x: number | null, y: number | null): string => {
+  const getPitchArea = (
+    x: number | null,
+    y: number | null,
+    eventTeamIsDungloe: boolean = true,
+    opponentName: string = 'Opposition'
+  ): string => {
     if (x === null || y === null) return 'the field'
 
     // Special case: Exact center (kickout position)
-    if (x === 50 && y === 50) return 'center midfield'
+    if (x === 50 && y === 50) return 'midfield'
 
     // Left/Right description (y-axis: 0-100)
     let lateral = ''
@@ -273,29 +286,87 @@ export default function MatchRecording() {
     else if (y > 75) lateral = ' (right wing)'
     else if (y >= 40 && y <= 60) lateral = ' (center)'
 
-    // For attacking zones (near opposition goal at x=100):
-    // GAA zones measured from goal LINE, not center: 9m, 13m, 20m, 40m arc, 45m line
-    // Distance from goal line = 100 - x (as percentage of 145m pitch)
-    // 9m = 6.2%, 13m = 9%, 20m = 13.8%, 40m = 27.6%, 45m = 31%
-    const distanceFromGoalLine = 100 - x
+    // Determine which goal is Dungloe's based on attack direction
+    // If Dungloe attacking right: Dungloe defends x=0, attacks x=100
+    // If Dungloe attacking left: Dungloe defends x=100, attacks x=0
+    const dungloeDefendsLeft = dungloeAttackingRight // Dungloe's goal is at x=0
 
-    if (distanceFromGoalLine <= 6.2) return `inside the small rectangle${lateral}` // Within 9m
-    if (distanceFromGoalLine <= 9) return `the 13-meter line${lateral}` // 9-13m
-    if (distanceFromGoalLine <= 13.8) return `the 20-meter line${lateral}` // 13-20m
-    if (distanceFromGoalLine <= 27.6) return `inside the 40-meter arc${lateral}` // Inside 40m arc
-    if (distanceFromGoalLine <= 31) return `just outside the 40-meter arc${lateral}` // 40-45m (2-point zone)
-    if (distanceFromGoalLine <= 38) return `outside the 45-meter line${lateral}` // Beyond 45m (2-point zone)
+    // Calculate distances from both goals
+    const distFromLeftGoal = x  // Distance from x=0 goal
+    const distFromRightGoal = 100 - x  // Distance from x=100 goal
 
-    // Further back zones based on x position
-    if (x >= 55) return `deep in the attacking half${lateral}`
-    if (x >= 50) return `just past midfield${lateral}`
-    if (x >= 45) return `around midfield${lateral}`
-    if (x >= 38) return `just inside their own half${lateral}`
-    if (x >= 31) return `the defensive half${lateral}`
-    if (x >= 22) return `the defensive 45-meter line${lateral}`
-    if (x >= 14) return `the defensive 20-meter line${lateral}`
-    if (x >= 9) return `the defensive 13-meter line${lateral}`
-    return `inside the defensive square${lateral}`
+    // Determine which goal is the attacking goal for the event's team
+    let distFromAttackingGoal: number
+    let distFromDefendingGoal: number
+    let attackingTeamName: string
+    let defendingTeamName: string
+
+    if (eventTeamIsDungloe) {
+      // Dungloe's event - their attacking goal depends on direction
+      if (dungloeDefendsLeft) {
+        // Dungloe attacks right (towards x=100)
+        distFromAttackingGoal = distFromRightGoal
+        distFromDefendingGoal = distFromLeftGoal
+      } else {
+        // Dungloe attacks left (towards x=0)
+        distFromAttackingGoal = distFromLeftGoal
+        distFromDefendingGoal = distFromRightGoal
+      }
+      attackingTeamName = 'Dungloe'
+      defendingTeamName = opponentName
+    } else {
+      // Opponent's event - they attack the opposite direction
+      if (dungloeDefendsLeft) {
+        // Opponent attacks left (towards x=0, Dungloe's goal)
+        distFromAttackingGoal = distFromLeftGoal
+        distFromDefendingGoal = distFromRightGoal
+      } else {
+        // Opponent attacks right (towards x=100, Dungloe's goal)
+        distFromAttackingGoal = distFromRightGoal
+        distFromDefendingGoal = distFromLeftGoal
+      }
+      attackingTeamName = opponentName
+      defendingTeamName = 'Dungloe'
+    }
+
+    // Check if outside 40m arc using elliptical calculation (for attacking goal)
+    const X_RADIUS_PERCENT = 31.4
+    const Y_RADIUS_PERCENT = 44.444
+    const dy_percent = y - 50
+    const normalizedArcDistance = Math.sqrt(
+      Math.pow(distFromAttackingGoal / X_RADIUS_PERCENT, 2) +
+      Math.pow(dy_percent / Y_RADIUS_PERCENT, 2)
+    )
+    const isOutsideAttackingArc = normalizedArcDistance > 1.0
+
+    // Check if in defending goal area (for own half descriptions)
+    const normalizedDefendingArcDistance = Math.sqrt(
+      Math.pow(distFromDefendingGoal / X_RADIUS_PERCENT, 2) +
+      Math.pow(dy_percent / Y_RADIUS_PERCENT, 2)
+    )
+    const isInsideDefendingArc = normalizedDefendingArcDistance <= 1.0
+
+    // ATTACKING ZONES (near opponent's goal)
+    if (distFromAttackingGoal <= 6.2) return `inside ${defendingTeamName}'s small rectangle${lateral}`
+    if (distFromAttackingGoal <= 9) return `${defendingTeamName}'s 13-meter line${lateral}`
+    if (distFromAttackingGoal <= 13.8) return `${defendingTeamName}'s 20-meter line${lateral}`
+    if (!isOutsideAttackingArc) return `inside ${defendingTeamName}'s 40-meter arc${lateral}`
+    if (distFromAttackingGoal <= 38) return `outside ${defendingTeamName}'s 40-meter arc${lateral}` // 2-point zone
+
+    // MIDFIELD ZONES
+    if (distFromAttackingGoal <= 50 && distFromDefendingGoal <= 50) {
+      return `around midfield${lateral}`
+    }
+    if (distFromAttackingGoal < 50) return `${defendingTeamName}'s half${lateral}`
+
+    // DEFENSIVE ZONES (in own half)
+    if (distFromDefendingGoal <= 6.2) return `inside ${attackingTeamName}'s small rectangle${lateral}`
+    if (distFromDefendingGoal <= 9) return `${attackingTeamName}'s 13-meter line${lateral}`
+    if (distFromDefendingGoal <= 13.8) return `${attackingTeamName}'s 20-meter line${lateral}`
+    if (isInsideDefendingArc) return `inside ${attackingTeamName}'s 40-meter arc${lateral}`
+    if (distFromDefendingGoal <= 38) return `${attackingTeamName}'s 45-meter line${lateral}`
+
+    return `${attackingTeamName}'s half${lateral}`
   }
 
   // Handle deleting an event
@@ -322,11 +393,12 @@ export default function MatchRecording() {
   // Helper function to format event description
   const formatEventDescription = (event: MatchEvent): string => {
     const player = players.find(p => p.id === String(event.player_id))
-    const area = getPitchArea(event.pitch_x, event.pitch_y)
     const teamName = match?.opponent || 'Opposition'
     // Backend returns team as 'dungloe' or 'opponent', fallback to is_home_team logic
     const eventTeam = (event as any).team
     const isDungloe = eventTeam ? eventTeam === 'dungloe' : (event.is_home_team === match?.is_home)
+    // Get contextual area description based on which team the event is for
+    const area = getPitchArea(event.pitch_x, event.pitch_y, isDungloe, teamName)
     // For Dungloe events, use player name; for opponent events, use team name
     const playerName = isDungloe ? (player?.name || 'Dungloe player') : teamName
 
@@ -375,6 +447,16 @@ export default function MatchRecording() {
         return isDungloe
           ? `${playerName} hit a wide from a free in ${area}`
           : `${teamName} hit a wide from a free in ${area}`
+
+      case 'forty_five':
+        return isDungloe
+          ? `${playerName} scored from a 45`
+          : `${teamName} scored from a 45`
+
+      case 'forty_five_missed':
+        return isDungloe
+          ? `${playerName} missed a 45`
+          : `${teamName} missed a 45`
 
       case 'turnover_won':
         return isDungloe
@@ -487,6 +569,13 @@ export default function MatchRecording() {
   }
 
   const handleBallMove = async (newPosition: BallPosition) => {
+    // Check if there's a pending kickout event waiting for position
+    if (pendingKickoutEvent) {
+      console.log('Recording pending kickout at position:', newPosition)
+      await recordKickoutAtPosition(pendingKickoutEvent, newPosition)
+      return
+    }
+
     // Block ball movement if awaiting kickout resolution
     if (awaitingKickout) {
       console.log('Ball movement blocked - awaiting kickout resolution')
@@ -496,6 +585,18 @@ export default function MatchRecording() {
     // Only record if match is in progress
     if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time') {
       return
+    }
+
+    // If there's a pending free kick and user moves ball, cancel the free (short free played)
+    if (pendingFreeKick) {
+      console.log('Ball moved - cancelling pending free kick (short free played)')
+      setPendingFreeKick(null)
+    }
+
+    // If there's a pending 45 and user moves ball, cancel it
+    if (pending45) {
+      console.log('Ball moved - cancelling pending 45')
+      setPending45(null)
     }
 
     // Update local ball position
@@ -516,6 +617,81 @@ export default function MatchRecording() {
     } catch (error) {
       console.error('Failed to record possession:', error)
       // Don't show alert for possession tracking errors (too disruptive)
+    }
+  }
+
+  // Record a kickout event at the selected position
+  const recordKickoutAtPosition = async (
+    kickout: { eventType: EventType; isHomeTeam: boolean; playerId?: string },
+    position: BallPosition
+  ) => {
+    if (!matchId) return
+
+    try {
+      const backendEventType = mapEventTypeToBackend(kickout.eventType)
+
+      console.log('Recording kickout at position:', {
+        eventType: kickout.eventType,
+        backendType: backendEventType,
+        position,
+        playerId: kickout.playerId
+      })
+
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        player_id: kickout.playerId,
+        event_type: backendEventType,
+        minute: minute,
+        half: currentHalf,
+        x_coord: position.x,
+        y_coord: position.y,
+        is_home_team: kickout.isHomeTeam,
+        notes: undefined
+      })
+
+      // Determine who won the kickout based on event type
+      const eventTypeStr = String(kickout.eventType).toUpperCase()
+      const isDungloeWon = eventTypeStr.includes('DUNGLOE_WON')
+      const newTeam = isDungloeWon ? PossessionTeam.DUNGLOE : PossessionTeam.OPPONENT
+
+      // Update ball position to where kickout was won with correct team
+      const newBallPosition = {
+        x: position.x,
+        y: position.y,
+        team: newTeam
+      }
+      setBallPosition(newBallPosition)
+
+      // Record possession change to backend
+      try {
+        await recordPossession.mutateAsync({
+          match_id: matchId,
+          x_coord: position.x,
+          y_coord: position.y,
+          team: isDungloeWon ? 'home' : 'away',
+          timestamp: new Date(),
+          minute: minute,
+          half: currentHalf
+        })
+        console.log('Kickout possession recorded:', isDungloeWon ? 'Dungloe' : 'Opposition')
+      } catch (error) {
+        console.error('Failed to record kickout possession:', error)
+      }
+
+      // Clear pending kickout
+      setPendingKickoutEvent(null)
+      setAwaitingKickout(false)
+
+      // Switch to scoring tab after kickout resolved
+      setActiveKickoutTab('scoring')
+
+      // Force refetch stats
+      await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
+
+      console.log('Kickout recorded and ball moved to:', newBallPosition)
+    } catch (error) {
+      console.error('Failed to record kickout:', error)
+      alert('Failed to record kickout. Please try again.')
     }
   }
 
@@ -552,44 +728,59 @@ export default function MatchRecording() {
       'own_kickout_opposition_won_break': 'breaking_ball_won',   // Opposition won break
       'opp_kickout_dungloe_won_break': 'breaking_ball_won',      // Dungloe won break
       'opp_kickout_opposition_won_break': 'breaking_ball_won',   // Opposition won break
+
+      // Frees
+      'point_free': 'point_free',
+      'two_point_free': 'two_point_free',
+      'wide_free': 'wide_free',
+
+      // 45s (ball went wide off defender)
+      'forty_five': 'forty_five',  // 45 scored - always 1 point
+      'forty_five_missed': 'forty_five_missed',  // 45 missed
     }
 
     return mapping[eventLower] || eventLower  // Fallback to original if no mapping
   }
 
-  // Handle foul button click
-  const handleFoulClick = () => {
-    setIsFoulModalOpen(true)
+  // Handle "Free Won" button - opens player selection modal first
+  const handleFreeWon = () => {
+    // Open player selection modal to select who won the free
+    setSelectingFreePlayer(true)
+    setIsPlayerModalOpen(true)
+    console.log('Free kick won - selecting player...')
   }
 
-  // Handle foul modal confirm
-  const handleFoulConfirm = async (playerId: string) => {
-    if (!matchId) return
+  // Handle player selected for free kick
+  const handleFreePlayerSelected = (player: Player) => {
+    // Set pending free kick with selected player
+    setPendingFreeKick({ position: ballPosition, player })
+    // Dungloe now has possession (they won the free)
+    setBallPosition(prev => ({
+      ...prev,
+      team: PossessionTeam.DUNGLOE
+    }))
+    // Close player modal and reset free player selection flag
+    setIsPlayerModalOpen(false)
+    setSelectingFreePlayer(false)
+    console.log('Free kick won by:', player.name, 'at position:', ballPosition)
+  }
 
-    const isOppositionFoul = ballPosition.team === PossessionTeam.OPPONENT
+  // Cancel pending free kick
+  const handleCancelFree = () => {
+    setPendingFreeKick(null)
+    console.log('Free kick cancelled')
+  }
 
-    try {
-      // Determine event type and team
-      const eventType = isOppositionFoul ? EventType.FOUL_WON : EventType.FOUL_COMMITTED
-      const isHomeTeam = match?.is_home || false
+  // Handle "45" button - opens 45 options menu (scored/missed)
+  const handle45Click = () => {
+    setPending45({ position: ballPosition })
+    console.log('45 initiated at position:', ballPosition)
+  }
 
-      await recordEvent.mutateAsync({
-        match_id: matchId,
-        player_id: playerId,
-        event_type: eventType,
-        minute: minute,
-        half: currentHalf,
-        x_coord: ballPosition.x,
-        y_coord: ballPosition.y,
-        is_home_team: isHomeTeam,
-        notes: undefined
-      })
-
-      // Possession stays with fouled team (already correct in ballPosition)
-      // No ball movement needed - free kick taken from foul location or user moves ball for short free
-    } catch (error) {
-      console.error('Failed to record foul:', error)
-    }
+  // Cancel pending 45
+  const handleCancel45 = () => {
+    setPending45(null)
+    console.log('45 cancelled')
   }
 
   // Handle manual event entry
@@ -682,11 +873,29 @@ export default function MatchRecording() {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     console.log('Ball possession team:', ballPosition.team)
 
+    // Check if this is a free kick result or 45 result
+    const eventStr = String(eventType).toUpperCase()
+    const isFreeKickResult = eventStr.includes('FREE')
+    const is45Result = eventStr.includes('FORTY_FIVE')
+
+    // Determine action position and player based on pending state
+    let actionPosition = ballPosition
+    let freeKickPlayer: Player | null = null
+    if (isFreeKickResult && pendingFreeKick) {
+      actionPosition = pendingFreeKick.position
+      freeKickPlayer = pendingFreeKick.player
+      console.log('Recording free kick result by:', freeKickPlayer?.name, ', clearing pending free kick')
+      setPendingFreeKick(null)
+    } else if (is45Result && pending45) {
+      actionPosition = pending45.position
+      console.log('Recording 45 result, clearing pending 45')
+      setPending45(null)
+    }
+
     // NEW PRINCIPLE: Buttons explicitly say "Dungloe Won" or "Opposition Won"
     // "Dungloe Won" → needs Dungloe player selection, is_home_team: true
     // "Opposition Won" → no player needed, is_home_team: false
 
-    const eventStr = String(eventType).toUpperCase()
     const isDungloeWon = eventStr.includes('DUNGLOE_WON')
     const isOppositionWon = eventStr.includes('OPPOSITION_WON')
 
@@ -708,9 +917,12 @@ export default function MatchRecording() {
     } else if (eventStr.startsWith('OWN_')) {
       // OWN_ prefix = Dungloe action
       isHomeTeam = true
+    } else if (isFreeKickResult || is45Result) {
+      // Free kick results and 45s are always Dungloe (we won the free / took the 45)
+      isHomeTeam = true
     } else {
       // No prefix (GOAL, POINT, WIDE) = use POSSESSION
-      isHomeTeam = ballPosition.team === PossessionTeam.DUNGLOE
+      isHomeTeam = actionPosition.team === PossessionTeam.DUNGLOE
     }
 
     console.log('Determined isHomeTeam:', isHomeTeam, 'for event:', eventType)
@@ -730,23 +942,101 @@ export default function MatchRecording() {
     const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SAVED]
     const isOpponentScoring = scoringEvents.includes(eventType) && !isHomeTeam
 
-    if (noPlayerNeeded.includes(eventType as EventType) || isOpponentScoring) {
+    // Free kick results - record directly with the stored player
+    if (isFreeKickResult && freeKickPlayer) {
+      recordFreeKickResult(eventType, freeKickPlayer, actionPosition)
+    } else if (noPlayerNeeded.includes(eventType as EventType) || isOpponentScoring) {
       // Record immediately without player selection
-      recordEventWithoutPlayer(eventType, isHomeTeam)
+      recordEventWithoutPlayer(eventType, isHomeTeam, actionPosition)
     } else {
       // Open player selection modal for Dungloe players
       // This includes ALL "Dungloe Won" events and Dungloe scoring
       setPendingEvent({
         eventType: eventType as EventType,
         team: isHomeTeam ? 'dungloe' : 'opponent',
-        position: ballPosition
+        position: actionPosition
       })
       setIsPlayerModalOpen(true)
     }
   }
 
-  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean) => {
+  // Record free kick result with stored player
+  const recordFreeKickResult = async (eventType: EventType, player: Player, position: BallPosition) => {
     if (!matchId) return
+
+    try {
+      const backendEventType = mapEventTypeToBackend(eventType)
+
+      console.log('Recording free kick result:', {
+        eventType,
+        backendType: backendEventType,
+        player: player.name,
+        position
+      })
+
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        player_id: player.id,
+        event_type: backendEventType,
+        minute: minute,
+        half: currentHalf,
+        x_coord: position.x,
+        y_coord: position.y,
+        is_home_team: true, // Free kicks are always Dungloe
+        notes: undefined
+      })
+
+      // Free kick scores result in kickout
+      const scoringFrees = [EventType.POINT_FREE, EventType.TWO_POINT_FREE]
+      const isScore = scoringFrees.includes(eventType)
+      const isWide = eventType === EventType.WIDE_FREE
+
+      if (isScore || isWide) {
+        // Ball moves to goalkeeper area for kickout
+        const kickoutTeam = PossessionTeam.OPPONENT // Opponent takes kickout after Dungloe scores/goes wide
+        const kickoutX = 95 // Opponent goal area
+
+        setBallPosition({
+          x: kickoutX,
+          y: 50,
+          team: kickoutTeam
+        })
+
+        setActiveKickoutTab('opp_kickouts')
+        setAwaitingKickout(true)
+
+        console.log('Ball moved to goalkeeper area for kickout after free:', eventType)
+      }
+
+      // Force refetch stats
+      await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
+
+      console.log('Free kick result recorded successfully')
+    } catch (error) {
+      console.error('Failed to record free kick result:', error)
+      alert('Failed to record free kick. Please try again.')
+    }
+  }
+
+  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean, position: BallPosition = ballPosition) => {
+    if (!matchId) return
+
+    // Check if this is a kickout event - these need position selection first
+    const eventTypeStr = String(eventType).toUpperCase()
+    const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
+
+    if (isKickoutEvent) {
+      // Don't record immediately - wait for user to select position on pitch
+      console.log('Setting pending kickout event (no player):', eventType)
+      setPendingKickoutEvent({
+        eventType,
+        isHomeTeam,
+        playerId: undefined
+      })
+      // Keep awaitingKickout false so user can click on pitch
+      setAwaitingKickout(false)
+      return
+    }
 
     try {
       const backendEventType = mapEventTypeToBackend(eventType)
@@ -763,28 +1053,21 @@ export default function MatchRecording() {
         event_type: backendEventType,
         minute: minute,
         half: currentHalf,
-        x_coord: ballPosition.x,
-        y_coord: ballPosition.y,
+        x_coord: position.x,
+        y_coord: position.y,
         is_home_team: isHomeTeam,
         notes: undefined
       })
 
       // Check if this was a scoring event - reset ball and auto-select kickout tab
-      const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
+      // Include free kick scores and 45 scored
+      const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
       const isScore = scoringEvents.includes(eventType)
 
-      // Check if this was a dead ball event - only WIDE results in kickout
+      // Check if this was a dead ball event - WIDE, WIDE_FREE, and 45_MISSED result in kickout
       // SAVED stays in play (keeper can run with it or pass)
-      const deadBallEvents = [EventType.WIDE]
+      const deadBallEvents = [EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED]
       const isDeadBall = deadBallEvents.includes(eventType)
-
-      // Check if this was a kickout/breaking ball event (check the actual eventType enum value)
-      const eventTypeStr = String(eventType).toUpperCase()
-      const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
-
-      // Check who won the kickout/break
-      const isDungloeWonKickout = eventTypeStr.includes('DUNGLOE_WON')
-      const isOppositionWonKickout = eventTypeStr.includes('OPPOSITION_WON')
 
       if (isScore || isDeadBall) {
         // After score/wide, ball moves to goalkeeper area for kickout
@@ -809,99 +1092,68 @@ export default function MatchRecording() {
         // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
 
-        if (isKickoutEvent) {
-          // After kickout/break event without player, update possession based on who won
-          if (isOppositionWonKickout) {
-            // Opposition won the kickout/break → Opposition gets possession
-            setBallPosition(prev => ({
-              ...prev,
-              team: PossessionTeam.OPPONENT
-            }))
+        // Handle possession change for non-kickout, non-scoring events
+        // (e.g., turnovers, unforced errors, saved shots)
+        // Note: Kickout events are handled via pendingKickoutEvent pattern
+        const turnoverEventStr = String(eventType).toUpperCase()
 
-            // Record possession change to backend
-            try {
-              await recordPossession.mutateAsync({
-                match_id: matchId,
-                x_coord: ballPosition.x,
-                y_coord: ballPosition.y,
-                team: 'away',  // Opposition
-                timestamp: new Date(),
-                minute: minute,
-                half: currentHalf
-              })
-              console.log('Opposition won kickout - possession updated')
-            } catch (error) {
-              console.error('Failed to record kickout possession:', error)
+        if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
+          // Determine new possession based on event type
+          let newTeam: PossessionTeam
+          let newX = position.x
+          let newY = position.y
+
+          if (turnoverEventStr.includes('TURNOVER_WON')) {
+            // Dungloe won the ball → Dungloe gets possession
+            newTeam = PossessionTeam.DUNGLOE
+          } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
+            // Dungloe lost the ball → Opponent gets possession
+            newTeam = PossessionTeam.OPPONENT
+          } else if (turnoverEventStr.includes('SAVED')) {
+            // Shot saved → Defending team gets possession at goalkeeper position
+            newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+
+            // Move ball to goalkeeper position (inside small rectangle/goal area)
+            if (newTeam === PossessionTeam.DUNGLOE) {
+              // Dungloe keeper saved it → Ball at Dungloe goal
+              newX = 5  // Inside Dungloe goal area (x=0 is goal line)
+              newY = 50 // Center of goal
+            } else {
+              // Opponent keeper saved it → Ball at opponent goal
+              newX = 95 // Inside opponent goal area (x=100 is goal line)
+              newY = 50 // Center of goal
             }
+          } else if (turnoverEventStr.includes('SHORT')) {
+            // Shot dropped short → Opponent gets possession (stays where it is)
+            newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+          } else if (turnoverEventStr.includes('OPP_UNFORCED_ERROR')) {
+            // Opponent unforced error → Dungloe gets possession
+            newTeam = PossessionTeam.DUNGLOE
+          } else if (turnoverEventStr.includes('OUR_UNFORCED_ERROR')) {
+            // Our unforced error → Opponent gets possession
+            newTeam = PossessionTeam.OPPONENT
+          } else {
+            // Fallback (shouldn't reach here)
+            newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
           }
 
-          // Unlock ball - kickout resolved!
-          setAwaitingKickout(false)
+          const newBallPosition = { x: newX, y: newY, team: newTeam }
+          setBallPosition(newBallPosition)
 
-          console.log('Kickout event resolved, returning to scoring tab')
-        } else {
-          // Handle possession change for non-kickout, non-scoring events
-          // (e.g., turnovers, unforced errors, saved shots)
-          const turnoverEventStr = String(eventType).toUpperCase()
-          
-          if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
-            // Determine new possession based on event type
-            let newTeam: PossessionTeam
-            let newX = ballPosition.x
-            let newY = ballPosition.y
-            
-            if (turnoverEventStr.includes('TURNOVER_WON')) {
-              // Dungloe won the ball → Dungloe gets possession
-              newTeam = PossessionTeam.DUNGLOE
-            } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
-              // Dungloe lost the ball → Opponent gets possession
-              newTeam = PossessionTeam.OPPONENT
-            } else if (turnoverEventStr.includes('SAVED')) {
-              // Shot saved → Defending team gets possession at goalkeeper position
-              newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
-              
-              // Move ball to goalkeeper position (inside small rectangle/goal area)
-              if (newTeam === PossessionTeam.DUNGLOE) {
-                // Dungloe keeper saved it → Ball at Dungloe goal
-                newX = 5  // Inside Dungloe goal area (x=0 is goal line)
-                newY = 50 // Center of goal
-              } else {
-                // Opponent keeper saved it → Ball at opponent goal
-                newX = 95 // Inside opponent goal area (x=100 is goal line)
-                newY = 50 // Center of goal
-              }
-            } else if (turnoverEventStr.includes('SHORT')) {
-              // Shot dropped short → Opponent gets possession (stays where it is)
-              newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
-            } else if (turnoverEventStr.includes('OPP_UNFORCED_ERROR')) {
-              // Opponent unforced error → Dungloe gets possession
-              newTeam = PossessionTeam.DUNGLOE
-            } else if (turnoverEventStr.includes('OUR_UNFORCED_ERROR')) {
-              // Our unforced error → Opponent gets possession
-              newTeam = PossessionTeam.OPPONENT
-            } else {
-              // Fallback (shouldn't reach here)
-              newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
-            }
-            
-            const newBallPosition = { x: newX, y: newY, team: newTeam }
-            setBallPosition(newBallPosition)
-            
-            // Record the possession change to backend
-            try {
-              await recordPossession.mutateAsync({
-                match_id: matchId,
-                x_coord: newBallPosition.x,
-                y_coord: newBallPosition.y,
-                team: newTeam === PossessionTeam.DUNGLOE ? 'home' : 'away',
-                timestamp: new Date(),
-                minute: minute,
-                half: currentHalf
-              })
-              console.log('Possession change recorded:', newTeam, 'after:', eventType)
-            } catch (error) {
-              console.error('Failed to record possession:', error)
-            }
+          // Record the possession change to backend
+          try {
+            await recordPossession.mutateAsync({
+              match_id: matchId,
+              x_coord: newBallPosition.x,
+              y_coord: newBallPosition.y,
+              team: newTeam === PossessionTeam.DUNGLOE ? 'home' : 'away',
+              timestamp: new Date(),
+              minute: minute,
+              half: currentHalf
+            })
+            console.log('Possession change recorded:', newTeam, 'after:', eventType)
+          } catch (error) {
+            console.error('Failed to record possession:', error)
           }
         }
       }
@@ -926,7 +1178,27 @@ export default function MatchRecording() {
       second: seconds
     })
 
-    // Record event to backend
+    // Check if this is a kickout/breaking ball event - these need position selection
+    const eventTypeStr = String(pendingEvent.eventType).toUpperCase()
+    const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
+
+    if (isKickoutEvent) {
+      // Don't record immediately - set pending kickout and wait for position selection
+      console.log('Setting pending kickout event (with player):', pendingEvent.eventType, player.name)
+      setPendingKickoutEvent({
+        eventType: pendingEvent.eventType,
+        isHomeTeam: pendingEvent.team === 'dungloe',
+        playerId: player.id
+      })
+      // Unlock ball so user can click on pitch to select position
+      setAwaitingKickout(false)
+      // Close modal and reset pendingEvent
+      setIsPlayerModalOpen(false)
+      setPendingEvent(null)
+      return
+    }
+
+    // Record event to backend (non-kickout events)
     try {
       // Map frontend event type to backend API enum
       const backendEventType = mapEventTypeToBackend(pendingEvent.eventType)
@@ -950,22 +1222,14 @@ export default function MatchRecording() {
         notes: undefined
       })
 
-      // Check if this was a scoring event (goal, point, or 2-pointer)
-      const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
+      // Check if this was a scoring event (includes free kicks and 45 scored)
+      const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
       const isScore = scoringEvents.includes(pendingEvent.eventType as EventType)
 
-      // Check if this was a dead ball event - only WIDE results in kickout
+      // Check if this was a dead ball event - WIDE, WIDE_FREE, 45_MISSED result in kickout
       // SAVED stays in play (keeper can run with it or pass)
-      const deadBallEvents = [EventType.WIDE]
+      const deadBallEvents = [EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED]
       const isDeadBall = deadBallEvents.includes(pendingEvent.eventType as EventType)
-
-      // Check if this was a kickout/breaking ball event with player selection
-      const eventTypeStr = String(pendingEvent.eventType).toUpperCase()
-      const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
-
-      // Check who won the kickout/break
-      const isDungloeWonKickout = eventTypeStr.includes('DUNGLOE_WON')
-      const isOppositionWonKickout = eventTypeStr.includes('OPPOSITION_WON')
 
       if (isScore || isDeadBall) {
         // After score/wide/short, ball moves to goalkeeper area for kickout
@@ -989,60 +1253,6 @@ export default function MatchRecording() {
       } else {
         // For ALL non-scoring events, return to scoring tab
         setActiveKickoutTab(null)
-
-        if (isKickoutEvent) {
-          // After kickout/break event, update possession based on who won
-          if (isDungloeWonKickout) {
-            // Dungloe won the kickout/break → Dungloe gets possession
-            setBallPosition(prev => ({
-              ...prev,
-              team: PossessionTeam.DUNGLOE
-            }))
-
-            // Record possession change to backend
-            try {
-              await recordPossession.mutateAsync({
-                match_id: matchId,
-                x_coord: pendingEvent.position.x,
-                y_coord: pendingEvent.position.y,
-                team: 'home',  // Dungloe
-                timestamp: new Date(),
-                minute: minute,
-                half: currentHalf
-              })
-              console.log('Dungloe won kickout - possession updated')
-            } catch (error) {
-              console.error('Failed to record kickout possession:', error)
-            }
-          } else if (isOppositionWonKickout) {
-            // Opposition won the kickout/break → Opposition gets possession
-            setBallPosition(prev => ({
-              ...prev,
-              team: PossessionTeam.OPPONENT
-            }))
-
-            // Record possession change to backend
-            try {
-              await recordPossession.mutateAsync({
-                match_id: matchId,
-                x_coord: pendingEvent.position.x,
-                y_coord: pendingEvent.position.y,
-                team: 'away',  // Opposition
-                timestamp: new Date(),
-                minute: minute,
-                half: currentHalf
-              })
-              console.log('Opposition won kickout - possession updated')
-            } catch (error) {
-              console.error('Failed to record kickout possession:', error)
-            }
-          }
-
-          // Unlock ball - kickout resolved!
-          setAwaitingKickout(false)
-
-          console.log('Kickout/breaking ball event with player resolved, returning to scoring tab')
-        }
       }
 
       // Auto-change possession for turnover events, shots that drop short, and saved shots
@@ -1062,7 +1272,7 @@ export default function MatchRecording() {
         } else if (turnoverEventStr.includes('SAVED')) {
           // Shot saved → Defending team gets possession at goalkeeper position
           newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
-          
+
           // Move ball to goalkeeper position (inside small rectangle/goal area)
           if (newTeam === PossessionTeam.DUNGLOE) {
             // Dungloe keeper saved it → Ball at Dungloe goal
@@ -1130,7 +1340,7 @@ export default function MatchRecording() {
     }
   }
 
-  const handlePossessionSelected = async (team: 'home' | 'away') => {
+  const handlePossessionSelected = async (team: 'home' | 'away', attackingRight: boolean) => {
     setIsPossessionModalOpen(false)
 
     // Set initial possession
@@ -1141,6 +1351,9 @@ export default function MatchRecording() {
 
     // Start the match/half
     if (matchPhase === 'not_started') {
+      // Set attack direction for first half
+      setDungloeAttackingRight(attackingRight)
+
       try {
         if (matchId) {
           await startMatch.mutateAsync(matchId)
@@ -1154,6 +1367,9 @@ export default function MatchRecording() {
         alert('Failed to start match. Please try again.')
       }
     } else if (matchPhase === 'half_time') {
+      // Auto-flip attack direction for second half
+      setDungloeAttackingRight(!dungloeAttackingRight)
+
       setMatchPhase('second_half')
       setCurrentHalf(2)
       setMinute(30)
@@ -1161,12 +1377,20 @@ export default function MatchRecording() {
     }
   }
 
-  const endFirstHalf = () => {
+  const endFirstHalf = async () => {
     if (!matchId || minute < 30) return
-    
+
     // Pause the timer
     setMatchPhase('half_time')
     console.log('First half ended at', minute, ':', seconds)
+
+    // Trigger half-time AI insight
+    try {
+      await api.liveInsights.triggerHalfTime(matchId)
+      console.log('Half-time insight triggered')
+    } catch (error) {
+      console.error('Failed to trigger half-time insight:', error)
+    }
   }
 
   const endMatch = async () => {
@@ -1311,12 +1535,24 @@ export default function MatchRecording() {
             {/* Main Pitch Area */}
             <div className="lg:col-span-2">
               {/* Kickout Warning Banner */}
-              {awaitingKickout && (
+              {awaitingKickout && !pendingKickoutEvent && (
                 <div className="glass-card p-4 mb-4 bg-gradient-to-r from-amber-600/20 to-orange-600/20 border-2 border-amber-500/50 animate-pulse">
                   <div className="flex items-center justify-center space-x-3">
                     <AlertCircle size={24} className="text-amber-400" />
                     <p className="text-white font-semibold text-lg">
                       ⚽ Select kickout winner to continue
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Pending Kickout Position Banner */}
+              {pendingKickoutEvent && (
+                <div className="glass-card p-4 mb-4 bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border-2 border-emerald-500/50 animate-pulse">
+                  <div className="flex items-center justify-center space-x-3">
+                    <Activity size={24} className="text-emerald-400" />
+                    <p className="text-white font-semibold text-lg">
+                      📍 Click on pitch to select where kickout was won
                     </p>
                   </div>
                 </div>
@@ -1328,7 +1564,7 @@ export default function MatchRecording() {
                   ballPosition={ballPosition}
                   onBallMove={handleBallMove}
                   showZones={true}
-                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || awaitingKickout}
+                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || (awaitingKickout && !pendingKickoutEvent)}
                 />
 
                 {/* Coordinate Debug Display */}
@@ -1340,12 +1576,17 @@ export default function MatchRecording() {
                 <div className="absolute z-10 w-full max-w-xl px-4 left-1/2 -translate-x-1/2" style={{ bottom: '-2.75rem' }}>
                   <CategorizedActionButtons
                     onActionSelect={handleQuickAction}
-                    onFoulClick={handleFoulClick}
+                    onFreeWon={handleFreeWon}
+                    on45Click={handle45Click}
                     disabled={matchPhase !== 'first_half' && matchPhase !== 'second_half'}
                     activeCategory={activeKickoutTab}
                     onCategoryChange={setActiveKickoutTab}
                     currentPossession={ballPosition.team}
                     isIn2PointZone={isIn2PointZone(ballPosition.x, ballPosition.y, ballPosition.team)}
+                    pendingFreeKick={!!pendingFreeKick}
+                    pending45={!!pending45}
+                    onCancelFree={handleCancelFree}
+                    onCancel45={handleCancel45}
                   />
                 </div>
               </div>
@@ -1391,6 +1632,14 @@ export default function MatchRecording() {
 
             {/* Live Stats Sidebar */}
             <div className="space-y-4">
+              {/* AI Live Insights */}
+              <LiveInsightDisplay
+                matchId={matchId}
+                minute={minute}
+                half={currentHalf}
+                isMatchActive={matchPhase === 'first_half' || matchPhase === 'second_half'}
+              />
+
               {/* Match Statistics Table */}
               <div className="glass-card p-6">
                 <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
@@ -1467,7 +1716,7 @@ export default function MatchRecording() {
                       ACCURACY
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {(stats.scores.opponent / stats.shots.opponent * 100).toFixed(1)}%
+                      {stats.shots.opponent > 0 ? (stats.scores.opponent / stats.shots.opponent * 100).toFixed(1) : '0.0'}%
                     </div>
                   </div>
 
@@ -1480,7 +1729,7 @@ export default function MatchRecording() {
                       CONVERSION
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1)}%
+                      {(stats.scores.opponent + stats.wides.opponent) > 0 ? ((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1) : '0.0'}%
                     </div>
                   </div>
 
@@ -1585,16 +1834,17 @@ export default function MatchRecording() {
       )}
 
       {/* Player Selection Modal */}
-      {pendingEvent && (
+      {(pendingEvent || selectingFreePlayer) && (
         <PlayerSelectionModal
           isOpen={isPlayerModalOpen}
           onClose={() => {
             setIsPlayerModalOpen(false)
             setPendingEvent(null)
+            setSelectingFreePlayer(false)
           }}
-          onSelectPlayer={handlePlayerSelected}
-          eventType={pendingEvent.eventType as any}
-          team={pendingEvent.team}
+          onSelectPlayer={selectingFreePlayer ? handleFreePlayerSelected : handlePlayerSelected}
+          eventType={selectingFreePlayer ? EventType.FREE_WON : (pendingEvent?.eventType as any)}
+          team="dungloe"
           players={players}
         />
       )}
@@ -1620,16 +1870,6 @@ export default function MatchRecording() {
         confirmText="Delete"
         cancelText="Cancel"
         variant="danger"
-      />
-
-      {/* Foul Modal */}
-      <FoulModal
-        isOpen={isFoulModalOpen}
-        onClose={() => setIsFoulModalOpen(false)}
-        onConfirm={handleFoulConfirm}
-        players={players}
-        currentPossession={ballPosition.team}
-        opponentName={matchDisplay.opponent}
       />
 
       {/* Manual Event Entry Modal */}

@@ -84,6 +84,19 @@ class MatchTrend(BaseModel):
     result: str  # W/L/D
 
 
+class PlayerMatchStats(BaseModel):
+    """Individual player statistics per match."""
+    match_id: str
+    opponent: str
+    match_date: str
+    goals: int
+    points: int
+    two_pointers: int
+    total_score: int
+    turnovers_won: int
+    turnovers_lost: int
+
+
 class DashboardData(BaseModel):
     """Complete dashboard data response."""
     season_summary: SeasonSummary
@@ -197,7 +210,7 @@ async def get_dashboard_data(
 
     scoring_events = [
         EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
-        EventType.POINT_FREE, EventType.TWO_POINT_FREE
+        EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE
     ]
 
     for event in all_events:
@@ -211,8 +224,8 @@ async def get_dashboard_data(
 
             if event.event_type == EventType.GOAL:
                 player_scores[pid]['goals'] += 1
-            elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
-                player_scores[pid]['points'] += 1
+            elif event.event_type in [EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE]:
+                player_scores[pid]['points'] += 1  # 45s count as points (1 point)
             elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
                 player_scores[pid]['two_pointers'] += 1
 
@@ -275,7 +288,8 @@ async def get_dashboard_data(
     shot_events = [
         EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
         EventType.WIDE, EventType.SHORT, EventType.SAVED,
-        EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE
+        EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE,
+        EventType.FORTY_FIVE
     ]
 
     shot_locations = []
@@ -283,7 +297,7 @@ async def get_dashboard_data(
         if event.event_type in shot_events and event.pitch_x is not None:
             is_score = event.event_type in [
                 EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
-                EventType.POINT_FREE, EventType.TWO_POINT_FREE
+                EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE
             ]
             shot_locations.append(ShotLocation(
                 x=float(event.pitch_x),
@@ -376,3 +390,99 @@ async def get_shot_locations(
         locations = [l for l in locations if l.team == team]
 
     return locations
+
+
+@router.get("/player/{player_id}/matches", response_model=List[PlayerMatchStats])
+async def get_player_match_stats(
+    player_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get match-by-match statistics for a specific player.
+
+    Returns scoring and turnover data for each match the player participated in.
+    """
+    from uuid import UUID
+
+    try:
+        player_uuid = UUID(player_id)
+    except ValueError:
+        return []
+
+    # Get completed matches
+    matches_result = await db.execute(
+        select(Match).where(
+            and_(
+                Match.status == MatchStatus.COMPLETED,
+                Match.is_deleted == False
+            )
+        ).order_by(Match.match_date.desc())
+    )
+    matches = matches_result.scalars().all()
+
+    if not matches:
+        return []
+
+    match_ids = [m.id for m in matches]
+    matches_map = {m.id: m for m in matches}
+
+    # Get all events for this player
+    events_result = await db.execute(
+        select(MatchEvent).where(
+            and_(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.player_id == player_uuid,
+                MatchEvent.team == Team.DUNGLOE
+            )
+        )
+    )
+    player_events = events_result.scalars().all()
+
+    # Aggregate by match
+    match_stats = {}
+
+    scoring_events = {
+        EventType.GOAL: 'goals',
+        EventType.POINT: 'points',
+        EventType.POINT_FREE: 'points',
+        EventType.FORTY_FIVE: 'points',  # 45s always count as 1 point
+        EventType.TWO_POINT: 'two_pointers',
+        EventType.TWO_POINT_FREE: 'two_pointers'
+    }
+
+    for event in player_events:
+        mid = str(event.match_id)
+        if mid not in match_stats:
+            match_stats[mid] = {
+                'goals': 0, 'points': 0, 'two_pointers': 0,
+                'turnovers_won': 0, 'turnovers_lost': 0
+            }
+
+        if event.event_type in scoring_events:
+            match_stats[mid][scoring_events[event.event_type]] += 1
+        elif event.event_type == EventType.TURNOVER_WON:
+            match_stats[mid]['turnovers_won'] += 1
+        elif event.event_type == EventType.TURNOVER_LOST:
+            match_stats[mid]['turnovers_lost'] += 1
+
+    # Build response
+    result = []
+    for mid, stats in match_stats.items():
+        match = matches_map.get(UUID(mid))
+        if match:
+            total_score = stats['goals'] * 3 + stats['points'] + stats['two_pointers'] * 2
+            result.append(PlayerMatchStats(
+                match_id=mid,
+                opponent=match.opponent,
+                match_date=match.match_date.isoformat() if match.match_date else "",
+                goals=stats['goals'],
+                points=stats['points'],
+                two_pointers=stats['two_pointers'],
+                total_score=total_score,
+                turnovers_won=stats['turnovers_won'],
+                turnovers_lost=stats['turnovers_lost']
+            ))
+
+    # Sort by match date descending
+    result.sort(key=lambda x: x.match_date, reverse=True)
+    return result

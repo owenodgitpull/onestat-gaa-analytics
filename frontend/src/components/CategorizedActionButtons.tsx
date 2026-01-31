@@ -8,22 +8,22 @@ import {
   AlertCircle,
   Zap,
   AlertTriangle,
+  Flag,
 } from 'lucide-react'
 
 interface CategorizedActionButtonsProps {
   onActionSelect: (eventType: EventType) => void
-  onFoulClick?: () => void
+  onFreeWon?: () => void
+  on45Click?: () => void
   disabled?: boolean
   activeCategory?: string | null
   onCategoryChange?: (category: string | null) => void
   currentPossession?: PossessionTeam
   isIn2PointZone?: boolean
-}
-
-interface ActionButton {
-  eventType: EventType
-  label: string
-  icon: typeof Target
+  pendingFreeKick?: boolean
+  pending45?: boolean
+  onCancelFree?: () => void
+  onCancel45?: () => void
 }
 
 const categories = [
@@ -72,32 +72,38 @@ const categories = [
       { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK, label: 'Opposition Won Break', icon: XCircle },
     ]
   },
-  {
-    id: 'fouls',
-    label: 'Fouls',
-    icon: AlertTriangle,
-    buttons: [
-      { eventType: 'FOUL' as EventType, label: 'Foul', icon: AlertTriangle },
-      { eventType: EventType.POINT_FREE, label: 'Point (Free)', icon: Target },
-      { eventType: EventType.TWO_POINT_FREE, label: '2PT (Free)', icon: Target },
-      { eventType: EventType.WIDE_FREE, label: 'Wide (Free)', icon: XCircle },
-    ]
-  },
+]
+
+// Free kick options shown after "Free Won" is clicked
+const freeKickOptions = [
+  { eventType: EventType.POINT_FREE, label: 'Point (Free)', icon: Target },
+  { eventType: EventType.TWO_POINT_FREE, label: '2PT (Free)', icon: Target },
+  { eventType: EventType.WIDE_FREE, label: 'Wide (Free)', icon: XCircle },
+]
+
+// 45 options - scored or missed
+const fortyFiveOptions = [
+  { eventType: EventType.FORTY_FIVE, label: '45 Scored', icon: CheckCircle },
+  { eventType: EventType.FORTY_FIVE_MISSED, label: '45 Missed', icon: XCircle },
 ]
 
 export default function CategorizedActionButtons({
   onActionSelect,
-  onFoulClick,
+  onFreeWon,
+  on45Click,
   disabled = false,
   activeCategory: externalActiveCategory,
   onCategoryChange,
   currentPossession = PossessionTeam.DUNGLOE,
-  isIn2PointZone = false
+  isIn2PointZone = false,
+  pendingFreeKick = false,
+  pending45 = false,
+  onCancelFree,
+  onCancel45
 }: CategorizedActionButtonsProps) {
   const [internalActiveCategory, setInternalActiveCategory] = useState('scoring')
 
   // Use external control if provided (and not null), otherwise use internal state
-  // When externalActiveCategory is explicitly null, return to 'scoring'
   const activeCategory = externalActiveCategory === null ? 'scoring' : (externalActiveCategory ?? internalActiveCategory)
   const setActiveCategory = onCategoryChange ?? setInternalActiveCategory
 
@@ -124,6 +130,16 @@ export default function CategorizedActionButtons({
       return true
     }
 
+    // For free kicks: disable 2PT free if not in 2-point zone
+    if (eventType === EventType.TWO_POINT_FREE && !isIn2PointZone) {
+      return true
+    }
+
+    // Disable regular point free if IN 2-point zone
+    if (eventType === EventType.POINT_FREE && isIn2PointZone) {
+      return true
+    }
+
     const hasPossession = currentPossession === PossessionTeam.DUNGLOE
 
     // If Dungloe has possession, disable these opponent-focused events:
@@ -141,26 +157,127 @@ export default function CategorizedActionButtons({
     }
   }
 
+  // Show 45 options menu
+  if (pending45) {
+    return (
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-blue-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        {/* 45 Header */}
+        <div className="px-3 py-2 bg-gradient-to-r from-blue-600/30 to-indigo-600/30 border-b border-blue-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Flag size={16} className="text-blue-400" />
+              <span className="text-sm font-semibold text-blue-300">45 - Select Outcome</span>
+            </div>
+            <button
+              onClick={onCancel45}
+              className="text-xs text-white/60 hover:text-white px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        {/* 45 Action Buttons */}
+        <div className="p-2 flex flex-wrap gap-1.5 justify-center min-h-[48px]">
+          {fortyFiveOptions.map((button) => {
+            const Icon = button.icon
+            const isScored = button.eventType === EventType.FORTY_FIVE
+
+            return (
+              <button
+                key={button.label}
+                onClick={() => onActionSelect(button.eventType)}
+                disabled={disabled}
+                className={`btn-primary !py-1.5 !px-4 flex items-center space-x-1.5 text-xs ${
+                  isScored
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+                    : 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700'
+                }`}
+              >
+                <Icon size={14} />
+                <span>{button.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Tip */}
+        <div className="px-3 py-2 bg-white/5 border-t border-white/10">
+          <p className="text-xs text-white/50 text-center">
+            Ball went wide off defender - 45m free awarded
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show free kick options menu
+  if (pendingFreeKick) {
+    return (
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-amber-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        {/* Free Kick Header */}
+        <div className="px-3 py-2 bg-gradient-to-r from-amber-600/30 to-orange-600/30 border-b border-amber-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle size={16} className="text-amber-400" />
+              <span className="text-sm font-semibold text-amber-300">Free Kick - Select Outcome</span>
+            </div>
+            <button
+              onClick={onCancelFree}
+              className="text-xs text-white/60 hover:text-white px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        {/* Free Kick Action Buttons */}
+        <div className="p-2 flex flex-wrap gap-1.5 justify-center min-h-[48px]">
+          {freeKickOptions.map((button) => {
+            const Icon = button.icon
+            const isContextDisabled = isButtonDisabled(button.eventType)
+            const isDisabled = disabled || isContextDisabled
+
+            return (
+              <button
+                key={button.eventType}
+                onClick={() => onActionSelect(button.eventType)}
+                disabled={isDisabled}
+                title={isContextDisabled ? 'Not applicable from this position' : ''}
+                className={`btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs ${
+                  isDisabled ? 'opacity-30 cursor-not-allowed' : ''
+                }`}
+              >
+                <Icon size={14} />
+                <span>{button.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Tip */}
+        <div className="px-3 py-2 bg-white/5 border-t border-white/10">
+          <p className="text-xs text-white/50 text-center">
+            Move the ball to play a short free (menu will close)
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-      {/* Action Buttons - Smaller */}
+      {/* Action Buttons */}
       <div className="p-2 flex flex-wrap gap-1.5 justify-center min-h-[48px]">
         {currentCategory?.buttons.map((button) => {
           const Icon = button.icon
           const isContextDisabled = isButtonDisabled(button.eventType)
           const isDisabled = disabled || isContextDisabled
-          
+
           return (
             <button
               key={button.eventType}
-              onClick={() => {
-                // Special handling for Foul button
-                if (button.eventType === 'FOUL' as EventType && onFoulClick) {
-                  onFoulClick()
-                } else {
-                  onActionSelect(button.eventType)
-                }
-              }}
+              onClick={() => onActionSelect(button.eventType)}
               disabled={isDisabled}
               title={isContextDisabled ? 'Not applicable with current possession' : ''}
               className={`btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs ${
@@ -172,21 +289,33 @@ export default function CategorizedActionButtons({
             </button>
           )
         })}
+
+        {/* 45 button - shown in scoring category when Dungloe has possession (like Wide but off defender) */}
+        {activeCategory === 'scoring' && currentPossession === PossessionTeam.DUNGLOE && (
+          <button
+            onClick={on45Click}
+            disabled={disabled}
+            className="btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+          >
+            <Flag size={14} />
+            <span>45</span>
+          </button>
+        )}
       </div>
 
-      {/* Category Tabs - Smaller */}
+      {/* Category Tabs */}
       <div className="flex border-t border-white/10 bg-slate-900/80">
         {categories.map((category) => {
           const Icon = category.icon
           const isActive = activeCategory === category.id
-          
+
           return (
             <button
               key={category.id}
               onClick={() => setActiveCategory(category.id)}
               className={`flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 ${
-                isActive 
-                  ? 'bg-indigo-600 text-white' 
+                isActive
+                  ? 'bg-indigo-600 text-white'
                   : 'text-white/60 hover:text-white hover:bg-white/5'
               }`}
             >
@@ -195,8 +324,17 @@ export default function CategorizedActionButtons({
             </button>
           )
         })}
+
+        {/* Free Won - category level button */}
+        <button
+          onClick={onFreeWon}
+          disabled={disabled}
+          className="flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-600 hover:to-orange-600 text-white"
+        >
+          <AlertTriangle size={16} />
+          <span className="text-[10px] font-medium">Free Won</span>
+        </button>
       </div>
     </div>
   )
 }
-

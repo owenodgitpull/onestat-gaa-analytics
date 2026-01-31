@@ -23,7 +23,7 @@ from app.database import engine, Base, get_db
 
 # Import routes
 from app.routes import players
-from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai
+from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag
 # from app.routes import fitness, gps  # Will add these next
 
 # Configure logging
@@ -197,6 +197,11 @@ app.include_router(possession_events.router, prefix="/api/v1/possession-events",
 app.include_router(match_lineups.router)  # Uses prefix from router definition
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics Dashboard"])
 app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI Analysis"])
+app.include_router(attendance.router, prefix="/api/v1/attendance", tags=["Attendance Tracking"])
+app.include_router(knowledge_base.router, prefix="/api/v1/knowledge-base", tags=["Knowledge Base"])
+app.include_router(training_performance.router, prefix="/api/v1/training", tags=["Training Performance"])
+app.include_router(live_insights.router, prefix="/api/v1/live-insights", tags=["Live Match Insights"])
+app.include_router(rag.router, prefix="/api/v1/rag", tags=["RAG Knowledge Base"])
 # Will add these next:
 # app.include_router(fitness.router, prefix="/api/v1/fitness", tags=["Fitness Tests"])
 # app.include_router(gps.router, prefix="/api/v1/gps", tags=["GPS Data"])

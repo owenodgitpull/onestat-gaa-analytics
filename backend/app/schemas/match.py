@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, validator, field_validator
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from app.models.match import MatchVenue, MatchStatus
+from app.models.match import MatchVenue, MatchStatus, WeatherCondition, PitchCondition
 
 
 class MatchBase(BaseModel):
@@ -17,6 +17,12 @@ class MatchBase(BaseModel):
     match_date: datetime = Field(..., description="Date and time of the match")
     venue: MatchVenue = Field(..., description="Match venue (home/away/neutral)")
     notes: Optional[str] = Field(None, max_length=1000, description="Optional match notes")
+
+    # Weather and pitch conditions (optional, for pattern analysis)
+    weather_condition: Optional[WeatherCondition] = Field(None, description="Weather during match")
+    pitch_condition: Optional[PitchCondition] = Field(None, description="Pitch/ground condition")
+    temperature_celsius: Optional[int] = Field(None, ge=-20, le=45, description="Temperature in Celsius")
+    wind_speed_kmh: Optional[int] = Field(None, ge=0, le=150, description="Wind speed in km/h")
     
     @field_validator('match_date', mode='before')
     @classmethod
@@ -48,6 +54,12 @@ class MatchUpdate(BaseModel):
     opponent_goals: Optional[int] = Field(None, ge=0)
     opponent_points: Optional[int] = Field(None, ge=0)
     notes: Optional[str] = Field(None, max_length=1000)
+
+    # Weather and pitch conditions
+    weather_condition: Optional[WeatherCondition] = None
+    pitch_condition: Optional[PitchCondition] = None
+    temperature_celsius: Optional[int] = Field(None, ge=-20, le=45)
+    wind_speed_kmh: Optional[int] = Field(None, ge=0, le=150)
     
     @field_validator('match_date', mode='before')
     @classmethod
@@ -75,7 +87,17 @@ class MatchResponse(MatchBase):
     completed_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
-    
+
+    # Weather/pitch (inherited from MatchBase but explicitly listed for clarity)
+    weather_condition: Optional[WeatherCondition] = None
+    pitch_condition: Optional[PitchCondition] = None
+    temperature_celsius: Optional[int] = None
+    wind_speed_kmh: Optional[int] = None
+
+    # AI analysis (generated when match completes)
+    ai_analysis: Optional[str] = Field(None, description="AI-generated post-match analysis")
+    ai_analysis_generated_at: Optional[datetime] = Field(None, description="When AI analysis was generated")
+
     # Computed fields
     dungloe_total_score: int = Field(..., description="Total Dungloe score (goals*3 + points)")
     opponent_total_score: int = Field(..., description="Total opponent score (goals*3 + points)")

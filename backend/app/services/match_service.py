@@ -7,6 +7,8 @@ Contains business logic for match CRUD operations and statistics calculations.
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
+import logging
+import asyncio
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.match import Match, MatchStatus, MatchVenue
@@ -14,6 +16,8 @@ from app.models.match_event import MatchEvent, EventType, Team
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.models.player_match_stats import PlayerMatchStats
 from app.schemas.match import MatchCreate, MatchUpdate
+
+logger = logging.getLogger(__name__)
 
 
 class MatchService:
@@ -140,22 +144,63 @@ class MatchService:
         db: AsyncSession,
         match_id: UUID,
         completed_at: Optional[datetime] = None,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        trigger_ai_analysis: bool = True
     ) -> Optional[Match]:
-        """Complete a match (change status to COMPLETED)."""
+        """
+        Complete a match (change status to COMPLETED).
+
+        Optionally triggers AI post-match analysis in the background.
+        """
         match = await MatchService.get_match(db, match_id)
         if not match:
             return None
-        
+
         match.status = MatchStatus.COMPLETED
         match.completed_at = completed_at or datetime.utcnow()
         if notes:
             match.notes = notes
-        
+
         await db.commit()
         await db.refresh(match)
-        
+
+        # Trigger AI analysis in background (non-blocking)
+        if trigger_ai_analysis:
+            asyncio.create_task(
+                MatchService._generate_post_match_analysis(str(match_id))
+            )
+            logger.info(f"Triggered post-match AI analysis for match {match_id}")
+
         return match
+
+    @staticmethod
+    async def _generate_post_match_analysis(match_id: str) -> None:
+        """
+        Generate AI post-match analysis in background.
+
+        This runs as a background task after match completion.
+        """
+        try:
+            # Import here to avoid circular imports
+            from app.database import AsyncSessionLocal
+            from app.services.ai_service import analyze_match
+
+            logger.info(f"Starting post-match AI analysis for match {match_id}")
+
+            async with AsyncSessionLocal() as db:
+                # Generate analysis
+                analysis = await analyze_match(db, match_id)
+
+                # Store the analysis in the match record
+                match = await MatchService.get_match(db, UUID(match_id))
+                if match:
+                    match.ai_analysis = analysis
+                    match.ai_analysis_generated_at = datetime.utcnow()
+                    await db.commit()
+                    logger.info(f"Saved post-match AI analysis for match {match_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to generate post-match analysis for {match_id}: {e}", exc_info=True)
     
     @staticmethod
     async def delete_match(db: AsyncSession, match_id: UUID) -> bool:

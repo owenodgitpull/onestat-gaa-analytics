@@ -1,5 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Home, Activity, BarChart3, PlusCircle } from 'lucide-react'
+import { Home, Trophy, Users, PlusCircle, Dumbbell } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useState } from 'react'
 import NewMatchModal from './NewMatchModal'
@@ -78,21 +78,40 @@ export default function Navigation() {
             </Link>
 
             <Link
-              to="/match/new"
+              to="/results"
               className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all ${
-                isActive('/match')
+                isActive('/results')
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/50'
                   : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
               }`}
             >
-              <Activity size={20} />
-              <span className="hidden sm:inline">Live Match</span>
+              <Trophy size={20} />
+              <span className="hidden sm:inline">Results</span>
             </Link>
 
-            <button className="flex items-center space-x-2 px-6 py-3 rounded-xl bg-white/5 text-white/60 hover:bg-white/10 hover:text-white font-medium transition-all">
-              <BarChart3 size={20} />
-              <span className="hidden sm:inline">Reports</span>
-            </button>
+            <Link
+              to="/players"
+              className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all ${
+                isActive('/players')
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/50'
+                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Users size={20} />
+              <span className="hidden sm:inline">Players</span>
+            </Link>
+
+            <Link
+              to="/training"
+              className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all ${
+                isActive('/training')
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/50'
+                  : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              <Dumbbell size={20} />
+              <span className="hidden sm:inline">Training</span>
+            </Link>
 
             {/* CTA Button - Teal */}
             <button

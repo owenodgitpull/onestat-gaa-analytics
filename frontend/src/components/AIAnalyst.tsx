@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { MessageSquare, Send, Bot, User, Loader2, Sparkles, X } from 'lucide-react'
+import { Send, Bot, User, Loader2, Sparkles, X } from 'lucide-react'
 import { api, ChatMessage } from '@/services/api'
 
 interface AIAnalystProps {

@@ -19,7 +19,11 @@ from app.services.ai_service import (
     analyze_match,
     live_match_insight,
     chat_with_analyst,
-    generate_post_match_report
+    generate_post_match_report,
+    get_dynamic_chart_recommendations,
+    get_chart_analysis,
+    generate_agentic_chart,
+    generate_custom_insight
 )
 
 logger = logging.getLogger(__name__)
@@ -65,6 +69,43 @@ class PostMatchReportResponse(BaseModel):
     score: dict
     analysis: str
     generated_at: str
+
+
+class ChartAnalysisRequest(BaseModel):
+    chart_type: str
+    chart_data: dict
+
+
+class ChartRecommendationsResponse(BaseModel):
+    recommendations: dict
+    season_state: dict
+    generated_at: str
+
+
+class ChartAnalysisResponse(BaseModel):
+    analysis: str
+    chart_type: str
+
+
+class AgenticChartRequest(BaseModel):
+    request: str  # Natural language chart request
+
+
+class AgenticChartResponse(BaseModel):
+    success: bool
+    chart: Optional[dict] = None
+    error: Optional[str] = None
+    generated_code: Optional[str] = None
+
+
+class CustomInsightRequest(BaseModel):
+    question: str
+
+
+class CustomInsightResponse(BaseModel):
+    question: str
+    chart_suggestion: str
+    chart: dict
 
 
 # =============================================================================
@@ -191,3 +232,105 @@ async def ai_health_check():
         "message": "AI service configured",
         "model": "claude-sonnet-4-20250514"
     }
+
+
+@router.get("/chart-recommendations", response_model=ChartRecommendationsResponse)
+async def get_chart_recommendations_endpoint(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get AI-powered chart recommendations for the dashboard.
+
+    The LLM analyzes the current season state and recommends which
+    charts would be most valuable to display. Charts evolve dynamically
+    as more match data accumulates throughout the season.
+
+    Early season: Basic stats, individual match breakdowns
+    Mid season: Trends, comparisons, patterns emerge
+    Late season: Comprehensive analysis, opponent patterns
+
+    The LLM uses the knowledge base proactively to inform recommendations,
+    including GPS data, tactical guides, and historical performance.
+    """
+    try:
+        recommendations = await get_dynamic_chart_recommendations(db)
+        return ChartRecommendationsResponse(**recommendations)
+    except Exception as e:
+        logger.error(f"Chart recommendations failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Recommendations failed: {str(e)}")
+
+
+@router.post("/chart-analysis", response_model=ChartAnalysisResponse)
+async def analyze_chart_endpoint(
+    request: ChartAnalysisRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get AI-generated analysis for a specific chart.
+
+    Provides contextual insights about what the chart data means,
+    using knowledge base context proactively (GPS benchmarks,
+    historical performance, tactical principles).
+    """
+    try:
+        analysis = await get_chart_analysis(
+            db,
+            request.chart_type,
+            request.chart_data
+        )
+        return ChartAnalysisResponse(
+            analysis=analysis,
+            chart_type=request.chart_type
+        )
+    except Exception as e:
+        logger.error(f"Chart analysis failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+@router.post("/generate-chart", response_model=AgenticChartResponse)
+async def generate_chart_endpoint(
+    request: AgenticChartRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Agentic chart generation using LLM-generated code.
+
+    The LLM analyzes your request, writes Python code to transform
+    the match data, and returns a Recharts-compatible chart specification.
+
+    Example requests:
+    - "Show scoring trends across all matches"
+    - "Where do we lose the ball most often?"
+    - "Compare first half vs second half scoring"
+    - "Top scorers efficiency chart"
+    """
+    try:
+        result = await generate_agentic_chart(db, request.request)
+        return AgenticChartResponse(**result)
+    except Exception as e:
+        logger.error(f"Agentic chart generation failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Chart generation failed: {str(e)}")
+
+
+@router.post("/custom-insight", response_model=CustomInsightResponse)
+async def custom_insight_endpoint(
+    request: CustomInsightRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generate a custom visualization based on a natural language question.
+
+    The AI determines the best chart type to answer your question,
+    then generates the chart with insights.
+
+    Example questions:
+    - "Where should we focus our training on shooting?"
+    - "Which players perform best under pressure?"
+    - "How do we compare home vs away?"
+    """
+    try:
+        result = await generate_custom_insight(db, request.question)
+        return CustomInsightResponse(**result)
+    except Exception as e:
+        logger.error(f"Custom insight failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Insight generation failed: {str(e)}")

@@ -7,7 +7,7 @@ Represents a single match with opponent, date, venue, and final scores.
 import uuid
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum
+from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 from app.database import Base
@@ -32,6 +32,28 @@ class MatchStatus(enum.Enum):
     IN_PROGRESS = "in_progress"  # Currently being played
     COMPLETED = "completed"  # Finished
     CANCELLED = "cancelled"  # Cancelled
+
+
+class WeatherCondition(enum.Enum):
+    """Weather conditions during the match."""
+    SUNNY = "sunny"
+    CLOUDY = "cloudy"
+    OVERCAST = "overcast"
+    LIGHT_RAIN = "light_rain"
+    HEAVY_RAIN = "heavy_rain"
+    WINDY = "windy"
+    COLD = "cold"
+    FOGGY = "foggy"
+
+
+class PitchCondition(enum.Enum):
+    """Pitch/ground condition."""
+    EXCELLENT = "excellent"  # Perfect playing surface
+    GOOD = "good"  # Normal conditions
+    SOFT = "soft"  # Slightly soft underfoot
+    HEAVY = "heavy"  # Waterlogged/very soft
+    HARD = "hard"  # Dry and firm
+    FROZEN = "frozen"  # Icy/frozen ground
 
 
 class Match(Base):
@@ -64,7 +86,17 @@ class Match(Base):
     
     # Optional notes
     notes: Column[Optional[str]] = Column(String, nullable=True)
-    
+
+    # Weather and pitch conditions (for pattern analysis)
+    weather_condition: Column[Optional[WeatherCondition]] = Column(Enum(WeatherCondition), nullable=True)
+    pitch_condition: Column[Optional[PitchCondition]] = Column(Enum(PitchCondition), nullable=True)
+    temperature_celsius: Column[Optional[int]] = Column(Integer, nullable=True)  # Temperature in Celsius
+    wind_speed_kmh: Column[Optional[int]] = Column(Integer, nullable=True)  # Wind speed in km/h
+
+    # AI-generated post-match analysis (generated when match completes)
+    ai_analysis: Column[Optional[str]] = Column(Text, nullable=True)
+    ai_analysis_generated_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
+
     # Soft delete
     is_deleted: Column[bool] = Column(Boolean, default=False, nullable=False)
     

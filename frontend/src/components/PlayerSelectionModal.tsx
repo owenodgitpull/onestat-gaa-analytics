@@ -13,11 +13,11 @@ interface PlayerSelectionModalProps {
 
 // Mock players - TODO: Replace with API call
 const OPPONENT_PLAYERS: Player[] = [
-  { id: 'opp-1', name: 'Opposition Player 1', jersey_number: 1, position: 'GOALKEEPER' },
-  { id: 'opp-2', name: 'Opposition Player 2', jersey_number: 2, position: 'DEFENDER' },
-  { id: 'opp-3', name: 'Opposition Player 3', jersey_number: 3, position: 'DEFENDER' },
-  { id: 'opp-4', name: 'Opposition Player 4', jersey_number: 4, position: 'MIDFIELDER' },
-  { id: 'opp-5', name: 'Opposition Player 5', jersey_number: 5, position: 'FORWARD' },
+  { id: 'opp-1', name: 'Opposition Player 1', jersey_number: 1, position: 'GOALKEEPER', date_of_birth: null, status: 'active', active: true },
+  { id: 'opp-2', name: 'Opposition Player 2', jersey_number: 2, position: 'DEFENDER', date_of_birth: null, status: 'active', active: true },
+  { id: 'opp-3', name: 'Opposition Player 3', jersey_number: 3, position: 'DEFENDER', date_of_birth: null, status: 'active', active: true },
+  { id: 'opp-4', name: 'Opposition Player 4', jersey_number: 4, position: 'MIDFIELDER', date_of_birth: null, status: 'active', active: true },
+  { id: 'opp-5', name: 'Opposition Player 5', jersey_number: 5, position: 'FORWARD', date_of_birth: null, status: 'active', active: true },
 ]
 
 const EVENT_LABELS = {

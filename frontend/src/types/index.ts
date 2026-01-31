@@ -89,6 +89,8 @@ export enum EventType {
   POINT_FREE = 'point_free',
   TWO_POINT_FREE = 'two_point_free',
   WIDE_FREE = 'wide_free',
+  FORTY_FIVE = 'forty_five',  // 45m free scored - always 1 point
+  FORTY_FIVE_MISSED = 'forty_five_missed',  // 45m free missed
   // Turnovers
   TURNOVER_LOST = 'turnover_lost',
   TURNOVER_WON = 'turnover_won',

@@ -188,7 +188,11 @@ class MatchEventService:
     @staticmethod
     async def _update_match_scores(db: AsyncSession, event: MatchEvent):
         """Update match scores based on event."""
-        if event.event_type not in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]:
+        scoring_events = [
+            EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
+            EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE
+        ]
+        if event.event_type not in scoring_events:
             return
         
         # Get match
@@ -203,15 +207,15 @@ class MatchEventService:
         if event.team == Team.DUNGLOE:
             if event.event_type == EventType.GOAL:
                 match.dungloe_goals += 1
-            elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
-                match.dungloe_points += 1
+            elif event.event_type in [EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE]:
+                match.dungloe_points += 1  # 45s always count as 1 point
             elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
                 match.dungloe_points += 2
         else:
             if event.event_type == EventType.GOAL:
                 match.opponent_goals += 1
-            elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
-                match.opponent_points += 1
+            elif event.event_type in [EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE]:
+                match.opponent_points += 1  # 45s always count as 1 point
             elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
                 match.opponent_points += 2
         
@@ -235,29 +239,33 @@ class MatchEventService:
         match.opponent_points = 0
         
         # Get all scoring events
+        scoring_event_types = [
+            EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
+            EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE
+        ]
         events_result = await db.execute(
             select(MatchEvent).where(
                 and_(
                     MatchEvent.match_id == match_id,
-                    MatchEvent.event_type.in_([EventType.GOAL, EventType.POINT, EventType.TWO_POINT])
+                    MatchEvent.event_type.in_(scoring_event_types)
                 )
             )
         )
         events = events_result.scalars().all()
-        
+
         # Recalculate
         for event in events:
             if event.team == Team.DUNGLOE:
                 if event.event_type == EventType.GOAL:
                     match.dungloe_goals += 1
-                elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
+                elif event.event_type in [EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE]:
                     match.dungloe_points += 1
                 elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
                     match.dungloe_points += 2
             else:
                 if event.event_type == EventType.GOAL:
                     match.opponent_goals += 1
-                elif event.event_type in [EventType.POINT, EventType.POINT_FREE]:
+                elif event.event_type in [EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE]:
                     match.opponent_points += 1
                 elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
                     match.opponent_points += 2

@@ -4,7 +4,6 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../services/api';
-import type { MatchEvent, PossessionEvent } from '../types';
 import { matchKeys } from './useMatches';
 
 // ============================================================================
@@ -59,7 +58,7 @@ export function useRecordEvent() {
       is_home_team: boolean;
       notes?: string;
     }) => api.matchEvents.create(data),
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       // Invalidate match events to refetch
       queryClient.invalidateQueries({ 
         queryKey: matchEventKeys.byMatch(variables.match_id) 
@@ -92,7 +91,7 @@ export function useQuickScore() {
       minute: number;
       half: number;
     }) => api.matchEvents.quickScore(data),
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       // Same invalidation as regular event recording
       queryClient.invalidateQueries({
         queryKey: matchEventKeys.byMatch(variables.match_id)
@@ -116,7 +115,7 @@ export function useDeleteEvent() {
   return useMutation({
     mutationFn: (data: { eventId: string; matchId: string }) =>
       api.matchEvents.delete(data.eventId),
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       // Invalidate match events to refetch
       queryClient.invalidateQueries({
         queryKey: matchEventKeys.byMatch(variables.matchId)
@@ -170,7 +169,7 @@ export function useRecordPossession() {
       x_coord: number;
       y_coord: number;
     }) => api.possession.create(data),
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       // Invalidate possession events to refetch
       queryClient.invalidateQueries({ 
         queryKey: possessionKeys.byMatch(variables.match_id) 

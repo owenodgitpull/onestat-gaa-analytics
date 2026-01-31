@@ -39,6 +39,7 @@ class EventType(enum.Enum):
     
     # Cards
     YELLOW_CARD = "yellow_card"  # Player booked
+    BLACK_CARD = "black_card"  # Player sin-binned (10 minutes)
     RED_CARD = "red_card"  # Player sent off
     
     # Frees
@@ -47,6 +48,8 @@ class EventType(enum.Enum):
     POINT_FREE = "point_free"  # Point scored from free kick
     TWO_POINT_FREE = "two_point_free"  # 2-pointer scored from free kick
     WIDE_FREE = "wide_free"  # Free kick went wide
+    FORTY_FIVE = "forty_five"  # 45m free kick scored (always 1 point)
+    FORTY_FIVE_MISSED = "forty_five_missed"  # 45m free kick missed
     FOUL_COMMITTED = "foul_committed"  # Player committed a foul
     FOUL_WON = "foul_won"  # Player was fouled
 

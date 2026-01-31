@@ -3,12 +3,12 @@
  * Handles all communication with the FastAPI backend
  */
 
-import type { 
-  Match, 
-  Player, 
-  MatchEvent, 
+import type {
+  Match,
+  Player,
+  MatchEvent,
   PossessionEvent,
-  PlayerMatchStats 
+  MatchStats
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
@@ -69,7 +69,7 @@ export const playersAPI = {
   /**
    * Get a single player by ID
    */
-  getById: async (id: number): Promise<Player> => {
+  getById: async (id: string): Promise<Player> => {
     return fetchAPI<Player>(`/players/${id}`);
   },
 
@@ -86,7 +86,7 @@ export const playersAPI = {
   /**
    * Update a player
    */
-  update: async (id: number, player: Partial<Player>): Promise<Player> => {
+  update: async (id: string, player: Partial<Player>): Promise<Player> => {
     return fetchAPI<Player>(`/players/${id}`, {
       method: 'PUT',
       body: JSON.stringify(player),
@@ -103,7 +103,8 @@ export const matchesAPI = {
    * Get all matches
    */
   getAll: async (): Promise<Match[]> => {
-    return fetchAPI<Match[]>('/matches/');
+    const response = await fetchAPI<{ matches: Match[] }>('/matches/');
+    return response.matches;
   },
 
   /**
@@ -197,8 +198,8 @@ export const matchEventsAPI = {
    * Quick score recording (simplified endpoint)
    */
   quickScore: async (data: {
-    match_id: number;
-    player_id: number;
+    match_id: string;
+    player_id: string;
     event_type: 'GOAL' | 'POINT';
     minute: number;
     half: number;
@@ -468,6 +469,63 @@ export interface PostMatchReport {
   generated_at: string;
 }
 
+export interface ChartRecommendation {
+  chart_type: string;
+  priority: number;
+  reason: string;
+}
+
+export interface ChartRecommendationsResponse {
+  recommendations: {
+    recommended_charts: ChartRecommendation[];
+    insights: string;
+    suggested_new_charts?: {
+      description: string;
+      when_relevant: string;
+    }[];
+  };
+  season_state: {
+    total_matches: number;
+    completed_matches: number;
+    total_events: number;
+    event_types: string[];
+    has_player_data: boolean;
+    has_location_data: boolean;
+  };
+  generated_at: string;
+}
+
+export interface ChartAnalysisResponse {
+  analysis: string;
+  chart_type: string;
+}
+
+export interface AgenticChartResponse {
+  success: boolean;
+  chart?: {
+    chart_type: string;
+    title: string;
+    subtitle?: string;
+    data: unknown[];
+    config: {
+      xKey: string;
+      yKeys: string[];
+      colors: string[];
+      legend?: boolean;
+      stacked?: boolean;
+    };
+    insights: string;
+  };
+  error?: string;
+  generated_code?: string;
+}
+
+export interface CustomInsightResponse {
+  question: string;
+  chart_suggestion: string;
+  chart: AgenticChartResponse;
+}
+
 const aiAPI = {
   analyzeMatch: async (matchId: string, question?: string): Promise<AnalysisResponse> => {
     return fetchAPI<AnalysisResponse>('/ai/analyze-match', {
@@ -497,11 +555,178 @@ const aiAPI = {
   healthCheck: async (): Promise<{ status: string; message: string }> => {
     return fetchAPI<{ status: string; message: string }>('/ai/health');
   },
+
+  /**
+   * Get AI-powered chart recommendations
+   * The LLM decides which charts are most relevant based on current season data
+   */
+  getChartRecommendations: async (): Promise<ChartRecommendationsResponse> => {
+    return fetchAPI<ChartRecommendationsResponse>('/ai/chart-recommendations');
+  },
+
+  /**
+   * Get AI analysis for a specific chart
+   * Provides contextual insights using knowledge base proactively
+   */
+  analyzeChart: async (chartType: string, chartData: object): Promise<ChartAnalysisResponse> => {
+    return fetchAPI<ChartAnalysisResponse>('/ai/chart-analysis', {
+      method: 'POST',
+      body: JSON.stringify({ chart_type: chartType, chart_data: chartData }),
+    });
+  },
+
+  /**
+   * Agentic chart generation
+   * LLM writes Python code to transform data into Recharts JSON
+   */
+  generateChart: async (request: string): Promise<AgenticChartResponse> => {
+    return fetchAPI<AgenticChartResponse>('/ai/generate-chart', {
+      method: 'POST',
+      body: JSON.stringify({ request }),
+    });
+  },
+
+  /**
+   * Generate custom insight visualization from natural language
+   */
+  customInsight: async (question: string): Promise<CustomInsightResponse> => {
+    return fetchAPI<CustomInsightResponse>('/ai/custom-insight', {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    });
+  },
+};
+
+// ============================================================================
+// Live Insights API
+// ============================================================================
+
+export interface LiveInsight {
+  id: string;
+  match_id: string;
+  minute: number;
+  half: number;
+  trigger: string;
+  insight: string;
+  trigger_context: string | null;
+  created_at: string;
+}
+
+export interface InsightsListResponse {
+  insights: LiveInsight[];
+  count: number;
+}
+
+export interface TriggerInsightResponse {
+  generated: boolean;
+  insight: LiveInsight | null;
+  message: string;
+}
+
+const liveInsightsAPI = {
+  /**
+   * Get all insights for a match
+   */
+  getInsights: async (matchId: string, limit: number = 20): Promise<InsightsListResponse> => {
+    return fetchAPI<InsightsListResponse>(`/live-insights/${matchId}?limit=${limit}`);
+  },
+
+  /**
+   * Get the latest insight for a match
+   */
+  getLatest: async (matchId: string): Promise<LiveInsight | null> => {
+    return fetchAPI<LiveInsight | null>(`/live-insights/${matchId}/latest`);
+  },
+
+  /**
+   * Trigger an insight check (called periodically or after significant events)
+   */
+  triggerCheck: async (matchId: string, minute: number, half: number = 1): Promise<TriggerInsightResponse> => {
+    return fetchAPI<TriggerInsightResponse>(`/live-insights/${matchId}/check`, {
+      method: 'POST',
+      body: JSON.stringify({ minute, half }),
+    });
+  },
+
+  /**
+   * Trigger half-time analysis
+   */
+  triggerHalfTime: async (matchId: string): Promise<LiveInsight> => {
+    return fetchAPI<LiveInsight>(`/live-insights/${matchId}/half-time`, {
+      method: 'POST',
+    });
+  },
 };
 
 // ============================================================================
 // Combined Exports
 // ============================================================================
+
+// ============================================================================
+// RAG Knowledge Base API
+// ============================================================================
+
+export interface RAGSearchResult {
+  id: string;
+  source_file: string;
+  doc_type: string;
+  section: string | null;
+  content: string;
+  score: number;
+  keywords_matched: string[];
+}
+
+export interface RAGSearchResponse {
+  query: string;
+  results: RAGSearchResult[];
+  total_found: number;
+}
+
+export interface RAGSyncResponse {
+  processed: string[];
+  skipped: string[];
+  errors: { file: string; error: string }[];
+}
+
+export interface RAGStatsResponse {
+  total_documents: number;
+  total_chunks: number;
+  by_type: Record<string, { chunk_count: number; total_chars: number }>;
+  documents: {
+    file: string;
+    chunks: number;
+    method: string;
+    processed_at: string;
+  }[];
+}
+
+const ragAPI = {
+  /**
+   * Sync knowledge base documents to the RAG index
+   */
+  sync: async (): Promise<RAGSyncResponse> => {
+    return fetchAPI<RAGSyncResponse>('/rag/sync', {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Search the knowledge base
+   */
+  search: async (query: string, docTypes?: string[], limit: number = 5): Promise<RAGSearchResponse> => {
+    return fetchAPI<RAGSearchResponse>('/rag/search', {
+      method: 'POST',
+      body: JSON.stringify({ query, doc_types: docTypes, limit }),
+    });
+  },
+
+  /**
+   * Get RAG index statistics
+   */
+  getStats: async (): Promise<RAGStatsResponse> => {
+    return fetchAPI<RAGStatsResponse>('/rag/stats');
+  },
+};
 
 export const api = {
   players: playersAPI,
@@ -511,6 +736,8 @@ export const api = {
   matchLineups: matchLineupsAPI,
   analytics: analyticsAPI,
   ai: aiAPI,
+  liveInsights: liveInsightsAPI,
+  rag: ragAPI,
 };
 
 export default api;

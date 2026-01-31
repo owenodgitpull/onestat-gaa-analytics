@@ -12,7 +12,7 @@ import type { Player } from '../types';
 
 export const playerKeys = {
   all: ['players'] as const,
-  detail: (id: number) => ['players', id] as const,
+  detail: (id: string) => ['players', id] as const,
 };
 
 // ============================================================================
@@ -33,7 +33,7 @@ export function usePlayers() {
 /**
  * Get a single player by ID
  */
-export function usePlayer(playerId: number | null) {
+export function usePlayer(playerId: string | null) {
   return useQuery({
     queryKey: playerKeys.detail(playerId!),
     queryFn: () => api.players.getById(playerId!),
@@ -68,7 +68,7 @@ export function useUpdatePlayer() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<Player> }) => 
+    mutationFn: ({ id, data }: { id: string; data: Partial<Player> }) =>
       api.players.update(id, data),
     onSuccess: (data) => {
       // Update the specific player in cache
