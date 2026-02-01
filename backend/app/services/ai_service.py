@@ -19,6 +19,8 @@ import anthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.models import Match, MatchEvent, Player, PossessionEvent
+from app.models.match import MatchStatus
+from app.models.match_event import EventType
 from app.services.knowledge_base_service import get_knowledge_base
 from app.services.rag_service import RAGService
 
@@ -276,8 +278,8 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         events_data.append({
             "minute": e.minute,
             "half": e.half,
-            "event_type": e.event_type,
-            "team": e.team,
+            "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
+            "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
             "player": players.get(str(e.player_id), "Unknown") if e.player_id else None,
             "x": e.pitch_x,
             "y": e.pitch_y,
@@ -302,30 +304,31 @@ async def get_match_summary(db: AsyncSession, match_id: str) -> str:
     )
     events = events_result.scalars().all()
 
-    # Calculate scores
-    dungloe_goals = len([e for e in events if e.team == 'dungloe' and e.event_type == 'GOAL'])
-    dungloe_points = len([e for e in events if e.team == 'dungloe' and e.event_type == 'POINT'])
-    dungloe_2pts = len([e for e in events if e.team == 'dungloe' and e.event_type == '2_POINTER'])
+    # Calculate scores - use EventType enum
+    dungloe_goals = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.GOAL])
+    dungloe_points = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.POINT])
+    dungloe_2pts = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.TWO_POINT])
 
-    opp_goals = len([e for e in events if e.team == 'opponent' and e.event_type == 'GOAL'])
-    opp_points = len([e for e in events if e.team == 'opponent' and e.event_type == 'POINT'])
-    opp_2pts = len([e for e in events if e.team == 'opponent' and e.event_type == '2_POINTER'])
+    opp_goals = len([e for e in events if e.team == 'opponent' and e.event_type == EventType.GOAL])
+    opp_points = len([e for e in events if e.team == 'opponent' and e.event_type == EventType.POINT])
+    opp_2pts = len([e for e in events if e.team == 'opponent' and e.event_type == EventType.TWO_POINT])
 
     dungloe_total = dungloe_goals * 3 + dungloe_points + dungloe_2pts * 2
     opp_total = opp_goals * 3 + opp_points + opp_2pts * 2
 
     # Get top scorers
+    scoring_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
     player_scores = {}
     for e in events:
-        if e.team == 'dungloe' and e.event_type in ['GOAL', 'POINT', '2_POINTER'] and e.player_id:
+        if e.team == 'dungloe' and e.event_type in scoring_types and e.player_id:
             pid = str(e.player_id)
             if pid not in player_scores:
                 player_scores[pid] = {'goals': 0, 'points': 0, '2pts': 0}
-            if e.event_type == 'GOAL':
+            if e.event_type == EventType.GOAL:
                 player_scores[pid]['goals'] += 1
-            elif e.event_type == 'POINT':
+            elif e.event_type == EventType.POINT:
                 player_scores[pid]['points'] += 1
-            elif e.event_type == '2_POINTER':
+            elif e.event_type == EventType.TWO_POINT:
                 player_scores[pid]['2pts'] += 1
 
     # Get player names
@@ -347,10 +350,10 @@ async def get_match_summary(db: AsyncSession, match_id: str) -> str:
         })
     top_scorers.sort(key=lambda x: x['total'], reverse=True)
 
-    # Count other stats
-    turnovers_won = len([e for e in events if e.team == 'dungloe' and e.event_type == 'TURNOVER_WON'])
-    turnovers_lost = len([e for e in events if e.team == 'dungloe' and e.event_type == 'TURNOVER_LOST'])
-    wides = len([e for e in events if e.team == 'dungloe' and e.event_type == 'WIDE'])
+    # Count other stats - use EventType enum
+    turnovers_won = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.TURNOVER_WON])
+    turnovers_lost = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.TURNOVER_LOST])
+    wides = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.WIDE])
 
     return json.dumps({
         "match": {
@@ -390,12 +393,12 @@ async def get_player_season_stats(db: AsyncSession, player_id: str) -> str:
     )
     events = events_result.scalars().all()
 
-    goals = len([e for e in events if e.event_type == 'GOAL'])
-    points = len([e for e in events if e.event_type == 'POINT'])
-    two_pts = len([e for e in events if e.event_type == '2_POINTER'])
-    turnovers_won = len([e for e in events if e.event_type == 'TURNOVER_WON'])
-    turnovers_lost = len([e for e in events if e.event_type == 'TURNOVER_LOST'])
-    wides = len([e for e in events if e.event_type == 'WIDE'])
+    goals = len([e for e in events if e.event_type == EventType.GOAL])
+    points = len([e for e in events if e.event_type == EventType.POINT])
+    two_pts = len([e for e in events if e.event_type == EventType.TWO_POINT])
+    turnovers_won = len([e for e in events if e.event_type == EventType.TURNOVER_WON])
+    turnovers_lost = len([e for e in events if e.event_type == EventType.TURNOVER_LOST])
+    wides = len([e for e in events if e.event_type == EventType.WIDE])
 
     # Get matches played
     match_ids = set(e.match_id for e in events)
@@ -429,7 +432,7 @@ async def get_team_season_stats(db: AsyncSession) -> str:
     """Get aggregated team stats for the season."""
     # Get all completed matches
     matches_result = await db.execute(
-        select(Match).where(Match.status == 'completed')
+        select(Match).where(Match.status == MatchStatus.COMPLETED)
     )
     matches = matches_result.scalars().all()
 
@@ -440,24 +443,34 @@ async def get_team_season_stats(db: AsyncSession) -> str:
     events_result = await db.execute(select(MatchEvent))
     events = events_result.scalars().all()
 
-    # Calculate totals
-    dungloe_goals = len([e for e in events if e.team == 'dungloe' and e.event_type == 'GOAL'])
-    dungloe_points = len([e for e in events if e.team == 'dungloe' and e.event_type == 'POINT'])
-    opp_goals = len([e for e in events if e.team == 'opponent' and e.event_type == 'GOAL'])
-    opp_points = len([e for e in events if e.team == 'opponent' and e.event_type == 'POINT'])
+    # Calculate totals - compare against EventType enum
+    dungloe_goals = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.GOAL])
+    dungloe_points = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.POINT])
+    dungloe_two_pts = len([e for e in events if e.team == 'dungloe' and e.event_type == EventType.TWO_POINT])
+    opp_goals = len([e for e in events if e.team == 'opponent' and e.event_type == EventType.GOAL])
+    opp_points = len([e for e in events if e.team == 'opponent' and e.event_type == EventType.POINT])
+    opp_two_pts = len([e for e in events if e.team == 'opponent' and e.event_type == EventType.TWO_POINT])
 
-    dungloe_total = dungloe_goals * 3 + dungloe_points
-    opp_total = opp_goals * 3 + opp_points
+    dungloe_total = dungloe_goals * 3 + dungloe_points + dungloe_two_pts * 2
+    opp_total = opp_goals * 3 + opp_points + opp_two_pts * 2
 
     # Win/Loss record
     wins = 0
     losses = 0
     draws = 0
 
+    scoring_events = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
+
     for match in matches:
         match_events = [e for e in events if str(e.match_id) == str(match.id)]
-        d_score = sum(3 if e.event_type == 'GOAL' else 1 for e in match_events if e.team == 'dungloe' and e.event_type in ['GOAL', 'POINT'])
-        o_score = sum(3 if e.event_type == 'GOAL' else 1 for e in match_events if e.team == 'opponent' and e.event_type in ['GOAL', 'POINT'])
+        d_score = sum(
+            3 if e.event_type == EventType.GOAL else (2 if e.event_type == EventType.TWO_POINT else 1)
+            for e in match_events if e.team == 'dungloe' and e.event_type in scoring_events
+        )
+        o_score = sum(
+            3 if e.event_type == EventType.GOAL else (2 if e.event_type == EventType.TWO_POINT else 1)
+            for e in match_events if e.team == 'opponent' and e.event_type in scoring_events
+        )
 
         if d_score > o_score:
             wins += 1
@@ -477,12 +490,14 @@ async def get_team_season_stats(db: AsyncSession) -> str:
         "scoring": {
             "total_goals": dungloe_goals,
             "total_points": dungloe_points,
+            "total_two_pointers": dungloe_two_pts,
             "total_score": dungloe_total,
             "avg_per_match": round(dungloe_total / max(1, len(matches)), 1)
         },
         "defense": {
             "goals_conceded": opp_goals,
             "points_conceded": opp_points,
+            "two_pointers_conceded": opp_two_pts,
             "total_conceded": opp_total,
             "avg_conceded": round(opp_total / max(1, len(matches)), 1)
         },
@@ -492,9 +507,10 @@ async def get_team_season_stats(db: AsyncSession) -> str:
 
 async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
     """Analyze scoring patterns by zone."""
+    scoring_event_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SHORT]
     query = select(MatchEvent).where(
         MatchEvent.team == 'dungloe',
-        MatchEvent.event_type.in_(['GOAL', 'POINT', '2_POINTER', 'WIDE', 'SHORT'])
+        MatchEvent.event_type.in_(scoring_event_types)
     )
 
     if match_id:
@@ -521,7 +537,7 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
         else:
             zone = "attacking_third"
 
-        if e.event_type in ['GOAL', 'POINT', '2_POINTER']:
+        if e.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]:
             zones[zone]["scored"] += 1
         else:
             zones[zone]["missed"] += 1
@@ -541,8 +557,9 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
 
 async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
     """Analyze turnover patterns."""
+    turnover_types = [EventType.TURNOVER_WON, EventType.TURNOVER_LOST, EventType.OUR_UNFORCED_ERROR, EventType.OPP_UNFORCED_ERROR]
     query = select(MatchEvent).where(
-        MatchEvent.event_type.in_(['TURNOVER_WON', 'TURNOVER_LOST', 'UNFORCED_ERROR'])
+        MatchEvent.event_type.in_(turnover_types)
     )
 
     if match_id:
@@ -569,10 +586,14 @@ async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
         else:
             zone = "attacking_third"
 
-        if e.event_type == 'TURNOVER_WON' and e.team == 'dungloe':
+        if e.event_type == EventType.TURNOVER_WON and e.team == 'dungloe':
             zones[zone]["won"] += 1
-        elif e.event_type in ['TURNOVER_LOST', 'UNFORCED_ERROR'] and e.team == 'dungloe':
+        elif e.event_type == EventType.OPP_UNFORCED_ERROR:
+            zones[zone]["won"] += 1  # Opponent's error = we won
+        elif e.event_type == EventType.TURNOVER_LOST and e.team == 'dungloe':
             zones[zone]["lost"] += 1
+        elif e.event_type == EventType.OUR_UNFORCED_ERROR:
+            zones[zone]["lost"] += 1  # Our error = we lost
 
     return json.dumps({
         "by_zone": zones,
@@ -872,9 +893,9 @@ async def get_dynamic_chart_recommendations(db: AsyncSession) -> dict:
 
     data_summary = {
         "total_matches": len(matches),
-        "completed_matches": len([m for m in matches if m.status == 'completed']),
+        "completed_matches": len([m for m in matches if m.status == MatchStatus.COMPLETED]),
         "total_events": len(events),
-        "event_types": list(set(e.event_type for e in events)),
+        "event_types": list(set(str(e.event_type.value) if hasattr(e.event_type, 'value') else str(e.event_type) for e in events)),
         "has_player_data": any(e.player_id for e in events),
         "has_location_data": any(e.pitch_x is not None for e in events),
     }
@@ -1179,7 +1200,7 @@ async def _get_data_summary(db: AsyncSession) -> dict:
 
     return {
         "total_matches": len(matches),
-        "completed_matches": len([m for m in matches if m.status == 'completed']),
+        "completed_matches": len([m for m in matches if m.status == MatchStatus.COMPLETED]),
         "total_events": len(events),
         "event_types": list(set(str(e.event_type.value) if hasattr(e.event_type, 'value') else str(e.event_type) for e in events)),
         "has_location_data": any(e.pitch_x is not None for e in events),
@@ -1216,7 +1237,7 @@ async def _get_raw_data_for_charts(db: AsyncSession) -> dict:
             {
                 "match_id": str(e.match_id),
                 "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
-                "team": e.team,
+                "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
                 "minute": e.minute,
                 "player": player_map.get(str(e.player_id), {}).get("name") if e.player_id else None,
                 "pitch_x": e.pitch_x,
@@ -1267,3 +1288,266 @@ async def generate_custom_insight(db: AsyncSession, question: str) -> dict:
         "chart_suggestion": chart_suggestion,
         "chart": chart_result
     }
+
+
+# =============================================================================
+# AI CHART GENERATION - Returns Actual Recharts Specs
+# =============================================================================
+
+async def generate_dashboard_charts(
+    db: AsyncSession,
+    excluded_chart_ids: list[str] = None,
+    num_charts: int = 4
+) -> dict:
+    """
+    Generate actual Recharts-compatible chart specifications for the dashboard.
+
+    This function:
+    1. Fetches all match and event data
+    2. Uses RAG for knowledge base context
+    3. Asks Claude to generate actual chart specs (not just recommendations)
+    4. Returns charts ready to render with Recharts
+
+    Args:
+        db: Database session
+        excluded_chart_ids: Chart IDs to avoid (for dismiss/refresh)
+        num_charts: Number of AI charts to generate
+    """
+    excluded_chart_ids = excluded_chart_ids or []
+
+    # Get comprehensive data
+    raw_data = await _get_raw_data_for_charts(db)
+    season_stats = await get_team_season_stats(db)
+
+    # Get RAG context
+    try:
+        rag_service = RAGService(db)
+        rag_context = await rag_service.get_relevant_context(
+            "GAA analytics dashboard charts scoring turnovers kickouts possession",
+            top_k=3
+        )
+    except Exception as e:
+        logger.warning(f"RAG context fetch failed: {e}")
+        rag_context = []
+
+    rag_text = "\n".join([f"- {doc['content'][:500]}" for doc in rag_context]) if rag_context else "No additional context available."
+
+    # Calculate actual statistics for the prompt
+    matches = raw_data.get("matches", [])
+    events = raw_data.get("events", [])
+
+    # Pre-calculate key stats to give accurate data to the AI
+    dungloe_events = [e for e in events if e.get("team") == "dungloe"]
+    opp_events = [e for e in events if e.get("team") == "opponent"]
+
+    dungloe_goals = len([e for e in dungloe_events if e.get("event_type") == "goal"])
+    dungloe_points = len([e for e in dungloe_events if e.get("event_type") == "point"])
+    dungloe_two_pts = len([e for e in dungloe_events if e.get("event_type") == "two_point"])
+    opp_goals = len([e for e in opp_events if e.get("event_type") == "goal"])
+    opp_points = len([e for e in opp_events if e.get("event_type") == "point"])
+    opp_two_pts = len([e for e in opp_events if e.get("event_type") == "two_point"])
+
+    dungloe_total = dungloe_goals * 3 + dungloe_points + dungloe_two_pts * 2
+    opp_total = opp_goals * 3 + opp_points + opp_two_pts * 2
+
+    # Calculate per-match scores
+    match_results = []
+    for match in matches:
+        match_events = [e for e in events if e.get("match_id") == match.get("id")]
+        d_goals = len([e for e in match_events if e.get("team") == "dungloe" and e.get("event_type") == "goal"])
+        d_pts = len([e for e in match_events if e.get("team") == "dungloe" and e.get("event_type") in ["point", "two_point"]])
+        d_2pts = len([e for e in match_events if e.get("team") == "dungloe" and e.get("event_type") == "two_point"])
+        o_goals = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") == "goal"])
+        o_pts = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") in ["point", "two_point"]])
+        o_2pts = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") == "two_point"])
+
+        d_score = d_goals * 3 + d_pts + d_2pts
+        o_score = o_goals * 3 + o_pts + o_2pts
+
+        result = "W" if d_score > o_score else ("L" if d_score < o_score else "D")
+        match_results.append({
+            "opponent": match.get("opponent"),
+            "date": match.get("date"),
+            "dungloe_score": f"{d_goals}-{d_pts + d_2pts}",
+            "dungloe_total": d_score,
+            "opponent_score": f"{o_goals}-{o_pts + o_2pts}",
+            "opponent_total": o_score,
+            "result": result
+        })
+
+    # Get top scorers
+    player_scores = {}
+    for e in dungloe_events:
+        if e.get("event_type") in ["goal", "point", "two_point"] and e.get("player"):
+            player = e.get("player")
+            if player not in player_scores:
+                player_scores[player] = {"goals": 0, "points": 0, "total": 0}
+            if e.get("event_type") == "goal":
+                player_scores[player]["goals"] += 1
+                player_scores[player]["total"] += 3
+            else:
+                player_scores[player]["points"] += 1
+                player_scores[player]["total"] += 2 if e.get("event_type") == "two_point" else 1
+
+    top_scorers = sorted(
+        [{"name": k, **v} for k, v in player_scores.items()],
+        key=lambda x: x["total"],
+        reverse=True
+    )[:8]
+
+    # Turnovers
+    turnovers_won = len([e for e in dungloe_events if e.get("event_type") == "turnover_won"])
+    turnovers_lost = len([e for e in dungloe_events if e.get("event_type") == "turnover_lost"])
+
+    # Kickouts
+    kickouts_won = len([e for e in events if "kickout" in e.get("event_type", "") and "dungloe_won" in e.get("event_type", "")])
+    kickouts_lost = len([e for e in events if "kickout" in e.get("event_type", "") and "opposition_won" in e.get("event_type", "")])
+
+    # Shot locations for heat map
+    shot_types = ["goal", "point", "two_point", "wide", "saved", "short"]
+    shots = [e for e in events if e.get("event_type") in shot_types and e.get("pitch_x") is not None]
+
+    data_summary = f"""
+## ACTUAL SEASON DATA (Use these exact numbers!)
+
+### Matches Played: {len(matches)}
+### Match Results:
+{json.dumps(match_results, indent=2)}
+
+### Season Totals:
+- Dungloe: {dungloe_goals} goals, {dungloe_points + dungloe_two_pts} points = {dungloe_total} total
+- Opponents: {opp_goals} goals, {opp_points + opp_two_pts} points = {opp_total} total
+
+### Top Scorers:
+{json.dumps(top_scorers, indent=2)}
+
+### Turnovers: Won {turnovers_won}, Lost {turnovers_lost}, Net {turnovers_won - turnovers_lost}
+### Kickouts: Won {kickouts_won}, Lost {kickouts_lost}
+
+### Shot Locations ({len(shots)} total shots with location data):
+{json.dumps(shots[:20], indent=2) if shots else "No location data"}
+"""
+
+    excluded_str = f"\n\nDO NOT generate these chart types (user dismissed them): {', '.join(excluded_chart_ids)}" if excluded_chart_ids else ""
+
+    system_prompt = f"""You are an expert GAA analytics dashboard designer for Dungloe GAA club.
+
+Your task is to generate {num_charts} ACTUAL chart specifications that can be rendered with Recharts.
+
+{GAA_KNOWLEDGE_BASE}
+
+## Knowledge Base Context (from team documents)
+{rag_text}
+
+{data_summary}
+
+## GAA-Relevant Chart Types to Consider:
+1. **Score Trends** - Line chart: scores per match over season
+2. **Top Scorers** - Bar chart: player scoring rankings
+3. **Scoring Breakdown** - Pie chart: goals vs points distribution
+4. **Shot Heat Map** - Scatter plot: shot locations on pitch
+5. **Possession by Period** - Line chart: possession % over 15-min periods
+6. **Turnovers by Zone** - Bar chart: where turnovers happen
+7. **Kickout Success** - Pie/bar: own vs opposition kickout win rates
+8. **Half Comparison** - Grouped bar: 1st half vs 2nd half stats
+9. **Match Results** - Grid/cards: recent W/L/D with scores
+10. **Conversion Rate** - Gauge or bar: shooting accuracy
+
+{excluded_str}
+
+## Response Format
+Return a JSON object with this exact structure:
+{{
+    "charts": [
+        {{
+            "id": "unique_chart_id",
+            "type": "line|bar|pie|scatter|area|composed",
+            "title": "Chart Title",
+            "insight": "One sentence insight about what this chart reveals",
+            "data": [...],  // Array of data points for Recharts
+            "config": {{
+                // Recharts-specific config
+                "xKey": "name",  // Key for X axis
+                "dataKeys": ["value1", "value2"],  // Keys to plot
+                "colors": ["#10b981", "#6366f1"],  // Colors for each dataKey
+                "stacked": false,  // For bar charts
+                "showLegend": true
+            }}
+        }}
+    ],
+    "summary": "Brief explanation of why these charts were chosen"
+}}
+
+IMPORTANT:
+- Use the ACTUAL data provided above, not made-up numbers!
+- Each chart must have real, accurate data from the stats
+- Make insights specific and actionable
+- Choose charts that reveal interesting patterns
+- Vary the chart types for visual interest
+"""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4000,
+            system=system_prompt,
+            messages=[{
+                "role": "user",
+                "content": f"Generate {num_charts} dashboard charts based on the actual match data. Return valid JSON only."
+            }]
+        )
+
+        response_text = response.content[0].text
+
+        # Extract JSON from response
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            charts_data = json.loads(json_match.group())
+        else:
+            raise ValueError("No JSON found in response")
+
+        return {
+            "success": True,
+            "charts": charts_data.get("charts", []),
+            "summary": charts_data.get("summary", ""),
+            "generated_at": datetime.now().isoformat()
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error: {e}")
+        return {
+            "success": False,
+            "error": f"Failed to parse AI response: {e}",
+            "charts": []
+        }
+    except Exception as e:
+        logger.error(f"Chart generation failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "charts": []
+        }
+
+
+async def generate_single_chart(
+    db: AsyncSession,
+    excluded_chart_ids: list[str] = None
+) -> dict:
+    """
+    Generate a single replacement chart when one is dismissed.
+
+    This is more efficient than regenerating all charts.
+    """
+    result = await generate_dashboard_charts(db, excluded_chart_ids, num_charts=1)
+
+    if result.get("success") and result.get("charts"):
+        return {
+            "success": True,
+            "chart": result["charts"][0]
+        }
+    else:
+        return {
+            "success": False,
+            "error": result.get("error", "Failed to generate chart")
+        }

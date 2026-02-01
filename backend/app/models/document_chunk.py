@@ -57,10 +57,10 @@ class DocumentChunk(Base):
     created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Create indexes for efficient search
+    # Create composite index for efficient search
+    # Note: individual column indexes are created by index=True on the columns above
     __table_args__ = (
         Index('ix_document_chunks_source_chunk', 'source_file', 'chunk_index'),
-        Index('ix_document_chunks_doc_type', 'doc_type'),
     )
 
     def __repr__(self):

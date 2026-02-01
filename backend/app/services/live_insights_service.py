@@ -331,7 +331,7 @@ class LiveInsightsService:
                 {
                     "minute": e.minute,
                     "type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
-                    "team": e.team
+                    "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None
                 }
                 for e in events[:10]
             ]

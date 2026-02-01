@@ -23,7 +23,9 @@ from app.services.ai_service import (
     get_dynamic_chart_recommendations,
     get_chart_analysis,
     generate_agentic_chart,
-    generate_custom_insight
+    generate_custom_insight,
+    generate_dashboard_charts,
+    generate_single_chart
 )
 
 logger = logging.getLogger(__name__)
@@ -106,6 +108,38 @@ class CustomInsightResponse(BaseModel):
     question: str
     chart_suggestion: str
     chart: dict
+
+
+class DashboardChartsRequest(BaseModel):
+    excluded_chart_ids: List[str] = []
+    num_charts: int = 4
+
+
+class ChartSpec(BaseModel):
+    id: str
+    type: str
+    title: str
+    insight: str
+    data: List[dict]
+    config: dict
+
+
+class DashboardChartsResponse(BaseModel):
+    success: bool
+    charts: List[dict]
+    summary: Optional[str] = None
+    error: Optional[str] = None
+    generated_at: Optional[str] = None
+
+
+class SingleChartRequest(BaseModel):
+    excluded_chart_ids: List[str] = []
+
+
+class SingleChartResponse(BaseModel):
+    success: bool
+    chart: Optional[dict] = None
+    error: Optional[str] = None
 
 
 # =============================================================================
@@ -334,3 +368,53 @@ async def custom_insight_endpoint(
     except Exception as e:
         logger.error(f"Custom insight failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Insight generation failed: {str(e)}")
+
+
+@router.post("/dashboard-charts", response_model=DashboardChartsResponse)
+async def get_dashboard_charts_endpoint(
+    request: DashboardChartsRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generate actual Recharts-compatible chart specifications for the dashboard.
+
+    The AI analyzes match data and generates real chart specs (not just recommendations).
+    Each chart includes:
+    - Actual data points
+    - Recharts configuration
+    - AI-generated insight
+
+    Use excluded_chart_ids to avoid regenerating dismissed charts.
+    """
+    try:
+        result = await generate_dashboard_charts(
+            db,
+            excluded_chart_ids=request.excluded_chart_ids,
+            num_charts=request.num_charts
+        )
+        return DashboardChartsResponse(**result)
+    except Exception as e:
+        logger.error(f"Dashboard charts failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Chart generation failed: {str(e)}")
+
+
+@router.post("/generate-replacement-chart", response_model=SingleChartResponse)
+async def generate_replacement_chart_endpoint(
+    request: SingleChartRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generate a single replacement chart when one is dismissed.
+
+    More efficient than regenerating all charts.
+    Pass the IDs of dismissed charts to avoid regenerating them.
+    """
+    try:
+        result = await generate_single_chart(
+            db,
+            excluded_chart_ids=request.excluded_chart_ids
+        )
+        return SingleChartResponse(**result)
+    except Exception as e:
+        logger.error(f"Replacement chart failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Chart generation failed: {str(e)}")

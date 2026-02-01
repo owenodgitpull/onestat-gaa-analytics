@@ -21,6 +21,10 @@ from app.models.training_performance import (
 )
 from app.models.live_insight import LiveInsight, InsightTrigger
 from app.models.document_chunk import DocumentChunk, DocumentEmbeddingLog
+from app.models.player_health import (
+    PlayerHealthAlert, PlayerWorkloadSnapshot,
+    AlertSeverity, AlertType
+)
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -54,5 +58,9 @@ __all__ = [
     "InsightTrigger",
     "DocumentChunk",
     "DocumentEmbeddingLog",
+    "PlayerHealthAlert",
+    "PlayerWorkloadSnapshot",
+    "AlertSeverity",
+    "AlertType",
 ]
 

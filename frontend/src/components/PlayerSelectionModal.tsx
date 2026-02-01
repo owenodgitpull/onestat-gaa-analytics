@@ -6,7 +6,7 @@ interface PlayerSelectionModalProps {
   isOpen: boolean
   onClose: () => void
   onSelectPlayer: (player: Player) => void
-  eventType: 'goal' | 'point' | 'assist' | 'turnover' | 'kickout' | 'wide'
+  eventType: string  // Accept any event type string
   team: 'dungloe' | 'opponent'
   players: Player[]
 }
@@ -20,7 +20,10 @@ const OPPONENT_PLAYERS: Player[] = [
   { id: 'opp-5', name: 'Opposition Player 5', jersey_number: 5, position: 'FORWARD', date_of_birth: null, status: 'active', active: true },
 ]
 
-const EVENT_LABELS = {
+// Type for event label entries
+type EventLabelEntry = { title: string; icon: typeof User | typeof Trophy; color: string }
+
+const EVENT_LABELS: Record<string, EventLabelEntry> = {
   goal: { title: 'Who Scored?', icon: Trophy, color: 'text-emerald-400' },
   point: { title: 'Who Scored?', icon: Trophy, color: 'text-blue-400' },
   assist: { title: 'Who Assisted?', icon: User, color: 'text-purple-400' },
@@ -34,6 +37,8 @@ const EVENT_LABELS = {
   // Unforced errors
   our_unforced_error: { title: 'Who Made Unforced Error?', icon: User, color: 'text-red-400' },
   opp_unforced_error: { title: 'Who Made Unforced Error?', icon: User, color: 'text-red-400' },
+  // Foul
+  foul_committed: { title: 'Who Committed Foul?', icon: User, color: 'text-red-400' },
   // New explicit kickout labels
   own_kickout_dungloe_won: { title: 'Who Won Our Kickout?', icon: User, color: 'text-emerald-400' },
   own_kickout_opposition_won: { title: 'Opposition Won (No Player)', icon: User, color: 'text-red-400' },

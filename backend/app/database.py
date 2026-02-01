@@ -12,11 +12,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
 import os
+from pathlib import Path
 from typing import AsyncGenerator
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+# Load environment variables from .env file (explicitly from backend directory)
+backend_dir = Path(__file__).resolve().parent.parent
+load_dotenv(backend_dir / ".env")
 
 # Get database URL from environment
 # Format: postgresql+asyncpg://user:password@host:port/database
@@ -44,6 +46,9 @@ AsyncSessionLocal = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+# Alias for background tasks that need a session outside of request context
+async_session_maker = AsyncSessionLocal
 
 # Base class for all database models
 # All models will inherit from this

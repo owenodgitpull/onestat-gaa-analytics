@@ -9,11 +9,13 @@ import {
   Zap,
   AlertTriangle,
   Flag,
+  Hand,
+  MapPin,
 } from 'lucide-react'
 
 interface CategorizedActionButtonsProps {
   onActionSelect: (eventType: EventType) => void
-  onFreeWon?: () => void
+  onFoulClick?: (team: 'dungloe' | 'opponent') => void
   on45Click?: () => void
   disabled?: boolean
   activeCategory?: string | null
@@ -21,9 +23,12 @@ interface CategorizedActionButtonsProps {
   currentPossession?: PossessionTeam
   isIn2PointZone?: boolean
   pendingFreeKick?: boolean
+  pendingFoul?: 'dungloe' | 'opponent' | null  // Track which team fouled
   pending45?: boolean
+  pendingKickoutPosition?: boolean  // Waiting for user to click pitch for kickout position
   onCancelFree?: () => void
   onCancel45?: () => void
+  onCancelKickout?: () => void
 }
 
 const categories = [
@@ -89,7 +94,7 @@ const fortyFiveOptions = [
 
 export default function CategorizedActionButtons({
   onActionSelect,
-  onFreeWon,
+  onFoulClick,
   on45Click,
   disabled = false,
   activeCategory: externalActiveCategory,
@@ -97,11 +102,15 @@ export default function CategorizedActionButtons({
   currentPossession = PossessionTeam.DUNGLOE,
   isIn2PointZone = false,
   pendingFreeKick = false,
+  pendingFoul = null,
   pending45 = false,
+  pendingKickoutPosition = false,
   onCancelFree,
-  onCancel45
+  onCancel45,
+  onCancelKickout
 }: CategorizedActionButtonsProps) {
   const [internalActiveCategory, setInternalActiveCategory] = useState('scoring')
+  const [showFoulSelection, setShowFoulSelection] = useState(false)
 
   // Use external control if provided (and not null), otherwise use internal state
   const activeCategory = externalActiveCategory === null ? 'scoring' : (externalActiveCategory ?? internalActiveCategory)
@@ -155,6 +164,100 @@ export default function CategorizedActionButtons({
         EventType.OUR_UNFORCED_ERROR // We can't error if opponent has ball
       ].includes(eventType)
     }
+  }
+
+  // Show foul team selection
+  if (showFoulSelection) {
+    return (
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-red-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        {/* Foul Header */}
+        <div className="px-3 py-2 bg-gradient-to-r from-red-600/30 to-orange-600/30 border-b border-red-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Hand size={16} className="text-red-400" />
+              <span className="text-sm font-semibold text-red-300">Who Committed the Foul?</span>
+            </div>
+            <button
+              onClick={() => setShowFoulSelection(false)}
+              className="text-xs text-white/60 hover:text-white px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        {/* Foul Team Selection Buttons */}
+        <div className="p-3 flex gap-3 justify-center">
+          <button
+            onClick={() => {
+              setShowFoulSelection(false)
+              onFoulClick?.('dungloe')
+            }}
+            disabled={disabled}
+            className="flex-1 btn-primary !py-3 !px-4 flex flex-col items-center space-y-1 text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+          >
+            <span className="font-bold">Dungloe Foul</span>
+            <span className="text-xs opacity-80">Select who fouled</span>
+          </button>
+          <button
+            onClick={() => {
+              setShowFoulSelection(false)
+              onFoulClick?.('opponent')
+            }}
+            disabled={disabled}
+            className="flex-1 btn-primary !py-3 !px-4 flex flex-col items-center space-y-1 text-sm bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
+          >
+            <span className="font-bold">Opp Foul</span>
+            <span className="text-xs opacity-80">Dungloe wins free</span>
+          </button>
+        </div>
+
+        {/* Tip */}
+        <div className="px-3 py-2 bg-white/5 border-t border-white/10">
+          <p className="text-xs text-white/50 text-center">
+            Select which team committed the foul
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Show kickout position selection prompt
+  if (pendingKickoutPosition) {
+    return (
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        {/* Kickout Position Header */}
+        <div className="px-3 py-2 bg-gradient-to-r from-emerald-600/30 to-teal-600/30 border-b border-emerald-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <MapPin size={16} className="text-emerald-400" />
+              <span className="text-sm font-semibold text-emerald-300">Select Kickout Position</span>
+            </div>
+            <button
+              onClick={onCancelKickout}
+              className="text-xs text-white/60 hover:text-white px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        {/* Instruction */}
+        <div className="p-4 flex items-center justify-center space-x-3">
+          <MapPin size={20} className="text-emerald-400 animate-pulse" />
+          <p className="text-white font-medium">
+            Click on pitch where kickout was won
+          </p>
+        </div>
+
+        {/* Tip */}
+        <div className="px-3 py-2 bg-white/5 border-t border-white/10">
+          <p className="text-xs text-white/50 text-center">
+            Tap the location on the pitch to record where the ball was contested
+          </p>
+        </div>
+      </div>
+    )
   }
 
   // Show 45 options menu
@@ -213,6 +316,14 @@ export default function CategorizedActionButtons({
 
   // Show free kick options menu
   if (pendingFreeKick) {
+    const isDungloeFoul = pendingFoul === 'dungloe'
+    const headerText = isDungloeFoul
+      ? 'Opponent Free - Select Outcome'
+      : 'Dungloe Free - Select Outcome'
+    const tipText = isDungloeFoul
+      ? 'Record what opponent did with the free kick'
+      : 'Move the ball to play a short free (menu will close)'
+
     return (
       <div className={`bg-slate-900 backdrop-blur-xl border-2 border-amber-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
         {/* Free Kick Header */}
@@ -220,7 +331,7 @@ export default function CategorizedActionButtons({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <AlertTriangle size={16} className="text-amber-400" />
-              <span className="text-sm font-semibold text-amber-300">Free Kick - Select Outcome</span>
+              <span className="text-sm font-semibold text-amber-300">{headerText}</span>
             </div>
             <button
               onClick={onCancelFree}
@@ -258,7 +369,7 @@ export default function CategorizedActionButtons({
         {/* Tip */}
         <div className="px-3 py-2 bg-white/5 border-t border-white/10">
           <p className="text-xs text-white/50 text-center">
-            Move the ball to play a short free (menu will close)
+            {tipText}
           </p>
         </div>
       </div>
@@ -325,14 +436,14 @@ export default function CategorizedActionButtons({
           )
         })}
 
-        {/* Free Won - category level button */}
+        {/* Foul - category level button */}
         <button
-          onClick={onFreeWon}
+          onClick={() => setShowFoulSelection(true)}
           disabled={disabled}
-          className="flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 bg-gradient-to-r from-amber-600/80 to-orange-600/80 hover:from-amber-600 hover:to-orange-600 text-white"
+          className="flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 text-white/60 hover:text-white hover:bg-white/5"
         >
-          <AlertTriangle size={16} />
-          <span className="text-[10px] font-medium">Free Won</span>
+          <Hand size={16} />
+          <span className="text-[10px] font-medium">Foul</span>
         </button>
       </div>
     </div>

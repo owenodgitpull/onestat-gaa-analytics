@@ -77,9 +77,10 @@ export default function MatchRecording() {
   const [startingLineup, setStartingLineup] = useState<Record<string, string>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, string> | undefined>(undefined)
   const [dungloeAttackingRight, setDungloeAttackingRight] = useState<boolean>(true) // true = attacking towards x=100
-  const [pendingFreeKick, setPendingFreeKick] = useState<{ position: BallPosition; player: Player } | null>(null) // Track free kick state with player
+  const [pendingFreeKick, setPendingFreeKick] = useState<{ position: BallPosition; player?: Player } | null>(null) // Track free kick state with optional player
   const [pending45, setPending45] = useState<{ position: BallPosition } | null>(null) // Track 45 state
-  const [selectingFreePlayer, setSelectingFreePlayer] = useState<boolean>(false) // True when selecting player for free kick
+  const [selectingFoulPlayer, setSelectingFoulPlayer] = useState<boolean>(false) // True when selecting Dungloe player who fouled
+  const [pendingFoul, setPendingFoul] = useState<'dungloe' | 'opponent' | null>(null) // Track which team committed the foul
 
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -184,18 +185,23 @@ export default function MatchRecording() {
   const dungloeAccuracy = matchStats?.dungloe_accuracy?.toFixed(1) || '0'
 
   // Calculate possession % from backend stats (time-based, not event count)
-  const dungloePossessionPct = matchStats?.dungloe_possession_percentage?.toFixed(0) || '0'
-  const opponentPossessionPct = matchStats?.opponent_possession_percentage?.toFixed(0) || '0'
+  // Always derive opponent from Dungloe to ensure they add up to 100% (avoids race condition flicker)
+  const dungloePossessionPct = Math.round(matchStats?.dungloe_possession_percentage || 0)
+  const opponentPossessionPct = 100 - dungloePossessionPct
 
   // Use backend matchStats for all statistics (already calculated correctly)
   const dungloeTurnoversWon = matchStats?.dungloe_turnovers_won || 0
   const dungloeTurnoversLost = matchStats?.dungloe_turnovers_lost || 0
   const dungloeKickoutsWon = matchStats?.dungloe_kickouts_won || 0
   const dungloeKickoutsLost = matchStats?.dungloe_kickouts_lost || 0
+  const opponentKickoutsWon = matchStats?.opponent_kickouts_won || 0
+  const opponentKickoutsLost = matchStats?.opponent_kickouts_lost || 0
 
-  const totalKickouts = dungloeKickoutsWon + dungloeKickoutsLost
-  const dungloeKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsWon / totalKickouts) * 100).toFixed(1) : '0.0'
-  const opponentKickoutRetention = totalKickouts > 0 ? ((dungloeKickoutsLost / totalKickouts) * 100).toFixed(1) : '0.0'
+  // Calculate kickout totals for each team
+  const totalDungloeKickouts = dungloeKickoutsWon + dungloeKickoutsLost
+  const totalOpponentKickouts = opponentKickoutsWon + opponentKickoutsLost
+  const dungloeKickoutRetention = totalDungloeKickouts > 0 ? ((dungloeKickoutsWon / totalDungloeKickouts) * 100).toFixed(1) : '0.0'
+  const opponentKickoutRetention = totalOpponentKickouts > 0 ? ((opponentKickoutsWon / totalOpponentKickouts) * 100).toFixed(1) : '0.0'
 
   // Recent events - fetch from backend and show last 15
   const { data: matchEventsData } = useMatchEvents(matchId)
@@ -213,14 +219,19 @@ export default function MatchRecording() {
   }
 
   const stats = {
-    possession: { dungloe: parseInt(dungloePossessionPct), opponent: parseInt(opponentPossessionPct) },
+    possession: { dungloe: dungloePossessionPct, opponent: opponentPossessionPct },
     shots: { dungloe: dungloeShots, opponent: opponentShots },
     scores: { dungloe: dungloeScores, opponent: opponentScores },
     wides: { dungloe: dungloeWides, opponent: opponentWides },
     accuracy: parseFloat(dungloeAccuracy),
     conversionRate: dungloeShots > 0 ? parseFloat(((dungloeScores / dungloeShots) * 100).toFixed(1)) : 0,
     turnovers: { won: dungloeTurnoversWon, lost: dungloeTurnoversLost },
-    kickouts: { won: dungloeKickoutsWon, lost: dungloeKickoutsLost }
+    kickouts: {
+      dungloeWon: dungloeKickoutsWon,
+      dungloeTotal: totalDungloeKickouts,
+      opponentWon: opponentKickoutsWon,
+      opponentTotal: totalOpponentKickouts
+    }
   }
 
   // Helper function to check if position is in 2-point zone (outside 40m arc)
@@ -346,20 +357,22 @@ export default function MatchRecording() {
     )
     const isInsideDefendingArc = normalizedDefendingArcDistance <= 1.0
 
-    // ATTACKING ZONES (near opponent's goal)
-    if (distFromAttackingGoal <= 6.2) return `inside ${defendingTeamName}'s small rectangle${lateral}`
-    if (distFromAttackingGoal <= 9) return `${defendingTeamName}'s 13-meter line${lateral}`
-    if (distFromAttackingGoal <= 13.8) return `${defendingTeamName}'s 20-meter line${lateral}`
-    if (!isOutsideAttackingArc) return `inside ${defendingTeamName}'s 40-meter arc${lateral}`
-    if (distFromAttackingGoal <= 38) return `outside ${defendingTeamName}'s 40-meter arc${lateral}` // 2-point zone
+    // ATTACKING ZONES (near opponent's goal) - must be closer to attacking goal
+    if (distFromAttackingGoal < distFromDefendingGoal) {
+      if (distFromAttackingGoal <= 6.2) return `inside ${defendingTeamName}'s small rectangle${lateral}`
+      if (distFromAttackingGoal <= 9) return `${defendingTeamName}'s 13-meter line${lateral}`
+      if (distFromAttackingGoal <= 13.8) return `${defendingTeamName}'s 20-meter line${lateral}`
+      if (!isOutsideAttackingArc) return `inside ${defendingTeamName}'s 40-meter arc${lateral}`
+      if (distFromAttackingGoal <= 38) return `outside ${defendingTeamName}'s 40-meter arc${lateral}` // 2-point zone
+      return `${defendingTeamName}'s half${lateral}`
+    }
 
     // MIDFIELD ZONES
     if (distFromAttackingGoal <= 50 && distFromDefendingGoal <= 50) {
       return `around midfield${lateral}`
     }
-    if (distFromAttackingGoal < 50) return `${defendingTeamName}'s half${lateral}`
 
-    // DEFENSIVE ZONES (in own half)
+    // DEFENSIVE ZONES (in own half) - closer to defending goal
     if (distFromDefendingGoal <= 6.2) return `inside ${attackingTeamName}'s small rectangle${lateral}`
     if (distFromDefendingGoal <= 9) return `${attackingTeamName}'s 13-meter line${lateral}`
     if (distFromDefendingGoal <= 13.8) return `${attackingTeamName}'s 20-meter line${lateral}`
@@ -591,6 +604,7 @@ export default function MatchRecording() {
     if (pendingFreeKick) {
       console.log('Ball moved - cancelling pending free kick (short free played)')
       setPendingFreeKick(null)
+      setPendingFoul(null)
     }
 
     // If there's a pending 45 and user moves ball, cancel it
@@ -742,32 +756,68 @@ export default function MatchRecording() {
     return mapping[eventLower] || eventLower  // Fallback to original if no mapping
   }
 
-  // Handle "Free Won" button - opens player selection modal first
-  const handleFreeWon = () => {
-    // Open player selection modal to select who won the free
-    setSelectingFreePlayer(true)
-    setIsPlayerModalOpen(true)
-    console.log('Free kick won - selecting player...')
+  // Handle "Foul" button - receives which team committed the foul
+  const handleFoulClick = (team: 'dungloe' | 'opponent') => {
+    console.log('Foul committed by:', team)
+    setPendingFoul(team)
+
+    if (team === 'dungloe') {
+      // Dungloe fouled - need to select which player committed the foul
+      setSelectingFoulPlayer(true)
+      setIsPlayerModalOpen(true)
+      console.log('Dungloe foul - selecting player who fouled...')
+    } else {
+      // Opposition fouled - Dungloe wins free, go straight to free options
+      setPendingFreeKick({ position: ballPosition })
+      // Dungloe now has possession (they won the free)
+      setBallPosition(prev => ({
+        ...prev,
+        team: PossessionTeam.DUNGLOE
+      }))
+      console.log('Opposition foul - Dungloe wins free at:', ballPosition)
+    }
   }
 
-  // Handle player selected for free kick
-  const handleFreePlayerSelected = (player: Player) => {
-    // Set pending free kick with selected player
-    setPendingFreeKick({ position: ballPosition, player })
-    // Dungloe now has possession (they won the free)
-    setBallPosition(prev => ({
-      ...prev,
-      team: PossessionTeam.DUNGLOE
-    }))
-    // Close player modal and reset free player selection flag
+  // Handle player selected for foul (Dungloe player who committed the foul)
+  const handleFoulPlayerSelected = async (player: Player) => {
+    if (!matchId) return
+
+    // Record foul_committed event for this Dungloe player
+    try {
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        player_id: player.id,
+        event_type: 'foul_committed',
+        minute: minute,
+        half: currentHalf,
+        x_coord: ballPosition.x,
+        y_coord: ballPosition.y,
+        is_home_team: true, // Dungloe committed the foul
+        notes: undefined
+      })
+      console.log('Foul committed recorded for:', player.name)
+
+      // Now show free kick options for opponent
+      setPendingFreeKick({ position: ballPosition, player })
+      // Opponent now has possession (they get the free)
+      setBallPosition(prev => ({
+        ...prev,
+        team: PossessionTeam.OPPONENT
+      }))
+    } catch (error) {
+      console.error('Failed to record foul:', error)
+      alert('Failed to record foul. Please try again.')
+    }
+
+    // Close player modal and reset foul player selection flag
     setIsPlayerModalOpen(false)
-    setSelectingFreePlayer(false)
-    console.log('Free kick won by:', player.name, 'at position:', ballPosition)
+    setSelectingFoulPlayer(false)
   }
 
   // Cancel pending free kick
   const handleCancelFree = () => {
     setPendingFreeKick(null)
+    setPendingFoul(null)
     console.log('Free kick cancelled')
   }
 
@@ -880,11 +930,14 @@ export default function MatchRecording() {
 
     // Determine action position and player based on pending state
     let actionPosition = ballPosition
-    let freeKickPlayer: Player | null = null
+    let freeKickPlayer: Player | undefined = undefined
+    let isDungloeTakingFree = true
     if (isFreeKickResult && pendingFreeKick) {
       actionPosition = pendingFreeKick.position
       freeKickPlayer = pendingFreeKick.player
-      console.log('Recording free kick result by:', freeKickPlayer?.name, ', clearing pending free kick')
+      // If pendingFoul is 'dungloe', opponent takes the free. If 'opponent', Dungloe takes the free.
+      isDungloeTakingFree = pendingFoul === 'opponent'
+      console.log('Recording free kick result, team taking free:', isDungloeTakingFree ? 'Dungloe' : 'Opponent', ', clearing pending free kick')
       setPendingFreeKick(null)
     } else if (is45Result && pending45) {
       actionPosition = pending45.position
@@ -942,9 +995,9 @@ export default function MatchRecording() {
     const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SAVED]
     const isOpponentScoring = scoringEvents.includes(eventType) && !isHomeTeam
 
-    // Free kick results - record directly with the stored player
-    if (isFreeKickResult && freeKickPlayer) {
-      recordFreeKickResult(eventType, freeKickPlayer, actionPosition)
+    // Free kick results - record with context of which team is taking the free
+    if (isFreeKickResult) {
+      recordFreeKickResult(eventType, actionPosition, isDungloeTakingFree, freeKickPlayer)
     } else if (noPlayerNeeded.includes(eventType as EventType) || isOpponentScoring) {
       // Record immediately without player selection
       recordEventWithoutPlayer(eventType, isHomeTeam, actionPosition)
@@ -960,8 +1013,8 @@ export default function MatchRecording() {
     }
   }
 
-  // Record free kick result with stored player
-  const recordFreeKickResult = async (eventType: EventType, player: Player, position: BallPosition) => {
+  // Record free kick result - works for both Dungloe and opponent frees
+  const recordFreeKickResult = async (eventType: EventType, position: BallPosition, isDungloeTakingFree: boolean, player?: Player) => {
     if (!matchId) return
 
     try {
@@ -970,19 +1023,20 @@ export default function MatchRecording() {
       console.log('Recording free kick result:', {
         eventType,
         backendType: backendEventType,
-        player: player.name,
-        position
+        player: player?.name || 'Opponent',
+        position,
+        isDungloeTakingFree
       })
 
       await recordEvent.mutateAsync({
         match_id: matchId,
-        player_id: player.id,
+        player_id: isDungloeTakingFree ? undefined : player?.id, // Only include player if Dungloe fouled (player who fouled is already recorded)
         event_type: backendEventType,
         minute: minute,
         half: currentHalf,
         x_coord: position.x,
         y_coord: position.y,
-        is_home_team: true, // Free kicks are always Dungloe
+        is_home_team: isDungloeTakingFree, // true if Dungloe takes the free, false if opponent takes
         notes: undefined
       })
 
@@ -993,8 +1047,9 @@ export default function MatchRecording() {
 
       if (isScore || isWide) {
         // Ball moves to goalkeeper area for kickout
-        const kickoutTeam = PossessionTeam.OPPONENT // Opponent takes kickout after Dungloe scores/goes wide
-        const kickoutX = 95 // Opponent goal area
+        // The team that conceded the score takes the kickout
+        const kickoutTeam = isDungloeTakingFree ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+        const kickoutX = isDungloeTakingFree ? 95 : 5 // Goal area of team taking kickout
 
         setBallPosition({
           x: kickoutX,
@@ -1002,11 +1057,14 @@ export default function MatchRecording() {
           team: kickoutTeam
         })
 
-        setActiveKickoutTab('opp_kickouts')
+        setActiveKickoutTab(isDungloeTakingFree ? 'opp_kickouts' : 'our_kickouts')
         setAwaitingKickout(true)
 
         console.log('Ball moved to goalkeeper area for kickout after free:', eventType)
       }
+
+      // Reset foul state
+      setPendingFoul(null)
 
       // Force refetch stats
       await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
@@ -1111,17 +1169,20 @@ export default function MatchRecording() {
             newTeam = PossessionTeam.OPPONENT
           } else if (turnoverEventStr.includes('SAVED')) {
             // Shot saved → Defending team gets possession at goalkeeper position
-            newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+            // Use ball position to determine which goal: if shot was in opponent's half (x > 50),
+            // opponent keeper saved it. If in our half (x < 50), Dungloe keeper saved it.
+            const shotInOpponentHalf = position.x > 50
 
-            // Move ball to goalkeeper position (inside small rectangle/goal area)
-            if (newTeam === PossessionTeam.DUNGLOE) {
-              // Dungloe keeper saved it → Ball at Dungloe goal
-              newX = 5  // Inside Dungloe goal area (x=0 is goal line)
-              newY = 50 // Center of goal
+            if (shotInOpponentHalf) {
+              // Shot was at opponent's goal → Opponent keeper saved it
+              newTeam = PossessionTeam.OPPONENT
+              newX = 95 // Opponent goal area
+              newY = 50
             } else {
-              // Opponent keeper saved it → Ball at opponent goal
-              newX = 95 // Inside opponent goal area (x=100 is goal line)
-              newY = 50 // Center of goal
+              // Shot was at Dungloe's goal → Dungloe keeper saved it
+              newTeam = PossessionTeam.DUNGLOE
+              newX = 5 // Dungloe goal area
+              newY = 50
             }
           } else if (turnoverEventStr.includes('SHORT')) {
             // Shot dropped short → Opponent gets possession (stays where it is)
@@ -1169,11 +1230,22 @@ export default function MatchRecording() {
   }
 
   const handlePlayerSelected = async (player: Player) => {
-    if (!pendingEvent || !matchId) return
+    console.log('handlePlayerSelected called with player:', player.name)
+    console.log('pendingEvent:', pendingEvent)
+    console.log('matchId:', matchId)
 
-    console.log('Event recorded:', {
-      ...pendingEvent,
-      player: player,
+    if (!pendingEvent || !matchId) {
+      console.error('handlePlayerSelected early return - pendingEvent:', pendingEvent, 'matchId:', matchId)
+      // Still close modal to avoid UI stuck state
+      setIsPlayerModalOpen(false)
+      setPendingEvent(null)
+      return
+    }
+
+    console.log('Recording event:', {
+      eventType: pendingEvent.eventType,
+      team: pendingEvent.team,
+      player: player.name,
       minute: minute,
       second: seconds
     })
@@ -1270,18 +1342,18 @@ export default function MatchRecording() {
           // Dungloe lost the ball → Opponent gets possession
           newTeam = PossessionTeam.OPPONENT
         } else if (turnoverEventStr.includes('SAVED')) {
-          // Shot saved → Defending team gets possession at goalkeeper position
-          newTeam = pendingEvent.team === 'dungloe' ? PossessionTeam.OPPONENT : PossessionTeam.DUNGLOE
+          // Use ball position to determine which goal: if shot was in opponent's half (x > 50),
+          // opponent keeper saved it. If in our half (x < 50), Dungloe keeper saved it.
+          const shotInOpponentHalf = pendingEvent.position.x > 50
 
-          // Move ball to goalkeeper position (inside small rectangle/goal area)
-          if (newTeam === PossessionTeam.DUNGLOE) {
-            // Dungloe keeper saved it → Ball at Dungloe goal
-            newX = 5  // Inside Dungloe goal area (x=0 is goal line)
-            newY = 50 // Center of goal
+          if (shotInOpponentHalf) {
+            newTeam = PossessionTeam.OPPONENT
+            newX = 95 // Opponent goal area
+            newY = 50
           } else {
-            // Opponent keeper saved it → Ball at opponent goal
-            newX = 95 // Inside opponent goal area (x=100 is goal line)
-            newY = 50 // Center of goal
+            newTeam = PossessionTeam.DUNGLOE
+            newX = 5 // Dungloe goal area
+            newY = 50
           }
         } else if (turnoverEventStr.includes('SHORT')) {
           // Shot dropped short → Opponent gets possession (stays where it is)
@@ -1546,18 +1618,6 @@ export default function MatchRecording() {
                 </div>
               )}
 
-              {/* Pending Kickout Position Banner */}
-              {pendingKickoutEvent && (
-                <div className="glass-card p-4 mb-4 bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border-2 border-emerald-500/50 animate-pulse">
-                  <div className="flex items-center justify-center space-x-3">
-                    <Activity size={24} className="text-emerald-400" />
-                    <p className="text-white font-semibold text-lg">
-                      📍 Click on pitch to select where kickout was won
-                    </p>
-                  </div>
-                </div>
-              )}
-
               {/* Pitch */}
               <div className="glass-card p-6 relative mb-4">
                 <GAAPitch
@@ -1576,7 +1636,7 @@ export default function MatchRecording() {
                 <div className="absolute z-10 w-full max-w-xl px-4 left-1/2 -translate-x-1/2" style={{ bottom: '-2.75rem' }}>
                   <CategorizedActionButtons
                     onActionSelect={handleQuickAction}
-                    onFreeWon={handleFreeWon}
+                    onFoulClick={handleFoulClick}
                     on45Click={handle45Click}
                     disabled={matchPhase !== 'first_half' && matchPhase !== 'second_half'}
                     activeCategory={activeKickoutTab}
@@ -1584,9 +1644,12 @@ export default function MatchRecording() {
                     currentPossession={ballPosition.team}
                     isIn2PointZone={isIn2PointZone(ballPosition.x, ballPosition.y, ballPosition.team)}
                     pendingFreeKick={!!pendingFreeKick}
+                    pendingFoul={pendingFoul}
                     pending45={!!pending45}
+                    pendingKickoutPosition={!!pendingKickoutEvent}
                     onCancelFree={handleCancelFree}
                     onCancel45={handleCancel45}
+                    onCancelKickout={() => setPendingKickoutEvent(null)}
                   />
                 </div>
               </div>
@@ -1749,13 +1812,13 @@ export default function MatchRecording() {
                   {/* Kickouts */}
                   <div className="grid grid-cols-3 border-t border-white/10">
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.kickouts.won}
+                      {stats.kickouts.dungloeWon}/{stats.kickouts.dungloeTotal}
                     </div>
                     <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       KICKOUTS WON
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {stats.kickouts.lost}
+                      {stats.kickouts.opponentWon}/{stats.kickouts.opponentTotal}
                     </div>
                   </div>
 
@@ -1834,16 +1897,17 @@ export default function MatchRecording() {
       )}
 
       {/* Player Selection Modal */}
-      {(pendingEvent || selectingFreePlayer) && (
+      {(pendingEvent || selectingFoulPlayer) && (
         <PlayerSelectionModal
           isOpen={isPlayerModalOpen}
           onClose={() => {
             setIsPlayerModalOpen(false)
             setPendingEvent(null)
-            setSelectingFreePlayer(false)
+            setSelectingFoulPlayer(false)
+            setPendingFoul(null)
           }}
-          onSelectPlayer={selectingFreePlayer ? handleFreePlayerSelected : handlePlayerSelected}
-          eventType={selectingFreePlayer ? EventType.FREE_WON : (pendingEvent?.eventType as any)}
+          onSelectPlayer={selectingFoulPlayer ? handleFoulPlayerSelected : handlePlayerSelected}
+          eventType={selectingFoulPlayer ? EventType.FOUL_COMMITTED : (pendingEvent?.eventType as any)}
           team="dungloe"
           players={players}
         />

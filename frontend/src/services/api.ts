@@ -11,7 +11,7 @@ import type {
   MatchStats
 } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1';
 
 // ============================================================================
 // Utility Functions
@@ -526,6 +526,38 @@ export interface CustomInsightResponse {
   chart: AgenticChartResponse;
 }
 
+// Dashboard Charts - AI-generated Recharts specs
+export interface ChartConfig {
+  xKey?: string;
+  dataKeys?: string[];
+  colors?: string[];
+  stacked?: boolean;
+  showLegend?: boolean;
+}
+
+export interface AIChartSpec {
+  id: string;
+  type: 'line' | 'bar' | 'pie' | 'scatter' | 'area' | 'composed';
+  title: string;
+  insight: string;
+  data: Record<string, unknown>[];
+  config: ChartConfig;
+}
+
+export interface DashboardChartsResponse {
+  success: boolean;
+  charts: AIChartSpec[];
+  summary?: string;
+  error?: string;
+  generated_at?: string;
+}
+
+export interface SingleChartResponse {
+  success: boolean;
+  chart?: AIChartSpec;
+  error?: string;
+}
+
 const aiAPI = {
   analyzeMatch: async (matchId: string, question?: string): Promise<AnalysisResponse> => {
     return fetchAPI<AnalysisResponse>('/ai/analyze-match', {
@@ -593,6 +625,30 @@ const aiAPI = {
     return fetchAPI<CustomInsightResponse>('/ai/custom-insight', {
       method: 'POST',
       body: JSON.stringify({ question }),
+    });
+  },
+
+  /**
+   * Get AI-generated dashboard charts with actual Recharts specs
+   * Returns charts ready to render, not just recommendations
+   */
+  getDashboardCharts: async (
+    excludedChartIds: string[] = [],
+    numCharts: number = 4
+  ): Promise<DashboardChartsResponse> => {
+    return fetchAPI<DashboardChartsResponse>('/ai/dashboard-charts', {
+      method: 'POST',
+      body: JSON.stringify({ excluded_chart_ids: excludedChartIds, num_charts: numCharts }),
+    });
+  },
+
+  /**
+   * Generate a single replacement chart when one is dismissed
+   */
+  getReplacementChart: async (excludedChartIds: string[] = []): Promise<SingleChartResponse> => {
+    return fetchAPI<SingleChartResponse>('/ai/generate-replacement-chart', {
+      method: 'POST',
+      body: JSON.stringify({ excluded_chart_ids: excludedChartIds }),
     });
   },
 };
@@ -728,6 +784,100 @@ const ragAPI = {
   },
 };
 
+// ============================================================================
+// Squad Health API
+// ============================================================================
+
+export interface HealthAlert {
+  id: string;
+  player_id: string;
+  player_name: string;
+  alert_type: string;
+  severity: string;
+  title: string;
+  message: string;
+  recommendation: string | null;
+  created_at: string;
+}
+
+export interface PlayerWorkload {
+  player_id: string;
+  player_name: string;
+  acwr: number | null;
+  acute_load: number | null;
+  chronic_load: number | null;
+  today_load: number;
+  status: 'unknown' | 'undertrained' | 'optimal' | 'elevated' | 'high_risk';
+}
+
+export interface SquadHealthSummary {
+  alerts: {
+    critical: HealthAlert[];
+    high: HealthAlert[];
+    medium: HealthAlert[];
+    low: HealthAlert[];
+    info: HealthAlert[];
+  };
+  total_alerts: number;
+  critical_count: number;
+  high_count: number;
+  player_workloads: PlayerWorkload[];
+  generated_at: string;
+}
+
+const squadHealthAPI = {
+  /**
+   * Get squad-wide health summary
+   */
+  getSummary: async (): Promise<SquadHealthSummary> => {
+    return fetchAPI<SquadHealthSummary>('/squad-health/summary');
+  },
+
+  /**
+   * Get all health alerts
+   */
+  getAlerts: async (severity?: string, activeOnly: boolean = true): Promise<HealthAlert[]> => {
+    const params = new URLSearchParams();
+    if (severity) params.append('severity', severity);
+    params.append('active_only', String(activeOnly));
+    return fetchAPI<HealthAlert[]>(`/squad-health/alerts?${params}`);
+  },
+
+  /**
+   * Get player-specific health data
+   */
+  getPlayerHealth: async (playerId: string): Promise<{ player_id: string; active_alerts: HealthAlert[]; new_alerts_generated: number }> => {
+    return fetchAPI<{ player_id: string; active_alerts: HealthAlert[]; new_alerts_generated: number }>(`/squad-health/player/${playerId}`);
+  },
+
+  /**
+   * Acknowledge an alert
+   */
+  acknowledgeAlert: async (alertId: string): Promise<{ status: string; alert_id: string }> => {
+    return fetchAPI<{ status: string; alert_id: string }>(`/squad-health/alerts/${alertId}/acknowledge`, {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Dismiss an alert
+   */
+  dismissAlert: async (alertId: string): Promise<{ status: string; alert_id: string }> => {
+    return fetchAPI<{ status: string; alert_id: string }>(`/squad-health/alerts/${alertId}/dismiss`, {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Trigger manual squad analysis
+   */
+  analyzeSquad: async (): Promise<{ players_analyzed: number; total_alerts_generated: number }> => {
+    return fetchAPI<{ players_analyzed: number; total_alerts_generated: number }>('/squad-health/analyze/squad', {
+      method: 'POST',
+    });
+  },
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -738,6 +888,7 @@ export const api = {
   ai: aiAPI,
   liveInsights: liveInsightsAPI,
   rag: ragAPI,
+  squadHealth: squadHealthAPI,
 };
 
 export default api;

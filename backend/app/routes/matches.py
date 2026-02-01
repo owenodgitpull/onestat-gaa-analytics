@@ -4,11 +4,17 @@ API routes for Match operations.
 Handles CRUD operations, match start/complete, and statistics.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from typing import List, Optional
 from uuid import UUID
-from app.database import get_db
+import logging
+from app.database import get_db, async_session_maker
+from app.models.match_lineup import MatchLineup
+from app.services.workload_analysis_service import WorkloadAnalysisService
+
+logger = logging.getLogger(__name__)
 from app.models.match import MatchStatus, MatchVenue
 from app.schemas.match import (
     MatchCreate,
@@ -167,16 +173,18 @@ async def start_match(
 async def complete_match(
     match_id: UUID,
     complete_data: MatchCompleteRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Complete a match (change status to COMPLETED).
-    
+
     Sets the match status, records completion time, and optional post-match notes.
+    Triggers workload analysis for all players in the lineup.
     """
     match = await MatchService.complete_match(
-        db, 
-        match_id, 
+        db,
+        match_id,
         complete_data.completed_at,
         complete_data.notes
     )
@@ -185,13 +193,38 @@ async def complete_match(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Match with ID {match_id} not found"
         )
-    
+
+    # Get all players in the lineup for workload analysis
+    lineup_result = await db.execute(
+        select(MatchLineup.player_id).where(MatchLineup.match_id == match_id)
+    )
+    player_ids = [row[0] for row in lineup_result.all()]
+
+    # Trigger workload analysis in background
+    if player_ids:
+        background_tasks.add_task(
+            trigger_match_workload_analysis,
+            player_ids
+        )
+
     response = MatchResponse.model_validate(match)
     response.dungloe_total_score = match.dungloe_total_score
     response.opponent_total_score = match.opponent_total_score
     response.result = match.result
-    
+
     return response
+
+
+async def trigger_match_workload_analysis(player_ids: list):
+    """Background task to analyze workload for players after match completion."""
+    async with async_session_maker() as db:
+        for player_id in player_ids:
+            try:
+                await WorkloadAnalysisService.trigger_analysis_for_player(
+                    db, player_id, "match_completed"
+                )
+            except Exception as e:
+                logger.error(f"Workload analysis failed for player {player_id}: {e}")
 
 
 @router.put("/{match_id}/score", response_model=MatchResponse)

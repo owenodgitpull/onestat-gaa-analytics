@@ -4,15 +4,20 @@ Attendance API Routes.
 Handles CRUD operations for training sessions and attendance records.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 from typing import Optional
 from uuid import UUID
 from datetime import date, timedelta
+import asyncio
+import logging
 
-from app.database import get_db
+from app.database import get_db, async_session_maker
+from app.services.workload_analysis_service import WorkloadAnalysisService
+
+logger = logging.getLogger(__name__)
 from app.models.attendance import TrainingSession, Attendance, SessionType, AttendanceStatus
 from app.models.player import Player
 from app.schemas.attendance import (
@@ -244,6 +249,7 @@ async def add_attendance(
 @router.post("/attendance/bulk", response_model=list[AttendanceResponse], status_code=201)
 async def bulk_add_attendance(
     bulk: AttendanceBulkCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """Add multiple attendance records for a session."""
@@ -285,7 +291,32 @@ async def bulk_add_attendance(
         ))
 
     await db.commit()
+
+    # Trigger workload analysis for players who attended
+    present_player_ids = [
+        r.player_id for r in bulk.records
+        if r.status == AttendanceStatus.PRESENT
+    ]
+    if present_player_ids:
+        background_tasks.add_task(
+            trigger_workload_analysis_for_players,
+            present_player_ids,
+            "attendance_logged"
+        )
+
     return responses
+
+
+async def trigger_workload_analysis_for_players(player_ids: list, trigger_source: str):
+    """Background task to analyze workload for multiple players."""
+    async with async_session_maker() as db:
+        for player_id in player_ids:
+            try:
+                await WorkloadAnalysisService.trigger_analysis_for_player(
+                    db, player_id, trigger_source
+                )
+            except Exception as e:
+                logger.error(f"Workload analysis failed for player {player_id}: {e}")
 
 
 @router.put("/attendance/{attendance_id}", response_model=AttendanceResponse)

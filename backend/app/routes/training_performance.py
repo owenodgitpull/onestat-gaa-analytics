@@ -19,8 +19,9 @@ import logging
 import base64
 import os
 
-from app.database import get_db
+from app.database import get_db, async_session_maker
 from app.models.training_performance import TrainingGPSData, WeightTrainingSession, WeightExercise, GPSUploadLog
+from app.services.workload_analysis_service import WorkloadAnalysisService
 from app.models.attendance import TrainingSession
 from app.models.player import Player
 from app.schemas.training_performance import (
@@ -170,6 +171,19 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
 
             await db.commit()
             logger.info(f"GPS upload processed: {upload_id}, {upload_log.extracted_player_count} players")
+
+            # Trigger workload analysis for players with GPS data
+            if isinstance(extracted_data, dict) and "players" in extracted_data:
+                for player_data in extracted_data["players"]:
+                    player_name = player_data.get("name", "").lower()
+                    player = players.get(player_name)
+                    if player:
+                        try:
+                            await WorkloadAnalysisService.trigger_analysis_for_player(
+                                db, player.id, "gps_upload"
+                            )
+                        except Exception as e:
+                            logger.error(f"Workload analysis failed for {player_name}: {e}")
 
         except Exception as e:
             logger.error(f"GPS upload processing failed: {e}")

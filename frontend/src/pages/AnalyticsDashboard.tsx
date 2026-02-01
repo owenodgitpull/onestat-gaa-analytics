@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import {
   TrendingUp,
   Target,
@@ -13,32 +13,27 @@ import {
   Crosshair,
   Percent,
   CircleDot,
-  Sparkles
+  Sparkles,
+  Heart,
+  BarChart3
 } from 'lucide-react'
 import AIAnalyst from '@/components/AIAnalyst'
-import {
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  Cell,
-  Legend,
-  PieChart,
-  Pie
-} from 'recharts'
-import { api, DashboardData, ChartRecommendationsResponse } from '@/services/api'
+import SquadHealthView from '@/components/SquadHealthView'
+import DynamicChart from '@/components/DynamicChart'
+import { api, DashboardData, AIChartSpec } from '@/services/api'
 
 export default function AnalyticsDashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
-  const [chartRecommendations, setChartRecommendations] = useState<ChartRecommendationsResponse | null>(null)
+  const [aiCharts, setAiCharts] = useState<AIChartSpec[]>([])
+  const [aiChartsSummary, setAiChartsSummary] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [shotFilter, setShotFilter] = useState<'all' | 'dungloe' | 'opponent'>('dungloe')
   const [showAIChat, setShowAIChat] = useState(false)
-  const [loadingRecommendations, setLoadingRecommendations] = useState(false)
+  const [loadingAICharts, setLoadingAICharts] = useState(false)
+  const [replacingChartId, setReplacingChartId] = useState<string | null>(null)
+  const [dismissedChartIds, setDismissedChartIds] = useState<string[]>([])
+  const [viewMode, setViewMode] = useState<'season' | 'health'>('season')
 
   const fetchDashboard = async () => {
     setLoading(true)
@@ -54,22 +49,53 @@ export default function AnalyticsDashboard() {
     }
   }
 
-  const fetchChartRecommendations = async () => {
-    setLoadingRecommendations(true)
+  const fetchAICharts = useCallback(async () => {
+    setLoadingAICharts(true)
     try {
-      const recs = await api.ai.getChartRecommendations()
-      setChartRecommendations(recs)
+      const result = await api.ai.getDashboardCharts(dismissedChartIds, 4)
+      if (result.success && result.charts) {
+        setAiCharts(result.charts)
+        setAiChartsSummary(result.summary || '')
+      }
     } catch (err) {
-      console.error('Failed to load chart recommendations:', err)
+      console.error('Failed to load AI charts:', err)
     } finally {
-      setLoadingRecommendations(false)
+      setLoadingAICharts(false)
+    }
+  }, [dismissedChartIds])
+
+  const handleDismissChart = async (chartId: string) => {
+    setReplacingChartId(chartId)
+
+    // Track dismissed chart ID to avoid regenerating it
+    const newDismissedIds = [...dismissedChartIds, chartId]
+    setDismissedChartIds(newDismissedIds)
+
+    try {
+      // Get a replacement chart
+      const result = await api.ai.getReplacementChart(newDismissedIds)
+
+      if (result.success && result.chart) {
+        // Replace the dismissed chart with the new one
+        setAiCharts(prev => prev.map(c =>
+          c.id === chartId ? result.chart! : c
+        ))
+      } else {
+        // If replacement failed, just remove the chart
+        setAiCharts(prev => prev.filter(c => c.id !== chartId))
+      }
+    } catch (err) {
+      console.error('Failed to get replacement chart:', err)
+      // Remove the chart if replacement failed
+      setAiCharts(prev => prev.filter(c => c.id !== chartId))
+    } finally {
+      setReplacingChartId(null)
     }
   }
 
   useEffect(() => {
     fetchDashboard()
-    // Fetch AI recommendations in background
-    fetchChartRecommendations()
+    fetchAICharts()
   }, [])
 
   if (loading) {
@@ -108,20 +134,6 @@ export default function AnalyticsDashboard() {
   // Accuracy = scores / total shots
   const accuracy = totalShots > 0 ? Math.round((scoredShots.length / totalShots) * 100) : 0
 
-  // Match trends for line chart (reverse to show chronologically)
-  const trendData = [...match_trends].reverse().map((m) => ({
-    name: m.opponent.substring(0, 8),
-    dungloe: m.dungloe_score,
-    opponent: m.opponent_score,
-    result: m.result
-  }))
-
-  // Scoring breakdown for pie chart
-  const scoringBreakdown = [
-    { name: 'Goals', value: season_summary.total_goals_scored, color: '#10b981' },
-    { name: 'Points', value: season_summary.total_points_scored, color: '#6366f1' },
-  ]
-
   // Calculate possession/territory data from zones
   const totalTurnoversWon = possession_zones.reduce((sum, z) => sum + z.turnovers_won, 0)
   const totalTurnoversLost = possession_zones.reduce((sum, z) => sum + z.turnovers_lost, 0)
@@ -141,6 +153,45 @@ export default function AnalyticsDashboard() {
 
   return (
     <div className="space-y-8">
+      {/* View Mode Toggle */}
+      <div className="flex items-center justify-between">
+        <div className="flex bg-white/10 rounded-xl p-1">
+          <button
+            onClick={() => setViewMode('season')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
+              viewMode === 'season'
+                ? 'bg-indigo-600 text-white'
+                : 'text-white/60 hover:text-white'
+            }`}
+          >
+            <BarChart3 size={18} />
+            Season Stats
+          </button>
+          <button
+            onClick={() => setViewMode('health')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
+              viewMode === 'health'
+                ? 'bg-rose-600 text-white'
+                : 'text-white/60 hover:text-white'
+            }`}
+          >
+            <Heart size={18} />
+            Squad Health
+          </button>
+        </div>
+        {viewMode === 'season' && (
+          <button onClick={fetchDashboard} className="btn-glass flex items-center gap-2">
+            <RefreshCw size={16} />
+            Refresh
+          </button>
+        )}
+      </div>
+
+      {/* Conditional View */}
+      {viewMode === 'health' ? (
+        <SquadHealthView />
+      ) : (
+        <>
       {/* Season Overview */}
       <div>
         <div className="flex items-center justify-between mb-4">
@@ -148,10 +199,6 @@ export default function AnalyticsDashboard() {
             <TrendingUp size={24} className="text-white" />
             <span className="text-white">Season Overview</span>
           </h2>
-          <button onClick={fetchDashboard} className="btn-glass flex items-center gap-2">
-            <RefreshCw size={16} />
-            Refresh
-          </button>
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="stat-card">
@@ -185,7 +232,7 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
-      {/* Charts Row - Shot Map with Stats + Possession */}
+      {/* STAPLE CHARTS - Shot Map + Possession (Always Shown) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Shot Map with Stats Below */}
         <div className="glass-card p-6">
@@ -193,6 +240,7 @@ export default function AnalyticsDashboard() {
             <h3 className="text-xl font-bold flex items-center space-x-2 text-white">
               <MapPin size={20} className="text-white" />
               <span>Shot Map</span>
+              <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full ml-2">Staple</span>
             </h3>
             <div className="flex gap-2">
               {(['dungloe', 'opponent', 'all'] as const).map(filter => (
@@ -240,12 +288,12 @@ export default function AnalyticsDashboard() {
             </svg>
           </div>
 
-          {/* Shot Statistics - Soccer Style */}
+          {/* Shot Statistics */}
           <div className="grid grid-cols-4 gap-3 mt-4">
             <div className="bg-white/5 rounded-xl p-3 text-center">
               <div className="flex items-center justify-center gap-1 text-white/60 text-xs mb-1">
                 <Crosshair size={12} />
-                <span>Total Shots</span>
+                <span>Total</span>
               </div>
               <div className="text-2xl font-bold text-white">{totalShots}</div>
             </div>
@@ -290,6 +338,7 @@ export default function AnalyticsDashboard() {
           <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
             <Activity size={20} className="text-white" />
             <span>Possession & Territory</span>
+            <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full ml-2">Staple</span>
           </h3>
 
           {/* Possession Bar */}
@@ -308,16 +357,12 @@ export default function AnalyticsDashboard() {
                 <span className="text-white font-bold text-lg">{100 - possessionPercent}%</span>
               </div>
             </div>
-            <div className="text-center text-white/40 text-xs mt-2">
-              Estimated from scoring ratio and turnover differential
-            </div>
           </div>
 
           {/* Territory Breakdown */}
           <div className="flex-1">
             <div className="text-sm text-white/60 mb-3">Territory Control by Zone</div>
             <div className="grid grid-cols-3 gap-2 h-32">
-              {/* Defensive Third */}
               <div className="bg-gradient-to-b from-indigo-900/40 to-indigo-800/30 rounded-lg p-3 flex flex-col justify-between border border-indigo-500/20">
                 <div className="text-xs text-white/50">Defensive</div>
                 <div className="text-center">
@@ -325,7 +370,6 @@ export default function AnalyticsDashboard() {
                   <div className="text-xs text-red-400">Lost: {possession_zones.find(z => z.zone.includes('defensive'))?.turnovers_lost || 0}</div>
                 </div>
               </div>
-              {/* Middle Third */}
               <div className="bg-gradient-to-b from-slate-700/40 to-slate-600/30 rounded-lg p-3 flex flex-col justify-between border border-slate-500/20">
                 <div className="text-xs text-white/50">Midfield</div>
                 <div className="text-center">
@@ -333,7 +377,6 @@ export default function AnalyticsDashboard() {
                   <div className="text-xs text-red-400">Lost: {possession_zones.find(z => z.zone.includes('middle'))?.turnovers_lost || 0}</div>
                 </div>
               </div>
-              {/* Attacking Third */}
               <div className="bg-gradient-to-b from-amber-900/40 to-amber-800/30 rounded-lg p-3 flex flex-col justify-between border border-amber-500/20">
                 <div className="text-xs text-white/50">Attacking</div>
                 <div className="text-center">
@@ -364,140 +407,68 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
-      {/* AI Dynamic Insights */}
-      {chartRecommendations && chartRecommendations.recommendations.insights && (
-        <div className="glass-card p-6 border border-purple-500/30">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
-              <Sparkles size={24} className="text-white" />
+      {/* AI-GENERATED DYNAMIC CHARTS */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+              <Sparkles size={20} className="text-white" />
             </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
-                AI Dashboard Insights
-                <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">Dynamic</span>
-              </h3>
-              <p className="text-white/70 text-sm leading-relaxed">
-                {chartRecommendations.recommendations.insights}
-              </p>
-              {chartRecommendations.recommendations.recommended_charts && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {chartRecommendations.recommendations.recommended_charts.slice(0, 5).map((chart, i) => (
-                    <span key={i} className="text-xs bg-white/10 text-white/60 px-2 py-1 rounded-lg">
-                      {chart.chart_type.replace(/_/g, ' ')}
-                    </span>
-                  ))}
+            <span className="text-white">AI-Generated Insights</span>
+            <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">Dynamic</span>
+          </h2>
+          <button
+            onClick={fetchAICharts}
+            disabled={loadingAICharts}
+            className="btn-glass flex items-center gap-2 text-sm"
+          >
+            <RefreshCw size={14} className={loadingAICharts ? 'animate-spin' : ''} />
+            Regenerate All
+          </button>
+        </div>
+
+        {aiChartsSummary && (
+          <p className="text-white/60 text-sm mb-4 pl-13">{aiChartsSummary}</p>
+        )}
+
+        {loadingAICharts && aiCharts.length === 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="glass-card p-6 h-[300px] flex items-center justify-center">
+                <div className="flex flex-col items-center gap-3">
+                  <RefreshCw size={24} className="animate-spin text-purple-400" />
+                  <span className="text-white/50 text-sm">AI generating chart {i}...</span>
                 </div>
-              )}
-            </div>
-            <button
-              onClick={fetchChartRecommendations}
-              disabled={loadingRecommendations}
-              className="btn-glass text-xs px-3 py-1"
-            >
-              {loadingRecommendations ? <RefreshCw size={14} className="animate-spin" /> : 'Refresh'}
+              </div>
+            ))}
+          </div>
+        ) : aiCharts.length > 0 ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {aiCharts.map(chart => (
+              <DynamicChart
+                key={chart.id}
+                chart={chart}
+                onDismiss={handleDismissChart}
+                isLoading={replacingChartId === chart.id}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="glass-card p-8 text-center">
+            <Sparkles size={32} className="text-purple-400 mx-auto mb-3" />
+            <p className="text-white/60 mb-4">No AI charts available. Click "Regenerate All" to generate insights.</p>
+            <button onClick={fetchAICharts} className="btn-primary">
+              Generate Charts
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Second Charts Row - Score Trends + Scoring Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Match Trends */}
-        <div className="glass-card p-6 flex flex-col">
-          <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
-            <TrendingUp size={20} className="text-white" />
-            <span>Score Trends</span>
-          </h3>
-          {trendData.length > 0 ? (
-            <div className="flex-1 min-h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} />
-                  <YAxis stroke="#9ca3af" fontSize={12} domain={[0, 'auto']} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
-                    labelStyle={{ color: '#fff' }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="dungloe"
-                    stroke="#6366f1"
-                    strokeWidth={3}
-                    dot={{ fill: '#6366f1', strokeWidth: 2, r: 6 }}
-                    activeDot={{ r: 8 }}
-                    name="Dungloe"
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="opponent"
-                    stroke="#ef4444"
-                    strokeWidth={3}
-                    dot={{ fill: '#ef4444', strokeWidth: 2, r: 6 }}
-                    activeDot={{ r: 8 }}
-                    name="Opponent"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="flex-1 min-h-[280px] flex items-center justify-center text-white/40">
-              No completed matches yet
-            </div>
-          )}
-        </div>
-
-        {/* Scoring Breakdown Pie Chart */}
-        <div className="glass-card p-6">
-          <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
-            <Target size={20} className="text-white" />
-            <span>Scoring Breakdown</span>
-          </h3>
-          {scoringBreakdown.some(s => s.value > 0) ? (
-            <div className="h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={scoringBreakdown}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={5}
-                    dataKey="value"
-                    label={({ name, value }) => `${name}: ${value}`}
-                    labelLine={{ stroke: '#9ca3af' }}
-                  >
-                    {scoringBreakdown.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="h-[250px] flex items-center justify-center text-white/40">
-              No scoring data yet
-            </div>
-          )}
-          <div className="flex justify-center gap-6 mt-2">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-              <span className="text-sm text-white/60">Goals ({season_summary.total_goals_scored})</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-indigo-500"></span>
-              <span className="text-sm text-white/60">Points ({season_summary.total_points_scored})</span>
-            </div>
-          </div>
-        </div>
+        <p className="text-white/40 text-xs mt-3 text-center">
+          Hover over any chart and click X to dismiss and generate a new insight
+        </p>
       </div>
 
-      {/* Third Row - Leaderboards 2x2 */}
+      {/* Leaderboards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Scorers */}
         <div className="glass-card p-6">
@@ -612,7 +583,7 @@ export default function AnalyticsDashboard() {
         )}
       </div>
 
-      {/* AI Insights */}
+      {/* AI Analyst */}
       <div className="glass-card p-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -655,13 +626,6 @@ export default function AnalyticsDashboard() {
             <p className="text-sm text-white/60">Get recommendations for improvement areas</p>
           </div>
         </div>
-
-        <div className="flex flex-wrap justify-center gap-2 mt-6">
-          <span className="badge badge-info">Claude AI Integration</span>
-          <span className="badge badge-info">GAA Tactics Knowledge</span>
-          <span className="badge badge-info">GPS Benchmarks</span>
-          <span className="badge badge-info">Dynamic Charts</span>
-        </div>
       </div>
 
       {/* AI Chat Modal */}
@@ -670,6 +634,8 @@ export default function AnalyticsDashboard() {
         onClose={() => setShowAIChat(false)}
         initialContext="I have access to all Dungloe GAA match data, player statistics, GPS performance benchmarks, and tactical information from the knowledge base."
       />
+        </>
+      )}
     </div>
   )
 }
