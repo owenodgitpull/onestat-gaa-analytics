@@ -134,12 +134,17 @@ class GPSUploadLog(Base):
     Log of GPS data uploads for tracking and reprocessing.
 
     Stores info about uploaded files and extraction status.
+    Supports both training session uploads and match uploads.
     """
 
     __tablename__ = "gps_upload_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     session_id = Column(UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    match_id = Column(UUID(as_uuid=True), ForeignKey("matches.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Upload type: "training" or "match"
+    upload_type = Column(String(20), default="training")
 
     filename = Column(String(255), nullable=False)
     file_size_bytes = Column(Integer, nullable=True)
@@ -157,4 +162,4 @@ class GPSUploadLog(Base):
     processed_at = Column(DateTime, nullable=True)
 
     def __repr__(self) -> str:
-        return f"<GPSUploadLog(filename='{self.filename}', status={self.status})>"
+        return f"<GPSUploadLog(filename='{self.filename}', type={self.upload_type}, status={self.status})>"

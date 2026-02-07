@@ -1,0 +1,432 @@
+﻿Project Overview                                                                                                                             
+                                                                                                                                               
+  What it is:                                                                                                                                  
+  A real-time match recording and analytics application for Gaelic Athletic Association (GAA) football matches, specifically built for Dungloe 
+  GAA Club in County Donegal, Ireland.                                                                                                         
+                                                                                                                                               
+  Who it's for:                                                                                                                                
+  - Match recorders/analysts who track live GAA matches on iPad                                                                                
+  - Coaches who need post-match analysis and statistics                                                                                        
+  - Team management for historical match data and player performance tracking                                                                  
+                                                                                                                                               
+  Primary Use Case:   
+End Goal Features
+1. Live Match Recording: Real-time event logging during matches
+1. Time-Based Possession Tracking: Accurate possession percentages based on duration
+1. Player Performance Analytics: Individual player statistics across matches
+1. Team Analytics: Match statistics, kickout success rates, turnovers, shot maps
+1. AI Integration: Claude AI providing live match insights, post-match analysis, and player-specific recommendations
+1. Dashboard: Comprehensive views for matches, players, team performance over time - gets better over the season, will train an LLM on all things GAA tactics by using a docs knowledge base, then also providing Dungloe specific knowledge about the team.
+                                                                                                                         
+  Live match recording on iPad with touch-based interface for tracking every event (scores, turnovers, fouls, kickouts, etc.) with precise     
+  pitch positioning and real-time statistics.                                                                                                  
+                                                                                                                                               
+  Tech Stack                                                                                                                                   
+                                                                                                                                               
+  Frontend:                                                                                                                                    
+  - React + TypeScript + Vite                                                                                                                  
+  - TailwindCSS for styling (glassmorphism design)                                                                                             
+  - React Query for data fetching/caching                                                                                                      
+  - React Router for navigation                                                                                                                
+  - Lucide React for icons                                                                                                                     
+  - Runs on: http://localhost:3000                                                                                                             
+                                                                                                                                               
+  Backend:                                                                                                                                     
+  - FastAPI (Python) with async/await                                                                                                          
+  - SQLAlchemy 2.0 (async) with PostgreSQL                                                                                                     
+  - Pydantic for validation                                                                                                                    
+  - UUID primary keys throughout                                                                                                               
+  - CORS enabled for frontend communication                                                                                                    
+  - Runs on: http://localhost:8000                                                                                                             
+                                                                                                                                               
+  Database:                                                                                                                                    
+  - PostgreSQL                                                                                                                                 
+  - Main tables: matches, players, match_events, match_lineups, possession_events, player_match_stats                                          
+                                                                                                                                               
+  Repository:                                                                                                                                  
+  https://github.com/owenodgitpull/dungloe-gaa-analytics                                                                                       
+                                                                                                                                               
+  GAA Football Context                                                                                                                         
+                                                                                                                                               
+  Scoring System:                                                                                                                              
+  - Goal = 3 points (ball into net)                                                                                                            
+  - Point = 1 point (ball over crossbar, inside 40m arc)                                                                                       
+  - 2-Pointer = 2 points (ball over crossbar, outside 40m arc - "45m+ rule")                                                                   
+  - Final score format: "2-14" means 2 goals + 14 points = 20 total points                                                                     
+                                                                                                                                               
+  Match Structure:                                                                                                                             
+  - 2 halves of 30 minutes each                                                                                                                
+  - 15 players per team (1 GK, 6 backs, 2 midfielders, 6 forwards)                                                                             
+  - 5 substitutes on bench                                                                                                                     
+  - Kickouts after every score (from goalkeeper)                                                                                               
+                                                                                                                                               
+  Key Positions (Lineup Format):                                                                                                               
+  - GK (Goalkeeper)                                                                                                                            
+  - CB (Corner Back), FB (Full Back) - 3 defenders                                                                                             
+  - HB (Half Back), CHB (Centre Half Back) - 3 defenders                                                                                       
+  - MF (Midfielder) - 2 players                                                                                                                
+  - HF (Half Forward), CHF (Centre Half Forward) - 3 attackers                                                                                 
+  - CF (Corner Forward), FF (Full Forward) - 3 attackers                                                                                       
+                                                                                                                                               
+  Completed Features                                                                                                                           
+                                                                                                                                               
+  Core Match Recording                                                                                                                         
+                                                                                                                                               
+  ✅ Interactive GAA Pitch Visualization                                                                                                       
+  - SVG-based pitch with accurate GAA dimensions (145m x 90m aspect ratio)                                                                     
+  - Touch-enabled ball positioning (tap anywhere to move ball)                                                                                 
+  - Visual 40m arc zones for 2-pointer detection                                                                                               
+  - Real-time ball possession tracking (Dungloe/Opponent)                                                                                      
+  - Color-coded ball: Blue (Dungloe), Red (Opponent)                                                                                           
+                                                                                                                                               
+  ✅ Match Management                                                                                                                          
+  - Create/start/complete matches                                                                                                              
+  - Match phases: not_started → first_half → half_time → second_half → finished                                                                
+  - Live timer with minute/second tracking                                                                                                     
+  - Half-time controls with automatic pause at 30 minutes                                                                                      
+  - Score tracking (goals and points separately for both teams)                                                                                
+                                                                                                                                               
+  ✅ Event Recording System                                                                                                                    
+  - Scoring: Goals, Points, 2-Pointers, Wides, Saved shots, Short shots                                                                        
+  - Free Kicks: Point (Free), 2-Pointer (Free), Wide (Free)                                                                                    
+  - Turnovers: Turnover Won/Lost, Unforced Errors (Our/Opponent)                                                                               
+  - Kickouts: 8 variants tracking our/opp kickouts, clean wins, break ball wins                                                                
+  - Fouls: Foul Won, Foul Committed with context-aware player selection                                                                        
+  - Cards: Yellow Card, Red Card                                                                                                               
+  - Defense: Blocks, Interceptions                                                                                                             
+  - Substitutions: Full player swap tracking with field status updates                                                                         
+  - All events stored with: player attribution, pitch coordinates (x/y), minute, half, team                                                    
+                                                                                                                                               
+  ✅ Starting Lineup Management                                                                                                                
+  - Interactive pitch visualization with 15 position jerseys + 5 substitute slots                                                              
+  - Click jersey icon to select/deselect players                                                                                               
+  - Proper GAA position labels (GK, CB, FB, HB, CHB, MF, HF, CHF, CF, FF)                                                                      
+  - Substitutes displayed below pitch (separate from playing area)                                                                             
+  - X button next to each player in list to remove                                                                                             
+  - "Use Last Match Lineup" button for quick setup                                                                                             
+  - Lineup saved to database tied to match for historical analysis                                                                             
+  - "Start First Half" button disabled until lineup selected                                                                                   
+                                                                                                                                               
+  ✅ Substitution System                                                                                                                       
+  - Substitution event type in manual entry modal                                                                                              
+  - Two-player selection: player coming off (from field), player coming on (from bench)                                                        
+  - Second dropdown disabled until first player selected                                                                                       
+  - Automatic is_on_field status tracking in database                                                                                          
+  - Substitution validation: can't select player off who isn't on field                                                                        
+  - Field status updates automatically after substitution recorded                                                                             
+                                                                                                                                               
+  ✅ Foul Recording Modal                                                                                                                      
+  - Context-aware based on possession:                                                                                                         
+    - Opponent fouls: "Who was fouled?" (select Dungloe player)                                                                                
+    - Dungloe fouls: "Who committed it?" (select Dungloe player)                                                                               
+  - Possession stays with fouled team for free kick                                                                                            
+  - Free kick scoring tracked separately (Point Free, 2PT Free, Wide Free)                                                                     
+                                                                                                                                               
+  ✅ Manual Event Entry Modal                                                                                                                  
+  - Retrospective event logging for missed events                                                                                              
+  - Team selection (Dungloe/Opponent)                                                                                                          
+  - Event type dropdown (organized by category)                                                                                                
+  - Conditional player selection based on event type                                                                                           
+  - Minute and half selection                                                                                                                  
+  - Supports all event types including substitutions                                                                                           
+                                                                                                                                               
+  ✅ Categorized Action Buttons                                                                                                                
+  - 5 categories: Shooting, Turnovers, Our K/O, Opp K/O, Fouls                                                                                 
+  - Tab-based interface with icons                                                                                                             
+  - Context-aware button disabling based on possession:                                                                                        
+    - Can't win turnover if you have ball                                                                                                      
+    - Can't lose turnover if opponent has ball                                                                                                 
+    - 2-pointer button disabled when outside 40m arc                                                                                           
+    - Regular point disabled when inside 40m arc (must use 2-pointer)                                                                          
+                                                                                                                                               
+  ✅ Recent Events Display                                                                                                                     
+  - Live feed of last 15 events                                                                                                                
+  - Human-readable descriptions with player names, areas, event types                                                                          
+  - Delete button with confirmation modal for each event                                                                                       
+  - Auto-updates after every event                                                                                                             
+                                                                                                                                               
+  ✅ Real-time Statistics                                                                                                                      
+  - Live score display (goals-points format for both teams)                                                                                    
+  - Possession percentages                                                                                                                     
+  - Shot accuracy and conversion rates                                                                                                         
+  - Turnover statistics                                                                                                                        
+  - Kickout win percentages                                                                                                                    
+  - Card counts                                                                                                                                
+  - Auto-recalculates after every event                                                                                                        
+                                                                                                                                               
+  ✅ Player Management                                                                                                                         
+  - Player roster with jersey numbers                                                                                                          
+  - Active/inactive status                                                                                                                     
+  - Position tracking                                                                                                                          
+  - Player attribution for most events                                                                                                         
+                                                                                                                                               
+  ✅ Smart Ball Movement Logic                                                                                                                 
+  - Automatic ball repositioning after goals (to center for kickout)                                                                           
+  - Ball moves to goalkeeper position after saved shots                                                                                        
+  - Kickout resolution system (locks ball until kickout outcome recorded)                                                                      
+  - Possession changes based on event outcomes                                                                                                 
+                                                                                                                                               
+  ✅ 2-Point Zone Detection                                                                                                                    
+  - Accurate 40m arc calculation from both goals                                                                                               
+  - Visual "2PT" indicator on ball when in zone                                                                                                
+  - Automatic event type selection based on position                                                                                           
+  - Proper scoring (2-pointers add 2 points, not 1)                                                                                            
+                                                                                                                                               
+  Database Schema                                                                                                                              
+                                                                                                                                               
+  matches                                                                                                                                      
+  - id (UUID), opponent, match_date, venue, is_home                                                                                            
+  - status (scheduled/in_progress/completed)                                                                                                   
+  - dungloe_goals, dungloe_points, opponent_goals, opponent_points                                                                             
+  - started_at, completed_at timestamps                                                                                                        
+                                                                                                                                               
+  players                                                                                                                                      
+  - id (UUID), name, position, jersey_number                                                                                                   
+  - date_of_birth, status (active/injured/suspended), active (boolean)                                                                         
+                                                                                                                                               
+  match_events                                                                                                                                 
+  - id (UUID), match_id, player_id, assist_player_id                                                                                           
+  - event_type (enum with 30+ types)                                                                                                           
+  - team (dungloe/opponent)                                                                                                                    
+  - minute, pitch_x, pitch_y (0-100 scale)                                                                                                     
+  - notes, created_at                                                                                                                          
+                                                                                                                                               
+  match_lineups (NEW)                                                                                                                          
+  - id (UUID), match_id, player_id                                                                                                             
+  - position_id (e.g., 'gk', 'fb-left', 'sub-1')                                                                                               
+  - is_substitute (boolean)                                                                                                                    
+  - is_on_field (boolean) - tracks current field status during match                                                                           
+                                                                                                                                               
+  possession_events                                                                                                                            
+  - Tracks possession changes throughout match                                                                                                 
+  - Used for possession percentage calculations                                                                                                
+                                                                                                                                               
+  player_match_stats                                                                                                                           
+  - Goals, points, assists, turnovers, etc. per player per match                                                                               
+                                                                                                                                               
+  Known Issues / Recent Fixes                                                                                                                  
+                                                                                                                                               
+  ✅ FIXED: 2-pointers were only adding 1 point to score                                                                                       
+  - Solution: Updated match_event_service.py to add 2 points for TWO_POINT events                                                              
+  - Applied to both real-time updates and score recalculation                                                                                  
+                                                                                                                                               
+  ✅ FIXED: Database enum didn't include new event types                                                                                       
+  - Solution: Added ALTER TYPE commands for: substitution, point_free, two_point_free, wide_free, foul_committed, foul_won                     
+                                                                                                                                               
+  ✅ FIXED: Coordinate system confusion (x_coord/y_coord vs pitch_x/pitch_y)                                                                   
+  - Solution: Frontend uses x_coord/y_coord, backend transforms to pitch_x/pitch_y                                                             
+                                                                                                                                               
+  ✅ FIXED: Opponent unforced errors were changing possession incorrectly                                                                      
+  - Solution: Opponent errors now keep possession with opponent (for turnover opportunity)                                                     
+                                                                                                                                               
+  ✅ FIXED: SQLAlchemy was using enum NAMES instead of VALUES                                                                                  
+  - Solution: Added values_callable=lambda x: [e.value for e in x] to enum columns                                                             
+                                                                                                                                               
+  Remaining Work / Future Enhancements                                                                                                         
+                                                                                                                                               
+  High Priority          
+
+
+ ❌ Team Comparison                                                                                                                           
+  - Compare performance across multiple matches - give insights, patterns identified, recommendations from in-depth analysis by utilising GAA football tactics knowledge base.
+  Trend analysis over season  - dashboard using recharts with informative and interactive visuals. Pie charts, graphs, plot, heat maps (taken from match recordings which relates to co-ordinates captured).            
+
+
+                                                                                                                                              
+  ❌ AI-Powered Insights                                                                                                                       
+  - "LLM analysis when we get to that part" (mentioned by user)                                                                                
+  - Pattern recognition, tactical suggestions   
+
+
+Player View:
+Send push notifications to players after a match, maybe the day after once all data is in (if waiting on sportsStats upload) - this is a view only for them, There will also be a leaderboard where all players can see how they are doing against each other, turnovers, points, 2pointers goals, kickouts won , distance ran etc.          
+
+Noel (the manager) will see insights that players wont as some of them could highlight weaknesses. Good for manager to see but important to be shared with player in the correct way (training methods to improve etc)                                                                                             
+                                                                                                                                               
+  ❌ iPad Testing                                                                                                                              
+  - Primary use case not yet tested on actual iPad                                                                                             
+  - Need to verify touch interactions, gestures, screen layout                                                                                 
+  - Test local network access (option 1) or ngrok (option 2)                                                                                   
+                                                                                                                                               
+  ❌ Load Last Match Lineup                                                                                                                    
+  - UI button exists but lastMatchLineup prop always undefined                                                                                 
+  - Need to fetch most recent lineup and pass to modal                                                                                         
+                                                                                                                                               
+  ❌ Persist Lineup on Match Start                                                                                                             
+  - Currently lineup only saved when "Confirm Lineup" clicked                                                                                  
+  - Should also trigger save when "Start First Half" clicked (if not already saved)                                                            
+                                                                                                                                               
+  ❌ Player Stats Not Fully Implemented                                                                                                        
+  - player_match_stats table exists but not populated from events                                                                              
+  - Need service to aggregate events into player stats                                                                                         
+                                                                                                                                               
+  Medium Priority                                                                                                                              
+                                                                                                                                                                                                                        
+                                                                                                                                               
+  ❌ Assist Attribution                                                                                                                        
+  - assist_player_id column exists but no UI to record assists                                                                                 
+  - Could add "who assisted?" modal after goals/points                                                                                         
+                                                                                                                                               
+  ❌ Enhanced Validation                                                                                                                       
+  - Prevent duplicate events (same player, same second)                                                                                        
+  - Warn if score looks unusual (e.g., 10 goals in 5 minutes)                                                                                  
+  - Validate ball position (e.g., goals should be near goal line)                                                                              
+                                                                                                                                               
+  ❌ Undo Last Event                                                                                                                           
+  - Quick undo button for most recent event (vs finding in list)                                                                               
+  - Keyboard shortcut support                                                                                                                  
+                                                                                                                                               
+  ❌ Event Editing                                                                                                                             
+  - Currently can only delete, not edit events                                                                                                 
+  - Need modal to update player, time, position, etc.                                                                                          
+                                                                                                                                               
+  ❌ Match Notes/Commentary                                                                                                                    
+  - Free text notes attached to specific minutes                                                                                               
+  - Coach observations, key moments                                                                                                            
+                                                                                                                                                                                                                                                              
+                                                                                                                                               
+  ❌ Heatmaps                                                                                                                                  
+  - Visual representation of where events occurred                                                                                             
+  - Player-specific heatmaps                                                                                                                   
+                                                                                                                                               
+  ❌ Video Sync                                                                                                                                
+  - Link events to video timestamps                                                                                                            
+  - Jump to event in match video                                                                                                               
+                                                                                                                                                                                                                                                           
+                                                                                                                                               
+  ❌ Export/Sharing                                                                                                                            
+  - PDF match reports                                                                                                                          
+  - Share statistics via link                                                                                                                  
+  - CSV export for further analysis                                                                                                            
+                                                                                                                                               
+  ❌ Offline Mode                                                                                                                              
+  - Service worker for offline recording                                                                                                       
+  - Sync when connection restored                                                                                                              
+                                                                                                                                               
+  ❌ Multi-user Support                                                                                                                        
+  - Multiple recorders on same match (referee, stats person)                                                                                   
+  - Authentication system                                                                                                                      
+                                                                                                
+                                                                                                                                               
+  Design Patterns & Code Quality                                                                                                               
+                                                                                                                                               
+  Good Practices Implemented:                                                                                                                  
+  - TypeScript throughout frontend for type safety                                                                                             
+  - Async/await pattern consistently used                                                                                                      
+  - React Query for server state management (caching, optimistic updates)                                                                      
+  - Component composition (modals, buttons, pitch as separate components)                                                                      
+  - Glassmorphism UI design for modern, professional look                                                                                      
+  - Enum-based event types prevent typos/errors                                                                                                
+  - UUID primary keys for distributed system compatibility                                                                                     
+  - CORS properly configured for development                                                                                                   
+                                                                                                                                               
+  Areas for Improvement:                                                                                                                       
+  - No frontend error boundaries yet                                                                                                           
+  - Limited loading states (some queries don't show loading UI)                                                                                
+  - No database migrations system (using auto-create tables)                                                                                   
+  - No automated tests (frontend or backend)                                                                                                   
+  - API responses not paginated (could be issue with large datasets)                                                                           
+  - No rate limiting on API                                                                                                                    
+  - Sensitive data in git history (GitHub token in remote URL)                                                                                 
+                                                                                                                                               
+  Development Environment                                                                                                                      
+                                                                                                                                               
+  To run locally:                                                                                                                              
+                                                                                                                                               
+  Backend:                                                                                                                                     
+  cd backend                                                                                                                                   
+  python -m venv venv                                                                                                                          
+  source venv/bin/activate  # or venv\Scripts\activate on Windows                                                                              
+  pip install -r requirements.txt                                                                                                              
+  uvicorn app.main:app --reload                                                                                                                
+                                                                                                                                               
+  Frontend:                                                                                                                                    
+  cd frontend                                                                                                                                  
+  npm install                                                                                                                                  
+  npm run dev                                                                                                                                  
+                                                                                                                                               
+  Database:                                                                                                                                    
+  - PostgreSQL must be running                                                                                                                 
+  - Default connection: postgresql://owenodonnell:@localhost:5432/dungloe_gaa                                                                  
+  - Tables auto-create on startup                                                                                                              
+                                                                                                                                               
+  To test on iPad:                                                                                                                             
+  # Frontend with external access                                                                                                              
+  npm run dev -- --host                                                                                                                        
+                                                                                                                                               
+  # Find your IP                                                                                                                               
+  ipconfig getifaddr en0  # Mac                                                                                                                
+  ipconfig                # Windows                                                                                                            
+  ip addr show            # Linux                                                                                                              
+                                                                                                                                               
+  # Access from iPad (same WiFi)                                                                                                               
+  http://YOUR_IP:3000                                                                                                                          
+                                                                                                                                               
+  Project Context & User Workflow                                                                                                              
+                                                                                                                                               
+  Typical Match Recording Session:                                                                                                             
+  1. Create new match (opponent, date, venue)                                                                                                  
+  2. Select starting lineup (15 starters + 5 subs)                                                                                             
+  3. Start First Half (timer begins)                                                                                                           
+  4. Record events in real-time:                                                                                                               
+    - Tap pitch to move ball                                                                                                                   
+    - Select event type from categorized buttons                                                                                               
+    - Choose player when prompted                                                                                                              
+    - System auto-updates score, stats, recent events                                                                                          
+  5. Half-time break (automatic at 30 minutes)                                                                                                 
+  6. Start Second Half                                                                                                                         
+  7. Continue recording events                                                                                                                 
+  8. Complete match (manual button or auto at 60 minutes)                                                                                      
+  9. Review statistics and event history                                                                                                       
+                                                                                                                                               
+  Manual corrections:                                                                                                                          
+  - Delete incorrect events via recent events list                                                                                             
+  - Add missed events via Manual Entry modal                                                                                                   
+  - Record substitutions via Manual Entry (player off → player on)                                                                             
+                                                                                                                                               
+  File Structure Highlights                                                                                                                    
+                                                                                                                                               
+  Frontend Key Files:                                                                                                                          
+  - src/pages/MatchRecording.tsx - Main match interface (1600+ lines, complex state management)                                                
+  - src/components/GAAPitch.tsx - Interactive pitch visualization                                                                              
+  - src/components/CategorizedActionButtons.tsx - Event type selection UI                                                                      
+  - src/components/StartingLineupModal.tsx - Lineup selection with pitch                                                                       
+  - src/components/ManualEventEntryModal.tsx - Retrospective event entry                                                                       
+  - src/components/FoulModal.tsx - Context-aware foul recording                                                                                
+  - src/services/api.ts - All API calls with type safety                                                                                       
+  - src/types/index.ts - TypeScript interfaces and enums                                                                                       
+                                                                                                                                               
+  Backend Key Files:                                                                                                                           
+  - app/main.py - FastAPI app setup, CORS, routes registration                                                                                 
+  - app/models/match_event.py - EventType enum (30+ event types), MatchEvent model                                                             
+  - app/models/match_lineup.py - MatchLineup model for lineup storage                                                                          
+  - app/services/match_event_service.py - Event creation, score updates, stat calculations                                                     
+  - app/routes/match_events.py - Event CRUD endpoints                                                                                          
+  - app/routes/match_lineups.py - Lineup CRUD endpoints                                                                                        
+  - app/routes/matches.py - Match management endpoints                                                                                         
+                                                                                                                                               
+  Current State                                                                                                                                
+                                                                                                                                               
+  The application is feature-complete for basic match recording with lineup management, substitutions, and comprehensive event tracking. The   
+  main gap is real-world iPad testing since that's the primary use case. The codebase is well-structured but could benefit from testing, error 
+  handling, and performance optimizations before production use.                                                                               
+                                                                                                                                               
+  Latest commit: c5ca623 - "feat: Add lineup management                                                                                        
+  ⎿  API Error: Claude's response exceeded the 4096 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS    
+     environment variable.                                                                                                                     
+                                                                                                                                               
+⏺                                                
+  - Kickouts: 8 variants (own/opp, won/lost, clean/break)                                                                                      
+  - Fouls: Won/Committed                                                                                                                       
+  - Cards: Yellow/Red                                                                                                                          
+  - Defense: Blocks, Interceptions                                                                                                             
+  - Substitutions: Full tracking with field status                                                                                             
+                                                                                                                                               
+  Lineup Management                                                                                                                            
+                                                                                                                                               
+  - Interactive pitch with 15 starter positions + 5 sub slots                                                                                  
+  - Click jersey to select/deselect players                                                                                                    
+  - Proper GAA position labels                                                                                                                 
+  - Stored in database per match                                                                                                               
+  - "Start First Half" disabled until lineup selected                                                                                          
+  - X buttons to remove players from list

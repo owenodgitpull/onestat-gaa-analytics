@@ -15,7 +15,7 @@ from typing import Optional, List
 import logging
 
 from app.database import get_db
-from app.services.ai_service import (
+from app.services.ai import (
     analyze_match,
     live_match_insight,
     chat_with_analyst,
@@ -25,7 +25,8 @@ from app.services.ai_service import (
     generate_agentic_chart,
     generate_custom_insight,
     generate_dashboard_charts,
-    generate_single_chart
+    generate_single_chart,
+    analyze_match_gps,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,11 +67,20 @@ class ChatResponse(BaseModel):
     response: str
 
 
+class ChartInsights(BaseModel):
+    possession: Optional[str] = None
+    scoring: Optional[str] = None
+    shooting: Optional[str] = None
+
+
 class PostMatchReportResponse(BaseModel):
     match: dict
     score: dict
     analysis: str
+    insights: Optional[ChartInsights] = None
     generated_at: str
+    gps_included: Optional[bool] = False
+    version: Optional[int] = 1
 
 
 class ChartAnalysisRequest(BaseModel):
@@ -140,6 +150,18 @@ class SingleChartResponse(BaseModel):
     success: bool
     chart: Optional[dict] = None
     error: Optional[str] = None
+
+
+class GPSAnalysisRequest(BaseModel):
+    gps_data: List[dict]
+    match_info: Optional[dict] = None
+
+
+class GPSAnalysisResponse(BaseModel):
+    success: bool
+    insights: Optional[dict] = None
+    error: Optional[str] = None
+    generated_at: Optional[str] = None
 
 
 # =============================================================================
@@ -418,3 +440,31 @@ async def generate_replacement_chart_endpoint(
     except Exception as e:
         logger.error(f"Replacement chart failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chart generation failed: {str(e)}")
+
+
+@router.post("/analyze-gps", response_model=GPSAnalysisResponse)
+async def analyze_gps_endpoint(
+    request: GPSAnalysisRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Analyze GPS data for a match and provide insights.
+
+    Returns:
+    - Overall intensity assessment
+    - Player-specific alerts (recovery needs, injury risks)
+    - Team patterns and trends
+    - Recovery recommendations
+
+    The AI analyzes workload distribution, identifies outliers,
+    and flags players who may need extended recovery or are at risk.
+    """
+    try:
+        result = await analyze_match_gps(
+            gps_data=request.gps_data,
+            match_info=request.match_info
+        )
+        return GPSAnalysisResponse(**result)
+    except Exception as e:
+        logger.error(f"GPS analysis failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"GPS analysis failed: {str(e)}")

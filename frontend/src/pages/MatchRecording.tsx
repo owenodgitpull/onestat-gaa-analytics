@@ -26,6 +26,11 @@ import {
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
 
+// Dev mode: Speed multiplier for testing (10 = 10x speed, so 3 real mins = 30 match mins)
+// Set VITE_DEV_MATCH_SPEED=10 in .env.local for faster testing
+const DEV_SPEED_MULTIPLIER = parseInt(import.meta.env.VITE_DEV_MATCH_SPEED || '1', 10)
+const IS_DEV_SPEED = DEV_SPEED_MULTIPLIER > 1
+
 interface PendingEvent {
   eventType: EventType
   team: 'dungloe' | 'opponent'
@@ -138,9 +143,14 @@ export default function MatchRecording() {
     loadLastLineup()
   }, [])
 
-  // Timer effect
+  // Track if full time has been reached (but not yet ended by user)
+  const [fullTimeReached, setFullTimeReached] = useState(false)
+
+  // Timer effect - uses DEV_SPEED_MULTIPLIER for faster testing
+  // At 10x speed: 1 real second = 10 match seconds, so 3 real mins = 30 match mins
   useEffect(() => {
     if (matchPhase === 'first_half' || matchPhase === 'second_half') {
+      const intervalMs = Math.floor(1000 / DEV_SPEED_MULTIPLIER)
       const interval = setInterval(() => {
         setSeconds((prev) => {
           if (prev >= 59) {
@@ -150,9 +160,11 @@ export default function MatchRecording() {
                 setMatchPhase('half_time')
                 return m + 1
               }
-              // Auto-finish at 60 minutes
+              // At 60 minutes, just mark full time reached but DON'T auto-finish
+              // User must click "End Match" to properly complete and trigger AI analysis
               if (m >= 59 && matchPhase === 'second_half') {
-                setMatchPhase('finished')
+                setFullTimeReached(true)
+                // Keep timer running for injury time, don't auto-finish
                 return m + 1
               }
               return m + 1
@@ -161,7 +173,7 @@ export default function MatchRecording() {
           }
           return prev + 1
         })
-      }, 1000)
+      }, intervalMs)
       return () => clearInterval(interval)
     }
   }, [matchPhase])
@@ -236,7 +248,7 @@ export default function MatchRecording() {
 
   // Helper function to check if position is in 2-point zone (outside 40m arc)
   // GAA pitch ~145m long, 40m from goal = ~27.6% of pitch
-  // Coordinates: x=0 (own goal), x=100 (opposition goal)
+  // Now accounts for dungloeAttackingRight direction setting
   const isIn2PointZone = (x: number, y: number, team: PossessionTeam): boolean => {
     // GAA pitch: 40m arc from goal center (2-point line)
     // CALIBRATED VALUES based on actual SVG pitch measurements:
@@ -244,37 +256,33 @@ export default function MatchRecording() {
     // - This gives us X_RADIUS = 100 - 68.6 = 31.4%
     // - Y_RADIUS calculated assuming 90m pitch width: 40m/90m × 100 = 44.444%
 
-    // We normalize to a unit circle for accurate elliptical distance
-    const X_RADIUS_PERCENT = 31.4  // Empirically calibrated from SVG
-    const Y_RADIUS_PERCENT = 44.444  // Based on 90m pitch width
+    const X_RADIUS_PERCENT = 31.4
+    const Y_RADIUS_PERCENT = 44.444
+
+    // Determine which goal the team is attacking based on attack direction
+    let attackingGoalX: number
 
     if (team === PossessionTeam.DUNGLOE) {
-      // Dungloe attacks towards goal at (100, 50)
-      const dx_percent = 100 - x
-      const dy_percent = y - 50
-
-      // Calculate normalized elliptical distance
-      const normalizedDistance = Math.sqrt(
-        Math.pow(dx_percent / X_RADIUS_PERCENT, 2) +
-        Math.pow(dy_percent / Y_RADIUS_PERCENT, 2)
-      )
-
-      return normalizedDistance > 1.0  // > 1.0 means outside the 40m arc = 2-point zone
+      // Dungloe's attacking goal depends on direction setting
+      attackingGoalX = dungloeAttackingRight ? 100 : 0
     } else if (team === PossessionTeam.OPPONENT) {
-      // Opposition attacks towards goal at (0, 50)
-      const dx_percent = x
-      const dy_percent = y - 50
-
-      // Calculate normalized elliptical distance
-      const normalizedDistance = Math.sqrt(
-        Math.pow(dx_percent / X_RADIUS_PERCENT, 2) +
-        Math.pow(dy_percent / Y_RADIUS_PERCENT, 2)
-      )
-
-      return normalizedDistance > 1.0  // > 1.0 means outside the 40m arc = 2-point zone
+      // Opponent attacks the opposite direction
+      attackingGoalX = dungloeAttackingRight ? 0 : 100
+    } else {
+      return false  // Contested or unknown
     }
 
-    return false  // Contested or unknown
+    // Calculate distance from the attacking goal
+    const dx_percent = Math.abs(attackingGoalX - x)
+    const dy_percent = y - 50
+
+    // Calculate normalized elliptical distance
+    const normalizedDistance = Math.sqrt(
+      Math.pow(dx_percent / X_RADIUS_PERCENT, 2) +
+      Math.pow(dy_percent / Y_RADIUS_PERCENT, 2)
+    )
+
+    return normalizedDistance > 1.0  // > 1.0 means outside the 40m arc = 2-point zone
   }
 
   // Helper function to get pitch area description from coordinates
@@ -1480,7 +1488,9 @@ export default function MatchRecording() {
 
   const getEndButtonText = () => {
     if (matchPhase === 'first_half') return 'End First Half'
-    if (matchPhase === 'second_half') return 'End Match'
+    if (matchPhase === 'second_half') {
+      return fullTimeReached ? 'End Match (Full Time!)' : 'End Match'
+    }
     return null
   }
 
@@ -1521,9 +1531,16 @@ export default function MatchRecording() {
                 </h1>
                 <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
                 {matchPhase !== 'not_started' && (
-                  <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 animate-pulse">
-                    <Clock size={20} className="text-emerald-400" />
-                    <span className="font-mono text-2xl font-bold text-white">{formatTime()}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 animate-pulse">
+                      <Clock size={20} className="text-emerald-400" />
+                      <span className="font-mono text-2xl font-bold text-white">{formatTime()}</span>
+                    </div>
+                    {IS_DEV_SPEED && (
+                      <span className="px-2 py-1 text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg">
+                        {DEV_SPEED_MULTIPLIER}x
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -1589,8 +1606,12 @@ export default function MatchRecording() {
                   )}
                   {getEndButtonText() && (
                     <button
-                      className={`px-4 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white font-medium shadow-lg hover:shadow-xl transition-all text-sm ${
-                        !isEndButtonEnabled() ? 'opacity-50 cursor-not-allowed' : 'hover:from-orange-700 hover:to-amber-700'
+                      className={`px-4 py-2 rounded-xl bg-gradient-to-r text-white font-medium shadow-lg hover:shadow-xl transition-all text-sm ${
+                        !isEndButtonEnabled()
+                          ? 'from-orange-600 to-amber-600 opacity-50 cursor-not-allowed'
+                          : fullTimeReached
+                            ? 'from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 animate-pulse ring-2 ring-red-400'
+                            : 'from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700'
                       }`}
                       onClick={matchPhase === 'first_half' ? endFirstHalf : endMatch}
                       disabled={!isEndButtonEnabled()}
@@ -1606,13 +1627,25 @@ export default function MatchRecording() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Pitch Area */}
             <div className="lg:col-span-2">
+              {/* Full Time Banner */}
+              {fullTimeReached && matchPhase === 'second_half' && (
+                <div className="glass-card p-4 mb-4 bg-gradient-to-r from-red-600/30 to-rose-600/30 border-2 border-red-500/50 animate-pulse">
+                  <div className="flex items-center justify-center space-x-3">
+                    <Clock size={24} className="text-red-400" />
+                    <p className="text-white font-bold text-xl">
+                      FULL TIME! Click "End Match" to save and generate AI analysis
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Kickout Warning Banner */}
               {awaitingKickout && !pendingKickoutEvent && (
                 <div className="glass-card p-4 mb-4 bg-gradient-to-r from-amber-600/20 to-orange-600/20 border-2 border-amber-500/50 animate-pulse">
                   <div className="flex items-center justify-center space-x-3">
                     <AlertCircle size={24} className="text-amber-400" />
                     <p className="text-white font-semibold text-lg">
-                      ⚽ Select kickout winner to continue
+                      Select kickout winner to continue
                     </p>
                   </div>
                 </div>

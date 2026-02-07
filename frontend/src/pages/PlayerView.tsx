@@ -16,7 +16,14 @@ import {
   ChevronLeft,
   RefreshCw,
   Dumbbell,
-  Zap
+  Zap,
+  Heart,
+  AlertTriangle,
+  CheckCircle,
+  ArrowUp,
+  ArrowDown,
+  Minus,
+  Brain
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -30,6 +37,8 @@ import {
   Bar,
   Legend
 } from 'recharts'
+
+import { api } from '../services/api'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
@@ -129,9 +138,80 @@ function StatCard({ label, value, subtext, icon: Icon, color = 'indigo' }: {
   )
 }
 
+// Fitness Metric Card with benchmarks and comparisons
+function FitnessMetricCard({
+  label,
+  value,
+  unit,
+  benchmark,
+  lowerIsBetter = false,
+  comparison
+}: {
+  label: string
+  value?: number | null
+  unit: string
+  benchmark?: { good: number; excellent: number }
+  lowerIsBetter?: boolean
+  comparison?: { previous: number | null; current: number | null; change_pct: number | null }
+}) {
+  const getStatusColor = () => {
+    if (!value || !benchmark) return 'text-white'
+
+    if (lowerIsBetter) {
+      if (value <= benchmark.excellent) return 'text-emerald-400'
+      if (value <= benchmark.good) return 'text-amber-400'
+      return 'text-red-400'
+    } else {
+      if (value >= benchmark.excellent) return 'text-emerald-400'
+      if (value >= benchmark.good) return 'text-amber-400'
+      return 'text-red-400'
+    }
+  }
+
+  const getChangeIndicator = () => {
+    if (!comparison || comparison.change_pct === null) return null
+
+    const isImprovement = lowerIsBetter
+      ? comparison.change_pct < 0
+      : comparison.change_pct > 0
+
+    return (
+      <div className={`flex items-center gap-1 text-xs ${isImprovement ? 'text-emerald-400' : 'text-red-400'}`}>
+        {comparison.change_pct > 0 ? (
+          <ArrowUp size={12} />
+        ) : comparison.change_pct < 0 ? (
+          <ArrowDown size={12} />
+        ) : (
+          <Minus size={12} />
+        )}
+        <span>{Math.abs(comparison.change_pct).toFixed(1)}%</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-4 rounded-xl bg-white/5">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-xs text-white/50">{label}</div>
+        {getChangeIndicator()}
+      </div>
+      <div className={`text-lg font-bold ${getStatusColor()}`}>
+        {value !== undefined && value !== null ? `${value}${unit}` : '-'}
+      </div>
+      {benchmark && (
+        <div className="text-xs text-white/30 mt-1">
+          {lowerIsBetter
+            ? `<${benchmark.excellent}${unit} excellent`
+            : `>${benchmark.excellent}${unit} excellent`}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PlayerView() {
   const { playerId } = useParams<{ playerId: string }>()
-  const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'training' | 'attendance'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'training' | 'fitness' | 'attendance'>('overview')
 
   const { data: player, isLoading: loadingPlayer } = useQuery({
     queryKey: ['player', playerId],
@@ -154,6 +234,32 @@ export default function PlayerView() {
   const { data: gpsData } = useQuery({
     queryKey: ['player-gps', playerId],
     queryFn: () => fetchPlayerGPSData(playerId!),
+    enabled: !!playerId
+  })
+
+  // Fitness test queries
+  const { data: latestFitnessTest } = useQuery({
+    queryKey: ['player-fitness-latest', playerId],
+    queryFn: () => api.fitnessTests.getPlayerLatest(playerId!),
+    enabled: !!playerId
+  })
+
+  const { data: fitnessHistory } = useQuery({
+    queryKey: ['player-fitness-history', playerId],
+    queryFn: () => api.fitnessTests.getPlayerHistory(playerId!),
+    enabled: !!playerId
+  })
+
+  const { data: fitnessComparison } = useQuery({
+    queryKey: ['player-fitness-comparison', playerId],
+    queryFn: () => api.fitnessTests.getPlayerComparison(playerId!),
+    enabled: !!playerId
+  })
+
+  // Match GPS history
+  const { data: matchGpsHistory } = useQuery({
+    queryKey: ['player-match-gps', playerId],
+    queryFn: () => api.matchGps.getPlayerMatchHistory(playerId!, 10),
     enabled: !!playerId
   })
 
@@ -225,11 +331,12 @@ export default function PlayerView() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {[
           { id: 'overview', label: 'Overview', icon: User },
           { id: 'matches', label: 'Matches', icon: Trophy },
-          { id: 'training', label: 'Training', icon: Dumbbell },
+          { id: 'training', label: 'Performance', icon: Dumbbell },
+          { id: 'fitness', label: 'Fitness', icon: Heart },
           { id: 'attendance', label: 'Attendance', icon: Calendar }
         ].map(tab => (
           <button
@@ -372,19 +479,20 @@ export default function PlayerView() {
         </div>
       )}
 
-      {/* Training Tab */}
+      {/* Training/Performance Tab */}
       {activeTab === 'training' && (
         <div className="space-y-6">
-          {/* GPS Data */}
+          {/* Training GPS Data */}
           <div className="glass-card p-6">
             <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
               <Activity size={20} />
-              GPS Performance History
+              Training GPS History
             </h3>
             {gpsData && gpsData.length > 0 ? (
               <div className="space-y-3">
                 {gpsData.map((data, i) => (
                   <div key={i} className="p-4 rounded-xl bg-white/5">
+                    <div className="text-sm text-white/60 mb-2">{new Date(data.session_date).toLocaleDateString()}</div>
                     <div className="grid grid-cols-4 gap-4">
                       <div>
                         <div className="text-xs text-white/50">Distance</div>
@@ -416,10 +524,329 @@ export default function PlayerView() {
               </div>
             ) : (
               <div className="text-center text-white/40 py-8">
-                No GPS data recorded yet
+                No training GPS data recorded yet
               </div>
             )}
           </div>
+
+          {/* Match GPS Data */}
+          <div className="glass-card p-6">
+            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              <Trophy size={20} />
+              Match GPS History
+            </h3>
+            {matchGpsHistory && matchGpsHistory.length > 0 ? (
+              <div className="space-y-3">
+                {matchGpsHistory.map((data, i) => (
+                  <div key={i} className="p-4 rounded-xl bg-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-white/60">{new Date(data.created_at).toLocaleDateString()}</span>
+                      {data.playing_minutes && (
+                        <span className="text-xs px-2 py-1 rounded bg-indigo-500/20 text-indigo-400">
+                          {data.playing_minutes} mins played
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-4 gap-4">
+                      <div>
+                        <div className="text-xs text-white/50">Distance</div>
+                        <div className="text-lg font-bold text-white">
+                          {data.total_distance_m ? `${(data.total_distance_m / 1000).toFixed(1)}km` : '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-white/50">Max Speed</div>
+                        <div className="text-lg font-bold text-white">
+                          {data.max_speed_ms ? `${data.max_speed_ms.toFixed(1)} m/s` : '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-white/50">Sprints</div>
+                        <div className="text-lg font-bold text-white">
+                          {data.sprint_count ?? '-'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-white/50">HSR</div>
+                        <div className="text-lg font-bold text-white">
+                          {data.high_speed_running_m ? `${(data.high_speed_running_m / 1000).toFixed(2)}km` : '-'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-white/40 py-8">
+                No match GPS data recorded yet
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Fitness Tab */}
+      {activeTab === 'fitness' && (
+        <div className="space-y-6">
+          {/* Latest Test Results */}
+          {latestFitnessTest ? (
+            <>
+              <div className="glass-card p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Heart size={20} />
+                    Latest Fitness Test
+                  </h3>
+                  <span className="text-sm text-white/60">
+                    {new Date(latestFitnessTest.test_date).toLocaleDateString()}
+                  </span>
+                </div>
+
+                {/* Test Metrics Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Power Metrics */}
+                  <FitnessMetricCard
+                    label="CMJ"
+                    value={latestFitnessTest.cmj_cm}
+                    unit="cm"
+                    benchmark={{ good: 35, excellent: 45 }}
+                    comparison={fitnessComparison?.changes?.cmj_cm}
+                  />
+                  <FitnessMetricCard
+                    label="Squat Jump"
+                    value={latestFitnessTest.squat_jump_cm}
+                    unit="cm"
+                    comparison={fitnessComparison?.changes?.squat_jump_cm}
+                  />
+                  <FitnessMetricCard
+                    label="EUR"
+                    value={latestFitnessTest.eur_calculated}
+                    unit=""
+                    benchmark={{ good: 1.0, excellent: 1.15 }}
+                    comparison={fitnessComparison?.changes?.eur_calculated}
+                  />
+
+                  {/* Speed/Conditioning */}
+                  <FitnessMetricCard
+                    label="0-10m Sprint"
+                    value={latestFitnessTest.sprint_0_10m_sec}
+                    unit="s"
+                    benchmark={{ good: 1.85, excellent: 1.7 }}
+                    lowerIsBetter
+                    comparison={fitnessComparison?.changes?.sprint_0_10m_sec}
+                  />
+                  <FitnessMetricCard
+                    label="Bronco Test"
+                    value={latestFitnessTest.bronco_test_min}
+                    unit="min"
+                    benchmark={{ good: 5.5, excellent: 4.5 }}
+                    lowerIsBetter
+                    comparison={fitnessComparison?.changes?.bronco_test_min}
+                  />
+
+                  {/* Strength */}
+                  <FitnessMetricCard
+                    label="Press-ups (60s)"
+                    value={latestFitnessTest.press_ups_60s}
+                    unit=""
+                    benchmark={{ good: 30, excellent: 40 }}
+                    comparison={fitnessComparison?.changes?.press_ups_60s}
+                  />
+                  <FitnessMetricCard
+                    label="Pull-ups (60s)"
+                    value={latestFitnessTest.pull_ups_60s}
+                    unit=""
+                    benchmark={{ good: 10, excellent: 15 }}
+                    comparison={fitnessComparison?.changes?.pull_ups_60s}
+                  />
+
+                  {/* Body Composition */}
+                  <FitnessMetricCard
+                    label="Weight"
+                    value={latestFitnessTest.weight_kg}
+                    unit="kg"
+                    comparison={fitnessComparison?.changes?.weight_kg}
+                  />
+                </div>
+
+                {/* Mobility */}
+                <div className="mt-6">
+                  <h4 className="text-sm font-semibold text-white/70 mb-3">Mobility Assessment</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <FitnessMetricCard
+                      label="KTW Right"
+                      value={latestFitnessTest.ktw_right_cm}
+                      unit="cm"
+                      benchmark={{ good: 10, excellent: 12 }}
+                    />
+                    <FitnessMetricCard
+                      label="KTW Left"
+                      value={latestFitnessTest.ktw_left_cm}
+                      unit="cm"
+                      benchmark={{ good: 10, excellent: 12 }}
+                    />
+                    <div className="p-4 rounded-xl bg-white/5">
+                      <div className="text-xs text-white/50 mb-1">Overhead Squat</div>
+                      <div className="text-lg font-bold text-white">
+                        {latestFitnessTest.overhead_squat_score !== undefined
+                          ? ['Poor', 'Fair', 'Good', 'Excellent'][latestFitnessTest.overhead_squat_score] || latestFitnessTest.overhead_squat_score
+                          : '-'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ankle Imbalance Warning */}
+                  {latestFitnessTest.ktw_right_cm && latestFitnessTest.ktw_left_cm &&
+                    Math.abs(latestFitnessTest.ktw_right_cm - latestFitnessTest.ktw_left_cm) > 2 && (
+                    <div className="mt-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-2">
+                      <AlertTriangle size={16} className="text-amber-400" />
+                      <span className="text-sm text-amber-400">
+                        Ankle mobility imbalance detected ({Math.abs(latestFitnessTest.ktw_right_cm - latestFitnessTest.ktw_left_cm).toFixed(1)}cm difference)
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Analysis */}
+              {latestFitnessTest.ai_analysis && (
+                <div className="glass-card p-6">
+                  <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <Brain size={20} />
+                    AI Analysis
+                  </h3>
+
+                  {/* Injury Risk Score */}
+                  {latestFitnessTest.ai_analysis.injury_risk_score !== undefined && (
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-white/60">Injury Risk Score</span>
+                        <span className={`font-bold ${
+                          latestFitnessTest.ai_analysis.injury_risk_score <= 3 ? 'text-emerald-400' :
+                          latestFitnessTest.ai_analysis.injury_risk_score <= 6 ? 'text-amber-400' : 'text-red-400'
+                        }`}>
+                          {latestFitnessTest.ai_analysis.injury_risk_score}/10
+                        </span>
+                      </div>
+                      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            latestFitnessTest.ai_analysis.injury_risk_score <= 3 ? 'bg-emerald-500' :
+                            latestFitnessTest.ai_analysis.injury_risk_score <= 6 ? 'bg-amber-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${latestFitnessTest.ai_analysis.injury_risk_score * 10}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Strengths */}
+                    {latestFitnessTest.ai_analysis.strengths && latestFitnessTest.ai_analysis.strengths.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-emerald-400 mb-2 flex items-center gap-2">
+                          <CheckCircle size={14} />
+                          Strengths
+                        </h4>
+                        <ul className="space-y-1">
+                          {latestFitnessTest.ai_analysis.strengths.map((s, i) => (
+                            <li key={i} className="text-sm text-white/80">{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Weaknesses */}
+                    {latestFitnessTest.ai_analysis.weaknesses && latestFitnessTest.ai_analysis.weaknesses.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-semibold text-amber-400 mb-2 flex items-center gap-2">
+                          <AlertTriangle size={14} />
+                          Areas to Improve
+                        </h4>
+                        <ul className="space-y-1">
+                          {latestFitnessTest.ai_analysis.weaknesses.map((w, i) => (
+                            <li key={i} className="text-sm text-white/80">{w}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Recommendations */}
+                  {latestFitnessTest.ai_analysis.recommendations && latestFitnessTest.ai_analysis.recommendations.length > 0 && (
+                    <div className="mt-6">
+                      <h4 className="text-sm font-semibold text-indigo-400 mb-2">Training Recommendations</h4>
+                      <ul className="space-y-2">
+                        {latestFitnessTest.ai_analysis.recommendations.map((r, i) => (
+                          <li key={i} className="text-sm text-white/80 flex items-start gap-2">
+                            <span className="text-indigo-400 mt-0.5">•</span>
+                            {r}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Position Fit */}
+                  {latestFitnessTest.ai_analysis.position_fit && latestFitnessTest.ai_analysis.position_fit.length > 0 && (
+                    <div className="mt-6">
+                      <h4 className="text-sm font-semibold text-white/60 mb-2">Position Suitability</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {latestFitnessTest.ai_analysis.position_fit.map((p, i) => (
+                          <span key={i} className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-400 text-sm">
+                            {p}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Test History */}
+              {fitnessHistory && fitnessHistory.length > 1 && (
+                <div className="glass-card p-6">
+                  <h3 className="text-xl font-bold text-white mb-4">Test History</h3>
+                  <div className="space-y-3">
+                    {fitnessHistory.map((test, i) => (
+                      <div key={test.id} className={`p-4 rounded-xl ${i === 0 ? 'bg-indigo-500/10 border border-indigo-500/30' : 'bg-white/5'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-white">
+                            {new Date(test.test_date).toLocaleDateString()}
+                            {i === 0 && <span className="ml-2 text-xs text-indigo-400">(Latest)</span>}
+                          </span>
+                          <div className="flex items-center gap-4 text-sm">
+                            {test.cmj_cm && (
+                              <span className="text-white/60">CMJ: <span className="text-white">{test.cmj_cm}cm</span></span>
+                            )}
+                            {test.bronco_test_min && (
+                              <span className="text-white/60">Bronco: <span className="text-white">{test.bronco_test_min}min</span></span>
+                            )}
+                            {test.injury_risk_score && (
+                              <span className={`px-2 py-0.5 rounded text-xs ${
+                                test.injury_risk_score <= 3 ? 'bg-emerald-500/20 text-emerald-400' :
+                                test.injury_risk_score <= 6 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'
+                              }`}>
+                                Risk: {test.injury_risk_score}/10
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="glass-card p-8 text-center">
+              <Heart size={48} className="mx-auto text-white/20 mb-4" />
+              <p className="text-white/60">No fitness test data recorded yet</p>
+              <p className="text-sm text-white/40 mt-2">
+                Fitness tests can be added through the team management section
+              </p>
+            </div>
+          )}
         </div>
       )}
 

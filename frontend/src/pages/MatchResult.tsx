@@ -3,8 +3,9 @@
  * Read-only view of a completed match with event visualization on pitch
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   Trophy,
   Clock,
@@ -15,8 +16,16 @@ import {
   Target,
   TrendingUp,
   Zap,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Activity,
+  Brain,
+  Upload,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  X
 } from 'lucide-react'
+import { api } from '../services/api'
 import {
   ResponsiveContainer,
   BarChart,
@@ -41,6 +50,99 @@ function formatGAAScore(goals: number, points: number): string {
   return `${goals}-${String(points).padStart(2, '0')}`
 }
 
+// Simple markdown to formatted text renderer
+function renderAnalysisText(text: string): JSX.Element[] {
+  const lines = text.split('\n')
+  const elements: JSX.Element[] = []
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim()
+
+    // Skip empty lines but add spacing
+    if (!trimmed) {
+      elements.push(<div key={idx} className="h-2" />)
+      return
+    }
+
+    // Headers (## or ###)
+    if (trimmed.startsWith('###')) {
+      elements.push(
+        <h4 key={idx} className="text-base font-semibold text-white mt-4 mb-2">
+          {trimmed.replace(/^###\s*/, '')}
+        </h4>
+      )
+      return
+    }
+    if (trimmed.startsWith('##')) {
+      elements.push(
+        <h3 key={idx} className="text-lg font-bold text-white mt-4 mb-2">
+          {trimmed.replace(/^##\s*/, '')}
+        </h3>
+      )
+      return
+    }
+    if (trimmed.startsWith('#')) {
+      elements.push(
+        <h2 key={idx} className="text-xl font-bold text-white mt-4 mb-2">
+          {trimmed.replace(/^#\s*/, '')}
+        </h2>
+      )
+      return
+    }
+
+    // Numbered section headers (e.g., "1. Match Summary")
+    const numberedHeader = trimmed.match(/^(\d+)\.\s+\*\*(.+?)\*\*(.*)$/)
+    if (numberedHeader) {
+      elements.push(
+        <h4 key={idx} className="text-base font-semibold text-indigo-400 mt-4 mb-2">
+          {numberedHeader[1]}. {numberedHeader[2]}{numberedHeader[3]}
+        </h4>
+      )
+      return
+    }
+
+    // Bold section headers (e.g., "**Key Statistics**")
+    const boldHeader = trimmed.match(/^\*\*(.+?)\*\*:?$/)
+    if (boldHeader) {
+      elements.push(
+        <h4 key={idx} className="text-base font-semibold text-indigo-400 mt-4 mb-2">
+          {boldHeader[1]}
+        </h4>
+      )
+      return
+    }
+
+    // Bullet points
+    if (trimmed.startsWith('-') || trimmed.startsWith('•')) {
+      const content = trimmed.replace(/^[-•]\s*/, '')
+      // Handle bold text within bullet points
+      const formattedContent = content.replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
+      elements.push(
+        <div key={idx} className="flex items-start gap-2 ml-2 mb-1">
+          <span className="text-indigo-400 mt-1">•</span>
+          <span
+            className="text-white/80 leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: formattedContent }}
+          />
+        </div>
+      )
+      return
+    }
+
+    // Regular paragraph - handle inline bold
+    const formattedContent = trimmed.replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
+    elements.push(
+      <p
+        key={idx}
+        className="text-white/80 leading-relaxed mb-2"
+        dangerouslySetInnerHTML={{ __html: formattedContent }}
+      />
+    )
+  })
+
+  return elements
+}
+
 // Calculate total score
 function totalScore(goals: number, points: number): number {
   return goals * 3 + points
@@ -53,11 +155,105 @@ export default function MatchResult() {
   const { data: eventsData } = useMatchEvents(matchId || null)
   const { data: players } = usePlayers()
 
+  // Fetch post-match AI analysis
+  const { data: postMatchReport, refetch: refetchReport } = useQuery({
+    queryKey: ['post-match-report', matchId],
+    queryFn: () => api.ai.getPostMatchReport(matchId!),
+    enabled: !!matchId && match?.status === 'completed',
+    staleTime: 1000 * 60 * 10, // Cache for 10 mins
+  })
+
+  // Fetch existing GPS data
+  const { data: gpsData, refetch: refetchGps } = useQuery({
+    queryKey: ['match-gps', matchId],
+    queryFn: () => api.matchGps.getMatchGps(matchId!),
+    enabled: !!matchId && match?.status === 'completed',
+  })
+
+  // Fetch AI GPS analysis when GPS data exists
+  const { data: gpsAnalysis, isLoading: gpsAnalysisLoading, refetch: refetchGpsAnalysis } = useQuery({
+    queryKey: ['gps-analysis', matchId],
+    queryFn: () => api.ai.analyzeGps(gpsData!, { opponent: match?.opponent, date: match?.match_date }),
+    enabled: !!gpsData && gpsData.length > 0,
+    staleTime: 1000 * 60 * 30, // Cache for 30 mins
+  })
+
+  // GPS upload state
+  const [showGpsUpload, setShowGpsUpload] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle')
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadId, setUploadId] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
   // Event filter state
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(['all']))
 
   // Team filter state - which team's events to show on pitch
   const [teamFilter, setTeamFilter] = useState<'dungloe' | 'opponent'>('dungloe')
+
+  // Handle GPS file upload
+  const handleGpsUpload = async (file: File) => {
+    if (!matchId) return
+
+    setUploadStatus('uploading')
+    setUploadError(null)
+
+    try {
+      const response = await api.matchGps.uploadGps(matchId, file)
+      setUploadId(response.upload_id)
+      setUploadStatus('processing')
+
+      // Poll for completion
+      const pollStatus = async () => {
+        try {
+          const status = await api.matchGps.getUploadStatus(matchId, response.upload_id)
+          if (status.status === 'completed') {
+            setUploadStatus('success')
+            // Refetch GPS data and AI analysis
+            refetchGps()
+            refetchReport()
+            setTimeout(() => {
+              setShowGpsUpload(false)
+              setUploadStatus('idle')
+            }, 2000)
+          } else if (status.status === 'failed') {
+            setUploadStatus('error')
+            setUploadError(status.error_message || 'Upload failed')
+          } else {
+            // Still processing, poll again
+            setTimeout(pollStatus, 2000)
+          }
+        } catch (e) {
+          setUploadStatus('error')
+          setUploadError('Failed to check upload status')
+        }
+      }
+
+      setTimeout(pollStatus, 2000)
+    } catch (e: any) {
+      setUploadStatus('error')
+      setUploadError(e.message || 'Upload failed')
+    }
+  }
+
+  // Handle GPS data deletion
+  const handleDeleteGps = async () => {
+    if (!matchId) return
+
+    setIsDeleting(true)
+    try {
+      await api.matchGps.deleteMatchGps(matchId)
+      setShowDeleteConfirm(false)
+      // Refetch GPS data and AI analysis
+      refetchGps()
+      refetchReport()
+    } catch (e: any) {
+      console.error('Failed to delete GPS data:', e)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   // Calculate Man of the Match
   const manOfMatch = useMemo(() => {
@@ -209,7 +405,166 @@ export default function MatchResult() {
             )}
           </div>
         </div>
+
+        {/* GPS Data Section */}
+        <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {gpsData && gpsData.length > 0 ? (
+              <div className="flex items-center gap-2 text-emerald-400">
+                <CheckCircle size={16} />
+                <span className="text-sm">GPS data loaded ({gpsData.length} players)</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-white/40">
+                <Activity size={16} />
+                <span className="text-sm">No GPS data uploaded</span>
+              </div>
+            )}
+            {postMatchReport?.gps_included && (
+              <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400">
+                AI analysis includes GPS insights
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {gpsData && gpsData.length > 0 ? (
+              <>
+                {/* Delete Confirmation */}
+                {showDeleteConfirm ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-white/60">Delete GPS data?</span>
+                    <button
+                      onClick={handleDeleteGps}
+                      disabled={isDeleting}
+                      className="flex items-center gap-1 px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                    >
+                      {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                      Confirm
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={isDeleting}
+                      className="flex items-center gap-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm font-medium transition-colors border border-red-500/30"
+                    >
+                      <X size={16} />
+                      Remove GPS Data
+                    </button>
+                    <button
+                      onClick={() => setShowGpsUpload(true)}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+                    >
+                      <Upload size={16} />
+                      Replace GPS Data
+                    </button>
+                  </>
+                )}
+              </>
+            ) : (
+              <button
+                onClick={() => setShowGpsUpload(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+              >
+                <Upload size={16} />
+                Upload GPS Data
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* GPS Upload Modal */}
+      {showGpsUpload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="glass-card p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white">Upload STATSports GPS Data</h3>
+              <button
+                onClick={() => {
+                  setShowGpsUpload(false)
+                  setUploadStatus('idle')
+                  setUploadError(null)
+                }}
+                className="text-white/60 hover:text-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {uploadStatus === 'idle' && (
+              <>
+                <p className="text-white/60 text-sm mb-4">
+                  Upload a STATSports PDF or CSV export for this match. The AI analysis will be regenerated to include GPS insights.
+                </p>
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:border-indigo-500/50 transition-colors">
+                  <div className="flex flex-col items-center">
+                    <Upload size={32} className="text-white/40 mb-2" />
+                    <span className="text-sm text-white/60">Click to select file</span>
+                    <span className="text-xs text-white/40 mt-1">PDF or CSV</span>
+                  </div>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.csv"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleGpsUpload(file)
+                    }}
+                  />
+                </label>
+              </>
+            )}
+
+            {uploadStatus === 'uploading' && (
+              <div className="flex flex-col items-center py-8">
+                <Loader2 size={40} className="text-indigo-500 animate-spin mb-3" />
+                <span className="text-white">Uploading file...</span>
+              </div>
+            )}
+
+            {uploadStatus === 'processing' && (
+              <div className="flex flex-col items-center py-8">
+                <Loader2 size={40} className="text-indigo-500 animate-spin mb-3" />
+                <span className="text-white">Processing GPS data...</span>
+                <span className="text-white/60 text-sm mt-2">AI will regenerate analysis with GPS insights</span>
+              </div>
+            )}
+
+            {uploadStatus === 'success' && (
+              <div className="flex flex-col items-center py-8">
+                <CheckCircle size={40} className="text-emerald-500 mb-3" />
+                <span className="text-white">GPS data uploaded successfully!</span>
+                <span className="text-white/60 text-sm mt-2">AI analysis has been updated</span>
+              </div>
+            )}
+
+            {uploadStatus === 'error' && (
+              <div className="flex flex-col items-center py-8">
+                <AlertCircle size={40} className="text-red-500 mb-3" />
+                <span className="text-white">Upload failed</span>
+                <span className="text-red-400 text-sm mt-2">{uploadError}</span>
+                <button
+                  onClick={() => {
+                    setUploadStatus('idle')
+                    setUploadError(null)
+                  }}
+                  className="mt-4 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm"
+                >
+                  Try Again
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -296,11 +651,11 @@ export default function MatchResult() {
           {/* Match Stats */}
           <div className="glass-card p-4">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
-              <TrendingUp size={20} />
-              <span>Match Stats</span>
+              <Activity size={20} />
+              <span>Match Statistics</span>
             </h2>
             {matchStats ? (
-              <StatsTable stats={matchStats} />
+              <StatsTable stats={matchStats} opponent={match.opponent} />
             ) : (
               <div className="text-center text-white/40 py-8">Loading stats...</div>
             )}
@@ -309,16 +664,21 @@ export default function MatchResult() {
           {/* Events List */}
           <div className="glass-card p-4">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
-              <Zap size={20} />
+              <Clock size={20} />
               <span>Match Events</span>
             </h2>
             {eventsData?.events && eventsData.events.length > 0 ? (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-2 max-h-[500px] overflow-y-auto">
                 {eventsData.events
                   .slice()
                   .reverse()
                   .map((event: any) => (
-                    <EventItem key={event.id} event={event} />
+                    <EventItem
+                      key={event.id}
+                      event={event}
+                      players={players || []}
+                      opponentName={match.opponent}
+                    />
                   ))}
               </div>
             ) : (
@@ -335,69 +695,136 @@ export default function MatchResult() {
           stats={matchStats}
           events={eventsData?.events || []}
           opponent={match.opponent}
+          insight={postMatchReport?.insights?.possession}
         />
 
         {/* Scoring Timeline */}
         <ScoringTimeline
           events={eventsData?.events || []}
           opponent={match.opponent}
+          insight={postMatchReport?.insights?.scoring}
         />
 
         {/* Shot Outcome Breakdown */}
         <ShotOutcomeChart
           events={eventsData?.events || []}
           opponent={match.opponent}
+          insight={postMatchReport?.insights?.shooting}
         />
       </div>
+
+      {/* GPS Performance Section - Only shows when GPS data exists */}
+      {gpsData && gpsData.length > 0 && (
+        <div className="mt-6">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center">
+              <Zap size={20} className="text-white" />
+            </div>
+            <span>GPS Performance Data</span>
+            <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 ml-2">
+              STATSports
+            </span>
+          </h2>
+
+          {/* AI GPS Insights Panel */}
+          {gpsAnalysis?.success && gpsAnalysis.insights && (
+            <GPSInsightsPanel insights={gpsAnalysis.insights} isLoading={gpsAnalysisLoading} />
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+            {/* Team 5-Minute Volume Chart */}
+            <TeamVolumeChart gpsData={gpsData} events={eventsData?.events || []} />
+
+            {/* Team Intensity Gauge */}
+            <TeamIntensityGauge gpsData={gpsData} />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+            {/* Player Distance Chart */}
+            <PlayerDistanceChart gpsData={gpsData} />
+
+            {/* Player Workload Comparison */}
+            <PlayerWorkloadChart gpsData={gpsData} />
+          </div>
+        </div>
+      )}
+
+      {/* Match Summary Section */}
+      {postMatchReport?.analysis && (
+        <div className="glass-card p-6 mt-6">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+              <Brain size={20} className="text-white" />
+            </div>
+            <span>Match Summary</span>
+          </h2>
+          <div className="max-w-none">
+            {renderAnalysisText(postMatchReport.analysis)}
+          </div>
+          <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 text-xs text-white/40">
+            <Brain size={14} />
+            <span>AI-generated analysis based on match data</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-// Stats Table Component
-function StatsTable({ stats }: { stats: MatchStats }) {
+// Stats Table Component - matches live match styling
+function StatsTable({ stats, opponent }: { stats: MatchStats; opponent: string }) {
+  // Calculate kickout retention rates
+  const totalDungloeKickouts = stats.dungloe_kickouts_won + stats.dungloe_kickouts_lost
+  const totalOpponentKickouts = stats.opponent_kickouts_won + stats.opponent_kickouts_lost
+  const dungloeKickoutRetention = totalDungloeKickouts > 0
+    ? ((stats.dungloe_kickouts_won / totalDungloeKickouts) * 100).toFixed(1)
+    : '0.0'
+  const opponentKickoutRetention = totalOpponentKickouts > 0
+    ? ((stats.opponent_kickouts_won / totalOpponentKickouts) * 100).toFixed(1)
+    : '0.0'
+
+  // Calculate conversion rates
+  const dungloeConversion = stats.dungloe_total_shots > 0
+    ? ((stats.dungloe_scores / stats.dungloe_total_shots) * 100).toFixed(1)
+    : '0.0'
+  const opponentConversion = stats.opponent_total_shots > 0
+    ? ((stats.opponent_scores / stats.opponent_total_shots) * 100).toFixed(1)
+    : '0.0'
+
+  // Round dungloe possession and calculate opponent as remainder to ensure they add to 100
+  const dungloePos = Math.round(stats.dungloe_possession_percentage)
+  const opponentPos = 100 - dungloePos
+
   const statRows = [
-    {
-      label: 'Possession',
-      dungloe: `${Math.round(stats.dungloe_possession_percentage)}%`,
-      opponent: `${Math.round(stats.opponent_possession_percentage)}%`
-    },
-    { label: 'Total Shots', dungloe: stats.dungloe_total_shots, opponent: stats.opponent_total_shots },
-    { label: 'Scores', dungloe: stats.dungloe_scores, opponent: stats.opponent_scores },
-    { label: 'Wides', dungloe: stats.dungloe_wides, opponent: stats.opponent_wides },
-    {
-      label: 'Accuracy',
-      dungloe: `${Math.round(stats.dungloe_accuracy)}%`,
-      opponent: `${Math.round(stats.opponent_accuracy)}%`
-    },
-    {
-      label: 'Turnovers Won',
-      dungloe: stats.dungloe_turnovers_won,
-      opponent: stats.opponent_turnovers_won
-    },
-    {
-      label: 'Turnovers Lost',
-      dungloe: stats.dungloe_turnovers_lost,
-      opponent: stats.opponent_turnovers_lost
-    },
-    {
-      label: 'Kickouts Won',
-      dungloe: stats.dungloe_kickouts_won,
-      opponent: stats.opponent_kickouts_won
-    },
+    { label: 'POSSESSION', dungloe: `${dungloePos}%`, opponent: `${opponentPos}%` },
+    { label: 'SHOTS', dungloe: stats.dungloe_total_shots, opponent: stats.opponent_total_shots },
+    { label: 'SCORES', dungloe: stats.dungloe_scores, opponent: stats.opponent_scores },
+    { label: 'WIDES', dungloe: stats.dungloe_wides, opponent: stats.opponent_wides },
+    { label: 'ACCURACY', dungloe: `${Math.round(stats.dungloe_accuracy)}%`, opponent: `${Math.round(stats.opponent_accuracy)}%` },
+    { label: 'CONVERSION', dungloe: `${dungloeConversion}%`, opponent: `${opponentConversion}%` },
+    { label: 'TURNOVERS WON', dungloe: stats.dungloe_turnovers_won, opponent: stats.opponent_turnovers_won },
+    { label: 'KICKOUTS WON', dungloe: `${stats.dungloe_kickouts_won}/${totalDungloeKickouts}`, opponent: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}` },
+    { label: 'KICKOUT RETENTION', dungloe: `${dungloeKickoutRetention}%`, opponent: `${opponentKickoutRetention}%` },
   ]
 
   return (
-    <div className="space-y-2">
+    <div className="overflow-hidden rounded-lg border border-white/10">
+      {/* Table Header */}
+      <div className="grid grid-cols-3 bg-blue-600/30 border border-blue-500/50">
+        <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Dungloe</div>
+        <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Stat</div>
+        <div className="py-2 px-3 text-center text-sm font-bold text-white">{opponent}</div>
+      </div>
+
       {statRows.map((row) => (
-        <div
-          key={row.label}
-          className="grid grid-cols-3 gap-2 items-center text-sm"
-        >
-          <div className="text-right font-semibold text-white bg-white/10 px-3 py-2 rounded-lg">
+        <div key={row.label} className="grid grid-cols-3 border-t border-white/10">
+          <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
             {row.dungloe}
           </div>
-          <div className="text-center text-white/60 text-xs">{row.label}</div>
-          <div className="text-left font-semibold text-white/70 bg-white/5 px-3 py-2 rounded-lg">
+          <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-xs font-semibold text-white border-r border-white/10 flex items-center justify-center">
+            {row.label}
+          </div>
+          <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
             {row.opponent}
           </div>
         </div>
@@ -406,40 +833,169 @@ function StatsTable({ stats }: { stats: MatchStats }) {
   )
 }
 
-// Event Item Component
-function EventItem({ event }: { event: any }) {
+// Helper function to get pitch area description with variety
+function getPitchArea(x: number | null, y: number | null, eventTeamIsDungloe: boolean, opponentName: string): string {
+  if (x === null || y === null) return 'the field'
+
+  // Get lateral position description
+  let lateralDesc = ''
+  let lateralShort = ''
+  if (y < 20) {
+    lateralDesc = 'on the left wing'
+    lateralShort = 'left side'
+  } else if (y < 35) {
+    lateralDesc = 'on the left flank'
+    lateralShort = 'left channel'
+  } else if (y > 80) {
+    lateralDesc = 'on the right wing'
+    lateralShort = 'right side'
+  } else if (y > 65) {
+    lateralDesc = 'on the right flank'
+    lateralShort = 'right channel'
+  } else {
+    lateralDesc = 'through the center'
+    lateralShort = 'centrally'
+  }
+
+  // Calculate distances
+  const distFromRightGoal = 100 - x
+  const distFromLeftGoal = x
+  const distFromAttackingGoal = eventTeamIsDungloe ? distFromRightGoal : distFromLeftGoal
+  const distFromDefendingGoal = eventTeamIsDungloe ? distFromLeftGoal : distFromRightGoal
+  const defendingTeamName = eventTeamIsDungloe ? opponentName : 'Dungloe'
+  const attackingTeamName = eventTeamIsDungloe ? 'Dungloe' : opponentName
+
+  // In attacking half (closer to opponent's goal)
+  if (distFromAttackingGoal < 50) {
+    if (distFromAttackingGoal <= 6) return `inside ${defendingTeamName}'s small rectangle`
+    if (distFromAttackingGoal <= 10) return `near ${defendingTeamName}'s goalmouth, ${lateralShort}`
+    if (distFromAttackingGoal <= 15) return `${defendingTeamName}'s 20-meter line, ${lateralShort}`
+    if (distFromAttackingGoal <= 25) return `inside ${defendingTeamName}'s 45, ${lateralShort}`
+    if (distFromAttackingGoal <= 35) return `${defendingTeamName}'s half, ${lateralDesc}`
+    return `approaching ${defendingTeamName}'s 45, ${lateralShort}`
+  }
+
+  // In defensive half or midfield
+  if (distFromDefendingGoal < 25) {
+    return `deep in ${attackingTeamName}'s defense, ${lateralShort}`
+  }
+  if (distFromDefendingGoal < 40) {
+    return `${attackingTeamName}'s half, ${lateralDesc}`
+  }
+
+  // True midfield area (x: 40-60)
+  if (x >= 45 && x <= 55) {
+    // Vary the midfield description based on y position
+    if (y < 35) return `the left side of midfield`
+    if (y > 65) return `the right side of midfield`
+    return `the center of the park`
+  }
+
+  // Near midfield but slightly in one half
+  if (x < 50) {
+    return `${attackingTeamName}'s side of midfield, ${lateralShort}`
+  }
+  return `${defendingTeamName}'s side of midfield, ${lateralShort}`
+}
+
+// Format event description like live match
+function formatEventDescription(event: any, players: any[], opponentName: string): string {
+  const player = players?.find(p => p.id === String(event.player_id))
+  const isDungloe = event.team === 'dungloe' || event.is_home_team
+  const area = getPitchArea(event.pitch_x, event.pitch_y, isDungloe, opponentName)
+  const playerName = isDungloe ? (player?.name || event.player_name || 'Dungloe player') : opponentName
+
+  switch (event.event_type) {
+    case 'point':
+      return `${playerName} scored a point from ${area}`
+    case 'two_point':
+      return `${playerName} scored a 2-pointer from ${area}`
+    case 'goal':
+      return `${playerName} scored a goal from ${area}`
+    case 'wide':
+      return `${playerName} hit a wide from ${area}`
+    case 'short':
+      return `${playerName}'s shot fell short from ${area}`
+    case 'saved':
+      return `${playerName}'s shot was saved from ${area}`
+    case 'point_free':
+      return `${playerName} scored a point from a free in ${area}`
+    case 'two_point_free':
+      return `${playerName} scored a 2-pointer from a free in ${area}`
+    case 'wide_free':
+      return `${playerName} hit a wide from a free in ${area}`
+    case 'forty_five':
+      return `${playerName} scored from a 45`
+    case 'forty_five_missed':
+      return `${playerName} missed a 45`
+    case 'turnover_won':
+      return `${playerName} won a turnover in ${area}`
+    case 'turnover_lost':
+      return `${playerName} conceded a turnover in ${area}`
+    case 'unforced_error':
+      return `${playerName} made an unforced error in ${area}`
+    case 'kickout_won':
+      return `${playerName} won kickout in ${area}`
+    case 'kickout_lost':
+      return `Kickout lost to ${opponentName} in ${area}`
+    case 'foul_committed':
+      return `${playerName} committed a foul in ${area}`
+    case 'yellow_card':
+      return `${playerName} received a yellow card`
+    case 'red_card':
+      return `${playerName} received a red card`
+    case 'substitution':
+      return event.notes ? `Substitution: ${event.notes}` : `${playerName} substituted`
+    default:
+      return `${event.event_type.replace(/_/g, ' ')} - ${playerName}`
+  }
+}
+
+// Event Item Component with proper descriptions
+function EventItem({ event, players, opponentName }: { event: any; players: any[]; opponentName: string }) {
   const getEventStyle = (eventType: string) => {
-    if (['goal', 'point', 'two_point', 'point_free', 'two_point_free'].includes(eventType)) {
+    if (['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'].includes(eventType)) {
       return event.team === 'dungloe' || event.is_home_team
         ? 'border-l-emerald-500 bg-emerald-500/10'
         : 'border-l-red-500 bg-red-500/10'
     }
-    if (['wide', 'wide_free', 'saved', 'short'].includes(eventType)) {
+    if (['wide', 'wide_free', 'saved', 'short', 'forty_five_missed'].includes(eventType)) {
       return 'border-l-amber-500 bg-amber-500/10'
     }
-    if (['turnover_won', 'turnover_lost', 'our_unforced_error', 'opp_unforced_error'].includes(eventType)) {
+    if (['turnover_won', 'turnover_lost', 'unforced_error'].includes(eventType)) {
       return 'border-l-orange-500 bg-orange-500/10'
+    }
+    if (['kickout_won', 'kickout_lost'].includes(eventType)) {
+      return 'border-l-cyan-500 bg-cyan-500/10'
     }
     return 'border-l-slate-500 bg-slate-500/10'
   }
 
-  const formatEventType = (type: string): string => {
-    return type
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (l) => l.toUpperCase())
-  }
+  const description = formatEventDescription(event, players, opponentName)
 
   return (
     <div className={`p-3 rounded-lg border-l-4 ${getEventStyle(event.event_type)}`}>
-      <div className="flex items-center justify-between">
-        <span className="text-white font-medium text-sm">
-          {formatEventType(event.event_type)}
-        </span>
-        <span className="text-white/40 text-xs">{event.minute}'</span>
+      <div className="flex items-start justify-between">
+        <div className="flex-shrink-0 w-10 h-10 rounded-md bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center font-bold text-white text-sm shadow-md mr-3">
+          {event.minute}'
+        </div>
+        <p className="flex-1 text-white/90 text-sm leading-relaxed">
+          {description}
+        </p>
       </div>
-      {event.player_name && (
-        <div className="text-white/60 text-xs mt-1">{event.player_name}</div>
-      )}
+    </div>
+  )
+}
+
+// AI Insight Card Component
+function AIInsightCard({ insight }: { insight?: string }) {
+  if (!insight) return null
+  return (
+    <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-indigo-600/10 to-purple-600/10 border border-indigo-500/20">
+      <div className="flex items-start gap-2">
+        <Brain size={14} className="text-indigo-400 mt-0.5 flex-shrink-0" />
+        <p className="text-xs text-white/70 leading-relaxed">{insight}</p>
+      </div>
     </div>
   )
 }
@@ -448,12 +1004,17 @@ function EventItem({ event }: { event: any }) {
 function PossessionTerritoryChart({
   stats,
   events,
-  opponent
+  opponent,
+  insight
 }: {
   stats: MatchStats | undefined
   events: any[]
   opponent: string
+  insight?: string
 }) {
+  const [selectedTeam, setSelectedTeam] = useState<'dungloe' | 'opponent'>('dungloe')
+  const [selectedHalf, setSelectedHalf] = useState<'all' | '1st' | '2nd'>('all')
+
   // Calculate territory from event locations
   const territory = useMemo(() => {
     const zones = {
@@ -463,6 +1024,12 @@ function PossessionTerritoryChart({
 
     events.forEach((e: any) => {
       if (e.pitch_x === null) return
+
+      // Filter by half
+      const minute = e.minute || 0
+      if (selectedHalf === '1st' && minute > 35) return
+      if (selectedHalf === '2nd' && minute <= 35) return
+
       const team = e.team || (e.is_home_team ? 'dungloe' : 'opponent')
       const x = e.pitch_x
 
@@ -492,95 +1059,174 @@ function PossessionTerritoryChart({
         attacking: oppTotal > 0 ? Math.round((zones.opponent.attacking / oppTotal) * 100) : 0
       }
     }
-  }, [events])
+  }, [events, selectedHalf])
 
+  // Ensure possession always adds to 100
+  const dungloePosPct = Math.round(stats?.dungloe_possession_percentage || 50)
   const possession = {
-    dungloe: stats?.dungloe_possession_percentage || 50,
-    opponent: stats?.opponent_possession_percentage || 50
+    dungloe: dungloePosPct,
+    opponent: 100 - dungloePosPct
   }
+
+  const currentTerritory = territory[selectedTeam]
+  const teamColor = selectedTeam === 'dungloe' ? '#84cc16' : '#f97316' // lime for dungloe, orange for opponent
 
   return (
     <div className="glass-card p-4">
-      <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+      <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
         <Target size={20} />
-        Possession & Territory
+        Territory
       </h3>
 
-      {/* Possession Bar */}
-      <div className="mb-6">
-        <div className="flex justify-between text-sm mb-2">
-          <span className="text-indigo-400 font-semibold">{Math.round(possession.dungloe)}%</span>
-          <span className="text-white/60">Possession</span>
-          <span className="text-orange-400 font-semibold">{Math.round(possession.opponent)}%</span>
+      {/* Team + Half Toggles */}
+      <div className="flex items-center justify-between mb-4">
+        {/* Team Toggle */}
+        <div className="flex gap-1">
+          <button
+            onClick={() => setSelectedTeam('dungloe')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              selectedTeam === 'dungloe'
+                ? 'bg-lime-500 text-black'
+                : 'bg-white/10 text-white/60 hover:bg-white/20'
+            }`}
+          >
+            <div className="w-2 h-2 rounded-full bg-current" />
+            DUN
+          </button>
+          <button
+            onClick={() => setSelectedTeam('opponent')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              selectedTeam === 'opponent'
+                ? 'bg-orange-500 text-black'
+                : 'bg-white/10 text-white/60 hover:bg-white/20'
+            }`}
+          >
+            <div className="w-2 h-2 rounded-full bg-current" />
+            {opponent.substring(0, 3).toUpperCase()}
+          </button>
         </div>
-        <div className="h-4 rounded-full overflow-hidden flex bg-white/10">
-          <div
-            className="bg-gradient-to-r from-indigo-600 to-indigo-400 transition-all"
-            style={{ width: `${possession.dungloe}%` }}
-          />
-          <div
-            className="bg-gradient-to-r from-orange-400 to-orange-600 transition-all"
-            style={{ width: `${possession.opponent}%` }}
-          />
-        </div>
-        <div className="flex justify-between text-xs text-white/40 mt-1">
-          <span>Dungloe</span>
-          <span>{opponent}</span>
+
+        {/* Half Toggle */}
+        <div className="flex gap-1 bg-white/5 rounded-lg p-0.5">
+          {(['all', '1st', '2nd'] as const).map((half) => (
+            <button
+              key={half}
+              onClick={() => setSelectedHalf(half)}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                selectedHalf === half
+                  ? 'bg-white/20 text-white'
+                  : 'text-white/50 hover:text-white/80'
+              }`}
+            >
+              {half === 'all' ? 'All' : half}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Territory Breakdown */}
-      <div className="space-y-3">
-        <div className="text-sm text-white/60 mb-2">Territory Breakdown</div>
+      {/* Mini GAA Pitch with Territory Zones */}
+      <div className="relative">
+        {/* SVG Mini GAA Pitch */}
+        <svg viewBox="0 0 300 180" className="w-full h-auto">
+          {/* Pitch Background */}
+          <rect x="0" y="0" width="300" height="180" fill="#1a1a2e" rx="8" />
 
-        {/* Attacking Third */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-indigo-400">{territory.dungloe.attacking}%</span>
-            <span className="text-white/40">Attacking Third</span>
-            <span className="text-orange-400">{territory.opponent.attacking}%</span>
-          </div>
-          <div className="h-2 rounded-full overflow-hidden flex bg-white/10">
-            <div className="bg-indigo-500" style={{ width: `${territory.dungloe.attacking}%` }} />
-            <div className="flex-1" />
-            <div className="bg-orange-500" style={{ width: `${territory.opponent.attacking}%` }} />
-          </div>
-        </div>
+          {/* Pitch Outline */}
+          <rect x="10" y="10" width="280" height="160" fill="none" stroke="#334155" strokeWidth="2" rx="4" />
 
-        {/* Midfield */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-indigo-400">{territory.dungloe.midfield}%</span>
-            <span className="text-white/40">Midfield</span>
-            <span className="text-orange-400">{territory.opponent.midfield}%</span>
-          </div>
-          <div className="h-2 rounded-full overflow-hidden flex bg-white/10">
-            <div className="bg-indigo-500" style={{ width: `${territory.dungloe.midfield}%` }} />
-            <div className="flex-1" />
-            <div className="bg-orange-500" style={{ width: `${territory.opponent.midfield}%` }} />
-          </div>
-        </div>
+          {/* Zone Dividers */}
+          <line x1="103" y1="10" x2="103" y2="170" stroke="#334155" strokeWidth="1" strokeDasharray="4,4" />
+          <line x1="197" y1="10" x2="197" y2="170" stroke="#334155" strokeWidth="1" strokeDasharray="4,4" />
 
-        {/* Defensive Third */}
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-indigo-400">{territory.dungloe.defensive}%</span>
-            <span className="text-white/40">Defensive Third</span>
-            <span className="text-orange-400">{territory.opponent.defensive}%</span>
+          {/* Left Goal Area (simplified) */}
+          <rect x="10" y="55" width="25" height="70" fill="none" stroke="#334155" strokeWidth="1.5" />
+          <rect x="10" y="70" width="12" height="40" fill="none" stroke="#334155" strokeWidth="1" />
+
+          {/* Right Goal Area (simplified) */}
+          <rect x="265" y="55" width="25" height="70" fill="none" stroke="#334155" strokeWidth="1.5" />
+          <rect x="278" y="70" width="12" height="40" fill="none" stroke="#334155" strokeWidth="1" />
+
+          {/* Center Line */}
+          <line x1="150" y1="10" x2="150" y2="170" stroke="#334155" strokeWidth="1.5" />
+
+          {/* Center Circle */}
+          <circle cx="150" cy="90" r="20" fill="none" stroke="#334155" strokeWidth="1.5" />
+
+          {/* 45m Lines (approximate) */}
+          <line x1="60" y1="10" x2="60" y2="170" stroke="#334155" strokeWidth="1" strokeDasharray="2,4" />
+          <line x1="240" y1="10" x2="240" y2="170" stroke="#334155" strokeWidth="1" strokeDasharray="2,4" />
+
+          {/* Zone Highlight Overlays */}
+          <rect x="10" y="10" width="93" height="160" fill={teamColor} fillOpacity="0.1" />
+          <rect x="103" y="10" width="94" height="160" fill={teamColor} fillOpacity="0.15" />
+          <rect x="197" y="10" width="93" height="160" fill={teamColor} fillOpacity="0.1" />
+        </svg>
+
+        {/* Territory Percentage Badges */}
+        <div className="absolute inset-0 flex items-center justify-around px-6">
+          {/* Defensive Zone */}
+          <div className="flex flex-col items-center">
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-black text-lg shadow-lg"
+              style={{ backgroundColor: teamColor }}
+            >
+              {currentTerritory.defensive}%
+            </div>
+            <span className="text-xs text-white/50 mt-2 font-medium">DEF</span>
           </div>
-          <div className="h-2 rounded-full overflow-hidden flex bg-white/10">
-            <div className="bg-indigo-500" style={{ width: `${territory.dungloe.defensive}%` }} />
-            <div className="flex-1" />
-            <div className="bg-orange-500" style={{ width: `${territory.opponent.defensive}%` }} />
+
+          {/* Midfield Zone */}
+          <div className="flex flex-col items-center">
+            <div
+              className="w-16 h-16 rounded-full flex items-center justify-center font-bold text-black text-xl shadow-lg"
+              style={{ backgroundColor: teamColor }}
+            >
+              {currentTerritory.midfield}%
+            </div>
+            <span className="text-xs text-white/50 mt-2 font-medium">MID</span>
+          </div>
+
+          {/* Attacking Zone */}
+          <div className="flex flex-col items-center">
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-black text-lg shadow-lg"
+              style={{ backgroundColor: teamColor }}
+            >
+              {currentTerritory.attacking}%
+            </div>
+            <span className="text-xs text-white/50 mt-2 font-medium">ATK</span>
           </div>
         </div>
       </div>
+
+      {/* Possession Bar (compact) */}
+      <div className="mt-4 pt-3 border-t border-white/10">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-lime-400 font-semibold w-10">{Math.round(possession.dungloe)}%</span>
+          <div className="flex-1 h-2 rounded-full overflow-hidden flex bg-white/10">
+            <div
+              className="bg-lime-500 transition-all"
+              style={{ width: `${possession.dungloe}%` }}
+            />
+            <div
+              className="bg-orange-500 transition-all"
+              style={{ width: `${possession.opponent}%` }}
+            />
+          </div>
+          <span className="text-orange-400 font-semibold w-10 text-right">{Math.round(possession.opponent)}%</span>
+        </div>
+        <div className="flex justify-between text-[10px] text-white/40 mt-1 px-10">
+          <span>Possession</span>
+        </div>
+      </div>
+
+      <AIInsightCard insight={insight} />
     </div>
   )
 }
 
 // Scoring Timeline Component
-function ScoringTimeline({ events, opponent }: { events: any[]; opponent: string }) {
+function ScoringTimeline({ events, opponent, insight }: { events: any[]; opponent: string; insight?: string }) {
   const timelineData = useMemo(() => {
     // Group scores by 10-minute intervals
     const intervals: Record<string, { dungloe: number; opponent: number }> = {}
@@ -649,6 +1295,8 @@ function ScoringTimeline({ events, opponent }: { events: any[]; opponent: string
           <span className="text-white/60">{opponent}</span>
         </div>
       </div>
+
+      <AIInsightCard insight={insight} />
     </div>
   )
 }
@@ -656,10 +1304,12 @@ function ScoringTimeline({ events, opponent }: { events: any[]; opponent: string
 // Shot Outcome Chart Component
 function ShotOutcomeChart({
   events,
-  opponent
+  opponent,
+  insight
 }: {
   events: any[]
   opponent: string
+  insight?: string
 }) {
   const [selectedTeam, setSelectedTeam] = useState<'dungloe' | 'opponent'>('dungloe')
 
@@ -801,6 +1451,601 @@ function ShotOutcomeChart({
           No shot data available
         </div>
       )}
+
+      <AIInsightCard insight={insight} />
+    </div>
+  )
+}
+
+// ============ GPS Performance Charts ============
+
+interface GPSData {
+  id: string
+  player_id: string
+  player_name: string
+  total_distance_m: number | null
+  high_speed_running_m: number | null
+  sprint_distance_m: number | null
+  hml_distance_m: number | null
+  max_speed_ms: number | null
+  sprint_count: number | null
+  player_load: number | null
+  playing_minutes: number | null
+}
+
+// GPS Insights Panel - Displays AI-generated insights
+function GPSInsightsPanel({ insights, isLoading }: { insights: any; isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <div className="glass-card p-4 mb-4 animate-pulse">
+        <div className="flex items-center gap-2">
+          <Brain size={20} className="text-indigo-400" />
+          <span className="text-white/60">Analyzing GPS data...</span>
+        </div>
+      </div>
+    )
+  }
+
+  const severityColors = {
+    high: 'bg-red-500/20 border-red-500/50 text-red-400',
+    medium: 'bg-amber-500/20 border-amber-500/50 text-amber-400',
+    low: 'bg-blue-500/20 border-blue-500/50 text-blue-400'
+  }
+
+  const alertIcons = {
+    recovery: '🔄',
+    injury_risk: '⚠️',
+    fatigue: '😓',
+    overload: '🔥',
+    underperformance: '📉'
+  }
+
+  return (
+    <div className="glass-card p-4 mb-4">
+      {/* Header with overall intensity */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Brain size={20} className="text-indigo-400" />
+          <span className="text-lg font-bold text-white">AI Performance Insights</span>
+        </div>
+        <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+          insights.overall_intensity === 'championship' ? 'bg-emerald-500/20 text-emerald-400' :
+          insights.overall_intensity === 'good' ? 'bg-blue-500/20 text-blue-400' :
+          insights.overall_intensity === 'moderate' ? 'bg-amber-500/20 text-amber-400' :
+          'bg-red-500/20 text-red-400'
+        }`}>
+          {insights.overall_intensity?.charAt(0).toUpperCase() + insights.overall_intensity?.slice(1)} Intensity
+        </span>
+      </div>
+
+      {/* Intensity Summary */}
+      <p className="text-white/70 text-sm mb-4">{insights.intensity_summary}</p>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Alerts Column */}
+        <div>
+          <h4 className="text-sm font-semibold text-white/60 mb-2 flex items-center gap-1">
+            <AlertCircle size={14} />
+            Alerts
+          </h4>
+          {insights.alerts?.length > 0 ? (
+            <div className="space-y-2">
+              {insights.alerts.map((alert: any, idx: number) => (
+                <div
+                  key={idx}
+                  className={`p-2 rounded-lg border ${severityColors[alert.severity as keyof typeof severityColors]}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <span>{alertIcons[alert.type as keyof typeof alertIcons] || '⚡'}</span>
+                    <div>
+                      <div className="font-semibold text-sm">{alert.player}</div>
+                      <div className="text-xs opacity-80">{alert.message}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-white/40 text-sm p-2 bg-white/5 rounded-lg">
+              No alerts - all players within normal ranges
+            </div>
+          )}
+        </div>
+
+        {/* Recovery Recommendations Column */}
+        <div>
+          <h4 className="text-sm font-semibold text-white/60 mb-2 flex items-center gap-1">
+            <Clock size={14} />
+            Recovery Status
+          </h4>
+          <div className="space-y-2">
+            {insights.recovery_recommendations?.full_recovery_needed?.length > 0 && (
+              <div className="p-2 rounded-lg bg-red-500/10 border border-red-500/30">
+                <div className="text-xs font-semibold text-red-400 mb-1">72+ Hours Rest</div>
+                <div className="text-xs text-white/60">
+                  {insights.recovery_recommendations.full_recovery_needed.join(', ')}
+                </div>
+              </div>
+            )}
+            {insights.recovery_recommendations?.light_session_only?.length > 0 && (
+              <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                <div className="text-xs font-semibold text-amber-400 mb-1">Light Training Only</div>
+                <div className="text-xs text-white/60">
+                  {insights.recovery_recommendations.light_session_only.join(', ')}
+                </div>
+              </div>
+            )}
+            {insights.recovery_recommendations?.normal_training?.length > 0 && (
+              <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <div className="text-xs font-semibold text-emerald-400 mb-1">Ready for Training</div>
+                <div className="text-xs text-white/60">
+                  {insights.recovery_recommendations.normal_training.join(', ')}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Patterns & Top Performers Column */}
+        <div>
+          <h4 className="text-sm font-semibold text-white/60 mb-2 flex items-center gap-1">
+            <TrendingUp size={14} />
+            Key Observations
+          </h4>
+          <div className="space-y-2">
+            {insights.patterns?.map((pattern: any, idx: number) => (
+              <div key={idx} className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+                <div className="text-xs text-white/80">{pattern.insight}</div>
+                <div className="text-xs text-indigo-400 mt-1">→ {pattern.recommendation}</div>
+              </div>
+            ))}
+            {insights.top_performers?.length > 0 && (
+              <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                <div className="text-xs font-semibold text-emerald-400 mb-1">Top Performers</div>
+                {insights.top_performers.map((tp: any, idx: number) => (
+                  <div key={idx} className="text-xs text-white/60">
+                    <span className="text-white">{tp.player}</span> - {tp.highlight}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Team Volume Chart - Shows estimated team activity in 5-minute intervals
+function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[] }) {
+  const chartData = useMemo(() => {
+    // Calculate total team distance
+    const totalDistance = gpsData.reduce((sum, p) => sum + (p.total_distance_m || 0), 0)
+
+    // Group events by 5-minute intervals to estimate activity distribution
+    const intervals: Record<string, number> = {}
+    const intervalLabels = ['0-5', '5-10', '10-15', '15-20', '20-25', '25-30', '30-35', '35-40',
+      '40-45', '45-50', '50-55', '55-60', '60-65', '65-70', '70+']
+
+    // Initialize all intervals
+    intervalLabels.forEach(label => {
+      intervals[label] = 0
+    })
+
+    // Count events per interval as activity proxy
+    events.forEach((e: any) => {
+      const minute = e.minute || 0
+      const intervalIdx = Math.min(Math.floor(minute / 5), 14)
+      const label = intervalLabels[intervalIdx]
+      intervals[label] = (intervals[label] || 0) + 1
+    })
+
+    // Calculate total events
+    const totalEvents = Object.values(intervals).reduce((a, b) => a + b, 0)
+
+    // Distribute total distance based on event activity (if we have events)
+    // If no events, distribute evenly
+    const data = intervalLabels.map(label => {
+      let distance: number
+      if (totalEvents > 0) {
+        // Distribute based on event frequency
+        distance = (intervals[label] / totalEvents) * totalDistance
+      } else {
+        // Even distribution across 70 mins (14 intervals)
+        distance = totalDistance / 14
+      }
+
+      return {
+        interval: label,
+        distance: Math.round(distance / 1000 * 100) / 100, // Convert to km with 2 decimal places
+        events: intervals[label]
+      }
+    })
+
+    return data
+  }, [gpsData, events])
+
+  // Identify trend
+  const trend = useMemo(() => {
+    const firstHalf = chartData.slice(0, 7).reduce((sum, d) => sum + d.distance, 0)
+    const secondHalf = chartData.slice(7).reduce((sum, d) => sum + d.distance, 0)
+    const diff = ((secondHalf - firstHalf) / firstHalf) * 100
+
+    if (diff < -15) return { direction: 'down', message: 'Work rate dropped significantly in 2nd half', color: '#ef4444' }
+    if (diff < -5) return { direction: 'slight-down', message: 'Slight drop in 2nd half intensity', color: '#f59e0b' }
+    if (diff > 5) return { direction: 'up', message: 'Team maintained/increased intensity', color: '#10b981' }
+    return { direction: 'stable', message: 'Consistent work rate throughout', color: '#6366f1' }
+  }, [chartData])
+
+  return (
+    <div className="glass-card p-4">
+      <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+        <Activity size={20} className="text-cyan-400" />
+        Team Volume (5-Min Intervals)
+      </h3>
+
+      {/* Trend indicator */}
+      <div className="flex items-center gap-2 mb-3 text-sm">
+        <span
+          className="px-2 py-1 rounded-full text-xs font-semibold"
+          style={{ backgroundColor: `${trend.color}20`, color: trend.color }}
+        >
+          {trend.direction === 'down' ? '↓' : trend.direction === 'up' ? '↑' : '→'} {trend.message}
+        </span>
+      </div>
+
+      <div className="h-[200px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+            <XAxis dataKey="interval" stroke="#9ca3af" fontSize={9} interval={1} angle={-45} textAnchor="end" height={50} />
+            <YAxis stroke="#9ca3af" fontSize={10} unit="km" />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#1e293b',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#fff'
+              }}
+              formatter={(value: number) => [`${value.toFixed(2)} km`, 'Distance']}
+              labelFormatter={(label) => `Minutes ${label}`}
+            />
+            <Bar dataKey="distance" radius={[4, 4, 0, 0]}>
+              {chartData.map((entry, index) => {
+                // Color bars based on position (first half vs second half)
+                const isFirstHalf = index < 7
+                const isLowVolume = entry.distance < (chartData.reduce((sum, d) => sum + d.distance, 0) / chartData.length) * 0.7
+
+                return (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={isLowVolume ? '#f59e0b' : isFirstHalf ? '#06b6d4' : '#8b5cf6'}
+                  />
+                )
+              })}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Legend */}
+      <div className="flex justify-center gap-4 mt-2 text-xs">
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded bg-cyan-500"></span>
+          <span className="text-white/60">1st Half</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded bg-purple-500"></span>
+          <span className="text-white/60">2nd Half</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded bg-amber-500"></span>
+          <span className="text-white/60">Below Average</span>
+        </div>
+      </div>
+
+      <div className="mt-3 p-2 rounded-lg bg-white/5 text-xs text-white/50 text-center">
+        Note: Volume distribution estimated from match events. Real-time API will provide exact data.
+      </div>
+    </div>
+  )
+}
+
+// Team Intensity Gauge - Shows HMLD per minute with color zones
+function TeamIntensityGauge({ gpsData }: { gpsData: GPSData[] }) {
+  const { intensity, totalHMLD, totalMinutes, status, statusColor } = useMemo(() => {
+    // Sum all players' HMLD and playing minutes
+    let totalHMLD = 0
+    let totalMinutes = 0
+
+    gpsData.forEach(p => {
+      totalHMLD += p.hml_distance_m || 0
+      totalMinutes += p.playing_minutes || 0
+    })
+
+    // Calculate team intensity (HMLD per minute)
+    // If no playing minutes recorded, estimate from match duration (70 mins * players)
+    if (totalMinutes === 0) {
+      totalMinutes = 70 * gpsData.length
+    }
+
+    const intensity = totalMinutes > 0 ? totalHMLD / totalMinutes : 0
+
+    // Determine status based on intensity thresholds (meters per minute)
+    // Championship GAA intensity typically 8-12m HMLD/min
+    let status = 'Low'
+    let statusColor = '#ef4444' // red
+
+    if (intensity >= 10) {
+      status = 'Championship'
+      statusColor = '#10b981' // green
+    } else if (intensity >= 7) {
+      status = 'Moderate'
+      statusColor = '#f59e0b' // amber
+    } else if (intensity >= 4) {
+      status = 'Below Target'
+      statusColor = '#f97316' // orange
+    }
+
+    return { intensity, totalHMLD, totalMinutes, status, statusColor }
+  }, [gpsData])
+
+  // Calculate gauge angle (0-180 degrees)
+  // 0 intensity = -90deg, max (15 m/min) = 90deg
+  const maxIntensity = 15
+  const gaugeAngle = Math.min(Math.max((intensity / maxIntensity) * 180 - 90, -90), 90)
+
+  return (
+    <div className="glass-card p-4">
+      <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <Zap size={20} className="text-amber-400" />
+        Team Intensity
+      </h3>
+
+      {/* Gauge Visualization */}
+      <div className="relative h-[160px] flex flex-col items-center">
+        {/* Gauge Arc */}
+        <div className="relative w-[220px] h-[110px] overflow-hidden">
+          {/* Color zones arc */}
+          <div
+            className="absolute bottom-0 left-0 w-full h-full rounded-t-full"
+            style={{
+              background: `conic-gradient(from 180deg,
+                #ef4444 0deg,
+                #ef4444 36deg,
+                #f97316 36deg,
+                #f97316 72deg,
+                #f59e0b 72deg,
+                #f59e0b 108deg,
+                #10b981 108deg,
+                #10b981 180deg
+              )`
+            }}
+          />
+          {/* Inner cutout for donut effect */}
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[160px] h-[80px] bg-slate-800 rounded-t-full" />
+
+          {/* Needle - proper triangular shape */}
+          <svg
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 transition-transform duration-700 ease-out"
+            style={{
+              transform: `translateX(-50%) rotate(${gaugeAngle}deg)`,
+              transformOrigin: 'center bottom'
+            }}
+            width="20"
+            height="90"
+            viewBox="0 0 20 90"
+          >
+            {/* Needle body - tapered triangle */}
+            <polygon
+              points="10,0 6,75 14,75"
+              fill="white"
+              filter="drop-shadow(0 2px 4px rgba(0,0,0,0.5))"
+            />
+            {/* Needle tip glow */}
+            <circle cx="10" cy="8" r="3" fill="white" opacity="0.8" />
+          </svg>
+
+          {/* Center hub */}
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-6 h-6 rounded-full bg-gradient-to-br from-white to-gray-300 shadow-lg border-2 border-white/50" />
+        </div>
+
+        {/* Value display - below the gauge */}
+        <div className="text-center mt-2">
+          <div className="text-3xl font-bold text-white">{intensity.toFixed(1)}</div>
+          <div className="text-sm text-white/60">m/min HMLD</div>
+        </div>
+      </div>
+
+      {/* Status Badge */}
+      <div className="flex justify-center mt-4">
+        <span
+          className="px-4 py-2 rounded-full text-sm font-bold text-white"
+          style={{ backgroundColor: statusColor }}
+        >
+          {status} Intensity
+        </span>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-2 mt-4 text-center">
+        <div className="bg-white/5 rounded-lg p-2">
+          <div className="text-lg font-bold text-white">{(totalHMLD / 1000).toFixed(1)}km</div>
+          <div className="text-xs text-white/60">Total HMLD</div>
+        </div>
+        <div className="bg-white/5 rounded-lg p-2">
+          <div className="text-lg font-bold text-white">{gpsData.length}</div>
+          <div className="text-xs text-white/60">Players Tracked</div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex justify-center gap-3 mt-4 text-xs">
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span className="text-white/60">Championship</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+          <span className="text-white/60">Moderate</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <span className="w-2 h-2 rounded-full bg-red-500"></span>
+          <span className="text-white/60">Low</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Player Distance Chart - Bar chart showing distance covered per player
+function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
+  const chartData = useMemo(() => {
+    return gpsData
+      .map(p => ({
+        name: p.player_name?.split(' ')[0] || 'Unknown', // First name only for space
+        fullName: p.player_name,
+        distance: ((p.total_distance_m || 0) / 1000), // Convert to km
+        hsr: ((p.high_speed_running_m || 0) / 1000),
+        sprints: p.sprint_count || 0
+      }))
+      .sort((a, b) => b.distance - a.distance)
+      .slice(0, 10) // Top 10 for readability
+  }, [gpsData])
+
+  const maxDistance = Math.max(...chartData.map(d => d.distance), 1)
+
+  return (
+    <div className="glass-card p-4">
+      <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <TrendingUp size={20} className="text-indigo-400" />
+        Distance Covered
+      </h3>
+
+      <div className="h-[280px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} layout="vertical" margin={{ left: 60, right: 20 }}>
+            <XAxis type="number" domain={[0, Math.ceil(maxDistance)]} stroke="#9ca3af" fontSize={10} unit="km" />
+            <YAxis type="category" dataKey="name" stroke="#9ca3af" fontSize={10} width={55} />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#1e293b',
+                border: 'none',
+                borderRadius: '8px',
+                color: '#fff'
+              }}
+              formatter={(value: number, name: string) => [
+                name === 'distance' ? `${value.toFixed(2)} km` : `${value.toFixed(2)} km`,
+                name === 'distance' ? 'Total Distance' : 'High Speed'
+              ]}
+              labelFormatter={(label) => chartData.find(d => d.name === label)?.fullName || label}
+            />
+            <Bar dataKey="distance" fill="#6366f1" radius={[0, 4, 4, 0]} name="Total Distance">
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={index === 0 ? '#10b981' : index < 3 ? '#6366f1' : '#4f46e5'}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Summary */}
+      <div className="mt-2 text-center text-xs text-white/60">
+        Top performer: {chartData[0]?.fullName} ({chartData[0]?.distance.toFixed(2)} km)
+      </div>
+    </div>
+  )
+}
+
+// Player Workload Chart - Shows player load / sprint count comparison
+function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
+  const chartData = useMemo(() => {
+    return gpsData
+      .map(p => ({
+        name: p.player_name?.split(' ')[0] || 'Unknown',
+        fullName: p.player_name,
+        sprints: p.sprint_count || 0,
+        maxSpeed: p.max_speed_ms ? (p.max_speed_ms * 3.6).toFixed(1) : '0', // Convert m/s to km/h
+        load: p.player_load || 0,
+        hsr: (p.high_speed_running_m || 0) / 1000
+      }))
+      .sort((a, b) => b.sprints - a.sprints)
+      .slice(0, 8)
+  }, [gpsData])
+
+  // Team totals
+  const teamTotals = useMemo(() => {
+    const totalSprints = gpsData.reduce((sum, p) => sum + (p.sprint_count || 0), 0)
+    const totalHSR = gpsData.reduce((sum, p) => sum + (p.high_speed_running_m || 0), 0) / 1000
+    const avgMaxSpeed = gpsData.length > 0
+      ? gpsData.reduce((sum, p) => sum + (p.max_speed_ms || 0), 0) / gpsData.length * 3.6
+      : 0
+    return { totalSprints, totalHSR, avgMaxSpeed }
+  }, [gpsData])
+
+  return (
+    <div className="glass-card p-4">
+      <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <Activity size={20} className="text-orange-400" />
+        Sprint & Speed Data
+      </h3>
+
+      {/* Team Summary Cards */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className="bg-gradient-to-br from-orange-600/20 to-red-600/20 rounded-lg p-2 text-center border border-orange-500/30">
+          <div className="text-xl font-bold text-orange-400">{teamTotals.totalSprints}</div>
+          <div className="text-xs text-white/60">Team Sprints</div>
+        </div>
+        <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-lg p-2 text-center border border-cyan-500/30">
+          <div className="text-xl font-bold text-cyan-400">{teamTotals.totalHSR.toFixed(1)}km</div>
+          <div className="text-xs text-white/60">High Speed</div>
+        </div>
+        <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-lg p-2 text-center border border-purple-500/30">
+          <div className="text-xl font-bold text-purple-400">{teamTotals.avgMaxSpeed.toFixed(1)}</div>
+          <div className="text-xs text-white/60">Avg Max km/h</div>
+        </div>
+      </div>
+
+      {/* Sprint Bars */}
+      <div className="space-y-2">
+        {chartData.map((player, idx) => {
+          const maxSprints = Math.max(...chartData.map(d => d.sprints), 1)
+          const percentage = (player.sprints / maxSprints) * 100
+
+          return (
+            <div key={idx} className="flex items-center gap-2">
+              <div className="w-16 text-xs text-white/60 truncate">{player.name}</div>
+              <div className="flex-1 h-5 bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white"
+                  style={{
+                    width: `${Math.max(percentage, 15)}%`,
+                    background: idx === 0
+                      ? 'linear-gradient(90deg, #f97316, #ef4444)'
+                      : 'linear-gradient(90deg, #6366f1, #8b5cf6)'
+                  }}
+                >
+                  {player.sprints}
+                </div>
+              </div>
+              <div className="w-14 text-xs text-white/40 text-right">{player.maxSpeed} km/h</div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Insight */}
+      <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-orange-600/10 to-red-600/10 border border-orange-500/20">
+        <div className="flex items-start gap-2">
+          <Zap size={14} className="text-orange-400 mt-0.5 flex-shrink-0" />
+          <p className="text-xs text-white/70">
+            {chartData[0]?.fullName} led the team with {chartData[0]?.sprints} sprints
+            and a top speed of {chartData[0]?.maxSpeed} km/h
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

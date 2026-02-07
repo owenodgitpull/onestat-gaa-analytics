@@ -23,8 +23,7 @@ from app.database import engine, Base, get_db
 
 # Import routes
 from app.routes import players
-from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health
-# from app.routes import fitness, gps  # Will add these next
+from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, fitness_tests
 
 # Configure logging
 logging.basicConfig(
@@ -85,6 +84,8 @@ app.add_middleware(
         "http://localhost:3001",  # Local development (alternative port)
         "http://localhost:3002",  # Vite fallback port
         "http://localhost:3003",  # Vite fallback port
+        "http://localhost:3004",  # Vite fallback port
+        "http://localhost:3005",  # Vite fallback port
         "http://localhost:5173",  # Vite default port
         "https://dungloe-gaa-analytics.vercel.app",  # Production frontend
         os.getenv("FRONTEND_URL", ""),  # From environment
@@ -203,9 +204,8 @@ app.include_router(training_performance.router, prefix="/api/v1/training", tags=
 app.include_router(live_insights.router, prefix="/api/v1/live-insights", tags=["Live Match Insights"])
 app.include_router(rag.router, prefix="/api/v1/rag", tags=["RAG Knowledge Base"])
 app.include_router(squad_health.router, prefix="/api/v1/squad-health", tags=["Squad Health"])
-# Will add these next:
-# app.include_router(fitness.router, prefix="/api/v1/fitness", tags=["Fitness Tests"])
-# app.include_router(gps.router, prefix="/api/v1/gps", tags=["GPS Data"])
+app.include_router(match_gps.router, prefix="/api/v1/matches", tags=["Match GPS Data"])
+app.include_router(fitness_tests.router, prefix="/api/v1/fitness-tests", tags=["Fitness Tests"])
 
 
 if __name__ == "__main__":

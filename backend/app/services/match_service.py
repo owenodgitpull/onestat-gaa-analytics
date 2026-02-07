@@ -183,7 +183,7 @@ class MatchService:
         try:
             # Import here to avoid circular imports
             from app.database import AsyncSessionLocal
-            from app.services.ai_service import analyze_match
+            from app.services.ai import analyze_match
 
             logger.info(f"Starting post-match AI analysis for match {match_id}")
 
@@ -289,11 +289,16 @@ class MatchService:
         for event in events:
             team_prefix = "dungloe" if event.team == Team.DUNGLOE else "opponent"
             
-            # Scoring events
-            if event.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]:
+            # Scoring events (goals, points, 2-pointers from play or frees/45s)
+            scoring_events = [
+                EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
+                EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE
+            ]
+            if event.event_type in scoring_events:
                 stats[f"{team_prefix}_total_shots"] += 1
                 stats[f"{team_prefix}_scores"] += 1
-            elif event.event_type == EventType.WIDE:
+            # Missed shots (wides from play or frees, missed 45s)
+            elif event.event_type in [EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED]:
                 stats[f"{team_prefix}_total_shots"] += 1
                 stats[f"{team_prefix}_wides"] += 1
             elif event.event_type in [EventType.SHORT, EventType.SAVED]:

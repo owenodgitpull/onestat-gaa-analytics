@@ -24,17 +24,19 @@ function App() {
       <Router>
         <div className="min-h-screen">
           <Navigation />
-          <main className="container mx-auto px-4 py-8">
-            <Routes>
-              <Route path="/" element={<AnalyticsDashboard />} />
-              <Route path="/match/:matchId" element={<MatchRecording />} />
-              <Route path="/results" element={<Results />} />
-              <Route path="/results/:matchId" element={<MatchResult />} />
-              <Route path="/players" element={<Players />} />
-              <Route path="/players/:playerId" element={<PlayerView />} />
-              <Route path="/training" element={<Attendance />} />
-              <Route path="/attendance" element={<Attendance />} />
-            </Routes>
+          <main className="md:ml-14 px-4 py-6">
+            <div className="max-w-7xl mx-auto">
+              <Routes>
+                <Route path="/" element={<AnalyticsDashboard />} />
+                <Route path="/match/:matchId" element={<MatchRecording />} />
+                <Route path="/results" element={<Results />} />
+                <Route path="/results/:matchId" element={<MatchResult />} />
+                <Route path="/players" element={<Players />} />
+                <Route path="/players/:playerId" element={<PlayerView />} />
+                <Route path="/training" element={<Attendance />} />
+                <Route path="/attendance" element={<Attendance />} />
+              </Routes>
+            </div>
           </main>
         </div>
       </Router>

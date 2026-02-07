@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.match import Match
 from app.models.match_event import MatchEvent, EventType
 from app.models.live_insight import LiveInsight, InsightTrigger
-from app.services.ai_service import live_match_insight
+from app.services.ai import live_match_insight
 
 logger = logging.getLogger(__name__)
 

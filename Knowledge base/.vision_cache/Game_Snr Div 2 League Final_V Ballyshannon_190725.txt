@@ -1,0 +1,133 @@
+# STATSports GPS Performance Report - Data Extraction
+
+## Session Details
+- **Competition:** League Final 190725
+- **Team:** Dungloe Senior Men (DSM)
+- **Date:** 07/19/2025
+- **Session:** 1/12 through 5/12
+
+## Individual Player Statistics
+
+### Total Distance (meters)
+1. **Dylan S:** ~14,700m
+2. **Barry C:** ~14,100m
+3. **Matthew:** ~13,900m
+4. **Ryan C:** ~13,600m
+5. **Darren C:** ~13,400m
+6. **Shaun M:** ~13,300m
+7. **Oisin B:** ~12,000m
+8. **Conor O'D:** ~11,800m
+9. **Daire G:** ~10,400m
+10. **Ryan G:** ~10,300m
+11. **Jason McB:** ~9,600m
+12. **Noel McB:** ~8,300m
+13. **Dan W:** ~7,700m
+14. **Conor G:** ~6,500m
+15. **Cianan M:** ~6,200m
+16. **Patrick O'D:** ~6,100m
+17. **Conor D:** ~4,300m
+
+**Team Average Total Distance:** 10,920m
+
+### Max Speed (m/s)
+1. **Conor G:** ~11.5 m/s
+2. **Noel McB:** ~11.5 m/s
+3. **Ryan C:** ~11.4 m/s
+4. **Dylan S:** ~9.0 m/s
+5. **Oisin B:** ~8.9 m/s
+6. **Jason McB:** ~8.8 m/s
+7. **Darren C:** ~8.7 m/s
+8. **Cianan M:** ~8.6 m/s
+9. **Ryan G:** ~8.4 m/s
+10. **Shaun M:** ~8.4 m/s
+11. **Conor O'D:** ~8.4 m/s
+12. **Daire G:** ~8.3 m/s
+13. **Barry C:** ~8.3 m/s
+14. **Matthew:** ~8.2 m/s
+15. **Conor D:** ~8.2 m/s
+16. **Patrick O'D:** ~7.9 m/s
+17. **Dan W:** ~7.4 m/s
+
+**Team Average Max Speed:** 8.97 m/s
+
+### High Speed Running - Absolute (meters)
+1. **Matthew:** ~1,280m
+2. **Dylan S:** ~1,240m
+3. **Darren C:** ~1,090m
+4. **Ryan C:** ~1,040m
+5. **Shaun M:** ~1,030m
+6. **Oisin B:** ~980m
+7. **Conor O'D:** ~890m
+8. **Barry C:** ~830m
+9. **Daire G:** ~820m
+10. **Ryan G:** ~780m
+11. **Noel McB:** ~700m
+12. **Jason McB:** ~690m
+13. **Dan W:** ~530m
+14. **Cianan M:** ~520m
+15. **Patrick O'D:** ~450m
+16. **Conor G:** ~290m
+17. **Conor D:** ~280m
+
+**Team Average High Speed Running:** 791m
+
+### HmI Distance (meters)
+1. **Dylan S:** ~2,770m
+2. **Matthew:** ~2,610m
+3. **Shaun M:** ~2,350m
+4. **Darren C:** ~2,330m
+5. **Ryan C:** ~2,260m
+6. **Barry C:** ~2,200m
+7. **Oisin B:** ~2,110m
+8. **Conor O'D:** ~2,080m
+9. **Daire G:** ~1,960m
+10. **Ryan G:** ~1,720m
+11. **Noel McB:** ~1,620m
+12. **Jason McB:** ~1,460m
+13. **Dan W:** ~1,150m
+14. **Cianan M:** ~1,130m
+15. **Patrick O'D:** ~980m
+16. **Conor G:** ~920m
+17. **Conor D:** ~540m
+
+**Team Average HmI Distance:** 1,778m
+
+### Sprints (count)
+1. **Dylan S:** ~67
+2. **Darren C:** ~60
+3. **Matthew:** ~58
+4. **Ryan C:** ~56
+5. **Shaun M:** ~56
+6. **Conor O'D:** ~53
+7. **Barry C:** ~51
+8. **Oisin B:** ~50
+9. **Daire G:** ~48
+10. **Ryan G:** ~47
+11. **Jason McB:** ~39
+12. **Noel McB:** ~36
+13. **Dan W:** ~32
+14. **Cianan M:** ~26
+15. **Patrick O'D:** ~24
+16. **Conor G:** ~21
+17. **Conor D:** ~19
+
+**Team Average Sprints:** 43
+
+## Chart Analysis
+The report contains 5 different performance charts (pages 1-5 of 12):
+
+1. **Total Distance Chart:** Shows Dylan S as the top performer with the highest total distance covered, followed by Barry C and Matthew. A clear declining trend from top performers to substitutes/limited playing time players.
+
+2. **Max Speed Chart:** Conor G, Noel McB, and Ryan C achieved the highest maximum speeds (all around 11.4-11.5 m/s), while most players clustered around the team average of 8.97 m/s.
+
+3. **High Speed Running Chart:** Matthew leads in high-speed running distance, followed closely by Dylan S. There's a significant drop-off after the top 6 performers.
+
+4. **HmI Distance Chart:** Dylan S dominates this metric with nearly 2,800m, significantly ahead of the second-place Matthew at ~2,610m.
+
+5. **Sprints Chart:** Dylan S recorded the most sprints (67), with Darren C and Matthew also performing well in this category.
+
+## Notes
+- Data represents performance from a League Final match
+- Clear distinction between starting players and substitutes based on distance metrics
+- Some players show specialized roles (high max speed but lower total distance)
+- Team averages are displayed as dashed horizontal lines on each chart

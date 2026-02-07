@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.models.match_event import MatchEvent
     from app.models.possession_event import PossessionEvent
     from app.models.player_match_stats import PlayerMatchStats
+    from app.models.match_gps import MatchGPSData
 
 
 class MatchVenue(enum.Enum):
@@ -97,6 +98,10 @@ class Match(Base):
     ai_analysis: Column[Optional[str]] = Column(Text, nullable=True)
     ai_analysis_generated_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
 
+    # GPS analysis tracking (for re-analysis when GPS data is uploaded post-match)
+    ai_analysis_version: Column[int] = Column(Integer, default=1, nullable=False)
+    gps_analysis_included: Column[bool] = Column(Boolean, default=False, nullable=False)
+
     # Soft delete
     is_deleted: Column[bool] = Column(Boolean, default=False, nullable=False)
     
@@ -128,6 +133,13 @@ class Match(Base):
 
     lineup = relationship(
         "MatchLineup",
+        back_populates="match",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
+
+    gps_data = relationship(
+        "MatchGPSData",
         back_populates="match",
         lazy="selectin",
         cascade="all, delete-orphan"

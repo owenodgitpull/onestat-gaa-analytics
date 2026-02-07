@@ -451,6 +451,12 @@ export interface ChatResponse {
   response: string;
 }
 
+export interface ChartInsights {
+  possession?: string;
+  scoring?: string;
+  shooting?: string;
+}
+
 export interface PostMatchReport {
   match: {
     opponent: string;
@@ -466,7 +472,48 @@ export interface PostMatchReport {
     result: string;
   };
   analysis: string;
+  insights?: ChartInsights;
   generated_at: string;
+  gps_included?: boolean;
+  version?: number;
+}
+
+export interface GPSAlert {
+  type: 'recovery' | 'injury_risk' | 'fatigue' | 'overload' | 'underperformance';
+  severity: 'high' | 'medium' | 'low';
+  player: string;
+  message: string;
+  metric: string;
+}
+
+export interface GPSPattern {
+  insight: string;
+  recommendation: string;
+}
+
+export interface GPSTopPerformer {
+  player: string;
+  highlight: string;
+}
+
+export interface GPSInsights {
+  overall_intensity: 'championship' | 'good' | 'moderate' | 'low';
+  intensity_summary: string;
+  alerts: GPSAlert[];
+  patterns: GPSPattern[];
+  top_performers: GPSTopPerformer[];
+  recovery_recommendations: {
+    full_recovery_needed: string[];
+    light_session_only: string[];
+    normal_training: string[];
+  };
+}
+
+export interface GPSAnalysisResponse {
+  success: boolean;
+  insights?: GPSInsights;
+  error?: string;
+  generated_at?: string;
 }
 
 export interface ChartRecommendation {
@@ -582,6 +629,13 @@ const aiAPI = {
 
   getPostMatchReport: async (matchId: string): Promise<PostMatchReport> => {
     return fetchAPI<PostMatchReport>(`/ai/post-match-report/${matchId}`);
+  },
+
+  analyzeGps: async (gpsData: any[], matchInfo?: any): Promise<GPSAnalysisResponse> => {
+    return fetchAPI<GPSAnalysisResponse>('/ai/analyze-gps', {
+      method: 'POST',
+      body: JSON.stringify({ gps_data: gpsData, match_info: matchInfo }),
+    });
   },
 
   healthCheck: async (): Promise<{ status: string; message: string }> => {
@@ -878,6 +932,304 @@ const squadHealthAPI = {
   },
 };
 
+// ============================================================================
+// Fitness Tests API
+// ============================================================================
+
+export interface FitnessTest {
+  id: string;
+  player_id: string;
+  player_name?: string;
+  test_date: string;
+  weight_kg?: number;
+  body_fat_percentage?: number;
+  ktw_right_cm?: number;
+  ktw_left_cm?: number;
+  overhead_squat_score?: number;
+  cmj_cm?: number;
+  squat_jump_cm?: number;
+  press_ups_60s?: number;
+  pull_ups_60s?: number;
+  sprint_0_10m_sec?: number;
+  bronco_test_min?: number;
+  eur_calculated?: number;
+  mas_100_percent?: number;
+  mas_120_percent?: number;
+  ai_analysis?: {
+    strengths?: string[];
+    weaknesses?: string[];
+    injury_risk_score?: number;
+    injury_risk_factors?: string[];
+    recommendations?: string[];
+    position_fit?: string[];
+    training_focus?: string[];
+  };
+  injury_risk_score?: number;
+  created_at: string;
+}
+
+export interface FitnessTestCreate {
+  player_id: string;
+  test_date: string;
+  weight_kg?: number;
+  body_fat_percentage?: number;
+  ktw_right_cm?: number;
+  ktw_left_cm?: number;
+  overhead_squat_score?: number;
+  cmj_cm?: number;
+  squat_jump_cm?: number;
+  press_ups_60s?: number;
+  pull_ups_60s?: number;
+  sprint_0_10m_sec?: number;
+  bronco_test_min?: number;
+}
+
+export interface FitnessTestComparison {
+  player_id: string;
+  player_name: string;
+  previous_test?: FitnessTest;
+  current_test: FitnessTest;
+  changes: Record<string, { previous: number | null; current: number | null; change_pct: number | null }>;
+}
+
+export interface SquadFitnessSummary {
+  squad_size: number;
+  tested_count: number;
+  avg_cmj?: number;
+  avg_bronco?: number;
+  avg_sprint?: number;
+  team_strengths: string[];
+  team_weaknesses: string[];
+  priority_areas: string[];
+  recommendations: string[];
+  high_risk_count: number;
+  mobility_concern_count: number;
+}
+
+const fitnessTestsAPI = {
+  /**
+   * Create a single fitness test
+   */
+  create: async (data: FitnessTestCreate): Promise<FitnessTest> => {
+    return fetchAPI<FitnessTest>('/fitness-tests/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Bulk create fitness tests (for team testing day)
+   */
+  bulkCreate: async (tests: FitnessTestCreate[]): Promise<FitnessTest[]> => {
+    return fetchAPI<FitnessTest[]>('/fitness-tests/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ tests }),
+    });
+  },
+
+  /**
+   * List all fitness tests with optional filters
+   */
+  list: async (playerId?: string, dateFrom?: string): Promise<FitnessTest[]> => {
+    const params = new URLSearchParams();
+    if (playerId) params.append('player_id', playerId);
+    if (dateFrom) params.append('date_from', dateFrom);
+    return fetchAPI<FitnessTest[]>(`/fitness-tests/?${params}`);
+  },
+
+  /**
+   * Get a single fitness test by ID
+   */
+  get: async (testId: string): Promise<FitnessTest> => {
+    return fetchAPI<FitnessTest>(`/fitness-tests/${testId}`);
+  },
+
+  /**
+   * Update a fitness test
+   */
+  update: async (testId: string, data: Partial<FitnessTestCreate>): Promise<FitnessTest> => {
+    return fetchAPI<FitnessTest>(`/fitness-tests/${testId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Delete a fitness test
+   */
+  delete: async (testId: string): Promise<void> => {
+    return fetchAPI<void>(`/fitness-tests/${testId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
+   * Get most recent test for a player
+   */
+  getPlayerLatest: async (playerId: string): Promise<FitnessTest | null> => {
+    try {
+      return await fetchAPI<FitnessTest>(`/fitness-tests/player/${playerId}/latest`);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Get player test history
+   */
+  getPlayerHistory: async (playerId: string): Promise<FitnessTest[]> => {
+    return fetchAPI<FitnessTest[]>(`/fitness-tests/player/${playerId}/history`);
+  },
+
+  /**
+   * Compare latest vs previous test for a player
+   */
+  getPlayerComparison: async (playerId: string): Promise<FitnessTestComparison | null> => {
+    try {
+      return await fetchAPI<FitnessTestComparison>(`/fitness-tests/player/${playerId}/comparison`);
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Get latest test for each player (squad view)
+   */
+  getSquadLatest: async (): Promise<FitnessTest[]> => {
+    return fetchAPI<FitnessTest[]>('/fitness-tests/squad/latest');
+  },
+
+  /**
+   * Get squad fitness summary with AI analysis
+   */
+  getSquadSummary: async (): Promise<SquadFitnessSummary> => {
+    return fetchAPI<SquadFitnessSummary>('/fitness-tests/squad/summary');
+  },
+
+  /**
+   * Trigger AI analysis for a specific test
+   */
+  analyze: async (testId: string): Promise<FitnessTest> => {
+    return fetchAPI<FitnessTest>(`/fitness-tests/${testId}/analyze`, {
+      method: 'POST',
+    });
+  },
+};
+
+// ============================================================================
+// Match GPS API
+// ============================================================================
+
+export interface MatchGPSData {
+  id: string;
+  match_id: string;
+  player_id: string;
+  player_name?: string;
+  total_distance_m?: number;
+  high_speed_running_m?: number;
+  sprint_distance_m?: number;
+  hml_distance_m?: number;
+  max_speed_ms?: number;
+  avg_speed_ms?: number;
+  sprint_count?: number;
+  acceleration_count?: number;
+  deceleration_count?: number;
+  dynamic_stress_load?: number;
+  player_load?: number;
+  avg_heart_rate?: number;
+  max_heart_rate?: number;
+  time_in_red_zone_mins?: number;
+  playing_minutes?: number;
+  started_as_sub?: boolean;
+  duration_mins?: number;
+  notes?: string;
+  created_at: string;
+}
+
+export interface MatchGPSUploadResponse {
+  upload_id: string;
+  match_id: string;
+  filename: string;
+  status: string;
+  message: string;
+}
+
+export interface GPSUploadStatus {
+  id: string;
+  match_id?: string;
+  status: string;
+  filename: string;
+  records_processed?: number;
+  players_matched?: number;
+  players_unmatched?: number;
+  error_message?: string;
+  created_at: string;
+  processed_at?: string;
+}
+
+const matchGpsAPI = {
+  /**
+   * Upload GPS data file for a completed match
+   */
+  uploadGps: async (matchId: string, file: File): Promise<MatchGPSUploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const url = `${API_BASE_URL}/matches/${matchId}/gps/upload`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Failed to upload GPS data');
+    }
+
+    return response.json();
+  },
+
+  /**
+   * Get all GPS data for a match
+   */
+  getMatchGps: async (matchId: string): Promise<MatchGPSData[]> => {
+    return fetchAPI<MatchGPSData[]>(`/matches/${matchId}/gps`);
+  },
+
+  /**
+   * Get GPS upload status
+   */
+  getUploadStatus: async (matchId: string, uploadId: string): Promise<GPSUploadStatus> => {
+    return fetchAPI<GPSUploadStatus>(`/matches/${matchId}/gps/upload/${uploadId}`);
+  },
+
+  /**
+   * Get player's match GPS history
+   */
+  getPlayerMatchHistory: async (playerId: string, limit: number = 10): Promise<MatchGPSData[]> => {
+    return fetchAPI<MatchGPSData[]>(`/matches/player/${playerId}/match-gps?limit=${limit}`);
+  },
+
+  /**
+   * Manually add GPS data for players in a match
+   */
+  addManualGps: async (matchId: string, data: Partial<MatchGPSData>[]): Promise<MatchGPSData[]> => {
+    return fetchAPI<MatchGPSData[]>(`/matches/${matchId}/gps/manual`, {
+      method: 'POST',
+      body: JSON.stringify({ entries: data }),
+    });
+  },
+
+  /**
+   * Delete all GPS data for a match
+   */
+  deleteMatchGps: async (matchId: string): Promise<void> => {
+    await fetchAPI<void>(`/matches/${matchId}/gps`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -889,6 +1241,8 @@ export const api = {
   liveInsights: liveInsightsAPI,
   rag: ragAPI,
   squadHealth: squadHealthAPI,
+  fitnessTests: fitnessTestsAPI,
+  matchGps: matchGpsAPI,
 };
 
 export default api;
