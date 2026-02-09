@@ -64,6 +64,7 @@ class ShotLocation(BaseModel):
     event_type: str
     is_score: bool
     team: str
+    match_id: str
 
 
 class PossessionZone(BaseModel):
@@ -357,7 +358,7 @@ async def get_dashboard_data(
         EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
         EventType.WIDE, EventType.SHORT, EventType.SAVED,
         EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE,
-        EventType.FORTY_FIVE
+        EventType.FORTY_FIVE, EventType.FORTY_FIVE_MISSED,
     ]
 
     shot_locations = []
@@ -372,7 +373,8 @@ async def get_dashboard_data(
                 y=float(event.pitch_y) if event.pitch_y else 50,
                 event_type=event.event_type.value,
                 is_score=is_score,
-                team=event.team.value
+                team=event.team.value,
+                match_id=str(event.match_id),
             ))
 
     # Possession zones (turnovers by area)

@@ -9,6 +9,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import type { KickoutTrendMatch } from '@/services/api'
+import ChartBadge from '@/components/charts/ChartBadge'
 
 interface KickoutTrendProps {
   data: KickoutTrendMatch[]
@@ -44,7 +45,7 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Kickout Outcomes</h3>
-          <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full">Pinned</span>
+          <ChartBadge />
         </div>
         <div className="h-[200px] flex items-center justify-center text-white/40">
           No kickout data recorded yet
@@ -73,7 +74,7 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
     <div className="glass-card p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">Kickout Outcomes</h3>
-        <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full">Pinned</span>
+        <ChartBadge />
       </div>
 
       <ResponsiveContainer width="100%" height={220}>

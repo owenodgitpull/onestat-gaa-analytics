@@ -10,9 +10,6 @@ import {
   RefreshCw,
   MessageSquare,
   Bot,
-  Crosshair,
-  Percent,
-  CircleDot,
   Heart,
   BarChart3
 } from 'lucide-react'
@@ -24,6 +21,7 @@ import TurnoverLeaderboard from '@/components/charts/TurnoverLeaderboard'
 import RedZoneList from '@/components/charts/RedZoneList'
 import WorkhorseRadar from '@/components/charts/WorkhorseRadar'
 import AiInsightsSection from '@/components/charts/AiInsightsSection'
+import ChartBadge from '@/components/charts/ChartBadge'
 import { usePinnedCharts } from '@/hooks/usePinnedCharts'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion } from '@/services/api'
 
@@ -35,6 +33,7 @@ export default function AnalyticsDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [shotFilter, setShotFilter] = useState<'all' | 'dungloe' | 'opponent'>('dungloe')
+  const [shotMatchRange, setShotMatchRange] = useState<'all' | '3' | '5'>('all')
   const [showAIChat, setShowAIChat] = useState(false)
   const [loadingAICharts, setLoadingAICharts] = useState(false)
   const [replacingChartId, setReplacingChartId] = useState<string | null>(null)
@@ -92,6 +91,22 @@ export default function AnalyticsDashboard() {
     }
   }, [])
 
+  const handleUnpinChart = async (chartId: string) => {
+    unpinChart(chartId)
+    // When a chart is unpinned and we have fewer than 4 dynamic charts,
+    // fetch a replacement to fill the gap
+    if (aiCharts.length < 4) {
+      try {
+        const result = await api.ai.getReplacementChart(dismissedChartIds)
+        if (result.success && result.chart) {
+          setAiCharts(prev => [...prev, result.chart!])
+        }
+      } catch (err) {
+        console.error('Failed to fetch replacement chart after unpin:', err)
+      }
+    }
+  }
+
   const handleDismissChart = async (chartId: string) => {
     setReplacingChartId(chartId)
 
@@ -143,17 +158,29 @@ export default function AnalyticsDashboard() {
 
   const { season_summary, top_scorers, top_turnovers, shot_locations, possession_zones, match_trends } = dashboardData
 
-  // Filter shots for heat map
-  const filteredShots = shotFilter === 'all'
+  // Filter shots by team
+  const teamFilteredShots = shotFilter === 'all'
     ? shot_locations
     : shot_locations.filter(s => s.team === shotFilter)
 
-  // Calculate shot statistics
+  // Filter shots by match range
+  const recentMatchIds = (() => {
+    if (shotMatchRange === 'all') return null
+    const count = parseInt(shotMatchRange)
+    const recentMatches = match_trends.slice(0, count)
+    return new Set(recentMatches.map(m => m.match_id))
+  })()
+  const filteredShots = recentMatchIds
+    ? teamFilteredShots.filter(s => recentMatchIds.has(s.match_id))
+    : teamFilteredShots
+
+  // Calculate shot statistics (backend sends lowercase: goal, point, two_point, etc.)
   const totalShots = filteredShots.length
   const scoredShots = filteredShots.filter(s => s.is_score)
   const missedShots = filteredShots.filter(s => !s.is_score)
-  const goals = filteredShots.filter(s => s.is_score && s.event_type === 'GOAL')
-  const points = filteredShots.filter(s => s.is_score && (s.event_type === 'POINT' || s.event_type === '2_POINTER'))
+  const goals = filteredShots.filter(s => s.is_score && s.event_type === 'goal')
+  const points = filteredShots.filter(s => s.is_score && ['point', 'point_free', 'forty_five'].includes(s.event_type))
+  const twoPointers = filteredShots.filter(s => s.is_score && ['two_point', 'two_point_free'].includes(s.event_type))
 
   const accuracy = totalShots > 0 ? Math.round((scoredShots.length / totalShots) * 100) : 0
 
@@ -271,7 +298,7 @@ export default function AnalyticsDashboard() {
         </div>
       )}
 
-      {/* 3. Shot Map + Possession — existing staple charts */}
+      {/* 3. Shot Map + Possession */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Shot Map with Stats Below */}
         <div className="glass-card p-6">
@@ -279,22 +306,41 @@ export default function AnalyticsDashboard() {
             <h3 className="text-xl font-bold flex items-center space-x-2 text-white">
               <MapPin size={20} className="text-white" />
               <span>Shot Map</span>
-              <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full ml-2">Staple</span>
+              <ChartBadge />
             </h3>
-            <div className="flex gap-2">
-              {(['dungloe', 'opponent', 'all'] as const).map(filter => (
-                <button
-                  key={filter}
-                  onClick={() => setShotFilter(filter)}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    shotFilter === filter
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-white/10 text-white/60 hover:bg-white/20'
-                  }`}
-                >
-                  {filter === 'all' ? 'All' : filter === 'dungloe' ? 'Dungloe' : 'Opponent'}
-                </button>
-              ))}
+            <div className="flex flex-col items-end gap-2">
+              {/* Team filter */}
+              <div className="flex gap-1">
+                {(['dungloe', 'opponent', 'all'] as const).map(filter => (
+                  <button
+                    key={filter}
+                    onClick={() => setShotFilter(filter)}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                      shotFilter === filter
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-white/10 text-white/60 hover:bg-white/20'
+                    }`}
+                  >
+                    {filter === 'all' ? 'All' : filter === 'dungloe' ? 'Dungloe' : 'Opponent'}
+                  </button>
+                ))}
+              </div>
+              {/* Match range filter */}
+              <div className="flex gap-1">
+                {([['all', 'All Matches'], ['5', 'Last 5'], ['3', 'Last 3']] as const).map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setShotMatchRange(val as 'all' | '3' | '5')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                      shotMatchRange === val
+                        ? 'bg-white/20 text-white'
+                        : 'text-white/40 hover:text-white/60'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -328,34 +374,26 @@ export default function AnalyticsDashboard() {
           </div>
 
           {/* Shot Statistics */}
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            <div className="bg-white/5 rounded-xl p-3 text-center">
-              <div className="flex items-center justify-center gap-1 text-white/60 text-xs mb-1">
-                <Crosshair size={12} />
-                <span>Total</span>
-              </div>
-              <div className="text-2xl font-bold text-white">{totalShots}</div>
+          <div className="grid grid-cols-5 gap-2 mt-4">
+            <div className="bg-white/5 rounded-xl p-2 text-center">
+              <div className="text-white/50 text-[10px] mb-0.5">Total</div>
+              <div className="text-xl font-bold text-white">{totalShots}</div>
             </div>
-            <div className="bg-white/5 rounded-xl p-3 text-center">
-              <div className="flex items-center justify-center gap-1 text-white/60 text-xs mb-1">
-                <Percent size={12} />
-                <span>Accuracy</span>
-              </div>
-              <div className="text-2xl font-bold text-emerald-400">{accuracy}%</div>
+            <div className="bg-white/5 rounded-xl p-2 text-center">
+              <div className="text-white/50 text-[10px] mb-0.5">Accuracy</div>
+              <div className="text-xl font-bold text-emerald-400">{accuracy}%</div>
             </div>
-            <div className="bg-white/5 rounded-xl p-3 text-center">
-              <div className="flex items-center justify-center gap-1 text-white/60 text-xs mb-1">
-                <Target size={12} />
-                <span>Goals</span>
-              </div>
-              <div className="text-2xl font-bold text-amber-400">{goals.length}</div>
+            <div className="bg-white/5 rounded-xl p-2 text-center">
+              <div className="text-white/50 text-[10px] mb-0.5">Goals</div>
+              <div className="text-xl font-bold text-amber-400">{goals.length}</div>
             </div>
-            <div className="bg-white/5 rounded-xl p-3 text-center">
-              <div className="flex items-center justify-center gap-1 text-white/60 text-xs mb-1">
-                <CircleDot size={12} />
-                <span>Points</span>
-              </div>
-              <div className="text-2xl font-bold text-indigo-400">{points.length}</div>
+            <div className="bg-white/5 rounded-xl p-2 text-center">
+              <div className="text-white/50 text-[10px] mb-0.5">Points</div>
+              <div className="text-xl font-bold text-indigo-400">{points.length}</div>
+            </div>
+            <div className="bg-white/5 rounded-xl p-2 text-center">
+              <div className="text-white/50 text-[10px] mb-0.5">2-Ptrs</div>
+              <div className="text-xl font-bold text-purple-400">{twoPointers.length}</div>
             </div>
           </div>
 
@@ -377,7 +415,7 @@ export default function AnalyticsDashboard() {
           <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
             <Activity size={20} className="text-white" />
             <span>Possession & Territory</span>
-            <span className="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full ml-2">Staple</span>
+            <ChartBadge />
           </h3>
 
           {/* Possession Bar */}
@@ -469,7 +507,7 @@ export default function AnalyticsDashboard() {
         canPin={canPin}
         onDismissChart={handleDismissChart}
         onPinChart={pinChart}
-        onUnpinChart={unpinChart}
+        onUnpinChart={handleUnpinChart}
         onRegenerateAll={fetchAICharts}
         isPinned={isPinned}
         aiChartsSummary={aiChartsSummary}

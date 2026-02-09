@@ -387,6 +387,7 @@ export interface ShotLocation {
   event_type: string;
   is_score: boolean;
   team: string;
+  match_id: string;
 }
 
 export interface PossessionZone {
