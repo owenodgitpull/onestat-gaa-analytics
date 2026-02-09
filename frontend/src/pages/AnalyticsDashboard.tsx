@@ -163,10 +163,13 @@ export default function AnalyticsDashboard() {
     ? shot_locations
     : shot_locations.filter(s => s.team === shotFilter)
 
-  // Filter shots by match range
+  // Filter shots by match range (graceful fallback if match_id not available)
+  const hasMatchIds = teamFilteredShots.length > 0 && !!teamFilteredShots[0].match_id
   const recentMatchIds = (() => {
-    if (shotMatchRange === 'all') return null
+    if (shotMatchRange === 'all' || !hasMatchIds) return null
     const count = parseInt(shotMatchRange)
+    // match_trends is ordered newest-first; if range >= total matches, show all
+    if (count >= match_trends.length) return null
     const recentMatches = match_trends.slice(0, count)
     return new Set(recentMatches.map(m => m.match_id))
   })()
@@ -325,22 +328,30 @@ export default function AnalyticsDashboard() {
                   </button>
                 ))}
               </div>
-              {/* Match range filter */}
-              <div className="flex gap-1">
-                {([['all', 'All Matches'], ['5', 'Last 5'], ['3', 'Last 3']] as const).map(([val, label]) => (
-                  <button
-                    key={val}
-                    onClick={() => setShotMatchRange(val as 'all' | '3' | '5')}
-                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
-                      shotMatchRange === val
-                        ? 'bg-white/20 text-white'
-                        : 'text-white/40 hover:text-white/60'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              {/* Match range filter — only show when enough matches & match_id available */}
+              {hasMatchIds && match_trends.length > 3 && (
+                <div className="flex gap-1">
+                  {([['all', 'All Matches'], ['5', 'Last 5'], ['3', 'Last 3']] as const).map(([val, label]) => {
+                    const count = val === 'all' ? Infinity : parseInt(val)
+                    const disabled = count >= match_trends.length && val !== 'all'
+                    return (
+                      <button
+                        key={val}
+                        onClick={() => !disabled && setShotMatchRange(val as 'all' | '3' | '5')}
+                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                          disabled
+                            ? 'text-white/20 cursor-default'
+                            : shotMatchRange === val
+                              ? 'bg-white/20 text-white'
+                              : 'text-white/40 hover:text-white/60'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
