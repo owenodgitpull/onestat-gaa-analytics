@@ -935,9 +935,35 @@ function formatEventDescription(event: any, players: any[], opponentName: string
     case 'unforced_error':
       return `${playerName} made an unforced error in ${area}`
     case 'kickout_won':
-      return `${playerName} won kickout in ${area}`
+      return `${playerName} won kickout clean in ${area}`
     case 'kickout_lost':
-      return `Kickout lost to ${opponentName} in ${area}`
+      return `Kickout lost clean to ${opponentName} in ${area}`
+    case 'breaking_ball_won':
+      return isDungloe
+        ? `${playerName} won breaking ball in ${area}`
+        : `${opponentName} won breaking ball in ${area}`
+    case 'breaking_ball_lost':
+      return isDungloe
+        ? `Dungloe lost breaking ball in ${area}`
+        : `${opponentName} lost breaking ball in ${area}`
+    // Detailed kickout types — own kickout (Dungloe kicking out)
+    case 'own_kickout_dungloe_won':
+      return `${playerName} won own kickout clean in ${area}`
+    case 'own_kickout_opposition_won':
+      return `${opponentName} won Dungloe's kickout clean in ${area}`
+    case 'own_kickout_dungloe_won_break':
+      return `${playerName} won breaking ball from own kickout in ${area}`
+    case 'own_kickout_opposition_won_break':
+      return `${opponentName} won breaking ball from Dungloe's kickout in ${area}`
+    // Detailed kickout types — opponent kickout (Opposition kicking out)
+    case 'opp_kickout_dungloe_won':
+      return `${playerName} won ${opponentName} kickout clean in ${area}`
+    case 'opp_kickout_opposition_won':
+      return `${opponentName} won own kickout clean in ${area}`
+    case 'opp_kickout_dungloe_won_break':
+      return `${playerName} won breaking ball from ${opponentName} kickout in ${area}`
+    case 'opp_kickout_opposition_won_break':
+      return `${opponentName} won breaking ball from own kickout in ${area}`
     case 'foul_committed':
       return `${playerName} committed a foul in ${area}`
     case 'yellow_card':
@@ -965,7 +991,7 @@ function EventItem({ event, players, opponentName }: { event: any; players: any[
     if (['turnover_won', 'turnover_lost', 'unforced_error'].includes(eventType)) {
       return 'border-l-orange-500 bg-orange-500/10'
     }
-    if (['kickout_won', 'kickout_lost'].includes(eventType)) {
+    if (eventType.includes('kickout') || eventType.includes('breaking_ball')) {
       return 'border-l-cyan-500 bg-cyan-500/10'
     }
     return 'border-l-slate-500 bg-slate-500/10'

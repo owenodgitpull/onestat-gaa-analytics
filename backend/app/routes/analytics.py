@@ -107,6 +107,74 @@ class DashboardData(BaseModel):
     match_trends: List[MatchTrend]
 
 
+# Season Dashboard schemas
+class PossessionFunnelTotals(BaseModel):
+    possessions: int
+    attacks: int
+    shots: int
+    scores: int
+
+class PossessionFunnelMatch(BaseModel):
+    match_id: str
+    opponent: str
+    date: str
+    possessions: int
+    attacks: int
+    shots: int
+    scores: int
+
+class PossessionFunnelData(BaseModel):
+    season_totals: PossessionFunnelTotals
+    opponent_totals: PossessionFunnelTotals
+    per_match: List[PossessionFunnelMatch]
+    attack_rate: float
+    shot_rate: float
+    score_rate: float
+    opponent_attack_rate: float
+    opponent_shot_rate: float
+    opponent_score_rate: float
+
+class KickoutTrendMatch(BaseModel):
+    match_id: str
+    opponent: str
+    date: str
+    won_clean: int
+    won_break: int
+    lost: int
+    won_clean_pct: float
+    won_break_pct: float
+    lost_pct: float
+
+class TurnoverSourcePlayer(BaseModel):
+    player_id: str
+    player_name: str
+    interceptions: int
+    blocks: int
+    turnovers_won: int
+    total: int
+
+class RedZonePlayer(BaseModel):
+    player_id: str
+    player_name: str
+    latest_dsl: float
+    avg_dsl_4wk: float
+    pct_above: float
+    last_match_opponent: str
+
+class WorkhorseRadarData(BaseModel):
+    metrics: List[str]
+    season_avg: List[float]
+    last_game: List[float]
+    last_game_opponent: str
+
+class SeasonDashboardData(BaseModel):
+    possession_funnel: PossessionFunnelData
+    kickout_trends: List[KickoutTrendMatch]
+    turnover_leaderboard: List[TurnoverSourcePlayer]
+    red_zone_players: List[RedZonePlayer]
+    workhorse_radar: WorkhorseRadarData
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -486,3 +554,26 @@ async def get_player_match_stats(
     # Sort by match date descending
     result.sort(key=lambda x: x.match_date, reverse=True)
     return result
+
+
+@router.get("/season-dashboard", response_model=SeasonDashboardData)
+async def get_season_dashboard(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get season dashboard data for canonical charts.
+
+    Returns possession funnel, kickout trends, turnover leaderboard,
+    red zone players, and workhorse radar data.
+    """
+    from app.services.season_dashboard_service import SeasonDashboardService
+
+    data = await SeasonDashboardService.get_all(db)
+
+    return SeasonDashboardData(
+        possession_funnel=PossessionFunnelData(**data["possession_funnel"]),
+        kickout_trends=[KickoutTrendMatch(**k) for k in data["kickout_trends"]],
+        turnover_leaderboard=[TurnoverSourcePlayer(**t) for t in data["turnover_leaderboard"]],
+        red_zone_players=[RedZonePlayer(**r) for r in data["red_zone_players"]],
+        workhorse_radar=WorkhorseRadarData(**data["workhorse_radar"]),
+    )

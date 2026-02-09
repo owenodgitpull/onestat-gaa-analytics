@@ -18,6 +18,7 @@ from app.services.ai.chart_engine import (
     generate_custom_insight,
     generate_dashboard_charts,
     generate_single_chart,
+    generate_outlier_suggestions,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "generate_custom_insight",
     "generate_dashboard_charts",
     "generate_single_chart",
+    "generate_outlier_suggestions",
 ]

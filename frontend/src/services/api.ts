@@ -414,9 +414,88 @@ export interface DashboardData {
   match_trends: MatchTrend[];
 }
 
+// Season Dashboard types
+export interface PossessionFunnelTotals {
+  possessions: number;
+  attacks: number;
+  shots: number;
+  scores: number;
+}
+
+export interface PossessionFunnelMatch {
+  match_id: string;
+  opponent: string;
+  date: string;
+  possessions: number;
+  attacks: number;
+  shots: number;
+  scores: number;
+}
+
+export interface PossessionFunnelData {
+  season_totals: PossessionFunnelTotals;
+  opponent_totals: PossessionFunnelTotals;
+  per_match: PossessionFunnelMatch[];
+  attack_rate: number;
+  shot_rate: number;
+  score_rate: number;
+  opponent_attack_rate: number;
+  opponent_shot_rate: number;
+  opponent_score_rate: number;
+}
+
+export interface KickoutTrendMatch {
+  match_id: string;
+  opponent: string;
+  date: string;
+  won_clean: number;
+  won_break: number;
+  lost: number;
+  won_clean_pct: number;
+  won_break_pct: number;
+  lost_pct: number;
+}
+
+export interface TurnoverSourcePlayer {
+  player_id: string;
+  player_name: string;
+  interceptions: number;
+  blocks: number;
+  turnovers_won: number;
+  total: number;
+}
+
+export interface RedZonePlayer {
+  player_id: string;
+  player_name: string;
+  latest_dsl: number;
+  avg_dsl_4wk: number;
+  pct_above: number;
+  last_match_opponent: string;
+}
+
+export interface WorkhorseRadarData {
+  metrics: string[];
+  season_avg: number[];
+  last_game: number[];
+  last_game_opponent: string;
+}
+
+export interface SeasonDashboardData {
+  possession_funnel: PossessionFunnelData;
+  kickout_trends: KickoutTrendMatch[];
+  turnover_leaderboard: TurnoverSourcePlayer[];
+  red_zone_players: RedZonePlayer[];
+  workhorse_radar: WorkhorseRadarData;
+}
+
 const analyticsAPI = {
   getDashboard: async (): Promise<DashboardData> => {
     return fetchAPI<DashboardData>('/analytics/dashboard');
+  },
+
+  getSeasonDashboard: async (): Promise<SeasonDashboardData> => {
+    return fetchAPI<SeasonDashboardData>('/analytics/season-dashboard');
   },
 
   getSeasonSummary: async (): Promise<SeasonSummary> => {
@@ -605,6 +684,25 @@ export interface SingleChartResponse {
   error?: string;
 }
 
+export interface OutlierSuggestion {
+  id: string;
+  title: string;
+  teaser: string;
+  type: 'line' | 'bar' | 'area' | 'pie';
+  insight: string;
+  data: Record<string, unknown>[];
+  config: ChartConfig;
+  outlier_category: string;
+  outlier_description: string;
+}
+
+export interface OutlierSuggestionsResponse {
+  success: boolean;
+  suggestions: OutlierSuggestion[];
+  error?: string;
+  generated_at?: string;
+}
+
 const aiAPI = {
   analyzeMatch: async (matchId: string, question?: string): Promise<AnalysisResponse> => {
     return fetchAPI<AnalysisResponse>('/ai/analyze-match', {
@@ -704,6 +802,10 @@ const aiAPI = {
       method: 'POST',
       body: JSON.stringify({ excluded_chart_ids: excludedChartIds }),
     });
+  },
+
+  getOutlierSuggestions: async (): Promise<OutlierSuggestionsResponse> => {
+    return fetchAPI<OutlierSuggestionsResponse>('/ai/outlier-suggestions');
   },
 };
 

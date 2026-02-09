@@ -26,6 +26,7 @@ from app.services.ai import (
     generate_custom_insight,
     generate_dashboard_charts,
     generate_single_chart,
+    generate_outlier_suggestions,
     analyze_match_gps,
 )
 
@@ -152,6 +153,13 @@ class SingleChartResponse(BaseModel):
     error: Optional[str] = None
 
 
+class OutlierSuggestionsResponse(BaseModel):
+    success: bool
+    suggestions: List[dict] = []
+    error: Optional[str] = None
+    generated_at: Optional[str] = None
+
+
 class GPSAnalysisRequest(BaseModel):
     gps_data: List[dict]
     match_info: Optional[dict] = None
@@ -249,6 +257,7 @@ async def chat_endpoint(
 @router.get("/post-match-report/{match_id}", response_model=PostMatchReportResponse)
 async def post_match_report_endpoint(
     match_id: str,
+    force_regenerate: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -260,9 +269,12 @@ async def post_match_report_endpoint(
     - Player ratings
     - Tactical analysis
     - Training recommendations
+
+    Query params:
+    - force_regenerate: If true, regenerate even if cached (e.g. after GPS upload)
     """
     try:
-        report = await generate_post_match_report(db, match_id)
+        report = await generate_post_match_report(db, match_id, force_regenerate=force_regenerate)
         return PostMatchReportResponse(**report)
     except Exception as e:
         logger.error(f"Report generation failed: {str(e)}", exc_info=True)
@@ -440,6 +452,28 @@ async def generate_replacement_chart_endpoint(
     except Exception as e:
         logger.error(f"Replacement chart failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chart generation failed: {str(e)}")
+
+
+@router.get("/outlier-suggestions", response_model=OutlierSuggestionsResponse)
+async def get_outlier_suggestions_endpoint(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Detect seasonal outliers and generate AI chart suggestions.
+
+    Scans season data for statistical anomalies (scoring spikes,
+    turnover surges, kickout rate shifts) then uses AI to generate
+    Recharts chart specs for each outlier. The manager can view
+    each suggestion and pin it to the dashboard.
+    """
+    try:
+        from app.services.season_dashboard_service import SeasonDashboardService
+        outliers = await SeasonDashboardService.detect_season_outliers(db)
+        result = await generate_outlier_suggestions(db, outliers)
+        return OutlierSuggestionsResponse(**result)
+    except Exception as e:
+        logger.error(f"Outlier suggestions failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Outlier suggestions failed: {str(e)}")
 
 
 @router.post("/analyze-gps", response_model=GPSAnalysisResponse)

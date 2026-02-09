@@ -739,17 +739,17 @@ export default function MatchRecording() {
       'our_unforced_error': 'unforced_error',   // Our player's mistake
       'opp_unforced_error': 'unforced_error',   // Their player's mistake
 
-      // Kickouts - Clear mapping: "Dungloe Won" or "Opposition Won"
-      'own_kickout_dungloe_won': 'kickout_won',           // Dungloe's kickout, Dungloe won
-      'own_kickout_opposition_won': 'kickout_lost',       // Dungloe's kickout, Opposition won (Dungloe lost)
-      'opp_kickout_dungloe_won': 'kickout_won',           // Opp's kickout, Dungloe won
-      'opp_kickout_opposition_won': 'kickout_won',        // Opp's kickout, Opposition won
+      // Kickouts — pass through detailed types to backend
+      'own_kickout_dungloe_won': 'own_kickout_dungloe_won',
+      'own_kickout_opposition_won': 'own_kickout_opposition_won',
+      'opp_kickout_dungloe_won': 'opp_kickout_dungloe_won',
+      'opp_kickout_opposition_won': 'opp_kickout_opposition_won',
 
-      // Breaking balls - same logic
-      'own_kickout_dungloe_won_break': 'breaking_ball_won',      // Dungloe won break
-      'own_kickout_opposition_won_break': 'breaking_ball_won',   // Opposition won break
-      'opp_kickout_dungloe_won_break': 'breaking_ball_won',      // Dungloe won break
-      'opp_kickout_opposition_won_break': 'breaking_ball_won',   // Opposition won break
+      // Breaking balls — pass through detailed types to backend
+      'own_kickout_dungloe_won_break': 'own_kickout_dungloe_won_break',
+      'own_kickout_opposition_won_break': 'own_kickout_opposition_won_break',
+      'opp_kickout_dungloe_won_break': 'opp_kickout_dungloe_won_break',
+      'opp_kickout_opposition_won_break': 'opp_kickout_opposition_won_break',
 
       // Frees
       'point_free': 'point_free',
@@ -1510,6 +1510,76 @@ export default function MatchRecording() {
     return `${minute}:${seconds.toString().padStart(2, '0')}`
   }
 
+  // Dynamic status label — shows what's currently being tracked
+  const getStatusLabel = (): { text: string; subtext: string; bg: string; accent: string } => {
+    if (matchPhase === 'not_started') {
+      return { text: 'Match not started', subtext: 'Select lineup and start first half', bg: 'from-slate-600/20 to-slate-700/20 border-white/10', accent: 'text-white/50' }
+    }
+    if (matchPhase === 'half_time') {
+      return { text: 'Half Time', subtext: 'Start second half to continue', bg: 'from-amber-600/20 to-orange-600/20 border-amber-500/40', accent: 'text-amber-400' }
+    }
+    if (matchPhase === 'finished') {
+      return { text: 'Match Finished', subtext: 'Recording complete', bg: 'from-slate-600/20 to-slate-700/20 border-white/10', accent: 'text-white/50' }
+    }
+
+    // Special states take priority
+    if (selectingFoulPlayer) {
+      return { text: 'Select Player Who Fouled', subtext: 'Tap the Dungloe player who committed the foul', bg: 'from-red-600/20 to-rose-600/20 border-red-500/40', accent: 'text-red-400' }
+    }
+    if (awaitingKickout && !pendingKickoutEvent) {
+      return { text: 'Awaiting Kickout', subtext: 'Select kickout outcome below', bg: 'from-amber-600/20 to-orange-600/20 border-amber-500/40', accent: 'text-amber-400' }
+    }
+    if (pendingKickoutEvent) {
+      return { text: 'Kickout — Tap Landing Position', subtext: 'Tap the pitch where the ball lands', bg: 'from-amber-600/20 to-orange-600/20 border-amber-500/40', accent: 'text-amber-400' }
+    }
+    if (pendingFreeKick) {
+      const freeTeam = ballPosition.team === PossessionTeam.DUNGLOE ? 'Dungloe' : matchDisplay.opponent
+      return { text: `Free Kick — ${freeTeam}`, subtext: 'Select outcome or move ball for short free', bg: 'from-cyan-600/20 to-blue-600/20 border-cyan-500/40', accent: 'text-cyan-400' }
+    }
+    if (pending45) {
+      return { text: '45m Free — Dungloe', subtext: 'Select outcome or move ball to cancel', bg: 'from-cyan-600/20 to-blue-600/20 border-cyan-500/40', accent: 'text-cyan-400' }
+    }
+
+    // Normal play — derive zone and side from ball position
+    const isDungloe = ballPosition.team === PossessionTeam.DUNGLOE
+    const teamName = isDungloe ? 'Dungloe' : matchDisplay.opponent
+
+    // attackingProgress: 0 = deep in Dungloe's end, 100 = deep in opponent's end
+    const attackingProgress = dungloeAttackingRight ? ballPosition.x : (100 - ballPosition.x)
+
+    // Side of pitch from team-in-possession's perspective
+    // When facing right: top=left, bottom=right. When facing left: top=right, bottom=left.
+    const y = ballPosition.y
+    const facingRight = isDungloe ? dungloeAttackingRight : !dungloeAttackingRight
+    let side = ''
+    if (y < 33) side = facingRight ? ', left side' : ', right side'
+    else if (y > 67) side = facingRight ? ', right side' : ', left side'
+
+    let text: string
+    if (isDungloe) {
+      if (attackingProgress >= 78) text = `Dungloe inside the 21m line${side}`
+      else if (attackingProgress >= 55) text = `Dungloe inside the 45m line${side}`
+      else if (attackingProgress >= 45) text = `Dungloe around midfield${side}`
+      else if (attackingProgress >= 22) text = `Dungloe in their own half${side}`
+      else text = `Dungloe deep in their own half${side}`
+    } else {
+      if (attackingProgress <= 22) text = `${teamName} inside Dungloe's 21m line${side}`
+      else if (attackingProgress <= 45) text = `${teamName} inside Dungloe's 45m line${side}`
+      else if (attackingProgress <= 55) text = `${teamName} around midfield${side}`
+      else if (attackingProgress <= 78) text = `${teamName} in their own half${side}`
+      else text = `${teamName} deep in their own half${side}`
+    }
+
+    const bg = isDungloe
+      ? 'from-indigo-600/20 to-blue-600/20 border-indigo-500/40'
+      : 'from-red-600/20 to-rose-600/20 border-red-500/40'
+    const accent = isDungloe ? 'text-indigo-400' : 'text-red-400'
+
+    return { text, subtext: '', bg, accent }
+  }
+
+  const statusLabel = getStatusLabel()
+
   return (
     <div className="min-h-screen pb-8">
       {/* Loading State - Only on initial load, not refetches */}
@@ -1650,6 +1720,19 @@ export default function MatchRecording() {
                   </div>
                 </div>
               )}
+
+              {/* Dynamic Status Label */}
+              <div className={`rounded-xl px-4 py-3 mb-4 bg-gradient-to-r ${statusLabel.bg} border backdrop-blur-sm transition-all duration-300`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className={`text-sm font-bold ${statusLabel.accent}`}>{statusLabel.text}</span>
+                    {statusLabel.subtext && <span className="text-xs text-white/50 ml-2">{statusLabel.subtext}</span>}
+                  </div>
+                  {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !pending45 && !selectingFoulPlayer && (
+                    <div className={`w-2 h-2 rounded-full ${ballPosition.team === PossessionTeam.DUNGLOE ? 'bg-indigo-400' : 'bg-red-400'} animate-pulse`} />
+                  )}
+                </div>
+              </div>
 
               {/* Pitch */}
               <div className="glass-card p-6 relative mb-4">

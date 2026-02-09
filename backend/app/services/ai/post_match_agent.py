@@ -149,8 +149,16 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
     summary_json = await get_match_summary(db, match_id)
     summary = json.loads(summary_json)
 
+    # Check if GPS data exists but isn't in the cached report — auto-regenerate
+    from app.models.match_gps import MatchGPSData
+    gps_check = await db.execute(
+        select(MatchGPSData.id).where(MatchGPSData.match_id == match_uuid).limit(1)
+    )
+    has_gps_data = gps_check.scalar_one_or_none() is not None
+    needs_gps_regen = has_gps_data and not match.gps_analysis_included
+
     # Check if we can use cached analysis
-    if match.ai_analysis and not force_regenerate:
+    if match.ai_analysis and not force_regenerate and not needs_gps_regen:
         logger.info(f"Using cached AI analysis for match {match_id} (version {match.ai_analysis_version})")
 
         # Generate chart insights (these are quick and can be regenerated)
@@ -167,32 +175,34 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
         }
 
     # Generate new analysis
-    logger.info(f"Generating new AI analysis for match {match_id} (force={force_regenerate})")
+    logger.info(f"Generating new AI analysis for match {match_id} (force={force_regenerate}, gps_regen={needs_gps_regen})")
 
-    # Check if GPS data exists for richer analysis
-    from app.models.match_gps import MatchGPSData
-    gps_query = select(MatchGPSData).where(MatchGPSData.match_id == match_uuid)
+    # Fetch full GPS data with player names (eager join to avoid async lazy-load)
+    from app.models import Player
+    gps_query = (
+        select(MatchGPSData, Player.name)
+        .join(Player, MatchGPSData.player_id == Player.id, isouter=True)
+        .where(MatchGPSData.match_id == match_uuid)
+    )
     gps_result = await db.execute(gps_query)
-    gps_data = gps_result.scalars().all()
-    has_gps = len(gps_data) > 0
+    gps_rows = gps_result.all()
+    has_gps = len(gps_rows) > 0
 
     # Build prompt with GPS context if available
     gps_context = ""
     if has_gps:
         # Calculate team totals and averages
-        total_distance = sum(g.total_distance_m or 0 for g in gps_data)
-        total_hsr = sum(g.high_speed_running_m or 0 for g in gps_data)
-        total_sprints = sum(g.sprint_count or 0 for g in gps_data)
-        total_hmld = sum(g.hml_distance_m or 0 for g in gps_data)
-        avg_distance = total_distance / len(gps_data) if gps_data else 0
-        avg_sprints = total_sprints / len(gps_data) if gps_data else 0
+        total_distance = sum(g.total_distance_m or 0 for g, _ in gps_rows)
+        total_hsr = sum(g.high_speed_running_m or 0 for g, _ in gps_rows)
+        total_sprints = sum(g.sprint_count or 0 for g, _ in gps_rows)
+        total_hmld = sum(g.hml_distance_m or 0 for g, _ in gps_rows)
+        avg_distance = total_distance / len(gps_rows) if gps_rows else 0
+        avg_sprints = total_sprints / len(gps_rows) if gps_rows else 0
 
         # Build detailed player GPS data
         gps_player_details = []
-        for g in gps_data:
-            player_name = "Unknown"
-            if g.player:
-                player_name = g.player.name
+        for g, player_name in gps_rows:
+            player_name = player_name or "Unknown"
             distance_km = (g.total_distance_m or 0) / 1000
             hsr_m = g.high_speed_running_m or 0
             sprints = g.sprint_count or 0
@@ -218,7 +228,7 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
 
 GPS PERFORMANCE DATA (STATSports):
 TEAM TOTALS:
-  - Total Distance: {total_distance/1000:.1f}km across {len(gps_data)} players
+  - Total Distance: {total_distance/1000:.1f}km across {len(gps_rows)} players
   - Total High Speed Running: {total_hsr/1000:.1f}km
   - Total High Metabolic Load Distance: {total_hmld/1000:.1f}km
   - Total Sprints: {total_sprints}

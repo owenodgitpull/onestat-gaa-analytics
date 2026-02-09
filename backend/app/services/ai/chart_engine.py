@@ -222,9 +222,12 @@ The database contains:
 - players: id, name, jersey_number, position
 
 Event types: goal, point, two_point, wide, short, saved, turnover_won, turnover_lost,
-unforced_error, kickout_won, kickout_lost, yellow_card, black_card, red_card,
-free_won, free_conceded, point_free, two_point_free, wide_free, forty_five,
-forty_five_missed, block, interception, substitution
+unforced_error, kickout_won, kickout_lost, breaking_ball_won, breaking_ball_lost,
+own_kickout_dungloe_won, own_kickout_opposition_won, own_kickout_dungloe_won_break,
+own_kickout_opposition_won_break, opp_kickout_dungloe_won, opp_kickout_opposition_won,
+opp_kickout_dungloe_won_break, opp_kickout_opposition_won_break,
+yellow_card, black_card, red_card, free_won, free_conceded, point_free,
+two_point_free, wide_free, forty_five, forty_five_missed, block, interception, substitution
 
 ## Current Data State
 {json.dumps(data_summary, indent=2)}
@@ -671,6 +674,113 @@ IMPORTANT:
             "success": False,
             "error": str(e),
             "charts": []
+        }
+
+
+async def generate_outlier_suggestions(
+    db: AsyncSession,
+    outliers: list[dict],
+    max_suggestions: int = 3,
+) -> dict:
+    """
+    Given a list of detected seasonal outliers, use AI to generate
+    Recharts-compatible chart specs that visualise each one.
+    Returns {success, suggestions: [{id, outlier, chart_spec}]}.
+    """
+    if not outliers:
+        return {"success": True, "suggestions": []}
+
+    # Trim to max
+    outliers_to_process = outliers[:max_suggestions]
+
+    # Get RAG context
+    try:
+        rag_context = await RAGService.get_context_for_query(
+            db, "GAA analytics seasonal trends outliers performance spikes",
+            context_type='analytics', max_tokens=1000
+        )
+    except Exception:
+        rag_context = ""
+
+    system_prompt = f"""You are an expert GAA analytics designer for Dungloe GAA club.
+
+You have been given seasonal outliers — statistical anomalies detected in the team's data.
+For each outlier, generate a Recharts-compatible chart specification that best visualises it.
+
+{GAA_ESSENTIALS}
+
+## Knowledge Base Context
+{rag_context}
+
+## Response Format
+Return a JSON object:
+{{
+    "suggestions": [
+        {{
+            "id": "outlier_<index>",
+            "title": "Short chart title (e.g. 'Sean O'Donnell Scoring Surge')",
+            "teaser": "One line preview text for the suggestion card",
+            "type": "bar|line|area|pie",
+            "insight": "1-2 sentence AI insight about this outlier and what it means tactically",
+            "data": [...],
+            "config": {{
+                "xKey": "...",
+                "dataKeys": ["..."],
+                "colors": ["#hex"],
+                "showLegend": true/false,
+                "stacked": false
+            }}
+        }}
+    ]
+}}
+
+IMPORTANT:
+- Use the ACTUAL data provided in each outlier's "data" field
+- Make chart titles concise and specific (player name + what happened)
+- Keep teaser text under 80 characters
+- Insights should be actionable for a GAA manager
+"""
+
+    outliers_text = json.dumps(outliers_to_process, indent=2, default=str)
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=3000,
+            system=system_prompt,
+            messages=[{
+                "role": "user",
+                "content": f"Generate chart specs for these seasonal outliers:\n\n{outliers_text}"
+            }]
+        )
+
+        response_text = response.content[0].text
+
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            result = json.loads(json_match.group())
+            suggestions = result.get("suggestions", [])
+
+            # Attach the original outlier data to each suggestion
+            for i, s in enumerate(suggestions):
+                if i < len(outliers_to_process):
+                    s["outlier_category"] = outliers_to_process[i].get("category", "")
+                    s["outlier_description"] = outliers_to_process[i].get("description", "")
+
+            return {
+                "success": True,
+                "suggestions": suggestions,
+                "generated_at": datetime.now().isoformat(),
+            }
+        else:
+            raise ValueError("No JSON found in response")
+
+    except Exception as e:
+        logger.error(f"Outlier suggestion generation failed: {e}")
+        return {
+            "success": False,
+            "suggestions": [],
+            "error": str(e),
         }
 
 

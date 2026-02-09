@@ -31,11 +31,22 @@ class EventType(enum.Enum):
     # Unforced Errors - Own mistakes (NO opposition pressure)
     UNFORCED_ERROR = "unforced_error"  # Player's own mistake (drop, bad pass)
     
-    # Kickouts
-    KICKOUT_WON = "kickout_won"  # Won kickout
-    KICKOUT_LOST = "kickout_lost"  # Lost kickout
-    BREAKING_BALL_WON = "breaking_ball_won"  # Won breaking ball after kickout
-    BREAKING_BALL_LOST = "breaking_ball_lost"  # Lost breaking ball after kickout
+    # Kickouts (legacy simplified types — kept for backward compat with old data)
+    KICKOUT_WON = "kickout_won"
+    KICKOUT_LOST = "kickout_lost"
+    BREAKING_BALL_WON = "breaking_ball_won"
+    BREAKING_BALL_LOST = "breaking_ball_lost"
+
+    # Kickouts (detailed — own kickout = Dungloe kicking out)
+    OWN_KICKOUT_DUNGLOE_WON = "own_kickout_dungloe_won"
+    OWN_KICKOUT_OPPOSITION_WON = "own_kickout_opposition_won"
+    OWN_KICKOUT_DUNGLOE_WON_BREAK = "own_kickout_dungloe_won_break"
+    OWN_KICKOUT_OPPOSITION_WON_BREAK = "own_kickout_opposition_won_break"
+    # Kickouts (detailed — opp kickout = Opposition kicking out)
+    OPP_KICKOUT_DUNGLOE_WON = "opp_kickout_dungloe_won"
+    OPP_KICKOUT_OPPOSITION_WON = "opp_kickout_opposition_won"
+    OPP_KICKOUT_DUNGLOE_WON_BREAK = "opp_kickout_dungloe_won_break"
+    OPP_KICKOUT_OPPOSITION_WON_BREAK = "opp_kickout_opposition_won_break"
     
     # Cards
     YELLOW_CARD = "yellow_card"  # Player booked

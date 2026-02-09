@@ -315,10 +315,20 @@ class MatchService:
                 # Unforced error counts as possession lost
                 stats[f"{team_prefix}_turnovers_lost"] += 1
             
-            # Kickouts
-            elif event.event_type == EventType.KICKOUT_WON:
+            # Kickouts (legacy + detailed types)
+            elif event.event_type in (
+                EventType.KICKOUT_WON,
+                EventType.OWN_KICKOUT_DUNGLOE_WON, EventType.OPP_KICKOUT_DUNGLOE_WON,
+                EventType.BREAKING_BALL_WON,
+                EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK, EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK,
+            ):
                 stats[f"{team_prefix}_kickouts_won"] += 1
-            elif event.event_type == EventType.KICKOUT_LOST:
+            elif event.event_type in (
+                EventType.KICKOUT_LOST,
+                EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
+                EventType.BREAKING_BALL_LOST,
+                EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+            ):
                 stats[f"{team_prefix}_kickouts_lost"] += 1
             
             # Cards

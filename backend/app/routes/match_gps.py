@@ -271,6 +271,12 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
             logger.info(f"Match GPS upload processed: {upload_id}, {upload_log.extracted_player_count} players committed")
 
             # Trigger workload analysis for players with GPS data
+            # Use the match date so the snapshot is created for the correct day
+            match_query = select(Match).where(Match.id == match_id)
+            match_result = await db.execute(match_query)
+            match_obj = match_result.scalar_one_or_none()
+            match_date = match_obj.match_date if match_obj else None
+
             if isinstance(extracted_data, dict) and "players" in extracted_data:
                 for player_data in extracted_data["players"]:
                     gps_player_name = player_data.get("name", "")
@@ -278,7 +284,8 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
                     if player:
                         try:
                             await WorkloadAnalysisService.trigger_analysis_for_player(
-                                db, player.id, "match_gps_upload"
+                                db, player.id, "match_gps_upload",
+                                for_date=match_date
                             )
                         except Exception as e:
                             logger.error(f"Workload analysis failed for {gps_player_name}: {e}")

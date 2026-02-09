@@ -25,12 +25,16 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts'
-import { X, RefreshCw, Lightbulb } from 'lucide-react'
+import { X, RefreshCw, Lightbulb, Pin, PinOff } from 'lucide-react'
 import type { AIChartSpec } from '@/services/api'
 
 interface DynamicChartProps {
   chart: AIChartSpec
   onDismiss?: (chartId: string) => void
+  onPin?: (chart: AIChartSpec) => void
+  onUnpin?: (chartId: string) => void
+  isPinned?: boolean
+  canPin?: boolean
   isLoading?: boolean
 }
 
@@ -46,7 +50,7 @@ const DEFAULT_COLORS = [
   '#ec4899', // pink
 ]
 
-export default function DynamicChart({ chart, onDismiss, isLoading }: DynamicChartProps) {
+export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinned, canPin, isLoading }: DynamicChartProps) {
   const [isHovered, setIsHovered] = useState(false)
 
   const { type, title, insight, data, config } = chart
@@ -243,26 +247,59 @@ export default function DynamicChart({ chart, onDismiss, isLoading }: DynamicCha
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Header with title and dismiss button */}
+      {/* Header with title and action buttons */}
       <div className="flex items-start justify-between mb-3">
         <h3 className="text-sm font-semibold text-white">{title}</h3>
-        {onDismiss && (
-          <button
-            onClick={() => onDismiss(chart.id)}
-            className={`p-1.5 rounded-lg transition-all duration-200 ${
-              isHovered
-                ? 'opacity-100 bg-white/10 hover:bg-red-500/30 text-white/70 hover:text-red-400'
-                : 'opacity-0'
-            }`}
-            title="Dismiss chart and generate a new one"
-          >
-            {isLoading ? (
-              <RefreshCw size={14} className="animate-spin" />
-            ) : (
-              <X size={14} />
-            )}
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {/* Pin / Unpin button */}
+          {isPinned && onUnpin ? (
+            <button
+              onClick={() => onUnpin(chart.id)}
+              className={`p-1.5 rounded-lg transition-all duration-200 ${
+                isHovered
+                  ? 'opacity-100 bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'
+                  : 'opacity-0'
+              }`}
+              title="Unpin chart"
+            >
+              <PinOff size={14} />
+            </button>
+          ) : onPin ? (
+            <button
+              onClick={() => onPin(chart)}
+              disabled={!canPin}
+              className={`p-1.5 rounded-lg transition-all duration-200 ${
+                isHovered
+                  ? canPin
+                    ? 'opacity-100 bg-white/10 hover:bg-indigo-500/30 text-white/70 hover:text-indigo-400'
+                    : 'opacity-100 bg-white/5 text-white/30 cursor-not-allowed'
+                  : 'opacity-0'
+              }`}
+              title={canPin ? 'Pin chart to dashboard' : 'Max 4 pinned charts'}
+            >
+              <Pin size={14} />
+            </button>
+          ) : null}
+
+          {/* Dismiss button */}
+          {onDismiss && (
+            <button
+              onClick={() => onDismiss(chart.id)}
+              className={`p-1.5 rounded-lg transition-all duration-200 ${
+                isHovered
+                  ? 'opacity-100 bg-white/10 hover:bg-red-500/30 text-white/70 hover:text-red-400'
+                  : 'opacity-0'
+              }`}
+              title="Dismiss chart and generate a new one"
+            >
+              {isLoading ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <X size={14} />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Chart */}

@@ -305,7 +305,7 @@ async def get_match_summary(db: AsyncSession, match_id: str) -> str:
     opp_accuracy = (opp_scores / opp_total_shots * 100) if opp_total_shots > 0 else 0
 
     # Calculate possession from actual PossessionEvent data (same as match_service.py)
-    from app.models.possession import PossessionEvent, PossessionTeam
+    from app.models.possession_event import PossessionEvent, PossessionTeam
     possession_result = await db.execute(
         select(PossessionEvent).where(PossessionEvent.match_id == match_id)
     )

@@ -52,6 +52,11 @@ const getEventColor = (event: PitchEvent): string => {
     case 'opp_unforced_error':
       return '#ec4899'  // pink
     default:
+      // Kickout events — color by who won
+      if (event.event_type.includes('kickout') || event.event_type.includes('breaking_ball')) {
+        const dungloeWon = event.event_type.includes('dungloe_won') || event.event_type === 'kickout_won'
+        return dungloeWon ? '#06b6d4' : '#f97316'  // cyan for Dungloe won, orange for lost
+      }
       return '#94a3b8'  // slate
   }
 }

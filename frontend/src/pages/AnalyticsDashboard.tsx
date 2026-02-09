@@ -13,17 +13,23 @@ import {
   Crosshair,
   Percent,
   CircleDot,
-  Sparkles,
   Heart,
   BarChart3
 } from 'lucide-react'
 import AIAnalyst from '@/components/AIAnalyst'
 import SquadHealthView from '@/components/SquadHealthView'
-import DynamicChart from '@/components/DynamicChart'
-import { api, DashboardData, AIChartSpec } from '@/services/api'
+import PossessionFunnel from '@/components/charts/PossessionFunnel'
+import KickoutTrend from '@/components/charts/KickoutTrend'
+import TurnoverLeaderboard from '@/components/charts/TurnoverLeaderboard'
+import RedZoneList from '@/components/charts/RedZoneList'
+import WorkhorseRadar from '@/components/charts/WorkhorseRadar'
+import AiInsightsSection from '@/components/charts/AiInsightsSection'
+import { usePinnedCharts } from '@/hooks/usePinnedCharts'
+import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion } from '@/services/api'
 
 export default function AnalyticsDashboard() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
+  const [seasonDashboard, setSeasonDashboard] = useState<SeasonDashboardData | null>(null)
   const [aiCharts, setAiCharts] = useState<AIChartSpec[]>([])
   const [aiChartsSummary, setAiChartsSummary] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -33,14 +39,22 @@ export default function AnalyticsDashboard() {
   const [loadingAICharts, setLoadingAICharts] = useState(false)
   const [replacingChartId, setReplacingChartId] = useState<string | null>(null)
   const [dismissedChartIds, setDismissedChartIds] = useState<string[]>([])
+  const [suggestions, setSuggestions] = useState<OutlierSuggestion[]>([])
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [viewMode, setViewMode] = useState<'season' | 'health'>('season')
+
+  const { pinnedCharts, pinChart, unpinChart, isPinned, canPin } = usePinnedCharts()
 
   const fetchDashboard = async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await api.analytics.getDashboard()
+      const [data, seasonData] = await Promise.all([
+        api.analytics.getDashboard(),
+        api.analytics.getSeasonDashboard().catch(() => null),
+      ])
       setDashboardData(data)
+      setSeasonDashboard(seasonData)
     } catch (err) {
       setError('Failed to load dashboard data')
       console.error(err)
@@ -64,29 +78,38 @@ export default function AnalyticsDashboard() {
     }
   }, [dismissedChartIds])
 
+  const fetchSuggestions = useCallback(async () => {
+    setLoadingSuggestions(true)
+    try {
+      const result = await api.ai.getOutlierSuggestions()
+      if (result.success && result.suggestions) {
+        setSuggestions(result.suggestions)
+      }
+    } catch (err) {
+      console.error('Failed to load outlier suggestions:', err)
+    } finally {
+      setLoadingSuggestions(false)
+    }
+  }, [])
+
   const handleDismissChart = async (chartId: string) => {
     setReplacingChartId(chartId)
 
-    // Track dismissed chart ID to avoid regenerating it
     const newDismissedIds = [...dismissedChartIds, chartId]
     setDismissedChartIds(newDismissedIds)
 
     try {
-      // Get a replacement chart
       const result = await api.ai.getReplacementChart(newDismissedIds)
 
       if (result.success && result.chart) {
-        // Replace the dismissed chart with the new one
         setAiCharts(prev => prev.map(c =>
           c.id === chartId ? result.chart! : c
         ))
       } else {
-        // If replacement failed, just remove the chart
         setAiCharts(prev => prev.filter(c => c.id !== chartId))
       }
     } catch (err) {
       console.error('Failed to get replacement chart:', err)
-      // Remove the chart if replacement failed
       setAiCharts(prev => prev.filter(c => c.id !== chartId))
     } finally {
       setReplacingChartId(null)
@@ -96,6 +119,7 @@ export default function AnalyticsDashboard() {
   useEffect(() => {
     fetchDashboard()
     fetchAICharts()
+    fetchSuggestions()
   }, [])
 
   if (loading) {
@@ -131,7 +155,6 @@ export default function AnalyticsDashboard() {
   const goals = filteredShots.filter(s => s.is_score && s.event_type === 'GOAL')
   const points = filteredShots.filter(s => s.is_score && (s.event_type === 'POINT' || s.event_type === '2_POINTER'))
 
-  // Accuracy = scores / total shots
   const accuracy = totalShots > 0 ? Math.round((scoredShots.length / totalShots) * 100) : 0
 
   // Calculate possession/territory data from zones
@@ -139,7 +162,6 @@ export default function AnalyticsDashboard() {
   const totalTurnoversLost = possession_zones.reduce((sum, z) => sum + z.turnovers_lost, 0)
   const netPossession = totalTurnoversWon - totalTurnoversLost
 
-  // Estimate possession based on scoring and turnovers
   const dungloeScores = season_summary.total_goals_scored + season_summary.total_points_scored
   const oppScores = season_summary.total_goals_conceded + season_summary.total_points_conceded
   const totalScores = dungloeScores + oppScores
@@ -147,9 +169,13 @@ export default function AnalyticsDashboard() {
     ? Math.round((dungloeScores / totalScores) * 100) + Math.round(netPossession * 2)
     : 50
 
-  // Clamp possession between 20-80 for display
   const possessionPercent = Math.max(20, Math.min(80, estimatedPossession))
 
+  // Check if GPS data exists in season dashboard
+  const hasGpsData = seasonDashboard && (
+    seasonDashboard.red_zone_players.length > 0 ||
+    seasonDashboard.workhorse_radar.metrics.length > 0
+  )
 
   return (
     <div className="space-y-8">
@@ -192,7 +218,7 @@ export default function AnalyticsDashboard() {
         <SquadHealthView />
       ) : (
         <>
-      {/* Season Overview */}
+      {/* 1. Season Overview — 4 stat cards */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-2xl font-bold flex items-center space-x-2">
@@ -202,37 +228,50 @@ export default function AnalyticsDashboard() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="stat-card">
-            <div className="text-slate-900 text-sm font-semibold mb-2">Matches Played</div>
+            <div className="text-white/70 text-sm font-semibold mb-2">Matches Played</div>
             <div className="stat-value">{season_summary.matches_played}</div>
           </div>
 
           <div className="stat-card">
-            <div className="text-slate-900 text-sm font-semibold mb-2">Win Rate</div>
+            <div className="text-white/70 text-sm font-semibold mb-2">Win Rate</div>
             <div className="stat-value text-emerald-400">{season_summary.win_rate}%</div>
-            <div className="text-xs text-slate-600 mt-1">
+            <div className="text-xs text-white/50 mt-1">
               {season_summary.wins}W - {season_summary.losses}L - {season_summary.draws}D
             </div>
           </div>
 
           <div className="stat-card">
-            <div className="text-slate-900 text-sm font-semibold mb-2">Avg Score</div>
+            <div className="text-white/70 text-sm font-semibold mb-2">Avg Score</div>
             <div className="stat-value text-amber-400">{season_summary.avg_score_per_match}</div>
-            <div className="text-xs text-slate-600 mt-1">
+            <div className="text-xs text-white/50 mt-1">
               {season_summary.total_goals_scored}G + {season_summary.total_points_scored}P
             </div>
           </div>
 
           <div className="stat-card">
-            <div className="text-slate-900 text-sm font-semibold mb-2">Avg Conceded</div>
+            <div className="text-white/70 text-sm font-semibold mb-2">Avg Conceded</div>
             <div className="stat-value text-red-400">{season_summary.avg_conceded_per_match}</div>
-            <div className="text-xs text-slate-600 mt-1">
+            <div className="text-xs text-white/50 mt-1">
               {season_summary.total_goals_conceded}G + {season_summary.total_points_conceded}P
             </div>
           </div>
         </div>
       </div>
 
-      {/* STAPLE CHARTS - Shot Map + Possession (Always Shown) */}
+      {/* 2. Canonical Charts */}
+      {seasonDashboard && (
+        <div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <PossessionFunnel data={seasonDashboard.possession_funnel} />
+            <KickoutTrend data={seasonDashboard.kickout_trends} />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <TurnoverLeaderboard data={seasonDashboard.turnover_leaderboard} />
+          </div>
+        </div>
+      )}
+
+      {/* 3. Shot Map + Possession — existing staple charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Shot Map with Stats Below */}
         <div className="glass-card p-6">
@@ -407,68 +446,38 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
-      {/* AI-GENERATED DYNAMIC CHARTS */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
-              <Sparkles size={20} className="text-white" />
-            </div>
-            <span className="text-white">AI-Generated Insights</span>
-            <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">Dynamic</span>
+      {/* 4. GPS & Risk — only if GPS data exists */}
+      {hasGpsData && seasonDashboard && (
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2 mb-4 text-white">
+            <Activity size={20} />
+            GPS & Risk
           </h2>
-          <button
-            onClick={fetchAICharts}
-            disabled={loadingAICharts}
-            className="btn-glass flex items-center gap-2 text-sm"
-          >
-            <RefreshCw size={14} className={loadingAICharts ? 'animate-spin' : ''} />
-            Regenerate All
-          </button>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <RedZoneList data={seasonDashboard.red_zone_players} />
+            <WorkhorseRadar data={seasonDashboard.workhorse_radar} />
+          </div>
         </div>
+      )}
 
-        {aiChartsSummary && (
-          <p className="text-white/60 text-sm mb-4 pl-13">{aiChartsSummary}</p>
-        )}
+      {/* 5. AI Insights — pinned + discovery + dynamic */}
+      <AiInsightsSection
+        aiCharts={aiCharts}
+        pinnedCharts={pinnedCharts}
+        loadingAICharts={loadingAICharts}
+        replacingChartId={replacingChartId}
+        canPin={canPin}
+        onDismissChart={handleDismissChart}
+        onPinChart={pinChart}
+        onUnpinChart={unpinChart}
+        onRegenerateAll={fetchAICharts}
+        isPinned={isPinned}
+        aiChartsSummary={aiChartsSummary}
+        suggestions={suggestions}
+        loadingSuggestions={loadingSuggestions}
+      />
 
-        {loadingAICharts && aiCharts.length === 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="glass-card p-6 h-[300px] flex items-center justify-center">
-                <div className="flex flex-col items-center gap-3">
-                  <RefreshCw size={24} className="animate-spin text-purple-400" />
-                  <span className="text-white/50 text-sm">AI generating chart {i}...</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : aiCharts.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {aiCharts.map(chart => (
-              <DynamicChart
-                key={chart.id}
-                chart={chart}
-                onDismiss={handleDismissChart}
-                isLoading={replacingChartId === chart.id}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="glass-card p-8 text-center">
-            <Sparkles size={32} className="text-purple-400 mx-auto mb-3" />
-            <p className="text-white/60 mb-4">No AI charts available. Click "Regenerate All" to generate insights.</p>
-            <button onClick={fetchAICharts} className="btn-primary">
-              Generate Charts
-            </button>
-          </div>
-        )}
-
-        <p className="text-white/40 text-xs mt-3 text-center">
-          Hover over any chart and click X to dismiss and generate a new insight
-        </p>
-      </div>
-
-      {/* Leaderboards */}
+      {/* 6. Leaderboards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Scorers */}
         <div className="glass-card p-6">
@@ -547,7 +556,7 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
-      {/* Recent Matches */}
+      {/* 7. Recent Matches */}
       <div className="glass-card p-6">
         <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
           <Calendar size={20} className="text-white" />
@@ -583,7 +592,7 @@ export default function AnalyticsDashboard() {
         )}
       </div>
 
-      {/* AI Analyst */}
+      {/* 8. AI Analyst */}
       <div className="glass-card p-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">

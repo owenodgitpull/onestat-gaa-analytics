@@ -28,9 +28,10 @@ from app.models.player_health import (
 )
 from app.models.attendance import Attendance, TrainingSession, AttendanceStatus
 from app.models.training_performance import TrainingGPSData
-from app.models.match import Match
+from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent
 from app.models.match_lineup import MatchLineup
+from app.models.match_gps import MatchGPSData
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,8 @@ class WorkloadAnalysisService:
     async def trigger_analysis_for_player(
         db: AsyncSession,
         player_id: UUID,
-        trigger_source: str = "manual"
+        trigger_source: str = "manual",
+        for_date: Optional[datetime] = None
     ) -> List[PlayerHealthAlert]:
         """
         Analyze a specific player's workload and generate alerts if needed.
@@ -60,6 +62,7 @@ class WorkloadAnalysisService:
             db: Database session
             player_id: Player to analyze
             trigger_source: What triggered this analysis (training, match, gps, etc.)
+            for_date: Specific date to create snapshot for (e.g. match date). Defaults to today.
 
         Returns:
             List of new alerts generated
@@ -73,8 +76,8 @@ class WorkloadAnalysisService:
             logger.warning(f"Player {player_id} not found")
             return []
 
-        # Update workload snapshot for today
-        await WorkloadAnalysisService._update_workload_snapshot(db, player_id)
+        # Update workload snapshot for the target date (defaults to today)
+        await WorkloadAnalysisService._update_workload_snapshot(db, player_id, for_date=for_date)
 
         # Calculate metrics
         metrics = await WorkloadAnalysisService._calculate_workload_metrics(db, player_id)
@@ -112,9 +115,9 @@ class WorkloadAnalysisService:
         return all_alerts
 
     @staticmethod
-    async def _update_workload_snapshot(db: AsyncSession, player_id: UUID) -> None:
-        """Update or create today's workload snapshot for a player."""
-        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    async def _update_workload_snapshot(db: AsyncSession, player_id: UUID, for_date: Optional[datetime] = None) -> None:
+        """Update or create workload snapshot for a player on a given date."""
+        today = (for_date or datetime.utcnow()).replace(hour=0, minute=0, second=0, microsecond=0)
 
         # Check if snapshot exists for today
         result = await db.execute(
@@ -230,10 +233,43 @@ class WorkloadAnalysisService:
         player_id: UUID,
         date: datetime
     ) -> tuple:
-        """Get match load for a specific day."""
+        """Get match load for a specific day, using GPS data when available."""
         next_day = date + timedelta(days=1)
 
-        # Check if player was in lineup for any match today
+        # First check for actual GPS data from matches on this date
+        gps_result = await db.execute(
+            select(MatchGPSData, Match)
+            .join(Match, MatchGPSData.match_id == Match.id)
+            .where(
+                and_(
+                    MatchGPSData.player_id == player_id,
+                    Match.match_date >= date,
+                    Match.match_date < next_day,
+                    Match.status == MatchStatus.COMPLETED
+                )
+            )
+        )
+        gps_records = gps_result.all()
+
+        if gps_records:
+            # Use actual GPS data for accurate load calculation
+            total_load = 0
+            total_minutes = 0
+            for gps, match in gps_records:
+                minutes = gps.playing_minutes or gps.duration_mins or 70
+                total_minutes += int(minutes)
+                # Use player_load or dynamic_stress_load if available, otherwise estimate
+                if gps.player_load:
+                    total_load += gps.player_load
+                elif gps.dynamic_stress_load:
+                    total_load += gps.dynamic_stress_load
+                else:
+                    # Estimate from distance: ~1 load unit per 100m at match intensity
+                    distance = gps.total_distance_m or 0
+                    total_load += (distance / 100) * 1.5
+            return total_load, total_minutes
+
+        # Fallback: estimate from lineup data if no GPS
         result = await db.execute(
             select(MatchLineup, Match)
             .join(Match, MatchLineup.match_id == Match.id)
@@ -242,7 +278,7 @@ class WorkloadAnalysisService:
                     MatchLineup.player_id == player_id,
                     Match.match_date >= date,
                     Match.match_date < next_day,
-                    Match.status == 'completed'
+                    Match.status == MatchStatus.COMPLETED
                 )
             )
         )
@@ -253,11 +289,9 @@ class WorkloadAnalysisService:
 
         for lineup, match in lineups:
             if lineup.is_on_field or not lineup.is_substitute:
-                # Estimate minutes played (would be better with actual sub tracking)
-                minutes = 60 if lineup.is_substitute else 70  # Full game ~70 mins
+                minutes = 60 if lineup.is_substitute else 70
                 total_minutes += minutes
-                # Match load is higher than training
-                total_load += minutes * 1.5  # 70 mins = 105 load units
+                total_load += minutes * 1.5
 
         return total_load, total_minutes
 
