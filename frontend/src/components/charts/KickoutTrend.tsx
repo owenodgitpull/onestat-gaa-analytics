@@ -60,14 +60,16 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
     opponent: m.opponent,
     'Won Clean': m.won_clean,
     'Won Break': m.won_break,
-    'Lost': m.lost,
+    'Lost Clean': m.lost_clean,
+    'Lost Break': m.lost_break,
   }))
 
   // Season totals for the summary row
   const totalWonClean = data.reduce((s, m) => s + m.won_clean, 0)
   const totalWonBreak = data.reduce((s, m) => s + m.won_break, 0)
-  const totalLost = data.reduce((s, m) => s + m.lost, 0)
-  const totalAll = totalWonClean + totalWonBreak + totalLost
+  const totalLostClean = data.reduce((s, m) => s + m.lost_clean, 0)
+  const totalLostBreak = data.reduce((s, m) => s + m.lost_break, 0)
+  const totalAll = totalWonClean + totalWonBreak + totalLostClean + totalLostBreak
   const wonPct = totalAll > 0 ? Math.round((totalWonClean + totalWonBreak) / totalAll * 100) : 0
 
   return (
@@ -90,31 +92,38 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
             tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
             tickFormatter={(v) => `${Math.round(v * 100)}%`}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip />} trigger="click" />
           <Legend
             wrapperStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}
           />
           <Bar dataKey="Won Clean" stackId="1" fill="#10b981" radius={[0, 0, 0, 0]} />
           <Bar dataKey="Won Break" stackId="1" fill="#f59e0b" />
-          <Bar dataKey="Lost" stackId="1" fill="#ef4444" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="Lost Clean" stackId="1" fill="#ef4444" />
+          <Bar dataKey="Lost Break" stackId="1" fill="#f97316" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
 
       {/* Season summary */}
-      <div className="flex gap-3 mt-3">
-        <div className="flex-1 bg-white/5 rounded-xl px-3 py-2 text-center">
+      <div className="flex gap-2 mt-3">
+        <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Won Clean</div>
           <div className="text-lg font-bold text-emerald-400">{totalWonClean}</div>
         </div>
-        <div className="flex-1 bg-white/5 rounded-xl px-3 py-2 text-center">
+        <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Won Break</div>
           <div className="text-lg font-bold text-amber-400">{totalWonBreak}</div>
         </div>
-        <div className="flex-1 bg-white/5 rounded-xl px-3 py-2 text-center">
-          <div className="text-xs text-white/50">Lost</div>
-          <div className="text-lg font-bold text-red-400">{totalLost}</div>
+        <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
+          <div className="text-xs text-white/50">Lost Clean</div>
+          <div className="text-lg font-bold text-red-400">{totalLostClean}</div>
+          <div className="text-[10px] text-white/30">out-jumped</div>
         </div>
-        <div className="flex-1 bg-white/5 rounded-xl px-3 py-2 text-center">
+        <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
+          <div className="text-xs text-white/50">Lost Break</div>
+          <div className="text-lg font-bold text-orange-400">{totalLostBreak}</div>
+          <div className="text-[10px] text-white/30">ground ball</div>
+        </div>
+        <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Win Rate</div>
           <div className="text-lg font-bold text-white">{wonPct}%</div>
         </div>

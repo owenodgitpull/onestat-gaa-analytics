@@ -25,7 +25,7 @@ import {
   Loader2,
   X
 } from 'lucide-react'
-import { api } from '../services/api'
+import { api, possessionAPI } from '../services/api'
 import {
   ResponsiveContainer,
   BarChart,
@@ -694,6 +694,7 @@ export default function MatchResult() {
         <PossessionTerritoryChart
           stats={matchStats}
           events={eventsData?.events || []}
+          matchId={matchId!}
           opponent={match.opponent}
           insight={postMatchReport?.insights?.possession}
         />
@@ -1030,26 +1031,40 @@ function AIInsightCard({ insight }: { insight?: string }) {
 function PossessionTerritoryChart({
   stats,
   events,
+  matchId,
   opponent,
   insight
 }: {
   stats: MatchStats | undefined
   events: any[]
+  matchId: string
   opponent: string
   insight?: string
 }) {
   const [selectedTeam, setSelectedTeam] = useState<'dungloe' | 'opponent'>('dungloe')
   const [selectedHalf, setSelectedHalf] = useState<'all' | '1st' | '2nd'>('all')
 
-  // Calculate territory from event locations
+  // Fetch PossessionEvents for accurate territory (same source as dashboard)
+  const { data: possessionEvents } = useQuery({
+    queryKey: ['possession-events', matchId],
+    queryFn: () => possessionAPI.getByMatch(matchId),
+    enabled: !!matchId,
+  })
+
+  // Calculate territory from PossessionEvents (preferred) or fall back to MatchEvents
   const territory = useMemo(() => {
     const zones = {
       dungloe: { defensive: 0, midfield: 0, attacking: 0 },
       opponent: { defensive: 0, midfield: 0, attacking: 0 }
     }
 
-    events.forEach((e: any) => {
-      if (e.pitch_x === null) return
+    // Use PossessionEvents if available (consistent with dashboard territory)
+    const usePossession = possessionEvents && possessionEvents.length > 0
+    const sourceData = usePossession ? possessionEvents : events
+
+    sourceData.forEach((e: any) => {
+      const px = e.pitch_x
+      if (px === null || px === undefined) return
 
       // Filter by half
       const minute = e.minute || 0
@@ -1057,15 +1072,19 @@ function PossessionTerritoryChart({
       if (selectedHalf === '2nd' && minute <= 35) return
 
       const team = e.team || (e.is_home_team ? 'dungloe' : 'opponent')
-      const x = e.pitch_x
+      if (team !== 'dungloe' && team !== 'opponent') return
 
-      // Zone based on x position (0-100)
-      if (x < 35) {
-        zones[team as keyof typeof zones].defensive++
-      } else if (x < 65) {
-        zones[team as keyof typeof zones].midfield++
+      // Time-weighted: use duration_seconds when available (PossessionEvents),
+      // fall back to count of 1 for MatchEvents
+      const weight = usePossession ? (e.duration_seconds || 1) : 1
+
+      // Zone based on x position (0-100) — same thresholds as dashboard
+      if (px < 35) {
+        zones[team as keyof typeof zones].defensive += weight
+      } else if (px < 65) {
+        zones[team as keyof typeof zones].midfield += weight
       } else {
-        zones[team as keyof typeof zones].attacking++
+        zones[team as keyof typeof zones].attacking += weight
       }
     })
 
@@ -1085,7 +1104,7 @@ function PossessionTerritoryChart({
         attacking: oppTotal > 0 ? Math.round((zones.opponent.attacking / oppTotal) * 100) : 0
       }
     }
-  }, [events, selectedHalf])
+  }, [possessionEvents, events, selectedHalf])
 
   // Ensure possession always adds to 100
   const dungloePosPct = Math.round(stats?.dungloe_possession_percentage || 50)
@@ -1299,6 +1318,7 @@ function ScoringTimeline({ events, opponent, insight }: { events: any[]; opponen
             <XAxis dataKey="name" stroke="#9ca3af" fontSize={10} />
             <YAxis stroke="#9ca3af" fontSize={10} />
             <Tooltip
+              trigger="click"
               contentStyle={{
                 backgroundColor: '#1e293b',
                 border: 'none',
@@ -1446,6 +1466,7 @@ function ShotOutcomeChart({
                   ))}
                 </Pie>
                 <Tooltip
+                  trigger="click"
                   contentStyle={{
                     backgroundColor: '#1e293b',
                     border: 'none',
@@ -1726,6 +1747,7 @@ function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[
             <XAxis dataKey="interval" stroke="#9ca3af" fontSize={9} interval={1} angle={-45} textAnchor="end" height={50} />
             <YAxis stroke="#9ca3af" fontSize={10} unit="km" />
             <Tooltip
+              trigger="click"
               contentStyle={{
                 backgroundColor: '#1e293b',
                 border: 'none',
@@ -1953,6 +1975,7 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
             <XAxis type="number" domain={[0, Math.ceil(maxDistance)]} stroke="#9ca3af" fontSize={10} unit="km" />
             <YAxis type="category" dataKey="name" stroke="#9ca3af" fontSize={10} width={55} />
             <Tooltip
+              trigger="click"
               contentStyle={{
                 backgroundColor: '#1e293b',
                 border: 'none',

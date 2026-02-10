@@ -13,16 +13,10 @@ export interface Player {
 }
 
 export enum PlayerPosition {
-  FULL_BACK = 'full_back',
-  CORNER_BACK = 'corner_back',
-  HALF_BACK = 'half_back',
-  MIDFIELD = 'midfield',
-  HALF_FORWARD = 'half_forward',
-  CORNER_FORWARD = 'corner_forward',
-  FULL_FORWARD = 'full_forward',
   GOALKEEPER = 'goalkeeper',
-  SUBSTITUTE = 'substitute',
-  OTHER = 'other',
+  DEFENDER = 'defender',
+  MIDFIELDER = 'midfielder',
+  FORWARD = 'forward',
 }
 
 export enum PlayerStatus {

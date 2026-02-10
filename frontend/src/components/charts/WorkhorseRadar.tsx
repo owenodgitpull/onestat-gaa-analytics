@@ -75,7 +75,7 @@ export default function WorkhorseRadar({ data }: WorkhorseRadarProps) {
             domain={[0, 100]}
             tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 9 }}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip />} trigger="click" />
           <Radar
             name="Season Avg"
             dataKey="Season Avg"

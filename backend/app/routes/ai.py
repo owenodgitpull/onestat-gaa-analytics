@@ -10,8 +10,10 @@ Provides endpoints for:
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
+from uuid import UUID
 import logging
 
 from app.database import get_db
@@ -494,8 +496,57 @@ async def analyze_gps_endpoint(
     and flags players who may need extended recovery or are at risk.
     """
     try:
+        # Enrich GPS data with player positions and substitution info
+        enriched_gps = list(request.gps_data)
+
+        # Collect player IDs to look up positions
+        player_ids = [p.get("player_id") for p in enriched_gps if p.get("player_id")]
+        if player_ids:
+            from app.models.player import Player
+            from app.models.match_event import MatchEvent, EventType
+
+            # Look up positions
+            valid_uuids = []
+            for pid in player_ids:
+                try:
+                    valid_uuids.append(UUID(str(pid)))
+                except (ValueError, AttributeError):
+                    pass
+
+            if valid_uuids:
+                pos_result = await db.execute(
+                    select(Player.id, Player.position).where(Player.id.in_(valid_uuids))
+                )
+                pos_lookup = {str(row.id): row.position.value if row.position else None for row in pos_result.all()}
+
+                # Look up substitution events if match_info has match_id
+                sub_lookup = {}
+                match_id_str = request.match_info.get("match_id") if request.match_info else None
+                if match_id_str:
+                    try:
+                        match_uuid = UUID(str(match_id_str))
+                        sub_result = await db.execute(
+                            select(MatchEvent).where(
+                                MatchEvent.match_id == match_uuid,
+                                MatchEvent.event_type == EventType.SUBSTITUTION,
+                            )
+                        )
+                        for ev in sub_result.scalars().all():
+                            if ev.player_id and ev.minute:
+                                sub_lookup[str(ev.player_id)] = ev.minute
+                    except (ValueError, AttributeError):
+                        pass
+
+                # Enrich each player dict
+                for p in enriched_gps:
+                    pid = str(p.get("player_id", ""))
+                    if pid in pos_lookup and pos_lookup[pid]:
+                        p["position"] = pos_lookup[pid]
+                    if pid in sub_lookup:
+                        p["subbed_off_minute"] = sub_lookup[pid]
+
         result = await analyze_match_gps(
-            gps_data=request.gps_data,
+            gps_data=enriched_gps,
             match_info=request.match_info
         )
         return GPSAnalysisResponse(**result)

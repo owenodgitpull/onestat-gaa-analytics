@@ -130,7 +130,7 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
             tick={{ fill: 'rgba(255,255,255,0.9)', fontSize: 12 }}
             width={90}
           />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip content={<CustomTooltip />} trigger="click" />
           <Bar dataKey="count" radius={[0, 6, 6, 0]} />
         </BarChart>
       </ResponsiveContainer>
@@ -155,21 +155,30 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
       </div>
 
       {/* Conversion rate pills */}
-      <div className="flex gap-3">
-        <div className="flex-1 bg-white/5 rounded-xl px-3 py-2 text-center">
+      <div className="flex gap-2">
+        <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Attack Rate</div>
           <div className="text-lg font-bold" style={{ color: colors[1] }}>{attackRate}%</div>
           <div className="text-[10px] text-white/30">of possessions</div>
         </div>
-        <div className="flex-1 bg-white/5 rounded-xl px-3 py-2 text-center">
+        <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Shot Rate</div>
           <div className="text-lg font-bold" style={{ color: colors[2] }}>{shotRate}%</div>
           <div className="text-[10px] text-white/30">of attacks</div>
         </div>
-        <div className="flex-1 bg-white/5 rounded-xl px-3 py-2 text-center">
+        <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Score Rate</div>
           <div className="text-lg font-bold" style={{ color: colors[3] }}>{scoreRate}%</div>
           <div className="text-[10px] text-white/30">of shots</div>
+        </div>
+        <div className="flex-1 bg-red-500/10 rounded-xl px-2 py-2 text-center border border-red-500/20">
+          <div className="text-xs text-white/50">Turnover Rate</div>
+          <div className="text-lg font-bold text-red-400">
+            {totals.possessions > 0
+              ? Math.round((1 - totals.scores / totals.possessions) * 100)
+              : 0}%
+          </div>
+          <div className="text-[10px] text-white/30">possession lost</div>
         </div>
       </div>
     </div>

@@ -29,19 +29,9 @@ const positionCategories = [
 
 const positionMapping: Record<string, string> = {
   goalkeeper: 'goalkeeper',
-  right_corner_back: 'defender',
-  full_back: 'defender',
-  left_corner_back: 'defender',
-  right_half_back: 'defender',
-  centre_half_back: 'defender',
-  left_half_back: 'defender',
-  midfield: 'midfielder',
-  right_half_forward: 'forward',
-  centre_half_forward: 'forward',
-  left_half_forward: 'forward',
-  right_corner_forward: 'forward',
-  full_forward: 'forward',
-  left_corner_forward: 'forward'
+  defender: 'defender',
+  midfielder: 'midfielder',
+  forward: 'forward',
 }
 
 export default function Players() {
@@ -166,7 +156,7 @@ export default function Players() {
                 <div>
                   <div className="font-medium text-white text-sm">{scorer.player_name}</div>
                   <div className="text-xs text-white/60">
-                    {scorer.goals}G {scorer.points}P = {scorer.total_score}
+                    {[scorer.goals > 0 && `${scorer.goals}G`, scorer.points > 0 && `${scorer.points}P`, scorer.two_pointers > 0 && `${scorer.two_pointers}×2pt`].filter(Boolean).join(' · ')} <span className="text-white/80 font-semibold">({scorer.total_score})</span>
                   </div>
                 </div>
               </Link>
@@ -210,6 +200,12 @@ export default function Players() {
                         <Target size={14} className="text-indigo-400" />
                         <span className="text-white">{stats.points}P</span>
                       </div>
+                      {stats.two_pointers > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Target size={14} className="text-amber-400" />
+                          <span className="text-white">{stats.two_pointers}×2pt</span>
+                        </div>
+                      )}
                       <div className="text-lg font-bold text-white">
                         {stats.total_score}
                       </div>

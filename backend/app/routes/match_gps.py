@@ -133,8 +133,8 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
                 # Use Claude Vision to extract
                 extracted_data = await extract_gps_from_pdf(content, filename)
             elif filename.lower().endswith('.csv'):
-                # Parse CSV directly
-                extracted_data = parse_gps_csv(content)
+                # Use Claude AI to intelligently parse CSV columns
+                extracted_data = await parse_gps_csv(content)
             else:
                 raise ValueError(f"Unsupported file type: {filename}")
 

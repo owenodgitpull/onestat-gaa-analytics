@@ -10,6 +10,22 @@ from app.models.fitness_test import FitnessTest
 from datetime import date
 from decimal import Decimal
 
+# Position assignments for the starting 15
+PLAYER_POSITIONS = {
+    "Danny Rodgers": PlayerPosition.GOALKEEPER,
+    "Jason McBride": PlayerPosition.DEFENDER,
+    "Aaron Ward": PlayerPosition.DEFENDER,
+    "Barry Curran": PlayerPosition.DEFENDER,
+    "Conor O'Donnell": PlayerPosition.DEFENDER,
+    "Karl Magee": PlayerPosition.DEFENDER,
+    "Darren Curran": PlayerPosition.MIDFIELDER,
+    "Dylan Sweeney": PlayerPosition.FORWARD,
+    "Daire Gallagher": PlayerPosition.FORWARD,
+    "Matthew Ward": PlayerPosition.FORWARD,
+    "Conor Greene": PlayerPosition.FORWARD,
+    "Oisin Bonner": PlayerPosition.FORWARD,
+}
+
 # Real Dungloe players from fitness report (03-01-2026)
 DUNGLOE_PLAYERS_FITNESS = [
     {
@@ -367,6 +383,7 @@ async def seed_real_players():
                 player = Player(
                     name=player_data["name"],
                     jersey_number=i,  # Assign sequential jersey numbers
+                    position=PLAYER_POSITIONS.get(player_data["name"]),
                     status=PlayerStatus.ACTIVE,
                     active=True
                 )

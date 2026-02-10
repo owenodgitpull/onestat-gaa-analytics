@@ -22,15 +22,11 @@ class PlayerStatus(str, enum.Enum):
 
 
 class PlayerPosition(str, enum.Enum):
-    """GAA playing positions."""
+    """GAA playing positions (simplified — players move around)."""
     GOALKEEPER = "goalkeeper"
-    FULL_BACK = "full_back"
-    WING_BACK = "wing_back"
-    CENTER_BACK = "center_back"
+    DEFENDER = "defender"
     MIDFIELDER = "midfielder"
-    WING_FORWARD = "wing_forward"
-    CENTER_FORWARD = "center_forward"
-    FULL_FORWARD = "full_forward"
+    FORWARD = "forward"
 
 
 class Player(Base):
@@ -60,7 +56,9 @@ class Player(Base):
     
     # Basic information
     name = Column(String(100), nullable=False, index=True)  # Index for search performance
-    position = Column(SQLEnum(PlayerPosition), nullable=True)
+    # Use String to avoid SQLAlchemy/asyncpg enum type codec caching issues
+    # PG column is still typed as playerposition enum, so DB enforces valid values
+    position = Column(String(20), nullable=True)
     jersey_number = Column(Integer, nullable=True)
     date_of_birth = Column(Date, nullable=True)
     

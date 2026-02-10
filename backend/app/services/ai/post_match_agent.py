@@ -177,10 +177,11 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
     # Generate new analysis
     logger.info(f"Generating new AI analysis for match {match_id} (force={force_regenerate}, gps_regen={needs_gps_regen})")
 
-    # Fetch full GPS data with player names (eager join to avoid async lazy-load)
+    # Fetch full GPS data with player names and positions (eager join to avoid async lazy-load)
     from app.models import Player
+    from app.models.match_event import MatchEvent, EventType
     gps_query = (
-        select(MatchGPSData, Player.name)
+        select(MatchGPSData, Player.name, Player.position)
         .join(Player, MatchGPSData.player_id == Player.id, isouter=True)
         .where(MatchGPSData.match_id == match_uuid)
     )
@@ -188,20 +189,42 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
     gps_rows = gps_result.all()
     has_gps = len(gps_rows) > 0
 
+    # Fetch substitution events to know who was subbed off and when
+    sub_lookup = {}  # player_id -> minute subbed off
+    if has_gps:
+        sub_result = await db.execute(
+            select(MatchEvent).where(
+                MatchEvent.match_id == match_uuid,
+                MatchEvent.event_type == EventType.SUBSTITUTION,
+            )
+        )
+        sub_events = sub_result.scalars().all()
+        for ev in sub_events:
+            if ev.player_id and ev.minute:
+                sub_lookup[ev.player_id] = ev.minute
+
     # Build prompt with GPS context if available
     gps_context = ""
     if has_gps:
-        # Calculate team totals and averages
-        total_distance = sum(g.total_distance_m or 0 for g, _ in gps_rows)
-        total_hsr = sum(g.high_speed_running_m or 0 for g, _ in gps_rows)
-        total_sprints = sum(g.sprint_count or 0 for g, _ in gps_rows)
-        total_hmld = sum(g.hml_distance_m or 0 for g, _ in gps_rows)
-        avg_distance = total_distance / len(gps_rows) if gps_rows else 0
-        avg_sprints = total_sprints / len(gps_rows) if gps_rows else 0
+        # Separate GK from outfield for averages
+        outfield_rows = [(g, name, pos) for g, name, pos in gps_rows
+                         if pos is None or pos.value != "goalkeeper"]
+
+        # Calculate team totals (all players)
+        total_distance = sum(g.total_distance_m or 0 for g, _, _ in gps_rows)
+        total_hsr = sum(g.high_speed_running_m or 0 for g, _, _ in gps_rows)
+        total_sprints = sum(g.sprint_count or 0 for g, _, _ in gps_rows)
+        total_hmld = sum(g.hml_distance_m or 0 for g, _, _ in gps_rows)
+
+        # Outfield averages (exclude GK so their low distance doesn't skew)
+        outfield_distance = sum(g.total_distance_m or 0 for g, _, _ in outfield_rows)
+        outfield_sprints = sum(g.sprint_count or 0 for g, _, _ in outfield_rows)
+        avg_distance = outfield_distance / len(outfield_rows) if outfield_rows else 0
+        avg_sprints = outfield_sprints / len(outfield_rows) if outfield_rows else 0
 
         # Build detailed player GPS data
         gps_player_details = []
-        for g, player_name in gps_rows:
+        for g, player_name, player_position in gps_rows:
             player_name = player_name or "Unknown"
             distance_km = (g.total_distance_m or 0) / 1000
             hsr_m = g.high_speed_running_m or 0
@@ -210,9 +233,26 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
             hmld = g.hml_distance_m or 0
             player_load = g.player_load or 0
 
-            # Flag outliers
+            # Position tag
+            pos_tag = ""
+            if player_position:
+                pos_abbrev = {"goalkeeper": "GK", "defender": "DEF", "midfielder": "MID", "forward": "FWD"}
+                pos_tag = pos_abbrev.get(player_position.value, player_position.value.upper())
+
+            # Sub info
+            sub_tag = ""
+            if g.player_id and g.player_id in sub_lookup:
+                sub_tag = f"SUBBED OFF {sub_lookup[g.player_id]}'"
+
+            # Combine tags
+            tags = ", ".join(filter(None, [pos_tag, sub_tag]))
+            tag_str = f" ({tags})" if tags else ""
+
+            # Flag outliers — only for outfield full-match players
+            is_gk = player_position and player_position.value == "goalkeeper"
+            was_subbed = g.player_id and g.player_id in sub_lookup
             outlier_note = ""
-            if g.total_distance_m and avg_distance > 0:
+            if not is_gk and not was_subbed and g.total_distance_m and avg_distance > 0:
                 diff_pct = ((g.total_distance_m - avg_distance) / avg_distance) * 100
                 if diff_pct > 20:
                     outlier_note = " [HIGH WORKLOAD]"
@@ -220,7 +260,7 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
                     outlier_note = " [LOW OUTPUT]"
 
             gps_player_details.append(
-                f"  - {player_name}: {distance_km:.1f}km total, {hsr_m:.0f}m HSR, {hmld:.0f}m HMLD, "
+                f"  - {player_name}{tag_str}: {distance_km:.1f}km total, {hsr_m:.0f}m HSR, {hmld:.0f}m HMLD, "
                 f"{sprints} sprints, {max_speed_kmh:.1f}km/h max speed, load: {player_load:.0f}{outlier_note}"
             )
 
@@ -232,11 +272,17 @@ TEAM TOTALS:
   - Total High Speed Running: {total_hsr/1000:.1f}km
   - Total High Metabolic Load Distance: {total_hmld/1000:.1f}km
   - Total Sprints: {total_sprints}
-  - Average Distance per Player: {avg_distance/1000:.1f}km
-  - Average Sprints per Player: {avg_sprints:.0f}
+  - Average Distance per Outfield Player: {avg_distance/1000:.1f}km
+  - Average Sprints per Outfield Player: {avg_sprints:.0f}
 
 INDIVIDUAL PLAYER GPS:
 {chr(10).join(gps_player_details)}
+
+GPS ANALYSIS RULES:
+- NEVER flag the goalkeeper for low distance/activity — GKs typically cover 2-4km which is normal for their position
+- Players marked (SUBBED OFF X') were DEFINITELY substituted at that minute — state this as fact, do NOT speculate about "possible tactical substitution". Evaluate their output relative to minutes played
+- Use positions to set distance expectations: Midfielders 9-12km, Forwards/Defenders 7-10km, Goalkeeper 2-4km
+- Only flag outfield players who played the full match and are significantly below position-appropriate benchmarks
 
 IMPORTANT: Include a dedicated GPS/Physical Performance section in your analysis that covers:
 - Team physical output assessment (was the overall intensity championship-level?)
@@ -344,27 +390,37 @@ async def analyze_match_gps(gps_data: list[dict], match_info: dict = None) -> di
         "players": []
     }
 
-    # Calculate team averages for context
+    # Separate GK from outfield for averages
+    outfield_data = [p for p in gps_data if p.get("position", "").lower() != "goalkeeper"]
+
+    # Calculate team totals
     total_distance = sum(p.get("total_distance_m", 0) or 0 for p in gps_data)
     total_hsr = sum(p.get("high_speed_running_m", 0) or 0 for p in gps_data)
     total_sprints = sum(p.get("sprint_count", 0) or 0 for p in gps_data)
     total_hmld = sum(p.get("hml_distance_m", 0) or 0 for p in gps_data)
 
-    avg_distance = total_distance / len(gps_data) if gps_data else 0
-    avg_hsr = total_hsr / len(gps_data) if gps_data else 0
-    avg_sprints = total_sprints / len(gps_data) if gps_data else 0
+    # Outfield averages (exclude GK)
+    outfield_distance = sum(p.get("total_distance_m", 0) or 0 for p in outfield_data)
+    outfield_sprints = sum(p.get("sprint_count", 0) or 0 for p in outfield_data)
+    avg_distance = outfield_distance / len(outfield_data) if outfield_data else 0
+    avg_hsr = total_hsr / len(outfield_data) if outfield_data else 0
+    avg_sprints = outfield_sprints / len(outfield_data) if outfield_data else 0
 
     gps_summary["team_averages"] = {
-        "avg_distance_m": round(avg_distance, 0),
+        "avg_outfield_distance_m": round(avg_distance, 0),
         "avg_hsr_m": round(avg_hsr, 0),
-        "avg_sprints": round(avg_sprints, 1),
+        "avg_outfield_sprints": round(avg_sprints, 1),
         "total_team_distance_km": round(total_distance / 1000, 1),
         "total_team_hmld_km": round(total_hmld / 1000, 1)
     }
 
     for p in gps_data:
+        is_gk = p.get("position", "").lower() == "goalkeeper"
+        was_subbed = p.get("subbed_off_minute") is not None
         player_summary = {
             "name": p.get("player_name", "Unknown"),
+            "position": p.get("position", "unknown"),
+            "subbed_off_minute": p.get("subbed_off_minute"),
             "total_distance_m": p.get("total_distance_m", 0),
             "high_speed_running_m": p.get("high_speed_running_m", 0),
             "sprint_distance_m": p.get("sprint_distance_m", 0),
@@ -373,10 +429,12 @@ async def analyze_match_gps(gps_data: list[dict], match_info: dict = None) -> di
             "sprint_count": p.get("sprint_count", 0),
             "player_load": p.get("player_load", 0),
             "playing_minutes": p.get("playing_minutes", 0),
-            # Calculate deviation from average
-            "distance_vs_avg_pct": round(((p.get("total_distance_m", 0) or 0) / avg_distance - 1) * 100, 1) if avg_distance > 0 else 0,
-            "sprints_vs_avg_pct": round(((p.get("sprint_count", 0) or 0) / avg_sprints - 1) * 100, 1) if avg_sprints > 0 else 0
         }
+        # Only calculate deviation for outfield full-match players
+        if not is_gk and not was_subbed and avg_distance > 0:
+            player_summary["distance_vs_avg_pct"] = round(((p.get("total_distance_m", 0) or 0) / avg_distance - 1) * 100, 1)
+        if not is_gk and not was_subbed and avg_sprints > 0:
+            player_summary["sprints_vs_avg_pct"] = round(((p.get("sprint_count", 0) or 0) / avg_sprints - 1) * 100, 1)
         gps_summary["players"].append(player_summary)
 
     prompt = f"""Analyze this GPS performance data from a GAA football match and provide CONCISE, ACTIONABLE insights.
@@ -423,9 +481,12 @@ Provide your analysis as a JSON object with this EXACT structure:
 }}
 
 ANALYSIS GUIDELINES:
-- Flag players with distance >20% above team average (potential overload)
-- Flag players with sprints >30% above average (high intensity, needs recovery)
-- Flag players with very low output relative to playing time (potential injury/fitness issue)
+- NEVER flag the goalkeeper for low distance/activity — GKs typically cover 2-4km which is normal
+- Players with a "subbed_off_minute" were DEFINITELY substituted — state as fact, do NOT say "possible tactical substitution". Evaluate their output relative to minutes played
+- Use positions for distance expectations: Midfielders 9-12km, Forwards/Defenders 7-10km, Goalkeeper 2-4km
+- Only flag outfield players who played the full match and are significantly below position benchmarks
+- Flag outfield players with distance >20% above team average (potential overload)
+- Flag outfield players with sprints >30% above average (high intensity, needs recovery)
 - Consider max speed - very high values indicate explosive efforts requiring recovery
 - Keep all messages SHORT and ACTIONABLE
 - Maximum 3 alerts (prioritize most important)

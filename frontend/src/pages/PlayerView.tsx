@@ -127,13 +127,13 @@ function StatCard({ label, value, subtext, icon: Icon, color = 'indigo' }: {
   return (
     <div className="stat-card">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-slate-600 text-sm font-medium">{label}</span>
+        <span className="text-white/70 text-sm font-medium">{label}</span>
         <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${colorClasses[color]} flex items-center justify-center`}>
           <Icon size={16} className="text-white" />
         </div>
       </div>
       <div className="stat-value">{value}</div>
-      {subtext && <div className="text-xs text-slate-500 mt-1">{subtext}</div>}
+      {subtext && <div className="text-xs text-white/50 mt-1">{subtext}</div>}
     </div>
   )
 }
@@ -192,14 +192,14 @@ function FitnessMetricCard({
   return (
     <div className="p-4 rounded-xl bg-white/5">
       <div className="flex items-center justify-between mb-1">
-        <div className="text-xs text-white/50">{label}</div>
+        <div className="text-xs text-white/80">{label}</div>
         {getChangeIndicator()}
       </div>
       <div className={`text-lg font-bold ${getStatusColor()}`}>
         {value !== undefined && value !== null ? `${value}${unit}` : '-'}
       </div>
       {benchmark && (
-        <div className="text-xs text-white/30 mt-1">
+        <div className="text-xs text-white/50 mt-1">
           {lowerIsBetter
             ? `<${benchmark.excellent}${unit} excellent`
             : `>${benchmark.excellent}${unit} excellent`}
