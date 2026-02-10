@@ -22,7 +22,7 @@ import os
 from app.database import get_db, async_session_maker
 from app.models.training_performance import TrainingGPSData, WeightTrainingSession, WeightExercise, GPSUploadLog
 from app.services.workload_analysis_service import WorkloadAnalysisService
-from app.models.attendance import TrainingSession
+from app.models.attendance import TrainingSession, Attendance, AttendanceStatus
 from app.models.player import Player
 from app.schemas.training_performance import (
     TrainingGPSDataCreate,
@@ -125,8 +125,8 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                 # Use Claude Vision to extract
                 extracted_data = await extract_gps_from_pdf(content, filename)
             elif filename.lower().endswith('.csv'):
-                # Parse CSV directly
-                extracted_data = parse_gps_csv(content)
+                # Use Claude AI to intelligently parse CSV columns
+                extracted_data = await parse_gps_csv(content)
             else:
                 raise ValueError(f"Unsupported file type: {filename}")
 
@@ -137,16 +137,86 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                 # Get players to match names
                 players_query = select(Player)
                 players_result = await db.execute(players_query)
-                players = {p.name.lower(): p for p in players_result.scalars().all()}
+                all_players = list(players_result.scalars().all())
+
+                def match_player(gps_name: str):
+                    """Smart player matching — handles abbreviated names like 'Dylan S' -> 'Dylan Sweeney'"""
+                    import re as _re
+                    # Normalise: strip quotes, replace ? with ', collapse whitespace
+                    gps_name = gps_name.strip().strip('"').replace('?', "'")
+                    gps_clean = gps_name.lower()
+
+                    # Exact match
+                    for p in all_players:
+                        if p.name.lower() == gps_clean:
+                            return p
+
+                    # Parse name parts — rejoin "Mc C" / "McB" style fragments
+                    parts = gps_clean.split()
+                    if not parts:
+                        return None
+
+                    # Handle "Ethan Mc C" → first="ethan", surname_part="mcc"
+                    # and "R Grannell" → first_initial="r", surname_part="grannell"
+                    first_name = parts[0]
+                    surname_part = ''.join(parts[1:]).lower() if len(parts) > 1 else None
+
+                    # First name matches (exact first name)
+                    first_name_matches = [p for p in all_players if p.name.lower().split()[0] == first_name]
+
+                    if len(first_name_matches) == 1:
+                        return first_name_matches[0]
+
+                    # If first_name is a single letter, treat as initial — match on surname instead
+                    if len(first_name) == 1 and surname_part:
+                        for p in all_players:
+                            pparts = p.name.lower().split()
+                            if len(pparts) > 1 and pparts[0].startswith(first_name) and pparts[-1].startswith(surname_part[:3]):
+                                return p
+                        # Also try surname match alone
+                        for p in all_players:
+                            pparts = p.name.lower().split()
+                            if len(pparts) > 1 and pparts[-1] == surname_part:
+                                return p
+
+                    if surname_part and len(first_name_matches) > 1:
+                        # Multiple first-name matches — filter by surname start
+                        surname_initial = surname_part[0]
+                        for p in first_name_matches:
+                            name_parts = p.name.split()
+                            if len(name_parts) > 1:
+                                db_surname = name_parts[-1].lower().replace("'", "")
+                                if db_surname.startswith(surname_initial):
+                                    return p
+
+                    # Joined surname match: "Mc C" collapsed to "mcc" matches "mccaffrey"
+                    if surname_part and len(surname_part) >= 2:
+                        for p in all_players:
+                            pparts = p.name.lower().split()
+                            if len(pparts) > 1 and pparts[0] == first_name:
+                                db_surname = pparts[-1].replace("'", "")
+                                if db_surname.startswith(surname_part):
+                                    return p
+
+                    # Partial first name match (but only if first name is 3+ chars to avoid false matches)
+                    if len(first_name) >= 3:
+                        for p in all_players:
+                            if first_name in p.name.lower():
+                                return p
+
+                    logger.warning(f"No match for GPS player: '{gps_name}'")
+                    return None
 
                 # Create GPS records for each player
                 player_count = 0
+                matched_player_ids = set()
                 if isinstance(extracted_data, dict) and "players" in extracted_data:
                     for player_data in extracted_data["players"]:
-                        player_name = player_data.get("name", "").lower()
-                        player = players.get(player_name)
+                        gps_name = player_data.get("name", "")
+                        player = match_player(gps_name)
 
                         if player:
+                            matched_player_ids.add(player.id)
                             gps_record = TrainingGPSData(
                                 session_id=session_id,
                                 player_id=player.id,
@@ -158,12 +228,46 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                                 acceleration_count=player_data.get("acceleration_count"),
                                 deceleration_count=player_data.get("deceleration_count"),
                                 dynamic_stress_load=player_data.get("dynamic_stress_load"),
+                                player_load=player_data.get("player_load"),
                                 avg_heart_rate=player_data.get("avg_heart_rate"),
                                 max_heart_rate=player_data.get("max_heart_rate"),
                                 raw_data=player_data
                             )
                             db.add(gps_record)
                             player_count += 1
+                        else:
+                            logger.warning(f"No match for GPS player: '{gps_name}'")
+
+                # Auto-record attendance from GPS data
+                if matched_player_ids:
+                    # Check for existing attendance records
+                    existing_att = await db.execute(
+                        select(Attendance.player_id).where(Attendance.session_id == session_id)
+                    )
+                    already_recorded = {row[0] for row in existing_att.all()}
+
+                    # Players in GPS file = present
+                    for pid in matched_player_ids:
+                        if pid not in already_recorded:
+                            db.add(Attendance(
+                                session_id=session_id,
+                                player_id=pid,
+                                status=AttendanceStatus.PRESENT,
+                                notes="Auto-detected from GPS upload"
+                            ))
+
+                    # Active players NOT in GPS file = absent
+                    for p in all_players:
+                        if p.id not in matched_player_ids and p.id not in already_recorded and p.active:
+                            db.add(Attendance(
+                                session_id=session_id,
+                                player_id=p.id,
+                                status=AttendanceStatus.ABSENT,
+                                notes="Not in GPS upload"
+                            ))
+
+                    logger.info(f"Auto-recorded attendance: {len(matched_player_ids)} present, "
+                                f"{sum(1 for p in all_players if p.id not in matched_player_ids and p.id not in already_recorded and p.active)} absent")
 
                 upload_log.extracted_player_count = player_count
                 upload_log.status = "completed"
@@ -175,15 +279,31 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
             # Trigger workload analysis for players with GPS data
             if isinstance(extracted_data, dict) and "players" in extracted_data:
                 for player_data in extracted_data["players"]:
-                    player_name = player_data.get("name", "").lower()
-                    player = players.get(player_name)
+                    gps_name = player_data.get("name", "")
+                    player = match_player(gps_name)
                     if player:
                         try:
                             await WorkloadAnalysisService.trigger_analysis_for_player(
                                 db, player.id, "gps_upload"
                             )
                         except Exception as e:
-                            logger.error(f"Workload analysis failed for {player_name}: {e}")
+                            logger.error(f"Workload analysis failed for {gps_name}: {e}")
+
+            # Generate AI training summary
+            try:
+                from app.services.ai.training_agent import analyze_training_session
+                result = await analyze_training_session(db, str(session_id))
+                if result.get("summary"):
+                    session_query = select(TrainingSession).where(TrainingSession.id == session_id)
+                    session_result = await db.execute(session_query)
+                    session_obj = session_result.scalar_one_or_none()
+                    if session_obj:
+                        session_obj.ai_summary = result["summary"]
+                        session_obj.ai_summary_generated_at = datetime.utcnow()
+                        await db.commit()
+                        logger.info(f"AI training summary generated for session {session_id}")
+            except Exception as e:
+                logger.error(f"AI training summary failed: {e}")
 
         except Exception as e:
             logger.error(f"GPS upload processing failed: {e}")
@@ -289,31 +409,163 @@ Return ONLY the JSON object, no other text."""
         return {"error": str(e)}
 
 
-def parse_gps_csv(content: bytes) -> dict:
+def _parse_csv_local(content: bytes) -> dict:
     """
-    Parse GPS data from CSV format.
+    Local CSV parser for STATSports exports — no AI needed.
+
+    Maps common column name variations to our standard fields.
     """
     import csv
-    from io import StringIO
+    import io
 
+    # Decode
+    text = None
+    for encoding in ('utf-8', 'utf-8-sig', 'latin-1', 'cp1252'):
+        try:
+            text = content.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise ValueError("Could not decode CSV file")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if not reader.fieldnames:
+        raise ValueError("CSV has no header row")
+
+    # Build a lowercase column name → original name mapping
+    col_map = {name.strip().lower(): name.strip() for name in reader.fieldnames}
+
+    def find_col(*candidates):
+        """Find the first matching column name (case-insensitive, substring match)."""
+        for candidate in candidates:
+            cl = candidate.lower()
+            # Exact match first
+            if cl in col_map:
+                return col_map[cl]
+            # Substring match
+            for key, orig in col_map.items():
+                if cl in key:
+                    return orig
+        return None
+
+    name_col = find_col("player display name", "player name", "player", "name", "athlete")
+    dist_col = find_col("total distance")
+    hsr_col = find_col("high speed running", "hsr")
+    sprint_dist_col = find_col("sprint distance")
+    max_speed_col = find_col("max speed", "max vel", "top speed")
+    sprint_count_col = find_col("sprints", "sprint count", "number of sprints")
+    accel_col = find_col("accelerations", "accel count")
+    decel_col = find_col("decelerations", "decel count")
+    dsl_col = find_col("dynamic stress load", "dsl", "stress load")
+    pl_col = find_col("player load")
+    avg_hr_col = find_col("average heart rate", "avg heart rate", "avg hr")
+    max_hr_col = find_col("max heart rate", "max hr", "maximum heart rate")
+
+    if not name_col:
+        raise ValueError(f"Cannot find player name column in: {list(reader.fieldnames)}")
+
+    logger.info(f"CSV columns mapped: name={name_col}, dist={dist_col}, hsr={hsr_col}, "
+                f"sprints={sprint_count_col}, max_speed={max_speed_col}")
+
+    def safe_float(row, col):
+        if not col:
+            return None
+        val = row.get(col, "").strip()
+        if not val:
+            return None
+        try:
+            v = float(val)
+            return v if v > 0 else None
+        except (ValueError, TypeError):
+            return None
+
+    def safe_int(row, col):
+        v = safe_float(row, col)
+        return int(v) if v is not None else None
+
+    players = []
+    for row in reader:
+        name = row.get(name_col, "").strip().strip('"')
+        if not name:
+            continue
+        players.append({
+            "name": name,
+            "total_distance_m": safe_float(row, dist_col),
+            "high_speed_running_m": safe_float(row, hsr_col),
+            "sprint_distance_m": safe_float(row, sprint_dist_col),
+            "max_speed_ms": safe_float(row, max_speed_col),
+            "sprint_count": safe_int(row, sprint_count_col),
+            "acceleration_count": safe_int(row, accel_col),
+            "deceleration_count": safe_int(row, decel_col),
+            "dynamic_stress_load": safe_float(row, dsl_col),
+            "player_load": safe_float(row, pl_col),
+            "avg_heart_rate": safe_int(row, avg_hr_col),
+            "max_heart_rate": safe_int(row, max_hr_col),
+        })
+
+    logger.info(f"Local CSV parser extracted {len(players)} players")
+    return {"session_info": {"session_type": "training"}, "players": players}
+
+
+async def parse_gps_csv(content: bytes) -> dict:
+    """
+    Parse GPS data from CSV. Uses local parser (fast, no API needed).
+    Falls back to AI only if local parsing finds no players.
+    """
     try:
-        text = content.decode('utf-8')
-        reader = csv.DictReader(StringIO(text))
+        result = _parse_csv_local(content)
+        if result.get("players"):
+            return result
+        logger.warning("Local CSV parser found 0 players, trying AI fallback...")
+    except Exception as e:
+        logger.warning(f"Local CSV parser failed: {e}, trying AI fallback...")
 
-        players = []
-        for row in reader:
-            player_data = {
-                "name": row.get("Player", row.get("Name", "")),
-                "total_distance_m": float(row.get("Total Distance", row.get("Distance", 0)) or 0),
-                "max_speed_ms": float(row.get("Max Speed", row.get("Top Speed", 0)) or 0),
-                "sprint_count": int(row.get("Sprints", row.get("Sprint Count", 0)) or 0),
-            }
-            players.append(player_data)
+    # AI fallback
+    try:
+        import anthropic
 
-        return {"players": players}
+        for encoding in ('utf-8', 'utf-8-sig', 'latin-1', 'cp1252'):
+            try:
+                text = content.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            raise ValueError("Could not decode CSV file")
+
+        lines = text.splitlines()
+        if len(lines) > 200:
+            text = '\n'.join(lines[:200])
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            messages=[{
+                "role": "user",
+                "content": f"""Extract ALL player GPS data from this CSV. Return JSON:
+{{"players": [{{"name": "...", "total_distance_m": ..., "high_speed_running_m": ..., "sprint_distance_m": ..., "max_speed_ms": ..., "sprint_count": ..., "acceleration_count": ..., "deceleration_count": ..., "dynamic_stress_load": ..., "player_load": ..., "avg_heart_rate": ..., "max_heart_rate": ...}}]}}
+Distances in metres, speed in m/s. Use null for missing. Return ONLY JSON.
+
+CSV:
+{text}"""
+            }]
+        )
+
+        import re
+        json_match = re.search(r'\{[\s\S]*\}', response.content[0].text)
+        if json_match:
+            return json.loads(json_match.group())
+
+        return {"error": "Could not parse AI response"}
 
     except Exception as e:
-        logger.error(f"CSV parsing failed: {e}")
+        logger.error(f"AI CSV parsing also failed: {e}")
         return {"error": str(e)}
 
 
@@ -340,6 +592,29 @@ async def get_upload_status(
         created_at=upload.created_at,
         processed_at=upload.processed_at
     )
+
+
+@router.get("/ai-summary/latest")
+async def get_latest_training_ai_summary(
+    db: AsyncSession = Depends(get_db)
+):
+    """Get the latest AI-generated training session summary."""
+    result = await db.execute(
+        select(TrainingSession)
+        .where(TrainingSession.ai_summary.isnot(None))
+        .order_by(TrainingSession.session_date.desc())
+        .limit(1)
+    )
+    session = result.scalar_one_or_none()
+
+    if not session or not session.ai_summary:
+        return {"summary": None}
+
+    return {
+        "summary": session.ai_summary,
+        "session_date": session.session_date.isoformat() if session.session_date else None,
+        "generated_at": session.ai_summary_generated_at.isoformat() if session.ai_summary_generated_at else None,
+    }
 
 
 @router.get("/gps/session/{session_id}", response_model=list[TrainingGPSDataResponse])

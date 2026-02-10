@@ -141,10 +141,12 @@ class KickoutTrendMatch(BaseModel):
     date: str
     won_clean: int
     won_break: int
-    lost: int
+    lost_clean: int
+    lost_break: int
     won_clean_pct: float
     won_break_pct: float
-    lost_pct: float
+    lost_clean_pct: float
+    lost_break_pct: float
 
 class TurnoverSourcePlayer(BaseModel):
     player_id: str
@@ -168,12 +170,53 @@ class WorkhorseRadarData(BaseModel):
     last_game: List[float]
     last_game_opponent: str
 
+class TerritoryZonePcts(BaseModel):
+    defensive: float
+    midfield: float
+    attacking: float
+
+class TerritoryMatchData(BaseModel):
+    match_id: str
+    opponent: str
+    date: str
+    dungloe_pcts: TerritoryZonePcts
+    opponent_pcts: TerritoryZonePcts
+    possession_pct: float
+
+class TerritoryDistributionData(BaseModel):
+    season_totals: dict
+    season_pcts: TerritoryZonePcts
+    opponent_totals: dict
+    opponent_pcts: TerritoryZonePcts
+    per_match: List[TerritoryMatchData]
+    possession_pct: float
+
+class KPICardItem(BaseModel):
+    key: str
+    label: str
+    value: float
+    format: str
+    color: str
+
+class KPIMetadata(BaseModel):
+    matches_played: int
+    win_rate: float
+    wins: int
+    losses: int
+    draws: int
+
+class KPICards(BaseModel):
+    metadata: KPIMetadata
+    cards: List[KPICardItem]
+
 class SeasonDashboardData(BaseModel):
     possession_funnel: PossessionFunnelData
     kickout_trends: List[KickoutTrendMatch]
     turnover_leaderboard: List[TurnoverSourcePlayer]
     red_zone_players: List[RedZonePlayer]
     workhorse_radar: WorkhorseRadarData
+    territory_distribution: TerritoryDistributionData
+    kpi_cards: Optional[KPICards] = None
 
 
 # ============================================================================
@@ -572,10 +615,28 @@ async def get_season_dashboard(
 
     data = await SeasonDashboardService.get_all(db)
 
+    td = data["territory_distribution"]
+    kpi_raw = data.get("kpi_cards")
+    kpi = None
+    if kpi_raw:
+        kpi = KPICards(
+            metadata=KPIMetadata(**kpi_raw["metadata"]),
+            cards=[KPICardItem(**c) for c in kpi_raw["cards"]],
+        )
+
     return SeasonDashboardData(
         possession_funnel=PossessionFunnelData(**data["possession_funnel"]),
         kickout_trends=[KickoutTrendMatch(**k) for k in data["kickout_trends"]],
         turnover_leaderboard=[TurnoverSourcePlayer(**t) for t in data["turnover_leaderboard"]],
         red_zone_players=[RedZonePlayer(**r) for r in data["red_zone_players"]],
         workhorse_radar=WorkhorseRadarData(**data["workhorse_radar"]),
+        territory_distribution=TerritoryDistributionData(
+            season_totals=td["season_totals"],
+            season_pcts=TerritoryZonePcts(**td["season_pcts"]),
+            opponent_totals=td["opponent_totals"],
+            opponent_pcts=TerritoryZonePcts(**td["opponent_pcts"]),
+            per_match=[TerritoryMatchData(**m) for m in td["per_match"]],
+            possession_pct=td["possession_pct"],
+        ),
+        kpi_cards=kpi,
     )

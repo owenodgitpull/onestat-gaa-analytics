@@ -62,7 +62,7 @@ export const playersAPI = {
    * Get all players
    */
   getAll: async (): Promise<Player[]> => {
-    const response = await fetchAPI<{ players: Player[]; total: number; page: number; page_size: number }>('/players/?limit=100');
+    const response = await fetchAPI<{ players: Player[]; total: number; page: number; page_size: number }>('/players/?limit=100&active_only=false');
     return response.players; // Extract just the players array
   },
 
@@ -451,10 +451,12 @@ export interface KickoutTrendMatch {
   date: string;
   won_clean: number;
   won_break: number;
-  lost: number;
+  lost_clean: number;
+  lost_break: number;
   won_clean_pct: number;
   won_break_pct: number;
-  lost_pct: number;
+  lost_clean_pct: number;
+  lost_break_pct: number;
 }
 
 export interface TurnoverSourcePlayer {
@@ -482,12 +484,59 @@ export interface WorkhorseRadarData {
   last_game_opponent: string;
 }
 
+export interface TerritoryZonePcts {
+  defensive: number;
+  midfield: number;
+  attacking: number;
+}
+
+export interface TerritoryMatchData {
+  match_id: string;
+  opponent: string;
+  date: string;
+  dungloe_pcts: TerritoryZonePcts;
+  opponent_pcts: TerritoryZonePcts;
+  possession_pct: number;
+}
+
+export interface TerritoryDistributionData {
+  season_totals: Record<string, number>;
+  season_pcts: TerritoryZonePcts;
+  opponent_totals: Record<string, number>;
+  opponent_pcts: TerritoryZonePcts;
+  per_match: TerritoryMatchData[];
+  possession_pct: number;
+}
+
+export interface KPICardItem {
+  key: string;
+  label: string;
+  value: number;
+  format: string;
+  color: string;
+}
+
+export interface KPIMetadata {
+  matches_played: number;
+  win_rate: number;
+  wins: number;
+  losses: number;
+  draws: number;
+}
+
+export interface KPICards {
+  metadata: KPIMetadata;
+  cards: KPICardItem[];
+}
+
 export interface SeasonDashboardData {
   possession_funnel: PossessionFunnelData;
   kickout_trends: KickoutTrendMatch[];
   turnover_leaderboard: TurnoverSourcePlayer[];
   red_zone_players: RedZonePlayer[];
   workhorse_radar: WorkhorseRadarData;
+  territory_distribution: TerritoryDistributionData;
+  kpi_cards?: KPICards;
 }
 
 const analyticsAPI = {
@@ -983,6 +1032,13 @@ export interface SquadHealthSummary {
 }
 
 const squadHealthAPI = {
+  /**
+   * Get AI-generated squad health summary (1-2 sentences)
+   */
+  getAISummary: async (): Promise<{ summary: string | null; generated_at: string | null }> => {
+    return fetchAPI<{ summary: string | null; generated_at: string | null }>('/squad-health/ai-summary');
+  },
+
   /**
    * Get squad-wide health summary
    */

@@ -54,6 +54,8 @@ class TrainingSession(Base):
     end_time = Column(String(10), nullable=True)
     location = Column(String(100), nullable=True, default="Dungloe GAA Grounds")
     notes = Column(Text, nullable=True)
+    ai_summary = Column(Text, nullable=True)
+    ai_summary_generated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships

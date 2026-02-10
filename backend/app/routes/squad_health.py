@@ -19,7 +19,61 @@ from app.database import get_db
 from app.models.player_health import PlayerHealthAlert, AlertSeverity
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+@router.get("/ai-summary")
+async def get_squad_health_ai_summary(db: AsyncSession = Depends(get_db)):
+    """
+    Get a 1-2 sentence AI-generated summary of squad health status.
+    Uses Haiku for fast, cheap inference.
+    """
+    try:
+        summary = await WorkloadAnalysisService.get_squad_health_summary(db)
+
+        # Count players by status
+        status_counts = {}
+        for pw in summary.get("player_workloads", []):
+            status = pw.get("status", "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+
+        total_players = sum(status_counts.values())
+        total_alerts = summary.get("total_alerts", 0)
+        critical_count = summary.get("critical_count", 0)
+        high_count = summary.get("high_count", 0)
+
+        data_text = (
+            f"Squad health: {total_players} players tracked.\n"
+            f"Status breakdown: {', '.join(f'{v} {k}' for k, v in status_counts.items())}.\n"
+            f"Active alerts: {total_alerts} total, {critical_count} critical, {high_count} high."
+        )
+
+        from app.services.ai._shared import client
+
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=150,
+            system="You are a GAA strength & conditioning analyst for Dungloe GAA. "
+                   "Give a 1-2 sentence squad health summary. Be specific with numbers. "
+                   "Highlight any concerns or positive trends.",
+            messages=[{
+                "role": "user",
+                "content": f"Summarize this squad health status:\n{data_text}"
+            }]
+        )
+
+        return {
+            "summary": response.content[0].text,
+            "generated_at": datetime.utcnow().isoformat(),
+        }
+
+    except Exception as e:
+        logger.error(f"Squad health AI summary failed: {e}")
+        return {"summary": None, "generated_at": None}
 
 
 @router.get("/summary")

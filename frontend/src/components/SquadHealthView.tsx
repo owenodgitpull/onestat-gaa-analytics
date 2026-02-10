@@ -12,7 +12,8 @@ import {
   CheckCircle,
   X,
   Zap,
-  User
+  User,
+  Bot
 } from 'lucide-react'
 import { api, SquadHealthSummary, PlayerWorkload } from '@/services/api'
 
@@ -25,13 +26,18 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
+  const [aiSummary, setAiSummary] = useState<string | null>(null)
 
   const fetchHealthData = async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await api.squadHealth.getSummary()
+      const [data, aiResult] = await Promise.all([
+        api.squadHealth.getSummary(),
+        api.squadHealth.getAISummary().catch(() => ({ summary: null })),
+      ])
       setHealthData(data)
+      setAiSummary(aiResult.summary)
     } catch (err) {
       setError('Failed to load squad health data')
       console.error(err)
@@ -160,28 +166,40 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
         </button>
       </div>
 
+      {/* AI Summary */}
+      {aiSummary && (
+        <div className="glass-card p-4 border border-indigo-500/20">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
+              <Bot size={16} className="text-indigo-400" />
+            </div>
+            <p className="text-sm text-white/80 leading-relaxed">{aiSummary}</p>
+          </div>
+        </div>
+      )}
+
       {/* Status Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="stat-card">
-          <div className="text-slate-900 text-sm font-semibold mb-2">Total Alerts</div>
+          <div className="text-white text-sm font-semibold mb-2">Total Alerts</div>
           <div className="stat-value">{healthData.total_alerts}</div>
         </div>
         <div className="stat-card border-l-4 border-red-500">
-          <div className="text-slate-900 text-sm font-semibold mb-2">Critical</div>
+          <div className="text-white text-sm font-semibold mb-2">Critical</div>
           <div className="stat-value text-red-500">{healthData.critical_count}</div>
         </div>
         <div className="stat-card border-l-4 border-orange-500">
-          <div className="text-slate-900 text-sm font-semibold mb-2">High Risk</div>
+          <div className="text-white text-sm font-semibold mb-2">High Risk</div>
           <div className="stat-value text-orange-500">{healthData.high_count}</div>
         </div>
         <div className="stat-card border-l-4 border-emerald-500">
-          <div className="text-slate-900 text-sm font-semibold mb-2">Optimal</div>
+          <div className="text-white text-sm font-semibold mb-2">Optimal</div>
           <div className="stat-value text-emerald-500">
             {playersByStatus['optimal']?.length || 0}
           </div>
         </div>
         <div className="stat-card border-l-4 border-amber-500">
-          <div className="text-slate-900 text-sm font-semibold mb-2">Monitoring</div>
+          <div className="text-white text-sm font-semibold mb-2">Monitoring</div>
           <div className="stat-value text-amber-500">
             {(playersByStatus['undertrained']?.length || 0) + (playersByStatus['elevated']?.length || 0)}
           </div>

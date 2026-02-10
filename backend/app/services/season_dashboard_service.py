@@ -58,13 +58,16 @@ class SeasonDashboardService:
         """
         matches = await SeasonDashboardService._get_completed_matches(db)
 
-        funnel, kickouts, turnovers, red_zone, radar = await asyncio.gather(
+        funnel, kickouts, turnovers, red_zone, radar, territory = await asyncio.gather(
             SeasonDashboardService._possession_funnel(db, matches),
             SeasonDashboardService._kickout_trends(db, matches),
             SeasonDashboardService._turnover_source_leaderboard(db, matches),
             SeasonDashboardService._red_zone_players(db, matches),
             SeasonDashboardService._workhorse_radar_data(db, matches),
+            SeasonDashboardService._territory_distribution(db, matches),
         )
+
+        kpi = await SeasonDashboardService._kpi_cards(db, matches, funnel)
 
         return {
             "possession_funnel": funnel,
@@ -72,6 +75,8 @@ class SeasonDashboardService:
             "turnover_leaderboard": turnovers,
             "red_zone_players": red_zone,
             "workhorse_radar": radar,
+            "territory_distribution": territory,
+            "kpi_cards": kpi,
         }
 
     # ------------------------------------------------------------------
@@ -284,17 +289,22 @@ class SeasonDashboardService:
             EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK,
             EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK,
         }
-        lost_types = {
-            EventType.KICKOUT_LOST, EventType.BREAKING_BALL_LOST,
-            EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
-            EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+        lost_clean_types = {
+            EventType.KICKOUT_LOST,
+            EventType.OWN_KICKOUT_OPPOSITION_WON,
+            EventType.OPP_KICKOUT_OPPOSITION_WON,
+        }
+        lost_break_types = {
+            EventType.BREAKING_BALL_LOST,
+            EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+            EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
         }
 
         match_kickouts = {}
         for e in all_kickout_events:
             mid = e.match_id
             if mid not in match_kickouts:
-                match_kickouts[mid] = {"won_clean": 0, "won_break": 0, "lost": 0}
+                match_kickouts[mid] = {"won_clean": 0, "won_break": 0, "lost_clean": 0, "lost_break": 0}
 
             # Detailed types encode who won in the name, legacy types use team field
             if e.event_type in won_clean_types:
@@ -305,26 +315,32 @@ class SeasonDashboardService:
                 if e.event_type == EventType.BREAKING_BALL_WON and e.team != Team.DUNGLOE:
                     continue
                 match_kickouts[mid]["won_break"] += 1
-            elif e.event_type in lost_types:
-                if e.event_type in (EventType.KICKOUT_LOST, EventType.BREAKING_BALL_LOST) and e.team != Team.DUNGLOE:
+            elif e.event_type in lost_clean_types:
+                if e.event_type == EventType.KICKOUT_LOST and e.team != Team.DUNGLOE:
                     continue
-                match_kickouts[mid]["lost"] += 1
+                match_kickouts[mid]["lost_clean"] += 1
+            elif e.event_type in lost_break_types:
+                if e.event_type == EventType.BREAKING_BALL_LOST and e.team != Team.DUNGLOE:
+                    continue
+                match_kickouts[mid]["lost_break"] += 1
 
         results = []
         for mid in match_ids:
             m = matches_map[mid]
-            ko = match_kickouts.get(mid, {"won_clean": 0, "won_break": 0, "lost": 0})
-            total = ko["won_clean"] + ko["won_break"] + ko["lost"]
+            ko = match_kickouts.get(mid, {"won_clean": 0, "won_break": 0, "lost_clean": 0, "lost_break": 0})
+            total = ko["won_clean"] + ko["won_break"] + ko["lost_clean"] + ko["lost_break"]
             results.append({
                 "match_id": str(mid),
                 "opponent": m.opponent,
                 "date": m.match_date.isoformat() if m.match_date else "",
                 "won_clean": ko["won_clean"],
                 "won_break": ko["won_break"],
-                "lost": ko["lost"],
+                "lost_clean": ko["lost_clean"],
+                "lost_break": ko["lost_break"],
                 "won_clean_pct": round((ko["won_clean"] / total * 100) if total > 0 else 0, 1),
                 "won_break_pct": round((ko["won_break"] / total * 100) if total > 0 else 0, 1),
-                "lost_pct": round((ko["lost"] / total * 100) if total > 0 else 0, 1),
+                "lost_clean_pct": round((ko["lost_clean"] / total * 100) if total > 0 else 0, 1),
+                "lost_break_pct": round((ko["lost_break"] / total * 100) if total > 0 else 0, 1),
             })
 
         return results
@@ -739,6 +755,307 @@ class SeasonDashboardService:
         return outliers
 
     # ------------------------------------------------------------------
+    # Territory Distribution — "Three Thirds" view
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _territory_distribution(db: AsyncSession, matches: list) -> dict:
+        """
+        Territory distribution: % of possessions in each third of the pitch.
+
+        Zones (by pitch_x):
+          Defensive Third:  x < 35
+          Middle Third:     35 <= x < 65
+          Attacking Third:  x >= 65
+
+        Returns season totals + per-match breakdown for both teams.
+        """
+        empty_zones = {"defensive": 0, "midfield": 0, "attacking": 0}
+        empty = {
+            "season_totals": dict(empty_zones),
+            "season_pcts": {"defensive": 0, "midfield": 0, "attacking": 0},
+            "opponent_totals": dict(empty_zones),
+            "opponent_pcts": {"defensive": 0, "midfield": 0, "attacking": 0},
+            "per_match": [],
+            "possession_pct": 50.0,
+        }
+        if not matches:
+            return empty
+
+        match_ids = [m.id for m in matches]
+        matches_map = {m.id: m for m in matches}
+
+        # Get ALL possession events for completed matches
+        poss_result = await db.execute(
+            select(PossessionEvent).where(
+                PossessionEvent.match_id.in_(match_ids),
+            ).order_by(PossessionEvent.minute.asc(), PossessionEvent.created_at.asc())
+        )
+        all_poss = poss_result.scalars().all()
+
+        # Aggregate into zones by team — TIME-WEIGHTED using duration_seconds
+        # Each PossessionEvent has duration_seconds = time until next event.
+        # Territory = total seconds spent in each zone, not tap count.
+        dungloe_zones = {"defensive": 0, "midfield": 0, "attacking": 0}
+        opp_zones = {"defensive": 0, "midfield": 0, "attacking": 0}
+        # Per-match tracking
+        match_dungloe = {}  # mid -> {defensive, midfield, attacking} (seconds)
+        match_opp = {}
+        dungloe_count = 0
+        opp_count = 0
+
+        for pe in all_poss:
+            mid = pe.match_id
+            x = pe.pitch_x
+            if x is None:
+                continue
+
+            # Use duration_seconds for time-weighting; fall back to 1 if not set
+            duration = pe.duration_seconds if pe.duration_seconds else 1
+
+            # Determine zone
+            if x < 35:
+                zone = "defensive"
+            elif x < 65:
+                zone = "midfield"
+            else:
+                zone = "attacking"
+
+            if pe.team == PossessionTeam.DUNGLOE:
+                dungloe_zones[zone] += duration
+                dungloe_count += duration
+                match_dungloe.setdefault(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
+                match_dungloe[mid][zone] += duration
+            elif pe.team == PossessionTeam.OPPONENT:
+                opp_zones[zone] += duration
+                opp_count += duration
+                match_opp.setdefault(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
+                match_opp[mid][zone] += duration
+
+        # Calculate season percentages
+        def calc_pcts(zones: dict) -> dict:
+            total = sum(zones.values())
+            if total == 0:
+                return {"defensive": 0, "midfield": 0, "attacking": 0}
+            return {
+                "defensive": round(zones["defensive"] / total * 100, 1),
+                "midfield": round(zones["midfield"] / total * 100, 1),
+                "attacking": round(zones["attacking"] / total * 100, 1),
+            }
+
+        # Per-match breakdowns
+        per_match = []
+        for m in matches:
+            mid = m.id
+            d_z = match_dungloe.get(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
+            o_z = match_opp.get(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
+            d_total = sum(d_z.values())
+            o_total = sum(o_z.values())
+            total_poss = d_total + o_total
+            per_match.append({
+                "match_id": str(mid),
+                "opponent": m.opponent or "Unknown",
+                "date": m.match_date.isoformat() if m.match_date else "",
+                "dungloe_pcts": calc_pcts(d_z),
+                "opponent_pcts": calc_pcts(o_z),
+                "possession_pct": round(d_total / total_poss * 100, 1) if total_poss > 0 else 50.0,
+            })
+
+        total_all = dungloe_count + opp_count
+        return {
+            "season_totals": dungloe_zones,
+            "season_pcts": calc_pcts(dungloe_zones),
+            "opponent_totals": opp_zones,
+            "opponent_pcts": calc_pcts(opp_zones),
+            "per_match": per_match,
+            "possession_pct": round(dungloe_count / total_all * 100, 1) if total_all > 0 else 50.0,
+        }
+
+    # ------------------------------------------------------------------
+    # KPI Cards — advanced season KPIs
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _kpi_cards(db: AsyncSession, matches: list, funnel: dict) -> dict:
+        """
+        Compute 7 advanced KPI cards + metadata (matches played, win rate, W-L-D).
+        """
+        n = len(matches)
+        empty = {
+            "metadata": {"matches_played": 0, "win_rate": 0, "wins": 0, "losses": 0, "draws": 0},
+            "cards": [],
+        }
+        if n == 0:
+            return empty
+
+        wins = sum(1 for m in matches if m.dungloe_total_score > m.opponent_total_score)
+        losses = sum(1 for m in matches if m.dungloe_total_score < m.opponent_total_score)
+        draws = n - wins - losses
+        win_rate = round(wins / n * 100, 1)
+
+        match_ids = [m.id for m in matches]
+
+        # --- Turnover differential ---
+        to_result = await db.execute(
+            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.event_type.in_([EventType.TURNOVER_WON, EventType.TURNOVER_LOST]),
+                )
+            )
+            .group_by(MatchEvent.event_type)
+        )
+        to_counts = {row.event_type: row.cnt for row in to_result}
+        t_won = to_counts.get(EventType.TURNOVER_WON, 0)
+        t_lost = to_counts.get(EventType.TURNOVER_LOST, 0)
+        turnover_diff = t_won - t_lost
+
+        # --- Kickout retention (own kickouts) ---
+        own_ko_won_types = [
+            EventType.OWN_KICKOUT_DUNGLOE_WON,
+            EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK,
+        ]
+        own_ko_lost_types = [
+            EventType.OWN_KICKOUT_OPPOSITION_WON,
+            EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+        ]
+        # Include legacy kickout types for Dungloe team
+        legacy_ko_types = [EventType.KICKOUT_WON, EventType.KICKOUT_LOST]
+
+        ko_result = await db.execute(
+            select(MatchEvent.event_type, MatchEvent.team, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type.in_(
+                        own_ko_won_types + own_ko_lost_types + legacy_ko_types
+                    ),
+                )
+            )
+            .group_by(MatchEvent.event_type, MatchEvent.team)
+        )
+        own_ko_won = 0
+        own_ko_total = 0
+        for row in ko_result:
+            if row.event_type in own_ko_won_types:
+                own_ko_won += row.cnt
+                own_ko_total += row.cnt
+            elif row.event_type in own_ko_lost_types:
+                own_ko_total += row.cnt
+            elif row.event_type == EventType.KICKOUT_WON and row.team == Team.DUNGLOE:
+                own_ko_won += row.cnt
+                own_ko_total += row.cnt
+            elif row.event_type == EventType.KICKOUT_LOST and row.team == Team.DUNGLOE:
+                own_ko_total += row.cnt
+
+        kickout_retention = round(own_ko_won / own_ko_total * 100, 1) if own_ko_total > 0 else 0
+
+        # --- Fouls per game ---
+        foul_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.event_type == EventType.FOUL_COMMITTED,
+                )
+            )
+        )
+        total_fouls = foul_result.scalar() or 0
+        fouls_per_game = round(total_fouls / n, 1)
+
+        # --- Shot efficiency (from funnel) ---
+        shot_efficiency = funnel.get("score_rate", 0)
+
+        # --- Productivity score ---
+        total_points_scored = sum(
+            (m.dungloe_goals * 3) + m.dungloe_points for m in matches
+        )
+        total_possessions = funnel.get("season_totals", {}).get("possessions", 0)
+        productivity = round(
+            (total_points_scored / total_possessions * 10) if total_possessions > 0 else 0, 2
+        )
+
+        # --- Avg scored / conceded ---
+        avg_scored = round(total_points_scored / n, 1)
+        avg_conceded = round(
+            sum((m.opponent_goals * 3) + m.opponent_points for m in matches) / n, 1
+        )
+
+        # Build cards with thresholds
+        def color(val, green_test, red_test):
+            if green_test(val):
+                return "green"
+            elif red_test(val):
+                return "red"
+            return "amber"
+
+        cards = [
+            {
+                "key": "productivity",
+                "label": "Productivity Score",
+                "value": productivity,
+                "format": "decimal",
+                "color": color(productivity, lambda v: v > 3.0, lambda v: v < 2.0),
+            },
+            {
+                "key": "turnover_diff",
+                "label": "Turnover Differential",
+                "value": turnover_diff,
+                "format": "signed_int",
+                "color": color(turnover_diff, lambda v: v > 0, lambda v: v < 0),
+            },
+            {
+                "key": "kickout_retention",
+                "label": "Kickout Retention %",
+                "value": kickout_retention,
+                "format": "percent",
+                "color": color(kickout_retention, lambda v: v > 65, lambda v: v < 50),
+            },
+            {
+                "key": "shot_efficiency",
+                "label": "Shot Efficiency",
+                "value": shot_efficiency,
+                "format": "percent",
+                "color": color(shot_efficiency, lambda v: v > 50, lambda v: v < 35),
+            },
+            {
+                "key": "fouls_per_game",
+                "label": "Fouls Per Game",
+                "value": fouls_per_game,
+                "format": "decimal",
+                "color": color(fouls_per_game, lambda v: v < 12, lambda v: v > 15),
+            },
+            {
+                "key": "avg_scored",
+                "label": "Avg Scored",
+                "value": avg_scored,
+                "format": "decimal",
+                "color": "amber",
+            },
+            {
+                "key": "avg_conceded",
+                "label": "Avg Conceded",
+                "value": avg_conceded,
+                "format": "decimal",
+                "color": "red",
+            },
+        ]
+
+        return {
+            "metadata": {
+                "matches_played": n,
+                "win_rate": win_rate,
+                "wins": wins,
+                "losses": losses,
+                "draws": draws,
+            },
+            "cards": cards,
+        }
+
+    # ------------------------------------------------------------------
     # Public wrappers (kept for backwards compat if called individually)
     # ------------------------------------------------------------------
 
@@ -766,3 +1083,8 @@ class SeasonDashboardService:
     async def get_workhorse_radar_data(db: AsyncSession) -> dict:
         matches = await SeasonDashboardService._get_completed_matches(db)
         return await SeasonDashboardService._workhorse_radar_data(db, matches)
+
+    @staticmethod
+    async def get_territory_distribution(db: AsyncSession) -> dict:
+        matches = await SeasonDashboardService._get_completed_matches(db)
+        return await SeasonDashboardService._territory_distribution(db, matches)

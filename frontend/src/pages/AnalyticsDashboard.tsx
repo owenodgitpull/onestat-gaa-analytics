@@ -20,7 +20,9 @@ import KickoutTrend from '@/components/charts/KickoutTrend'
 import TurnoverLeaderboard from '@/components/charts/TurnoverLeaderboard'
 import RedZoneList from '@/components/charts/RedZoneList'
 import WorkhorseRadar from '@/components/charts/WorkhorseRadar'
+import TerritoryDistribution from '@/components/charts/TerritoryDistribution'
 import AiInsightsSection from '@/components/charts/AiInsightsSection'
+import ShootingEfficiencyHeatmap from '@/components/charts/ShootingEfficiencyHeatmap'
 import ChartBadge from '@/components/charts/ChartBadge'
 import { usePinnedCharts } from '@/hooks/usePinnedCharts'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion } from '@/services/api'
@@ -248,44 +250,72 @@ export default function AnalyticsDashboard() {
         <SquadHealthView />
       ) : (
         <>
-      {/* 1. Season Overview — 4 stat cards */}
+      {/* 1. Season Overview — KPI Cards */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-2">
           <h2 className="text-2xl font-bold flex items-center space-x-2">
             <TrendingUp size={24} className="text-white" />
             <span className="text-white">Season Overview</span>
           </h2>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="stat-card">
-            <div className="text-white/70 text-sm font-semibold mb-2">Matches Played</div>
-            <div className="stat-value">{season_summary.matches_played}</div>
-          </div>
+        {/* Metadata label */}
+        {seasonDashboard?.kpi_cards ? (
+          <>
+            <p className="text-sm text-white/50 mb-4">
+              {seasonDashboard.kpi_cards.metadata.matches_played} Matches | {seasonDashboard.kpi_cards.metadata.win_rate}% Win Rate ({seasonDashboard.kpi_cards.metadata.wins}W-{seasonDashboard.kpi_cards.metadata.losses}L-{seasonDashboard.kpi_cards.metadata.draws}D)
+            </p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {seasonDashboard.kpi_cards.cards.map((card) => {
+                const colorMap: Record<string, string> = {
+                  green: 'text-emerald-400',
+                  amber: 'text-amber-400',
+                  red: 'text-red-400',
+                }
+                const valueColor = colorMap[card.color] || 'text-white'
 
-          <div className="stat-card">
-            <div className="text-white/70 text-sm font-semibold mb-2">Win Rate</div>
-            <div className="stat-value text-emerald-400">{season_summary.win_rate}%</div>
-            <div className="text-xs text-white/50 mt-1">
-              {season_summary.wins}W - {season_summary.losses}L - {season_summary.draws}D
-            </div>
-          </div>
+                let displayValue: string
+                if (card.format === 'percent') {
+                  displayValue = `${card.value}%`
+                } else if (card.format === 'signed_int') {
+                  displayValue = card.value > 0 ? `+${card.value}` : `${card.value}`
+                } else {
+                  displayValue = `${card.value}`
+                }
 
-          <div className="stat-card">
-            <div className="text-white/70 text-sm font-semibold mb-2">Avg Score</div>
-            <div className="stat-value text-amber-400">{season_summary.avg_score_per_match}</div>
-            <div className="text-xs text-white/50 mt-1">
-              {season_summary.total_goals_scored}G + {season_summary.total_points_scored}P
+                return (
+                  <div key={card.key} className="stat-card">
+                    <div className="text-white/70 text-sm font-semibold mb-2">{card.label}</div>
+                    <div className={`stat-value ${valueColor}`}>{displayValue}</div>
+                  </div>
+                )
+              })}
             </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="text-white/70 text-sm font-semibold mb-2">Avg Conceded</div>
-            <div className="stat-value text-red-400">{season_summary.avg_conceded_per_match}</div>
-            <div className="text-xs text-white/50 mt-1">
-              {season_summary.total_goals_conceded}G + {season_summary.total_points_conceded}P
+          </>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="stat-card">
+                <div className="text-white/70 text-sm font-semibold mb-2">Matches Played</div>
+                <div className="stat-value">{season_summary.matches_played}</div>
+              </div>
+              <div className="stat-card">
+                <div className="text-white/70 text-sm font-semibold mb-2">Win Rate</div>
+                <div className="stat-value text-emerald-400">{season_summary.win_rate}%</div>
+                <div className="text-xs text-white/50 mt-1">
+                  {season_summary.wins}W - {season_summary.losses}L - {season_summary.draws}D
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="text-white/70 text-sm font-semibold mb-2">Avg Score</div>
+                <div className="stat-value text-amber-400">{season_summary.avg_score_per_match}</div>
+              </div>
+              <div className="stat-card">
+                <div className="text-white/70 text-sm font-semibold mb-2">Avg Conceded</div>
+                <div className="stat-value text-red-400">{season_summary.avg_conceded_per_match}</div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       {/* 2. Canonical Charts */}
@@ -297,6 +327,7 @@ export default function AnalyticsDashboard() {
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <TurnoverLeaderboard data={seasonDashboard.turnover_leaderboard} />
+            <TerritoryDistribution data={seasonDashboard.territory_distribution} />
           </div>
         </div>
       )}
@@ -421,78 +452,8 @@ export default function AnalyticsDashboard() {
           </div>
         </div>
 
-        {/* Possession / Territory Chart */}
-        <div className="glass-card p-6 flex flex-col">
-          <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
-            <Activity size={20} className="text-white" />
-            <span>Possession & Territory</span>
-            <ChartBadge />
-          </h3>
-
-          {/* Possession Bar */}
-          <div className="mb-6">
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-indigo-400 font-semibold">Dungloe</span>
-              <span className="text-orange-400 font-semibold">Opponents</span>
-            </div>
-            <div className="relative h-10 rounded-full overflow-hidden bg-orange-500/80">
-              <div
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-indigo-600 to-indigo-500 transition-all duration-500"
-                style={{ width: `${possessionPercent}%` }}
-              />
-              <div className="absolute inset-0 flex items-center justify-between px-4">
-                <span className="text-white font-bold text-lg">{possessionPercent}%</span>
-                <span className="text-white font-bold text-lg">{100 - possessionPercent}%</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Territory Breakdown */}
-          <div className="flex-1">
-            <div className="text-sm text-white/60 mb-3">Territory Control by Zone</div>
-            <div className="grid grid-cols-3 gap-2 h-32">
-              <div className="bg-gradient-to-b from-indigo-900/40 to-indigo-800/30 rounded-lg p-3 flex flex-col justify-between border border-indigo-500/20">
-                <div className="text-xs text-white/50">Defensive</div>
-                <div className="text-center">
-                  <div className="text-xs text-emerald-400">Won: {possession_zones.find(z => z.zone.includes('defensive'))?.turnovers_won || 0}</div>
-                  <div className="text-xs text-red-400">Lost: {possession_zones.find(z => z.zone.includes('defensive'))?.turnovers_lost || 0}</div>
-                </div>
-              </div>
-              <div className="bg-gradient-to-b from-slate-700/40 to-slate-600/30 rounded-lg p-3 flex flex-col justify-between border border-slate-500/20">
-                <div className="text-xs text-white/50">Midfield</div>
-                <div className="text-center">
-                  <div className="text-xs text-emerald-400">Won: {possession_zones.find(z => z.zone.includes('middle'))?.turnovers_won || 0}</div>
-                  <div className="text-xs text-red-400">Lost: {possession_zones.find(z => z.zone.includes('middle'))?.turnovers_lost || 0}</div>
-                </div>
-              </div>
-              <div className="bg-gradient-to-b from-amber-900/40 to-amber-800/30 rounded-lg p-3 flex flex-col justify-between border border-amber-500/20">
-                <div className="text-xs text-white/50">Attacking</div>
-                <div className="text-center">
-                  <div className="text-xs text-emerald-400">Won: {possession_zones.find(z => z.zone.includes('attacking'))?.turnovers_won || 0}</div>
-                  <div className="text-xs text-red-400">Lost: {possession_zones.find(z => z.zone.includes('attacking'))?.turnovers_lost || 0}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Net Turnovers Summary */}
-          <div className="mt-4 pt-4 border-t border-white/10 flex justify-around">
-            <div className="text-center">
-              <div className="text-xs text-white/50">Turnovers Won</div>
-              <div className="text-xl font-bold text-emerald-400">{totalTurnoversWon}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-xs text-white/50">Turnovers Lost</div>
-              <div className="text-xl font-bold text-red-400">{totalTurnoversLost}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-xs text-white/50">Net</div>
-              <div className={`text-xl font-bold ${netPossession >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {netPossession >= 0 ? '+' : ''}{netPossession}
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Shooting Efficiency Heatmap */}
+        <ShootingEfficiencyHeatmap shots={filteredShots} />
       </div>
 
       {/* 4. GPS & Risk — only if GPS data exists */}
@@ -526,83 +487,44 @@ export default function AnalyticsDashboard() {
         loadingSuggestions={loadingSuggestions}
       />
 
-      {/* 6. Leaderboards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Scorers */}
-        <div className="glass-card p-6">
-          <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
-            <Target size={20} className="text-white" />
-            <span>Top Scorers</span>
-          </h3>
-          {top_scorers.length > 0 ? (
-            <div className="space-y-3">
-              {top_scorers.slice(0, 5).map((player, i) => (
-                <div key={player.player_id} className="flex items-center space-x-3 p-3 rounded-xl bg-white hover:bg-white/90 transition-colors">
-                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold text-white ${
-                    i === 0 ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
-                    i === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500' :
-                    i === 2 ? 'bg-gradient-to-br from-orange-600 to-orange-700' :
-                    'bg-gradient-to-br from-indigo-600 to-purple-600'
-                  }`}>
-                    #{i + 1}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-slate-900 truncate">{player.player_name}</div>
-                    <div className="text-xs text-slate-600">
-                      {player.goals}G - {player.points}P - {player.two_pointers}x2PT
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                      {player.total_score}
-                    </div>
-                    <div className="text-xs text-slate-600">{player.matches_played} games</div>
+      {/* 6. Top Scorers */}
+      <div className="glass-card p-6">
+        <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
+          <Target size={20} className="text-white" />
+          <span>Top Scorers</span>
+        </h3>
+        {top_scorers.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {top_scorers.slice(0, 6).map((player, i) => (
+              <div key={player.player_id} className="flex items-center space-x-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
+                <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold text-white ${
+                  i === 0 ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
+                  i === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500' :
+                  i === 2 ? 'bg-gradient-to-br from-orange-600 to-orange-700' :
+                  'bg-gradient-to-br from-indigo-600 to-purple-600'
+                }`}>
+                  #{i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-white truncate">{player.player_name}</div>
+                  <div className="text-xs text-white/60">
+                    {player.goals}G - {player.points}P - {player.two_pointers}x2PT
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="h-48 flex items-center justify-center text-white/40">
-              No scoring data yet
-            </div>
-          )}
-        </div>
-
-        {/* Turnover Leaders */}
-        <div className="glass-card p-6">
-          <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
-            <Trophy size={20} className="text-white" />
-            <span>Turnover Kings</span>
-          </h3>
-          {top_turnovers.length > 0 ? (
-            <div className="space-y-3">
-              {top_turnovers.slice(0, 5).map((player, i) => (
-                <div key={player.player_id} className="flex items-center space-x-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                  <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold text-white ${
-                    i === 0 ? 'bg-gradient-to-br from-emerald-500 to-teal-600' :
-                    'bg-gradient-to-br from-slate-600 to-slate-700'
-                  }`}>
-                    #{i + 1}
+                <div className="text-right">
+                  <div className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                    {player.total_score}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <span className="font-semibold text-white truncate block">{player.player_name}</span>
-                    <div className="flex gap-3 text-xs mt-1">
-                      <span className="text-emerald-400">Won: {player.turnovers_won}</span>
-                      <span className="text-red-400">Lost: {player.turnovers_lost}</span>
-                    </div>
-                  </div>
-                  <div className={`text-xl font-bold ${player.net_turnovers >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {player.net_turnovers >= 0 ? '+' : ''}{player.net_turnovers}
-                  </div>
+                  <div className="text-xs text-white/60">{player.matches_played} games</div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="h-48 flex items-center justify-center text-white/40">
-              No turnover data yet
-            </div>
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="h-48 flex items-center justify-center text-white/40">
+            No scoring data yet
+          </div>
+        )}
       </div>
 
       {/* 7. Recent Matches */}
