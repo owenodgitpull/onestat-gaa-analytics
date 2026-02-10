@@ -69,6 +69,17 @@ class SeasonDashboardService:
 
         kpi = await SeasonDashboardService._kpi_cards(db, matches, funnel)
 
+        # Generate dynamic AI insights for KPI cards (non-blocking — fallback to empty)
+        try:
+            from app.services.ai import generate_kpi_insights
+            insights = await generate_kpi_insights(kpi)
+            if insights:
+                for card in kpi.get("cards", []):
+                    card["insight"] = insights.get(card["key"], "")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"KPI insights generation failed: {e}")
+
         return {
             "possession_funnel": funnel,
             "kickout_trends": kickouts,
@@ -984,6 +995,116 @@ class SeasonDashboardService:
             sum((m.opponent_goals * 3) + m.opponent_points for m in matches) / n, 1
         )
 
+        # --- Per-match trends (last 3 vs season) ---
+        trend_window = min(3, n)
+        recent_matches = matches[-trend_window:]  # matches ordered by date ASC
+        recent_ids = [m.id for m in recent_matches]
+
+        def make_trend(season_val, recent_val, fmt="decimal"):
+            """Build trend dict with direction and percentage change."""
+            if season_val == 0:
+                direction = "stable"
+                change_pct = 0
+            else:
+                diff = recent_val - season_val
+                change_pct = round(diff / abs(season_val) * 100)
+                direction = "up" if change_pct > 5 else ("down" if change_pct < -5 else "stable")
+            return {
+                "window": trend_window,
+                "season": round(season_val, 1),
+                "recent": round(recent_val, 1),
+                "direction": direction,
+                "change_pct": change_pct,
+            }
+
+        # Recent avg scored / conceded
+        recent_scored = sum((m.dungloe_goals * 3) + m.dungloe_points for m in recent_matches) / trend_window
+        recent_conceded = sum((m.opponent_goals * 3) + m.opponent_points for m in recent_matches) / trend_window
+
+        # Recent turnovers (per match)
+        recent_to = await db.execute(
+            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(recent_ids),
+                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.event_type.in_([EventType.TURNOVER_WON, EventType.TURNOVER_LOST]),
+                )
+            )
+            .group_by(MatchEvent.event_type)
+        )
+        recent_to_counts = {row.event_type: row.cnt for row in recent_to}
+        recent_to_diff = (
+            recent_to_counts.get(EventType.TURNOVER_WON, 0)
+            - recent_to_counts.get(EventType.TURNOVER_LOST, 0)
+        ) / trend_window
+
+        # Recent fouls per game
+        recent_foul_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(recent_ids),
+                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.event_type == EventType.FOUL_COMMITTED,
+                )
+            )
+        )
+        recent_fouls_pg = (recent_foul_result.scalar() or 0) / trend_window
+
+        # Recent kickout retention
+        recent_ko = await db.execute(
+            select(MatchEvent.event_type, MatchEvent.team, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(recent_ids),
+                    MatchEvent.event_type.in_(
+                        own_ko_won_types + own_ko_lost_types + legacy_ko_types
+                    ),
+                )
+            )
+            .group_by(MatchEvent.event_type, MatchEvent.team)
+        )
+        r_ko_won = 0
+        r_ko_total = 0
+        for row in recent_ko:
+            if row.event_type in own_ko_won_types:
+                r_ko_won += row.cnt
+                r_ko_total += row.cnt
+            elif row.event_type in own_ko_lost_types:
+                r_ko_total += row.cnt
+            elif row.event_type == EventType.KICKOUT_WON and row.team == Team.DUNGLOE:
+                r_ko_won += row.cnt
+                r_ko_total += row.cnt
+            elif row.event_type == EventType.KICKOUT_LOST and row.team == Team.DUNGLOE:
+                r_ko_total += row.cnt
+        recent_ko_ret = round(r_ko_won / r_ko_total * 100, 1) if r_ko_total > 0 else 0
+
+        # Recent shot efficiency — use per-match shot events
+        recent_shot_result = await db.execute(
+            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(recent_ids),
+                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.event_type.in_(SHOT_EVENTS),
+                )
+            )
+            .group_by(MatchEvent.event_type)
+        )
+        r_shots = 0
+        r_scores = 0
+        for row in recent_shot_result:
+            r_shots += row.cnt
+            if row.event_type in SCORE_EVENTS:
+                r_scores += row.cnt
+        recent_shot_eff = round(r_scores / r_shots * 100, 1) if r_shots > 0 else 0
+
+        # Recent productivity
+        recent_pts = sum((m.dungloe_goals * 3) + m.dungloe_points for m in recent_matches)
+        # Approximate recent possessions from shot count (rough proxy)
+        recent_productivity = round(recent_pts / (r_shots * 1.5) * 10, 2) if r_shots > 0 else 0
+
         # Build cards with thresholds
         def color(val, green_test, red_test):
             if green_test(val):
@@ -999,6 +1120,7 @@ class SeasonDashboardService:
                 "value": productivity,
                 "format": "decimal",
                 "color": color(productivity, lambda v: v > 3.0, lambda v: v < 2.0),
+                "trend": make_trend(productivity, recent_productivity),
             },
             {
                 "key": "turnover_diff",
@@ -1006,6 +1128,7 @@ class SeasonDashboardService:
                 "value": turnover_diff,
                 "format": "signed_int",
                 "color": color(turnover_diff, lambda v: v > 0, lambda v: v < 0),
+                "trend": make_trend(turnover_diff / n if n > 0 else 0, recent_to_diff),
             },
             {
                 "key": "kickout_retention",
@@ -1013,6 +1136,7 @@ class SeasonDashboardService:
                 "value": kickout_retention,
                 "format": "percent",
                 "color": color(kickout_retention, lambda v: v > 65, lambda v: v < 50),
+                "trend": make_trend(kickout_retention, recent_ko_ret),
             },
             {
                 "key": "shot_efficiency",
@@ -1020,6 +1144,7 @@ class SeasonDashboardService:
                 "value": shot_efficiency,
                 "format": "percent",
                 "color": color(shot_efficiency, lambda v: v > 50, lambda v: v < 35),
+                "trend": make_trend(shot_efficiency, recent_shot_eff),
             },
             {
                 "key": "fouls_per_game",
@@ -1027,6 +1152,7 @@ class SeasonDashboardService:
                 "value": fouls_per_game,
                 "format": "decimal",
                 "color": color(fouls_per_game, lambda v: v < 12, lambda v: v > 15),
+                "trend": make_trend(fouls_per_game, recent_fouls_pg),
             },
             {
                 "key": "avg_scored",
@@ -1034,6 +1160,7 @@ class SeasonDashboardService:
                 "value": avg_scored,
                 "format": "decimal",
                 "color": "amber",
+                "trend": make_trend(avg_scored, recent_scored),
             },
             {
                 "key": "avg_conceded",
@@ -1041,6 +1168,7 @@ class SeasonDashboardService:
                 "value": avg_conceded,
                 "format": "decimal",
                 "color": "red",
+                "trend": make_trend(avg_conceded, recent_conceded),
             },
         ]
 

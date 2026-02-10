@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { Target } from 'lucide-react'
-import ChartBadge from './ChartBadge'
 import type { ShotLocation } from '@/services/api'
 
 interface Props {
@@ -70,7 +69,6 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
           <Target size={20} />
           Shooting Efficiency
         </h3>
-        <ChartBadge />
       </div>
 
       {dungloeShots.length === 0 ? (

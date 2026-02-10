@@ -9,7 +9,7 @@ from app.services.ai.post_match_agent import (
     generate_post_match_report,
     analyze_match_gps,
 )
-from app.services.ai.live_match_agent import live_match_insight
+from app.services.ai.live_match_agent import live_match_insight, generate_kpi_insights
 from app.services.ai.chat_agent import chat_with_analyst
 from app.services.ai.training_agent import analyze_training_session
 from app.services.ai.chart_engine import (
@@ -27,6 +27,7 @@ __all__ = [
     "generate_post_match_report",
     "analyze_match_gps",
     "live_match_insight",
+    "generate_kpi_insights",
     "chat_with_analyst",
     "analyze_training_session",
     "get_dynamic_chart_recommendations",

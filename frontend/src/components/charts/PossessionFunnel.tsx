@@ -9,7 +9,6 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import type { PossessionFunnelData } from '@/services/api'
-import ChartBadge from '@/components/charts/ChartBadge'
 
 interface PossessionFunnelProps {
   data: PossessionFunnelData
@@ -73,7 +72,6 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Possession Funnel</h3>
-          <ChartBadge />
         </div>
         <div className="h-[200px] flex items-center justify-center text-white/40">
           No possession data recorded yet
@@ -110,7 +108,6 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
               Opposition
             </button>
           </div>
-          <ChartBadge />
         </div>
       </div>
 

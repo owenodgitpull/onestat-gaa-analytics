@@ -5,13 +5,12 @@ import type { AIChartSpec, OutlierSuggestion } from '@/services/api'
 
 interface AiInsightsSectionProps {
   aiCharts: AIChartSpec[]
-  pinnedCharts: AIChartSpec[]
+  pinnedChartIds: string[]
   loadingAICharts: boolean
   replacingChartId: string | null
   canPin: boolean
   onDismissChart: (chartId: string) => void
   onPinChart: (chart: AIChartSpec) => void
-  onUnpinChart: (chartId: string) => void
   onRegenerateAll: () => void
   isPinned: (chartId: string) => boolean
   aiChartsSummary?: string
@@ -28,19 +27,20 @@ const CATEGORY_STYLES: Record<string, { bg: string; text: string; label: string 
 
 export default function AiInsightsSection({
   aiCharts,
-  pinnedCharts,
+  pinnedChartIds,
   loadingAICharts,
   replacingChartId,
   canPin,
   onDismissChart,
   onPinChart,
-  onUnpinChart,
   onRegenerateAll,
   isPinned,
   aiChartsSummary,
   suggestions = [],
   loadingSuggestions = false,
 }: AiInsightsSectionProps) {
+  // Filter out charts that have been pinned (they now live in My Charts)
+  const dynamicCharts = aiCharts.filter(c => !pinnedChartIds.includes(c.id))
   const [expandedSuggestion, setExpandedSuggestion] = useState<string | null>(null)
 
   // Convert a suggestion to an AIChartSpec so it can be rendered & pinned
@@ -72,26 +72,6 @@ export default function AiInsightsSection({
           Regenerate All
         </button>
       </div>
-
-      {/* Pinned Charts */}
-      {pinnedCharts.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold text-white/60 mb-3 uppercase tracking-wider">
-            Pinned ({pinnedCharts.length}/4)
-          </h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {pinnedCharts.map(chart => (
-              <DynamicChart
-                key={`pinned-${chart.id}`}
-                chart={chart}
-                onUnpin={onUnpinChart}
-                isPinned={true}
-                canPin={false}
-              />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* AI Suggested Charts (Seasonal Outliers) */}
       {(suggestions.length > 0 || loadingSuggestions) && (
@@ -160,7 +140,7 @@ export default function AiInsightsSection({
       )}
 
       {/* Dynamic Charts */}
-      {loadingAICharts && aiCharts.length === 0 ? (
+      {loadingAICharts && dynamicCharts.length === 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map(i => (
             <div key={i} className="glass-card p-6 h-[300px] flex items-center justify-center">
@@ -171,9 +151,9 @@ export default function AiInsightsSection({
             </div>
           ))}
         </div>
-      ) : aiCharts.length > 0 ? (
+      ) : dynamicCharts.length > 0 ? (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {aiCharts.map(chart => (
+          {dynamicCharts.map(chart => (
             <DynamicChart
               key={chart.id}
               chart={chart}

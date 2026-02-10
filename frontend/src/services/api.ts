@@ -514,6 +514,7 @@ export interface KPICardItem {
   value: number;
   format: string;
   color: string;
+  insight?: string;
 }
 
 export interface KPIMetadata {

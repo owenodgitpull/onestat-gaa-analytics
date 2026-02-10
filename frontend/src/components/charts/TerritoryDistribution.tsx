@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { TerritoryDistributionData } from '@/services/api'
-import ChartBadge from '@/components/charts/ChartBadge'
 
 interface TerritoryDistributionProps {
   data: TerritoryDistributionData
@@ -33,7 +32,6 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Territory Distribution</h3>
-          <ChartBadge />
         </div>
         <div className="h-[200px] flex items-center justify-center text-white/40">
           No possession data recorded yet
@@ -51,7 +49,6 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
       <div className="glass-card p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Territory Distribution</h3>
-          <ChartBadge />
         </div>
         <div className="h-[200px] flex items-center justify-center text-white/40">
           No possession data recorded yet
@@ -184,7 +181,6 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
               Opposition
             </button>
           </div>
-          <ChartBadge />
         </div>
       </div>
 

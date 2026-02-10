@@ -197,6 +197,7 @@ class KPICardItem(BaseModel):
     value: float
     format: str
     color: str
+    insight: Optional[str] = None
 
 class KPIMetadata(BaseModel):
     matches_played: int

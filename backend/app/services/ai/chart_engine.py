@@ -185,7 +185,7 @@ Focus on actionable insights, not just describing what the chart shows.
 """
 
     response = client.messages.create(
-        model="claude-3-5-haiku-20241022",
+        model="claude-haiku-4-5-20251001",
         max_tokens=200,
         system=system_prompt,
         messages=[{
@@ -429,7 +429,7 @@ async def generate_custom_insight(db: AsyncSession, question: str) -> dict:
 
     # Determine what chart would best answer the question
     response = client.messages.create(
-        model="claude-3-5-haiku-20241022",
+        model="claude-haiku-4-5-20251001",
         max_tokens=200,
         system="You are a sports analytics expert. Given a question, determine the best chart type to answer it.",
         messages=[{
