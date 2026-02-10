@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { MapPin } from 'lucide-react'
 import type { ShotLocation, MatchTrend } from '@/services/api'
 
@@ -7,9 +7,47 @@ interface ShotMapCardProps {
   matchTrends: MatchTrend[]
 }
 
+type ShotType = 'goal' | 'point' | 'two_point' | 'miss'
+
+const SHOT_TYPE_CONFIG: Record<ShotType, { label: string; color: string; match: (s: ShotLocation) => boolean }> = {
+  goal: {
+    label: 'Goals',
+    color: '#f59e0b',
+    match: (s) => s.is_score && s.event_type === 'goal',
+  },
+  point: {
+    label: 'Points',
+    color: '#6366f1',
+    match: (s) => s.is_score && ['point', 'point_free', 'forty_five'].includes(s.event_type),
+  },
+  two_point: {
+    label: '2-Ptrs',
+    color: '#a855f7',
+    match: (s) => s.is_score && ['two_point', 'two_point_free'].includes(s.event_type),
+  },
+  miss: {
+    label: 'Missed',
+    color: '#ef4444',
+    match: (s) => !s.is_score,
+  },
+}
+
 export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardProps) {
   const [shotFilter, setShotFilter] = useState<'all' | 'dungloe' | 'opponent'>('dungloe')
   const [shotMatchRange, setShotMatchRange] = useState<'all' | '3' | '5'>('all')
+  const [visibleTypes, setVisibleTypes] = useState<Set<ShotType>>(new Set(['goal', 'point', 'two_point', 'miss']))
+
+  const toggleType = (type: ShotType) => {
+    setVisibleTypes(prev => {
+      const next = new Set(prev)
+      if (next.has(type)) {
+        if (next.size > 1) next.delete(type) // Don't allow empty
+      } else {
+        next.add(type)
+      }
+      return next
+    })
+  }
 
   // Filter shots by team
   const teamFilteredShots = shotFilter === 'all'
@@ -25,20 +63,45 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
     const recentMatches = matchTrends.slice(0, count)
     return new Set(recentMatches.map(m => m.match_id))
   })()
-  const filteredShots = recentMatchIds
+  const rangeFilteredShots = recentMatchIds
     ? teamFilteredShots.filter(s => recentMatchIds.has(s.match_id))
     : teamFilteredShots
 
-  const totalShots = filteredShots.length
-  const scoredShots = filteredShots.filter(s => s.is_score)
-  const missedShots = filteredShots.filter(s => !s.is_score)
-  const goals = filteredShots.filter(s => s.is_score && s.event_type === 'goal')
-  const points = filteredShots.filter(s => s.is_score && ['point', 'point_free', 'forty_five'].includes(s.event_type))
-  const twoPointers = filteredShots.filter(s => s.is_score && ['two_point', 'two_point_free'].includes(s.event_type))
+  // Filter by shot type
+  const filteredShots = useMemo(() =>
+    rangeFilteredShots.filter(s => {
+      for (const [type, config] of Object.entries(SHOT_TYPE_CONFIG)) {
+        if (visibleTypes.has(type as ShotType) && config.match(s)) return true
+      }
+      return false
+    }),
+    [rangeFilteredShots, visibleTypes]
+  )
+
+  // How many matches are represented in this view?
+  const matchCount = useMemo(() => {
+    const ids = new Set(rangeFilteredShots.map(s => s.match_id).filter(Boolean))
+    return ids.size
+  }, [rangeFilteredShots])
+
+  // Stats from range-filtered (before type filter) for the stat bar
+  const totalShots = rangeFilteredShots.length
+  const scoredShots = rangeFilteredShots.filter(s => s.is_score)
+  const goals = rangeFilteredShots.filter(s => SHOT_TYPE_CONFIG.goal.match(s))
+  const points = rangeFilteredShots.filter(s => SHOT_TYPE_CONFIG.point.match(s))
+  const twoPointers = rangeFilteredShots.filter(s => SHOT_TYPE_CONFIG.two_point.match(s))
   const accuracy = totalShots > 0 ? Math.round((scoredShots.length / totalShots) * 100) : 0
 
+  // Get color for a shot on the map
+  const getShotColor = (shot: ShotLocation): string => {
+    for (const config of Object.values(SHOT_TYPE_CONFIG)) {
+      if (config.match(shot)) return config.color
+    }
+    return '#ef4444'
+  }
+
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-xl font-bold flex items-center space-x-2 text-white">
           <MapPin size={20} className="text-white" />
@@ -86,14 +149,45 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
         </div>
       </div>
 
-      <div className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-xl overflow-hidden" style={{ aspectRatio: '16/10' }}>
+      {/* Shot type toggles + match context */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex gap-1.5">
+          {(Object.entries(SHOT_TYPE_CONFIG) as [ShotType, typeof SHOT_TYPE_CONFIG[ShotType]][]).map(([type, config]) => {
+            const active = visibleTypes.has(type)
+            return (
+              <button
+                key={type}
+                onClick={() => toggleType(type)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  active
+                    ? 'bg-white/15 text-white'
+                    : 'bg-white/5 text-white/30'
+                }`}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full transition-opacity"
+                  style={{ backgroundColor: config.color, opacity: active ? 1 : 0.3 }}
+                />
+                {config.label}
+              </button>
+            )
+          })}
+        </div>
+        {matchCount > 0 && (
+          <span className="text-[10px] text-white/35">
+            Across {matchCount} {matchCount === 1 ? 'match' : 'matches'} — updates as season progresses
+          </span>
+        )}
+      </div>
+
+      <div className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-xl overflow-hidden flex-1 min-h-0" style={{ aspectRatio: '16/10' }}>
         <svg viewBox="0 0 2332 1446" className="w-full h-full">
           <rect width="2332" height="1446" fill="#2d5016" />
           <image href="/pitch-svg.svg" width="2332" height="1446" preserveAspectRatio="xMidYMid meet" />
           {filteredShots.map((shot, idx) => {
             const x = (shot.x / 100) * 1960 + 183
             const y = (shot.y / 100) * 1167 + 123
-            const color = shot.is_score ? '#10b981' : '#ef4444'
+            const color = getShotColor(shot)
             return (
               <circle key={idx} cx={x} cy={y} r="18" fill={color} stroke="white" strokeWidth="3" opacity="0.85" />
             )
@@ -122,17 +216,6 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
           <div className="text-white/50 text-[10px] mb-0.5">2-Ptrs</div>
           <div className="text-xl font-bold text-purple-400">{twoPointers.length}</div>
         </div>
-      </div>
-
-      <div className="flex justify-center gap-4 mt-3 text-xs">
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-          Scored ({scoredShots.length})
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-full bg-red-500"></span>
-          Missed ({missedShots.length})
-        </span>
       </div>
     </div>
   )

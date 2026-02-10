@@ -52,6 +52,9 @@ class MatchGPSData(Base):
     max_heart_rate = Column(Integer, nullable=True)
     time_in_red_zone_mins = Column(Float, nullable=True)  # Time at >90% max HR
 
+    # Balance metrics
+    step_balance_left_pct = Column(Float, nullable=True)  # Left leg step balance %
+
     # Match-specific fields
     playing_minutes = Column(Integer, nullable=True)  # Actual minutes played
     started_as_sub = Column(Boolean, default=False)  # Was player a substitute?
@@ -89,6 +92,7 @@ class MatchGPSData(Base):
             "avg_heart_rate": self.avg_heart_rate,
             "max_heart_rate": self.max_heart_rate,
             "time_in_red_zone_mins": self.time_in_red_zone_mins,
+            "step_balance_left_pct": self.step_balance_left_pct,
             "playing_minutes": self.playing_minutes,
             "started_as_sub": self.started_as_sub,
             "duration_mins": self.duration_mins,

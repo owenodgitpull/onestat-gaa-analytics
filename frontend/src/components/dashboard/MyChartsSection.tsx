@@ -115,7 +115,7 @@ export default function MyChartsSection({
         onDragEnd={handleDragEnd}
       >
         <SortableContext items={visibleCharts} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
             {visibleCharts.map(chartId => {
               const entry = registryMap.get(chartId)!
               const isAiPinned = chartId.startsWith('ai-')

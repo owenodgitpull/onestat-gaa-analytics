@@ -21,7 +21,6 @@ export const DEFAULT_SECTION_ORDER = [
   'ai-insights',
   'top-scorers',
   'recent-results',
-  'ai-analyst',
 ]
 
 export interface DashboardLayout {

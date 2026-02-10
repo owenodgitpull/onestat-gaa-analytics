@@ -231,6 +231,9 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                                 player_load=player_data.get("player_load"),
                                 avg_heart_rate=player_data.get("avg_heart_rate"),
                                 max_heart_rate=player_data.get("max_heart_rate"),
+                                step_balance_left_pct=player_data.get("step_balance_left_pct"),
+                                hml_distance_m=player_data.get("hml_distance_m"),
+                                duration_mins=player_data.get("duration_mins"),
                                 raw_data=player_data
                             )
                             db.add(gps_record)
@@ -461,12 +464,15 @@ def _parse_csv_local(content: bytes) -> dict:
     pl_col = find_col("player load")
     avg_hr_col = find_col("average heart rate", "avg heart rate", "avg hr")
     max_hr_col = find_col("max heart rate", "max hr", "maximum heart rate")
+    step_bal_col = find_col("step balance", "step balance left", "step bal", "balance left")
+    hml_col = find_col("high metabolic load", "hml distance", "hml", "hmld")
+    duration_col = find_col("duration", "session duration", "time", "total time")
 
     if not name_col:
         raise ValueError(f"Cannot find player name column in: {list(reader.fieldnames)}")
 
     logger.info(f"CSV columns mapped: name={name_col}, dist={dist_col}, hsr={hsr_col}, "
-                f"sprints={sprint_count_col}, max_speed={max_speed_col}")
+                f"sprints={sprint_count_col}, max_speed={max_speed_col}, step_bal={step_bal_col}")
 
     def safe_float(row, col):
         if not col:
@@ -502,6 +508,9 @@ def _parse_csv_local(content: bytes) -> dict:
             "player_load": safe_float(row, pl_col),
             "avg_heart_rate": safe_int(row, avg_hr_col),
             "max_heart_rate": safe_int(row, max_hr_col),
+            "step_balance_left_pct": safe_float(row, step_bal_col),
+            "hml_distance_m": safe_float(row, hml_col),
+            "duration_mins": safe_float(row, duration_col),
         })
 
     logger.info(f"Local CSV parser extracted {len(players)} players")

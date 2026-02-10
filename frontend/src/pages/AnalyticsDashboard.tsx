@@ -19,16 +19,12 @@ import {
   TrendingUp,
   Target,
   Calendar,
-  Zap,
   RefreshCw,
-  MessageSquare,
-  Bot,
   Heart,
   BarChart3,
   Info,
   RotateCcw,
 } from 'lucide-react'
-import AIAnalyst from '@/components/AIAnalyst'
 import SquadHealthView from '@/components/SquadHealthView'
 import AiInsightsSection from '@/components/charts/AiInsightsSection'
 import MyChartsSection from '@/components/dashboard/MyChartsSection'
@@ -63,7 +59,6 @@ export default function AnalyticsDashboard() {
   const [aiChartsSummary, setAiChartsSummary] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showAIChat, setShowAIChat] = useState(false)
   const [loadingAICharts, setLoadingAICharts] = useState(false)
   const [replacingChartId, setReplacingChartId] = useState<string | null>(null)
   const [dismissedChartIds, setDismissedChartIds] = useState<string[]>([])
@@ -355,51 +350,6 @@ export default function AnalyticsDashboard() {
             )}
           </div>
         )
-      case 'ai-analyst':
-        return (
-          <div className="glass-card p-8">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                  <Bot size={32} className="text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-white">AI-Powered Analyst</h2>
-                  <p className="text-white/60">
-                    Ask questions about matches, tactics, and player performance
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowAIChat(true)}
-                className="btn-primary flex items-center gap-2 px-6 py-3"
-              >
-                <MessageSquare size={20} />
-                Chat with AI
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
-                   onClick={() => setShowAIChat(true)}>
-                <Zap className="text-amber-400 mb-2" size={24} />
-                <h3 className="font-semibold text-white mb-1">Tactical Analysis</h3>
-                <p className="text-sm text-white/60">Get insights on formations, patterns, and strategies</p>
-              </div>
-              <div className="p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
-                   onClick={() => setShowAIChat(true)}>
-                <Target className="text-emerald-400 mb-2" size={24} />
-                <h3 className="font-semibold text-white mb-1">Performance Review</h3>
-                <p className="text-sm text-white/60">Analyze player stats and scoring efficiency</p>
-              </div>
-              <div className="p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
-                   onClick={() => setShowAIChat(true)}>
-                <TrendingUp className="text-indigo-400 mb-2" size={24} />
-                <h3 className="font-semibold text-white mb-1">Training Insights</h3>
-                <p className="text-sm text-white/60">Get recommendations for improvement areas</p>
-              </div>
-            </div>
-          </div>
-        )
       default:
         return null
     }
@@ -623,12 +573,6 @@ export default function AnalyticsDashboard() {
         </DragOverlay>
       </DndContext>
 
-      {/* AI Chat Modal */}
-      <AIAnalyst
-        isOpen={showAIChat}
-        onClose={() => setShowAIChat(false)}
-        initialContext="I have access to all Dungloe GAA match data, player statistics, GPS performance benchmarks, and tactical information from the knowledge base."
-      />
         </>
       )}
     </div>

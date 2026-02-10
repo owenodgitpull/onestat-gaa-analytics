@@ -8,7 +8,7 @@ interface RedZoneListProps {
 export default function RedZoneList({ data }: RedZoneListProps) {
   if (data.length === 0) {
     return (
-      <div className="glass-card p-6">
+      <div className="glass-card p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <AlertTriangle size={18} className="text-amber-400" />
@@ -29,7 +29,7 @@ export default function RedZoneList({ data }: RedZoneListProps) {
   }
 
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <AlertTriangle size={18} className="text-red-400" />

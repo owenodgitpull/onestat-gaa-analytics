@@ -20,10 +20,18 @@ import {
   Zap,
   Activity,
   TrendingUp,
-  Bot
+  Bot,
+  BarChart3,
+  Info
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePlayers } from '../hooks/usePlayers'
+import api from '../services/api'
+import type { LeaderboardPlayer, TrainingOverviewData } from '../services/api'
+import PeakPerformanceChart from '../components/charts/training/PeakPerformanceChart'
+import SpeedZoneChart from '../components/charts/training/SpeedZoneChart'
+import ReadinessTable from '../components/charts/training/ReadinessTable'
+import MonotonyScatter from '../components/charts/training/MonotonyScatter'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1'
 
@@ -614,27 +622,28 @@ function SessionDetailModal({ session, onClose }: {
   )
 }
 
-// Training Player Leaderboard with metric toggle
-function TrainingLeaderboard({ gpsData }: { gpsData: GPSPlayerData[] }) {
+// Training Player Leaderboard with metric toggle — uses aggregated data
+function TrainingLeaderboard({ leaderboard, squadAverages }: { leaderboard: LeaderboardPlayer[]; squadAverages: Record<string, number> }) {
   const [metric, setMetric] = useState<string>('total_distance')
 
   const metrics = [
-    { key: 'total_distance', label: 'Total Distance', unit: 'm', getValue: (p: GPSPlayerData) => p.total_distance_m || 0, format: (v: number) => Math.round(v).toLocaleString() },
-    { key: 'max_speed', label: 'Max Speed', unit: 'm/s', getValue: (p: GPSPlayerData) => p.max_speed_ms || 0, format: (v: number) => v.toFixed(2) },
-    { key: 'hsr', label: 'HSR', unit: 'm', getValue: (p: GPSPlayerData) => p.high_speed_running_m || 0, format: (v: number) => Math.round(v).toLocaleString() },
-    { key: 'sprints', label: 'Sprints', unit: '', getValue: (p: GPSPlayerData) => p.sprint_count || 0, format: (v: number) => Math.round(v).toString() },
-    { key: 'dsl', label: 'DSL', unit: '', getValue: (p: GPSPlayerData) => p.dynamic_stress_load || 0, format: (v: number) => Math.round(v).toLocaleString() },
+    { key: 'total_distance', label: 'Total Distance', avgField: 'avg_total_distance_m', getValue: (p: LeaderboardPlayer) => p.avg_total_distance_m, format: (v: number) => Math.round(v).toLocaleString() + 'm' },
+    { key: 'max_speed', label: 'Max Speed', avgField: 'avg_max_speed_ms', getValue: (p: LeaderboardPlayer) => p.avg_max_speed_ms, format: (v: number) => v.toFixed(2) + ' m/s' },
+    { key: 'hsr', label: 'HSR', avgField: 'avg_high_speed_running_m', getValue: (p: LeaderboardPlayer) => p.avg_high_speed_running_m, format: (v: number) => Math.round(v).toLocaleString() + 'm' },
+    { key: 'sprints', label: 'Sprints', avgField: 'avg_sprint_count', getValue: (p: LeaderboardPlayer) => p.avg_sprint_count, format: (v: number) => v.toFixed(1) },
+    { key: 'dsl', label: 'DSL', avgField: 'avg_dynamic_stress_load', getValue: (p: LeaderboardPlayer) => p.avg_dynamic_stress_load, format: (v: number) => Math.round(v).toLocaleString() },
   ]
 
   const activeMetric = metrics.find(m => m.key === metric)!
-  const sorted = [...gpsData].sort((a, b) => activeMetric.getValue(b) - activeMetric.getValue(a))
-  const squadAvg = gpsData.reduce((s, p) => s + activeMetric.getValue(p), 0) / gpsData.length
+  const sorted = [...leaderboard].sort((a, b) => activeMetric.getValue(b) - activeMetric.getValue(a))
+  const squadAvg = squadAverages[activeMetric.avgField] || 0
 
   return (
     <div className="glass-card p-6">
       <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
         <TrendingUp size={20} />
         Player Leaderboard
+        <span className="text-xs text-white/40 font-normal ml-2">All Sessions</span>
       </h3>
 
       {/* Metric toggle */}
@@ -660,7 +669,7 @@ function TrainingLeaderboard({ gpsData }: { gpsData: GPSPlayerData[] }) {
         <div className="grid grid-cols-[2rem_1fr_5rem_5rem] gap-2 text-xs text-white/40 px-2 pb-2 border-b border-white/10">
           <span className="text-center">#</span>
           <span>Player</span>
-          <span className="text-right">Value</span>
+          <span className="text-right">Avg</span>
           <span className="text-right">vs Avg</span>
         </div>
 
@@ -671,7 +680,7 @@ function TrainingLeaderboard({ gpsData }: { gpsData: GPSPlayerData[] }) {
 
           return (
             <div
-              key={p.id}
+              key={p.player_id}
               className="relative grid grid-cols-[2rem_1fr_5rem_5rem] gap-2 items-center rounded-lg px-2 py-2.5 hover:bg-white/5 transition-colors"
             >
               {/* Rank */}
@@ -681,9 +690,10 @@ function TrainingLeaderboard({ gpsData }: { gpsData: GPSPlayerData[] }) {
                 {i + 1}
               </span>
 
-              {/* Player name */}
+              {/* Player name + sessions badge */}
               <span className={`text-sm truncate ${i < 3 ? 'text-white font-medium' : 'text-white/70'}`}>
-                {p.player_name || 'Unknown'}
+                {p.player_name}
+                <span className="ml-1.5 text-[10px] text-white/30 font-normal">({p.sessions_count}s)</span>
               </span>
 
               {/* Value */}
@@ -718,6 +728,7 @@ export default function Attendance() {
   const [showNewSession, setShowNewSession] = useState(false)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [aiSummary, setAiSummary] = useState<{ summary: string | null; session_date: string | null } | null>(null)
+  const [kpiView, setKpiView] = useState<'last-session' | 'overview'>('last-session')
 
   useEffect(() => {
     fetch(`${API_BASE}/training/ai-summary/latest`)
@@ -735,6 +746,13 @@ export default function Attendance() {
     queryKey: ['session', selectedSessionId],
     queryFn: () => selectedSessionId ? fetchSessionDetail(selectedSessionId) : null,
     enabled: !!selectedSessionId
+  })
+
+  // Training overview (aggregated across all sessions)
+  const { data: trainingOverview } = useQuery({
+    queryKey: ['training-overview'],
+    queryFn: () => api.analytics.getTrainingOverview(),
+    staleTime: 60_000,
   })
 
   const createMutation = useMutation({
@@ -799,12 +817,24 @@ export default function Attendance() {
     }
   }, [latestGPS])
 
+  const overviewKpis = trainingOverview?.overview_kpis
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <RefreshCw className="animate-spin text-indigo-400" size={48} />
       </div>
     )
+  }
+
+  // Parse squad availability for color coding
+  const getAvailabilityColor = (avail: string) => {
+    const match = avail.match(/^(\d+)\/(\d+)/)
+    if (!match) return 'text-white'
+    const pct = parseInt(match[1]) / parseInt(match[2]) * 100
+    if (pct >= 80) return 'text-emerald-400'
+    if (pct >= 60) return 'text-amber-400'
+    return 'text-red-400'
   }
 
   return (
@@ -856,51 +886,195 @@ export default function Attendance() {
         </div>
       )}
 
-      {/* Latest Session GPS Stats */}
-      {latestGPSStats && (
-        <div className="space-y-4">
+      {/* KPI Cards with Toggle */}
+      {(latestGPSStats || overviewKpis) && (
+        <div className="space-y-4 relative z-10">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
               <Zap size={18} className="text-indigo-400" />
-              Latest Session Overview
+              {kpiView === 'last-session' ? 'Latest Session Overview' : 'Season Overview'}
             </h2>
-            <span className="text-xs text-white/40">
-              {sessions?.[0] && new Date(sessions[0].session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
+            <div className="flex items-center gap-2">
+              {kpiView === 'last-session' && sessions?.[0] && (
+                <span className="text-xs text-white/40 mr-2">
+                  {new Date(sessions[0].session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </span>
+              )}
+              <div className="flex rounded-lg overflow-hidden border border-white/10">
+                <button
+                  onClick={() => setKpiView('last-session')}
+                  className={`px-3 py-1.5 text-xs font-medium transition-all ${
+                    kpiView === 'last-session'
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  }`}
+                >
+                  Last Session
+                </button>
+                <button
+                  onClick={() => setKpiView('overview')}
+                  className={`px-3 py-1.5 text-xs font-medium transition-all ${
+                    kpiView === 'overview'
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  }`}
+                >
+                  Season Overview
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-            <div className="glass-card p-4 text-center">
-              <div className="text-2xl font-bold text-white">{latestGPSStats.players}</div>
-              <div className="text-xs text-white/60 mt-1">Players</div>
+          {kpiView === 'last-session' && latestGPSStats ? (
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+              <div className="glass-card p-4 text-center">
+                <div className="text-2xl font-bold text-white">{latestGPSStats.players}</div>
+                <div className="text-xs text-white/60 mt-1">Players</div>
+              </div>
+              <div className="glass-card p-4 text-center">
+                <div className="text-2xl font-bold text-indigo-400">{latestGPSStats.avgDistance.toLocaleString()}</div>
+                <div className="text-xs text-white/60 mt-1">Avg Distance (m)</div>
+              </div>
+              <div className="glass-card p-4 text-center">
+                <div className="text-2xl font-bold text-emerald-400">{latestGPSStats.avgMaxSpeed}</div>
+                <div className="text-xs text-white/60 mt-1">Avg Max Speed (m/s)</div>
+              </div>
+              <div className="glass-card p-4 text-center">
+                <div className="text-2xl font-bold text-amber-400">{latestGPSStats.avgHSR}</div>
+                <div className="text-xs text-white/60 mt-1">Avg HSR (m)</div>
+              </div>
+              <div className="glass-card p-4 text-center">
+                <div className="text-2xl font-bold text-purple-400">{latestGPSStats.avgSprints}</div>
+                <div className="text-xs text-white/60 mt-1">Avg Sprints</div>
+              </div>
+              <div className="glass-card p-4 text-center">
+                <div className="text-2xl font-bold text-red-400">{latestGPSStats.avgDSL}</div>
+                <div className="text-xs text-white/60 mt-1">Avg DSL</div>
+              </div>
             </div>
-            <div className="glass-card p-4 text-center">
-              <div className="text-2xl font-bold text-indigo-400">{latestGPSStats.avgDistance.toLocaleString()}</div>
-              <div className="text-xs text-white/60 mt-1">Avg Distance (m)</div>
+          ) : kpiView === 'overview' && overviewKpis ? (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {/* Squad Availability */}
+              <div className="glass-card p-4 text-center relative group/tip overflow-visible">
+                <button
+                  className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors z-10"
+                >
+                  <Info size={11} className="text-white/50" />
+                </button>
+                <div className="hidden group-hover/tip:block absolute top-9 right-2 bg-slate-900/95 border border-white/20 rounded-lg p-2.5 text-xs text-white/80 leading-relaxed z-30 w-52 shadow-xl backdrop-blur-sm text-left">
+                  Players with a readiness score of 60% or higher are counted as fit. Readiness is based on training load consistency, step balance, and speed attainment.
+                </div>
+                <div className={`text-2xl font-bold ${getAvailabilityColor(overviewKpis.squad_availability)}`}>
+                  {overviewKpis.squad_availability}
+                </div>
+                <div className="text-xs text-white/60 mt-1">Squad Availability</div>
+                {overviewKpis.untracked_players > 0 && (
+                  <div className="text-[10px] text-amber-400/70 mt-0.5">
+                    {overviewKpis.untracked_players} with no GPS data
+                  </div>
+                )}
+              </div>
+
+              {/* Top Speed */}
+              <div className="glass-card p-4 text-center relative group/tip overflow-visible">
+                <button
+                  className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors z-10"
+                >
+                  <Info size={11} className="text-white/50" />
+                </button>
+                <div className="hidden group-hover/tip:block absolute top-9 right-2 bg-slate-900/95 border border-white/20 rounded-lg p-2.5 text-xs text-white/80 leading-relaxed z-30 w-48 shadow-xl backdrop-blur-sm text-left">
+                  The fastest speed recorded by any player in training over the last 7 days.
+                </div>
+                <div className="text-2xl font-bold text-emerald-400">{overviewKpis.top_speed_value} m/s</div>
+                <div className="text-xs text-white/60 mt-1">Top Speed (Week)</div>
+                {overviewKpis.top_speed_player && (
+                  <div className="text-[10px] text-white/40 mt-0.5">{overviewKpis.top_speed_player}</div>
+                )}
+              </div>
+
+              {/* HMLD Density */}
+              <div className="glass-card p-4 text-center relative group/tip overflow-visible">
+                <button
+                  className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors z-10"
+                >
+                  <Info size={11} className="text-white/50" />
+                </button>
+                <div className="hidden group-hover/tip:block absolute top-9 right-2 bg-slate-900/95 border border-white/20 rounded-lg p-2.5 text-xs text-white/80 leading-relaxed z-30 w-52 shadow-xl backdrop-blur-sm text-left">
+                  {overviewKpis.hmld_density != null
+                    ? overviewKpis.hmld_is_estimate
+                      ? "High-intensity metres per minute (estimated from HSR data). Upload CSVs with HML distance for exact values."
+                      : "High Metabolic Load Distance per minute of training — measures intensity of effort across the session."
+                    : "No HML or duration data available yet. Upload CSVs with HML distance and duration columns to see this metric."
+                  }
+                </div>
+                <div className="text-2xl font-bold text-amber-400">
+                  {overviewKpis.hmld_density != null
+                    ? `${overviewKpis.hmld_density}${overviewKpis.hmld_is_estimate ? '*' : ''}`
+                    : 'N/A'
+                  }
+                </div>
+                <div className="text-xs text-white/60 mt-1">
+                  {overviewKpis.hmld_is_estimate ? 'HSR Density (m/min)' : 'HMLD Density (m/min)'}
+                </div>
+                {overviewKpis.hmld_is_estimate && (
+                  <div className="text-[10px] text-white/30 mt-0.5">*estimated from HSR</div>
+                )}
+              </div>
+
+              {/* Team Balance */}
+              <div className="glass-card p-4 text-center relative group/tip overflow-visible">
+                <button
+                  className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors z-10"
+                >
+                  <Info size={11} className="text-white/50" />
+                </button>
+                <div className="hidden group-hover/tip:block absolute top-9 right-2 bg-slate-900/95 border border-white/20 rounded-lg p-2.5 text-xs text-white/80 leading-relaxed z-30 w-52 shadow-xl backdrop-blur-sm text-left">
+                  Average left/right step balance across all players from the latest session. 50/50 is ideal — imbalance may indicate fatigue or injury risk.
+                </div>
+                <div className="text-2xl font-bold text-indigo-400">
+                  {overviewKpis.team_balance_left_pct.toFixed(1)}% L
+                </div>
+                <div className="text-xs text-white/60 mt-1">Team Step Balance</div>
+                <div className="text-[10px] text-white/40 mt-0.5">
+                  {(100 - overviewKpis.team_balance_left_pct).toFixed(1)}% R — {Math.abs(overviewKpis.team_balance_left_pct - 50) < 3 ? 'balanced' : 'imbalanced'}
+                </div>
+              </div>
             </div>
-            <div className="glass-card p-4 text-center">
-              <div className="text-2xl font-bold text-emerald-400">{latestGPSStats.avgMaxSpeed}</div>
-              <div className="text-xs text-white/60 mt-1">Avg Max Speed (m/s)</div>
+          ) : (
+            <div className="glass-card p-8 text-center text-white/40">
+              No data available for this view
             </div>
-            <div className="glass-card p-4 text-center">
-              <div className="text-2xl font-bold text-amber-400">{latestGPSStats.avgHSR}</div>
-              <div className="text-xs text-white/60 mt-1">Avg HSR (m)</div>
-            </div>
-            <div className="glass-card p-4 text-center">
-              <div className="text-2xl font-bold text-purple-400">{latestGPSStats.avgSprints}</div>
-              <div className="text-xs text-white/60 mt-1">Avg Sprints</div>
-            </div>
-            <div className="glass-card p-4 text-center">
-              <div className="text-2xl font-bold text-red-400">{latestGPSStats.avgDSL}</div>
-              <div className="text-xs text-white/60 mt-1">Avg DSL</div>
-            </div>
-          </div>
+          )}
         </div>
       )}
 
-      {/* Player Leaderboard */}
-      {latestGPS && latestGPS.length > 0 && (
-        <TrainingLeaderboard gpsData={latestGPS} />
+      {/* Player Leaderboard — aggregated across all sessions */}
+      {trainingOverview && trainingOverview.leaderboard.length > 0 && (
+        <TrainingLeaderboard
+          leaderboard={trainingOverview.leaderboard}
+          squadAverages={trainingOverview.squad_averages}
+        />
+      )}
+
+      {/* Training Analytics Charts */}
+      {trainingOverview && (
+        trainingOverview.peak_performance.length > 0 ||
+        trainingOverview.readiness.length > 0 ||
+        trainingOverview.speed_zones.length > 0 ||
+        trainingOverview.monotony.length > 0
+      ) && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+            <BarChart3 size={18} className="text-indigo-400" />
+            Training Analytics
+          </h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <PeakPerformanceChart data={trainingOverview!.peak_performance} />
+            <SpeedZoneChart data={trainingOverview!.speed_zones} />
+            <ReadinessTable data={trainingOverview!.readiness} />
+            <MonotonyScatter data={trainingOverview!.monotony} />
+          </div>
+        </div>
       )}
 
       {/* Sessions List */}

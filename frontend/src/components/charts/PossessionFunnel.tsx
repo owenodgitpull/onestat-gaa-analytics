@@ -69,7 +69,7 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
 
   if (data.season_totals.possessions === 0) {
     return (
-      <div className="glass-card p-6">
+      <div className="glass-card p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Possession Funnel</h3>
         </div>
@@ -81,7 +81,7 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
   }
 
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 h-full flex flex-col">
       {/* Header with toggle */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">Possession Funnel</h3>

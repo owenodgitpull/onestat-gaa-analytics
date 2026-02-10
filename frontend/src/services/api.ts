@@ -540,6 +540,71 @@ export interface SeasonDashboardData {
   kpi_cards?: KPICards;
 }
 
+// Training Analytics types
+export interface LeaderboardPlayer {
+  player_id: string;
+  player_name: string;
+  avg_total_distance_m: number;
+  avg_max_speed_ms: number;
+  avg_high_speed_running_m: number;
+  avg_sprint_count: number;
+  avg_dynamic_stress_load: number;
+  sessions_count: number;
+}
+
+export interface PeakPerformancePoint {
+  session_date: string;
+  avg_distance: number;
+  avg_max_speed: number;
+  session_label?: string;
+}
+
+export interface ReadinessPlayer {
+  player_id: string;
+  player_name: string;
+  readiness_score: number;
+  status: 'optimal' | 'fatigued' | 'high_risk';
+  insight: string;
+}
+
+export interface SpeedZoneBucket {
+  session_date: string;
+  low_m: number;
+  hsr_m: number;
+  sprint_m: number;
+  low_pct: number;
+  hsr_pct: number;
+  sprint_pct: number;
+  total_m: number;
+}
+
+export interface MonotonyPoint {
+  session_date: string;
+  avg_dsl: number;
+  avg_duration_mins: number;
+  session_label?: string;
+}
+
+export interface TrainingOverviewKPIs {
+  squad_availability: string;
+  untracked_players: number;
+  top_speed_player: string;
+  top_speed_value: number;
+  hmld_density: number | null;
+  hmld_is_estimate: boolean;
+  team_balance_left_pct: number;
+}
+
+export interface TrainingOverviewData {
+  leaderboard: LeaderboardPlayer[];
+  squad_averages: Record<string, number>;
+  peak_performance: PeakPerformancePoint[];
+  readiness: ReadinessPlayer[];
+  speed_zones: SpeedZoneBucket[];
+  monotony: MonotonyPoint[];
+  overview_kpis: TrainingOverviewKPIs;
+}
+
 const analyticsAPI = {
   getDashboard: async (): Promise<DashboardData> => {
     return fetchAPI<DashboardData>('/analytics/dashboard');
@@ -560,6 +625,10 @@ const analyticsAPI = {
   getShotLocations: async (team?: string): Promise<ShotLocation[]> => {
     const params = team ? `?team=${team}` : '';
     return fetchAPI<ShotLocation[]>(`/analytics/shot-locations${params}`);
+  },
+
+  getTrainingOverview: async (): Promise<TrainingOverviewData> => {
+    return fetchAPI<TrainingOverviewData>('/analytics/training-overview');
   },
 };
 

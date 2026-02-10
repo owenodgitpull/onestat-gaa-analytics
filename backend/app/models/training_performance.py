@@ -52,6 +52,9 @@ class TrainingGPSData(Base):
     max_heart_rate = Column(Integer, nullable=True)
     time_in_red_zone_mins = Column(Float, nullable=True)  # Time at >90% max HR
 
+    # Balance metrics
+    step_balance_left_pct = Column(Float, nullable=True)  # Left leg step balance %
+
     # Metadata
     duration_mins = Column(Float, nullable=True)  # Session duration for this player
     notes = Column(Text, nullable=True)

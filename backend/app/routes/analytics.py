@@ -220,6 +220,65 @@ class SeasonDashboardData(BaseModel):
     kpi_cards: Optional[KPICards] = None
 
 
+# Training Analytics schemas
+class LeaderboardPlayer(BaseModel):
+    player_id: str
+    player_name: str
+    avg_total_distance_m: float
+    avg_max_speed_ms: float
+    avg_high_speed_running_m: float
+    avg_sprint_count: float
+    avg_dynamic_stress_load: float
+    sessions_count: int
+
+class PeakPerformancePoint(BaseModel):
+    session_date: str
+    avg_distance: float
+    avg_max_speed: float
+    session_label: Optional[str] = None
+
+class ReadinessPlayer(BaseModel):
+    player_id: str
+    player_name: str
+    readiness_score: float
+    status: str  # optimal / fatigued / high_risk
+    insight: str
+
+class SpeedZoneBucket(BaseModel):
+    session_date: str
+    low_m: float
+    hsr_m: float
+    sprint_m: float
+    low_pct: float
+    hsr_pct: float
+    sprint_pct: float
+    total_m: float
+
+class MonotonyPoint(BaseModel):
+    session_date: str
+    avg_dsl: float
+    avg_duration_mins: float
+    session_label: Optional[str] = None
+
+class TrainingOverviewKPIs(BaseModel):
+    squad_availability: str
+    untracked_players: int = 0
+    top_speed_player: str
+    top_speed_value: float
+    hmld_density: Optional[float] = None
+    hmld_is_estimate: bool = False
+    team_balance_left_pct: float
+
+class TrainingOverviewData(BaseModel):
+    leaderboard: List[LeaderboardPlayer]
+    squad_averages: dict
+    peak_performance: List[PeakPerformancePoint]
+    readiness: List[ReadinessPlayer]
+    speed_zones: List[SpeedZoneBucket]
+    monotony: List[MonotonyPoint]
+    overview_kpis: TrainingOverviewKPIs
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
@@ -640,4 +699,29 @@ async def get_season_dashboard(
             possession_pct=td["possession_pct"],
         ),
         kpi_cards=kpi,
+    )
+
+
+@router.get("/training-overview", response_model=TrainingOverviewData)
+async def get_training_overview(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get training analytics overview data.
+
+    Returns leaderboard, peak performance trend, readiness table,
+    speed zone distribution, monotony scatter, and overview KPIs.
+    """
+    from app.services.training_analytics_service import TrainingAnalyticsService
+
+    data = await TrainingAnalyticsService.get_all(db)
+
+    return TrainingOverviewData(
+        leaderboard=[LeaderboardPlayer(**p) for p in data["leaderboard"]],
+        squad_averages=data["squad_averages"],
+        peak_performance=[PeakPerformancePoint(**p) for p in data["peak_performance"]],
+        readiness=[ReadinessPlayer(**r) for r in data["readiness"]],
+        speed_zones=[SpeedZoneBucket(**s) for s in data["speed_zones"]],
+        monotony=[MonotonyPoint(**m) for m in data["monotony"]],
+        overview_kpis=TrainingOverviewKPIs(**data["overview_kpis"]),
     )

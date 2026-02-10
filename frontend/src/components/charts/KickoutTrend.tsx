@@ -41,7 +41,7 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
 
   if (data.length < 1) {
     return (
-      <div className="glass-card p-6">
+      <div className="glass-card p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Kickout Outcomes</h3>
         </div>
@@ -71,7 +71,7 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
   const wonPct = totalAll > 0 ? Math.round((totalWonClean + totalWonBreak) / totalAll * 100) : 0
 
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">Kickout Outcomes</h3>
       </div>
@@ -113,12 +113,10 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
         <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Lost Clean</div>
           <div className="text-lg font-bold text-red-400">{totalLostClean}</div>
-          <div className="text-[10px] text-white/30">out-jumped</div>
         </div>
         <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Lost Break</div>
           <div className="text-lg font-bold text-orange-400">{totalLostBreak}</div>
-          <div className="text-[10px] text-white/30">ground ball</div>
         </div>
         <div className="flex-1 bg-white/5 rounded-xl px-2 py-2 text-center">
           <div className="text-xs text-white/50">Win Rate</div>

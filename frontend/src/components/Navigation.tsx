@@ -1,6 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  Home,
   Trophy,
   Users,
   PlusCircle,
@@ -10,11 +9,13 @@ import {
   CalendarDays,
   BarChart3,
   UserCircle,
-  Settings
+  Settings,
+  MessageSquare,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useState } from 'react'
 import NewMatchModal from './NewMatchModal'
+import AIAnalyst from './AIAnalyst'
 
 export default function Navigation() {
   const location = useLocation()
@@ -23,6 +24,7 @@ export default function Navigation() {
   const [isCreatingMatch, setIsCreatingMatch] = useState(false)
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showAIChat, setShowAIChat] = useState(false)
 
   const isActive = (path: string) => {
     if (path === '/' && location.pathname === '/') return true
@@ -232,6 +234,18 @@ export default function Navigation() {
               <PlusCircle size={20} />
             </button>
           )}
+
+          {/* Spacer to push AI chat to bottom */}
+          <div className="flex-1" />
+
+          {/* AI Chat */}
+          <button
+            onClick={() => setShowAIChat(true)}
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-purple-400 hover:bg-purple-500/10 transition-all"
+            title="AI Analyst"
+          >
+            <MessageSquare size={20} />
+          </button>
         </aside>
       )}
 
@@ -240,6 +254,13 @@ export default function Navigation() {
         isOpen={isNewMatchModalOpen}
         onClose={() => setIsNewMatchModalOpen(false)}
         onCreate={handleNewMatch}
+      />
+
+      {/* AI Chat Modal */}
+      <AIAnalyst
+        isOpen={showAIChat}
+        onClose={() => setShowAIChat(false)}
+        initialContext="I have access to all Dungloe GAA match data, player statistics, GPS performance benchmarks, and tactical information from the knowledge base."
       />
     </>
   )

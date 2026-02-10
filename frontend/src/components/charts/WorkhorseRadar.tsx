@@ -19,7 +19,7 @@ export default function WorkhorseRadar({ data }: WorkhorseRadarProps) {
 
   if (metrics.length === 0) {
     return (
-      <div className="glass-card p-6">
+      <div className="glass-card p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Workhorse Radar</h3>
         </div>
@@ -53,7 +53,7 @@ export default function WorkhorseRadar({ data }: WorkhorseRadarProps) {
   }
 
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">Workhorse Radar</h3>
         {last_game_opponent && (

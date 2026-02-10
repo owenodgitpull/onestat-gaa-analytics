@@ -7,7 +7,7 @@ interface TurnoverLeaderboardProps {
 export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) {
   if (data.length === 0) {
     return (
-      <div className="glass-card p-6">
+      <div className="glass-card p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Turnover Kings</h3>
         </div>
@@ -23,7 +23,7 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
   const topTotal = sorted[0] ? sorted[0].interceptions + sorted[0].blocks + sorted[0].turnovers_won : 1
 
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-white">Turnover Kings</h3>
       </div>

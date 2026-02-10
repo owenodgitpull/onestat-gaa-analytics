@@ -52,6 +52,10 @@ class GPSDataParser:
         'sprint_count': [
             'sprints', 'sprint count', 'no. sprints', '# sprints',
             'sprint efforts'
+        ],
+        'step_balance': [
+            'step balance', 'step balance left', 'step bal',
+            'left step', 'balance left %', 'step balance l %'
         ]
     }
     

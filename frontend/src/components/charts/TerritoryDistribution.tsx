@@ -29,7 +29,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
 
   if (!data || !data.season_pcts) {
     return (
-      <div className="glass-card p-6">
+      <div className="glass-card p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Territory Distribution</h3>
         </div>
@@ -46,7 +46,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
 
   if (isEmpty) {
     return (
-      <div className="glass-card p-6">
+      <div className="glass-card p-6 h-full flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Territory Distribution</h3>
         </div>
@@ -154,7 +154,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
   const pitchHeight = 1167
 
   return (
-    <div className="glass-card p-6">
+    <div className="glass-card p-6 h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-lg font-bold text-white">Territory Distribution</h3>
