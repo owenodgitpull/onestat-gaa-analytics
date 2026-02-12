@@ -6,6 +6,7 @@
 import { Link } from 'react-router-dom'
 import { Trophy, Calendar, MapPin, ChevronRight, RefreshCw } from 'lucide-react'
 import { useMatches } from '../hooks/useMatches'
+import LoadingSkeleton from '../components/LoadingSkeleton'
 import type { Match } from '../types'
 
 // Format GAA score as "G-PP" (e.g., "1-08")
@@ -43,11 +44,7 @@ export default function Results() {
   )
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="animate-spin text-indigo-400" size={48} />
-      </div>
-    )
+    return <LoadingSkeleton />
   }
 
   if (error) {
@@ -76,9 +73,8 @@ export default function Results() {
             </p>
           </div>
         </div>
-        <button onClick={() => refetch()} className="btn-glass flex items-center gap-2">
+        <button onClick={() => refetch()} className="btn-glass p-2" title="Refresh">
           <RefreshCw size={16} />
-          Refresh
         </button>
       </div>
 

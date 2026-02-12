@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Player, EventType, PossessionTeam } from '@/types'
 
@@ -29,6 +29,8 @@ interface ManualEventEntryModalProps {
   players: Player[]
   opponentName: string
   matchLineup?: MatchLineupEntry[]
+  currentMinute?: number
+  currentHalf?: 1 | 2
 }
 
 export default function ManualEventEntryModal({
@@ -37,14 +39,26 @@ export default function ManualEventEntryModal({
   onSubmit,
   players,
   opponentName,
-  matchLineup = []
+  matchLineup = [],
+  currentMinute = 1,
+  currentHalf = 1
 }: ManualEventEntryModalProps) {
   const [eventType, setEventType] = useState<EventType>(EventType.POINT)
   const [playerId, setPlayerId] = useState<string>('')
   const [playerComingOn, setPlayerComingOn] = useState<string>('')
-  const [minute, setMinute] = useState<number>(1)
-  const [half, setHalf] = useState<number>(1)
+  const [minute, setMinute] = useState<number>(currentMinute)
+  const [half, setHalf] = useState<number>(currentHalf)
   const [team, setTeam] = useState<PossessionTeam>(PossessionTeam.DUNGLOE)
+
+  // Sync defaults when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      // Convert absolute minute to per-half minute for display
+      const perHalfMinute = currentHalf === 2 ? Math.max(1, currentMinute - 30) : Math.max(1, currentMinute)
+      setMinute(perHalfMinute)
+      setHalf(currentHalf)
+    }
+  }, [isOpen, currentMinute, currentHalf])
 
   if (!isOpen) return null
 
@@ -63,11 +77,13 @@ export default function ManualEventEntryModal({
   }
 
   const handleSubmit = () => {
+    // Compute absolute minute: user enters per-half minute, backend expects absolute (0-60+)
+    const absoluteMinute = half === 2 ? minute + 30 : minute
     onSubmit({
       eventType,
       playerId: playerId || null,
       playerComingOn: eventType === EventType.SUBSTITUTION ? (playerComingOn || null) : null,
-      minute,
+      minute: absoluteMinute,
       half,
       team,
     })
@@ -232,15 +248,18 @@ export default function ManualEventEntryModal({
           {/* Time */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-white/80 font-semibold mb-2">Minute</label>
+              <label className="block text-white/80 font-semibold mb-2">Minute (in half)</label>
               <input
                 type="number"
                 min="1"
-                max="60"
+                max="35"
                 value={minute}
                 onChange={(e) => setMinute(parseInt(e.target.value) || 1)}
                 className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
+              <p className="text-xs text-white/40 mt-1">
+                Match minute: {half === 2 ? minute + 30 : minute}'
+              </p>
             </div>
             <div>
               <label className="block text-white/80 font-semibold mb-2">Half</label>

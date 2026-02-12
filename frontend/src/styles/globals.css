@@ -6,53 +6,247 @@
   * {
     @apply border-white/10;
   }
-  
+
   body {
-    @apply bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white antialiased;
+    @apply text-white antialiased;
     min-height: 100vh;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #060a14;
     background-attachment: fixed;
   }
 }
 
 @layer components {
-  /* Glassmorphism cards - Enhanced contrast with subtle glow */
+  /* ─── Static background — ambient light, shimmer streaks, particles ─── */
+  .app-background {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    /* Base gradient with subtle color variation */
+    background:
+      /* Light source — soft glow from top-left corner */
+      radial-gradient(ellipse 80% 60% at 15% 10%, rgba(99, 102, 241, 0.12) 0%, transparent 60%),
+      /* Secondary light — warm violet from bottom-right */
+      radial-gradient(ellipse 70% 50% at 85% 85%, rgba(139, 92, 246, 0.08) 0%, transparent 55%),
+      /* Subtle blue fill in center area */
+      radial-gradient(ellipse 50% 40% at 50% 50%, rgba(59, 130, 246, 0.04) 0%, transparent 60%),
+      /* Base dark gradient */
+      linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0e0b20 65%, #080c16 100%);
+  }
+
+  /* Diagonal light streak — like light refracting through glass */
+  .app-background::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      135deg,
+      transparent 0%,
+      transparent 30%,
+      rgba(139, 92, 246, 0.025) 38%,
+      rgba(99, 102, 241, 0.045) 45%,
+      rgba(255, 255, 255, 0.02) 50%,
+      rgba(99, 102, 241, 0.045) 55%,
+      rgba(139, 92, 246, 0.025) 62%,
+      transparent 70%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+
+  /* Second streak at different angle */
+  .app-background::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      55deg,
+      transparent 0%,
+      transparent 55%,
+      rgba(59, 130, 246, 0.02) 65%,
+      rgba(99, 102, 241, 0.03) 72%,
+      rgba(59, 130, 246, 0.02) 79%,
+      transparent 88%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+
+  /* Static particle field — tiny dots of light */
+  .app-bg-orb {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(1px 1px at 10% 15%, rgba(255, 255, 255, 0.15) 50%, transparent 100%),
+      radial-gradient(1px 1px at 25% 35%, rgba(139, 92, 246, 0.2) 50%, transparent 100%),
+      radial-gradient(1px 1px at 40% 8%, rgba(255, 255, 255, 0.12) 50%, transparent 100%),
+      radial-gradient(1px 1px at 55% 52%, rgba(99, 102, 241, 0.18) 50%, transparent 100%),
+      radial-gradient(1px 1px at 70% 20%, rgba(255, 255, 255, 0.1) 50%, transparent 100%),
+      radial-gradient(1px 1px at 85% 45%, rgba(139, 92, 246, 0.15) 50%, transparent 100%),
+      radial-gradient(1px 1px at 15% 70%, rgba(99, 102, 241, 0.12) 50%, transparent 100%),
+      radial-gradient(1px 1px at 35% 85%, rgba(255, 255, 255, 0.08) 50%, transparent 100%),
+      radial-gradient(1px 1px at 60% 75%, rgba(139, 92, 246, 0.14) 50%, transparent 100%),
+      radial-gradient(1px 1px at 80% 65%, rgba(255, 255, 255, 0.1) 50%, transparent 100%),
+      radial-gradient(1px 1px at 92% 30%, rgba(99, 102, 241, 0.16) 50%, transparent 100%),
+      radial-gradient(1.5px 1.5px at 20% 50%, rgba(255, 255, 255, 0.06) 50%, transparent 100%),
+      radial-gradient(1px 1px at 48% 28%, rgba(255, 255, 255, 0.08) 50%, transparent 100%),
+      radial-gradient(1px 1px at 75% 88%, rgba(139, 92, 246, 0.1) 50%, transparent 100%),
+      radial-gradient(1.5px 1.5px at 5% 45%, rgba(99, 102, 241, 0.1) 50%, transparent 100%),
+      radial-gradient(1px 1px at 65% 42%, rgba(255, 255, 255, 0.07) 50%, transparent 100%),
+      radial-gradient(1px 1px at 30% 18%, rgba(139, 92, 246, 0.12) 50%, transparent 100%),
+      radial-gradient(1px 1px at 88% 78%, rgba(99, 102, 241, 0.08) 50%, transparent 100%),
+      radial-gradient(1px 1px at 45% 62%, rgba(255, 255, 255, 0.09) 50%, transparent 100%),
+      radial-gradient(1px 1px at 12% 92%, rgba(139, 92, 246, 0.11) 50%, transparent 100%);
+  }
+
+  /* Soft noise/grain for depth — not used as child, sits in shimmer div */
+  .app-bg-shimmer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    /* Subtle vignette to darken edges */
+    background: radial-gradient(ellipse 70% 60% at 50% 50%, transparent 40%, rgba(0, 0, 0, 0.3) 100%);
+  }
+
+  /* ─── Glassmorphism cards — brighter glass on dark bg ─── */
   .glass-card {
-    @apply bg-white/[0.08] backdrop-blur-xl border border-white/30 rounded-2xl shadow-2xl;
+    @apply backdrop-blur-xl rounded-2xl;
+    position: relative;
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.10) 0%,
+      rgba(255, 255, 255, 0.06) 50%,
+      rgba(255, 255, 255, 0.08) 100%
+    );
+    border: 1px solid rgba(255, 255, 255, 0.15);
     box-shadow:
-      0 8px 32px 0 rgba(0, 0, 0, 0.37),
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.1),
-      0 0 0 1px rgba(255, 255, 255, 0.05);
+      0 8px 32px 0 rgba(0, 0, 0, 0.6),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.12),
+      inset 0 -1px 0 0 rgba(255, 255, 255, 0.03),
+      0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+
+  /* Very slow shimmer sweep across glass cards */
+  .glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.03) 45%,
+      rgba(255, 255, 255, 0.06) 50%,
+      rgba(255, 255, 255, 0.03) 55%,
+      transparent 70%
+    );
+    background-size: 250% 100%;
+    animation: card-shimmer 120s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Top edge light reflection */
+  .glass-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 8%;
+    right: 8%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), rgba(139, 92, 246, 0.2), rgba(255, 255, 255, 0.25), transparent);
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .glass-card > * {
+    position: relative;
+    z-index: 1;
   }
 
   .glass-card-hover {
-    @apply glass-card transition-all duration-300 hover:bg-white/[0.12] hover:border-white/40 hover:shadow-xl;
+    @apply glass-card transition-all duration-300;
+  }
+  .glass-card-hover:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.14) 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.11) 100%
+    );
+    box-shadow:
+      0 12px 48px 0 rgba(0, 0, 0, 0.65),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 0 rgba(255, 255, 255, 0.04),
+      0 0 0 1px rgba(255, 255, 255, 0.1),
+      0 0 40px -10px rgba(99, 102, 241, 0.15);
   }
 
   /* Stats cards */
   .stat-card {
-    @apply glass-card p-6 hover:bg-white/10 transition-all duration-300 hover:scale-105;
+    @apply glass-card p-6 transition-all duration-300;
+  }
+  .stat-card:hover {
+    transform: scale(1.03);
+    border-color: rgba(255, 255, 255, 0.25);
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.14) 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.11) 100%
+    );
+    box-shadow:
+      0 16px 48px 0 rgba(0, 0, 0, 0.7),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
+      0 0 0 1px rgba(255, 255, 255, 0.1),
+      0 0 50px -10px rgba(99, 102, 241, 0.2);
   }
 
   .stat-label {
-    @apply text-slate-200 text-sm font-bold mb-2 uppercase tracking-wide;
+    @apply text-slate-300 text-sm font-semibold mb-2 uppercase tracking-wide;
   }
 
   .stat-value {
     @apply text-4xl font-bold text-white;
   }
 
-  /* Buttons */
+  /* Buttons — glassy with indigo tint */
   .btn-primary {
-    @apply bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95;
+    @apply backdrop-blur-md text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 active:scale-95;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.18));
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    box-shadow: 0 4px 20px -3px rgba(99, 102, 241, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  .btn-primary:hover {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(139, 92, 246, 0.25));
+    border-color: rgba(99, 102, 241, 0.45);
+    box-shadow: 0 8px 30px -3px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
   }
 
   .btn-glass {
-    @apply bg-white/10 backdrop-blur-md text-white px-6 py-3 rounded-xl font-semibold hover:bg-white/20 transition-all duration-300 border border-white/20 active:scale-95;
+    @apply backdrop-blur-md text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 active:scale-95;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+  .btn-glass:hover {
+    border-color: rgba(255, 255, 255, 0.25);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
+    box-shadow: 0 4px 24px -5px rgba(99, 102, 241, 0.2);
   }
 
   .btn-danger {
-    @apply bg-gradient-to-r from-red-600 to-red-700 text-white px-6 py-3 rounded-xl font-semibold hover:from-red-700 hover:to-red-800 transition-all duration-300 shadow-lg active:scale-95;
+    @apply bg-gradient-to-r from-red-600 to-rose-600 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 active:scale-95;
+    box-shadow: 0 4px 20px -3px rgba(239, 68, 68, 0.4);
+  }
+  .btn-danger:hover {
+    @apply from-red-500 to-rose-500;
+    box-shadow: 0 8px 30px -3px rgba(239, 68, 68, 0.5);
+    transform: translateY(-1px);
   }
 
   /* Badges */
@@ -61,26 +255,33 @@
   }
 
   .badge-success {
-    @apply bg-emerald-600/30 text-emerald-300 border border-emerald-500/50;
+    @apply bg-emerald-600/20 text-emerald-300 border border-emerald-500/30;
   }
 
   .badge-danger {
-    @apply bg-red-600/30 text-red-300 border border-red-500/50;
+    @apply bg-red-600/20 text-red-300 border border-red-500/30;
   }
 
   .badge-warning {
-    @apply bg-amber-600/30 text-amber-300 border border-amber-500/50;
+    @apply bg-amber-600/20 text-amber-300 border border-amber-500/30;
   }
 
   .badge-info {
-    @apply bg-blue-600/30 text-blue-300 border border-blue-500/50;
+    @apply bg-blue-600/20 text-blue-300 border border-blue-500/30;
   }
 
   /* Input Styles */
   .input-glass {
-    @apply w-full px-4 py-3 rounded-xl bg-white/5 backdrop-blur-sm border border-white/10
-           text-white placeholder-white/40 transition-all duration-300
-           focus:bg-white/10 focus:border-white/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50;
+    @apply w-full px-4 py-3 rounded-xl backdrop-blur-sm
+           text-white placeholder-white/30 transition-all duration-300
+           focus:outline-none focus:ring-2 focus:ring-indigo-500/40;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  }
+  .input-glass:focus {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.05));
+    border-color: rgba(99, 102, 241, 0.4);
   }
 
   /* Pitch Styles */
@@ -88,11 +289,11 @@
     @apply stroke-white fill-none;
     stroke-width: 2;
   }
-  
+
   .pitch-zone {
     @apply fill-transparent cursor-pointer transition-all duration-200;
   }
-  
+
   .pitch-zone:hover {
     @apply fill-white/10;
   }
@@ -101,7 +302,7 @@
 @layer utilities {
   /* Gradients */
   .text-gradient {
-    @apply bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent;
   }
 
   .text-gradient-gold {
@@ -109,23 +310,30 @@
   }
 }
 
+/* ─── Keyframes — only card shimmer, very slow ─── */
+
+@keyframes card-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
   transition: background 0.3s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.22);
 }

@@ -26,6 +26,7 @@ from app.models.player_health import (
     AlertSeverity, AlertType
 )
 from app.models.match_gps import MatchGPSData
+from app.models.insight_alert import InsightAlert, AlertCategory, AlertSource
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -64,5 +65,8 @@ __all__ = [
     "AlertSeverity",
     "AlertType",
     "MatchGPSData",
+    "InsightAlert",
+    "AlertCategory",
+    "AlertSource",
 ]
 

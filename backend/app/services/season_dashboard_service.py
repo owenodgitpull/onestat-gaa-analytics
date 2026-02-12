@@ -149,19 +149,31 @@ class SeasonDashboardService:
         )
         all_poss = poss_result.scalars().all()
 
-        # Group by match and team
+        # Group by match and count DISTINCT possession phases per team.
+        # A possession phase = each time a team gains the ball.
+        # Walk events in time order; only count when team changes from previous.
         dungloe_poss_by_match = {}
         dungloe_poss_count = {}
         opp_poss_by_match = {}
         opp_poss_count = {}
+        prev_team_by_match: dict = {}  # track last team per match
+
         for pe in all_poss:
             mid = pe.match_id
+            prev = prev_team_by_match.get(mid)
+
             if pe.team == PossessionTeam.DUNGLOE:
                 dungloe_poss_by_match.setdefault(mid, []).append(pe)
-                dungloe_poss_count[mid] = dungloe_poss_count.get(mid, 0) + 1
+                if prev != PossessionTeam.DUNGLOE:
+                    dungloe_poss_count[mid] = dungloe_poss_count.get(mid, 0) + 1
             elif pe.team == PossessionTeam.OPPONENT:
                 opp_poss_by_match.setdefault(mid, []).append(pe)
-                opp_poss_count[mid] = opp_poss_count.get(mid, 0) + 1
+                if prev != PossessionTeam.OPPONENT:
+                    opp_poss_count[mid] = opp_poss_count.get(mid, 0) + 1
+
+            # Update previous team (skip contested — doesn't reset either team)
+            if pe.team in (PossessionTeam.DUNGLOE, PossessionTeam.OPPONENT):
+                prev_team_by_match[mid] = pe.team
 
         # Count attacks (zone entries) per match — Dungloe crosses x>=55, Opponent crosses x<=45
         dungloe_attacks = {}
@@ -699,11 +711,11 @@ class SeasonDashboardService:
         kickout_data = await SeasonDashboardService._kickout_trends(db, matches)
         if len(kickout_data) >= 2:
             latest_ko = kickout_data[-1]
-            latest_total = latest_ko["won_clean"] + latest_ko["won_break"] + latest_ko["lost"]
-            latest_win_rate = ((latest_ko["won_clean"] + latest_ko["won_break"]) / latest_total * 100) if latest_total > 0 else 0
+            latest_total = latest_ko.get("won_clean", 0) + latest_ko.get("won_break", 0) + latest_ko.get("lost", 0)
+            latest_win_rate = ((latest_ko.get("won_clean", 0) + latest_ko.get("won_break", 0)) / latest_total * 100) if latest_total > 0 else 0
 
-            prior_wins = sum(k["won_clean"] + k["won_break"] for k in kickout_data[:-1])
-            prior_total = sum(k["won_clean"] + k["won_break"] + k["lost"] for k in kickout_data[:-1])
+            prior_wins = sum(k.get("won_clean", 0) + k.get("won_break", 0) for k in kickout_data[:-1])
+            prior_total = sum(k.get("won_clean", 0) + k.get("won_break", 0) + k.get("lost", 0) for k in kickout_data[:-1])
             avg_win_rate = (prior_wins / prior_total * 100) if prior_total > 0 else 0
 
             if abs(latest_win_rate - avg_win_rate) >= 20:
@@ -731,9 +743,11 @@ class SeasonDashboardService:
                 })
 
         # --- 4. Scoring rate shift (last match vs season avg) ---
+        # Skip if we already have a per-player scoring outlier for the same match
+        has_scoring_outlier = any(o["category"] == "scoring" for o in outliers)
         funnel = await SeasonDashboardService._possession_funnel(db, matches)
         per_match_funnel = funnel.get("per_match", [])
-        if len(per_match_funnel) >= 2:
+        if len(per_match_funnel) >= 2 and not has_scoring_outlier:
             latest_f = per_match_funnel[-1]
             latest_sc_rate = (latest_f["scores"] / max(latest_f["shots"], 1)) * 100
             prior_shots = sum(f["shots"] for f in per_match_funnel[:-1])
@@ -743,7 +757,7 @@ class SeasonDashboardService:
             if abs(latest_sc_rate - avg_sc_rate) >= 20:
                 direction = "up" if latest_sc_rate > avg_sc_rate else "down"
                 outliers.append({
-                    "category": "scoring",
+                    "category": "conversion",
                     "description": f"Score rate {direction} to {latest_sc_rate:.0f}% vs {latest_match.opponent} (season avg {avg_sc_rate:.0f}%)",
                     "data": {
                         "latest_score_rate": round(latest_sc_rate, 1),

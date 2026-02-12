@@ -20,6 +20,7 @@ export default function LiveInsightDisplay({
   const [latestInsight, setLatestInsight] = useState<LiveInsight | null>(null)
   const [allInsights, setAllInsights] = useState<LiveInsight[]>([])
   const [expanded, setExpanded] = useState(false)
+  const [insightExpanded, setInsightExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [lastCheckMinute, setLastCheckMinute] = useState(0)
 
@@ -34,9 +35,10 @@ export default function LiveInsightDisplay({
   useEffect(() => {
     if (!matchId || !isMatchActive) return
 
-    // Only check every 5 minutes
-    if (minute > 0 && minute % 5 === 0 && minute !== lastCheckMinute) {
-      setLastCheckMinute(minute)
+    // Trigger at every 5-minute mark that we haven't checked yet
+    const fiveMinBlock = Math.floor(minute / 5)
+    if (fiveMinBlock > 0 && fiveMinBlock !== lastCheckMinute) {
+      setLastCheckMinute(fiveMinBlock)
       triggerInsightCheck()
     }
   }, [matchId, minute, isMatchActive, lastCheckMinute])
@@ -70,9 +72,12 @@ export default function LiveInsightDisplay({
 
     setLoading(true)
     try {
+      console.log(`[LiveInsight] Triggering check at ${minute}' (half ${half})`)
       const response = await api.liveInsights.triggerCheck(matchId, minute, half)
+      console.log(`[LiveInsight] Response:`, response)
       if (response.generated && response.insight) {
         setLatestInsight(response.insight)
+        setInsightExpanded(false)
         onNewInsight?.(response.insight)
         // Refresh all insights if expanded
         if (expanded) {
@@ -80,7 +85,7 @@ export default function LiveInsightDisplay({
         }
       }
     } catch (err) {
-      console.error('Failed to trigger insight check:', err)
+      console.error('[LiveInsight] Failed to trigger insight check:', err)
     } finally {
       setLoading(false)
     }
@@ -108,9 +113,32 @@ export default function LiveInsightDisplay({
     return labels[trigger] || trigger
   }
 
+  const formatInsightText = (text: string) => {
+    // Split on double newlines into paragraphs, filter empties
+    const paragraphs = text.split(/\n\n+/).filter(p => p.trim())
+
+    return paragraphs.map((para, i) => {
+      // Convert **bold** to <strong>
+      const html = para.trim()
+        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
+        // Convert single newlines to <br>
+        .replace(/\n/g, '<br />')
+        // Convert bullet points
+        .replace(/^[-•]\s*/gm, '<span class="text-indigo-400 mr-1">•</span>')
+
+      return (
+        <p
+          key={i}
+          className="text-white/85 leading-relaxed mb-2 last:mb-0"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      )
+    })
+  }
+
   const getTriggerColor = (trigger: string): string => {
     const colors: Record<string, string> = {
-      goal_scored: 'from-emerald-600/30 to-teal-600/30 border-emerald-500/50',
+      goal_scored: 'from-indigo-600/30 to-violet-600/30 border-indigo-500/50',
       scoring_run: 'from-blue-600/30 to-indigo-600/30 border-blue-500/50',
       scoring_drought: 'from-amber-600/30 to-orange-600/30 border-amber-500/50',
       card_issued: 'from-red-600/30 to-rose-600/30 border-red-500/50',
@@ -168,9 +196,17 @@ export default function LiveInsightDisplay({
                   </span>
                 </div>
               </div>
-              <p className="text-sm text-white leading-relaxed">
-                {latestInsight.insight}
-              </p>
+              <div className={`text-sm ${!insightExpanded ? 'max-h-[4.5rem] overflow-hidden' : ''}`}>
+                {formatInsightText(latestInsight.insight)}
+              </div>
+              {latestInsight.insight.length > 120 && (
+                <button
+                  onClick={() => setInsightExpanded(!insightExpanded)}
+                  className="text-xs text-indigo-300 hover:text-indigo-200 mt-1 transition-colors"
+                >
+                  {insightExpanded ? 'Show less' : 'Read more'}
+                </button>
+              )}
             </div>
           </div>
 
@@ -211,9 +247,9 @@ export default function LiveInsightDisplay({
                     </span>
                     <span className="text-[10px] text-white/50">{insight.minute}'</span>
                   </div>
-                  <p className="text-xs text-white/80 leading-relaxed">
-                    {insight.insight}
-                  </p>
+                  <div className="text-xs">
+                    {formatInsightText(insight.insight)}
+                  </div>
                 </div>
               </div>
             </div>

@@ -162,21 +162,24 @@ class MatchEvent(Base):
         Pitch coordinates: x from 0-100 (0 = Dungloe goal, 100 = opponent goal)
         40m from goal ≈ 40% from either end
         
-        For Dungloe attacking (high x values):
-        - 2-point zone if x < 60 (40m+ from opponent goal)
-        
-        For opponent attacking (low x values):
-        - 2-point zone if x > 40 (40m+ from Dungloe goal)
+        Pitch-area coords: 0=goal line, 100=opposite goal
+        40m arc at centerline ≈ 27.7% from each goal
+
+        For Dungloe attacking toward x=100:
+        - 2-point zone if x < 72.3 (outside 40m arc)
+
+        For opponent attacking toward x=0:
+        - 2-point zone if x > 27.7 (outside 40m arc)
         """
         if self.pitch_x is None:
             return False
-        
+
         if self.team == Team.DUNGLOE:
             # Dungloe attacking toward x=100
-            # 2-point if shooting from x < 60 (40m+ from goal)
-            return self.pitch_x < 60
+            # 2-point if shooting from outside 40m arc
+            return self.pitch_x < 72.3
         else:
             # Opponent attacking toward x=0
-            # 2-point if shooting from x > 40 (40m+ from goal)
-            return self.pitch_x > 40
+            # 2-point if shooting from outside 40m arc
+            return self.pitch_x > 27.7
 

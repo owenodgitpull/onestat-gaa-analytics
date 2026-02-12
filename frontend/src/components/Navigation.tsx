@@ -25,6 +25,7 @@ export default function Navigation() {
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showAIChat, setShowAIChat] = useState(false)
+  const [logoError, setLogoError] = useState(false)
 
   const isActive = (path: string) => {
     if (path === '/' && location.pathname === '/') return true
@@ -32,14 +33,16 @@ export default function Navigation() {
     return false
   }
 
-  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date }) => {
+  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date; weather_condition?: string | null; temperature_celsius?: number | null }) => {
     setIsCreatingMatch(true)
     try {
       const match = await createMatch.mutateAsync({
         opponent: data.opponent,
         match_date: data.matchDate.toISOString(),
         venue: data.venue,
-        notes: null
+        notes: null,
+        weather_condition: data.weather_condition,
+        temperature_celsius: data.temperature_celsius,
       })
       setIsNewMatchModalOpen(false)
       navigate(`/match/${match.id}`)
@@ -86,23 +89,21 @@ export default function Navigation() {
   return (
     <>
       {/* Top Navigation Bar */}
-      <nav className="sticky top-0 z-50 bg-slate-900 border-b border-white/10">
+      <nav className="sticky top-0 z-50 backdrop-blur-2xl border-b border-white/[0.12]" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.06))', boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
         <div className="flex items-center h-14 px-4">
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2 group mr-8">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center overflow-hidden">
-              <img
-                src="/clg-logo.png"
-                alt="Dungloe GAA"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const target = e.currentTarget as HTMLImageElement;
-                  target.style.display = 'none';
-                  if (target.parentElement) {
-                    target.parentElement.innerHTML = '<span class="text-sm font-bold text-white">D</span>';
-                  }
-                }}
-              />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center overflow-hidden">
+              {logoError ? (
+                <span className="text-sm font-bold text-white">D</span>
+              ) : (
+                <img
+                  src="/clg-logo.png"
+                  alt="Dungloe GAA"
+                  className="w-full h-full object-cover"
+                  onError={() => setLogoError(true)}
+                />
+              )}
             </div>
             <span className="text-lg font-bold text-white hidden sm:inline">DUNGLOE GAA</span>
           </Link>
@@ -113,7 +114,7 @@ export default function Navigation() {
               to="/"
               className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
                 isActive('/')
-                  ? 'text-emerald-400 bg-emerald-500/10'
+                  ? 'text-indigo-400 bg-indigo-500/10'
                   : 'text-white/70 hover:text-white hover:bg-white/5'
               }`}
             >
@@ -124,7 +125,7 @@ export default function Navigation() {
               to="/results"
               className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
                 isActive('/results')
-                  ? 'text-emerald-400 bg-emerald-500/10'
+                  ? 'text-indigo-400 bg-indigo-500/10'
                   : 'text-white/70 hover:text-white hover:bg-white/5'
               }`}
             >
@@ -135,7 +136,7 @@ export default function Navigation() {
               to="/players"
               className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
                 isActive('/players')
-                  ? 'text-emerald-400 bg-emerald-500/10'
+                  ? 'text-indigo-400 bg-indigo-500/10'
                   : 'text-white/70 hover:text-white hover:bg-white/5'
               }`}
             >
@@ -146,7 +147,7 @@ export default function Navigation() {
               to="/training"
               className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
                 isActive('/training')
-                  ? 'text-emerald-400 bg-emerald-500/10'
+                  ? 'text-indigo-400 bg-indigo-500/10'
                   : 'text-white/70 hover:text-white hover:bg-white/5'
               }`}
             >
@@ -160,7 +161,8 @@ export default function Navigation() {
             <button
               onClick={() => setIsNewMatchModalOpen(true)}
               disabled={isCreatingMatch}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg backdrop-blur-md text-white text-sm font-medium transition-all disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.18))', border: '1px solid rgba(99,102,241,0.3)', boxShadow: '0 4px 15px -3px rgba(99,102,241,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
             >
               <PlusCircle size={16} className={isCreatingMatch ? 'animate-spin' : ''} />
               <span className="hidden sm:inline">{isCreatingMatch ? 'Creating...' : 'New Match'}</span>
@@ -205,14 +207,14 @@ export default function Navigation() {
 
       {/* Left Sidebar - Contextual Icons */}
       {sidebarItems.length > 0 && (
-        <aside className="fixed left-0 top-14 bottom-0 w-14 bg-slate-900/50 border-r border-white/5 z-40 hidden md:flex flex-col items-center py-4 space-y-1">
+        <aside className="fixed left-0 top-14 bottom-0 w-14 backdrop-blur-xl border-r border-white/[0.10] z-40 hidden md:flex flex-col items-center py-4 space-y-1" style={{ background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.05))', boxShadow: '4px 0 24px rgba(0,0,0,0.3), inset 1px 0 0 rgba(255,255,255,0.08)' }}>
           {sidebarItems.map((item, idx) => (
             <Link
               key={idx}
               to={item.path}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
                 item.active
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                  ? 'text-white border border-indigo-500/40 shadow-lg shadow-indigo-600/20' + ' ' + 'bg-gradient-to-br from-indigo-500/25 to-violet-500/20 backdrop-blur-md'
                   : 'text-white/40 hover:text-white hover:bg-white/10'
               }`}
               title={item.label}
@@ -228,7 +230,7 @@ export default function Navigation() {
           {(location.pathname === '/' || location.pathname.startsWith('/results')) && (
             <button
               onClick={() => setIsNewMatchModalOpen(true)}
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
               title="New Match"
             >
               <PlusCircle size={20} />

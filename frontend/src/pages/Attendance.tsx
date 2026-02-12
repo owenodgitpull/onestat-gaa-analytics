@@ -27,11 +27,14 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePlayers } from '../hooks/usePlayers'
 import api from '../services/api'
+import LoadingSkeleton from '../components/LoadingSkeleton'
+import { renderAnalysisText } from '../utils/renderAnalysisText'
 import type { LeaderboardPlayer, TrainingOverviewData } from '../services/api'
 import PeakPerformanceChart from '../components/charts/training/PeakPerformanceChart'
 import SpeedZoneChart from '../components/charts/training/SpeedZoneChart'
 import ReadinessTable from '../components/charts/training/ReadinessTable'
 import MonotonyScatter from '../components/charts/training/MonotonyScatter'
+import InsightAlertsPanel from '../components/InsightAlertsPanel'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1'
 
@@ -820,11 +823,7 @@ export default function Attendance() {
   const overviewKpis = trainingOverview?.overview_kpis
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="animate-spin text-indigo-400" size={48} />
-      </div>
-    )
+    return <LoadingSkeleton />
   }
 
   // Parse squad availability for color coding
@@ -842,7 +841,7 @@ export default function Attendance() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-600 to-cyan-600 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center">
             <Dumbbell size={24} className="text-white" />
           </div>
           <div>
@@ -853,9 +852,8 @@ export default function Attendance() {
           </div>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => refetch()} className="btn-glass flex items-center gap-2">
+          <button onClick={() => refetch()} className="btn-glass p-2" title="Refresh">
             <RefreshCw size={16} />
-            Refresh
           </button>
           <button
             onClick={() => setShowNewSession(true)}
@@ -875,7 +873,7 @@ export default function Attendance() {
               <Bot size={16} className="text-indigo-400" />
             </div>
             <div>
-              <p className="text-sm text-white/80 leading-relaxed">{aiSummary.summary}</p>
+              <div className="text-sm leading-relaxed">{renderAnalysisText(aiSummary.summary)}</div>
               {aiSummary.session_date && (
                 <p className="text-xs text-white/40 mt-1">
                   {new Date(aiSummary.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
@@ -885,6 +883,9 @@ export default function Attendance() {
           </div>
         </div>
       )}
+
+      {/* AI Insight Alerts */}
+      <InsightAlertsPanel dashboard="training" />
 
       {/* KPI Cards with Toggle */}
       {(latestGPSStats || overviewKpis) && (
@@ -1091,12 +1092,12 @@ export default function Attendance() {
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
                     session.session_type === 'training' ? 'bg-indigo-600/20' :
                     session.session_type === 'gym' ? 'bg-orange-600/20' :
-                    'bg-teal-600/20'
+                    'bg-violet-600/20'
                   }`}>
                     <Calendar size={24} className={`${
                       session.session_type === 'training' ? 'text-indigo-400' :
                       session.session_type === 'gym' ? 'text-orange-400' :
-                      'text-teal-400'
+                      'text-violet-400'
                     }`} />
                   </div>
                   <div>

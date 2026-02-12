@@ -78,7 +78,7 @@ async def get_match_insights(
                 match_id=i.match_id,
                 minute=i.minute,
                 half=i.half,
-                trigger=i.trigger.value,
+                trigger=i.trigger,
                 insight=i.insight,
                 trigger_context=i.trigger_context,
                 created_at=i.created_at
@@ -114,7 +114,7 @@ async def trigger_insight_check(
                     match_id=insight.match_id,
                     minute=insight.minute,
                     half=insight.half,
-                    trigger=insight.trigger.value,
+                    trigger=insight.trigger,
                     insight=insight.insight,
                     trigger_context=insight.trigger_context,
                     created_at=insight.created_at
@@ -151,7 +151,7 @@ async def trigger_half_time_insight(
             match_id=insight.match_id,
             minute=insight.minute,
             half=insight.half,
-            trigger=insight.trigger.value,
+            trigger=insight.trigger,
             insight=insight.insight,
             trigger_context=insight.trigger_context,
             created_at=insight.created_at
@@ -181,7 +181,7 @@ async def get_latest_insight(
             match_id=i.match_id,
             minute=i.minute,
             half=i.half,
-            trigger=i.trigger.value,
+            trigger=i.trigger,
             insight=i.insight,
             trigger_context=i.trigger_context,
             created_at=i.created_at

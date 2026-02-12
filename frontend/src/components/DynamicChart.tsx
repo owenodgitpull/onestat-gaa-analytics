@@ -38,16 +38,13 @@ interface DynamicChartProps {
   isLoading?: boolean
 }
 
-// Default colors for charts
+// Default colors for charts — 5-color palette, no red
 const DEFAULT_COLORS = [
-  '#10b981', // emerald
-  '#6366f1', // indigo
-  '#f59e0b', // amber
-  '#ef4444', // red
-  '#8b5cf6', // violet
-  '#06b6d4', // cyan
-  '#f97316', // orange
-  '#ec4899', // pink
+  '#6366f1', // indigo (primary brand)
+  '#10b981', // emerald (positive/success)
+  '#f59e0b', // amber (Dungloe gold)
+  '#8b5cf6', // violet (glass depth)
+  '#06b6d4', // cyan (cool secondary)
 ]
 
 export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinned, canPin, isLoading }: DynamicChartProps) {
@@ -63,12 +60,17 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
     if (active && payload && payload.length) {
       return (
         <div className="bg-slate-800 border border-white/20 rounded-lg p-3 shadow-xl">
-          <p className="text-white font-medium mb-1">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <p key={index} style={{ color: entry.color }} className="text-sm">
-              {entry.name}: {typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value}
-            </p>
-          ))}
+          {label && <p className="text-white font-medium mb-1">{label}</p>}
+          {payload.map((entry: any, index: number) => {
+            // For pie charts, use payload name (the slice label) as the heading
+            const displayName = entry.payload?.name || entry.name || ''
+            const displayValue = typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value
+            return (
+              <p key={index} style={{ color: entry.color }} className="text-sm">
+                {displayName}: {displayValue}
+              </p>
+            )
+          })}
         </div>
       )
     }
@@ -91,7 +93,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                 stroke="rgba(255,255,255,0.5)"
                 tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={false} />
               {config.showLegend && <Legend />}
               {dataKeys.map((key, index) => (
                 <Line
@@ -122,7 +124,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                 stroke="rgba(255,255,255,0.5)"
                 tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={false} />
               {config.showLegend && <Legend />}
               {dataKeys.map((key, index) => (
                 <Bar
@@ -139,19 +141,17 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
 
       case 'pie':
         return (
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={220}>
             <PieChart>
               <Pie
                 data={data}
                 dataKey={dataKeys[0]}
                 nameKey={xKey}
                 cx="50%"
-                cy="50%"
-                outerRadius={70}
-                innerRadius={40}
+                cy="45%"
+                outerRadius={65}
+                innerRadius={35}
                 paddingAngle={2}
-                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                labelLine={false}
               >
                 {data.map((_, index) => (
                   <Cell
@@ -162,7 +162,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                   />
                 ))}
               </Pie>
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={false} />
               {config.showLegend && <Legend />}
             </PieChart>
           </ResponsiveContainer>
@@ -185,7 +185,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                 stroke="rgba(255,255,255,0.5)"
                 tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={false} />
               <Scatter
                 data={data}
                 fill={colors[0]}
@@ -215,7 +215,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                 stroke="rgba(255,255,255,0.5)"
                 tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={false} />
               {config.showLegend && <Legend />}
               {dataKeys.map((key, index) => (
                 <Area

@@ -293,6 +293,17 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
             # Trigger AI re-analysis of the match with GPS data
             await trigger_match_reanalysis_with_gps(db, match_id)
 
+            # Generate cross-cutting insight alerts
+            try:
+                from app.services.ai import generate_insight_alerts
+                alerts = await generate_insight_alerts(
+                    db, source="match_gps", match_id=match_id
+                )
+                if alerts:
+                    logger.info(f"Generated {len(alerts)} insight alerts from match GPS upload")
+            except Exception as e:
+                logger.error(f"Insight alert generation failed: {e}")
+
             # Only mark as "completed" AFTER AI re-analysis finishes,
             # so the frontend won't re-fetch until the new report is ready
             upload_log.status = "completed"

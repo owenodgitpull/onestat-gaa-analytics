@@ -41,7 +41,7 @@ export default {
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-glass': 'linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%)',
+        'gradient-glass': 'linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%)',
       },
       backdropBlur: {
         xs: '2px',
@@ -49,11 +49,16 @@ export default {
       boxShadow: {
         'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.37)',
         'glass-inset': 'inset 0 0 20px rgba(255, 255, 255, 0.05)',
+        'glow-sm': '0 0 15px -3px rgba(99, 102, 241, 0.3)',
+        'glow': '0 0 25px -5px rgba(99, 102, 241, 0.4)',
+        'glow-lg': '0 0 40px -5px rgba(99, 102, 241, 0.5)',
+        'glow-violet': '0 0 25px -5px rgba(139, 92, 246, 0.4)',
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',
         'slide-in': 'slideIn 0.3s ease-out',
         'scale-in': 'scaleIn 0.2s ease-out',
+        'shimmer': 'shimmer 2.5s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -68,9 +73,12 @@ export default {
           '0%': { transform: 'scale(0.95)', opacity: '0' },
           '100%': { transform: 'scale(1)', opacity: '1' },
         },
+        shimmer: {
+          '0%, 100%': { opacity: '0.5' },
+          '50%': { opacity: '1' },
+        },
       },
     },
   },
   plugins: [],
 }
-

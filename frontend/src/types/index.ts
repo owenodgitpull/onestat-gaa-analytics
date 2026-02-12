@@ -38,6 +38,8 @@ export interface Match {
   dungloe_points: number;
   opponent_goals: number;
   opponent_points: number;
+  weather_condition?: string | null;
+  temperature_celsius?: number | null;
   started_at: string | null;
   completed_at: string | null;
   created_at?: string;

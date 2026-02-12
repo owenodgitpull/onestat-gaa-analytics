@@ -168,15 +168,6 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
           <div className="text-lg font-bold" style={{ color: colors[3] }}>{scoreRate}%</div>
           <div className="text-[10px] text-white/30">of shots</div>
         </div>
-        <div className="flex-1 bg-red-500/10 rounded-xl px-2 py-2 text-center border border-red-500/20">
-          <div className="text-xs text-white/50">Turnover Rate</div>
-          <div className="text-lg font-bold text-red-400">
-            {totals.possessions > 0
-              ? Math.round((1 - totals.scores / totals.possessions) * 100)
-              : 0}%
-          </div>
-          <div className="text-[10px] text-white/30">possession lost</div>
-        </div>
       </div>
     </div>
   )

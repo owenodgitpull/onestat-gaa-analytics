@@ -12,7 +12,6 @@ import {
   MapPin,
   Calendar,
   ChevronLeft,
-  RefreshCw,
   Target,
   TrendingUp,
   Zap,
@@ -43,104 +42,13 @@ import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
 import { usePlayers } from '../hooks/usePlayers'
 import { calculateManOfMatch } from '../utils/motm'
+import { renderAnalysisText } from '../utils/renderAnalysisText'
+import LoadingSkeleton from '../components/LoadingSkeleton'
 import type { MatchStats } from '../types'
 
 // Format GAA score as "G-PP" (e.g., "1-08")
 function formatGAAScore(goals: number, points: number): string {
   return `${goals}-${String(points).padStart(2, '0')}`
-}
-
-// Simple markdown to formatted text renderer
-function renderAnalysisText(text: string): JSX.Element[] {
-  const lines = text.split('\n')
-  const elements: JSX.Element[] = []
-
-  lines.forEach((line, idx) => {
-    const trimmed = line.trim()
-
-    // Skip empty lines but add spacing
-    if (!trimmed) {
-      elements.push(<div key={idx} className="h-2" />)
-      return
-    }
-
-    // Headers (## or ###)
-    if (trimmed.startsWith('###')) {
-      elements.push(
-        <h4 key={idx} className="text-base font-semibold text-white mt-4 mb-2">
-          {trimmed.replace(/^###\s*/, '')}
-        </h4>
-      )
-      return
-    }
-    if (trimmed.startsWith('##')) {
-      elements.push(
-        <h3 key={idx} className="text-lg font-bold text-white mt-4 mb-2">
-          {trimmed.replace(/^##\s*/, '')}
-        </h3>
-      )
-      return
-    }
-    if (trimmed.startsWith('#')) {
-      elements.push(
-        <h2 key={idx} className="text-xl font-bold text-white mt-4 mb-2">
-          {trimmed.replace(/^#\s*/, '')}
-        </h2>
-      )
-      return
-    }
-
-    // Numbered section headers (e.g., "1. Match Summary")
-    const numberedHeader = trimmed.match(/^(\d+)\.\s+\*\*(.+?)\*\*(.*)$/)
-    if (numberedHeader) {
-      elements.push(
-        <h4 key={idx} className="text-base font-semibold text-indigo-400 mt-4 mb-2">
-          {numberedHeader[1]}. {numberedHeader[2]}{numberedHeader[3]}
-        </h4>
-      )
-      return
-    }
-
-    // Bold section headers (e.g., "**Key Statistics**")
-    const boldHeader = trimmed.match(/^\*\*(.+?)\*\*:?$/)
-    if (boldHeader) {
-      elements.push(
-        <h4 key={idx} className="text-base font-semibold text-indigo-400 mt-4 mb-2">
-          {boldHeader[1]}
-        </h4>
-      )
-      return
-    }
-
-    // Bullet points
-    if (trimmed.startsWith('-') || trimmed.startsWith('•')) {
-      const content = trimmed.replace(/^[-•]\s*/, '')
-      // Handle bold text within bullet points
-      const formattedContent = content.replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
-      elements.push(
-        <div key={idx} className="flex items-start gap-2 ml-2 mb-1">
-          <span className="text-indigo-400 mt-1">•</span>
-          <span
-            className="text-white/80 leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: formattedContent }}
-          />
-        </div>
-      )
-      return
-    }
-
-    // Regular paragraph - handle inline bold
-    const formattedContent = trimmed.replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
-    elements.push(
-      <p
-        key={idx}
-        className="text-white/80 leading-relaxed mb-2"
-        dangerouslySetInnerHTML={{ __html: formattedContent }}
-      />
-    )
-  })
-
-  return elements
 }
 
 // Calculate total score
@@ -296,11 +204,7 @@ export default function MatchResult() {
   }, [eventsData, activeFilters, teamFilter])
 
   if (matchLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="animate-spin text-indigo-400" size={48} />
-      </div>
-    )
+    return <LoadingSkeleton />
   }
 
   if (!match) {
@@ -718,7 +622,7 @@ export default function MatchResult() {
       {gpsData && gpsData.length > 0 && (
         <div className="mt-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-teal-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center">
               <Zap size={20} className="text-white" />
             </div>
             <span>GPS Performance Data</span>
@@ -867,17 +771,18 @@ function getPitchArea(x: number | null, y: number | null, eventTeamIsDungloe: bo
   const attackingTeamName = eventTeamIsDungloe ? 'Dungloe' : opponentName
 
   // In attacking half (closer to opponent's goal)
+  // Thresholds calibrated to pitch-area coords (0=goal line, 100=opposite goal)
   if (distFromAttackingGoal < 50) {
-    if (distFromAttackingGoal <= 6) return `inside ${defendingTeamName}'s small rectangle`
-    if (distFromAttackingGoal <= 10) return `near ${defendingTeamName}'s goalmouth, ${lateralShort}`
-    if (distFromAttackingGoal <= 15) return `${defendingTeamName}'s 20-meter line, ${lateralShort}`
-    if (distFromAttackingGoal <= 25) return `inside ${defendingTeamName}'s 45, ${lateralShort}`
-    if (distFromAttackingGoal <= 35) return `${defendingTeamName}'s half, ${lateralDesc}`
-    return `approaching ${defendingTeamName}'s 45, ${lateralShort}`
+    if (distFromAttackingGoal <= 3) return `inside ${defendingTeamName}'s small rectangle`
+    if (distFromAttackingGoal <= 9) return `near ${defendingTeamName}'s goalmouth, ${lateralShort}`
+    if (distFromAttackingGoal <= 14) return `${defendingTeamName}'s 20-meter line, ${lateralShort}`
+    if (distFromAttackingGoal <= 32) return `inside ${defendingTeamName}'s 45, ${lateralShort}`
+    if (distFromAttackingGoal <= 40) return `${defendingTeamName}'s half, ${lateralDesc}`
+    return `${defendingTeamName}'s side of midfield, ${lateralShort}`
   }
 
   // In defensive half or midfield
-  if (distFromDefendingGoal < 25) {
+  if (distFromDefendingGoal < 20) {
     return `deep in ${attackingTeamName}'s defense, ${lateralShort}`
   }
   if (distFromDefendingGoal < 40) {
@@ -948,23 +853,24 @@ function formatEventDescription(event: any, players: any[], opponentName: string
         ? `Dungloe lost breaking ball in ${area}`
         : `${opponentName} lost breaking ball in ${area}`
     // Detailed kickout types — own kickout (Dungloe kicking out)
+    // Replace team name in area with "their" to avoid "Ardara ... in Ardara's half"
     case 'own_kickout_dungloe_won':
       return `${playerName} won own kickout clean in ${area}`
     case 'own_kickout_opposition_won':
-      return `${opponentName} won Dungloe's kickout clean in ${area}`
+      return `${opponentName} won Dungloe's kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
     case 'own_kickout_dungloe_won_break':
       return `${playerName} won breaking ball from own kickout in ${area}`
     case 'own_kickout_opposition_won_break':
-      return `${opponentName} won breaking ball from Dungloe's kickout in ${area}`
+      return `${opponentName} won breaking ball from Dungloe's kickout in ${area.replace(`${opponentName}'s`, 'their')}`
     // Detailed kickout types — opponent kickout (Opposition kicking out)
     case 'opp_kickout_dungloe_won':
-      return `${playerName} won ${opponentName} kickout clean in ${area}`
+      return `${playerName} won ${opponentName} kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
     case 'opp_kickout_opposition_won':
-      return `${opponentName} won own kickout clean in ${area}`
+      return `${opponentName} won own kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
     case 'opp_kickout_dungloe_won_break':
-      return `${playerName} won breaking ball from ${opponentName} kickout in ${area}`
+      return `${playerName} won breaking ball from ${opponentName} kickout in ${area.replace(`${opponentName}'s`, 'their')}`
     case 'opp_kickout_opposition_won_break':
-      return `${opponentName} won breaking ball from own kickout in ${area}`
+      return `${opponentName} won breaking ball from own kickout in ${area.replace(`${opponentName}'s`, 'their')}`
     case 'foul_committed':
       return `${playerName} committed a foul in ${area}`
     case 'yellow_card':

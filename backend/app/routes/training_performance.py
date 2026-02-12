@@ -308,6 +308,17 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
             except Exception as e:
                 logger.error(f"AI training summary failed: {e}")
 
+            # Generate cross-cutting insight alerts
+            try:
+                from app.services.ai import generate_insight_alerts
+                alerts = await generate_insight_alerts(
+                    db, source="training_gps", session_id=session_id
+                )
+                if alerts:
+                    logger.info(f"Generated {len(alerts)} insight alerts from training GPS upload")
+            except Exception as e:
+                logger.error(f"Insight alert generation failed: {e}")
+
         except Exception as e:
             logger.error(f"GPS upload processing failed: {e}")
             upload_log.status = "failed"

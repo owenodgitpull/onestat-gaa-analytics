@@ -11,6 +11,8 @@ import {
   Flag,
   Hand,
   MapPin,
+  Shield,
+  Eye,
 } from 'lucide-react'
 
 interface CategorizedActionButtonsProps {
@@ -42,6 +44,7 @@ const categories = [
       { eventType: EventType.TWO_POINT, label: '2 Pointer', icon: TrendingUp },
       { eventType: EventType.WIDE, label: 'Wide', icon: XCircle },
       { eventType: EventType.SAVED, label: 'Saved', icon: CheckCircle },
+      { eventType: EventType.BLOCK, label: 'Blocked', icon: Shield },
     ]
   },
   {
@@ -53,6 +56,7 @@ const categories = [
       { eventType: EventType.TURNOVER_LOST, label: 'T/O Lost', icon: AlertCircle },
       { eventType: EventType.OUR_UNFORCED_ERROR, label: 'Our Unforced Error', icon: XCircle },
       { eventType: EventType.OPP_UNFORCED_ERROR, label: 'Opp Unforced Error', icon: CheckCircle },
+      { eventType: EventType.INTERCEPTION, label: 'Interception', icon: Eye },
     ]
   },
   {
@@ -155,7 +159,9 @@ export default function CategorizedActionButtons({
     if (hasPossession) {
       return [
         EventType.TURNOVER_WON,      // Can't win turnover if we have ball
-        EventType.OPP_UNFORCED_ERROR // Opponent can't error if we have ball
+        EventType.OPP_UNFORCED_ERROR, // Opponent can't error if we have ball
+        EventType.INTERCEPTION,       // Can't intercept if we have ball
+        EventType.BLOCK,              // Can't block if we have ball
       ].includes(eventType)
     } else {
       // If opponent has possession, disable these Dungloe-focused events:
@@ -194,7 +200,7 @@ export default function CategorizedActionButtons({
               onFoulClick?.('dungloe')
             }}
             disabled={disabled}
-            className="flex-1 btn-primary !py-3 !px-4 flex flex-col items-center space-y-1 text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700"
+            className="flex-1 btn-primary !py-3 !px-4 flex flex-col items-center space-y-1 text-sm bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500"
           >
             <span className="font-bold">Dungloe Foul</span>
             <span className="text-xs opacity-80">Select who fouled</span>
@@ -225,13 +231,13 @@ export default function CategorizedActionButtons({
   // Show kickout position selection prompt
   if (pendingKickoutPosition) {
     return (
-      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-indigo-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
         {/* Kickout Position Header */}
-        <div className="px-3 py-2 bg-gradient-to-r from-emerald-600/30 to-teal-600/30 border-b border-emerald-500/30">
+        <div className="px-3 py-2 bg-gradient-to-r from-indigo-600/30 to-violet-600/30 border-b border-indigo-500/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <MapPin size={16} className="text-emerald-400" />
-              <span className="text-sm font-semibold text-emerald-300">Select Kickout Position</span>
+              <MapPin size={16} className="text-indigo-400" />
+              <span className="text-sm font-semibold text-indigo-300">Select Kickout Position</span>
             </div>
             <button
               onClick={onCancelKickout}
@@ -293,7 +299,7 @@ export default function CategorizedActionButtons({
                 disabled={disabled}
                 className={`btn-primary !py-1.5 !px-4 flex items-center space-x-1.5 text-xs ${
                   isScored
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+                    ? 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500'
                     : 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700'
                 }`}
               >

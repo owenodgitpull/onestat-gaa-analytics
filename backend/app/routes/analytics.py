@@ -96,6 +96,21 @@ class PlayerMatchStats(BaseModel):
     total_score: int
     turnovers_won: int
     turnovers_lost: int
+    blocks: int = 0
+    interceptions: int = 0
+    wides: int = 0
+    shots_short: int = 0
+    shots_saved: int = 0
+    frees_won: int = 0
+    frees_conceded: int = 0
+    yellow_cards: int = 0
+    red_cards: int = 0
+    kickouts_won: int = 0
+    kickouts_lost: int = 0
+    assists: int = 0
+    minutes_played: Optional[int] = None
+    started: bool = False
+    accuracy: Optional[float] = None
 
 
 class DashboardData(BaseModel):
@@ -611,6 +626,18 @@ async def get_player_match_stats(
     )
     player_events = events_result.scalars().all()
 
+    # Also check for assists (events where this player is the assist_player)
+    assists_result = await db.execute(
+        select(MatchEvent).where(
+            and_(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.assist_player_id == player_uuid,
+                MatchEvent.team == Team.DUNGLOE
+            )
+        )
+    )
+    assist_events = assists_result.scalars().all()
+
     # Aggregate by match
     match_stats = {}
 
@@ -618,25 +645,80 @@ async def get_player_match_stats(
         EventType.GOAL: 'goals',
         EventType.POINT: 'points',
         EventType.POINT_FREE: 'points',
-        EventType.FORTY_FIVE: 'points',  # 45s always count as 1 point
+        EventType.FORTY_FIVE: 'points',
         EventType.TWO_POINT: 'two_pointers',
         EventType.TWO_POINT_FREE: 'two_pointers'
     }
 
+    shot_miss_events = {EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT, EventType.SAVED, EventType.FORTY_FIVE_MISSED}
+
+    event_field_map = {
+        EventType.TURNOVER_WON: 'turnovers_won',
+        EventType.TURNOVER_LOST: 'turnovers_lost',
+        EventType.BLOCK: 'blocks',
+        EventType.INTERCEPTION: 'interceptions',
+        EventType.FREE_WON: 'frees_won',
+        EventType.FOUL_WON: 'frees_won',
+        EventType.FREE_CONCEDED: 'frees_conceded',
+        EventType.FOUL_COMMITTED: 'frees_conceded',
+        EventType.YELLOW_CARD: 'yellow_cards',
+        EventType.RED_CARD: 'red_cards',
+    }
+
+    kickout_won_events = {
+        EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON,
+        EventType.OWN_KICKOUT_DUNGLOE_WON, EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK,
+        EventType.OPP_KICKOUT_DUNGLOE_WON, EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK,
+    }
+
+    kickout_lost_events = {
+        EventType.KICKOUT_LOST, EventType.BREAKING_BALL_LOST,
+        EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+        EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+    }
+
+    def init_stats():
+        return {
+            'goals': 0, 'points': 0, 'two_pointers': 0,
+            'turnovers_won': 0, 'turnovers_lost': 0,
+            'blocks': 0, 'interceptions': 0,
+            'wides': 0, 'shots_short': 0, 'shots_saved': 0,
+            'frees_won': 0, 'frees_conceded': 0,
+            'yellow_cards': 0, 'red_cards': 0,
+            'kickouts_won': 0, 'kickouts_lost': 0,
+            'assists': 0,
+            'total_shots': 0,  # for accuracy calc
+        }
+
     for event in player_events:
         mid = str(event.match_id)
         if mid not in match_stats:
-            match_stats[mid] = {
-                'goals': 0, 'points': 0, 'two_pointers': 0,
-                'turnovers_won': 0, 'turnovers_lost': 0
-            }
+            match_stats[mid] = init_stats()
 
         if event.event_type in scoring_events:
             match_stats[mid][scoring_events[event.event_type]] += 1
-        elif event.event_type == EventType.TURNOVER_WON:
-            match_stats[mid]['turnovers_won'] += 1
-        elif event.event_type == EventType.TURNOVER_LOST:
-            match_stats[mid]['turnovers_lost'] += 1
+            match_stats[mid]['total_shots'] += 1
+        elif event.event_type in shot_miss_events:
+            if event.event_type in (EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED):
+                match_stats[mid]['wides'] += 1
+            elif event.event_type == EventType.SHORT:
+                match_stats[mid]['shots_short'] += 1
+            elif event.event_type == EventType.SAVED:
+                match_stats[mid]['shots_saved'] += 1
+            match_stats[mid]['total_shots'] += 1
+        elif event.event_type in event_field_map:
+            match_stats[mid][event_field_map[event.event_type]] += 1
+        elif event.event_type in kickout_won_events:
+            match_stats[mid]['kickouts_won'] += 1
+        elif event.event_type in kickout_lost_events:
+            match_stats[mid]['kickouts_lost'] += 1
+
+    # Count assists
+    for event in assist_events:
+        mid = str(event.match_id)
+        if mid not in match_stats:
+            match_stats[mid] = init_stats()
+        match_stats[mid]['assists'] += 1
 
     # Build response
     result = []
@@ -644,6 +726,10 @@ async def get_player_match_stats(
         match = matches_map.get(UUID(mid))
         if match:
             total_score = stats['goals'] * 3 + stats['points'] + stats['two_pointers'] * 2
+            total_shots = stats['total_shots']
+            scores = stats['goals'] + stats['points'] + stats['two_pointers']
+            accuracy = round(scores / total_shots * 100, 1) if total_shots > 0 else None
+
             result.append(PlayerMatchStats(
                 match_id=mid,
                 opponent=match.opponent,
@@ -653,11 +739,106 @@ async def get_player_match_stats(
                 two_pointers=stats['two_pointers'],
                 total_score=total_score,
                 turnovers_won=stats['turnovers_won'],
-                turnovers_lost=stats['turnovers_lost']
+                turnovers_lost=stats['turnovers_lost'],
+                blocks=stats['blocks'],
+                interceptions=stats['interceptions'],
+                wides=stats['wides'],
+                shots_short=stats['shots_short'],
+                shots_saved=stats['shots_saved'],
+                frees_won=stats['frees_won'],
+                frees_conceded=stats['frees_conceded'],
+                yellow_cards=stats['yellow_cards'],
+                red_cards=stats['red_cards'],
+                kickouts_won=stats['kickouts_won'],
+                kickouts_lost=stats['kickouts_lost'],
+                assists=stats['assists'],
+                accuracy=accuracy,
             ))
 
     # Sort by match date descending
     result.sort(key=lambda x: x.match_date, reverse=True)
+    return result
+
+
+class PlayerShotEvent(BaseModel):
+    """Individual shot event for spatial plot."""
+    match_id: str
+    opponent: str
+    event_type: str
+    pitch_x: Optional[float] = None
+    pitch_y: Optional[float] = None
+    minute: Optional[int] = None
+    half: int = 1
+
+
+@router.get("/player/{player_id}/shot-events", response_model=List[PlayerShotEvent])
+async def get_player_shot_events(
+    player_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all shot events for a specific player with pitch coordinates.
+    Powers the Shot Map spatial plot on the player page.
+    """
+    from uuid import UUID
+
+    try:
+        player_uuid = UUID(player_id)
+    except ValueError:
+        return []
+
+    shot_event_types = [
+        EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
+        EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE,
+        EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED,
+        EventType.SHORT, EventType.SAVED,
+    ]
+
+    # Get completed matches
+    matches_result = await db.execute(
+        select(Match).where(
+            and_(
+                Match.status == MatchStatus.COMPLETED,
+                Match.is_deleted == False
+            )
+        )
+    )
+    matches = matches_result.scalars().all()
+    if not matches:
+        return []
+
+    match_ids = [m.id for m in matches]
+    matches_map = {m.id: m for m in matches}
+
+    events_result = await db.execute(
+        select(MatchEvent).where(
+            and_(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.player_id == player_uuid,
+                MatchEvent.team == Team.DUNGLOE,
+                MatchEvent.event_type.in_(shot_event_types)
+            )
+        )
+    )
+    shot_events = events_result.scalars().all()
+
+    result = []
+    for event in shot_events:
+        match = matches_map.get(event.match_id)
+        if match:
+            half = 1
+            if event.minute and event.minute > 35:
+                half = 2
+            result.append(PlayerShotEvent(
+                match_id=str(event.match_id),
+                opponent=match.opponent,
+                event_type=event.event_type.value,
+                pitch_x=float(event.pitch_x) if event.pitch_x is not None else None,
+                pitch_y=float(event.pitch_y) if event.pitch_y is not None else None,
+                minute=event.minute,
+                half=half,
+            ))
+
     return result
 
 

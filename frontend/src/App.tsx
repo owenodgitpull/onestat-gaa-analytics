@@ -7,6 +7,7 @@ import MatchResult from './pages/MatchResult'
 import Attendance from './pages/Attendance'
 import Players from './pages/Players'
 import PlayerView from './pages/PlayerView'
+import MatchPrep from './pages/MatchPrep'
 import Navigation from './components/Navigation'
 
 const queryClient = new QueryClient({
@@ -22,13 +23,20 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <Router>
-        <div className="min-h-screen">
+        {/* Animated background with floating orbs and shimmer */}
+        <div className="app-background">
+          <div className="app-bg-orb" />
+          <div className="app-bg-shimmer" />
+        </div>
+
+        <div className="min-h-screen relative z-10">
           <Navigation />
           <main className="md:ml-14 px-4 py-6">
             <div className="max-w-7xl mx-auto">
               <Routes>
                 <Route path="/" element={<AnalyticsDashboard />} />
                 <Route path="/match/:matchId" element={<MatchRecording />} />
+                <Route path="/match-prep/:matchId" element={<MatchPrep />} />
                 <Route path="/results" element={<Results />} />
                 <Route path="/results/:matchId" element={<MatchResult />} />
                 <Route path="/players" element={<Players />} />

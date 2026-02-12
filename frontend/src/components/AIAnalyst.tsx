@@ -1,6 +1,25 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Loader2, Sparkles, X } from 'lucide-react'
+import { Send, Bot, Loader2, Sparkles, X } from 'lucide-react'
 import { api, ChatMessage } from '@/services/api'
+import { renderAnalysisText } from '@/utils/renderAnalysisText'
+
+// Friendly labels for tool names shown during thinking phase
+const TOOL_LABELS: Record<string, string> = {
+  get_match_events: 'match events',
+  get_match_summary: 'match summary',
+  search_players: 'players',
+  get_player_season_stats: 'player stats',
+  get_team_season_stats: 'team stats',
+  get_scoring_patterns: 'scoring patterns',
+  get_turnover_analysis: 'turnover data',
+  get_player_gps_stats: 'GPS data',
+  get_team_gps_summary: 'team GPS',
+  get_attendance_data: 'attendance records',
+}
+
+function friendlyToolName(tool: string): string {
+  return TOOL_LABELS[tool] || tool.replace(/_/g, ' ')
+}
 
 interface AIAnalystProps {
   isOpen: boolean
@@ -12,6 +31,9 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingContent, setStreamingContent] = useState('')
+  const [thinkingTool, setThinkingTool] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -21,7 +43,7 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages])
+  }, [messages, streamingContent, thinkingTool])
 
   useEffect(() => {
     if (isOpen && messages.length === 0 && initialContext) {
@@ -33,21 +55,49 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
   }, [isOpen, initialContext])
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return
+    if (!input.trim() || loading || isStreaming) return
 
     const userMessage: ChatMessage = { role: 'user', content: input.trim() }
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setLoading(true)
+    setIsStreaming(false)
+    setStreamingContent('')
+    setThinkingTool(null)
     setError(null)
 
     try {
-      const response = await api.ai.chat(messages, userMessage.content)
-      setMessages(prev => [...prev, { role: 'assistant', content: response.response }])
+      let accumulated = ''
+
+      await api.ai.streamChat(messages, userMessage.content, {
+        onThinking: (tool) => {
+          setLoading(false)
+          setIsStreaming(true)
+          setThinkingTool(tool)
+        },
+        onText: (chunk) => {
+          setLoading(false)
+          setIsStreaming(true)
+          setThinkingTool(null)
+          accumulated += chunk
+          setStreamingContent(accumulated)
+        },
+        onDone: () => {
+          setMessages(prev => [...prev, { role: 'assistant', content: accumulated }])
+          setStreamingContent('')
+          setIsStreaming(false)
+          setLoading(false)
+        },
+        onError: (message) => {
+          setError(message)
+          setIsStreaming(false)
+          setLoading(false)
+        },
+      })
     } catch (err) {
       setError('Failed to get response. Please try again.')
       console.error(err)
-    } finally {
+      setIsStreaming(false)
       setLoading(false)
     }
   }
@@ -62,15 +112,15 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
   const suggestedQuestions = [
     "How is our scoring conversion rate this season?",
     "Which players have the best turnover stats?",
-    "What tactical patterns should we focus on in training?",
-    "Compare our first half vs second half performance"
+    "What does the GPS data tell us about training intensity?",
+    "Who has the best attendance at training?"
   ]
 
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl h-[80vh] flex flex-col border border-white/10">
+      <div className="glass-card rounded-2xl shadow-2xl w-full max-w-2xl h-[80vh] flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -92,19 +142,17 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 ? (
+          {messages.length === 0 && !loading && !isStreaming ? (
             <div className="text-center py-8">
               <Sparkles className="mx-auto mb-4 text-amber-400" size={48} />
               <h3 className="text-xl font-bold text-white mb-2">Ask me anything about Dungloe GAA</h3>
-              <p className="text-white/60 mb-6">I can analyze matches, player performance, tactics, and more.</p>
+              <p className="text-white/60 mb-6">I can analyze matches, player performance, GPS data, attendance, and more.</p>
 
               <div className="grid gap-2">
                 {suggestedQuestions.map((q, i) => (
                   <button
                     key={i}
-                    onClick={() => {
-                      setInput(q)
-                    }}
+                    onClick={() => setInput(q)}
                     className="text-left p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm text-white/80"
                   >
                     {q}
@@ -126,28 +174,71 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
                 <div
                   className={`max-w-[80%] p-3 rounded-2xl ${
                     msg.role === 'user'
-                      ? 'bg-indigo-600 text-white rounded-br-sm'
-                      : 'bg-white/10 text-white rounded-bl-sm'
+                      ? 'bg-indigo-600/80 backdrop-blur-sm border border-indigo-500/30 text-white rounded-br-sm'
+                      : 'glass-card text-white rounded-bl-sm'
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                  {msg.role === 'assistant' ? (
+                    <div className="text-sm">{renderAnalysisText(msg.content)}</div>
+                  ) : (
+                    <p className="text-sm">{msg.content}</p>
+                  )}
                 </div>
                 {msg.role === 'user' && (
-                  <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
-                    <User size={16} className="text-white" />
-                  </div>
+                  <img
+                    src="/clg-logo.png"
+                    className="w-8 h-8 rounded-full object-cover ring-1 ring-white/20 flex-shrink-0"
+                    alt="Dungloe GAA"
+                  />
                 )}
               </div>
             ))
           )}
 
-          {loading && (
+          {/* Loading: 3-dot bounce (waiting for first token) */}
+          {loading && !thinkingTool && (
             <div className="flex gap-3 justify-start">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
                 <Bot size={16} className="text-white" />
               </div>
-              <div className="bg-white/10 p-3 rounded-2xl rounded-bl-sm">
-                <Loader2 className="animate-spin text-white" size={20} />
+              <div className="glass-card p-3 rounded-2xl rounded-bl-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Thinking indicator (tool calls in progress) */}
+          {thinkingTool && (
+            <div className="flex gap-3 justify-start">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                <Bot size={16} className="text-white" />
+              </div>
+              <div className="glass-card p-3 rounded-2xl rounded-bl-sm">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="animate-spin text-indigo-400" size={16} />
+                  <span className="text-sm text-white/70">
+                    Looking up {friendlyToolName(thinkingTool)}...
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Streaming text (progressive render) */}
+          {isStreaming && streamingContent && (
+            <div className="flex gap-3 justify-start">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                <Bot size={16} className="text-white" />
+              </div>
+              <div className="max-w-[80%] p-3 rounded-2xl glass-card text-white rounded-bl-sm">
+                <div className="text-sm">
+                  {renderAnalysisText(streamingContent)}
+                  <span className="inline-block w-0.5 h-4 bg-indigo-400 animate-pulse ml-0.5 align-text-bottom" />
+                </div>
               </div>
             </div>
           )}
@@ -167,16 +258,16 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Ask about matches, players, tactics..."
-              className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 text-white placeholder-white/40 resize-none focus:outline-none focus:border-indigo-500"
+              onKeyDown={handleKeyPress}
+              placeholder="Ask about matches, players, GPS data, attendance..."
+              className="input-glass flex-1 rounded-xl p-3 resize-none"
               rows={1}
-              disabled={loading}
+              disabled={loading || isStreaming}
             />
             <button
               onClick={sendMessage}
-              disabled={loading || !input.trim()}
-              className="px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              disabled={loading || isStreaming || !input.trim()}
+              className="btn-primary px-4 rounded-xl"
             >
               <Send size={20} className="text-white" />
             </button>

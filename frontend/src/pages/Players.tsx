@@ -10,13 +10,13 @@ import {
   Users,
   Search,
   ChevronRight,
-  RefreshCw,
   Trophy,
   Target,
   Filter
 } from 'lucide-react'
 import { api, TopScorer } from '@/services/api'
 import { usePlayers } from '@/hooks/usePlayers'
+import LoadingSkeleton from '@/components/LoadingSkeleton'
 
 // Position categories for filtering
 const positionCategories = [
@@ -81,11 +81,7 @@ export default function Players() {
   }, [filteredPlayers, playerScores])
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="animate-spin text-indigo-400" size={48} />
-      </div>
-    )
+    return <LoadingSkeleton />
   }
 
   return (

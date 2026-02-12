@@ -8,7 +8,7 @@ triggered by time intervals and significant events.
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey, Enum
+from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -46,7 +46,7 @@ class LiveInsight(Base):
     # When and why this insight was generated
     minute: Column[int] = Column(Integer, nullable=False)  # Match minute
     half: Column[int] = Column(Integer, nullable=False, default=1)  # 1 or 2
-    trigger: Column[InsightTrigger] = Column(Enum(InsightTrigger), nullable=False)
+    trigger: Column[str] = Column(String(30), nullable=False)  # InsightTrigger.value — uses String to avoid asyncpg enum caching
 
     # The AI-generated insight text
     insight: Column[str] = Column(Text, nullable=False)
@@ -61,4 +61,4 @@ class LiveInsight(Base):
     match = relationship("Match", backref="live_insights")
 
     def __repr__(self):
-        return f"<LiveInsight(match_id={self.match_id}, minute={self.minute}, trigger={self.trigger.value})>"
+        return f"<LiveInsight(match_id={self.match_id}, minute={self.minute}, trigger={self.trigger})>"

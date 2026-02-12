@@ -9,6 +9,7 @@ Provides endpoints for:
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -21,6 +22,7 @@ from app.services.ai import (
     analyze_match,
     live_match_insight,
     chat_with_analyst,
+    chat_with_analyst_stream,
     generate_post_match_report,
     get_dynamic_chart_recommendations,
     get_chart_analysis,
@@ -31,6 +33,7 @@ from app.services.ai import (
     generate_outlier_suggestions,
     analyze_match_gps,
 )
+from app.models.insight_alert import InsightAlert
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +257,33 @@ async def chat_endpoint(
     except Exception as e:
         logger.error(f"Chat failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+
+
+@router.post("/chat/stream")
+async def chat_stream_endpoint(
+    request: ChatRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Streaming conversational interface using Server-Sent Events.
+
+    Yields SSE events:
+      - {"type":"thinking","tool":"tool_name"} during tool calls
+      - {"type":"text","content":"chunk"} for response text
+      - {"type":"done"} when complete
+      - {"type":"error","message":"..."} on failure
+    """
+    history = [{"role": m.role, "content": m.content} for m in request.conversation_history]
+
+    return StreamingResponse(
+        chat_with_analyst_stream(db, history, request.message),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/post-match-report/{match_id}", response_model=PostMatchReportResponse)
@@ -553,3 +583,73 @@ async def analyze_gps_endpoint(
     except Exception as e:
         logger.error(f"GPS analysis failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"GPS analysis failed: {str(e)}")
+
+
+# =============================================================================
+# Insight Alerts Endpoints
+# =============================================================================
+
+@router.get("/insight-alerts")
+async def get_insight_alerts(
+    dashboard: Optional[str] = None,
+    include_dismissed: bool = False,
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get AI-generated insight alerts, optionally filtered by dashboard.
+    """
+    from sqlalchemy import or_
+
+    query = select(InsightAlert).order_by(InsightAlert.created_at.desc()).limit(limit)
+
+    if not include_dismissed:
+        query = query.where(InsightAlert.is_dismissed == False)
+
+    if dashboard:
+        query = query.where(
+            or_(InsightAlert.dashboard == dashboard, InsightAlert.dashboard == "both")
+        )
+
+    result = await db.execute(query)
+    alerts = result.scalars().all()
+
+    return [
+        {
+            "id": str(a.id),
+            "category": a.category.value,
+            "source": a.source.value,
+            "title": a.title,
+            "message": a.message,
+            "severity": a.severity,
+            "session_id": str(a.session_id) if a.session_id else None,
+            "match_id": str(a.match_id) if a.match_id else None,
+            "dashboard": a.dashboard,
+            "is_dismissed": a.is_dismissed,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        }
+        for a in alerts
+    ]
+
+
+@router.patch("/insight-alerts/{alert_id}/dismiss")
+async def dismiss_insight_alert(
+    alert_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismiss an insight alert."""
+    from datetime import datetime
+
+    result = await db.execute(
+        select(InsightAlert).where(InsightAlert.id == alert_id)
+    )
+    alert = result.scalar_one_or_none()
+
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    alert.is_dismissed = True
+    alert.dismissed_at = datetime.utcnow()
+    await db.commit()
+
+    return {"success": True, "id": str(alert.id)}

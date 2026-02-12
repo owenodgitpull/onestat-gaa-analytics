@@ -70,6 +70,44 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
   const totalAll = totalWonClean + totalWonBreak + totalLostClean + totalLostBreak
   const wonPct = totalAll > 0 ? Math.round((totalWonClean + totalWonBreak) / totalAll * 100) : 0
 
+  // Compute 2-line data-derived insight
+  const kickoutInsight = (() => {
+    if (totalAll === 0) return null
+    const totalWon = totalWonClean + totalWonBreak
+    const cleanPct = totalWon > 0 ? Math.round(totalWonClean / totalWon * 100) : 0
+
+    // Trend: compare first half of matches vs second half
+    const mid = Math.ceil(data.length / 2)
+    const early = data.slice(0, mid)
+    const late = data.slice(mid)
+    const earlyWon = early.reduce((s, m) => s + m.won_clean + m.won_break, 0)
+    const earlyTotal = early.reduce((s, m) => s + m.won_clean + m.won_break + m.lost_clean + m.lost_break, 0)
+    const lateWon = late.reduce((s, m) => s + m.won_clean + m.won_break, 0)
+    const lateTotal = late.reduce((s, m) => s + m.won_clean + m.won_break + m.lost_clean + m.lost_break, 0)
+    const earlyPct = earlyTotal > 0 ? Math.round(earlyWon / earlyTotal * 100) : 0
+    const latePct = lateTotal > 0 ? Math.round(lateWon / lateTotal * 100) : 0
+
+    let line1 = ''
+    if (wonPct >= 65) line1 = `Winning ${wonPct}% of kickouts — ${cleanPct}% of those clean.`
+    else if (wonPct >= 50) line1 = `Holding a ${wonPct}% kickout win rate — ${cleanPct}% won cleanly.`
+    else line1 = `Losing ${100 - wonPct}% of kickouts — only ${cleanPct}% of wins are clean.`
+
+    let line2 = ''
+    if (data.length >= 3) {
+      const diff = latePct - earlyPct
+      if (diff > 8) line2 = `Retention improving — up ${diff}pts in recent matches.`
+      else if (diff < -8) line2 = `Retention dropping — down ${Math.abs(diff)}pts recently, review restart strategy.`
+      else if (wonPct < 50) line2 = `No improvement trend yet — kickout strategy needs attention.`
+      else line2 = `Steady retention across the season.`
+    } else {
+      const breakPct = totalAll > 0 ? Math.round((totalWonBreak + totalLostBreak) / totalAll * 100) : 0
+      if (wonPct < 50) line2 = breakPct > 40 ? `${breakPct}% contested — losing the battle at source.` : `Losing cleanly — opposition reading the kickout strategy.`
+      else line2 = breakPct > 40 ? `${breakPct}% of kickouts contested — high-pressure restarts.` : `Most kickouts won cleanly — low contest rate.`
+    }
+
+    return { line1, line2 }
+  })()
+
   return (
     <div className="glass-card p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
@@ -123,6 +161,17 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
           <div className="text-lg font-bold text-white">{wonPct}%</div>
         </div>
       </div>
+
+      {/* Data-derived insight */}
+      {kickoutInsight && (
+        <div className="mt-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-3 py-2">
+          <p className="text-xs text-indigo-200/90 leading-relaxed">
+            {kickoutInsight.line1}
+            {' '}
+            {kickoutInsight.line2}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

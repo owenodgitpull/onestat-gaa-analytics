@@ -24,6 +24,7 @@ interface GAAPitchProps {
   readonly?: boolean
   showZones?: boolean
   events?: PitchEvent[]
+  containerClassName?: string
 }
 
 // Get color for event dot based on type and team
@@ -67,6 +68,7 @@ export default function GAAPitch({
   readonly = false,
   showZones = false,
   events = [],
+  containerClassName,
 }: GAAPitchProps) {
   const [localBallPosition, setLocalBallPosition] = useState<BallPosition | null>(
     ballPosition || null
@@ -96,9 +98,13 @@ export default function GAAPitch({
     const svg = svgRef.current
     if (!svg) return
 
+    // Convert pixel click → SVG coordinates → pitch-area percentage
+    // Pitch area: x 183–2143 (1960 units), y 123–1290 (1167 units)
     const rect = svg.getBoundingClientRect()
-    const x = ((e.clientX - rect.left) / rect.width) * 100
-    const y = ((e.clientY - rect.top) / rect.height) * 100
+    const svgX = ((e.clientX - rect.left) / rect.width) * 2332
+    const svgY = ((e.clientY - rect.top) / rect.height) * 1446
+    const x = ((svgX - 183) / 1960) * 100
+    const y = ((svgY - 123) / 1167) * 100
 
     const newPosition: BallPosition = {
       x: Math.max(0, Math.min(100, x)),
@@ -110,15 +116,16 @@ export default function GAAPitch({
     onBallMove?.(newPosition)
   }
 
-  // Check if position is in 2-point zone (40m+ from either goal)
+  // Check if position is in 2-point zone (outside both 40m arcs)
+  // In pitch-area coords: arcs at ~28% and ~72% from each goal
   const isInTwoPointZone = (x: number) => {
-    return x >= 40 && x <= 60
+    return x >= 28 && x <= 72
   }
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full aspect-[16/10] bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-2xl overflow-hidden"
+      className={containerClassName ?? "relative w-full aspect-[16/10] bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-2xl overflow-hidden"}
       onClick={handleContainerClick}
       onTouchEnd={handleContainerClick}
     >
@@ -172,12 +179,12 @@ export default function GAAPitch({
             {/* Shadow */}
             <ellipse
               cx={(localBallPosition.x / 100) * 1960 + 183}
-              cy={(localBallPosition.y / 100) * 1167 + 123 + 8}
+              cy={(localBallPosition.y / 100) * 1167 + 131}
               rx="20"
               ry="10"
               fill="rgba(0, 0, 0, 0.5)"
             />
-            
+
             {/* GAA Football */}
             <image
               href="/gaelic_football.svg"
@@ -201,12 +208,12 @@ export default function GAAPitch({
               strokeWidth="4"
               opacity="0.8"
             />
-            
+
             {/* 2-Point Zone Indicator */}
             {isInTwoPointZone(localBallPosition.x) && (
               <text
                 x={(localBallPosition.x / 100) * 1960 + 183}
-                y={(localBallPosition.y / 100) * 1167 + 103}
+                y={(localBallPosition.y / 100) * 1167 + 123 - 20}
                 textAnchor="middle"
                 fill="#fbbf24"
                 fontSize="24"

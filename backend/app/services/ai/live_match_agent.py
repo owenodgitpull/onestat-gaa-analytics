@@ -16,7 +16,7 @@ from app.services.rag_service import RAGService
 logger = logging.getLogger(__name__)
 
 
-async def live_match_insight(db: AsyncSession, match_id: str, recent_events: list) -> str:
+async def live_match_insight(db: AsyncSession, match_id, recent_events: list) -> str:
     """
     Provide real-time tactical insight during a match.
     Optimized for speed using Haiku model.
@@ -39,7 +39,7 @@ async def live_match_insight(db: AsyncSession, match_id: str, recent_events: lis
         kb_context = ""
 
     system_prompt = f"""You are a GAA sideline analyst providing LIVE match insights for Dungloe GAA.
-Keep responses to 2-3 sentences max. Be actionable, not descriptive.
+CRITICAL: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). Be punchy and actionable — this displays in a small sidebar widget. No bullet points, no headers, no lists.
 
 {GAA_ESSENTIALS}
 
@@ -65,7 +65,7 @@ Reference knowledge base context (GPS benchmarks, tactical principles) when avai
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=300,
+        max_tokens=150,
         system=system_prompt,
         messages=[{
             "role": "user",

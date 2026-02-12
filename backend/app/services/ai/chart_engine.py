@@ -22,7 +22,7 @@ from app.models.match import MatchStatus
 from app.models.match_event import EventType, Team
 
 from app.services.ai._shared import (
-    client, GAA_ESSENTIALS, get_team_season_stats,
+    client, GAA_ESSENTIALS, get_team_season_stats, STATIC_CHARTS_TEXT,
 )
 from app.services.rag_service import RAGService
 
@@ -73,6 +73,9 @@ Your task is to recommend which charts and visualizations should be displayed on
 based on the current season data. The charts should EVOLVE as the season progresses.
 
 {GAA_ESSENTIALS}
+
+## Static Charts Already on Dashboards — DO NOT recommend duplicates of these
+{STATIC_CHARTS_TEXT}
 
 ## Knowledge Base Context
 {kb_context}
@@ -244,7 +247,7 @@ The code must output a JSON object with this structure:
     "config": {{
         "xKey": "field for x-axis",
         "yKeys": ["field1", "field2"],  // Fields to plot
-        "colors": ["#10b981", "#6366f1"],  // Colors for each series
+        "colors": ["#6366f1", "#10b981"],  // ONLY use: #6366f1 (indigo), #10b981 (emerald), #f59e0b (amber), #8b5cf6 (violet), #06b6d4 (cyan). Never red.
         "legend": true,
         "stacked": false  // For bar charts
     }},
@@ -254,7 +257,7 @@ The code must output a JSON object with this structure:
 ## Code Rules
 1. Use the provided `data` dictionary which contains pre-fetched data
 2. Return a valid JSON object matching the schema above
-3. Use meaningful colors that match the app theme (emerald, indigo, amber, rose)
+3. Use ONLY these hex colors: #6366f1 (indigo), #10b981 (emerald), #f59e0b (amber), #8b5cf6 (violet), #06b6d4 (cyan). Never use red.
 4. Generate an insight based on patterns in the data
 5. Keep data arrays under 50 items for performance
 
@@ -374,8 +377,10 @@ async def _get_data_summary(db: AsyncSession) -> dict:
 
 async def _get_raw_data_for_charts(db: AsyncSession) -> dict:
     """Get raw data for LLM code to transform into charts."""
-    # Get matches
-    matches_result = await db.execute(select(Match).order_by(Match.match_date))
+    # Get only completed matches — exclude scheduled/in-progress
+    matches_result = await db.execute(
+        select(Match).where(Match.status == MatchStatus.COMPLETED).order_by(Match.match_date)
+    )
     matches = matches_result.scalars().all()
 
     # Get events with player info
@@ -529,17 +534,20 @@ async def generate_dashboard_charts(
         if e.get("event_type") in ["goal", "point", "two_point"] and e.get("player"):
             player = e.get("player")
             if player not in player_scores:
-                player_scores[player] = {"goals": 0, "points": 0, "total": 0}
+                player_scores[player] = {"goals": 0, "points": 0, "two_pointers": 0, "total_score": 0}
             if e.get("event_type") == "goal":
                 player_scores[player]["goals"] += 1
-                player_scores[player]["total"] += 3
+                player_scores[player]["total_score"] += 3
+            elif e.get("event_type") == "two_point":
+                player_scores[player]["two_pointers"] += 1
+                player_scores[player]["total_score"] += 2
             else:
                 player_scores[player]["points"] += 1
-                player_scores[player]["total"] += 2 if e.get("event_type") == "two_point" else 1
+                player_scores[player]["total_score"] += 1
 
     top_scorers = sorted(
         [{"name": k, **v} for k, v in player_scores.items()],
-        key=lambda x: x["total"],
+        key=lambda x: x["total_score"],
         reverse=True
     )[:8]
 
@@ -558,16 +566,17 @@ async def generate_dashboard_charts(
     data_summary = f"""
 ## ACTUAL SEASON DATA (Use these exact numbers!)
 
-### Matches Played: {len(matches)}
+### Matches Played: {len(matches)} (completed only)
 ### Match Results:
 {json.dumps(match_results, indent=2)}
 
-### Season Totals:
-- Dungloe: {dungloe_goals} goals, {dungloe_points + dungloe_two_pts} points = {dungloe_total} total
-- Opponents: {opp_goals} goals, {opp_points + opp_two_pts} points = {opp_total} total
+### Season Totals (GAA scoring: goal=3pts, point=1pt, two-pointer=2pts):
+- Dungloe: {dungloe_goals} goals, {dungloe_points} points, {dungloe_two_pts} two-pointers = {dungloe_total} total score
+- Opponents: {opp_goals} goals, {opp_points} points, {opp_two_pts} two-pointers = {opp_total} total score
 
-### Top Scorers:
-{json.dumps(top_scorers, indent=2)}
+### Pre-Computed Scoring Distribution (use these EXACT numbers for any pie/bar chart about scoring breakdown):
+- If making a Dungloe scoring breakdown chart, use: [{{"name": "Goals", "value": {dungloe_goals}}}, {{"name": "Points", "value": {dungloe_points}}}, {{"name": "Two-Pointers", "value": {dungloe_two_pts}}}]
+- CRITICAL: "Goals" value = {dungloe_goals} (the COUNT of goals, NOT {dungloe_goals * 3}). Never multiply goals by 3 in chart data.
 
 ### Turnovers: Won {turnovers_won}, Lost {turnovers_lost}, Net {turnovers_won - turnovers_lost}
 ### Kickouts: Won {kickouts_won}, Lost {kickouts_lost}
@@ -584,22 +593,31 @@ Your task is to generate {num_charts} ACTUAL chart specifications that can be re
 
 {GAA_ESSENTIALS}
 
+## Static Charts Already on Dashboards — DO NOT duplicate these
+{STATIC_CHARTS_TEXT}
+
 ## Knowledge Base Context (from team documents)
 {rag_text}
 
 {data_summary}
 
-## GAA-Relevant Chart Types to Consider:
-1. **Score Trends** - Line chart: scores per match over season
-2. **Top Scorers** - Bar chart: player scoring rankings
-3. **Scoring Breakdown** - Pie chart: goals vs points distribution
-4. **Shot Heat Map** - Scatter plot: shot locations on pitch
-5. **Possession by Period** - Line chart: possession % over 15-min periods
-6. **Turnovers by Zone** - Bar chart: where turnovers happen
-7. **Kickout Success** - Pie/bar: own vs opposition kickout win rates
-8. **Half Comparison** - Grouped bar: 1st half vs 2nd half stats
-9. **Match Results** - Grid/cards: recent W/L/D with scores
-10. **Conversion Rate** - Gauge or bar: shooting accuracy
+## Chart Design Philosophy — Think Like a GAA Manager
+DO NOT generate obvious charts a manager can read from the scoreboard. Instead, find PATTERNS that aren't immediately visible:
+
+### Insight Categories (pick from these, DO NOT duplicate static charts listed above):
+1. **Temporal Patterns** — When does Dungloe score vs concede? Scoring droughts, momentum runs, first-10-min vs last-10-min performance. Group events by 5-minute windows.
+2. **Efficiency Metrics** — Shot-to-score conversion by zone (inside/outside 40m arc), free-kick conversion rate, score-per-possession efficiency
+3. **Phase Analysis** — 1st half vs 2nd half breakdown of turnovers/scores/kickout retention. Does performance drop off?
+4. **Kickout Patterns** — Win rate on own vs opposition kickouts, clean wins vs breaks. What percentage of kickouts lead to scores within 30 seconds?
+5. **Turnover Geography** — Where on the pitch do turnovers happen? Which zones leak possession?
+6. **Player Comparisons** — If player data exists, compare scoring contributions or turnover rates between top contributors (NOT a simple leaderboard)
+7. **Shooting Zones** — Scatter/heat map showing WHERE shots are taken from, colored by outcome (score vs miss)
+8. **Match Momentum** — Cumulative score difference over time (area chart). Shows when leads are built/lost.
+
+### What makes a GOOD chart for a manager:
+- It reveals something you CAN'T see from the final score
+- It leads to a tactical decision (e.g., "we lose kickouts in the 2nd half")
+- It compares two things (before vs after, us vs them, zone A vs zone B)
 
 {excluded_str}
 
@@ -611,13 +629,13 @@ Return a JSON object with this exact structure:
             "id": "unique_chart_id",
             "type": "line|bar|pie|scatter|area|composed",
             "title": "Chart Title",
-            "insight": "One sentence insight about what this chart reveals",
+            "insight": "One sentence insight about what this chart reveals — be specific with numbers",
             "data": [...],  // Array of data points for Recharts
             "config": {{
                 // Recharts-specific config
                 "xKey": "name",  // Key for X axis
                 "dataKeys": ["value1", "value2"],  // Keys to plot
-                "colors": ["#10b981", "#6366f1"],  // Colors for each dataKey
+                "colors": ["#6366f1", "#10b981"],  // ONLY use: #6366f1 (indigo), #10b981 (emerald), #f59e0b (amber), #8b5cf6 (violet), #06b6d4 (cyan). Never red.
                 "stacked": false,  // For bar charts
                 "showLegend": true
             }}
@@ -629,9 +647,16 @@ Return a JSON object with this exact structure:
 IMPORTANT:
 - Use the ACTUAL data provided above, not made-up numbers!
 - Each chart must have real, accurate data from the stats
-- Make insights specific and actionable
-- Choose charts that reveal interesting patterns
+- Make insights specific and actionable — include numbers (e.g., "Dungloe score 60% of points in the last 10 minutes")
+- Find patterns the manager wouldn't spot from the scoreboard
+- Count matches EXACTLY from the data — do not invent matches that don't exist
+- Use GAA terminology: "scores" (not "goals/points"), "wides" (not "misses"), "attempts" (total shots). In GAA, a "score" means any successful shot (goal, point, or 2-pointer). Say "6 scores from 12 attempts" not "6 goals/points from 12 attempts"
+- For pie charts: every data item MUST have a "name" field with a readable label (e.g., "Goals", "Points", "Wides") — never use numeric keys
+- NEVER generate a "Top Scorers" leaderboard/bar chart — this already exists as a static chart on the dashboard
+- For any scoring breakdown chart: use the Pre-Computed Scoring Distribution data provided above — do NOT calculate your own values
+- Goals in charts = COUNT of goals scored (e.g., if 3 goals were scored, show 3, NOT 9)
 - Vary the chart types for visual interest
+- With only {len(matches)} matches, focus on per-match event breakdowns and zone analysis rather than long-term trends
 """
 
     try:
@@ -709,6 +734,9 @@ For each outlier, generate a Recharts-compatible chart specification that best v
 
 {GAA_ESSENTIALS}
 
+## Static Charts Already on Dashboards — DO NOT duplicate these
+{STATIC_CHARTS_TEXT}
+
 ## Knowledge Base Context
 {rag_context}
 
@@ -726,7 +754,7 @@ Return a JSON object:
             "config": {{
                 "xKey": "...",
                 "dataKeys": ["..."],
-                "colors": ["#hex"],
+                "colors": ["#6366f1"],  // ONLY use: #6366f1, #10b981, #f59e0b, #8b5cf6, #06b6d4. Never red.
                 "showLegend": true/false,
                 "stacked": false
             }}
@@ -739,6 +767,8 @@ IMPORTANT:
 - Make chart titles concise and specific (player name + what happened)
 - Keep teaser text under 80 characters
 - Insights should be actionable for a GAA manager
+- Use GAA terminology: "scores" (not "goals/points"), "wides" (not "misses"), "attempts" (total shots)
+- For pie charts: every data item MUST have a "name" field with a readable label
 """
 
     outliers_text = json.dumps(outliers_to_process, indent=2, default=str)

@@ -14,7 +14,7 @@ from sqlalchemy import select, func, and_, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.match import Match
-from app.models.match_event import MatchEvent, EventType
+from app.models.match_event import MatchEvent, EventType, Team
 from app.models.live_insight import LiveInsight, InsightTrigger
 from app.services.ai import live_match_insight
 
@@ -214,7 +214,7 @@ class LiveInsightsService:
         opponent_run = 0
 
         for event in reversed(recent_scores):
-            if event.team == 'dungloe':
+            if event.team == Team.DUNGLOE:
                 if opponent_run > 0:
                     break
                 dungloe_run += 1
@@ -245,7 +245,7 @@ class LiveInsightsService:
             .where(
                 and_(
                     MatchEvent.match_id == match_id,
-                    MatchEvent.team == 'dungloe',
+                    MatchEvent.team == Team.DUNGLOE,
                     MatchEvent.event_type.in_(scoring_types)
                 )
             )
@@ -272,7 +272,7 @@ class LiveInsightsService:
         turnover_types = {EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR}
 
         turnovers = [e for e in events
-                     if e.event_type in turnover_types and e.team == 'dungloe']
+                     if e.event_type in turnover_types and e.team == Team.DUNGLOE]
 
         if len(turnovers) >= 5:
             return len(turnovers)
@@ -309,7 +309,7 @@ class LiveInsightsService:
             )
         )
         if trigger_type:
-            query = query.where(LiveInsight.trigger == trigger_type)
+            query = query.where(LiveInsight.trigger == trigger_type.value)
 
         result = await db.execute(query.order_by(desc(LiveInsight.created_at)).limit(1))
         return result.scalar_one_or_none()
@@ -337,14 +337,14 @@ class LiveInsightsService:
             ]
 
             # Generate AI insight
-            insight_text = await live_match_insight(db, str(match_id), recent_events)
+            insight_text = await live_match_insight(db, match_id, recent_events)
 
-            # Store insight
+            # Store insight (trigger stored as string value to avoid asyncpg enum caching)
             insight = LiveInsight(
                 match_id=match_id,
                 minute=minute,
                 half=half,
-                trigger=trigger,
+                trigger=trigger.value,
                 insight=insight_text,
                 trigger_context=context
             )
@@ -362,7 +362,7 @@ class LiveInsightsService:
                 match_id=match_id,
                 minute=minute,
                 half=half,
-                trigger=trigger,
+                trigger=trigger.value,
                 insight=f"[Analysis pending - {context}]",
                 trigger_context=context
             )

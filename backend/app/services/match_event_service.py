@@ -35,19 +35,11 @@ class MatchEventService:
         Returns:
             Created match event
         """
-        # Auto-detect 2-point zone for point events
+        # The frontend handles 2-point zone detection via elliptical arc calculation
+        # and enables/disables Point vs 2-Pointer buttons accordingly.
+        # No backend auto-conversion needed — trust the frontend event_type.
         event_type = event_data.event_type
-        if event_type == EventType.POINT and event_data.pitch_x is not None:
-            # Check if in 2-point zone (40m+)
-            if event_data.team == Team.DUNGLOE:
-                # Attacking toward x=100, 2-point if x < 60
-                if event_data.pitch_x < 60:
-                    event_type = EventType.TWO_POINT
-            else:
-                # Opponent attacking toward x=0, 2-point if x > 40
-                if event_data.pitch_x > 40:
-                    event_type = EventType.TWO_POINT
-        
+
         # Create event
         event = MatchEvent(
             match_id=event_data.match_id,

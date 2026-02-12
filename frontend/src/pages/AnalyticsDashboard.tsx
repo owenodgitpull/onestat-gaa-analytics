@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   DndContext,
   closestCenter,
@@ -23,25 +25,50 @@ import {
   Heart,
   BarChart3,
   Info,
-  RotateCcw,
+  X,
+  LayoutGrid,
 } from 'lucide-react'
 import SquadHealthView from '@/components/SquadHealthView'
+import LoadingSkeleton from '@/components/LoadingSkeleton'
+import InsightAlertsPanel from '@/components/InsightAlertsPanel'
 import AiInsightsSection from '@/components/charts/AiInsightsSection'
 import MyChartsSection from '@/components/dashboard/MyChartsSection'
 import SortableSection from '@/components/dashboard/SortableSection'
 import { useDashboardLayout } from '@/hooks/useDashboardLayout'
 import type { ChartRenderProps } from '@/config/chartRegistry'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem } from '@/services/api'
+import type { Match } from '@/types'
 
-// KPI card explanations for info tooltips — plain-English GAA context
-const KPI_EXPLANATIONS: Record<string, string> = {
-  productivity: "How efficiently we turn possessions into scores — higher means we make the most of every attack",
-  turnover_diff: "Turnovers won minus lost — positive means we're winning more ball than giving it away",
-  kickout_retention: "How often we retain our own goalkeeper's kickouts — crucial for building attacks from restarts",
-  shot_efficiency: "Percentage of shots that result in scores — shows how clinical we are in front of the posts",
-  fouls_per_game: "Average fouls committed per match — fewer means less frees conceded to opposition",
-  avg_scored: "Average total points scored per match (goals×3 + points)",
-  avg_conceded: "Average total points conceded per match — lower means a tighter defence",
+// KPI card explanations — what the metric means + how it's calculated
+const KPI_EXPLANATIONS: Record<string, { what: string; formula: string }> = {
+  productivity: {
+    what: "How efficiently we turn possessions into scores — higher means we make the most of every attack",
+    formula: "(Total points scored ÷ Total possessions) × 10. Above 3.0 is strong, below 2.0 needs work.",
+  },
+  turnover_diff: {
+    what: "Turnovers won minus lost — positive means we're winning more ball than giving it away",
+    formula: "Turnovers won − Turnovers lost. A positive number means we're coming out on top in the battle for possession.",
+  },
+  kickout_retention: {
+    what: "How often we retain our own goalkeeper's kickouts — crucial for building attacks from restarts",
+    formula: "(Own kickouts retained ÷ Total own kickouts) × 100. Target: above 60%.",
+  },
+  shot_efficiency: {
+    what: "Percentage of shots that result in scores — shows how clinical we are in front of the posts",
+    formula: "(Scores ÷ Total shots) × 100. Includes points, goals, and 2-pointers.",
+  },
+  fouls_per_game: {
+    what: "Average fouls committed per match — fewer means less frees conceded to opposition",
+    formula: "",
+  },
+  avg_scored: {
+    what: "Average total points scored per match (goals×3 + points)",
+    formula: "",
+  },
+  avg_conceded: {
+    what: "Average total points conceded per match — lower means a tighter defence",
+    formula: "",
+  },
 }
 
 // Card pairings: [front, back] for flip cards, [single] for standalone
@@ -53,6 +80,7 @@ const KPI_PAIRINGS: string[][] = [
 ]
 
 export default function AnalyticsDashboard() {
+  const navigate = useNavigate()
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [seasonDashboard, setSeasonDashboard] = useState<SeasonDashboardData | null>(null)
   const [aiCharts, setAiCharts] = useState<AIChartSpec[]>([])
@@ -68,6 +96,7 @@ export default function AnalyticsDashboard() {
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
+  const [nextMatch, setNextMatch] = useState<Match | null>(null)
 
   const {
     layout,
@@ -177,10 +206,19 @@ export default function AnalyticsDashboard() {
     }
   }
 
+  // Load static dashboard data + next match immediately
   useEffect(() => {
     fetchDashboard()
-    fetchAICharts()
-    fetchSuggestions()
+    api.matches.getNextScheduled().then(m => setNextMatch(m))
+  }, [])
+
+  // Defer AI calls so static charts render first
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchAICharts()
+      fetchSuggestions()
+    }, 100)
+    return () => clearTimeout(timer)
   }, [])
 
   // Section-level drag handlers
@@ -204,11 +242,7 @@ export default function AnalyticsDashboard() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="animate-spin text-indigo-400" size={48} />
-      </div>
-    )
+    return <LoadingSkeleton />
   }
 
   if (error || !dashboardData) {
@@ -241,6 +275,8 @@ export default function AnalyticsDashboard() {
   // Section renderers
   const renderSection = (sectionId: string) => {
     switch (sectionId) {
+      case 'insight-alerts':
+        return <InsightAlertsPanel dashboard="season" />
       case 'my-charts':
         return (
           <MyChartsSection
@@ -383,22 +419,45 @@ export default function AnalyticsDashboard() {
             Squad Health
           </button>
         </div>
-        {viewMode === 'season' && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={resetLayout}
-              className="btn-glass flex items-center gap-2 text-xs text-white/50 hover:text-white/80"
-              title="Reset dashboard layout to defaults"
+        <div className="flex items-center gap-2">
+          {/* Next Match card */}
+          {nextMatch ? (
+            <div
+              onClick={() => navigate(`/match-prep/${nextMatch.id}`)}
+              className="bg-white/10 rounded-xl px-4 py-2 cursor-pointer hover:bg-white/15 border border-white/10 transition-all flex items-baseline gap-2"
             >
-              <RotateCcw size={14} />
-              Reset Layout
-            </button>
-            <button onClick={fetchDashboard} className="btn-glass flex items-center gap-2">
-              <RefreshCw size={16} />
-              Refresh
-            </button>
-          </div>
-        )}
+              <Calendar size={14} className="text-white/50 flex-shrink-0 relative top-[2px]" />
+              <span className="text-xs text-white/50 font-semibold uppercase tracking-wide">Next Match</span>
+              <span className="text-sm font-bold text-white whitespace-nowrap">
+                {nextMatch.opponent} ({nextMatch.venue === 'home' ? 'H' : nextMatch.venue === 'away' ? 'A' : 'N'})
+              </span>
+            </div>
+          ) : (
+            <div className="bg-white/10 rounded-xl px-4 py-2 border border-white/10 flex items-center gap-2">
+              <Calendar size={14} className="text-white/30 flex-shrink-0" />
+              <span className="text-xs text-white/50 font-semibold uppercase tracking-wide">Next Match</span>
+              <span className="text-sm text-white/30">No fixture set</span>
+            </div>
+          )}
+          {viewMode === 'season' && (
+            <>
+              <button
+                onClick={resetLayout}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all"
+                title="Reset layout"
+              >
+                <LayoutGrid size={16} />
+              </button>
+              <button
+                onClick={fetchDashboard}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all"
+                title="Refresh data"
+              >
+                <RefreshCw size={16} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Conditional View */}
@@ -459,15 +518,44 @@ export default function AnalyticsDashboard() {
                           e.stopPropagation()
                           setActiveTooltip(prev => prev === card.key ? null : card.key)
                         }}
-                        onMouseEnter={() => setActiveTooltip(card.key)}
-                        onMouseLeave={() => setActiveTooltip(null)}
                       >
                         <Info size={11} className="text-white/50" />
                       </button>
-                      {activeTooltip === card.key && (
-                        <div className="absolute top-9 right-2 bg-slate-900/95 border border-white/20 rounded-lg p-2.5 text-xs text-white/80 leading-relaxed z-20 w-48 shadow-xl backdrop-blur-sm">
-                          {card.insight || KPI_EXPLANATIONS[card.key]}
-                        </div>
+                      {activeTooltip === card.key && createPortal(
+                        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActiveTooltip(null)} />
+                          <div className="relative w-full max-w-sm bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
+                            {/* Header */}
+                            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-gradient-to-r from-indigo-600/15 to-violet-600/15">
+                              <h3 className="text-sm font-bold text-white">{card.label}</h3>
+                              <button onClick={() => setActiveTooltip(null)} className="p-1 rounded-lg hover:bg-white/10 transition-colors">
+                                <X size={16} className="text-white/60" />
+                              </button>
+                            </div>
+                            <div className="p-5 space-y-4">
+                              {/* What is this metric */}
+                              <div>
+                                <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">What it measures</div>
+                                <div className="text-sm text-white/90 leading-relaxed">{KPI_EXPLANATIONS[card.key]?.what}</div>
+                              </div>
+                              {/* How it's calculated — only for non-obvious metrics */}
+                              {KPI_EXPLANATIONS[card.key]?.formula && (
+                                <div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40 mb-1.5">How it's calculated</div>
+                                  <div className="text-sm text-white/60 leading-relaxed">{KPI_EXPLANATIONS[card.key]?.formula}</div>
+                                </div>
+                              )}
+                              {/* AI team insight */}
+                              {card.insight && (
+                                <div className="pt-3 border-t border-white/10">
+                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400/60 mb-1.5">AI Insight</div>
+                                  <div className="text-sm text-indigo-300/90 italic leading-relaxed">{card.insight}</div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>,
+                        document.body
                       )}
 
                       <div className="text-white/60 text-xs font-semibold uppercase tracking-wide mb-1.5 pr-6">{card.label}</div>

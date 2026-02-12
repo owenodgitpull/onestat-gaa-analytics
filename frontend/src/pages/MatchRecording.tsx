@@ -9,6 +9,8 @@ import ConfirmationModal from '@/components/ConfirmationModal'
 import ManualEventEntryModal from '@/components/ManualEventEntryModal'
 import StartingLineupModal from '@/components/StartingLineupModal'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
+import FullscreenPitchMode from '@/components/FullscreenPitchMode'
+import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '@/components/WeatherPickerPopover'
 import { BallPosition, PossessionTeam, EventType, Player, MatchEvent } from '@/types'
 import { useMatch, useMatchStats, useStartMatch, useCompleteMatch } from '@/hooks/useMatches'
 import { useRecordEvent, useMatchEvents, useDeleteEvent } from '@/hooks/useMatchEvents'
@@ -21,7 +23,8 @@ import {
   Play,
   Zap,
   AlertCircle,
-  Plus
+  Plus,
+  Maximize
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -86,6 +89,10 @@ export default function MatchRecording() {
   const [pending45, setPending45] = useState<{ position: BallPosition } | null>(null) // Track 45 state
   const [selectingFoulPlayer, setSelectingFoulPlayer] = useState<boolean>(false) // True when selecting Dungloe player who fouled
   const [pendingFoul, setPendingFoul] = useState<'dungloe' | 'opponent' | null>(null) // Track which team committed the foul
+  const [weatherCondition, setWeatherCondition] = useState<string | null>(null)
+  const [temperatureCelsius, setTemperatureCelsius] = useState<number | null>(null)
+  const [isWeatherPickerOpen, setIsWeatherPickerOpen] = useState(false)
+  const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
 
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -99,8 +106,27 @@ export default function MatchRecording() {
       } else if (match.status === 'completed' && matchPhase !== 'finished') {
         setMatchPhase('finished')
       }
+      // Sync weather from match data
+      if (match.weather_condition !== undefined) setWeatherCondition(match.weather_condition ?? null)
+      if (match.temperature_celsius !== undefined) setTemperatureCelsius(match.temperature_celsius ?? null)
     }
   }, [match])
+
+  // Save weather change to backend
+  const handleWeatherSave = async (condition: string | null, temp: number | null) => {
+    setWeatherCondition(condition)
+    setTemperatureCelsius(temp)
+    if (matchId) {
+      try {
+        await api.matches.update(matchId, {
+          weather_condition: condition,
+          temperature_celsius: temp,
+        } as any)
+      } catch (err) {
+        console.error('Failed to update weather:', err)
+      }
+    }
+  }
 
   // Load match lineup
   useEffect(() => {
@@ -247,17 +273,17 @@ export default function MatchRecording() {
   }
 
   // Helper function to check if position is in 2-point zone (outside 40m arc)
-  // GAA pitch ~145m long, 40m from goal = ~27.6% of pitch
+  // Coordinates are pitch-area %: 0-100 maps to playable pitch only
   // Now accounts for dungloeAttackingRight direction setting
   const isIn2PointZone = (x: number, y: number, team: PossessionTeam): boolean => {
     // GAA pitch: 40m arc from goal center (2-point line)
-    // CALIBRATED VALUES based on actual SVG pitch measurements:
-    // - At centerline (y=50), the arc is at x=68.6
-    // - This gives us X_RADIUS = 100 - 68.6 = 31.4%
-    // - Y_RADIUS calculated assuming 90m pitch width: 40m/90m × 100 = 44.444%
+    // CALIBRATED from SVG pitch, converted to pitch-area coords:
+    // - At centerline (y=50), the arc is at pitch-area x=72.28
+    // - X_RADIUS = 100 - 72.28 = 27.72%
+    // - Y_RADIUS = 44.444 * (1446/1167) = 55.06% (scaled for pitch-area y range)
 
-    const X_RADIUS_PERCENT = 31.4
-    const Y_RADIUS_PERCENT = 44.444
+    const X_RADIUS_PERCENT = 27.72
+    const Y_RADIUS_PERCENT = 55.06
 
     // Determine which goal the team is attacking based on attack direction
     let attackingGoalX: number
@@ -349,8 +375,9 @@ export default function MatchRecording() {
     }
 
     // Check if outside 40m arc using elliptical calculation (for attacking goal)
-    const X_RADIUS_PERCENT = 31.4
-    const Y_RADIUS_PERCENT = 44.444
+    // Pitch-area coords: X_RADIUS=27.72, Y_RADIUS=55.06
+    const X_RADIUS_PERCENT = 27.72
+    const Y_RADIUS_PERCENT = 55.06
     const dy_percent = y - 50
     const normalizedArcDistance = Math.sqrt(
       Math.pow(distFromAttackingGoal / X_RADIUS_PERCENT, 2) +
@@ -366,12 +393,13 @@ export default function MatchRecording() {
     const isInsideDefendingArc = normalizedDefendingArcDistance <= 1.0
 
     // ATTACKING ZONES (near opponent's goal) - must be closer to attacking goal
+    // Thresholds calibrated to pitch-area coords (0=goal line, 100=opposite goal)
     if (distFromAttackingGoal < distFromDefendingGoal) {
-      if (distFromAttackingGoal <= 6.2) return `inside ${defendingTeamName}'s small rectangle${lateral}`
-      if (distFromAttackingGoal <= 9) return `${defendingTeamName}'s 13-meter line${lateral}`
-      if (distFromAttackingGoal <= 13.8) return `${defendingTeamName}'s 20-meter line${lateral}`
+      if (distFromAttackingGoal <= 3.2) return `inside ${defendingTeamName}'s small rectangle${lateral}`
+      if (distFromAttackingGoal <= 10.5) return `${defendingTeamName}'s 13-meter line${lateral}`
+      if (distFromAttackingGoal <= 14) return `${defendingTeamName}'s 20-meter line${lateral}`
       if (!isOutsideAttackingArc) return `inside ${defendingTeamName}'s 40-meter arc${lateral}`
-      if (distFromAttackingGoal <= 38) return `outside ${defendingTeamName}'s 40-meter arc${lateral}` // 2-point zone
+      if (distFromAttackingGoal <= 35) return `outside ${defendingTeamName}'s 40-meter arc${lateral}` // 2-point zone
       return `${defendingTeamName}'s half${lateral}`
     }
 
@@ -381,11 +409,11 @@ export default function MatchRecording() {
     }
 
     // DEFENSIVE ZONES (in own half) - closer to defending goal
-    if (distFromDefendingGoal <= 6.2) return `inside ${attackingTeamName}'s small rectangle${lateral}`
-    if (distFromDefendingGoal <= 9) return `${attackingTeamName}'s 13-meter line${lateral}`
-    if (distFromDefendingGoal <= 13.8) return `${attackingTeamName}'s 20-meter line${lateral}`
+    if (distFromDefendingGoal <= 3.2) return `inside ${attackingTeamName}'s small rectangle${lateral}`
+    if (distFromDefendingGoal <= 10.5) return `${attackingTeamName}'s 13-meter line${lateral}`
+    if (distFromDefendingGoal <= 14) return `${attackingTeamName}'s 20-meter line${lateral}`
     if (isInsideDefendingArc) return `inside ${attackingTeamName}'s 40-meter arc${lateral}`
-    if (distFromDefendingGoal <= 38) return `${attackingTeamName}'s 45-meter line${lateral}`
+    if (distFromDefendingGoal <= 35) return `${attackingTeamName}'s 45-meter line${lateral}`
 
     return `${attackingTeamName}'s half${lateral}`
   }
@@ -508,24 +536,25 @@ export default function MatchRecording() {
         return `Dungloe lost kickout to ${teamName} in ${area}`
 
       // Own kickouts (Dungloe kicking out)
+      // Replace team name in area with "their" to avoid "Ardara ... in Ardara's half"
       case 'own_kickout_dungloe_won':
         return `${playerName} won own kickout clean in ${area}`
       case 'own_kickout_opposition_won':
-        return `${teamName} won Dungloe's kickout in ${area}`
+        return `${teamName} won Dungloe's kickout in ${area.replace(`${teamName}'s`, 'their')}`
       case 'own_kickout_dungloe_won_break':
         return `${playerName} won breaking ball from own kickout in ${area}`
       case 'own_kickout_opposition_won_break':
-        return `${teamName} won breaking ball from Dungloe's kickout in ${area}`
+        return `${teamName} won breaking ball from Dungloe's kickout in ${area.replace(`${teamName}'s`, 'their')}`
 
       // Opposition kickouts (opponent kicking out)
       case 'opp_kickout_dungloe_won':
-        return `${playerName} won ${teamName} kickout clean in ${area}`
+        return `${playerName} won ${teamName} kickout clean in ${area.replace(`${teamName}'s`, 'their')}`
       case 'opp_kickout_opposition_won':
-        return `${teamName} won own kickout clean in ${area}`
+        return `${teamName} won own kickout clean in ${area.replace(`${teamName}'s`, 'their')}`
       case 'opp_kickout_dungloe_won_break':
-        return `${playerName} won breaking ball from ${teamName} kickout in ${area}`
+        return `${playerName} won breaking ball from ${teamName} kickout in ${area.replace(`${teamName}'s`, 'their')}`
       case 'opp_kickout_opposition_won_break':
-        return `${teamName} won breaking ball from own kickout in ${area}`
+        return `${teamName} won breaking ball from own kickout in ${area.replace(`${teamName}'s`, 'their')}`
 
       case 'breaking_ball_won':
         // Breaking ball from kickout
@@ -603,8 +632,8 @@ export default function MatchRecording() {
       return
     }
 
-    // Only record if match is in progress
-    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time') {
+    // Only record if match is in progress (pitch stays active at half-time for late data capture)
+    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished') {
       return
     }
 
@@ -713,6 +742,10 @@ export default function MatchRecording() {
       console.log('Kickout recorded and ball moved to:', newBallPosition)
     } catch (error) {
       console.error('Failed to record kickout:', error)
+      // Always clear the pending state so the user isn't stuck
+      setPendingKickoutEvent(null)
+      setAwaitingKickout(false)
+      setActiveKickoutTab('scoring')
       alert('Failed to record kickout. Please try again.')
     }
   }
@@ -969,8 +1002,11 @@ export default function MatchRecording() {
     } else if (isOppositionWon) {
       // ANY "Opposition Won" event → opponent team
       isHomeTeam = false
-    } else if (eventType === EventType.TURNOVER_WON) {
-      // Turnover Won → Always Dungloe (we won the ball)
+    } else if (eventType === EventType.TURNOVER_WON || eventType === EventType.INTERCEPTION) {
+      // Turnover Won / Interception → Always Dungloe (we won the ball / intercepted)
+      isHomeTeam = true
+    } else if (eventType === EventType.BLOCK) {
+      // Block → Always Dungloe (our player blocked the shot)
       isHomeTeam = true
     } else if (eventType === EventType.TURNOVER_LOST) {
       // Turnover Lost → Dungloe player lost it (we want to track which Dungloe player made the error)
@@ -1527,10 +1563,10 @@ export default function MatchRecording() {
       return { text: 'Select Player Who Fouled', subtext: 'Tap the Dungloe player who committed the foul', bg: 'from-red-600/20 to-rose-600/20 border-red-500/40', accent: 'text-red-400' }
     }
     if (awaitingKickout && !pendingKickoutEvent) {
-      return { text: 'Awaiting Kickout', subtext: 'Select kickout outcome below', bg: 'from-amber-600/20 to-orange-600/20 border-amber-500/40', accent: 'text-amber-400' }
+      return { text: 'Awaiting Kickout', subtext: 'Select kickout outcome below', bg: 'from-white/5 to-white/10 border-white/20', accent: 'text-white/80' }
     }
     if (pendingKickoutEvent) {
-      return { text: 'Kickout — Tap Landing Position', subtext: 'Tap the pitch where the ball lands', bg: 'from-amber-600/20 to-orange-600/20 border-amber-500/40', accent: 'text-amber-400' }
+      return { text: 'Kickout — Tap Landing Position', subtext: 'Tap the pitch where the ball lands', bg: 'from-white/5 to-white/10 border-white/20', accent: 'text-white/80' }
     }
     if (pendingFreeKick) {
       const freeTeam = ballPosition.team === PossessionTeam.DUNGLOE ? 'Dungloe' : matchDisplay.opponent
@@ -1599,11 +1635,26 @@ export default function MatchRecording() {
                 <h1 className="text-xl font-bold text-white">
                   Dungloe vs {matchDisplay.opponent}
                 </h1>
-                <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
+                  <button
+                    onClick={() => setIsWeatherPickerOpen(true)}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer"
+                    title="Update weather"
+                  >
+                    {(() => { const WeatherIcon = getWeatherIcon(weatherCondition); return <WeatherIcon size={13} className={weatherCondition ? 'text-white/70' : 'text-white/40'} />; })()}
+                    {weatherCondition && (
+                      <span className="text-[10px] text-white/60">{getWeatherLabel(weatherCondition)}</span>
+                    )}
+                    {temperatureCelsius !== null && (
+                      <span className="text-[10px] text-white/60">{temperatureCelsius}°C</span>
+                    )}
+                  </button>
+                </div>
                 {matchPhase !== 'not_started' && (
                   <div className="flex items-center gap-2">
-                    <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 animate-pulse">
-                      <Clock size={20} className="text-emerald-400" />
+                    <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500/20 to-violet-500/20 border border-indigo-500/30 animate-pulse">
+                      <Clock size={20} className="text-indigo-400" />
                       <span className="font-mono text-2xl font-bold text-white">{formatTime()}</span>
                     </div>
                     {IS_DEV_SPEED && (
@@ -1666,13 +1717,22 @@ export default function MatchRecording() {
                     </button>
                   )}
                   {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                    <button
-                      className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
-                      onClick={() => setIsManualEntryOpen(true)}
-                    >
-                      <Plus size={14} />
-                      <span>Manual Entry</span>
-                    </button>
+                    <>
+                      <button
+                        className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
+                        onClick={() => setIsFullscreenPitch(true)}
+                        title="Fullscreen pitch mode"
+                      >
+                        <Maximize size={14} />
+                      </button>
+                      <button
+                        className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
+                        onClick={() => setIsManualEntryOpen(true)}
+                      >
+                        <Plus size={14} />
+                        <span>Manual Entry</span>
+                      </button>
+                    </>
                   )}
                   {getEndButtonText() && (
                     <button
@@ -1704,18 +1764,6 @@ export default function MatchRecording() {
                     <Clock size={24} className="text-red-400" />
                     <p className="text-white font-bold text-xl">
                       FULL TIME! Click "End Match" to save and generate AI analysis
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Kickout Warning Banner */}
-              {awaitingKickout && !pendingKickoutEvent && (
-                <div className="glass-card p-4 mb-4 bg-gradient-to-r from-amber-600/20 to-orange-600/20 border-2 border-amber-500/50 animate-pulse">
-                  <div className="flex items-center justify-center space-x-3">
-                    <AlertCircle size={24} className="text-amber-400" />
-                    <p className="text-white font-semibold text-lg">
-                      Select kickout winner to continue
                     </p>
                   </div>
                 </div>
@@ -1754,7 +1802,7 @@ export default function MatchRecording() {
                     onActionSelect={handleQuickAction}
                     onFoulClick={handleFoulClick}
                     on45Click={handle45Click}
-                    disabled={matchPhase !== 'first_half' && matchPhase !== 'second_half'}
+                    disabled={matchPhase === 'not_started' || matchPhase === 'finished'}
                     activeCategory={activeKickoutTab}
                     onCategoryChange={setActiveKickoutTab}
                     currentPossession={ballPosition.team}
@@ -1793,19 +1841,6 @@ export default function MatchRecording() {
                   </div>
                 </div>
 
-                {/* AI Insights Placeholder */}
-                <div className="mt-4 p-4 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 rounded-lg border border-indigo-500/30">
-                  <div className="flex items-start space-x-3">
-                    <Zap size={20} className="text-amber-400 flex-shrink-0 mt-1" />
-                    <div>
-                      <h4 className="font-semibold text-white mb-1">AI Insight</h4>
-                      <p className="text-sm text-white/70">
-                        Dungloe's possession in the attacking third is 12% higher than their season average.
-                        Continue applying pressure - conversion rate suggests goals are coming.
-                      </p>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -2060,6 +2095,8 @@ export default function MatchRecording() {
         players={players}
         opponentName={matchDisplay.opponent}
         matchLineup={matchLineup}
+        currentMinute={minute}
+        currentHalf={currentHalf}
       />
 
       {/* Starting Lineup Modal */}
@@ -2069,6 +2106,50 @@ export default function MatchRecording() {
         onConfirm={handleLineupConfirm}
         players={players}
         lastMatchLineup={lastMatchLineup}
+      />
+      <WeatherPickerPopover
+        isOpen={isWeatherPickerOpen}
+        onClose={() => setIsWeatherPickerOpen(false)}
+        onSave={handleWeatherSave}
+        currentCondition={weatherCondition}
+        currentTemperature={temperatureCelsius}
+      />
+
+      {/* Fullscreen Pitch Mode */}
+      <FullscreenPitchMode
+        isOpen={isFullscreenPitch}
+        onClose={() => setIsFullscreenPitch(false)}
+        ballPosition={ballPosition}
+        onBallMove={handleBallMove}
+        readonly={matchPhase === 'not_started' || matchPhase === 'finished' || (awaitingKickout && !pendingKickoutEvent)}
+        matchPhase={matchPhase}
+        minute={minute}
+        seconds={seconds}
+        dungloeGoals={dungloeGoals}
+        dungloePoints={dungloePoints}
+        opponentGoals={opponentGoals}
+        opponentPoints={opponentPoints}
+        opponent={matchDisplay.opponent}
+        onActionSelect={handleQuickAction}
+        onFoulClick={handleFoulClick}
+        on45Click={handle45Click}
+        currentPossession={ballPosition.team}
+        isIn2PointZone={isIn2PointZone(ballPosition.x, ballPosition.y, ballPosition.team)}
+        pendingFreeKick={!!pendingFreeKick}
+        pendingFoul={pendingFoul}
+        pending45={!!pending45}
+        pendingKickoutPosition={!!pendingKickoutEvent}
+        onCancelFree={handleCancelFree}
+        onCancel45={handleCancel45}
+        onCancelKickout={() => setPendingKickoutEvent(null)}
+        activeCategory={activeKickoutTab}
+        onCategoryChange={setActiveKickoutTab}
+        awaitingKickout={awaitingKickout}
+        latestEventDescription={
+          recentEvents.length > 0
+            ? formatEventDescription(recentEvents[recentEvents.length - 1])
+            : undefined
+        }
       />
     </div>
   )

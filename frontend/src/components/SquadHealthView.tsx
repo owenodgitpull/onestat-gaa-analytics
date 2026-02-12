@@ -16,6 +16,9 @@ import {
   Bot
 } from 'lucide-react'
 import { api, SquadHealthSummary, PlayerWorkload } from '@/services/api'
+import LoadingSkeleton from '@/components/LoadingSkeleton'
+import { renderAnalysisText } from '@/utils/renderAnalysisText'
+import { Link } from 'react-router-dom'
 
 interface Props {
   onRefresh?: () => void
@@ -27,6 +30,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [analyzing, setAnalyzing] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(null)
+  const [showAllAlerts, setShowAllAlerts] = useState(false)
 
   const fetchHealthData = async () => {
     setLoading(true)
@@ -72,11 +76,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
   }, [])
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="animate-spin text-indigo-400" size={48} />
-      </div>
-    )
+    return <LoadingSkeleton />
   }
 
   if (error || !healthData) {
@@ -142,8 +142,8 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
       {/* Header with stats */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center">
-            <Heart size={24} className="text-white" />
+          <div className="w-12 h-12 rounded-xl bg-rose-500/20 flex items-center justify-center">
+            <Heart size={24} className="text-rose-400" />
           </div>
           <div>
             <h2 className="text-2xl font-bold text-white">Squad Health Monitor</h2>
@@ -173,7 +173,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
             <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
               <Bot size={16} className="text-indigo-400" />
             </div>
-            <p className="text-sm text-white/80 leading-relaxed">{aiSummary}</p>
+            <div className="text-sm leading-relaxed">{renderAnalysisText(aiSummary)}</div>
           </div>
         </div>
       )}
@@ -214,7 +214,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
             Active Alerts
           </h3>
           <div className="space-y-3">
-            {allAlerts.slice(0, 5).map((alert) => (
+            {(showAllAlerts ? allAlerts : allAlerts.slice(0, 1)).map((alert) => (
               <div
                 key={alert.id}
                 className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
@@ -246,6 +246,14 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
               </div>
             ))}
           </div>
+          {allAlerts.length > 1 && (
+            <button
+              onClick={() => setShowAllAlerts(!showAllAlerts)}
+              className="mt-3 text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+            >
+              {showAllAlerts ? 'Show less' : `View ${allAlerts.length - 1} more alert${allAlerts.length - 1 > 1 ? 's' : ''}`}
+            </button>
+          )}
         </div>
       )}
 
@@ -259,9 +267,10 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
         {healthData.player_workloads.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {healthData.player_workloads.map((player) => (
-              <div
+              <Link
                 key={player.player_id}
-                className={`p-4 rounded-xl border ${getStatusBg(player.status)}`}
+                to={`/players/${player.player_id}`}
+                className={`p-4 rounded-xl border hover:border-indigo-500/30 transition-colors cursor-pointer block ${getStatusBg(player.status)}`}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -335,7 +344,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
                     </div>
                   </div>
                 )}
-              </div>
+              </Link>
             ))}
           </div>
         ) : (

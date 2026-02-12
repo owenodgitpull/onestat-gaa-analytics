@@ -208,7 +208,7 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
     if has_gps:
         # Separate GK from outfield for averages
         outfield_rows = [(g, name, pos) for g, name, pos in gps_rows
-                         if pos is None or pos.value != "goalkeeper"]
+                         if pos is None or (pos.value if hasattr(pos, 'value') else pos) != "goalkeeper"]
 
         # Calculate team totals (all players)
         total_distance = sum(g.total_distance_m or 0 for g, _, _ in gps_rows)
@@ -237,7 +237,8 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
             pos_tag = ""
             if player_position:
                 pos_abbrev = {"goalkeeper": "GK", "defender": "DEF", "midfielder": "MID", "forward": "FWD"}
-                pos_tag = pos_abbrev.get(player_position.value, player_position.value.upper())
+                pos_val = player_position.value if hasattr(player_position, 'value') else player_position
+                pos_tag = pos_abbrev.get(pos_val, pos_val.upper())
 
             # Sub info
             sub_tag = ""
@@ -249,7 +250,7 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
             tag_str = f" ({tags})" if tags else ""
 
             # Flag outliers — only for outfield full-match players
-            is_gk = player_position and player_position.value == "goalkeeper"
+            is_gk = player_position and (player_position.value if hasattr(player_position, 'value') else player_position) == "goalkeeper"
             was_subbed = g.player_id and g.player_id in sub_lookup
             outlier_note = ""
             if not is_gk and not was_subbed and g.total_distance_m and avg_distance > 0:
@@ -259,9 +260,13 @@ async def generate_post_match_report(db: AsyncSession, match_id: str, force_rege
                 elif diff_pct < -20:
                     outlier_note = " [LOW OUTPUT]"
 
+            # Playing time from GPS data
+            mins_played = g.playing_minutes or g.duration_mins
+            mins_str = f", {int(mins_played)} mins played" if mins_played else ""
+
             gps_player_details.append(
                 f"  - {player_name}{tag_str}: {distance_km:.1f}km total, {hsr_m:.0f}m HSR, {hmld:.0f}m HMLD, "
-                f"{sprints} sprints, {max_speed_kmh:.1f}km/h max speed, load: {player_load:.0f}{outlier_note}"
+                f"{sprints} sprints, {max_speed_kmh:.1f}km/h max speed, load: {player_load:.0f}{mins_str}{outlier_note}"
             )
 
         gps_context = f"""
@@ -275,12 +280,15 @@ TEAM TOTALS:
   - Average Distance per Outfield Player: {avg_distance/1000:.1f}km
   - Average Sprints per Outfield Player: {avg_sprints:.0f}
 
+SUBSTITUTIONS: {f"{len(sub_lookup)} substitution(s) made — see (SUBBED OFF) tags above" if sub_lookup else "NO SUBSTITUTIONS WERE MADE — all players listed played the FULL match"}
+
 INDIVIDUAL PLAYER GPS:
 {chr(10).join(gps_player_details)}
 
 GPS ANALYSIS RULES:
 - NEVER flag the goalkeeper for low distance/activity — GKs typically cover 2-4km which is normal for their position
 - Players marked (SUBBED OFF X') were DEFINITELY substituted at that minute — state this as fact, do NOT speculate about "possible tactical substitution". Evaluate their output relative to minutes played
+- If NO SUBSTITUTIONS WERE MADE, do NOT speculate about "limited game time", "possible early substitution", or "may have been replaced". All players played the full match — if a player's distance is low, discuss actual reasons (tactical role, positional discipline, fitness concern) rather than guessing about playing time
 - Use positions to set distance expectations: Midfielders 9-12km, Forwards/Defenders 7-10km, Goalkeeper 2-4km
 - Only flag outfield players who played the full match and are significantly below position-appropriate benchmarks
 

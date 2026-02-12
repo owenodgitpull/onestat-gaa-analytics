@@ -84,7 +84,7 @@ export default function AiInsightsSection({
           {loadingSuggestions ? (
             <div className="glass-card p-6 flex items-center justify-center gap-3">
               <RefreshCw size={18} className="animate-spin text-purple-400" />
-              <span className="text-white/50 text-sm">Scanning for seasonal outliers...</span>
+              <span className="text-white/50 text-sm">Scanning for seasonal patterns and outliers...</span>
             </div>
           ) : (
             <div className="space-y-3">

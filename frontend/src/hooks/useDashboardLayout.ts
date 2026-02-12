@@ -17,6 +17,7 @@ export const DEFAULT_CHART_ORDER = [
 ]
 
 export const DEFAULT_SECTION_ORDER = [
+  'insight-alerts',
   'my-charts',
   'ai-insights',
   'top-scorers',
@@ -46,7 +47,16 @@ function loadLayout(): DashboardLayout {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      if (parsed.version === 2) return parsed
+      if (parsed.version === 2) {
+        // Migrate: ensure any new default sections are added
+        const savedSections: string[] = parsed.sectionOrder || []
+        const missing = DEFAULT_SECTION_ORDER.filter(s => !savedSections.includes(s))
+        if (missing.length > 0) {
+          parsed.sectionOrder = [...missing, ...savedSections]
+          saveLayout(parsed)
+        }
+        return parsed
+      }
     }
 
     // Migrate from old pinned charts key

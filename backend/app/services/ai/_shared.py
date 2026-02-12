@@ -14,8 +14,9 @@ not from this file. See AI_ARCHITECTURE.md for the three-layer design.
 import os
 import json
 import logging
+from decimal import Decimal
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 import anthropic
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -25,6 +26,21 @@ from app.models.match_event import EventType, Team
 
 logger = logging.getLogger(__name__)
 
+
+class SafeEncoder(json.JSONEncoder):
+    """JSON encoder that handles Decimal, date, and other SQLAlchemy return types."""
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return float(obj)
+        if isinstance(obj, (datetime, date)):
+            return str(obj)
+        return super().default(obj)
+
+
+def safe_json(data) -> str:
+    """json.dumps with SafeEncoder — use this for all tool returns."""
+    return json.dumps(data, cls=SafeEncoder)
+
 # Initialize Anthropic client
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -32,6 +48,38 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 # GAA ESSENTIALS (Slim reference — always present in every agent prompt)
 # Domain knowledge (tactics, KPIs, patterns) comes from RAG, not here.
 # =============================================================================
+
+# =============================================================================
+# STATIC CHARTS MANIFEST — charts already on dashboards (avoid duplicating)
+# =============================================================================
+
+STATIC_CHARTS = {
+    "season": [
+        {"id": "score-progression", "desc": "Line chart of Dungloe vs opponent scores per match"},
+        {"id": "shot-map", "desc": "Pitch scatter plot of all shot locations"},
+        {"id": "possession-funnel", "desc": "Funnel chart showing possession → shots → scores conversion"},
+        {"id": "kickout-trend", "desc": "Line chart of kickout win % per match"},
+        {"id": "territory-distribution", "desc": "Bar chart of events by pitch third"},
+        {"id": "turnover-leaderboard", "desc": "Table of players ranked by net turnovers"},
+        {"id": "workhorse-radar", "desc": "Radar chart of top workrate players (turnovers + frees + blocks)"},
+        {"id": "shooting-efficiency", "desc": "Heatmap of shot conversion by pitch zone"},
+        {"id": "red-zone-list", "desc": "Table of players at risk based on workload / health alerts"},
+        {"id": "top-scorers", "desc": "Leaderboard of top scoring players with goals-points breakdown"},
+    ],
+    "training": [
+        {"id": "peak-performance-trend", "desc": "Line chart of team average total distance over sessions"},
+        {"id": "speed-zone-distribution", "desc": "Stacked bar chart of distance in each speed zone per session"},
+        {"id": "readiness-table", "desc": "Table of player readiness with monotony and strain scores"},
+        {"id": "monotony-scatter", "desc": "Scatter plot of training monotony vs strain per player"},
+        {"id": "player-leaderboard", "desc": "Table of top players by sprint count and distance"},
+    ],
+}
+
+STATIC_CHARTS_TEXT = "\n".join(
+    f"- [{ctx}] {c['id']}: {c['desc']}"
+    for ctx, charts in STATIC_CHARTS.items()
+    for c in charts
+)
 
 GAA_ESSENTIALS = """
 # GAA Football Essentials
@@ -102,14 +150,28 @@ TOOLS = [
         }
     },
     {
+        "name": "search_players",
+        "description": "Search for players by name. Use this FIRST to find a player's UUID before calling get_player_season_stats. Returns matching players with their IDs, positions, and jersey numbers.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Full or partial player name to search for (e.g. 'Conor Greene', 'Greene')"
+                }
+            },
+            "required": ["name"]
+        }
+    },
+    {
         "name": "get_player_season_stats",
-        "description": "Get aggregated statistics for a player across all matches this season",
+        "description": "Get aggregated statistics for a player across all matches this season. IMPORTANT: You must use search_players first to get the player's UUID.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "player_id": {
                     "type": "string",
-                    "description": "The UUID of the player"
+                    "description": "The UUID of the player (get this from search_players first)"
                 }
             },
             "required": ["player_id"]
@@ -148,6 +210,64 @@ TOOLS = [
                 }
             }
         }
+    },
+    {
+        "name": "get_player_gps_stats",
+        "description": "Get GPS/fitness data for a specific player across matches and/or training sessions. Returns per-session rows with distance, HSR, sprints, max speed, load. Use search_players first to get the player UUID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id": {
+                    "type": "string",
+                    "description": "The UUID of the player (get this from search_players first)"
+                },
+                "context": {
+                    "type": "string",
+                    "enum": ["match", "training", "both"],
+                    "description": "Whether to return match GPS, training GPS, or both. Defaults to 'both'."
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of sessions to return per context. Defaults to 10."
+                }
+            },
+            "required": ["player_id"]
+        }
+    },
+    {
+        "name": "get_team_gps_summary",
+        "description": "Get team-wide GPS averages across recent matches and/or training sessions. Useful for benchmarking individual players against team norms.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "context": {
+                    "type": "string",
+                    "enum": ["match", "training", "both"],
+                    "description": "Whether to summarize match GPS, training GPS, or both. Defaults to 'both'."
+                },
+                "weeks": {
+                    "type": "integer",
+                    "description": "How many weeks back to look. Defaults to 8."
+                }
+            }
+        }
+    },
+    {
+        "name": "get_attendance_data",
+        "description": "Get training attendance data. Without player_id returns team-wide rates and flags players below 70%. With player_id returns that player's session-by-session attendance.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id": {
+                    "type": "string",
+                    "description": "Optional UUID of a specific player to get attendance for"
+                },
+                "weeks": {
+                    "type": "integer",
+                    "description": "How many weeks back to look. Defaults to 8."
+                }
+            }
+        }
     }
 ]
 
@@ -162,6 +282,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession) -> st
         return await get_match_events(db, **tool_input)
     elif tool_name == "get_match_summary":
         return await get_match_summary(db, **tool_input)
+    elif tool_name == "search_players":
+        return await search_players(db, **tool_input)
     elif tool_name == "get_player_season_stats":
         return await get_player_season_stats(db, **tool_input)
     elif tool_name == "get_team_season_stats":
@@ -170,8 +292,14 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession) -> st
         return await get_scoring_patterns(db, tool_input.get("match_id"))
     elif tool_name == "get_turnover_analysis":
         return await get_turnover_analysis(db, tool_input.get("match_id"))
+    elif tool_name == "get_player_gps_stats":
+        return await get_player_gps_stats(db, **tool_input)
+    elif tool_name == "get_team_gps_summary":
+        return await get_team_gps_summary(db, **tool_input)
+    elif tool_name == "get_attendance_data":
+        return await get_attendance_data(db, **tool_input)
     else:
-        return json.dumps({"error": f"Unknown tool: {tool_name}"})
+        return safe_json({"error": f"Unknown tool: {tool_name}"})
 
 
 async def get_match_events(db: AsyncSession, match_id: str, event_types: list = None,
@@ -219,17 +347,17 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             "notes": e.notes
         })
 
-    return json.dumps({"events": events_data, "total": len(events_data)})
+    return safe_json({"events": events_data, "total": len(events_data)})
 
 
-async def get_match_summary(db: AsyncSession, match_id: str) -> str:
+async def get_match_summary(db: AsyncSession, match_id) -> str:
     """Get summary statistics for a match."""
     # Get match details
     match_result = await db.execute(select(Match).where(Match.id == match_id))
     match = match_result.scalar_one_or_none()
 
     if not match:
-        return json.dumps({"error": "Match not found"})
+        return safe_json({"error": "Match not found"})
 
     # Get all events
     events_result = await db.execute(
@@ -331,7 +459,7 @@ async def get_match_summary(db: AsyncSession, match_id: str) -> str:
             dungloe_possession = round((dungloe_poss_events / total_poss_events) * 100, 1) if total_poss_events > 0 else 50.0
             opp_possession = round(100 - dungloe_possession, 1)
 
-    return json.dumps({
+    return safe_json({
         "match": {
             "opponent": match.opponent,
             "date": str(match.match_date),
@@ -361,14 +489,58 @@ async def get_match_summary(db: AsyncSession, match_id: str) -> str:
     })
 
 
+async def search_players(db: AsyncSession, name: str) -> str:
+    """Search for players by name (case-insensitive partial match)."""
+    result = await db.execute(
+        select(Player).where(Player.name.ilike(f"%{name}%"))
+    )
+    players = result.scalars().all()
+
+    if not players:
+        return safe_json({"error": f"No players found matching '{name}'", "players": []})
+
+    return safe_json({
+        "players": [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "position": p.position,
+                "jersey_number": p.jersey_number,
+                "status": p.status if hasattr(p, 'status') else None
+            }
+            for p in players
+        ]
+    })
+
+
 async def get_player_season_stats(db: AsyncSession, player_id: str) -> str:
     """Get aggregated stats for a player across the season."""
+    # Validate UUID format — if not a UUID, tell the AI to search by name first
+    import uuid as uuid_mod
+    try:
+        uuid_mod.UUID(player_id)
+    except (ValueError, AttributeError):
+        # AI passed a name/slug instead of UUID — do the lookup automatically
+        result = await db.execute(
+            select(Player).where(Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%"))
+        )
+        matches = result.scalars().all()
+        if len(matches) == 1:
+            player_id = str(matches[0].id)
+        elif len(matches) > 1:
+            return safe_json({
+                "error": f"'{player_id}' is not a UUID. Multiple players matched — pick one and retry with the UUID.",
+                "matches": [{"id": str(p.id), "name": p.name} for p in matches]
+            })
+        else:
+            return safe_json({"error": f"No player found matching '{player_id}'. Use search_players to find the correct player."})
+
     # Get player
     player_result = await db.execute(select(Player).where(Player.id == player_id))
     player = player_result.scalar_one_or_none()
 
     if not player:
-        return json.dumps({"error": "Player not found"})
+        return safe_json({"error": "Player not found"})
 
     # Get all their events
     events_result = await db.execute(
@@ -386,7 +558,7 @@ async def get_player_season_stats(db: AsyncSession, player_id: str) -> str:
     # Get matches played
     match_ids = set(e.match_id for e in events)
 
-    return json.dumps({
+    return safe_json({
         "player": {
             "name": player.name,
             "position": player.position
@@ -420,7 +592,7 @@ async def get_team_season_stats(db: AsyncSession) -> str:
     matches = matches_result.scalars().all()
 
     if not matches:
-        return json.dumps({"message": "No completed matches yet"})
+        return safe_json({"message": "No completed matches yet"})
 
     # Get all events
     events_result = await db.execute(select(MatchEvent))
@@ -462,7 +634,7 @@ async def get_team_season_stats(db: AsyncSession) -> str:
         else:
             draws += 1
 
-    return json.dumps({
+    return safe_json({
         "matches_played": len(matches),
         "record": {
             "wins": wins,
@@ -531,7 +703,7 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
         zones[zone]["conversion_rate"] = round(zones[zone]["scored"] / max(1, total) * 100, 1)
         zones[zone]["total_attempts"] = total
 
-    return json.dumps({
+    return safe_json({
         "zones": zones,
         "total_scores": sum(z["scored"] for z in zones.values()),
         "total_misses": sum(z["missed"] for z in zones.values())
@@ -578,9 +750,512 @@ async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
         elif e.event_type == EventType.OUR_UNFORCED_ERROR:
             zones[zone]["lost"] += 1  # Our error = we lost
 
-    return json.dumps({
+    return safe_json({
         "by_zone": zones,
         "total_won": sum(z["won"] for z in zones.values()),
         "total_lost": sum(z["lost"] for z in zones.values()),
         "net": sum(z["won"] for z in zones.values()) - sum(z["lost"] for z in zones.values())
     })
+
+
+async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = "both", limit: int = 10) -> str:
+    """Get GPS data for a specific player across matches and/or training."""
+    from app.models.match_gps import MatchGPSData
+    from app.models.training_performance import TrainingGPSData
+    from app.models.attendance import TrainingSession
+
+    # UUID fallback — if AI passes a name instead of UUID, auto-lookup
+    import uuid as uuid_mod
+    try:
+        uuid_mod.UUID(player_id)
+    except (ValueError, AttributeError):
+        result = await db.execute(
+            select(Player).where(Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%"))
+        )
+        matches = result.scalars().all()
+        if len(matches) == 1:
+            player_id = str(matches[0].id)
+        elif len(matches) > 1:
+            return safe_json({
+                "error": f"'{player_id}' is not a UUID. Multiple players matched — pick one and retry.",
+                "matches": [{"id": str(p.id), "name": p.name} for p in matches]
+            })
+        else:
+            return safe_json({"error": f"No player found matching '{player_id}'. Use search_players first."})
+
+    data = {}
+
+    if context in ("match", "both"):
+        q = (
+            select(MatchGPSData, Match.opponent, Match.match_date)
+            .join(Match, MatchGPSData.match_id == Match.id)
+            .where(MatchGPSData.player_id == player_id)
+            .order_by(Match.match_date.desc())
+            .limit(limit)
+        )
+        result = await db.execute(q)
+        rows = result.all()
+        data["match_gps"] = [
+            {
+                "opponent": row.opponent,
+                "date": str(row.match_date),
+                "distance_m": round(float(row.MatchGPSData.total_distance_m or 0)),
+                "hsr_m": round(float(row.MatchGPSData.high_speed_running_m or 0)),
+                "sprints": int(row.MatchGPSData.sprint_count or 0),
+                "max_speed_kmh": round(float(row.MatchGPSData.max_speed_ms or 0) * 3.6, 1),
+                "load": round(float(row.MatchGPSData.dynamic_stress_load or 0), 1),
+                "playing_mins": int(row.MatchGPSData.playing_minutes) if row.MatchGPSData.playing_minutes else None,
+            }
+            for row in rows
+        ]
+
+    if context in ("training", "both"):
+        q = (
+            select(TrainingGPSData, TrainingSession.session_date)
+            .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
+            .where(TrainingGPSData.player_id == player_id)
+            .order_by(TrainingSession.session_date.desc())
+            .limit(limit)
+        )
+        result = await db.execute(q)
+        rows = result.all()
+        data["training_gps"] = [
+            {
+                "date": str(row.session_date),
+                "distance_m": round(float(row.TrainingGPSData.total_distance_m or 0)),
+                "hsr_m": round(float(row.TrainingGPSData.high_speed_running_m or 0)),
+                "sprints": int(row.TrainingGPSData.sprint_count or 0),
+                "max_speed_kmh": round(float(row.TrainingGPSData.max_speed_ms or 0) * 3.6, 1),
+                "load": round(float(row.TrainingGPSData.dynamic_stress_load or 0), 1),
+            }
+            for row in rows
+        ]
+
+    if not data.get("match_gps") and not data.get("training_gps"):
+        return safe_json({"message": "No GPS data found for this player"})
+
+    return safe_json(data)
+
+
+async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: int = 8) -> str:
+    """Get team-wide GPS averages across recent sessions."""
+    from app.models.match_gps import MatchGPSData
+    from app.models.training_performance import TrainingGPSData
+    from app.models.attendance import TrainingSession
+    from datetime import timedelta
+
+    cutoff = datetime.utcnow() - timedelta(weeks=weeks)
+    data = {}
+
+    if context in ("match", "both"):
+        q = (
+            select(
+                func.count(MatchGPSData.id).label("records"),
+                func.avg(MatchGPSData.total_distance_m).label("avg_distance"),
+                func.avg(MatchGPSData.high_speed_running_m).label("avg_hsr"),
+                func.avg(MatchGPSData.sprint_count).label("avg_sprints"),
+                func.avg(MatchGPSData.max_speed_ms).label("avg_max_speed"),
+                func.avg(MatchGPSData.dynamic_stress_load).label("avg_load"),
+            )
+            .join(Match, MatchGPSData.match_id == Match.id)
+            .where(Match.match_date >= cutoff)
+        )
+        result = await db.execute(q)
+        row = result.one()
+        if row.records and row.records > 0:
+            data["match_averages"] = {
+                "player_records": int(row.records),
+                "avg_distance_m": round(float(row.avg_distance or 0)),
+                "avg_hsr_m": round(float(row.avg_hsr or 0)),
+                "avg_sprints": round(float(row.avg_sprints or 0), 1),
+                "avg_max_speed_kmh": round(float(row.avg_max_speed or 0) * 3.6, 1),
+                "avg_load": round(float(row.avg_load or 0), 1),
+                "period": f"Last {weeks} weeks",
+            }
+
+    if context in ("training", "both"):
+        q = (
+            select(
+                func.count(TrainingGPSData.id).label("records"),
+                func.avg(TrainingGPSData.total_distance_m).label("avg_distance"),
+                func.avg(TrainingGPSData.high_speed_running_m).label("avg_hsr"),
+                func.avg(TrainingGPSData.sprint_count).label("avg_sprints"),
+                func.avg(TrainingGPSData.max_speed_ms).label("avg_max_speed"),
+                func.avg(TrainingGPSData.dynamic_stress_load).label("avg_load"),
+            )
+            .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
+            .where(TrainingSession.session_date >= cutoff)
+        )
+        result = await db.execute(q)
+        row = result.one()
+        if row.records and row.records > 0:
+            data["training_averages"] = {
+                "player_records": int(row.records),
+                "avg_distance_m": round(float(row.avg_distance or 0)),
+                "avg_hsr_m": round(float(row.avg_hsr or 0)),
+                "avg_sprints": round(float(row.avg_sprints or 0), 1),
+                "avg_max_speed_kmh": round(float(row.avg_max_speed or 0) * 3.6, 1),
+                "avg_load": round(float(row.avg_load or 0), 1),
+                "period": f"Last {weeks} weeks",
+            }
+
+    if not data:
+        return safe_json({"message": f"No GPS data found in the last {weeks} weeks"})
+
+    return safe_json(data)
+
+
+async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: int = 8) -> str:
+    """Get training attendance data — team-wide or per-player."""
+    from app.models.attendance import Attendance, AttendanceStatus, TrainingSession
+    from datetime import timedelta
+
+    cutoff = datetime.utcnow() - timedelta(weeks=weeks)
+
+    if player_id:
+        # UUID fallback
+        import uuid as uuid_mod
+        try:
+            uuid_mod.UUID(player_id)
+        except (ValueError, AttributeError):
+            result = await db.execute(
+                select(Player).where(Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%"))
+            )
+            matches = result.scalars().all()
+            if len(matches) == 1:
+                player_id = str(matches[0].id)
+            elif len(matches) > 1:
+                return safe_json({
+                    "error": f"Multiple players matched — pick one.",
+                    "matches": [{"id": str(p.id), "name": p.name} for p in matches]
+                })
+            else:
+                return safe_json({"error": f"No player found matching '{player_id}'."})
+
+        # Player-specific attendance
+        q = (
+            select(Attendance, TrainingSession.session_date, TrainingSession.session_type)
+            .join(TrainingSession, Attendance.session_id == TrainingSession.id)
+            .where(Attendance.player_id == player_id)
+            .where(TrainingSession.session_date >= cutoff)
+            .order_by(TrainingSession.session_date.desc())
+        )
+        result = await db.execute(q)
+        rows = result.all()
+
+        if not rows:
+            return safe_json({"message": "No attendance records found for this player"})
+
+        sessions = [
+            {
+                "date": str(row.session_date),
+                "type": row.session_type.value if hasattr(row.session_type, 'value') else str(row.session_type),
+                "status": row.Attendance.status.value if hasattr(row.Attendance.status, 'value') else str(row.Attendance.status),
+            }
+            for row in rows
+        ]
+        total = len(sessions)
+        present_count = sum(1 for s in sessions if s["status"] in ("present", "late"))
+        rate = round(present_count / max(1, total) * 100, 1)
+
+        return safe_json({
+            "player_id": player_id,
+            "attendance_rate": rate,
+            "sessions_total": total,
+            "sessions_present": present_count,
+            "sessions": sessions,
+        })
+
+    else:
+        # Team-wide attendance rates
+        q = (
+            select(
+                Player.id,
+                Player.name,
+                func.count(Attendance.id).label("total"),
+                func.count(Attendance.id).filter(
+                    Attendance.status.in_([AttendanceStatus.PRESENT, AttendanceStatus.LATE])
+                ).label("present"),
+            )
+            .join(Attendance, Attendance.player_id == Player.id)
+            .join(TrainingSession, Attendance.session_id == TrainingSession.id)
+            .where(TrainingSession.session_date >= cutoff)
+            .group_by(Player.id, Player.name)
+            .order_by(Player.name)
+        )
+        result = await db.execute(q)
+        rows = result.all()
+
+        if not rows:
+            return safe_json({"message": "No attendance data found"})
+
+        players = []
+        low_attendance = []
+        for row in rows:
+            rate = round(int(row.present) / max(1, int(row.total)) * 100, 1)
+            entry = {
+                "player_id": str(row.id),
+                "name": row.name,
+                "sessions": int(row.total),
+                "present": int(row.present),
+                "rate": float(rate),
+            }
+            players.append(entry)
+            if rate < 70:
+                low_attendance.append(entry)
+
+        team_avg = round(sum(p["rate"] for p in players) / max(1, len(players)), 1)
+
+        return safe_json({
+            "team_avg_attendance": team_avg,
+            "player_count": len(players),
+            "low_attendance_players": low_attendance,
+            "all_players": players,
+            "period": f"Last {weeks} weeks",
+        })
+
+
+# =============================================================================
+# INSIGHT ALERT GENERATION
+# =============================================================================
+
+async def generate_insight_alerts(
+    db: AsyncSession,
+    source: str,
+    session_id=None,
+    match_id=None,
+) -> list[dict]:
+    """
+    Generate cross-cutting insight alerts after a data upload.
+
+    Gathers context from training GPS, match results, squad readiness,
+    and previous insights, then asks Sonnet to detect noteworthy patterns.
+    Returns 0-3 insight dicts and persists them as InsightAlert rows.
+    """
+    from app.models.insight_alert import InsightAlert, AlertCategory, AlertSource
+    from app.models.training_performance import TrainingGPSData
+    from app.models.attendance import TrainingSession
+    from datetime import timedelta
+
+    # --- Gather context ---
+    now = datetime.utcnow()
+    four_weeks_ago = now - timedelta(weeks=4)
+
+    # 1. Last 4 weeks training GPS (team averages per session)
+    training_context = ""
+    try:
+        gps_query = (
+            select(
+                TrainingSession.id,
+                TrainingSession.session_date,
+                func.avg(TrainingGPSData.total_distance).label("avg_distance"),
+                func.avg(TrainingGPSData.sprint_count).label("avg_sprints"),
+                func.avg(TrainingGPSData.max_speed).label("avg_max_speed"),
+                func.avg(TrainingGPSData.high_speed_running).label("avg_hsr"),
+                func.count(TrainingGPSData.id).label("player_count"),
+            )
+            .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
+            .where(TrainingSession.session_date >= four_weeks_ago)
+            .group_by(TrainingSession.id, TrainingSession.session_date)
+            .order_by(TrainingSession.session_date.desc())
+            .limit(12)
+        )
+        gps_result = await db.execute(gps_query)
+        gps_rows = gps_result.all()
+        if gps_rows:
+            lines = []
+            for row in gps_rows:
+                lines.append(
+                    f"  {row.session_date}: {row.player_count} players, "
+                    f"avg dist={round(row.avg_distance or 0)}m, "
+                    f"avg sprints={round(row.avg_sprints or 0)}, "
+                    f"avg HSR={round(row.avg_hsr or 0)}m, "
+                    f"avg max speed={round(row.avg_max_speed or 0, 1)} km/h"
+                )
+            training_context = "Recent training sessions (last 4 weeks):\n" + "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Insight context: training GPS fetch failed: {e}")
+
+    # 2. Last 5 match results
+    match_context = ""
+    try:
+        matches_query = (
+            select(Match)
+            .where(Match.status == "completed")
+            .order_by(Match.match_date.desc())
+            .limit(5)
+        )
+        matches_result = await db.execute(matches_query)
+        recent_matches = matches_result.scalars().all()
+        if recent_matches:
+            lines = []
+            for m in recent_matches:
+                lines.append(
+                    f"  {m.match_date} vs {m.opponent}: "
+                    f"Dungloe {m.dungloe_goals}-{m.dungloe_points} "
+                    f"Opp {m.opponent_goals}-{m.opponent_points}"
+                )
+            match_context = "Recent match results:\n" + "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Insight context: match fetch failed: {e}")
+
+    # 3. Previous undismissed insights (avoid repetition)
+    previous_insights_text = ""
+    try:
+        prev_query = (
+            select(InsightAlert)
+            .where(InsightAlert.is_dismissed == False)
+            .order_by(InsightAlert.created_at.desc())
+            .limit(10)
+        )
+        prev_result = await db.execute(prev_query)
+        prev_alerts = prev_result.scalars().all()
+        if prev_alerts:
+            lines = [f"  - [{a.category.value}] {a.title}: {a.message}" for a in prev_alerts]
+            previous_insights_text = "Previous undismissed insights (do NOT repeat these):\n" + "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Insight context: previous insights fetch failed: {e}")
+
+    # 4. Just-uploaded data specifics
+    upload_context = ""
+    if source == "training_gps" and session_id:
+        try:
+            sess_q = select(TrainingSession).where(TrainingSession.id == session_id)
+            sess_r = await db.execute(sess_q)
+            sess = sess_r.scalar_one_or_none()
+            gps_q = select(TrainingGPSData).where(TrainingGPSData.session_id == session_id)
+            gps_r = await db.execute(gps_q)
+            gps_data = gps_r.scalars().all()
+            if sess and gps_data:
+                lines = [f"Just uploaded: Training session {sess.session_date}, {len(gps_data)} players"]
+                for g in gps_data[:10]:
+                    lines.append(
+                        f"  {g.player_name}: dist={g.total_distance}m, sprints={g.sprint_count}, "
+                        f"HSR={g.high_speed_running}m, max_speed={g.max_speed} km/h"
+                    )
+                upload_context = "\n".join(lines)
+        except Exception as e:
+            logger.warning(f"Insight context: upload specifics failed: {e}")
+    elif source == "match_gps" and match_id:
+        try:
+            from app.models.match_gps import MatchGPSData
+            match_q = select(Match).where(Match.id == match_id)
+            match_r = await db.execute(match_q)
+            match_obj = match_r.scalar_one_or_none()
+            mgps_q = select(MatchGPSData).where(MatchGPSData.match_id == match_id)
+            mgps_r = await db.execute(mgps_q)
+            mgps_data = mgps_r.scalars().all()
+            if match_obj and mgps_data:
+                lines = [f"Just uploaded: Match GPS for {match_obj.opponent} ({match_obj.match_date}), {len(mgps_data)} players"]
+                for g in mgps_data[:10]:
+                    lines.append(
+                        f"  {g.player_name}: dist={g.total_distance}m, sprints={g.sprint_count}, "
+                        f"HSR={g.high_speed_running}m, max_speed={g.max_speed} km/h"
+                    )
+                upload_context = "\n".join(lines)
+        except Exception as e:
+            logger.warning(f"Insight context: match GPS specifics failed: {e}")
+
+    # --- Build prompt and call Sonnet ---
+    system_prompt = f"""You are an elite GAA performance analyst for Dungloe GAA club.
+Your job is to detect CROSS-CUTTING patterns that connect training data to match performance,
+identify multi-week trends, and spot player trajectory changes.
+
+{GAA_ESSENTIALS}
+
+## Static Charts Already Visible on Dashboards (do NOT narrate these)
+{STATIC_CHARTS_TEXT}
+
+## Rules
+1. Focus on CROSS-CUTTING patterns: training→match links, multi-week trends, player trajectory changes
+2. Reference SPECIFIC numbers and player names — no vague observations
+3. Do NOT narrate what the static charts already show (listed above)
+4. Do NOT repeat previous insights (listed below)
+5. Return 0 insights if nothing is genuinely noteworthy — quality over quantity
+6. Each insight must be actionable for a GAA manager
+7. Return a JSON array of 0-3 insight objects
+
+## JSON format for each insight:
+{{
+    "category": "warning" | "positive" | "tactical" | "workload",
+    "title": "Short heading (max 100 chars)",
+    "message": "1-3 sentences with specific numbers/names",
+    "severity": "info" | "watch" | "action",
+    "dashboard": "season" | "training" | "both"
+}}
+
+Return ONLY a valid JSON array. If nothing noteworthy, return [].
+"""
+
+    user_content = f"""Analyze this data for cross-cutting patterns:
+
+{training_context}
+
+{match_context}
+
+{upload_context}
+
+{previous_insights_text}
+
+Source of this upload: {source}
+Return your insights as a JSON array."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1500,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_content}],
+        )
+
+        response_text = response.content[0].text
+
+        # Parse JSON array from response
+        import re
+        json_match = re.search(r'\[[\s\S]*\]', response_text)
+        if json_match:
+            insights = json.loads(json_match.group())
+        else:
+            logger.info("Insight generation returned no JSON array — treating as 0 insights")
+            return []
+
+        if not isinstance(insights, list):
+            return []
+
+        # Persist to DB
+        source_enum = AlertSource.TRAINING_GPS if source == "training_gps" else AlertSource.MATCH_GPS
+        created = []
+        for ins in insights[:3]:
+            try:
+                cat_val = ins.get("category", "tactical")
+                category_enum = AlertCategory(cat_val)
+            except ValueError:
+                category_enum = AlertCategory.TACTICAL
+
+            alert = InsightAlert(
+                category=category_enum,
+                source=source_enum,
+                title=ins.get("title", "Insight")[:200],
+                message=ins.get("message", ""),
+                severity=ins.get("severity", "info"),
+                session_id=session_id,
+                match_id=match_id,
+                dashboard=ins.get("dashboard", "both"),
+            )
+            db.add(alert)
+            created.append({
+                "id": str(alert.id),
+                "category": alert.category.value,
+                "title": alert.title,
+                "message": alert.message,
+                "severity": alert.severity,
+                "dashboard": alert.dashboard,
+            })
+
+        await db.commit()
+        logger.info(f"Generated {len(created)} insight alerts from {source}")
+        return created
+
+    except Exception as e:
+        logger.error(f"Insight alert generation failed: {e}")
+        return []

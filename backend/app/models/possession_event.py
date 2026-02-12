@@ -77,23 +77,23 @@ class PossessionEvent(Base):
         - Own midfield (x: 30-50)
         - Opposition midfield (x: 50-70)
         - Opposition attack (x: 70-93)
-        - Opposition goal area (x: 93-100)
-        
+        - Opposition goal area (x: 95-100)
+
         Zones (vertical):
         - Left (y: 0-33)
         - Center (y: 33-67)
         - Right (y: 67-100)
         """
-        # Determine horizontal zone
-        if self.pitch_x <= 7:
+        # Determine horizontal zone (pitch-area coords: 0=goal, 100=opposite goal)
+        if self.pitch_x <= 5:
             h_zone = "Own Goal Area"
-        elif self.pitch_x <= 30:
+        elif self.pitch_x <= 25:
             h_zone = "Own Defense"
         elif self.pitch_x <= 50:
             h_zone = "Own Midfield"
-        elif self.pitch_x <= 70:
+        elif self.pitch_x <= 75:
             h_zone = "Opposition Midfield"
-        elif self.pitch_x <= 93:
+        elif self.pitch_x <= 95:
             h_zone = "Opposition Attack"
         else:
             h_zone = "Opposition Goal Area"
@@ -117,6 +117,6 @@ class PossessionEvent(Base):
         - For team attacking toward x=100: x < 60 (40m+ from opponent goal)
         - For team attacking toward x=0: x > 40 (40m+ from own goal)
         """
-        # Midfield is always 2-point zone (x: 40-60)
-        return 40 <= self.pitch_x <= 60
+        # 2-point zone: outside both 40m arcs (pitch-area ~28% to ~72%)
+        return 28 <= self.pitch_x <= 72
 

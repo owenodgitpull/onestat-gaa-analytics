@@ -95,7 +95,7 @@ export default function MyChartsSection({
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center">
             <LayoutGrid size={20} className="text-white" />
           </div>
-          <span className="text-white">My Charts</span>
+          <span className="text-white">Core Stats</span>
         </h2>
         {hiddenCharts.length > 0 && (
           <button

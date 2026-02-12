@@ -122,10 +122,22 @@ export const matchesAPI = {
     match_date: string;
     venue: 'home' | 'away' | 'neutral';
     notes?: string | null;
+    weather_condition?: string | null;
+    temperature_celsius?: number | null;
   }): Promise<Match> => {
     return fetchAPI<Match>('/matches/', {
       method: 'POST',
       body: JSON.stringify(match),
+    });
+  },
+
+  /**
+   * Update a match (partial update)
+   */
+  update: async (id: string, data: Partial<Match>): Promise<Match> => {
+    return fetchAPI<Match>(`/matches/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
     });
   },
 
@@ -159,6 +171,18 @@ export const matchesAPI = {
   getStats: async (matchId: string): Promise<MatchStats> => {
     return fetchAPI<MatchStats>(`/matches/${matchId}/stats`);
   },
+
+  /**
+   * Get next scheduled match (earliest by date)
+   */
+  getNextScheduled: async (): Promise<Match | null> => {
+    try {
+      const response = await fetchAPI<{ matches: Match[] }>('/matches/?status=scheduled&limit=1');
+      return response.matches.length > 0 ? response.matches[0] : null;
+    } catch {
+      return null;
+    }
+  },
 };
 
 // ============================================================================
@@ -181,7 +205,8 @@ export const matchEventsAPI = {
     notes?: string;
   }): Promise<MatchEvent> => {
     // Convert is_home_team to team field and x_coord/y_coord to pitch_x/pitch_y
-    const { is_home_team, x_coord, y_coord, ...rest } = event;
+    // Strip `half` — backend expects absolute minute only
+    const { is_home_team, x_coord, y_coord, half, ...rest } = event;
 
     return fetchAPI<MatchEvent>('/match-events/', {
       method: 'POST',
@@ -823,7 +848,96 @@ export interface OutlierSuggestionsResponse {
   generated_at?: string;
 }
 
+// Insight Alert types
+export interface InsightAlert {
+  id: string;
+  category: 'warning' | 'positive' | 'tactical' | 'workload';
+  source: 'training_gps' | 'match_gps' | 'manual';
+  title: string;
+  message: string;
+  severity: 'info' | 'watch' | 'action';
+  session_id?: string | null;
+  match_id?: string | null;
+  dashboard: 'season' | 'training' | 'both';
+  is_dismissed: boolean;
+  created_at: string;
+}
+
+export interface StreamChatCallbacks {
+  onThinking: (tool: string) => void;
+  onText: (chunk: string) => void;
+  onDone: () => void;
+  onError: (message: string) => void;
+}
+
 const aiAPI = {
+  /**
+   * Streaming chat via SSE — progressive text delivery with tool-use thinking indicators
+   */
+  streamChat: async (
+    conversationHistory: ChatMessage[],
+    message: string,
+    callbacks: StreamChatCallbacks
+  ): Promise<void> => {
+    const url = `${API_BASE_URL}/ai/chat/stream`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_history: conversationHistory, message }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      callbacks.onError(errorData.detail || `API Error: ${response.status}`);
+      return;
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      callbacks.onError('No response stream available');
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE lines from buffer
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // keep incomplete line in buffer
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data: ')) continue;
+
+        try {
+          const payload = JSON.parse(trimmed.slice(6));
+          switch (payload.type) {
+            case 'thinking':
+              callbacks.onThinking(payload.tool);
+              break;
+            case 'text':
+              callbacks.onText(payload.content);
+              break;
+            case 'done':
+              callbacks.onDone();
+              break;
+            case 'error':
+              callbacks.onError(payload.message);
+              break;
+          }
+        } catch {
+          // skip malformed SSE lines
+        }
+      }
+    }
+  },
+
   analyzeMatch: async (matchId: string, question?: string): Promise<AnalysisResponse> => {
     return fetchAPI<AnalysisResponse>('/ai/analyze-match', {
       method: 'POST',
@@ -926,6 +1040,20 @@ const aiAPI = {
 
   getOutlierSuggestions: async (): Promise<OutlierSuggestionsResponse> => {
     return fetchAPI<OutlierSuggestionsResponse>('/ai/outlier-suggestions');
+  },
+
+  getInsightAlerts: async (dashboard?: string, includeDismissed = false, limit = 20): Promise<InsightAlert[]> => {
+    const params = new URLSearchParams();
+    if (dashboard) params.set('dashboard', dashboard);
+    if (includeDismissed) params.set('include_dismissed', 'true');
+    params.set('limit', String(limit));
+    return fetchAPI<InsightAlert[]>(`/ai/insight-alerts?${params.toString()}`);
+  },
+
+  dismissInsightAlert: async (alertId: string): Promise<{ success: boolean; id: string }> => {
+    return fetchAPI<{ success: boolean; id: string }>(`/ai/insight-alerts/${alertId}/dismiss`, {
+      method: 'PATCH',
+    });
   },
 };
 
