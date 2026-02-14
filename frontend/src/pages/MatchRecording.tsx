@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
@@ -9,10 +9,15 @@ import ConfirmationModal from '@/components/ConfirmationModal'
 import ManualEventEntryModal from '@/components/ManualEventEntryModal'
 import StartingLineupModal from '@/components/StartingLineupModal'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
+import EventFilterToggles, { getEventTypesForFilters } from '@/components/EventFilterToggles'
+import PossessionTerritoryChart from '@/components/charts/PossessionTerritoryChart'
+import ScoringTimeline from '@/components/charts/ScoringTimeline'
+import ShotOutcomeChart from '@/components/charts/ShotOutcomeChart'
+import PathsTakenChart from '@/components/charts/PathsTakenChart'
 import FullscreenPitchMode from '@/components/FullscreenPitchMode'
 import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '@/components/WeatherPickerPopover'
 import { BallPosition, PossessionTeam, EventType, Player, MatchEvent } from '@/types'
-import { useMatch, useMatchStats, useStartMatch, useCompleteMatch } from '@/hooks/useMatches'
+import { useMatch, useMatchStats, useStartMatch, useCompleteMatch, useUpdateMatchPhase } from '@/hooks/useMatches'
 import { useRecordEvent, useMatchEvents, useDeleteEvent } from '@/hooks/useMatchEvents'
 import { useRecordPossession } from '@/hooks/usePossession'
 import { usePlayers } from '@/hooks/usePlayers'
@@ -21,10 +26,11 @@ import {
   Clock,
   Activity,
   Play,
-  Zap,
   AlertCircle,
   Plus,
-  Maximize
+  Maximize,
+  MapPin,
+  Target
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -57,6 +63,7 @@ export default function MatchRecording() {
   const recordEvent = useRecordEvent()
   const recordPossession = useRecordPossession()
   const deleteEvent = useDeleteEvent()
+  const updateMatchPhase = useUpdateMatchPhase()
 
   // Local state
   const [ballPosition, setBallPosition] = useState<BallPosition>({
@@ -73,6 +80,9 @@ export default function MatchRecording() {
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
   const [activeKickoutTab, setActiveKickoutTab] = useState<string | null>('scoring')
   const [awaitingKickout, setAwaitingKickout] = useState(false) // Lock ball until kickout resolved
+  const [insightRefresh, setInsightRefresh] = useState(0)
+  const [eventMapTeamFilter, setEventMapTeamFilter] = useState<'dungloe' | 'opponent'>('dungloe')
+  const [eventMapFilters, setEventMapFilters] = useState<Set<string>>(new Set(['all']))
   const [pendingKickoutEvent, setPendingKickoutEvent] = useState<{
     eventType: EventType
     isHomeTeam: boolean
@@ -97,19 +107,52 @@ export default function MatchRecording() {
   // Query client for manual refetching
   const queryClient = useQueryClient()
 
-  // Sync match status with backend
+  // Sync match status with backend — resume timer from DB timestamps
   useEffect(() => {
-    if (match) {
-      console.log('Match data loaded:', match) // Debug log
-      if (match.status === 'in_progress' && matchPhase === 'not_started') {
-        setMatchPhase('first_half')
-      } else if (match.status === 'completed' && matchPhase !== 'finished') {
-        setMatchPhase('finished')
+    if (!match) return
+
+    if (match.status === 'in_progress' && matchPhase === 'not_started') {
+      const phase = (match.current_phase as MatchPhase) || 'first_half'
+      setMatchPhase(phase)
+
+      // Restore attack direction
+      if (match.attacking_right_first_half != null) {
+        // In 2nd half, flip direction
+        setDungloeAttackingRight(
+          phase === 'second_half' ? !match.attacking_right_first_half : match.attacking_right_first_half
+        )
       }
-      // Sync weather from match data
-      if (match.weather_condition !== undefined) setWeatherCondition(match.weather_condition ?? null)
-      if (match.temperature_celsius !== undefined) setTemperatureCelsius(match.temperature_celsius ?? null)
+
+      // Derive timer from timestamps
+      const parseTS = (ts: string) => new Date(ts + (ts.endsWith('Z') ? '' : 'Z')).getTime()
+
+      if (phase === 'first_half' && match.started_at) {
+        const elapsed = (Date.now() - parseTS(match.started_at)) * DEV_SPEED_MULTIPLIER
+        const mins = Math.floor(elapsed / 60000)
+        const secs = Math.floor((elapsed % 60000) / 1000)
+        setMinute(Math.min(mins, 29)) // cap at 29 so timer auto-pauses at 30
+        setSeconds(secs)
+        setCurrentHalf(1)
+      } else if (phase === 'half_time') {
+        setMinute(30)
+        setSeconds(0)
+        setCurrentHalf(1)
+      } else if (phase === 'second_half' && match.second_half_started_at) {
+        const elapsed = (Date.now() - parseTS(match.second_half_started_at)) * DEV_SPEED_MULTIPLIER
+        const mins = 30 + Math.floor(elapsed / 60000)
+        const secs = Math.floor((elapsed % 60000) / 1000)
+        setMinute(mins)
+        setSeconds(secs)
+        setCurrentHalf(2)
+        if (mins >= 60) setFullTimeReached(true)
+      }
+    } else if (match.status === 'completed' && matchPhase !== 'finished') {
+      setMatchPhase('finished')
     }
+
+    // Sync weather from match data
+    if (match.weather_condition !== undefined) setWeatherCondition(match.weather_condition ?? null)
+    if (match.temperature_celsius !== undefined) setTemperatureCelsius(match.temperature_celsius ?? null)
   }, [match])
 
   // Save weather change to backend
@@ -271,6 +314,26 @@ export default function MatchRecording() {
       opponentTotal: totalOpponentKickouts
     }
   }
+
+  // Event map filtered events (same logic as MatchResult)
+  const filteredMapEvents = useMemo(() => {
+    if (!matchEventsData?.events) return []
+    const eventTypes = getEventTypesForFilters(eventMapFilters)
+    let events = matchEventsData.events.map((e: any) => ({
+      id: e.id,
+      pitch_x: e.pitch_x,
+      pitch_y: e.pitch_y,
+      event_type: e.event_type,
+      team: e.team || (e.is_home_team ? 'dungloe' : 'opponent'),
+      player_name: e.player_name,
+      minute: e.minute
+    }))
+    events = events.filter((e: any) => e.team === eventMapTeamFilter)
+    if (eventTypes) {
+      events = events.filter((e: any) => eventTypes.includes(e.event_type))
+    }
+    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null)
+  }, [matchEventsData, eventMapFilters, eventMapTeamFilter])
 
   // Helper function to check if position is in 2-point zone (outside 40m arc)
   // Coordinates are pitch-area %: 0-100 maps to playable pitch only
@@ -1473,6 +1536,8 @@ export default function MatchRecording() {
       try {
         if (matchId) {
           await startMatch.mutateAsync(matchId)
+          // Persist phase + attack direction
+          await api.matches.updatePhase(matchId, 'first_half', attackingRight)
         }
         setMatchPhase('first_half')
         setCurrentHalf(1)
@@ -1486,6 +1551,10 @@ export default function MatchRecording() {
       // Auto-flip attack direction for second half
       setDungloeAttackingRight(!dungloeAttackingRight)
 
+      // Persist second half start
+      if (matchId) {
+        api.matches.updatePhase(matchId, 'second_half').catch(console.error)
+      }
       setMatchPhase('second_half')
       setCurrentHalf(2)
       setMinute(30)
@@ -1500,9 +1569,13 @@ export default function MatchRecording() {
     setMatchPhase('half_time')
     console.log('First half ended at', minute, ':', seconds)
 
-    // Trigger half-time AI insight
+    // Persist half_time phase
+    api.matches.updatePhase(matchId, 'half_time').catch(console.error)
+
+    // Trigger half-time AI insight and refresh display
     try {
       await api.liveInsights.triggerHalfTime(matchId)
+      setInsightRefresh(prev => prev + 1)
       console.log('Half-time insight triggered')
     } catch (error) {
       console.error('Failed to trigger half-time insight:', error)
@@ -1552,7 +1625,7 @@ export default function MatchRecording() {
       return { text: 'Match not started', subtext: 'Select lineup and start first half', bg: 'from-slate-600/20 to-slate-700/20 border-white/10', accent: 'text-white/50' }
     }
     if (matchPhase === 'half_time') {
-      return { text: 'Half Time', subtext: 'Start second half to continue', bg: 'from-amber-600/20 to-orange-600/20 border-amber-500/40', accent: 'text-amber-400' }
+      return { text: 'Half Time', subtext: 'Tap "Start Second Half" to continue', bg: 'from-indigo-600/20 to-violet-600/20 border-indigo-500/40', accent: 'text-indigo-400' }
     }
     if (matchPhase === 'finished') {
       return { text: 'Match Finished', subtext: 'Recording complete', bg: 'from-slate-600/20 to-slate-700/20 border-white/10', accent: 'text-white/50' }
@@ -1706,15 +1779,28 @@ export default function MatchRecording() {
                     </button>
                   )}
                   {getPhaseButtonText() && (
-                    <button
-                      className="btn-primary flex items-center space-x-1 !py-1 !px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={startHalf}
-                      disabled={matchPhase === 'not_started' && Object.keys(startingLineup).length === 0}
-                      title={matchPhase === 'not_started' && Object.keys(startingLineup).length === 0 ? 'Please select a lineup first' : ''}
-                    >
-                      <Play size={14} />
-                      <span>{getPhaseButtonText()}</span>
-                    </button>
+                    matchPhase === 'half_time' ? (
+                      <div className="glass-card-live" style={{ borderRadius: '0.75rem' }}>
+                        <button
+                          className="flex items-center space-x-1 py-1 px-3 text-sm font-semibold text-white"
+                          style={{ borderRadius: 'calc(0.75rem - 2px)', background: '#0e1225' }}
+                          onClick={startHalf}
+                        >
+                          <Play size={14} />
+                          <span>{getPhaseButtonText()}</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn-primary flex items-center space-x-1 !py-1 !px-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={startHalf}
+                        disabled={matchPhase === 'not_started' && Object.keys(startingLineup).length === 0}
+                        title={matchPhase === 'not_started' && Object.keys(startingLineup).length === 0 ? 'Please select a lineup first' : ''}
+                      >
+                        <Play size={14} />
+                        <span>{getPhaseButtonText()}</span>
+                      </button>
+                    )
                   )}
                   {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
                     <>
@@ -1770,17 +1856,30 @@ export default function MatchRecording() {
               )}
 
               {/* Dynamic Status Label */}
-              <div className={`rounded-xl px-4 py-3 mb-4 bg-gradient-to-r ${statusLabel.bg} border backdrop-blur-sm transition-all duration-300`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className={`text-sm font-bold ${statusLabel.accent}`}>{statusLabel.text}</span>
-                    {statusLabel.subtext && <span className="text-xs text-white/50 ml-2">{statusLabel.subtext}</span>}
+              {matchPhase === 'half_time' ? (
+                <div className="glass-card-live mb-4" style={{ borderRadius: '0.75rem' }}>
+                  <div className="glass-card-live-inner px-4 py-3" style={{ borderRadius: 'calc(0.75rem - 2px)' }}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-indigo-400">{statusLabel.text}</span>
+                        {statusLabel.subtext && <span className="text-xs text-white/50">{statusLabel.subtext}</span>}
+                      </div>
+                    </div>
                   </div>
-                  {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !pending45 && !selectingFoulPlayer && (
-                    <div className={`w-2 h-2 rounded-full ${ballPosition.team === PossessionTeam.DUNGLOE ? 'bg-indigo-400' : 'bg-red-400'} animate-pulse`} />
-                  )}
                 </div>
-              </div>
+              ) : (
+                <div className={`rounded-xl px-4 py-3 mb-4 bg-gradient-to-r ${statusLabel.bg} border backdrop-blur-sm transition-all duration-300`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className={`text-sm font-bold ${statusLabel.accent}`}>{statusLabel.text}</span>
+                      {statusLabel.subtext && <span className="text-xs text-white/50 ml-2">{statusLabel.subtext}</span>}
+                    </div>
+                    {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !pending45 && !selectingFoulPlayer && (
+                      <div className={`w-2 h-2 rounded-full ${ballPosition.team === PossessionTeam.DUNGLOE ? 'bg-indigo-400' : 'bg-red-400'} animate-pulse`} />
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Pitch */}
               <div className="glass-card p-6 relative mb-4">
@@ -1818,30 +1917,8 @@ export default function MatchRecording() {
                 </div>
               </div>
 
-              {/* In-Game Analysis Section - Extra spacing for buttons */}
-              <div className="glass-card p-6" style={{ marginTop: '5rem' }}>
-                <h3 className="text-lg font-semibold mb-4 text-white flex items-center space-x-2">
-                  <Activity size={20} className="text-white" />
-                  <span>Live Analysis & Insights</span>
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Placeholder for charts */}
-                  <div className="bg-white/5 rounded-lg p-4 text-center text-white/60">
-                    <div className="text-sm mb-2">Possession Flow</div>
-                    <div className="h-24 flex items-center justify-center">
-                      <span className="text-xs">Chart: Line graph coming soon</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/5 rounded-lg p-4 text-center text-white/60">
-                    <div className="text-sm mb-2">Shot Accuracy Trend</div>
-                    <div className="h-24 flex items-center justify-center">
-                      <span className="text-xs">Chart: Area chart coming soon</span>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
+              {/* Spacer for floating action buttons */}
+              <div style={{ marginTop: '5rem' }} />
             </div>
 
             {/* Live Stats Sidebar */}
@@ -1851,7 +1928,8 @@ export default function MatchRecording() {
                 matchId={matchId}
                 minute={minute}
                 half={currentHalf}
-                isMatchActive={matchPhase === 'first_half' || matchPhase === 'second_half'}
+                isMatchActive={matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time'}
+                refreshTrigger={insightRefresh}
               />
 
               {/* Match Statistics Table */}
@@ -2044,6 +2122,80 @@ export default function MatchRecording() {
               </div>
             </div>
           </div>
+
+          {/* Live Analytics Section — below main grid */}
+          {matchId && matchEventsData?.events && (
+            <div className="mt-6 space-y-6">
+              {/* Event Map with Filters */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="glass-card p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                        <Target size={20} />
+                        <span>Event Map</span>
+                      </h2>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setEventMapTeamFilter('dungloe')}
+                          className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
+                            eventMapTeamFilter === 'dungloe'
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-white/10 text-white/60 hover:bg-white/20'
+                          }`}
+                        >
+                          Dungloe
+                        </button>
+                        <button
+                          onClick={() => setEventMapTeamFilter('opponent')}
+                          className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
+                            eventMapTeamFilter === 'opponent'
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-white/10 text-white/60 hover:bg-white/20'
+                          }`}
+                        >
+                          {matchDisplay.opponent}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mb-2 text-sm text-white/40 text-center">
+                      {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown for {eventMapTeamFilter === 'dungloe' ? 'Dungloe' : matchDisplay.opponent}
+                    </div>
+                    <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
+                  </div>
+                  <EventFilterToggles activeFilters={eventMapFilters} onToggle={setEventMapFilters} />
+                </div>
+
+                {/* Paths Taken next to event map */}
+                <div>
+                  <PathsTakenChart
+                    matchId={matchId}
+                    events={matchEventsData.events}
+                    pollInterval={15000}
+                  />
+                </div>
+              </div>
+
+              {/* Charts Row */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <PossessionTerritoryChart
+                  stats={matchStats}
+                  events={matchEventsData.events}
+                  matchId={matchId}
+                  opponent={matchDisplay.opponent}
+                  pollInterval={15000}
+                />
+                <ScoringTimeline
+                  events={matchEventsData.events}
+                  opponent={matchDisplay.opponent}
+                />
+                <ShotOutcomeChart
+                  events={matchEventsData.events}
+                  opponent={matchDisplay.opponent}
+                />
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -2070,6 +2222,8 @@ export default function MatchRecording() {
         homeTeam="Dungloe"
         awayTeam={matchDisplay.opponent}
         onSelect={handlePossessionSelected}
+        skipDirection={matchPhase === 'half_time'}
+        defaultAttackingRight={!dungloeAttackingRight}
       />
 
       {/* Delete Confirmation Modal */}

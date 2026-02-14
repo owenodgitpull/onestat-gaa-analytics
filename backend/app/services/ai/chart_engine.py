@@ -219,18 +219,24 @@ async def generate_agentic_chart(db: AsyncSession, chart_request: str) -> dict:
 Your task is to generate PYTHON CODE that transforms match data into Recharts-compatible JSON.
 
 ## Available Data
-The database contains:
-- matches: id, opponent, match_date, venue, status, weather, pitch_condition
-- match_events: match_id, player_id, event_type, team, minute, pitch_x, pitch_y
-- players: id, name, jersey_number, position
+The `data` dict contains pre-fetched data with these fields:
+- data["matches"]: id, opponent, match_date, venue, status
+- data["events"]: match_id, event_type, team, minute, player (name string or None), pitch_x, pitch_y
+- data["players"]: id, name, jersey_number, position
 
-Event types: goal, point, two_point, wide, short, saved, turnover_won, turnover_lost,
+CRITICAL: All event_type and team values are LOWERCASE strings. Use lowercase in all comparisons:
+  e["event_type"] == "goal"   (NOT "GOAL")
+  e["team"] == "dungloe"      (NOT "Dungloe")
+
+Event types (all lowercase): goal, point, two_point, wide, short, saved, turnover_won, turnover_lost,
 unforced_error, kickout_won, kickout_lost, breaking_ball_won, breaking_ball_lost,
 own_kickout_dungloe_won, own_kickout_opposition_won, own_kickout_dungloe_won_break,
 own_kickout_opposition_won_break, opp_kickout_dungloe_won, opp_kickout_opposition_won,
 opp_kickout_dungloe_won_break, opp_kickout_opposition_won_break,
 yellow_card, black_card, red_card, free_won, free_conceded, point_free,
 two_point_free, wide_free, forty_five, forty_five_missed, block, interception, substitution
+
+Team values (lowercase): "dungloe", "opponent"
 
 ## Current Data State
 {json.dumps(data_summary, indent=2)}
@@ -240,7 +246,7 @@ two_point_free, wide_free, forty_five, forty_five_missed, block, interception, s
 ## Recharts JSON Format
 The code must output a JSON object with this structure:
 {{
-    "chart_type": "line" | "bar" | "pie" | "scatter" | "area" | "radar",
+    "chart_type": "line" | "bar" | "pie" | "scatter" | "area" | "radar" | "pitch",
     "title": "Chart Title",
     "subtitle": "Optional subtitle",
     "data": [...],  // Array of data points
@@ -253,6 +259,32 @@ The code must output a JSON object with this structure:
     }},
     "insights": "AI-generated insight about this chart"
 }}
+
+## Pitch Chart Type (for spatial/path visualizations)
+When the request involves paths, movement, shot locations, spatial patterns, or anything on the pitch,
+use chart_type "pitch". The data array should contain path objects:
+{{
+    "chart_type": "pitch",
+    "title": "Chart Title",
+    "data": [
+        {{
+            "label": "vs Opponent (12')",
+            "outcome": "goal",   // or "point", "wide", etc — determines color
+            "minute": 12,
+            "player": "Player Name",
+            "points": [{{"x": 50, "y": 30}}, {{"x": 65, "y": 45}}, {{"x": 95, "y": 48}}]
+        }}
+    ],
+    "config": {{}},
+    "insights": "AI-generated insight"
+}}
+Coordinates: x 0-100 (0=own goal, 100=opponent goal), y 0-100 (0=left sideline, 100=right sideline).
+The frontend renders these as colored polylines on a GAA pitch SVG.
+
+To build paths: group Dungloe events by match, sort by minute then creation order.
+For goal paths, find all events in the same minute or the 1-2 minutes leading up to a goal event,
+all belonging to team "dungloe", and collect their pitch_x/pitch_y as the path points.
+The final point should be the goal event's coordinates.
 
 ## Code Rules
 1. Use the provided `data` dictionary which contains pre-fetched data
@@ -318,39 +350,53 @@ def _execute_chart_code(code: str, data: dict) -> dict:
     Safely execute LLM-generated chart code.
     Uses restricted globals to prevent malicious code execution.
     """
+    import json as _json
+    import math as _math
+    from collections import defaultdict as _defaultdict, Counter as _Counter
+    from datetime import datetime as _datetime
+
+    # Restricted __import__ — only allow safe modules
+    _ALLOWED_MODULES = {'json', 'math', 'collections', 'datetime', 'statistics', 'itertools', 'functools', 're'}
+
+    def _safe_import(name, *args, **kwargs):
+        if name not in _ALLOWED_MODULES:
+            raise ImportError(f"Import of '{name}' is not allowed")
+        return __builtins__['__import__'](name, *args, **kwargs) if isinstance(__builtins__, dict) else __import__(name, *args, **kwargs)
+
     # Allowed builtins for chart generation
     safe_builtins = {
-        'len': len,
-        'sum': sum,
-        'max': max,
-        'min': min,
-        'abs': abs,
-        'round': round,
-        'range': range,
-        'enumerate': enumerate,
-        'zip': zip,
-        'sorted': sorted,
-        'list': list,
-        'dict': dict,
-        'set': set,
-        'str': str,
-        'int': int,
-        'float': float,
-        'bool': bool,
-        'True': True,
-        'False': False,
-        'None': None,
+        '__import__': _safe_import,
+        'len': len, 'sum': sum, 'max': max, 'min': min, 'abs': abs,
+        'round': round, 'range': range, 'enumerate': enumerate, 'zip': zip,
+        'sorted': sorted, 'list': list, 'dict': dict, 'set': set, 'tuple': tuple,
+        'str': str, 'int': int, 'float': float, 'bool': bool,
+        'True': True, 'False': False, 'None': None,
+        'next': next, 'iter': iter, 'filter': filter, 'map': map,
+        'any': any, 'all': all, 'reversed': reversed,
+        'isinstance': isinstance, 'hasattr': hasattr, 'getattr': getattr, 'type': type,
+        'ValueError': ValueError, 'KeyError': KeyError, 'IndexError': IndexError,
+        'TypeError': TypeError, 'StopIteration': StopIteration, 'print': print,
     }
 
-    # Create execution namespace
+    # Create execution namespace with commonly-used modules pre-imported
     namespace = {
         '__builtins__': safe_builtins,
         'data': data,
-        'chart_output': None
+        'chart_output': None,
+        'json': _json,
+        'math': _math,
+        'defaultdict': _defaultdict,
+        'Counter': _Counter,
+        'datetime': _datetime,
     }
 
     # Execute the code
-    exec(code, namespace)
+    try:
+        exec(code, namespace)
+    except Exception as e:
+        logger.error(f"Chart sandbox exec error: {type(e).__name__}: {e}")
+        logger.error(f"Generated code:\n{code}")
+        raise
 
     if namespace.get('chart_output') is None:
         raise ValueError("Code did not set chart_output variable")
@@ -397,7 +443,7 @@ async def _get_raw_data_for_charts(db: AsyncSession) -> dict:
             {
                 "id": str(m.id),
                 "opponent": m.opponent,
-                "date": str(m.match_date),
+                "match_date": str(m.match_date),
                 "venue": m.venue,
                 "status": m.status,
             }
@@ -420,7 +466,7 @@ async def _get_raw_data_for_charts(db: AsyncSession) -> dict:
                 "id": str(p.id),
                 "name": p.name,
                 "position": p.position,
-                "jersey": p.jersey_number,
+                "jersey_number": p.jersey_number,
             }
             for p in players
         ]

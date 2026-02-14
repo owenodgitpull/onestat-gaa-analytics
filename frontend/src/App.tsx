@@ -9,6 +9,7 @@ import Players from './pages/Players'
 import PlayerView from './pages/PlayerView'
 import MatchPrep from './pages/MatchPrep'
 import Navigation from './components/Navigation'
+import AIAnalystPage from './pages/AIAnalystPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -43,6 +44,8 @@ function App() {
                 <Route path="/players/:playerId" element={<PlayerView />} />
                 <Route path="/training" element={<Attendance />} />
                 <Route path="/attendance" element={<Attendance />} />
+                <Route path="/analyst" element={<AIAnalystPage />} />
+                <Route path="/analyst/:sessionId" element={<AIAnalystPage />} />
               </Routes>
             </div>
           </main>

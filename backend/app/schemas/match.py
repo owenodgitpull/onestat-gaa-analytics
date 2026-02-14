@@ -98,6 +98,11 @@ class MatchResponse(MatchBase):
     ai_analysis: Optional[str] = Field(None, description="AI-generated post-match analysis")
     ai_analysis_generated_at: Optional[datetime] = Field(None, description="When AI analysis was generated")
 
+    # Live match phase tracking
+    current_phase: Optional[str] = Field(None, description="Current match phase: first_half, half_time, second_half")
+    second_half_started_at: Optional[datetime] = Field(None, description="When second half started")
+    attacking_right_first_half: Optional[bool] = Field(None, description="True if Dungloe attacks right in 1st half")
+
     # Computed fields
     dungloe_total_score: int = Field(..., description="Total Dungloe score (goals*3 + points)")
     opponent_total_score: int = Field(..., description="Total opponent score (goals*3 + points)")
@@ -142,6 +147,12 @@ class MatchCompleteRequest(BaseModel):
         if isinstance(v, datetime) and v.tzinfo is not None:
             return v.replace(tzinfo=None)
         return v
+
+
+class MatchPhaseUpdate(BaseModel):
+    """Schema for updating match phase (for resumable recording)."""
+    phase: str = Field(..., description="Match phase: first_half, half_time, second_half")
+    attacking_right_first_half: Optional[bool] = Field(None, description="True if Dungloe attacks right in 1st half")
 
 
 class MatchScoreUpdate(BaseModel):

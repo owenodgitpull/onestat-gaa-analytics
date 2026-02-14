@@ -173,11 +173,36 @@ export const matchesAPI = {
   },
 
   /**
+   * Update match phase (for resumable recording)
+   */
+  updatePhase: async (matchId: string, phase: string, attackingRightFirstHalf?: boolean): Promise<Match> => {
+    return fetchAPI<Match>(`/matches/${matchId}/phase`, {
+      method: 'POST',
+      body: JSON.stringify({
+        phase,
+        ...(attackingRightFirstHalf !== undefined && { attacking_right_first_half: attackingRightFirstHalf }),
+      }),
+    });
+  },
+
+  /**
    * Get next scheduled match (earliest by date)
    */
   getNextScheduled: async (): Promise<Match | null> => {
     try {
       const response = await fetchAPI<{ matches: Match[] }>('/matches/?status=scheduled&limit=1');
+      return response.matches.length > 0 ? response.matches[0] : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Get in-progress match (if any)
+   */
+  getInProgress: async (): Promise<Match | null> => {
+    try {
+      const response = await fetchAPI<{ matches: Match[] }>('/matches/?status=in_progress&limit=1');
       return response.matches.length > 0 ? response.matches[0] : null;
     } catch {
       return null;
@@ -808,11 +833,17 @@ export interface ChartConfig {
 
 export interface AIChartSpec {
   id: string;
-  type: 'line' | 'bar' | 'pie' | 'scatter' | 'area' | 'composed';
+  type: 'line' | 'bar' | 'pie' | 'scatter' | 'area' | 'composed' | 'pitch';
   title: string;
   insight: string;
   data: Record<string, unknown>[];
   config: ChartConfig;
+}
+
+export interface DataTable {
+  title: string
+  columns: { key: string; label: string }[]
+  data: Record<string, unknown>[]
 }
 
 export interface DashboardChartsResponse {
@@ -863,11 +894,37 @@ export interface InsightAlert {
   created_at: string;
 }
 
+// Chat Session types
+export interface ChatSessionSummary {
+  id: string;
+  title: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatSessionDetail {
+  id: string;
+  title: string;
+  messages: Array<{
+    role: string;
+    content: string;
+    visualizations?: Array<{ kind: 'chart' | 'table'; data: any }>;
+    created_at: string;
+  }>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface StreamChatCallbacks {
   onThinking: (tool: string) => void;
   onText: (chunk: string) => void;
   onDone: () => void;
   onError: (message: string) => void;
+  onChart?: (chart: AIChartSpec) => void;
+  onTable?: (table: DataTable) => void;
+  onSessionCreated?: (sessionId: string) => void;
+  onSessionTitle?: (title: string) => void;
 }
 
 const aiAPI = {
@@ -877,13 +934,18 @@ const aiAPI = {
   streamChat: async (
     conversationHistory: ChatMessage[],
     message: string,
-    callbacks: StreamChatCallbacks
+    callbacks: StreamChatCallbacks,
+    sessionId?: string
   ): Promise<void> => {
     const url = `${API_BASE_URL}/ai/chat/stream`;
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversation_history: conversationHistory, message }),
+      body: JSON.stringify({
+        conversation_history: conversationHistory,
+        message,
+        ...(sessionId && { session_id: sessionId }),
+      }),
     });
 
     if (!response.ok) {
@@ -926,6 +988,18 @@ const aiAPI = {
               break;
             case 'done':
               callbacks.onDone();
+              break;
+            case 'chart':
+              callbacks.onChart?.(payload.chart);
+              break;
+            case 'table':
+              callbacks.onTable?.(payload.table);
+              break;
+            case 'session_created':
+              callbacks.onSessionCreated?.(payload.session_id);
+              break;
+            case 'session_title':
+              callbacks.onSessionTitle?.(payload.title);
               break;
             case 'error':
               callbacks.onError(payload.message);
@@ -1040,6 +1114,28 @@ const aiAPI = {
 
   getOutlierSuggestions: async (): Promise<OutlierSuggestionsResponse> => {
     return fetchAPI<OutlierSuggestionsResponse>('/ai/outlier-suggestions');
+  },
+
+  // Chat session CRUD
+  listSessions: async (limit = 50): Promise<ChatSessionSummary[]> => {
+    return fetchAPI<ChatSessionSummary[]>(`/ai/chat/sessions?limit=${limit}`);
+  },
+
+  getSession: async (id: string): Promise<ChatSessionDetail> => {
+    return fetchAPI<ChatSessionDetail>(`/ai/chat/sessions/${id}`);
+  },
+
+  deleteSession: async (id: string): Promise<{ success: boolean }> => {
+    return fetchAPI<{ success: boolean }>(`/ai/chat/sessions/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  renameSession: async (id: string, title: string): Promise<{ success: boolean }> => {
+    return fetchAPI<{ success: boolean }>(`/ai/chat/sessions/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    });
   },
 
   getInsightAlerts: async (dashboard?: string, includeDismissed = false, limit = 20): Promise<InsightAlert[]> => {

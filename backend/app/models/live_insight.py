@@ -41,7 +41,7 @@ class LiveInsight(Base):
     id: Column[uuid.UUID] = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
 
     # Foreign key to match
-    match_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("matches.id"), nullable=False, index=True)
+    match_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # When and why this insight was generated
     minute: Column[int] = Column(Integer, nullable=False)  # Match minute

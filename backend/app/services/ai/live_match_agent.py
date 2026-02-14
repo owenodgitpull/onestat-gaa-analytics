@@ -16,7 +16,7 @@ from app.services.rag_service import RAGService
 logger = logging.getLogger(__name__)
 
 
-async def live_match_insight(db: AsyncSession, match_id, recent_events: list) -> str:
+async def live_match_insight(db: AsyncSession, match_id, recent_events: list, trigger: str = "interval") -> str:
     """
     Provide real-time tactical insight during a match.
     Optimized for speed using Haiku model.
@@ -63,13 +63,25 @@ When a trigger fires, explain what's happening AND suggest one specific tactical
 Reference knowledge base context (GPS benchmarks, tactical principles) when available.
 """
 
+    # Use trigger-specific user prompt
+    if trigger == "half_time":
+        user_prompt = (
+            "Give a concise half-time summary: the current scoreline, "
+            "which team has the momentum, one thing we did well, "
+            "and one key tactical change for the second half."
+        )
+        max_tokens = 200
+    else:
+        user_prompt = "What's the current tactical situation and one key adjustment we should make?"
+        max_tokens = 150
+
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=150,
+        max_tokens=max_tokens,
         system=system_prompt,
         messages=[{
             "role": "user",
-            "content": "What's the current tactical situation and one key adjustment we should make?"
+            "content": user_prompt
         }]
     )
 

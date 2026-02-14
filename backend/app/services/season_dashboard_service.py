@@ -95,31 +95,6 @@ class SeasonDashboardService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def _count_zone_entries(
-        possession_events: list, threshold: float = 55.0, direction: str = "above"
-    ) -> int:
-        """
-        Count distinct entries into an attacking zone from a time-ordered
-        list of PossessionEvents.
-
-        direction="above": attack counted when pitch_x crosses from below
-                           to at-or-above threshold (Dungloe attacking high-x end).
-        direction="below": attack counted when pitch_x crosses from above
-                           to at-or-below threshold (Opponent attacking low-x end).
-        """
-        attacks = 0
-        was_in_zone = False
-        for pe in possession_events:
-            if direction == "above":
-                in_zone = pe.pitch_x >= threshold
-            else:
-                in_zone = pe.pitch_x <= threshold
-            if in_zone and not was_in_zone:
-                attacks += 1
-            was_in_zone = in_zone
-        return attacks
-
-    @staticmethod
     async def _possession_funnel(db: AsyncSession, matches: list) -> dict:
         """
         Possession funnel: Possessions -> Attacks -> Shots -> Scores.
@@ -152,9 +127,10 @@ class SeasonDashboardService:
         # Group by match and count DISTINCT possession phases per team.
         # A possession phase = each time a team gains the ball.
         # Walk events in time order; only count when team changes from previous.
-        dungloe_poss_by_match = {}
+        # Also group events into phases so attacks are counted per-phase (max 1 per phase).
+        dungloe_phases_by_match: dict[str, list[list]] = {}  # mid -> [[phase1_events], ...]
         dungloe_poss_count = {}
-        opp_poss_by_match = {}
+        opp_phases_by_match: dict[str, list[list]] = {}
         opp_poss_count = {}
         prev_team_by_match: dict = {}  # track last team per match
 
@@ -163,29 +139,48 @@ class SeasonDashboardService:
             prev = prev_team_by_match.get(mid)
 
             if pe.team == PossessionTeam.DUNGLOE:
-                dungloe_poss_by_match.setdefault(mid, []).append(pe)
                 if prev != PossessionTeam.DUNGLOE:
+                    # New possession phase — start a new list
+                    dungloe_phases_by_match.setdefault(mid, []).append([])
                     dungloe_poss_count[mid] = dungloe_poss_count.get(mid, 0) + 1
+                elif mid not in dungloe_phases_by_match:
+                    dungloe_phases_by_match[mid] = [[]]
+                    dungloe_poss_count[mid] = 1
+                dungloe_phases_by_match[mid][-1].append(pe)
             elif pe.team == PossessionTeam.OPPONENT:
-                opp_poss_by_match.setdefault(mid, []).append(pe)
                 if prev != PossessionTeam.OPPONENT:
+                    opp_phases_by_match.setdefault(mid, []).append([])
                     opp_poss_count[mid] = opp_poss_count.get(mid, 0) + 1
+                elif mid not in opp_phases_by_match:
+                    opp_phases_by_match[mid] = [[]]
+                    opp_poss_count[mid] = 1
+                opp_phases_by_match[mid][-1].append(pe)
 
             # Update previous team (skip contested — doesn't reset either team)
             if pe.team in (PossessionTeam.DUNGLOE, PossessionTeam.OPPONENT):
                 prev_team_by_match[mid] = pe.team
 
-        # Count attacks (zone entries) per match — Dungloe crosses x>=55, Opponent crosses x<=45
+        # Count attacks per match — max 1 attack per possession phase.
+        # A phase counts as an attack if ANY event enters the opposition 45m zone.
+        # pitch_x 0=Dungloe goal, 100=Opponent goal.  GAA pitch ~145m.
+        # Opposition 45m line ≈ (145-45)/145 * 100 ≈ 69 for Dungloe attacking.
+        # Dungloe 45m line ≈ 45/145 * 100 ≈ 31 for Opponent attacking.
+        DUNGLOE_ATTACK_THRESHOLD = 69.0  # inside opponent's 45
+        OPP_ATTACK_THRESHOLD = 31.0      # inside Dungloe's 45
         dungloe_attacks = {}
         opp_attacks = {}
-        for mid, events in dungloe_poss_by_match.items():
-            dungloe_attacks[mid] = await SeasonDashboardService._count_zone_entries(
-                events, threshold=55.0, direction="above"
-            )
-        for mid, events in opp_poss_by_match.items():
-            opp_attacks[mid] = await SeasonDashboardService._count_zone_entries(
-                events, threshold=45.0, direction="below"
-            )
+        for mid, phases in dungloe_phases_by_match.items():
+            count = 0
+            for phase_events in phases:
+                if any(pe.pitch_x >= DUNGLOE_ATTACK_THRESHOLD for pe in phase_events):
+                    count += 1
+            dungloe_attacks[mid] = count
+        for mid, phases in opp_phases_by_match.items():
+            count = 0
+            for phase_events in phases:
+                if any(pe.pitch_x <= OPP_ATTACK_THRESHOLD for pe in phase_events):
+                    count += 1
+            opp_attacks[mid] = count
 
         # Count shots per match — both teams
         shots_result = await db.execute(

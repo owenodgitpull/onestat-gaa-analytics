@@ -337,7 +337,7 @@ class LiveInsightsService:
             ]
 
             # Generate AI insight
-            insight_text = await live_match_insight(db, match_id, recent_events)
+            insight_text = await live_match_insight(db, match_id, recent_events, trigger=trigger.value)
 
             # Store insight (trigger stored as string value to avoid asyncpg enum caching)
             insight = LiveInsight(

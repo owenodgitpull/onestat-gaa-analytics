@@ -27,6 +27,7 @@ from app.models.player_health import (
 )
 from app.models.match_gps import MatchGPSData
 from app.models.insight_alert import InsightAlert, AlertCategory, AlertSource
+from app.models.chat_session import ChatSession, ChatSessionMessage
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -68,5 +69,7 @@ __all__ = [
     "InsightAlert",
     "AlertCategory",
     "AlertSource",
+    "ChatSession",
+    "ChatSessionMessage",
 ]
 

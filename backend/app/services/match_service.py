@@ -133,12 +133,36 @@ class MatchService:
         
         match.status = MatchStatus.IN_PROGRESS
         match.started_at = started_at or datetime.utcnow()
-        
+        match.current_phase = 'first_half'
+
         await db.commit()
         await db.refresh(match)
-        
+
         return match
     
+    @staticmethod
+    async def update_match_phase(
+        db: AsyncSession,
+        match_id: UUID,
+        phase: str,
+        attacking_right_first_half: Optional[bool] = None
+    ) -> Optional[Match]:
+        """Update match phase for resumable recording."""
+        match = await MatchService.get_match(db, match_id)
+        if not match:
+            return None
+
+        match.current_phase = phase
+        if attacking_right_first_half is not None:
+            match.attacking_right_first_half = attacking_right_first_half
+        if phase == 'second_half' and match.second_half_started_at is None:
+            match.second_half_started_at = datetime.utcnow()
+
+        await db.commit()
+        await db.refresh(match)
+
+        return match
+
     @staticmethod
     async def complete_match(
         db: AsyncSession,
@@ -158,6 +182,7 @@ class MatchService:
 
         match.status = MatchStatus.COMPLETED
         match.completed_at = completed_at or datetime.utcnow()
+        match.current_phase = None
         if notes:
             match.notes = notes
 

@@ -113,3 +113,21 @@ export function useCompleteMatch() {
   });
 }
 
+/**
+ * Update match phase (for resumable recording)
+ */
+export function useUpdateMatchPhase() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ matchId, phase, attackingRightFirstHalf }: {
+      matchId: string;
+      phase: string;
+      attackingRightFirstHalf?: boolean;
+    }) => api.matches.updatePhase(matchId, phase, attackingRightFirstHalf),
+    onSuccess: (data) => {
+      queryClient.setQueryData<Match>(matchKeys.detail(data.id), data);
+    },
+  });
+}
+

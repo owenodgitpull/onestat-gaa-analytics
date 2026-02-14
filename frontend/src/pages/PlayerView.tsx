@@ -472,7 +472,7 @@ export default function PlayerView() {
   const totalPoints = matchStats?.reduce((sum, m) => sum + m.points, 0) || 0
   const totalTwoPointers = matchStats?.reduce((sum, m) => sum + m.two_pointers, 0) || 0
   const totalScore = matchStats?.reduce((sum, m) => sum + m.total_score, 0) || 0
-  const matchesPlayed = matchStats?.length || 0
+  const matchesPlayed = Math.max(matchStats?.length || 0, matchGpsHistory?.length || 0)
 
   // Aggregated stats for KPIs
   const totalWides = matchStats?.reduce((sum, m) => sum + m.wides, 0) || 0

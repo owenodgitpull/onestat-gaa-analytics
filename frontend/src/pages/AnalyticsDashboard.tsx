@@ -27,6 +27,7 @@ import {
   Info,
   X,
   LayoutGrid,
+  ChevronRight,
 } from 'lucide-react'
 import SquadHealthView from '@/components/SquadHealthView'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
@@ -97,6 +98,7 @@ export default function AnalyticsDashboard() {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [nextMatch, setNextMatch] = useState<Match | null>(null)
+  const [liveMatch, setLiveMatch] = useState<Match | null>(null)
 
   const {
     layout,
@@ -206,9 +208,10 @@ export default function AnalyticsDashboard() {
     }
   }
 
-  // Load static dashboard data + next match immediately
+  // Load static dashboard data + next/live match immediately
   useEffect(() => {
     fetchDashboard()
+    api.matches.getInProgress().then(m => setLiveMatch(m))
     api.matches.getNextScheduled().then(m => setNextMatch(m))
   }, [])
 
@@ -420,8 +423,35 @@ export default function AnalyticsDashboard() {
           </button>
         </div>
         <div className="flex items-center gap-2">
-          {/* Next Match card */}
-          {nextMatch ? (
+          {/* Live Match / Next Match card */}
+          {liveMatch ? (
+            <div
+              onClick={() => navigate(`/match/${liveMatch.id}`)}
+              className="glass-card-live cursor-pointer"
+            >
+              <div className="glass-card-live-inner px-4 py-2 flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-red-400">Live</span>
+                </div>
+                <span className="text-sm font-bold text-white whitespace-nowrap">
+                  vs {liveMatch.opponent}
+                </span>
+                <span className="text-sm font-semibold text-indigo-300">
+                  {liveMatch.dungloe_goals}-{String(liveMatch.dungloe_points).padStart(2, '0')} / {liveMatch.opponent_goals}-{String(liveMatch.opponent_points).padStart(2, '0')}
+                </span>
+                {liveMatch.current_phase && (
+                  <span className="text-xs text-white/50 font-medium">
+                    {liveMatch.current_phase === 'first_half' ? '1st Half' : liveMatch.current_phase === 'half_time' ? 'HT' : '2nd Half'}
+                  </span>
+                )}
+                <ChevronRight size={16} className="text-white/40" />
+              </div>
+            </div>
+          ) : nextMatch ? (
             <div
               onClick={() => navigate(`/match-prep/${nextMatch.id}`)}
               className="bg-white/10 rounded-xl px-4 py-2 cursor-pointer hover:bg-white/15 border border-white/10 transition-all flex items-baseline gap-2"

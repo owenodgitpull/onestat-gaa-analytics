@@ -45,8 +45,8 @@ class InsightAlert(Base):
     severity = Column(String(20), nullable=False, default="info")  # info | watch | action
 
     # Optional links to source data
-    session_id = Column(UUID(as_uuid=True), ForeignKey("training_sessions.id"), nullable=True)
-    match_id = Column(UUID(as_uuid=True), ForeignKey("matches.id"), nullable=True)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("training_sessions.id", ondelete="CASCADE"), nullable=True)
+    match_id = Column(UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=True)
 
     # Which dashboard(s) to show on
     dashboard = Column(String(30), nullable=False, default="both")  # season | training | both

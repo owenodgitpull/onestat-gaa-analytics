@@ -3,19 +3,23 @@ Chat Agent — conversational interface for asking questions about matches and p
 
 Uses Sonnet with tool loop. Maintains conversation history.
 Includes streaming variant for SSE responses.
+Supports prompt caching and sliding window with summary for long conversations.
 """
 
 import json
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.services.ai._shared import (
-    client, GAA_ESSENTIALS, TOOLS, execute_tool,
+    client, GAA_ESSENTIALS, TOOLS, execute_tool, get_cached_tools,
 )
 from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
+
+SLIDING_WINDOW_SIZE = 10
 
 
 async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_message: str) -> str:
@@ -38,7 +42,6 @@ async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_m
     # Get recent AI insight alerts for proactive reference
     insight_alerts_text = ""
     try:
-        from sqlalchemy import select
         from app.models.insight_alert import InsightAlert
         alert_query = (
             select(InsightAlert)
@@ -117,8 +120,16 @@ INSTRUCTIONS:
     return final_text
 
 
-async def _build_chat_system_prompt(db: AsyncSession, user_message: str) -> str:
-    """Build the system prompt with RAG context and insight alerts (shared by both chat functions)."""
+async def _build_chat_system_prompt(
+    db: AsyncSession,
+    user_message: str,
+    conversation_summary: Optional[str] = None,
+) -> list:
+    """Build the system prompt with RAG context and insight alerts.
+
+    Returns a list of content blocks (with cache_control on the first block)
+    for Anthropic prompt caching.
+    """
     # Get relevant knowledge base context via RAG
     try:
         kb_context = await RAGService.get_context_for_query(
@@ -131,7 +142,6 @@ async def _build_chat_system_prompt(db: AsyncSession, user_message: str) -> str:
     # Get recent AI insight alerts for proactive reference
     insight_alerts_text = ""
     try:
-        from sqlalchemy import select
         from app.models.insight_alert import InsightAlert
         alert_query = (
             select(InsightAlert)
@@ -147,7 +157,12 @@ async def _build_chat_system_prompt(db: AsyncSession, user_message: str) -> str:
     except Exception as e:
         logger.warning(f"Insight alerts context failed: {e}")
 
-    return f"""You are a GAA analyst assistant for Dungloe GAA club.
+    # Build summary section
+    summary_section = ""
+    if conversation_summary:
+        summary_section = f"\n## Earlier in this conversation\n{conversation_summary}\n"
+
+    prompt_text = f"""You are a GAA analyst assistant for Dungloe GAA club.
 Answer questions about matches, players, tactics, and performance.
 Use the available tools to look up specific data when needed.
 
@@ -155,7 +170,7 @@ Use the available tools to look up specific data when needed.
 
 ## Knowledge Base Context (tactics, GPS data, rules, playbooks)
 {kb_context}
-
+{summary_section}
 INSTRUCTIONS:
 - Use knowledge base context to reference GPS/fitness data, rules, and tactical documents.
 - Cite sources from the knowledge base when relevant (e.g., "According to the GPS report from the Ballyshannon match...").
@@ -163,12 +178,80 @@ INSTRUCTIONS:
 - Be proactive — surface relevant context without being asked.
 - Reference recent AI insight alerts when relevant to the conversation.
 - Format your responses with markdown: use **bold** for key stats, headers (##) for sections, and bullet points for lists.
+- For PATHS, MOVEMENT, SPATIAL patterns, shot LOCATIONS, attacking MOVES, anything on the PITCH → use get_pitch_paths tool. It's instant (no extra AI call) and traces the full possession chain from kickout/turnover to score.
+- For statistical charts (trends, comparisons, distributions, bar/line/pie) → use generate_chart tool.
+- Only use create_data_table when the user specifically asks for a ranking, leaderboard, or table format.
+- You can combine text + charts + tables in a single response.
+- Do NOT try to describe paths/movement in text — always generate the pitch visual.
 {insight_alerts_text}
 """
 
+    return [{"type": "text", "text": prompt_text, "cache_control": {"type": "ephemeral"}}]
+
+
+async def _maybe_summarize_and_trim(
+    db: AsyncSession,
+    session_id: str,
+    full_messages: list,
+) -> tuple[list, Optional[str]]:
+    """If >SLIDING_WINDOW_SIZE messages, summarize older ones via Haiku.
+
+    Returns (trimmed_messages, summary_text).
+    """
+    if len(full_messages) <= SLIDING_WINDOW_SIZE:
+        return full_messages, None
+
+    # Check if session already has a fresh summary
+    from app.models.chat_session import ChatSession
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+
+    # Messages to summarize (older ones) vs keep (recent window)
+    older_messages = full_messages[:-SLIDING_WINDOW_SIZE]
+    recent_messages = full_messages[-SLIDING_WINDOW_SIZE:]
+
+    # Reuse existing summary if we have one and older messages haven't grown much
+    if session and session.conversation_summary:
+        return recent_messages, session.conversation_summary
+
+    # Generate summary via Haiku
+    try:
+        summary_input = "\n".join(
+            f"{m.get('role', 'unknown')}: {m.get('content', '')[:300]}"
+            for m in older_messages
+            if isinstance(m.get('content'), str)
+        )
+
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{
+                "role": "user",
+                "content": f"Summarize this GAA analyst conversation in 2-3 sentences, preserving key facts discussed (player names, stats, match details):\n\n{summary_input[:3000]}"
+            }],
+        )
+        summary = response.content[0].text.strip()
+
+        # Persist summary on session
+        if session:
+            session.conversation_summary = summary
+            await db.flush()
+
+        return recent_messages, summary
+
+    except Exception as e:
+        logger.warning(f"Conversation summary failed: {e}")
+        # Fallback: just use the recent window without summary
+        return recent_messages, None
+
 
 async def chat_with_analyst_stream(
-    db: AsyncSession, conversation_history: list, user_message: str
+    db: AsyncSession,
+    conversation_history: list,
+    user_message: str,
+    session_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Streaming variant of chat_with_analyst.
@@ -176,19 +259,34 @@ async def chat_with_analyst_stream(
     Yields SSE-formatted lines:
       data: {"type":"thinking","tool":"tool_name"}
       data: {"type":"text","content":"chunk..."}
+      data: {"type":"chart","chart":{...}}
+      data: {"type":"table","table":{...}}
       data: {"type":"done"}
       data: {"type":"error","message":"..."}
     """
     try:
-        system_prompt = await _build_chat_system_prompt(db, user_message)
-        messages = conversation_history + [{"role": "user", "content": user_message}]
+        # Apply sliding window if we have a session
+        conversation_summary = None
+        messages_to_use = conversation_history
+
+        if session_id and len(conversation_history) > SLIDING_WINDOW_SIZE:
+            messages_to_use, conversation_summary = await _maybe_summarize_and_trim(
+                db, session_id, conversation_history
+            )
+
+        system_prompt = await _build_chat_system_prompt(
+            db, user_message, conversation_summary=conversation_summary
+        )
+        messages = messages_to_use + [{"role": "user", "content": user_message}]
+
+        cached_tools = get_cached_tools()
 
         # Non-streaming tool loop phase
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=2048,
             system=system_prompt,
-            tools=TOOLS,
+            tools=cached_tools,
             messages=messages
         )
 
@@ -206,6 +304,21 @@ async def chat_with_analyst_stream(
                         "content": tool_result
                     })
 
+                    # Emit viz SSE events for chart/table tools
+                    if block.name in ("generate_chart", "get_pitch_paths"):
+                        try:
+                            parsed = json.loads(tool_result)
+                            if parsed.get("success") and parsed.get("chart"):
+                                yield f"data: {json.dumps({'type': 'chart', 'chart': parsed['chart']})}\n\n"
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    elif block.name == "create_data_table":
+                        try:
+                            parsed = json.loads(tool_result)
+                            yield f"data: {json.dumps({'type': 'table', 'table': parsed})}\n\n"
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
@@ -213,7 +326,7 @@ async def chat_with_analyst_stream(
                 model="claude-sonnet-4-20250514",
                 max_tokens=2048,
                 system=system_prompt,
-                tools=TOOLS,
+                tools=cached_tools,
                 messages=messages
             )
 

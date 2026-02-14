@@ -11,6 +11,7 @@ import {
   UserCircle,
   Settings,
   MessageSquare,
+  History,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useState } from 'react'
@@ -79,6 +80,11 @@ export default function Navigation() {
       return [
         { icon: Trophy, label: 'Match', path: location.pathname, active: true },
         { icon: BarChart3, label: 'Stats', path: location.pathname, active: false },
+      ]
+    }
+    if (location.pathname.startsWith('/analyst')) {
+      return [
+        { icon: History, label: 'Chat History', path: '#chat-history', active: false },
       ]
     }
     return []
@@ -153,6 +159,17 @@ export default function Navigation() {
             >
               TRAINING
             </Link>
+
+            <Link
+              to="/analyst"
+              className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
+                isActive('/analyst')
+                  ? 'text-indigo-400 bg-indigo-500/10'
+                  : 'text-white/70 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              ANALYST
+            </Link>
           </div>
 
           {/* Right Side - New Match + Profile */}
@@ -208,20 +225,31 @@ export default function Navigation() {
       {/* Left Sidebar - Contextual Icons */}
       {sidebarItems.length > 0 && (
         <aside className="fixed left-0 top-14 bottom-0 w-14 backdrop-blur-xl border-r border-white/[0.10] z-40 hidden md:flex flex-col items-center py-4 space-y-1" style={{ background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.05))', boxShadow: '4px 0 24px rgba(0,0,0,0.3), inset 1px 0 0 rgba(255,255,255,0.08)' }}>
-          {sidebarItems.map((item, idx) => (
-            <Link
-              key={idx}
-              to={item.path}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                item.active
-                  ? 'text-white border border-indigo-500/40 shadow-lg shadow-indigo-600/20' + ' ' + 'bg-gradient-to-br from-indigo-500/25 to-violet-500/20 backdrop-blur-md'
-                  : 'text-white/40 hover:text-white hover:bg-white/10'
-              }`}
-              title={item.label}
-            >
-              <item.icon size={20} />
-            </Link>
-          ))}
+          {sidebarItems.map((item, idx) =>
+            item.path.startsWith('#') ? (
+              <button
+                key={idx}
+                onClick={() => window.dispatchEvent(new CustomEvent('toggle-chat-sidebar'))}
+                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all text-white/40 hover:text-purple-400 hover:bg-purple-500/10"
+                title={item.label}
+              >
+                <item.icon size={20} />
+              </button>
+            ) : (
+              <Link
+                key={idx}
+                to={item.path}
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                  item.active
+                    ? 'text-white border border-indigo-500/40 shadow-lg shadow-indigo-600/20' + ' ' + 'bg-gradient-to-br from-indigo-500/25 to-violet-500/20 backdrop-blur-md'
+                    : 'text-white/40 hover:text-white hover:bg-white/10'
+                }`}
+                title={item.label}
+              >
+                <item.icon size={20} />
+              </Link>
+            )
+          )}
 
           {/* Divider */}
           <div className="w-6 h-px bg-white/10 my-2" />
@@ -240,14 +268,14 @@ export default function Navigation() {
           {/* Spacer to push AI chat to bottom */}
           <div className="flex-1" />
 
-          {/* AI Chat */}
-          <button
-            onClick={() => setShowAIChat(true)}
+          {/* AI Analyst */}
+          <Link
+            to="/analyst"
             className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-purple-400 hover:bg-purple-500/10 transition-all"
             title="AI Analyst"
           >
             <MessageSquare size={20} />
-          </button>
+          </Link>
         </aside>
       )}
 

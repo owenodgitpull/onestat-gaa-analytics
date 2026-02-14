@@ -268,8 +268,78 @@ TOOLS = [
                 }
             }
         }
+    },
+    {
+        "name": "get_pitch_paths",
+        "description": "Build pitch visualizations showing paths/movement on the GAA pitch. Use for: paths to goals, scoring paths, shot locations, attacking moves, spatial patterns. Returns a ready-to-render pitch chart — much faster than generate_chart for spatial/path data. Supports filtering by outcome (goal, point, wide, etc.) and by match.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "Match UUID, or 'recent'/'latest' for most recent match, or omit for all matches"
+                },
+                "outcomes": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by outcome types: goal, point, two_point, wide, short, saved, point_free, two_point_free, wide_free, forty_five. Defaults to all scoring events."
+                }
+            }
+        }
+    },
+    {
+        "name": "generate_chart",
+        "description": "Generate a data visualization chart (bar, line, pie, area, radar, scatter). Use for statistical comparisons, trends, distributions — NOT for pitch/spatial visualizations (use get_pitch_paths for those).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The visualization question, e.g. 'Show scoring trends across matches'"
+                }
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "create_data_table",
+        "description": "Create a structured data table for rankings, comparisons, leaderboards. Use after fetching data with other tools.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Table title"
+                },
+                "columns": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {"type": "string"},
+                            "label": {"type": "string"}
+                        },
+                        "required": ["key", "label"]
+                    },
+                    "description": "Column definitions with key and display label"
+                },
+                "data": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": "Array of row objects matching column keys"
+                }
+            },
+            "required": ["title", "columns", "data"]
+        }
     }
 ]
+
+def get_cached_tools() -> list:
+    """Return TOOLS with cache_control on the last tool for Anthropic prompt caching."""
+    cached = [dict(t) for t in TOOLS]
+    cached[-1] = {**cached[-1], "cache_control": {"type": "ephemeral"}}
+    return cached
+
 
 # =============================================================================
 # TOOL EXECUTION
@@ -298,17 +368,269 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession) -> st
         return await get_team_gps_summary(db, **tool_input)
     elif tool_name == "get_attendance_data":
         return await get_attendance_data(db, **tool_input)
+    elif tool_name == "get_pitch_paths":
+        return await get_pitch_paths(db, **tool_input)
+    elif tool_name == "generate_chart":
+        return await _execute_generate_chart(db, tool_input.get("query", ""))
+    elif tool_name == "create_data_table":
+        return safe_json(tool_input)  # pass-through — frontend renders it
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
+
+
+async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list = None) -> str:
+    """
+    Build pitch path visualizations directly from events — no LLM call needed.
+    Traces full possession chains backwards from each outcome event to the start
+    of the attacking move (kickout won, turnover won, or opponent event boundary).
+    Returns a normalized chart spec ready for the frontend pitch renderer.
+    """
+    import uuid as uuid_mod
+
+    # Events that mark the START of a new Dungloe possession
+    POSSESSION_START_TYPES = {
+        EventType.TURNOVER_WON, EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON,
+        EventType.OWN_KICKOUT_DUNGLOE_WON, EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK,
+        EventType.OPP_KICKOUT_DUNGLOE_WON, EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK,
+        EventType.INTERCEPTION, EventType.BLOCK, EventType.FREE_WON, EventType.FOUL_WON,
+    }
+
+    # Default outcomes: all scoring events
+    DEFAULT_OUTCOMES = {"goal", "point", "two_point", "point_free", "two_point_free", "forty_five"}
+    target_outcomes = set(o.lower() for o in outcomes) if outcomes else DEFAULT_OUTCOMES
+
+    # Resolve match_id
+    if match_id and match_id.lower() in ("recent", "latest", "last"):
+        result = await db.execute(
+            select(Match).where(Match.status == MatchStatus.COMPLETED)
+            .order_by(Match.match_date.desc()).limit(1)
+        )
+        match = result.scalar_one_or_none()
+        if not match:
+            return safe_json({"success": False, "error": "No completed matches found"})
+        match_id = str(match.id)
+    elif match_id:
+        import uuid as uuid_check
+        try:
+            uuid_check.UUID(match_id)
+        except ValueError:
+            return safe_json({"success": False, "error": f"'{match_id}' is not a valid match UUID"})
+
+    # Fetch events
+    query = select(MatchEvent).order_by(MatchEvent.minute, MatchEvent.created_at)
+    if match_id:
+        query = query.where(MatchEvent.match_id == match_id)
+    else:
+        # Only completed matches
+        completed_ids = await db.execute(
+            select(Match.id).where(Match.status == MatchStatus.COMPLETED)
+        )
+        ids = [row[0] for row in completed_ids.fetchall()]
+        if not ids:
+            return safe_json({"success": False, "error": "No completed matches"})
+        query = query.where(MatchEvent.match_id.in_(ids))
+
+    result = await db.execute(query)
+    all_events = result.scalars().all()
+
+    # Get player names
+    player_ids = list(set(e.player_id for e in all_events if e.player_id))
+    players = {}
+    if player_ids:
+        pr = await db.execute(select(Player).where(Player.id.in_(player_ids)))
+        for p in pr.scalars().all():
+            players[str(p.id)] = p.name
+
+    # Get match info for labels
+    match_ids_in_events = list(set(str(e.match_id) for e in all_events))
+    match_info = {}
+    if match_ids_in_events:
+        mr = await db.execute(select(Match).where(Match.id.in_(match_ids_in_events)))
+        for m in mr.scalars().all():
+            match_info[str(m.id)] = m.opponent
+
+    # Group events by match
+    events_by_match: dict[str, list] = {}
+    for e in all_events:
+        mid = str(e.match_id)
+        events_by_match.setdefault(mid, []).append(e)
+
+    paths = []
+    for mid, events in events_by_match.items():
+        opponent = match_info.get(mid, "Unknown")
+
+        # Find all Dungloe outcome events matching target types
+        outcome_events = [
+            e for e in events
+            if e.team == Team.DUNGLOE
+            and (e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type)) in target_outcomes
+            and e.pitch_x is not None and e.pitch_y is not None
+        ]
+
+        for oe in outcome_events:
+            # Find the index of this outcome event in the FULL events list (all teams)
+            try:
+                oe_idx = events.index(oe)
+            except ValueError:
+                continue
+
+            # Trace backwards through ALL events — collect Dungloe events, stop at opponent events
+            # This captures the full attacking sequence: block → interception → turnover → goal
+            # In GAA, a "move" can span several minutes as the ball is worked up the field
+            chain = [oe]
+            last_minute = oe.minute
+            for i in range(oe_idx - 1, -1, -1):
+                prev = events[i]
+                # Stop if there's a big gap between consecutive events (>4 min between adjacent events)
+                if last_minute - prev.minute > 4:
+                    break
+                # Stop if we hit an opponent event — they had the ball, so our move starts AFTER this
+                if prev.team == Team.OPPONENT:
+                    break
+                # This is a Dungloe event — include it in the chain
+                chain.insert(0, prev)
+                last_minute = prev.minute
+
+            # Build path points (only events with location data)
+            points = []
+            for e in chain:
+                if e.pitch_x is not None and e.pitch_y is not None:
+                    points.append({"x": round(e.pitch_x, 1), "y": round(e.pitch_y, 1)})
+
+            if len(points) < 1:
+                continue
+
+            outcome_str = oe.event_type.value if hasattr(oe.event_type, 'value') else str(oe.event_type)
+            player_name = players.get(str(oe.player_id), "Unknown") if oe.player_id else None
+
+            path_label = f"vs {opponent} ({oe.minute}')"
+            if player_name:
+                path_label = f"{player_name} vs {opponent} ({oe.minute}')"
+
+            # Who started the move and how?
+            first_event = chain[0]
+            started_by = players.get(str(first_event.player_id), "Unknown") if first_event.player_id else None
+            started_with = first_event.event_type.value if hasattr(first_event.event_type, 'value') else str(first_event.event_type)
+
+            paths.append({
+                "label": path_label,
+                "outcome": outcome_str,
+                "minute": oe.minute,
+                "player": player_name,
+                "opponent": opponent,
+                "started_by": started_by,
+                "started_with": started_with,
+                "points": points,
+            })
+
+    # Sort by match then minute
+    paths.sort(key=lambda p: p["minute"])
+
+    # Build insight text
+    outcome_counts = {}
+    for p in paths:
+        outcome_counts[p["outcome"]] = outcome_counts.get(p["outcome"], 0) + 1
+    summary_parts = [f"{count} {oc}{'s' if count > 1 else ''}" for oc, count in outcome_counts.items()]
+
+    if match_id:
+        opponent = match_info.get(match_id, "")
+        insight = f"Showing {len(paths)} attacking path{'s' if len(paths) != 1 else ''} vs {opponent}: {', '.join(summary_parts)}." if paths else f"No paths found for the selected filters vs {opponent}."
+    else:
+        insight = f"Showing {len(paths)} paths across all matches: {', '.join(summary_parts)}." if paths else "No paths found for the selected filters."
+    if paths:
+        avg_touches = round(sum(len(p["points"]) for p in paths) / len(paths), 1)
+        insight += f" Average buildup: {avg_touches} touches per attack."
+
+    # Return as normalized chart spec (same format as _normalize_agentic_chart)
+    chart = {
+        "id": f"chat-{uuid_mod.uuid4().hex[:8]}",
+        "type": "pitch",
+        "title": f"Attacking Paths — vs {match_info.get(match_id, 'All Matches')}" if match_id else "Attacking Paths — Season",
+        "insight": insight,
+        "data": paths,
+        "config": {"xKey": None, "dataKeys": [], "colors": [], "stacked": False, "showLegend": False},
+    }
+
+    return safe_json({"success": True, "chart": chart})
+
+
+def _normalize_agentic_chart(raw_chart: dict) -> dict:
+    """Normalize agentic chart format → AIChartSpec for the frontend."""
+    import uuid as uuid_mod
+    config = raw_chart.get("config", {})
+    chart_type = raw_chart.get("chart_type", "bar")
+
+    normalized = {
+        "id": f"chat-{uuid_mod.uuid4().hex[:8]}",
+        "type": chart_type,
+        "title": raw_chart.get("title", "Chart"),
+        "insight": raw_chart.get("insights", ""),
+        "data": raw_chart.get("data", []),
+        "config": {
+            "xKey": config.get("xKey"),
+            "dataKeys": config.get("yKeys", []),
+            "colors": config.get("colors", []),
+            "stacked": config.get("stacked", False),
+            "showLegend": config.get("legend", False),
+        },
+    }
+
+    return normalized
+
+
+async def _execute_generate_chart(db: AsyncSession, query: str) -> str:
+    """Generate a chart via the agentic chart engine and normalize it."""
+    try:
+        from app.services.ai.chart_engine import generate_agentic_chart
+        result = await generate_agentic_chart(db, query)
+        if result.get("success") and result.get("chart"):
+            normalized = _normalize_agentic_chart(result["chart"])
+            return safe_json({"success": True, "chart": normalized})
+        else:
+            return safe_json({"success": False, "error": result.get("error", "Chart generation failed")})
+    except Exception as e:
+        logger.error(f"generate_chart tool failed: {e}", exc_info=True)
+        return safe_json({"success": False, "error": str(e)})
 
 
 async def get_match_events(db: AsyncSession, match_id: str, event_types: list = None,
                            team: str = None, half: int = None) -> str:
     """Get events from a match with optional filters."""
+    # Validate UUID — AI sometimes passes "recent" or other non-UUID strings
+    import uuid as uuid_mod
+    try:
+        uuid_mod.UUID(match_id)
+    except (ValueError, AttributeError):
+        # Try to resolve descriptive strings to an actual match
+        if match_id.lower() in ("recent", "latest", "last"):
+            result = await db.execute(
+                select(Match).where(Match.status == MatchStatus.COMPLETED)
+                .order_by(Match.match_date.desc()).limit(1)
+            )
+            match = result.scalar_one_or_none()
+            if match:
+                match_id = str(match.id)
+            else:
+                return safe_json({"error": "No completed matches found"})
+        else:
+            return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use get_team_season_stats for season-wide data, or provide a specific match UUID."})
+
     query = select(MatchEvent).where(MatchEvent.match_id == match_id)
 
     if event_types:
-        query = query.where(MatchEvent.event_type.in_(event_types))
+        # Convert strings to EventType enums (AI sends uppercase like "GOAL", DB expects enum)
+        resolved_types = []
+        for et in event_types:
+            try:
+                resolved_types.append(EventType(et.lower()))
+            except (ValueError, AttributeError):
+                # Try matching by name (e.g. "GOAL" -> EventType.GOAL)
+                try:
+                    resolved_types.append(EventType[et.upper()])
+                except KeyError:
+                    pass  # skip unrecognized event types
+        if resolved_types:
+            query = query.where(MatchEvent.event_type.in_(resolved_types))
     if team:
         # Convert string to Team enum if needed
         if team == 'dungloe':
@@ -352,6 +674,24 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
 
 async def get_match_summary(db: AsyncSession, match_id) -> str:
     """Get summary statistics for a match."""
+    # Validate UUID — AI sometimes passes "recent" or other non-UUID strings
+    import uuid as uuid_mod
+    try:
+        uuid_mod.UUID(str(match_id))
+    except (ValueError, AttributeError):
+        if str(match_id).lower() in ("recent", "latest", "last"):
+            result = await db.execute(
+                select(Match).where(Match.status == MatchStatus.COMPLETED)
+                .order_by(Match.match_date.desc()).limit(1)
+            )
+            m = result.scalar_one_or_none()
+            if m:
+                match_id = str(m.id)
+            else:
+                return safe_json({"error": "No completed matches found"})
+        else:
+            return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use get_team_season_stats for season-wide data, or provide a specific match UUID."})
+
     # Get match details
     match_result = await db.execute(select(Match).where(Match.id == match_id))
     match = match_result.scalar_one_or_none()
@@ -467,9 +807,9 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
             "status": match.status.value if match.status else None
         },
         "score": {
-            "dungloe": f"{dungloe_goals}-{dungloe_points}" + (f" (+{dungloe_2pts}x2pt)" if dungloe_2pts else ""),
+            "dungloe": f"{dungloe_goals}-{dungloe_2pts}-{dungloe_points} ({dungloe_total}pts)" if dungloe_2pts else f"{dungloe_goals}-{dungloe_points} ({dungloe_total}pts)",
             "dungloe_total": dungloe_total,
-            "opponent": f"{opp_goals}-{opp_points}" + (f" (+{opp_2pts}x2pt)" if opp_2pts else ""),
+            "opponent": f"{opp_goals}-{opp_2pts}-{opp_points} ({opp_total}pts)" if opp_2pts else f"{opp_goals}-{opp_points} ({opp_total}pts)",
             "opponent_total": opp_total,
             "result": "W" if dungloe_total > opp_total else "L" if dungloe_total < opp_total else "D"
         },
@@ -712,7 +1052,7 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
 
 async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
     """Analyze turnover patterns."""
-    turnover_types = [EventType.TURNOVER_WON, EventType.TURNOVER_LOST, EventType.OUR_UNFORCED_ERROR, EventType.OPP_UNFORCED_ERROR]
+    turnover_types = [EventType.TURNOVER_WON, EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR]
     query = select(MatchEvent).where(
         MatchEvent.event_type.in_(turnover_types)
     )
@@ -743,12 +1083,12 @@ async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
 
         if e.event_type == EventType.TURNOVER_WON and e.team == Team.DUNGLOE:
             zones[zone]["won"] += 1
-        elif e.event_type == EventType.OPP_UNFORCED_ERROR:
-            zones[zone]["won"] += 1  # Opponent's error = we won
         elif e.event_type == EventType.TURNOVER_LOST and e.team == Team.DUNGLOE:
             zones[zone]["lost"] += 1
-        elif e.event_type == EventType.OUR_UNFORCED_ERROR:
-            zones[zone]["lost"] += 1  # Our error = we lost
+        elif e.event_type == EventType.UNFORCED_ERROR and e.team == Team.DUNGLOE:
+            zones[zone]["lost"] += 1  # Our unforced error = we lost
+        elif e.event_type == EventType.UNFORCED_ERROR and e.team == Team.OPPONENT:
+            zones[zone]["won"] += 1  # Opponent's unforced error = we won
 
     return safe_json({
         "by_zone": zones,

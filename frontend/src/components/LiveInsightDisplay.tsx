@@ -8,6 +8,8 @@ interface LiveInsightDisplayProps {
   half: number
   isMatchActive: boolean
   onNewInsight?: (insight: LiveInsight) => void
+  /** Increment to force re-fetch of latest insight (e.g. after half-time trigger) */
+  refreshTrigger?: number
 }
 
 export default function LiveInsightDisplay({
@@ -15,7 +17,8 @@ export default function LiveInsightDisplay({
   minute,
   half,
   isMatchActive,
-  onNewInsight
+  onNewInsight,
+  refreshTrigger = 0,
 }: LiveInsightDisplayProps) {
   const [latestInsight, setLatestInsight] = useState<LiveInsight | null>(null)
   const [allInsights, setAllInsights] = useState<LiveInsight[]>([])
@@ -30,6 +33,13 @@ export default function LiveInsightDisplay({
       fetchLatestInsight()
     }
   }, [matchId])
+
+  // Re-fetch latest insight when externally triggered (e.g. half-time analysis)
+  useEffect(() => {
+    if (matchId && refreshTrigger > 0) {
+      fetchLatestInsight()
+    }
+  }, [refreshTrigger])
 
   // Check for new insights every 5 minutes during active match
   useEffect(() => {

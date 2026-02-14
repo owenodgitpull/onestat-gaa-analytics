@@ -310,6 +310,33 @@
   }
 }
 
+/* ─── Live match card — animated chasing border ─── */
+.glass-card-live {
+  position: relative;
+  border-radius: 1rem;
+  padding: 2px;
+  background: conic-gradient(from var(--border-angle, 0deg),
+    rgba(99, 102, 241, 0.6), rgba(139, 92, 246, 0.6), rgba(99, 102, 241, 0.1),
+    transparent 40%, transparent 60%,
+    rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.6), rgba(99, 102, 241, 0.6));
+  animation: border-rotate 2s linear infinite;
+}
+.glass-card-live > .glass-card-live-inner {
+  border-radius: calc(1rem - 2px);
+  background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.06), rgba(255,255,255,0.08));
+  backdrop-filter: blur(24px);
+}
+
+@property --border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes border-rotate {
+  to { --border-angle: 360deg; }
+}
+
 /* ─── Keyframes — only card shimmer, very slow ─── */
 
 @keyframes card-shimmer {

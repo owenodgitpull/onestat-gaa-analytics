@@ -84,6 +84,11 @@ class Match(Base):
     # Timing
     started_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
     completed_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
+
+    # Live match phase tracking (for resumable recording)
+    current_phase: Column[Optional[str]] = Column(String(20), nullable=True)  # 'first_half', 'half_time', 'second_half'
+    second_half_started_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
+    attacking_right_first_half: Column[Optional[bool]] = Column(Boolean, nullable=True)  # True = Dungloe attacks right in 1st half
     
     # Optional notes
     notes: Column[Optional[str]] = Column(String, nullable=True)

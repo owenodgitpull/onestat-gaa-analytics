@@ -22,6 +22,8 @@ from app.models import (
     PossessionEvent,
     PlayerMatchStats,
     MatchLineup,
+    ChatSession,
+    ChatSessionMessage,
 )
 
 # this is the Alembic Config object

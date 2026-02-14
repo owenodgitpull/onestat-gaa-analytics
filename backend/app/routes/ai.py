@@ -15,7 +15,9 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID
+import json
 import logging
+from datetime import datetime
 
 from app.database import get_db
 from app.services.ai import (
@@ -33,7 +35,9 @@ from app.services.ai import (
     generate_outlier_suggestions,
     analyze_match_gps,
 )
+from app.services.ai._shared import client as anthropic_client
 from app.models.insight_alert import InsightAlert
+from app.models.chat_session import ChatSession, ChatSessionMessage
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +66,11 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     conversation_history: List[ChatMessage] = []
     message: str
+    session_id: Optional[str] = None
+
+
+class SessionRenameRequest(BaseModel):
+    title: str
 
 
 class AnalysisResponse(BaseModel):
@@ -178,6 +187,152 @@ class GPSAnalysisResponse(BaseModel):
 
 
 # =============================================================================
+# Chat Session Title Helper
+# =============================================================================
+
+async def _generate_session_title(first_message: str) -> str:
+    """Use Haiku to generate a 3-6 word title from the first user message."""
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=30,
+            messages=[{
+                "role": "user",
+                "content": f"Generate a 3-6 word conversation title for this GAA analyst question. Return ONLY the title, no quotes or punctuation:\n\n{first_message[:200]}"
+            }],
+        )
+        title = response.content[0].text.strip().strip('"').strip("'")
+        return title[:200]
+    except Exception as e:
+        logger.warning(f"Title generation failed: {e}")
+        return first_message[:60].strip() + ("..." if len(first_message) > 60 else "")
+
+
+# =============================================================================
+# Chat Session CRUD Endpoints
+# =============================================================================
+
+@router.get("/chat/sessions")
+async def list_chat_sessions(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all chat sessions, newest first."""
+    query = (
+        select(ChatSession)
+        .order_by(ChatSession.updated_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    sessions = result.scalars().all()
+
+    return [
+        {
+            "id": str(s.id),
+            "title": s.title,
+            "message_count": s.message_count,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+        }
+        for s in sessions
+    ]
+
+
+@router.get("/chat/sessions/{session_id}")
+async def get_chat_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a full chat session with all messages."""
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Eagerly load messages
+    msg_result = await db.execute(
+        select(ChatSessionMessage)
+        .where(ChatSessionMessage.session_id == session_id)
+        .order_by(ChatSessionMessage.created_at)
+    )
+    messages = msg_result.scalars().all()
+
+    return {
+        "id": str(session.id),
+        "title": session.title,
+        "messages": [
+            {
+                "role": m.role,
+                "content": m.content,
+                "visualizations": m.visualizations,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in messages
+        ],
+        "created_at": session.created_at.isoformat() if session.created_at else None,
+        "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+    }
+
+
+@router.post("/chat/sessions")
+async def create_chat_session(
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new empty chat session."""
+    session = ChatSession()
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return {
+        "id": str(session.id),
+        "title": session.title,
+        "message_count": 0,
+        "created_at": session.created_at.isoformat(),
+        "updated_at": session.updated_at.isoformat(),
+    }
+
+
+@router.delete("/chat/sessions/{session_id}")
+async def delete_chat_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a chat session and all its messages."""
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await db.delete(session)
+    await db.commit()
+    return {"success": True, "id": session_id}
+
+
+@router.patch("/chat/sessions/{session_id}")
+async def rename_chat_session(
+    session_id: str,
+    body: SessionRenameRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a chat session."""
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session.title = body.title[:200]
+    session.updated_at = datetime.utcnow()
+    await db.commit()
+    return {"success": True, "id": session_id, "title": session.title}
+
+
+# =============================================================================
 # Endpoints
 # =============================================================================
 
@@ -268,15 +423,90 @@ async def chat_stream_endpoint(
     Streaming conversational interface using Server-Sent Events.
 
     Yields SSE events:
+      - {"type":"session_created","session_id":"..."} when a new session is auto-created
+      - {"type":"session_title","title":"..."} when auto-title is generated
       - {"type":"thinking","tool":"tool_name"} during tool calls
       - {"type":"text","content":"chunk"} for response text
+      - {"type":"chart","chart":{...}} for chart visualizations
+      - {"type":"table","table":{...}} for data tables
       - {"type":"done"} when complete
       - {"type":"error","message":"..."} on failure
     """
     history = [{"role": m.role, "content": m.content} for m in request.conversation_history]
 
+    async def persisted_stream():
+        session_id = request.session_id
+        session = None
+
+        # Create or load session
+        if session_id:
+            result = await db.execute(
+                select(ChatSession).where(ChatSession.id == session_id)
+            )
+            session = result.scalar_one_or_none()
+
+        if not session:
+            session = ChatSession()
+            db.add(session)
+            await db.flush()
+            session_id = str(session.id)
+            yield f"data: {json.dumps({'type': 'session_created', 'session_id': session_id})}\n\n"
+
+        # Persist user message
+        user_msg = ChatSessionMessage(
+            session_id=session.id,
+            role="user",
+            content=request.message,
+        )
+        db.add(user_msg)
+        session.message_count = (session.message_count or 0) + 1
+        session.updated_at = datetime.utcnow()
+        await db.flush()
+
+        # Collect assistant response
+        accumulated_text = ""
+        collected_vizs = []
+
+        async for event_line in chat_with_analyst_stream(
+            db, history, request.message, session_id=session_id
+        ):
+            # Parse and collect viz/text from the event
+            yield event_line
+
+            if event_line.startswith("data: "):
+                try:
+                    payload = json.loads(event_line[6:].strip())
+                    if payload.get("type") == "text":
+                        accumulated_text += payload.get("content", "")
+                    elif payload.get("type") == "chart" and payload.get("chart"):
+                        collected_vizs.append({"kind": "chart", "data": payload["chart"]})
+                    elif payload.get("type") == "table" and payload.get("table"):
+                        collected_vizs.append({"kind": "table", "data": payload["table"]})
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        # Persist assistant message
+        if accumulated_text:
+            assistant_msg = ChatSessionMessage(
+                session_id=session.id,
+                role="assistant",
+                content=accumulated_text,
+                visualizations=collected_vizs if collected_vizs else None,
+            )
+            db.add(assistant_msg)
+            session.message_count = (session.message_count or 0) + 1
+            session.updated_at = datetime.utcnow()
+
+        # Auto-title on first exchange (message_count <= 2 means first user+assistant pair)
+        if session.message_count <= 2 and session.title == "New conversation":
+            title = await _generate_session_title(request.message)
+            session.title = title
+            yield f"data: {json.dumps({'type': 'session_title', 'title': title})}\n\n"
+
+        await db.commit()
+
     return StreamingResponse(
-        chat_with_analyst_stream(db, history, request.message),
+        persisted_stream(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

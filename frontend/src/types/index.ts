@@ -42,6 +42,9 @@ export interface Match {
   temperature_celsius?: number | null;
   started_at: string | null;
   completed_at: string | null;
+  current_phase?: string | null;
+  second_half_started_at?: string | null;
+  attacking_right_first_half?: boolean | null;
   created_at?: string;
   updated_at?: string;
 }

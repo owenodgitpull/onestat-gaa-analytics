@@ -1,85 +1,55 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Users, ChevronRight, ArrowRight, ArrowLeft, User } from 'lucide-react'
+import { Users, ChevronRight, ArrowRight, ArrowLeft } from 'lucide-react'
 
 interface PossessionSelectionModalProps {
   isOpen: boolean
   homeTeam: string
   awayTeam: string
   onSelect: (team: 'home' | 'away', attackingRight: boolean) => void
+  /** Skip direction step (auto-derived for second half) */
+  skipDirection?: boolean
+  /** Pre-set attacking direction when skipDirection is true */
+  defaultAttackingRight?: boolean
 }
 
-// Mini GAA pitch SVG component for visual direction selection
+// Scaled-down version of the real GAA pitch with direction arrow overlay
 function MiniPitch({ direction, homeTeam }: { direction: 'left' | 'right'; homeTeam: string }) {
   const attackingRight = direction === 'right'
+  const arrowColor = attackingRight ? '#10b981' : '#3b82f6'
 
   return (
-    <div className="relative w-full h-32 bg-emerald-800 rounded-lg overflow-hidden border-2 border-white/20">
-      {/* Pitch markings */}
-      <svg viewBox="0 0 200 100" className="w-full h-full">
-        {/* Pitch outline */}
-        <rect x="5" y="5" width="190" height="90" fill="none" stroke="white" strokeWidth="1" opacity="0.4" />
+    <div className="relative w-full rounded-lg overflow-hidden border-2 border-white/20">
+      {/* Real GAA pitch SVG (same as GAAPitch component) */}
+      <svg viewBox="0 0 2332 1446" className="w-full h-auto">
+        <rect width="2332" height="1446" fill="#2d5016" />
+        <image
+          href="/pitch-svg.svg"
+          width="2332"
+          height="1446"
+          preserveAspectRatio="xMidYMid meet"
+        />
 
-        {/* Center line */}
-        <line x1="100" y1="5" x2="100" y2="95" stroke="white" strokeWidth="1" opacity="0.4" />
-
-        {/* Left 20m line */}
-        <line x1="35" y1="5" x2="35" y2="95" stroke="white" strokeWidth="0.5" opacity="0.3" />
-
-        {/* Right 20m line */}
-        <line x1="165" y1="5" x2="165" y2="95" stroke="white" strokeWidth="0.5" opacity="0.3" />
-
-        {/* Left 13m arc (simplified D-shape) */}
-        <path d="M 5,30 Q 22,50 5,70" fill="none" stroke="white" strokeWidth="0.5" opacity="0.3" />
-
-        {/* Right 13m arc (simplified D-shape) */}
-        <path d="M 195,30 Q 178,50 195,70" fill="none" stroke="white" strokeWidth="0.5" opacity="0.3" />
-
-        {/* Left H-posts (GAA goalposts) */}
-        <line x1="5" y1="38" x2="5" y2="62" stroke="white" strokeWidth="1.5" opacity="0.6" />
-        <line x1="2" y1="38" x2="2" y2="50" stroke="white" strokeWidth="1" opacity="0.6" />
-        <line x1="8" y1="38" x2="8" y2="50" stroke="white" strokeWidth="1" opacity="0.6" />
-        <line x1="2" y1="50" x2="8" y2="50" stroke="white" strokeWidth="1" opacity="0.6" />
-
-        {/* Right H-posts (GAA goalposts) */}
-        <line x1="195" y1="38" x2="195" y2="62" stroke="white" strokeWidth="1.5" opacity="0.6" />
-        <line x1="192" y1="38" x2="192" y2="50" stroke="white" strokeWidth="1" opacity="0.6" />
-        <line x1="198" y1="38" x2="198" y2="50" stroke="white" strokeWidth="1" opacity="0.6" />
-        <line x1="192" y1="50" x2="198" y2="50" stroke="white" strokeWidth="1" opacity="0.6" />
-
-        {/* Attack arrow */}
+        {/* Direction arrow overlay */}
+        <defs>
+          <marker id={`miniArrow-${direction}`} markerWidth="20" markerHeight="20" refX="18" refY="10" orient="auto">
+            <path d="M0,0 L0,20 L20,10 z" fill={arrowColor} />
+          </marker>
+        </defs>
         {attackingRight ? (
           <>
-            <line x1="60" y1="50" x2="140" y2="50" stroke="#10b981" strokeWidth="1.5" markerEnd="url(#arrowRight)" />
-            <defs>
-              <marker id="arrowRight" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-                <path d="M0,0 L0,7 L7,3.5 z" fill="#10b981" />
-              </marker>
-            </defs>
-            {/* Team labels */}
-            <text x="25" y="50" fill="white" fontSize="8" textAnchor="middle" opacity="0.8">{homeTeam[0]}</text>
-            <text x="175" y="50" fill="#10b981" fontSize="10" textAnchor="middle" fontWeight="bold">GOAL</text>
+            <line x1="700" y1="723" x2="1600" y2="723" stroke={arrowColor} strokeWidth="12" markerEnd={`url(#miniArrow-${direction})`} opacity="0.9" />
+            <text x="400" y="740" fill="white" fontSize="100" textAnchor="middle" fontWeight="bold" opacity="0.8">{homeTeam}</text>
+            <text x="1900" y="740" fill={arrowColor} fontSize="100" textAnchor="middle" fontWeight="bold">GOAL</text>
           </>
         ) : (
           <>
-            <line x1="140" y1="50" x2="60" y2="50" stroke="#3b82f6" strokeWidth="1.5" markerEnd="url(#arrowLeft)" />
-            <defs>
-              <marker id="arrowLeft" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-                <path d="M0,0 L0,7 L7,3.5 z" fill="#3b82f6" />
-              </marker>
-            </defs>
-            {/* Team labels */}
-            <text x="175" y="50" fill="white" fontSize="8" textAnchor="middle" opacity="0.8">{homeTeam[0]}</text>
-            <text x="25" y="50" fill="#3b82f6" fontSize="10" textAnchor="middle" fontWeight="bold">GOAL</text>
+            <line x1="1600" y1="723" x2="700" y2="723" stroke={arrowColor} strokeWidth="12" markerEnd={`url(#miniArrow-${direction})`} opacity="0.9" />
+            <text x="1900" y="740" fill="white" fontSize="100" textAnchor="middle" fontWeight="bold" opacity="0.8">{homeTeam}</text>
+            <text x="400" y="740" fill={arrowColor} fontSize="100" textAnchor="middle" fontWeight="bold">GOAL</text>
           </>
         )}
       </svg>
-
-      {/* User position indicator (bottom center - sideline) */}
-      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-black/60 px-2 py-0.5 rounded text-xs text-white/80">
-        <User size={10} />
-        <span>You</span>
-      </div>
     </div>
   )
 }
@@ -88,11 +58,24 @@ export default function PossessionSelectionModal({
   isOpen,
   homeTeam,
   awayTeam,
-  onSelect
+  onSelect,
+  skipDirection = false,
+  defaultAttackingRight = true,
 }: PossessionSelectionModalProps) {
   const [step, setStep] = useState<'direction' | 'possession'>('direction')
   const [attackingRight, setAttackingRight] = useState<boolean | null>(null)
   const [hoveredDirection, setHoveredDirection] = useState<'left' | 'right' | null>(null)
+
+  // When modal opens with skipDirection, jump straight to possession step
+  useEffect(() => {
+    if (isOpen && skipDirection) {
+      setStep('possession')
+      setAttackingRight(defaultAttackingRight)
+    } else if (isOpen) {
+      setStep('direction')
+      setAttackingRight(null)
+    }
+  }, [isOpen, skipDirection, defaultAttackingRight])
 
   if (!isOpen) return null
 
@@ -246,13 +229,15 @@ export default function PossessionSelectionModal({
                 </div>
               </button>
 
-              {/* Back Button */}
-              <button
-                onClick={handleBack}
-                className="w-full p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-white/60 hover:text-white text-sm"
-              >
-                ← Back to direction selection
-              </button>
+              {/* Back Button (only when direction was manually selected) */}
+              {!skipDirection && (
+                <button
+                  onClick={handleBack}
+                  className="w-full p-3 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-all text-white/60 hover:text-white text-sm"
+                >
+                  ← Back to direction selection
+                </button>
+              )}
             </div>
 
             {/* Visual Pitch Reminder */}

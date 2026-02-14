@@ -17,6 +17,7 @@ import {
   Scatter,
   AreaChart,
   Area,
+  ComposedChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -232,11 +233,197 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
           </ResponsiveContainer>
         )
 
-      default:
+      case 'composed':
         return (
-          <div className="h-[200px] flex items-center justify-center text-white/50">
-            Unsupported chart type: {type}
+          <ResponsiveContainer width="100%" height={200}>
+            <ComposedChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <XAxis
+                dataKey={xKey}
+                stroke="rgba(255,255,255,0.5)"
+                tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
+              />
+              <YAxis
+                stroke="rgba(255,255,255,0.5)"
+                tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
+              />
+              <Tooltip content={<CustomTooltip />} cursor={false} />
+              {config.showLegend && <Legend />}
+              {dataKeys.map((key, index) =>
+                index === 0 ? (
+                  <Bar
+                    key={key}
+                    dataKey={key}
+                    fill={colors[index % colors.length]}
+                    radius={[4, 4, 0, 0]}
+                  />
+                ) : (
+                  <Line
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    stroke={colors[index % colors.length]}
+                    strokeWidth={2}
+                    dot={{ fill: colors[index % colors.length], strokeWidth: 2 }}
+                  />
+                )
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        )
+
+      case 'pitch': {
+        // Pitch visualization — numbered paths on pitch + legend below
+        const PITCH_X_OFFSET = 183
+        const PITCH_Y_OFFSET = 123
+        const PITCH_W = 1960
+        const PITCH_H = 1167
+
+        const OUTCOME_COLORS: Record<string, string> = {
+          goal: '#10b981',
+          point: '#6366f1',
+          point_free: '#818cf8',
+          two_point: '#8b5cf6',
+          two_point_free: '#a78bfa',
+          wide: '#f59e0b',
+          wide_free: '#fbbf24',
+          forty_five: '#06b6d4',
+        }
+
+        const OUTCOME_LABELS: Record<string, string> = {
+          goal: 'Goal', point: 'Point', point_free: 'Point (free)',
+          two_point: '2-Pointer', two_point_free: '2-Pointer (free)',
+          wide: 'Wide', wide_free: 'Wide (free)', forty_five: '45m free',
+          short: 'Short', saved: 'Saved',
+        }
+
+        const toSvg = (px: number, py: number) => ({
+          x: (px / 100) * PITCH_W + PITCH_X_OFFSET,
+          y: (py / 100) * PITCH_H + PITCH_Y_OFFSET,
+        })
+
+        return (
+          <div>
+            {/* Pitch SVG — clean with numbered markers only */}
+            <svg viewBox="0 0 2332 1446" className="w-full h-auto rounded-lg overflow-hidden">
+              <rect width="2332" height="1446" fill="#2d5016" />
+              <image
+                href="/pitch-svg.svg"
+                width="2332"
+                height="1446"
+                preserveAspectRatio="xMidYMid meet"
+              />
+              <rect width="2332" height="1446" fill="rgba(0,0,0,0.3)" />
+
+              {data.map((item: any, idx: number) => {
+                const points: { x: number; y: number }[] = item.points || []
+                if (points.length === 0) return null
+
+                const svgPoints = points.map((p: { x: number; y: number }) => toSvg(p.x, p.y))
+                const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#6366f1'
+                const num = idx + 1
+
+                if (svgPoints.length === 1) {
+                  return (
+                    <g key={idx}>
+                      <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={36} fill={color} stroke="white" strokeWidth={4} />
+                      <text x={svgPoints[0].x} y={svgPoints[0].y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
+                    </g>
+                  )
+                }
+
+                const pathD = svgPoints.map((p: { x: number; y: number }, i: number) =>
+                  i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+                ).join(' ')
+                const last = svgPoints[svgPoints.length - 1]
+
+                return (
+                  <g key={idx} opacity={0.9}>
+                    {/* Glow */}
+                    <path d={pathD} fill="none" stroke={color} strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" opacity={0.2} />
+                    {/* Main path */}
+                    <path d={pathD} fill="none" stroke={color} strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" />
+                    {/* Intermediate dots */}
+                    {svgPoints.slice(1, -1).map((p: { x: number; y: number }, di: number) => (
+                      <circle key={di} cx={p.x} cy={p.y} r={14} fill={color} stroke="white" strokeWidth={2} opacity={0.7} />
+                    ))}
+                    {/* Start dot */}
+                    <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={22} fill={color} stroke="white" strokeWidth={3} opacity={0.8} />
+                    {/* End dot with number */}
+                    <circle cx={last.x} cy={last.y} r={36} fill={color} stroke="white" strokeWidth={4} />
+                    <text x={last.x} y={last.y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
+                  </g>
+                )
+              })}
+            </svg>
+
+            {/* Legend below pitch */}
+            {data.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {data.map((item: any, idx: number) => {
+                  const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#6366f1'
+                  const outcomeLabel = OUTCOME_LABELS[item.outcome] || item.outcome?.replace(/_/g, ' ')
+                  const touches = item.points?.length || 0
+                  return (
+                    <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                      {/* Number badge */}
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                        style={{ backgroundColor: color }}
+                      >
+                        {idx + 1}
+                      </div>
+                      {/* Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white font-semibold text-sm">
+                          {item.player || 'Unknown'} — <span style={{ color }}>{outcomeLabel}</span>
+                        </div>
+                        <div className="text-white/50 text-xs">
+                          vs {item.opponent || '?'} · {item.minute}' · {touches} touch{touches !== 1 ? 'es' : ''} in buildup
+                          {item.started_by && item.started_by !== item.player && (
+                            <> · Started by <span className="text-white/70">{item.started_by}</span> ({item.started_with?.replace(/_/g, ' ')})</>
+                          )}
+                          {item.started_by && item.started_by === item.player && item.started_with && item.started_with !== item.outcome && (
+                            <> · Started with {item.started_with?.replace(/_/g, ' ')}</>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
+        )
+      }
+
+      default:
+        // Fallback: render as bar chart for any unknown type
+        return (
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <XAxis
+                dataKey={xKey}
+                stroke="rgba(255,255,255,0.5)"
+                tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
+              />
+              <YAxis
+                stroke="rgba(255,255,255,0.5)"
+                tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
+              />
+              <Tooltip content={<CustomTooltip />} cursor={false} />
+              {config.showLegend && <Legend />}
+              {dataKeys.map((key, index) => (
+                <Bar
+                  key={key}
+                  dataKey={key}
+                  fill={colors[index % colors.length]}
+                  radius={[4, 4, 0, 0]}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
         )
     }
   }

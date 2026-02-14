@@ -23,6 +23,7 @@ from app.schemas.match import (
     MatchListResponse,
     MatchStartRequest,
     MatchCompleteRequest,
+    MatchPhaseUpdate,
     MatchScoreUpdate,
     MatchStatsResponse,
 )
@@ -166,6 +167,34 @@ async def start_match(
     response.opponent_total_score = match.opponent_total_score
     response.result = match.result
     
+    return response
+
+
+@router.post("/{match_id}/phase", response_model=MatchResponse)
+async def update_match_phase(
+    match_id: UUID,
+    phase_data: MatchPhaseUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update match phase for resumable recording.
+
+    Persists current_phase, attacking_right_first_half, and second_half_started_at.
+    """
+    match = await MatchService.update_match_phase(
+        db, match_id, phase_data.phase, phase_data.attacking_right_first_half
+    )
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Match with ID {match_id} not found"
+        )
+
+    response = MatchResponse.model_validate(match)
+    response.dungloe_total_score = match.dungloe_total_score
+    response.opponent_total_score = match.opponent_total_score
+    response.result = match.result
+
     return response
 
 
