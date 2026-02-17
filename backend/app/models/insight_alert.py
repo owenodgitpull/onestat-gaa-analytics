@@ -38,6 +38,7 @@ class InsightAlert(Base):
     __tablename__ = "insight_alerts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True)
     category = Column(Enum(AlertCategory), nullable=False)
     source = Column(Enum(AlertSource), nullable=False)
     title = Column(String(200), nullable=False)

@@ -24,7 +24,7 @@ export default function FoulModal({
   const title = isOppositionFoul ? 'Foul - Who Was Fouled?' : 'Foul - Who Committed It?'
   const subtitle = isOppositionFoul
     ? `${opponentName} committed a foul on which player?`
-    : 'Which Dungloe player committed the foul?'
+    : 'Which of our players committed the foul?'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">

@@ -33,7 +33,7 @@ const SHOT_TYPE_CONFIG: Record<ShotType, { label: string; color: string; match: 
 }
 
 export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardProps) {
-  const [shotFilter, setShotFilter] = useState<'all' | 'dungloe' | 'opponent'>('dungloe')
+  const [shotFilter, setShotFilter] = useState<'all' | 'own' | 'opponent'>('own')
   const [shotMatchRange, setShotMatchRange] = useState<'all' | '3' | '5'>('all')
   const [visibleTypes, setVisibleTypes] = useState<Set<ShotType>>(new Set(['goal', 'point', 'two_point', 'miss']))
 
@@ -109,7 +109,7 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
         </h3>
         <div className="flex flex-col items-end gap-2">
           <div className="flex gap-1">
-            {(['dungloe', 'opponent', 'all'] as const).map(filter => (
+            {(['own', 'opponent', 'all'] as const).map(filter => (
               <button
                 key={filter}
                 onClick={() => setShotFilter(filter)}
@@ -119,7 +119,7 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
                     : 'bg-white/10 text-white/60 hover:bg-white/20'
                 }`}
               >
-                {filter === 'all' ? 'All' : filter === 'dungloe' ? 'Dungloe' : 'Opponent'}
+                {filter === 'all' ? 'All' : filter === 'own' ? 'Team' : 'Opponent'}
               </button>
             ))}
           </div>

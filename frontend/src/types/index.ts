@@ -1,4 +1,19 @@
-// Type definitions for the Dungloe GAA Analytics app
+// Type definitions for the GAA Analytics app
+
+export interface Club {
+  id: string;
+  name: string;
+  short_name: string | null;
+  county: string | null;
+  province: string | null;
+  home_ground: string | null;
+  primary_colour: string | null;
+  secondary_colour: string | null;
+  logo_url: string | null;
+  is_active: boolean;
+  onboarding_completed: boolean;
+  created_at: string;
+}
 
 export interface Player {
   id: string;  // UUID
@@ -34,8 +49,8 @@ export interface Match {
   is_home: boolean;
   status: string;
   competition?: string;
-  dungloe_goals: number;
-  dungloe_points: number;
+  team_goals: number;
+  team_points: number;
   opponent_goals: number;
   opponent_points: number;
   weather_condition?: string | null;
@@ -90,19 +105,22 @@ export enum EventType {
   WIDE_FREE = 'wide_free',
   FORTY_FIVE = 'forty_five',  // 45m free scored - always 1 point
   FORTY_FIVE_MISSED = 'forty_five_missed',  // 45m free missed
+  // Penalty
+  PENALTY_GOAL = 'penalty_goal',  // Penalty scored (counts as goal)
+  PENALTY_MISS = 'penalty_miss',  // Penalty missed (wide/saved)
   // Turnovers
   TURNOVER_LOST = 'turnover_lost',
   TURNOVER_WON = 'turnover_won',
   OUR_UNFORCED_ERROR = 'our_unforced_error',
   OPP_UNFORCED_ERROR = 'opp_unforced_error',
   // Kickouts - Explicit labels (no ambiguity)
-  OWN_KICKOUT_DUNGLOE_WON = 'own_kickout_dungloe_won',
+  OWN_KICKOUT_WON = 'own_kickout_won',
   OWN_KICKOUT_OPPOSITION_WON = 'own_kickout_opposition_won',
-  OWN_KICKOUT_DUNGLOE_WON_BREAK = 'own_kickout_dungloe_won_break',
+  OWN_KICKOUT_WON_BREAK = 'own_kickout_won_break',
   OWN_KICKOUT_OPPOSITION_WON_BREAK = 'own_kickout_opposition_won_break',
-  OPP_KICKOUT_DUNGLOE_WON = 'opp_kickout_dungloe_won',
+  OPP_KICKOUT_WON = 'opp_kickout_won',
   OPP_KICKOUT_OPPOSITION_WON = 'opp_kickout_opposition_won',
-  OPP_KICKOUT_DUNGLOE_WON_BREAK = 'opp_kickout_dungloe_won_break',
+  OPP_KICKOUT_WON_BREAK = 'opp_kickout_won_break',
   OPP_KICKOUT_OPPOSITION_WON_BREAK = 'opp_kickout_opposition_won_break',
   // Cards & fouls
   YELLOW_CARD = 'yellow_card',
@@ -119,12 +137,12 @@ export enum EventType {
 }
 
 export enum Team {
-  DUNGLOE = 'dungloe',
+  OWN = 'own',
   OPPONENT = 'opponent',
 }
 
 export enum PossessionTeam {
-  DUNGLOE = 'dungloe',
+  OWN = 'own',
   OPPONENT = 'opponent',
   CONTESTED = 'contested',
 }
@@ -142,28 +160,28 @@ export interface PossessionEvent {
 
 export interface MatchStats {
   match_id: string;
-  dungloe_possession_percentage: number;
+  team_possession_percentage: number;
   opponent_possession_percentage: number;
-  dungloe_total_shots: number;
-  dungloe_scores: number;
-  dungloe_wides: number;
-  dungloe_accuracy: number;
-  dungloe_conversion_rate: number; // Added
+  team_total_shots: number;
+  team_scores: number;
+  team_wides: number;
+  team_accuracy: number;
+  team_conversion_rate: number;
   opponent_total_shots: number;
   opponent_scores: number;
   opponent_wides: number;
   opponent_accuracy: number;
-  opponent_conversion_rate: number; // Added
-  dungloe_turnovers_won: number;
-  dungloe_turnovers_lost: number;
+  opponent_conversion_rate: number;
+  team_turnovers_won: number;
+  team_turnovers_lost: number;
   opponent_turnovers_won: number;
   opponent_turnovers_lost: number;
-  dungloe_kickouts_won: number;
-  dungloe_kickouts_lost: number;
+  team_kickouts_won: number;
+  team_kickouts_lost: number;
   opponent_kickouts_won: number;
   opponent_kickouts_lost: number;
-  dungloe_yellow_cards: number;
-  dungloe_red_cards: number;
+  team_yellow_cards: number;
+  team_red_cards: number;
   opponent_yellow_cards: number;
   opponent_red_cards: number;
 }

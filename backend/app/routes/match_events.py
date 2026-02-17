@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from uuid import UUID
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.match_event import EventType, Team
 from app.schemas.match_event import (
     MatchEventCreate,
@@ -26,7 +27,8 @@ router = APIRouter()
 @router.post("/", response_model=MatchEventResponse, status_code=status.HTTP_201_CREATED)
 async def create_event(
     event_data: MatchEventCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Create a new match event.
@@ -52,7 +54,8 @@ async def create_event(
 @router.post("/quick-score", response_model=MatchEventResponse, status_code=status.HTTP_201_CREATED)
 async def quick_score(
     score_data: QuickScoreRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Quick score recording endpoint.
@@ -88,7 +91,8 @@ async def quick_score(
 @router.post("/quick-event", response_model=MatchEventResponse, status_code=status.HTTP_201_CREATED)
 async def quick_event(
     event_data: QuickEventRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Quick event recording endpoint.
@@ -125,7 +129,8 @@ async def list_match_events(
     limit: int = Query(100, ge=1, le=500),
     event_type: Optional[EventType] = Query(None, description="Filter by event type"),
     team: Optional[Team] = Query(None, description="Filter by team"),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List all events for a specific match.
@@ -158,7 +163,8 @@ async def list_match_events(
 @router.get("/{event_id}", response_model=MatchEventResponse)
 async def get_event(
     event_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a specific event by ID."""
     event = await MatchEventService.get_event(db, event_id)
@@ -182,7 +188,8 @@ async def get_event(
 async def update_event(
     event_id: UUID,
     event_data: MatchEventUpdate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update a match event.
@@ -209,7 +216,8 @@ async def update_event(
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_event(
     event_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete a match event.

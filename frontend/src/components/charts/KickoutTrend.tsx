@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import {
   BarChart,
   Bar,
@@ -14,7 +15,14 @@ interface KickoutTrendProps {
   data: KickoutTrendMatch[]
 }
 
+const SCROLL_THRESHOLD = 8 // switch to scrollable after this many matches
+const MIN_BAR_WIDTH = 50 // px per bar when scrolling
+
 export default function KickoutTrend({ data }: KickoutTrendProps) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const needsScroll = data.length > SCROLL_THRESHOLD
+  const chartWidth = needsScroll ? data.length * MIN_BAR_WIDTH + 80 : undefined // 80 for Y-axis + padding
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
     // Find the original match data from the label
@@ -114,29 +122,62 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
         <h3 className="text-lg font-bold text-white">Kickout Outcomes</h3>
       </div>
 
-      <ResponsiveContainer width="100%" height={220}>
-        <BarChart data={chartData} stackOffset="expand">
-          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-          <XAxis
-            dataKey="round"
-            stroke="rgba(255,255,255,0.5)"
-            tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
-          />
-          <YAxis
-            stroke="rgba(255,255,255,0.5)"
-            tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
-            tickFormatter={(v) => `${Math.round(v * 100)}%`}
-          />
-          <Tooltip content={<CustomTooltip />} trigger="click" />
-          <Legend
-            wrapperStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}
-          />
-          <Bar dataKey="Won Clean" stackId="1" fill="#10b981" radius={[0, 0, 0, 0]} />
-          <Bar dataKey="Won Break" stackId="1" fill="#f59e0b" />
-          <Bar dataKey="Lost Clean" stackId="1" fill="#ef4444" />
-          <Bar dataKey="Lost Break" stackId="1" fill="#f97316" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
+      {needsScroll ? (
+        <div
+          ref={scrollRef}
+          className="overflow-x-auto no-scrollbar"
+          style={{ WebkitOverflowScrolling: 'touch' }}
+        >
+          <div style={{ width: chartWidth, height: 220 }}>
+            <BarChart data={chartData} stackOffset="expand" width={chartWidth!} height={220}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+              <XAxis
+                dataKey="round"
+                stroke="rgba(255,255,255,0.5)"
+                tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
+              />
+              <YAxis
+                stroke="rgba(255,255,255,0.5)"
+                tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
+                tickFormatter={(v) => `${Math.round(v * 100)}%`}
+              />
+              <Tooltip content={<CustomTooltip />} trigger="click" />
+              <Legend
+                wrapperStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}
+              />
+              <Bar dataKey="Won Clean" stackId="1" fill="#10b981" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="Won Break" stackId="1" fill="#f59e0b" />
+              <Bar dataKey="Lost Clean" stackId="1" fill="#ef4444" />
+              <Bar dataKey="Lost Break" stackId="1" fill="#f97316" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </div>
+          <p className="text-white/30 text-[10px] text-center mt-1">Swipe to see all matches →</p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={chartData} stackOffset="expand">
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+            <XAxis
+              dataKey="round"
+              stroke="rgba(255,255,255,0.5)"
+              tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
+            />
+            <YAxis
+              stroke="rgba(255,255,255,0.5)"
+              tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
+              tickFormatter={(v) => `${Math.round(v * 100)}%`}
+            />
+            <Tooltip content={<CustomTooltip />} trigger="click" />
+            <Legend
+              wrapperStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}
+            />
+            <Bar dataKey="Won Clean" stackId="1" fill="#10b981" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="Won Break" stackId="1" fill="#f59e0b" />
+            <Bar dataKey="Lost Clean" stackId="1" fill="#ef4444" />
+            <Bar dataKey="Lost Break" stackId="1" fill="#f97316" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
 
       {/* Season summary */}
       <div className="flex gap-2 mt-3">

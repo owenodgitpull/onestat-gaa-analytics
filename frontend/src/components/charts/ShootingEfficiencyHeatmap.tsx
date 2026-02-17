@@ -36,11 +36,11 @@ function getZoneColor(pct: number): string {
 }
 
 export default function ShootingEfficiencyHeatmap({ shots }: Props) {
-  const dungloeShots = useMemo(() => shots.filter(s => s.team === 'dungloe'), [shots])
+  const teamShots = useMemo(() => shots.filter(s => s.team === 'own'), [shots])
 
   const zoneStats = useMemo(() => {
     return ZONES.map(zone => {
-      const zoneShots = dungloeShots.filter(
+      const zoneShots = teamShots.filter(
         s => s.x >= zone.xMin && s.x < zone.xMax && s.y >= zone.yMin && s.y < zone.yMax
       )
       const total = zoneShots.length
@@ -48,7 +48,7 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
       const pct = total > 0 ? Math.round((scored / total) * 100) : -1
       return { ...zone, total, scored, pct }
     })
-  }, [dungloeShots])
+  }, [teamShots])
 
   const insight = useMemo(() => {
     const zonesWithShots = zoneStats.filter(z => z.total >= 3)
@@ -76,7 +76,7 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
         </h3>
       </div>
 
-      {dungloeShots.length === 0 ? (
+      {teamShots.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-white/40">
           No shot data available
         </div>

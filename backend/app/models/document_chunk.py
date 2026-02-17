@@ -32,6 +32,9 @@ class DocumentChunk(Base):
         index=True
     )
 
+    # Multi-tenancy
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True)
+
     # Source document info
     source_file: Column[str] = Column(String(255), nullable=False, index=True)
     doc_type: Column[str] = Column(String(50), nullable=False, index=True)  # rules, statsports, tactics

@@ -1,0 +1,307 @@
+"""
+Service layer for club onboarding operations.
+
+Handles club creation, player file parsing (CSV/XLSX), and bulk player creation.
+"""
+
+import csv
+import io
+import logging
+from datetime import date, datetime
+from typing import List, Optional, Tuple
+from uuid import UUID, uuid4
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.club import Club
+from app.models.player import Player, PlayerPosition, PlayerStatus
+from app.schemas.onboarding import (
+    ClubOnboardingCreate,
+    PlayerPreviewRow,
+    PlayerFilePreview,
+    PlayerConfirmRow,
+)
+
+logger = logging.getLogger(__name__)
+
+# Flexible column header matching (case-insensitive, stripped)
+NAME_HEADERS = {"name", "player_name", "full_name", "player", "player name", "full name"}
+POSITION_HEADERS = {"position", "pos", "playing_position", "playing position"}
+JERSEY_HEADERS = {"jersey_number", "number", "jersey", "no", "#", "jersey number", "no."}
+DOB_HEADERS = {"date_of_birth", "dob", "birth_date", "birthday", "date of birth", "birth date"}
+
+# Position normalization
+POSITION_ALIASES = {
+    "gk": "goalkeeper", "keeper": "goalkeeper", "goalie": "goalkeeper", "1": "goalkeeper",
+    "def": "defender", "back": "defender", "corner back": "defender", "cb": "defender",
+    "half back": "defender", "hb": "defender", "full back": "defender", "fb": "defender",
+    "wing back": "defender", "wb": "defender",
+    "mid": "midfielder", "midfield": "midfielder", "centre": "midfielder",
+    "half forward": "midfielder", "hf": "midfielder",
+    "fwd": "forward", "forward": "forward", "corner forward": "forward", "cf": "forward",
+    "full forward": "forward", "ff": "forward", "wing forward": "forward", "wf": "forward",
+}
+
+
+class OnboardingService:
+    """Service for club onboarding operations."""
+
+    @staticmethod
+    async def create_club(db: AsyncSession, data: ClubOnboardingCreate) -> Club:
+        """Create a new club during onboarding."""
+        club = Club(
+            name=data.name,
+            short_name=data.short_name,
+            county=data.county,
+            province=data.province,
+            home_ground=data.home_ground,
+            primary_colour=data.primary_colour,
+            secondary_colour=data.secondary_colour,
+            is_active=True,
+            onboarding_completed=False,
+        )
+        db.add(club)
+        await db.commit()
+        await db.refresh(club)
+        return club
+
+    @staticmethod
+    async def update_club_logo(db: AsyncSession, club_id: UUID, logo_url: str) -> Club:
+        """Update club logo URL."""
+        result = await db.execute(select(Club).where(Club.id == club_id))
+        club = result.scalar_one_or_none()
+        if not club:
+            raise ValueError(f"Club {club_id} not found")
+        club.logo_url = logo_url
+        await db.commit()
+        await db.refresh(club)
+        return club
+
+    @staticmethod
+    def parse_player_file(file_content: bytes, filename: str) -> PlayerFilePreview:
+        """
+        Parse a CSV or XLSX file into a player preview.
+
+        Supports flexible column headers and normalizes positions.
+        Returns warnings for invalid/ambiguous data.
+        """
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+        if ext in ("xlsx", "xls"):
+            return OnboardingService._parse_xlsx(file_content)
+        else:
+            return OnboardingService._parse_csv(file_content)
+
+    @staticmethod
+    def _parse_csv(content: bytes) -> PlayerFilePreview:
+        """Parse CSV content into player preview rows."""
+        text = content.decode("utf-8-sig")  # Handle BOM
+        # Detect delimiter
+        sniffer = csv.Sniffer()
+        try:
+            dialect = sniffer.sniff(text[:2048])
+        except csv.Error:
+            dialect = csv.excel
+
+        reader = csv.reader(io.StringIO(text), dialect)
+        rows_raw = list(reader)
+
+        if len(rows_raw) < 2:
+            return PlayerFilePreview(parsed_count=0, valid_count=0, warnings=["File is empty or has only headers"], rows=[])
+
+        headers = [h.strip().lower() for h in rows_raw[0]]
+        col_map = OnboardingService._map_columns(headers)
+
+        if "name" not in col_map:
+            return PlayerFilePreview(
+                parsed_count=0, valid_count=0,
+                warnings=[f"Could not find a 'name' column. Headers found: {', '.join(headers)}"],
+                rows=[],
+            )
+
+        return OnboardingService._process_rows(rows_raw[1:], col_map)
+
+    @staticmethod
+    def _parse_xlsx(content: bytes) -> PlayerFilePreview:
+        """Parse XLSX content into player preview rows."""
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            return PlayerFilePreview(
+                parsed_count=0, valid_count=0,
+                warnings=["openpyxl is required for XLSX parsing. Install with: pip install openpyxl"],
+                rows=[],
+            )
+
+        wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+        ws = wb.active
+        if ws is None:
+            return PlayerFilePreview(parsed_count=0, valid_count=0, warnings=["No active worksheet found"], rows=[])
+
+        rows_raw = []
+        for row in ws.iter_rows(values_only=True):
+            rows_raw.append([str(cell) if cell is not None else "" for cell in row])
+
+        wb.close()
+
+        if len(rows_raw) < 2:
+            return PlayerFilePreview(parsed_count=0, valid_count=0, warnings=["File is empty or has only headers"], rows=[])
+
+        headers = [h.strip().lower() for h in rows_raw[0]]
+        col_map = OnboardingService._map_columns(headers)
+
+        if "name" not in col_map:
+            return PlayerFilePreview(
+                parsed_count=0, valid_count=0,
+                warnings=[f"Could not find a 'name' column. Headers found: {', '.join(headers)}"],
+                rows=[],
+            )
+
+        return OnboardingService._process_rows(rows_raw[1:], col_map)
+
+    @staticmethod
+    def _map_columns(headers: List[str]) -> dict:
+        """Map header names to column indices."""
+        col_map = {}
+        for idx, h in enumerate(headers):
+            if h in NAME_HEADERS:
+                col_map["name"] = idx
+            elif h in POSITION_HEADERS:
+                col_map["position"] = idx
+            elif h in JERSEY_HEADERS:
+                col_map["jersey"] = idx
+            elif h in DOB_HEADERS:
+                col_map["dob"] = idx
+        return col_map
+
+    @staticmethod
+    def _process_rows(data_rows: List[List[str]], col_map: dict) -> PlayerFilePreview:
+        """Process data rows into player preview rows with warnings."""
+        preview_rows = []
+        file_warnings = []
+        valid_count = 0
+
+        for i, row in enumerate(data_rows):
+            row_num = i + 2  # 1-indexed, +1 for header
+            warnings = []
+
+            # Name (required)
+            name = row[col_map["name"]].strip() if col_map["name"] < len(row) else ""
+            if not name:
+                continue  # Skip blank rows
+
+            # Position
+            position = None
+            if "position" in col_map and col_map["position"] < len(row):
+                raw_pos = row[col_map["position"]].strip().lower()
+                if raw_pos:
+                    position = POSITION_ALIASES.get(raw_pos, raw_pos)
+                    valid_positions = {p.value for p in PlayerPosition}
+                    if position not in valid_positions:
+                        warnings.append(f"Unknown position '{row[col_map['position']].strip()}' — will default to null")
+                        position = None
+
+            # Jersey number
+            jersey_number = None
+            if "jersey" in col_map and col_map["jersey"] < len(row):
+                raw_jersey = row[col_map["jersey"]].strip()
+                if raw_jersey:
+                    try:
+                        jersey_number = int(float(raw_jersey))
+                        if jersey_number < 1 or jersey_number > 99:
+                            warnings.append(f"Jersey number {jersey_number} out of range (1-99)")
+                            jersey_number = None
+                    except (ValueError, TypeError):
+                        warnings.append(f"Invalid jersey number '{raw_jersey}'")
+
+            # DOB
+            dob_str = None
+            if "dob" in col_map and col_map["dob"] < len(row):
+                raw_dob = row[col_map["dob"]].strip()
+                if raw_dob:
+                    dob_str = OnboardingService._parse_date(raw_dob)
+                    if dob_str is None:
+                        warnings.append(f"Unparseable date '{raw_dob}'")
+
+            preview_rows.append(PlayerPreviewRow(
+                row_number=row_num,
+                name=name,
+                position=position,
+                jersey_number=jersey_number,
+                date_of_birth=dob_str,
+                warnings=warnings,
+            ))
+
+            if not warnings:
+                valid_count += 1
+
+        return PlayerFilePreview(
+            parsed_count=len(preview_rows),
+            valid_count=valid_count,
+            warnings=file_warnings,
+            rows=preview_rows,
+        )
+
+    @staticmethod
+    def _parse_date(raw: str) -> Optional[str]:
+        """Try to parse a date string into YYYY-MM-DD format."""
+        formats = [
+            "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y",
+            "%d %b %Y", "%d %B %Y", "%Y/%m/%d", "%d.%m.%Y",
+        ]
+        for fmt in formats:
+            try:
+                d = datetime.strptime(raw, fmt).date()
+                return d.isoformat()
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    async def bulk_create_players(
+        db: AsyncSession,
+        club_id: UUID,
+        players: List[PlayerConfirmRow],
+    ) -> List[Player]:
+        """Bulk create players for a club."""
+        created = []
+        for p in players:
+            dob = None
+            if p.date_of_birth:
+                try:
+                    dob = date.fromisoformat(p.date_of_birth)
+                except ValueError:
+                    pass
+
+            player = Player(
+                id=uuid4(),
+                club_id=club_id,
+                name=p.name,
+                position=p.position,
+                jersey_number=p.jersey_number,
+                date_of_birth=dob,
+                status=PlayerStatus.ACTIVE,
+                active=True,
+            )
+            db.add(player)
+            created.append(player)
+
+        await db.commit()
+        for player in created:
+            await db.refresh(player)
+
+        logger.info(f"Bulk created {len(created)} players for club {club_id}")
+        return created
+
+    @staticmethod
+    async def complete_onboarding(db: AsyncSession, club_id: UUID) -> Club:
+        """Mark club onboarding as completed."""
+        result = await db.execute(select(Club).where(Club.id == club_id))
+        club = result.scalar_one_or_none()
+        if not club:
+            raise ValueError(f"Club {club_id} not found")
+        club.onboarding_completed = True
+        await db.commit()
+        await db.refresh(club)
+        return club

@@ -42,12 +42,12 @@ export function calculateManOfMatch(
 
   const playerScores: Record<string, PlayerScore> = {}
 
-  // Only count Dungloe events with a player
-  const dungloeEvents = events.filter(
-    (e) => e.team === 'dungloe' && e.player_id
+  // Only count own team events with a player
+  const ownTeamEvents = events.filter(
+    (e) => e.team === 'own' && e.player_id
   )
 
-  for (const event of dungloeEvents) {
+  for (const event of ownTeamEvents) {
     const pid = String(event.player_id)
     if (!playerScores[pid]) {
       const player = players.find((p) => p.id === pid)
@@ -92,10 +92,10 @@ export function calculateManOfMatch(
         playerScores[pid].breakdown.turnoversLost++
         break
       // Kickout wins
-      case 'own_kickout_dungloe_won':
-      case 'own_kickout_dungloe_won_break':
-      case 'opp_kickout_dungloe_won':
-      case 'opp_kickout_dungloe_won_break':
+      case 'own_kickout_won':
+      case 'own_kickout_won_break':
+      case 'opp_kickout_won':
+      case 'opp_kickout_won_break':
         playerScores[pid].score += 2
         playerScores[pid].breakdown.kickoutsWon++
         break

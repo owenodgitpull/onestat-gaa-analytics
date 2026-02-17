@@ -7,7 +7,7 @@ Represents a single match with opponent, date, venue, and final scores.
 import uuid
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text
+from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 from app.database import Base
@@ -68,7 +68,10 @@ class Match(Base):
 
     # Primary key
     id: Column[uuid.UUID] = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
+    # Multi-tenancy
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True)
+
     # Match details
     opponent: Column[str] = Column(String, nullable=False, index=True)
     match_date: Column[datetime] = Column(DateTime, nullable=False, index=True)
@@ -76,8 +79,8 @@ class Match(Base):
     status: Column[MatchStatus] = Column(Enum(MatchStatus), default=MatchStatus.SCHEDULED, nullable=False)
     
     # Scores (updated as match progresses)
-    dungloe_goals: Column[int] = Column(Integer, default=0, nullable=False)
-    dungloe_points: Column[int] = Column(Integer, default=0, nullable=False)
+    team_goals: Column[int] = Column(Integer, default=0, nullable=False)
+    team_points: Column[int] = Column(Integer, default=0, nullable=False)
     opponent_goals: Column[int] = Column(Integer, default=0, nullable=False)
     opponent_points: Column[int] = Column(Integer, default=0, nullable=False)
     
@@ -151,13 +154,13 @@ class Match(Base):
     )
 
     def __repr__(self):
-        score = f"{self.dungloe_goals}-{self.dungloe_points} vs {self.opponent_goals}-{self.opponent_points}"
+        score = f"{self.team_goals}-{self.team_points} vs {self.opponent_goals}-{self.opponent_points}"
         return f"<Match(id={self.id}, opponent='{self.opponent}', score='{score}', status='{self.status.value}')>"
 
     @property
-    def dungloe_total_score(self) -> int:
-        """Calculate Dungloe's total score (goals worth 3 points)."""
-        return (self.dungloe_goals * 3) + self.dungloe_points
+    def team_total_score(self) -> int:
+        """Calculate team's total score (goals worth 3 points)."""
+        return (self.team_goals * 3) + self.team_points
 
     @property
     def opponent_total_score(self) -> int:
@@ -169,13 +172,13 @@ class Match(Base):
         """Get match result: 'win', 'loss', 'draw', or 'pending'."""
         if self.status != MatchStatus.COMPLETED:
             return "pending"
-        
-        dungloe_total = self.dungloe_total_score
+
+        team_total = self.team_total_score
         opponent_total = self.opponent_total_score
-        
-        if dungloe_total > opponent_total:
+
+        if team_total > opponent_total:
             return "win"
-        elif dungloe_total < opponent_total:
+        elif team_total < opponent_total:
             return "loss"
         else:
             return "draw"

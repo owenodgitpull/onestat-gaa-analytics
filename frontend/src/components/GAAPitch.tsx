@@ -29,17 +29,17 @@ interface GAAPitchProps {
 
 // Get color for event dot based on type and team
 const getEventColor = (event: PitchEvent): string => {
-  const isDungloe = event.team === 'dungloe'
+  const isOwn = event.team === 'own'
 
   switch (event.event_type) {
     case 'goal':
-      return isDungloe ? '#10b981' : '#f97316'  // emerald vs orange
+      return isOwn ? '#10b981' : '#f97316'  // emerald vs orange
     case 'point':
     case 'point_free':
-      return isDungloe ? '#6366f1' : '#fb7185'  // indigo vs rose
+      return isOwn ? '#6366f1' : '#fb7185'  // indigo vs rose
     case 'two_point':
     case 'two_point_free':
-      return isDungloe ? '#8b5cf6' : '#fb7185'  // purple vs rose
+      return isOwn ? '#8b5cf6' : '#fb7185'  // purple vs rose
     case 'wide':
     case 'wide_free':
       return '#fbbf24'  // amber
@@ -55,8 +55,8 @@ const getEventColor = (event: PitchEvent): string => {
     default:
       // Kickout events — color by who won
       if (event.event_type.includes('kickout') || event.event_type.includes('breaking_ball')) {
-        const dungloeWon = event.event_type.includes('dungloe_won') || event.event_type === 'kickout_won'
-        return dungloeWon ? '#06b6d4' : '#f97316'  // cyan for Dungloe won, orange for lost
+        const ownTeamWon = event.event_type.includes('_won') && !event.event_type.includes('opposition_won')
+        return ownTeamWon ? '#06b6d4' : '#f97316'  // cyan for own team won, orange for lost
       }
       return '#94a3b8'  // slate
   }
@@ -92,7 +92,7 @@ export default function GAAPitch({
     }
   }, [ballPosition])
 
-  const handlePitchClick = (e: React.MouseEvent<SVGSVGElement>) => {
+  const processPitchInteraction = (clientX: number, clientY: number) => {
     if (readonly) return
 
     const svg = svgRef.current
@@ -101,19 +101,31 @@ export default function GAAPitch({
     // Convert pixel click → SVG coordinates → pitch-area percentage
     // Pitch area: x 183–2143 (1960 units), y 123–1290 (1167 units)
     const rect = svg.getBoundingClientRect()
-    const svgX = ((e.clientX - rect.left) / rect.width) * 2332
-    const svgY = ((e.clientY - rect.top) / rect.height) * 1446
+    const svgX = ((clientX - rect.left) / rect.width) * 2332
+    const svgY = ((clientY - rect.top) / rect.height) * 1446
     const x = ((svgX - 183) / 1960) * 100
     const y = ((svgY - 123) / 1167) * 100
 
     const newPosition: BallPosition = {
       x: Math.max(0, Math.min(100, x)),
       y: Math.max(0, Math.min(100, y)),
-      team: localBallPosition?.team || PossessionTeam.DUNGLOE,
+      team: localBallPosition?.team || PossessionTeam.OWN,
     }
 
     setLocalBallPosition(newPosition)
     onBallMove?.(newPosition)
+  }
+
+  const handlePitchClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    processPitchInteraction(e.clientX, e.clientY)
+  }
+
+  const handlePitchTouch = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length > 0) return // Only handle touchEnd, not touchStart multi-touch
+    const touch = e.changedTouches[0]
+    if (!touch) return
+    e.preventDefault() // Prevent delayed click from firing duplicate
+    processPitchInteraction(touch.clientX, touch.clientY)
   }
 
   // Check if position is in 2-point zone (outside both 40m arcs)
@@ -160,6 +172,7 @@ export default function GAAPitch({
         viewBox="0 0 2332 1446"
         className="w-full h-full cursor-pointer"
         onClick={handlePitchClick}
+        onTouchEnd={handlePitchTouch}
         xmlns="http://www.w3.org/2000/svg"
       >
         {/* Background */}
@@ -201,7 +214,7 @@ export default function GAAPitch({
               r="28"
               fill="none"
               stroke={
-                localBallPosition.team === PossessionTeam.DUNGLOE
+                localBallPosition.team === PossessionTeam.OWN
                   ? '#4f46e5'
                   : '#ef4444'
               }

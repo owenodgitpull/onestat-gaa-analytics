@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.possession_event import PossessionTeam
 from app.schemas.possession_event import (
     PossessionEventCreate,
@@ -23,7 +24,8 @@ router = APIRouter()
 @router.post("/", response_model=PossessionEventResponse, status_code=status.HTTP_201_CREATED)
 async def create_possession_event(
     event_data: PossessionEventCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Record a possession event.
@@ -55,7 +57,8 @@ async def create_possession_event(
 @router.get("/{event_id}", response_model=PossessionEventResponse)
 async def get_possession_event(
     event_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a single possession event by ID."""
     event = await PossessionService.get_possession_event(db, event_id)
@@ -77,7 +80,8 @@ async def list_possession_events(
     match_id: UUID = Query(..., description="Filter by match ID"),
     team: Optional[PossessionTeam] = Query(None, description="Filter by team"),
     limit: int = Query(1000, ge=1, le=10000, description="Max events to return"),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List possession events for a match.
@@ -102,7 +106,8 @@ async def list_possession_events(
 @router.post("/finalize/{match_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def finalize_match_possession(
     match_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Finalize possession tracking for a completed match.

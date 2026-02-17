@@ -14,6 +14,7 @@ import {
   History,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
+import { useAuth } from '../contexts/AuthContext'
 import { useState } from 'react'
 import NewMatchModal from './NewMatchModal'
 import AIAnalyst from './AIAnalyst'
@@ -22,11 +23,12 @@ export default function Navigation() {
   const location = useLocation()
   const navigate = useNavigate()
   const createMatch = useCreateMatch()
+  const { user, logout } = useAuth()
   const [isCreatingMatch, setIsCreatingMatch] = useState(false)
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showAIChat, setShowAIChat] = useState(false)
-  const [logoError, setLogoError] = useState(false)
+
 
   const isActive = (path: string) => {
     if (path === '/' && location.pathname === '/') return true
@@ -98,20 +100,12 @@ export default function Navigation() {
       <nav className="sticky top-0 z-50 backdrop-blur-2xl border-b border-white/[0.12]" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.06))', boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
         <div className="flex items-center h-14 px-4">
           {/* Logo */}
-          <Link to="/" className="flex items-center space-x-2 group mr-8">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center overflow-hidden">
-              {logoError ? (
-                <span className="text-sm font-bold text-white">D</span>
-              ) : (
-                <img
-                  src="/clg-logo.png"
-                  alt="Dungloe GAA"
-                  className="w-full h-full object-cover"
-                  onError={() => setLogoError(true)}
-                />
-              )}
-            </div>
-            <span className="text-lg font-bold text-white hidden sm:inline">DUNGLOE GAA</span>
+          <Link to="/" className="flex items-center group mr-8">
+            <img
+              src="/oneStatLogoTransparent.png"
+              alt="OneStat Analytics"
+              className="h-8"
+            />
           </Link>
 
           {/* Main Navigation Links */}
@@ -192,7 +186,9 @@ export default function Navigation() {
                 className="flex items-center space-x-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
               >
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                  <UserCircle size={20} className="text-white" />
+                  <span className="text-xs font-bold text-white">
+                    {user?.name?.[0]?.toUpperCase() || <UserCircle size={20} />}
+                  </span>
                 </div>
                 <ChevronDown size={14} className="text-white/60" />
               </button>
@@ -205,12 +201,21 @@ export default function Navigation() {
                     onClick={() => setShowProfileMenu(false)}
                   />
                   <div className="absolute right-0 top-full mt-2 w-48 py-2 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-20">
+                    {user && (
+                      <div className="px-4 py-2 border-b border-white/10">
+                        <p className="text-sm font-medium text-white truncate">{user.name}</p>
+                        <p className="text-xs text-white/50 truncate">{user.email}</p>
+                      </div>
+                    )}
                     <button className="w-full px-4 py-2 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white flex items-center gap-2">
                       <Settings size={16} />
                       Settings
                     </button>
                     <hr className="my-1 border-white/10" />
-                    <button className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2">
+                    <button
+                      onClick={async () => { await logout(); navigate('/login'); }}
+                      className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2"
+                    >
                       <LogOut size={16} />
                       Logout
                     </button>
@@ -290,7 +295,7 @@ export default function Navigation() {
       <AIAnalyst
         isOpen={showAIChat}
         onClose={() => setShowAIChat(false)}
-        initialContext="I have access to all Dungloe GAA match data, player statistics, GPS performance benchmarks, and tactical information from the knowledge base."
+        initialContext="I have access to all match data, player statistics, GPS performance benchmarks, and tactical information from the knowledge base."
       />
     </>
   )

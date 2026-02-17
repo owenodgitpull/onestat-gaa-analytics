@@ -21,7 +21,7 @@ export default function PossessionTerritoryChart({
   insight,
   pollInterval = 0,
 }: PossessionTerritoryChartProps) {
-  const [selectedTeam, setSelectedTeam] = useState<'dungloe' | 'opponent'>('dungloe')
+  const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
   const [selectedHalf, setSelectedHalf] = useState<'all' | '1st' | '2nd'>('all')
 
   const { data: possessionEvents } = useQuery({
@@ -33,7 +33,7 @@ export default function PossessionTerritoryChart({
 
   const territory = useMemo(() => {
     const zones = {
-      dungloe: { defensive: 0, midfield: 0, attacking: 0 },
+      own: { defensive: 0, midfield: 0, attacking: 0 },
       opponent: { defensive: 0, midfield: 0, attacking: 0 }
     }
 
@@ -48,8 +48,8 @@ export default function PossessionTerritoryChart({
       if (selectedHalf === '1st' && minute > 35) return
       if (selectedHalf === '2nd' && minute <= 35) return
 
-      const team = e.team || (e.is_home_team ? 'dungloe' : 'opponent')
-      if (team !== 'dungloe' && team !== 'opponent') return
+      const team = e.team || (e.is_home_team ? 'own' : 'opponent')
+      if (team !== 'own' && team !== 'opponent') return
 
       const weight = usePossession ? (e.duration_seconds || 1) : 1
 
@@ -62,14 +62,14 @@ export default function PossessionTerritoryChart({
       }
     })
 
-    const dungloeTotal = zones.dungloe.defensive + zones.dungloe.midfield + zones.dungloe.attacking
+    const ownTotal = zones.own.defensive + zones.own.midfield + zones.own.attacking
     const oppTotal = zones.opponent.defensive + zones.opponent.midfield + zones.opponent.attacking
 
     return {
-      dungloe: {
-        defensive: dungloeTotal > 0 ? Math.round((zones.dungloe.defensive / dungloeTotal) * 100) : 0,
-        midfield: dungloeTotal > 0 ? Math.round((zones.dungloe.midfield / dungloeTotal) * 100) : 0,
-        attacking: dungloeTotal > 0 ? Math.round((zones.dungloe.attacking / dungloeTotal) * 100) : 0
+      own: {
+        defensive: ownTotal > 0 ? Math.round((zones.own.defensive / ownTotal) * 100) : 0,
+        midfield: ownTotal > 0 ? Math.round((zones.own.midfield / ownTotal) * 100) : 0,
+        attacking: ownTotal > 0 ? Math.round((zones.own.attacking / ownTotal) * 100) : 0
       },
       opponent: {
         defensive: oppTotal > 0 ? Math.round((zones.opponent.defensive / oppTotal) * 100) : 0,
@@ -79,10 +79,10 @@ export default function PossessionTerritoryChart({
     }
   }, [possessionEvents, events, selectedHalf])
 
-  const dungloePosPct = Math.round(stats?.dungloe_possession_percentage || 50)
-  const possession = { dungloe: dungloePosPct, opponent: 100 - dungloePosPct }
+  const ownPosPct = Math.round(stats?.team_possession_percentage || 50)
+  const possession = { own: ownPosPct, opponent: 100 - ownPosPct }
   const currentTerritory = territory[selectedTeam]
-  const teamColor = selectedTeam === 'dungloe' ? '#84cc16' : '#f97316'
+  const teamColor = selectedTeam === 'own' ? '#84cc16' : '#f97316'
 
   return (
     <div className="glass-card p-4">
@@ -94,9 +94,9 @@ export default function PossessionTerritoryChart({
       <div className="flex items-center justify-between mb-4">
         <div className="flex gap-1">
           <button
-            onClick={() => setSelectedTeam('dungloe')}
+            onClick={() => setSelectedTeam('own')}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-              selectedTeam === 'dungloe' ? 'bg-lime-500 text-black' : 'bg-white/10 text-white/60 hover:bg-white/20'
+              selectedTeam === 'own' ? 'bg-lime-500 text-black' : 'bg-white/10 text-white/60 hover:bg-white/20'
             }`}
           >
             <div className="w-2 h-2 rounded-full bg-current" /> DUN
@@ -169,9 +169,9 @@ export default function PossessionTerritoryChart({
 
       <div className="mt-4 pt-3 border-t border-white/10">
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-lime-400 font-semibold w-10">{Math.round(possession.dungloe)}%</span>
+          <span className="text-lime-400 font-semibold w-10">{Math.round(possession.own)}%</span>
           <div className="flex-1 h-2 rounded-full overflow-hidden flex bg-white/10">
-            <div className="bg-lime-500 transition-all" style={{ width: `${possession.dungloe}%` }} />
+            <div className="bg-lime-500 transition-all" style={{ width: `${possession.own}%` }} />
             <div className="bg-orange-500 transition-all" style={{ width: `${possession.opponent}%` }} />
           </div>
           <span className="text-orange-400 font-semibold w-10 text-right">{Math.round(possession.opponent)}%</span>

@@ -7,7 +7,7 @@ Provides endpoints for:
 - Reloading the knowledge base
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 import logging
@@ -16,6 +16,7 @@ from app.services.knowledge_base_service import (
     get_knowledge_base,
     reload_knowledge_base
 )
+from app.auth.dependencies import AuthenticatedUser, require_club
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class ExtractResponse(BaseModel):
 
 
 @router.get("/documents")
-async def list_documents():
+async def list_documents(user: AuthenticatedUser = Depends(require_club)):
     """
     List all documents currently loaded in the knowledge base.
 
@@ -54,7 +55,7 @@ async def list_documents():
 
 
 @router.get("/pdfs")
-async def list_available_pdfs():
+async def list_available_pdfs(user: AuthenticatedUser = Depends(require_club)):
     """
     List all PDF files in the Knowledge base folder.
 
@@ -68,7 +69,7 @@ async def list_available_pdfs():
 
 
 @router.post("/extract", response_model=ExtractResponse)
-async def extract_document(request: ExtractRequest):
+async def extract_document(request: ExtractRequest, user: AuthenticatedUser = Depends(require_club)):
     """
     Trigger Claude Vision extraction for an image-based PDF.
 
@@ -89,7 +90,7 @@ async def extract_document(request: ExtractRequest):
 
 
 @router.post("/reload")
-async def reload_kb():
+async def reload_kb(user: AuthenticatedUser = Depends(require_club)):
     """
     Reload all documents from the Knowledge base folder.
 
@@ -108,7 +109,7 @@ async def reload_kb():
 
 
 @router.get("/health")
-async def kb_health():
+async def kb_health(user: AuthenticatedUser = Depends(require_club)):
     """
     Check knowledge base health and status.
     """

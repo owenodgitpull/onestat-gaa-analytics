@@ -33,10 +33,10 @@ const filterCategories: FilterCategory[] = [
     label: 'Kickouts',
     eventTypes: [
       'kickout_won', 'kickout_lost', 'breaking_ball_won', 'breaking_ball_lost',
-      'own_kickout_dungloe_won', 'own_kickout_opposition_won',
-      'own_kickout_dungloe_won_break', 'own_kickout_opposition_won_break',
-      'opp_kickout_dungloe_won', 'opp_kickout_opposition_won',
-      'opp_kickout_dungloe_won_break', 'opp_kickout_opposition_won_break',
+      'own_kickout_won', 'own_kickout_opposition_won',
+      'own_kickout_won_break', 'own_kickout_opposition_won_break',
+      'opp_kickout_won', 'opp_kickout_opposition_won',
+      'opp_kickout_won_break', 'opp_kickout_opposition_won_break',
     ],
     color: 'cyan'
   },

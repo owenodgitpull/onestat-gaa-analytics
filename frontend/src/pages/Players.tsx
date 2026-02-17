@@ -12,11 +12,13 @@ import {
   ChevronRight,
   Trophy,
   Target,
-  Filter
+  Filter,
+  UserPlus
 } from 'lucide-react'
 import { api, TopScorer } from '@/services/api'
 import { usePlayers } from '@/hooks/usePlayers'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
+import InvitePlayerModal from '@/components/InvitePlayerModal'
 
 // Position categories for filtering
 const positionCategories = [
@@ -37,6 +39,7 @@ const positionMapping: Record<string, string> = {
 export default function Players() {
   const [searchQuery, setSearchQuery] = useState('')
   const [positionFilter, setPositionFilter] = useState('all')
+  const [invitePlayer, setInvitePlayer] = useState<{ id: string; name: string } | null>(null)
 
   const { data: players, isLoading } = usePlayers()
 
@@ -207,6 +210,14 @@ export default function Players() {
                       </div>
                     </div>
                   )}
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInvitePlayer({ id: player.id, name: player.name }); }}
+                    className="px-2 py-1 rounded-lg text-xs font-medium bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-colors flex items-center gap-1"
+                    title="Invite to App"
+                  >
+                    <UserPlus size={12} />
+                    <span className="hidden sm:inline">Invite</span>
+                  </button>
                   <div className={`px-2 py-1 rounded text-xs font-medium ${
                     player.active
                       ? 'bg-emerald-500/20 text-emerald-400'
@@ -233,6 +244,12 @@ export default function Players() {
           </div>
         )}
       </div>
+
+      <InvitePlayerModal
+        isOpen={!!invitePlayer}
+        onClose={() => setInvitePlayer(null)}
+        player={invitePlayer}
+      />
     </div>
   )
 }

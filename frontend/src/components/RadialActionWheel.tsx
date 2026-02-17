@@ -15,13 +15,13 @@ import {
 
 interface RadialActionWheelProps {
   onActionSelect: (eventType: EventType) => void
-  onFoulClick?: (team: 'dungloe' | 'opponent') => void
+  onFoulClick?: (team: 'own' | 'opponent') => void
   on45Click?: () => void
   disabled?: boolean
   currentPossession?: PossessionTeam
   isIn2PointZone?: boolean
   pendingFreeKick?: boolean
-  pendingFoul?: 'dungloe' | 'opponent' | null
+  pendingFoul?: 'own' | 'opponent' | null
   pending45?: boolean
   pendingKickoutPosition?: boolean
   onCancelFree?: () => void
@@ -65,15 +65,15 @@ const categoryButtons: Record<Exclude<CategoryId, 'foul'>, ActionButton[]> = {
     { eventType: EventType.INTERCEPTION, label: 'Int', icon: Eye },
   ],
   our_kickouts: [
-    { eventType: EventType.OWN_KICKOUT_DUNGLOE_WON, label: 'We Won', icon: CheckCircle },
+    { eventType: EventType.OWN_KICKOUT_WON, label: 'We Won', icon: CheckCircle },
     { eventType: EventType.OWN_KICKOUT_OPPOSITION_WON, label: 'They Won', icon: XCircle },
-    { eventType: EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK, label: 'We Break', icon: Zap },
+    { eventType: EventType.OWN_KICKOUT_WON_BREAK, label: 'We Break', icon: Zap },
     { eventType: EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK, label: 'They Break', icon: XCircle },
   ],
   opp_kickouts: [
-    { eventType: EventType.OPP_KICKOUT_DUNGLOE_WON, label: 'We Won', icon: CheckCircle },
+    { eventType: EventType.OPP_KICKOUT_WON, label: 'We Won', icon: CheckCircle },
     { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON, label: 'They Won', icon: XCircle },
-    { eventType: EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK, label: 'We Break', icon: Zap },
+    { eventType: EventType.OPP_KICKOUT_WON_BREAK, label: 'We Break', icon: Zap },
     { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK, label: 'They Break', icon: XCircle },
   ],
 }
@@ -94,7 +94,7 @@ export default function RadialActionWheel({
   onFoulClick,
   on45Click,
   disabled = false,
-  currentPossession = PossessionTeam.DUNGLOE,
+  currentPossession = PossessionTeam.OWN,
   isIn2PointZone = false,
   pendingFreeKick = false,
   pendingFoul = null,
@@ -123,7 +123,7 @@ export default function RadialActionWheel({
     if (eventType === EventType.TWO_POINT_FREE && !isIn2PointZone) return true
     if (eventType === EventType.POINT_FREE && isIn2PointZone) return true
 
-    const hasPossession = currentPossession === PossessionTeam.DUNGLOE
+    const hasPossession = currentPossession === PossessionTeam.OWN
     if (hasPossession) {
       return [EventType.TURNOVER_WON, EventType.OPP_UNFORCED_ERROR, EventType.INTERCEPTION, EventType.BLOCK].includes(eventType)
     } else {
@@ -148,8 +148,8 @@ export default function RadialActionWheel({
     onCancel = onCancel45
   } else if (pendingFreeKick) {
     outerButtons = freeKickOptions
-    const isDungloeFoul = pendingFoul === 'dungloe'
-    contextLabel = isDungloeFoul ? 'Opp Free' : 'Dungloe Free'
+    const isOwnFoul = pendingFoul === 'own'
+    contextLabel = isOwnFoul ? 'Opp Free' : 'Our Free'
     showCancel = true
     onCancel = onCancelFree
   } else if (showFoulSelection) {
@@ -165,7 +165,7 @@ export default function RadialActionWheel({
   } else {
     outerButtons = categoryButtons[activeCategory] || []
     // Add 45 button to scoring
-    if (activeCategory === 'scoring' && currentPossession === PossessionTeam.DUNGLOE) {
+    if (activeCategory === 'scoring' && currentPossession === PossessionTeam.OWN) {
       outerButtons = [...outerButtons, { eventType: EventType.FORTY_FIVE as EventType, label: '45', icon: Flag }]
     }
     contextLabel = categoryConfig[activeCategory]?.label || ''
@@ -252,7 +252,7 @@ export default function RadialActionWheel({
         // Foul team selection
         <>
           {[
-            { label: 'Dungloe\nFoul', team: 'dungloe' as const, angle: -45 },
+            { label: 'Our\nFoul', team: 'own' as const, angle: -45 },
             { label: 'Opp\nFoul', team: 'opponent' as const, angle: 45 },
           ].map((foul) => {
             const rad = ((foul.angle - 90) * Math.PI) / 180
@@ -268,7 +268,7 @@ export default function RadialActionWheel({
                   onFoulClick?.(foul.team)
                 }}
                 className={`absolute rounded-xl flex flex-col items-center justify-center transition-all duration-200 border border-white/20 ${
-                  foul.team === 'dungloe'
+                  foul.team === 'own'
                     ? 'bg-indigo-600/80 hover:bg-indigo-500/80 text-white'
                     : 'bg-violet-600/80 hover:bg-violet-500/80 text-white'
                 }`}

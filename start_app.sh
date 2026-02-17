@@ -1,5 +1,7 @@
-cd "/Users/owen_/Dungloe GAA App/dungloe-gaa-analytics/backend"
-python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+ #Backend:
+  cd backend
+  venv/Scripts/uvicorn app.main:app --host 0.0.0.0 --port 8001
 
-cd "/Users/owen_/Dungloe GAA App/dungloe-gaa-analytics/frontend"
-npm run dev
+  #Frontend:
+  cd frontend
+  npx vite --port 3001

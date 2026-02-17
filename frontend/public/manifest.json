@@ -1,0 +1,22 @@
+{
+  "name": "OneStat - GAA Analytics",
+  "short_name": "OneStat",
+  "description": "Player stats, leaderboards & match analytics for GAA clubs",
+  "start_url": "/player",
+  "display": "standalone",
+  "background_color": "#0a0a19",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/oneStatLogoTransparent.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/oneStatLogoTransparent.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

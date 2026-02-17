@@ -1,0 +1,139 @@
+"""
+API routes for club onboarding wizard.
+
+Step 1+2: Create club (details + branding)
+Step 3: Upload and confirm player roster (CSV/XLSX/manual)
+Step 4: Mark onboarding complete
+"""
+
+import logging
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.schemas.club import ClubResponse
+from app.schemas.onboarding import (
+    ClubOnboardingCreate,
+    PlayerFilePreview,
+    PlayerBulkCreateRequest,
+    PlayerBulkCreateResponse,
+)
+from app.services.onboarding_service import OnboardingService
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.post("/club", response_model=ClubResponse, status_code=status.HTTP_201_CREATED)
+async def create_club(
+    data: ClubOnboardingCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Step 1+2: Create a new club with basic details and branding.
+    """
+    club = await OnboardingService.create_club(db, data)
+    return club
+
+
+@router.post("/club/{club_id}/logo", response_model=ClubResponse)
+async def upload_club_logo(
+    club_id: UUID,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Step 2: Upload club logo image.
+
+    For Phase A/B, stores as a local path.
+    Phase C will use S3.
+    """
+    import os
+    import shutil
+
+    # Validate file type
+    allowed_types = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, f"Invalid file type: {file.content_type}. Allowed: {', '.join(allowed_types)}")
+
+    # Save to uploads directory
+    upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "logos")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "png"
+    filename = f"{club_id}.{ext}"
+    filepath = os.path.join(upload_dir, filename)
+
+    with open(filepath, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    logo_url = f"/uploads/logos/{filename}"
+    club = await OnboardingService.update_club_logo(db, club_id, logo_url)
+    return club
+
+
+@router.post("/club/{club_id}/players/preview", response_model=PlayerFilePreview)
+async def preview_player_file(
+    club_id: UUID,
+    file: UploadFile = File(...),
+):
+    """
+    Step 3a: Parse a CSV/XLSX file and return a preview of players.
+
+    Does NOT create players — just returns parsed data with warnings.
+    The frontend displays this for user review before confirming.
+    """
+    allowed_types = {
+        "text/csv", "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/octet-stream",  # Some browsers send this for .csv
+    }
+    # Be lenient with content type — rely on extension
+    content = await file.read()
+
+    if not content:
+        raise HTTPException(400, "Empty file")
+
+    if len(content) > 5 * 1024 * 1024:  # 5MB limit
+        raise HTTPException(400, "File too large (max 5MB)")
+
+    filename = file.filename or "upload.csv"
+    preview = OnboardingService.parse_player_file(content, filename)
+    return preview
+
+
+@router.post("/club/{club_id}/players/confirm", response_model=PlayerBulkCreateResponse)
+async def confirm_players(
+    club_id: UUID,
+    request: PlayerBulkCreateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Step 3b: Bulk create players from the confirmed preview data.
+    """
+    if not request.players:
+        raise HTTPException(400, "No players to create")
+
+    players = await OnboardingService.bulk_create_players(db, club_id, request.players)
+    return PlayerBulkCreateResponse(
+        created_count=len(players),
+        player_ids=[str(p.id) for p in players],
+    )
+
+
+@router.patch("/club/{club_id}/complete", response_model=ClubResponse)
+async def complete_onboarding(
+    club_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Step 4: Mark club onboarding as completed.
+    """
+    try:
+        club = await OnboardingService.complete_onboarding(db, club_id)
+        return club
+    except ValueError as e:
+        raise HTTPException(404, str(e))

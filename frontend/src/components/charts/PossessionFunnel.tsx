@@ -14,7 +14,7 @@ interface PossessionFunnelProps {
   data: PossessionFunnelData
 }
 
-const DUNGLOE_COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#34d399']
+const OWN_COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#34d399']
 const OPP_COLORS = ['#f97316', '#fb923c', '#ef4444', '#f87171']
 
 export default function PossessionFunnel({ data }: PossessionFunnelProps) {
@@ -24,7 +24,7 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
   const attackRate = showOpponent ? data.opponent_attack_rate : data.attack_rate
   const shotRate = showOpponent ? data.opponent_shot_rate : data.shot_rate
   const scoreRate = showOpponent ? data.opponent_score_rate : data.score_rate
-  const colors = showOpponent ? OPP_COLORS : DUNGLOE_COLORS
+  const colors = showOpponent ? OPP_COLORS : OWN_COLORS
 
   const chartData = [
     { stage: 'Possessions', count: totals.possessions, fill: colors[0] },
@@ -95,7 +95,7 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
                   : 'text-white/60 hover:text-white'
               }`}
             >
-              Dungloe
+              Us
             </button>
             <button
               onClick={() => setShowOpponent(true)}

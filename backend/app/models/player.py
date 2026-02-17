@@ -5,7 +5,7 @@ Stores player information, profile data, and relationships
 to fitness tests, match performances, and statistics.
 """
 
-from sqlalchemy import Column, String, Integer, Date, Enum as SQLEnum, Boolean
+from sqlalchemy import Column, String, Integer, Date, Enum as SQLEnum, Boolean, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -53,7 +53,10 @@ class Player(Base):
     
     # Primary key - UUID for security and scalability
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    
+
+    # Multi-tenancy
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True)
+
     # Basic information
     name = Column(String(100), nullable=False, index=True)  # Index for search performance
     # Use String to avoid SQLAlchemy/asyncpg enum type codec caching issues

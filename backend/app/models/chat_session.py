@@ -18,6 +18,7 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True)
     title = Column(String(200), nullable=False, default="New conversation")
     conversation_summary = Column(Text, nullable=True)  # sliding window summary of old messages
     message_count = Column(Integer, nullable=False, default=0)

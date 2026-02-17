@@ -15,19 +15,19 @@ interface FullscreenPitchModeProps {
   matchPhase: string
   minute: number
   seconds: number
-  dungloeGoals: number
-  dungloePoints: number
+  teamGoals: number
+  teamPoints: number
   opponentGoals: number
   opponentPoints: number
   opponent: string
   // Action handling
   onActionSelect: (eventType: EventType) => void
-  onFoulClick?: (team: 'dungloe' | 'opponent') => void
+  onFoulClick?: (team: 'own' | 'opponent') => void
   on45Click?: () => void
   currentPossession: PossessionTeam
   isIn2PointZone: boolean
   pendingFreeKick: boolean
-  pendingFoul: 'dungloe' | 'opponent' | null
+  pendingFoul: 'own' | 'opponent' | null
   pending45: boolean
   pendingKickoutPosition: boolean
   onCancelFree?: () => void
@@ -50,8 +50,8 @@ export default function FullscreenPitchMode({
   matchPhase,
   minute,
   seconds,
-  dungloeGoals,
-  dungloePoints,
+  teamGoals,
+  teamPoints,
   opponentGoals,
   opponentPoints,
   opponent,
@@ -135,9 +135,9 @@ export default function FullscreenPitchMode({
         <div className="flex items-center gap-4 text-center">
           <div className="text-right">
             <div className="text-lg font-bold text-white">
-              {dungloeGoals}-{String(dungloePoints).padStart(2, '0')}
+              {teamGoals}-{String(teamPoints).padStart(2, '0')}
             </div>
-            <div className="text-[10px] text-white/50">Dungloe</div>
+            <div className="text-[10px] text-white/50">Us</div>
           </div>
           <div className="flex flex-col items-center">
             <div className="text-white/40 text-xs">vs</div>

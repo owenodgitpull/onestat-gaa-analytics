@@ -15,6 +15,7 @@ from pathlib import Path
 import logging
 
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,8 @@ class StatsResponse(BaseModel):
 
 @router.post("/sync", response_model=SyncResponse)
 async def sync_knowledge_base(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Sync the knowledge base folder to the RAG index.
@@ -98,7 +100,8 @@ async def sync_knowledge_base(
 @router.post("/search", response_model=SearchResponse)
 async def search_knowledge_base(
     request: SearchRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Search the knowledge base using semantic/keyword search.
@@ -131,7 +134,8 @@ async def search_knowledge_base(
 @router.post("/context", response_model=ContextResponse)
 async def get_context(
     request: ContextRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get formatted context for an AI query.
@@ -163,7 +167,8 @@ async def get_context(
 
 @router.get("/stats", response_model=StatsResponse)
 async def get_rag_stats(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get statistics about the RAG index.

@@ -14,6 +14,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_players: 'players',
   get_player_season_stats: 'player stats',
   get_team_season_stats: 'team stats',
+  get_stats_by_half: 'per-half stats',
   get_scoring_patterns: 'scoring patterns',
   get_turnover_analysis: 'turnover data',
   get_player_gps_stats: 'GPS data',
@@ -502,12 +503,12 @@ export default function AIAnalystPage() {
       />
 
       <div className="-mx-4 -mt-6 px-4 pt-2 h-[calc(100vh-3.5rem)] flex flex-col">
-        {/* Desktop: side-by-side */}
-        <div className="hidden lg:flex flex-1 gap-4 min-h-0">
+        {/* Desktop/Tablet: side-by-side */}
+        <div className="hidden md:flex flex-1 gap-4 min-h-0">
           {/* Chat panel */}
           <div
             className="glass-card rounded-2xl overflow-hidden flex flex-col transition-all duration-700 ease-in-out"
-            style={{ width: visualizations.length > 0 ? '40%' : '100%', minWidth: '360px' }}
+            style={{ width: visualizations.length > 0 ? '40%' : '100%', minWidth: '320px' }}
           >
             {chatPanel}
           </div>
@@ -523,8 +524,8 @@ export default function AIAnalystPage() {
           </div>
         </div>
 
-        {/* Mobile/Tablet: toggle view */}
-        <div className="lg:hidden flex flex-col flex-1 min-h-0">
+        {/* Mobile: toggle view */}
+        <div className="md:hidden flex flex-col flex-1 min-h-0">
           {/* Toggle pill */}
           {visualizations.length > 0 && (
             <div className="flex items-center justify-center gap-2 py-2">

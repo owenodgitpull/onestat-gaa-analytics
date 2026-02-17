@@ -16,6 +16,7 @@ from datetime import datetime
 import logging
 
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.services.live_insights_service import LiveInsightsService
 from app.models.live_insight import InsightTrigger
 
@@ -62,7 +63,8 @@ class TriggerInsightResponse(BaseModel):
 async def get_match_insights(
     match_id: UUID,
     limit: int = 20,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get all AI insights for a match.
@@ -93,7 +95,8 @@ async def get_match_insights(
 async def trigger_insight_check(
     match_id: UUID,
     request: TriggerInsightRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Manually trigger an insight check for the current match state.
@@ -136,7 +139,8 @@ async def trigger_insight_check(
 @router.post("/{match_id}/half-time", response_model=InsightResponse)
 async def trigger_half_time_insight(
     match_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Trigger half-time analysis insight.
@@ -165,7 +169,8 @@ async def trigger_half_time_insight(
 @router.get("/{match_id}/latest", response_model=Optional[InsightResponse])
 async def get_latest_insight(
     match_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get the most recent insight for a match.

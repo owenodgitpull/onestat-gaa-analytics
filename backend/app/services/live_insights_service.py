@@ -151,7 +151,7 @@ class LiveInsightsService:
                 db, match_id, trigger_type=InsightTrigger.TURNOVER_CRISIS, minutes_ago=10
             )
             if not recent:
-                context = f"Dungloe lost {turnover_crisis} turnovers in last 10 minutes"
+                context = f"Team lost {turnover_crisis} turnovers in last 10 minutes"
                 return await LiveInsightsService._generate_and_store_insight(
                     db, match_id, minute, half, InsightTrigger.TURNOVER_CRISIS, context
                 )
@@ -210,21 +210,21 @@ class LiveInsightsService:
 
         # Check last 5 scoring events for a run
         recent_scores = scoring_events[-5:]
-        dungloe_run = 0
+        team_run = 0
         opponent_run = 0
 
         for event in reversed(recent_scores):
-            if event.team == Team.DUNGLOE:
+            if event.team == Team.OWN:
                 if opponent_run > 0:
                     break
-                dungloe_run += 1
+                team_run += 1
             else:
-                if dungloe_run > 0:
+                if team_run > 0:
                     break
                 opponent_run += 1
 
-        if dungloe_run >= 3:
-            return {"team": "Dungloe", "count": dungloe_run}
+        if team_run >= 3:
+            return {"team": "Own", "count": team_run}
         elif opponent_run >= 3:
             return {"team": "Opposition", "count": opponent_run}
 
@@ -236,7 +236,7 @@ class LiveInsightsService:
         match_id: UUID,
         current_minute: int
     ) -> Optional[int]:
-        """Detect if there's a scoring drought (10+ minutes without score for Dungloe)."""
+        """Detect if there's a scoring drought (10+ minutes without score for own team)."""
         scoring_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
                         EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
 
@@ -245,7 +245,7 @@ class LiveInsightsService:
             .where(
                 and_(
                     MatchEvent.match_id == match_id,
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_(scoring_types)
                 )
             )
@@ -268,11 +268,11 @@ class LiveInsightsService:
 
     @staticmethod
     async def _detect_turnover_crisis(events: List[MatchEvent]) -> Optional[int]:
-        """Detect if Dungloe has lost 5+ turnovers recently."""
+        """Detect if own team has lost 5+ turnovers recently."""
         turnover_types = {EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR}
 
         turnovers = [e for e in events
-                     if e.event_type in turnover_types and e.team == Team.DUNGLOE]
+                     if e.event_type in turnover_types and e.team == Team.OWN]
 
         if len(turnovers) >= 5:
             return len(turnovers)

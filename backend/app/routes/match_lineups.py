@@ -12,6 +12,7 @@ import uuid
 from pydantic import BaseModel
 
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.match_lineup import MatchLineup
 from app.models.match import Match
 from app.models.player import Player
@@ -45,7 +46,8 @@ class MatchLineupResponse(BaseModel):
 async def set_match_lineup(
     match_id: str,
     lineup: List[MatchLineupCreate],
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Set the starting lineup and substitutes for a match.
@@ -116,7 +118,8 @@ async def set_match_lineup(
 @router.get("/matches/{match_id}/lineup", response_model=List[MatchLineupResponse])
 async def get_match_lineup(
     match_id: str,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get the lineup for a match.
@@ -151,7 +154,8 @@ async def get_match_lineup(
 
 @router.get("/last-lineup", response_model=List[MatchLineupResponse])
 async def get_last_match_lineup(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get the lineup from the most recent match that had a lineup set.
@@ -162,6 +166,7 @@ async def get_last_match_lineup(
     result = await db.execute(
         select(Match)
         .join(MatchLineup, Match.id == MatchLineup.match_id)
+        .where(Match.club_id == user.club_id)
         .order_by(Match.match_date.desc())
         .limit(1)
     )
@@ -196,7 +201,8 @@ async def get_last_match_lineup(
 async def record_substitution(
     match_id: str,
     player_id: str,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Record a substitution by updating is_on_field status.

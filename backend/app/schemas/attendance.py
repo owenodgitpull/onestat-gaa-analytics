@@ -19,7 +19,7 @@ class TrainingSessionBase(BaseModel):
     session_type: SessionType = Field(default=SessionType.TRAINING, description="Type of session")
     start_time: Optional[str] = Field(None, description="Start time (HH:MM format)")
     end_time: Optional[str] = Field(None, description="End time (HH:MM format)")
-    location: Optional[str] = Field("Dungloe GAA Grounds", max_length=100, description="Session location")
+    location: Optional[str] = Field(None, max_length=100, description="Session location")
     notes: Optional[str] = Field(None, description="Session notes")
 
 

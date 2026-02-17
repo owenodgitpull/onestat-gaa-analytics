@@ -5,6 +5,7 @@ Imports all models to make them available through the package.
 This ensures all models are registered with SQLAlchemy.
 """
 
+from app.models.club import Club
 from app.models.player import Player, PlayerStatus, PlayerPosition
 from app.models.fitness_test import FitnessTest
 from app.models.match import Match, MatchVenue, MatchStatus, WeatherCondition, PitchCondition
@@ -28,11 +29,15 @@ from app.models.player_health import (
 from app.models.match_gps import MatchGPSData
 from app.models.insight_alert import InsightAlert, AlertCategory, AlertSource
 from app.models.chat_session import ChatSession, ChatSessionMessage
+from app.models.user import User
+from app.models.push_subscription import PushSubscription
+from app.models.notification import Notification, NotificationType
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
 
 __all__ = [
+    "Club",
     "Player",
     "PlayerStatus",
     "PlayerPosition",
@@ -71,5 +76,9 @@ __all__ = [
     "AlertSource",
     "ChatSession",
     "ChatSessionMessage",
+    "User",
+    "PushSubscription",
+    "Notification",
+    "NotificationType",
 ]
 

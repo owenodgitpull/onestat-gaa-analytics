@@ -704,7 +704,7 @@ export default function PlayerView() {
                     {new Date(latestFitnessTest.test_date).toLocaleDateString()}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <FitnessMetricCard label="CMJ" value={latestFitnessTest.cmj_cm} unit="cm" benchmark={{ good: 35, excellent: 45 }} comparison={fitnessComparison?.changes?.cmj_cm} />
                   <FitnessMetricCard label="Squat Jump" value={latestFitnessTest.squat_jump_cm} unit="cm" comparison={fitnessComparison?.changes?.squat_jump_cm} />
                   <FitnessMetricCard label="EUR" value={latestFitnessTest.eur_calculated} unit="" benchmark={{ good: 1.0, excellent: 1.15 }} comparison={fitnessComparison?.changes?.eur_calculated} />
@@ -922,7 +922,7 @@ function OverviewTab({
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total Score" value={totalScore} subtext={`${totalGoals}G + ${totalPoints}P`} icon={Target} color="emerald" />
         <StatCard label="Matches Played" value={matchesPlayed} icon={Trophy} color="indigo" />
         <StatCard label="Avg per Match" value={matchesPlayed > 0 ? (totalScore / matchesPlayed).toFixed(1) : '0'} icon={TrendingUp} color="amber" />
@@ -931,7 +931,7 @@ function OverviewTab({
 
       {/* KPI Cards */}
       {hasData && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <KpiCard label="Clinical Rating" value={`${clinicalRating}%`} subtitle={`${totalScores} scores from ${totalShots} shots`} icon={Target} gradient="from-emerald-600 to-teal-600" />
           <KpiCard label="Restart King" value={restartKing} subtitle={`${totalKickoutsWon} kickouts + ${totalFreesWon} frees won`} icon={Trophy} gradient="from-amber-600 to-orange-600" />
           <KpiCard label="The Wall" value={`${theWall}/game`} subtitle={`${totalBlocks} blocks + ${totalInterceptions} intercepts`} icon={Shield} gradient="from-indigo-600 to-purple-600" />
@@ -942,7 +942,7 @@ function OverviewTab({
       )}
 
       {/* Performance DNA + Defensive Contribution Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Performance DNA Radar */}
         <div className="glass-card p-6">
           <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">

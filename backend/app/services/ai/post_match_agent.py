@@ -307,7 +307,8 @@ IMPORTANT: Include a dedicated GPS/Physical Performance section in your analysis
         4. Tactical Analysis
         5. {"GPS & Physical Performance Analysis" if has_gps else "Areas for Improvement"}
         6. {"Areas for Improvement" if has_gps else "Training Recommendations"}
-        7. {"Training Recommendations" if has_gps else ""}{gps_context}
+        7. {"Training Recommendations" if has_gps else ""}
+        8. Man of the Match — pick the single best Dungloe player considering scoring, workrate{", GPS data," if has_gps else ","} and overall impact. Write it as a section header exactly like: **Man of the Match: Player Name** followed by a 1-2 sentence justification.{gps_context}
 
         Format your response as structured sections. {"Pay special attention to the GPS data and ensure it is discussed thoroughly." if has_gps else ""}"""
     )
@@ -346,12 +347,12 @@ async def _generate_chart_insights(db: AsyncSession, match_id: str, summary: dic
 
         prompt = f"""Based on this GAA match data, generate 3 short insights (1-2 sentences each) for charts:
 
-Match: Dungloe {score.get('dungloe', '0-00')} vs {summary.get('match', {}).get('opponent', 'Opponent')} {score.get('opponent', '0-00')}
+Match: Team {score.get('team', '0-00')} vs {summary.get('match', {}).get('opponent', 'Opponent')} {score.get('opponent', '0-00')}
 
 Stats:
-- Possession: Dungloe {stats.get('dungloe_possession_percentage', 50)}% vs Opponent {stats.get('opponent_possession_percentage', 50)}%
-- Shots: Dungloe {stats.get('dungloe_total_shots', 0)} (Accuracy: {stats.get('dungloe_accuracy', 0):.0f}%) vs Opponent {stats.get('opponent_total_shots', 0)}
-- Turnovers Won: Dungloe {stats.get('dungloe_turnovers_won', 0)} vs Opponent {stats.get('opponent_turnovers_won', 0)}
+- Possession: Team {stats.get('team_possession_percentage', 50)}% vs Opponent {stats.get('opponent_possession_percentage', 50)}%
+- Shots: Team {stats.get('team_total_shots', 0)} (Accuracy: {stats.get('team_accuracy', 0):.0f}%) vs Opponent {stats.get('opponent_total_shots', 0)}
+- Turnovers Won: Team {stats.get('turnovers_won', 0)} vs Opponent {stats.get('opponent_turnovers_won', 0)}
 
 Respond in this exact JSON format (no markdown):
 {{

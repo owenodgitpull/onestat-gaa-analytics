@@ -31,17 +31,25 @@ Modern team analytics platform for GAA clubs with AI-powered insights.
 - @use-gesture/react (touch gestures for iPad)
 
 ### Infrastructure
-- Vercel (frontend hosting)
-- Fly.io (backend hosting)
-- Supabase (PostgreSQL + Auth + Storage)
-- Docker (local development)
+
+| Service | Role | Tier / Cost |
+|---------|------|-------------|
+| **Vercel** | Frontend hosting | Free (hobby) |
+| **Fly.io** | Backend hosting (FastAPI) | $0-5/month |
+| **Supabase** | PostgreSQL database | Free (500MB) |
+| **Cloudflare R2** | Object storage (GPS uploads, logos, knowledge base docs) | Free at low volume, no egress fees |
+| **AWS Cognito** | Authentication (PKCE OAuth 2.0) | Free (up to 50k MAU) |
+| **Anthropic Claude** | AI analysis engine | $3-15/month (usage-based) |
+| **Docker** | Local development | — |
 
 ## 💰 Cost
 
-**Estimated: €5-20/month**
+**Estimated: ~€5-20/month**
 - Vercel: Free (hobby tier)
 - Fly.io: $0-5/month (free tier likely sufficient)
 - Supabase: Free (500MB database)
+- Cloudflare R2: Free (10GB storage, 10M reads/month included)
+- AWS Cognito: Free (50,000 monthly active users)
 - Claude API: $3-15/month (usage-based)
 
 ## 📋 Prerequisites

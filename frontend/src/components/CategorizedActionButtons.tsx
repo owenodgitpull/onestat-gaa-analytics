@@ -13,11 +13,12 @@ import {
   MapPin,
   Shield,
   Eye,
+  Crosshair,
 } from 'lucide-react'
 
 interface CategorizedActionButtonsProps {
   onActionSelect: (eventType: EventType) => void
-  onFoulClick?: (team: 'dungloe' | 'opponent') => void
+  onFoulClick?: (team: 'own' | 'opponent') => void
   on45Click?: () => void
   disabled?: boolean
   activeCategory?: string | null
@@ -25,9 +26,10 @@ interface CategorizedActionButtonsProps {
   currentPossession?: PossessionTeam
   isIn2PointZone?: boolean
   pendingFreeKick?: boolean
-  pendingFoul?: 'dungloe' | 'opponent' | null  // Track which team fouled
+  pendingFoul?: 'own' | 'opponent' | null  // Track which team fouled
   pending45?: boolean
   pendingKickoutPosition?: boolean  // Waiting for user to click pitch for kickout position
+  isInPenaltyArea?: boolean  // Ball is near opponent's goal (inside 13m line)
   onCancelFree?: () => void
   onCancel45?: () => void
   onCancelKickout?: () => void
@@ -64,9 +66,9 @@ const categories = [
     label: 'Our K/O',
     icon: CheckCircle,
     buttons: [
-      { eventType: EventType.OWN_KICKOUT_DUNGLOE_WON, label: 'Dungloe Won', icon: CheckCircle },
+      { eventType: EventType.OWN_KICKOUT_WON, label: 'We Won', icon: CheckCircle },
       { eventType: EventType.OWN_KICKOUT_OPPOSITION_WON, label: 'Opposition Won', icon: XCircle },
-      { eventType: EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK, label: 'Dungloe Won Break', icon: Zap },
+      { eventType: EventType.OWN_KICKOUT_WON_BREAK, label: 'We Won Break', icon: Zap },
       { eventType: EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK, label: 'Opposition Won Break', icon: XCircle },
     ]
   },
@@ -75,9 +77,9 @@ const categories = [
     label: 'Opp K/O',
     icon: AlertCircle,
     buttons: [
-      { eventType: EventType.OPP_KICKOUT_DUNGLOE_WON, label: 'Dungloe Won', icon: CheckCircle },
+      { eventType: EventType.OPP_KICKOUT_WON, label: 'We Won', icon: CheckCircle },
       { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON, label: 'Opposition Won', icon: XCircle },
-      { eventType: EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK, label: 'Dungloe Won Break', icon: Zap },
+      { eventType: EventType.OPP_KICKOUT_WON_BREAK, label: 'We Won Break', icon: Zap },
       { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK, label: 'Opposition Won Break', icon: XCircle },
     ]
   },
@@ -103,12 +105,13 @@ export default function CategorizedActionButtons({
   disabled = false,
   activeCategory: externalActiveCategory,
   onCategoryChange,
-  currentPossession = PossessionTeam.DUNGLOE,
+  currentPossession = PossessionTeam.OWN,
   isIn2PointZone = false,
   pendingFreeKick = false,
   pendingFoul = null,
   pending45 = false,
   pendingKickoutPosition = false,
+  isInPenaltyArea = false,
   onCancelFree,
   onCancel45,
   onCancelKickout
@@ -153,9 +156,9 @@ export default function CategorizedActionButtons({
       return true
     }
 
-    const hasPossession = currentPossession === PossessionTeam.DUNGLOE
+    const hasPossession = currentPossession === PossessionTeam.OWN
 
-    // If Dungloe has possession, disable these opponent-focused events:
+    // If our team has possession, disable these opponent-focused events:
     if (hasPossession) {
       return [
         EventType.TURNOVER_WON,      // Can't win turnover if we have ball
@@ -164,7 +167,7 @@ export default function CategorizedActionButtons({
         EventType.BLOCK,              // Can't block if we have ball
       ].includes(eventType)
     } else {
-      // If opponent has possession, disable these Dungloe-focused events:
+      // If opponent has possession, disable these own-team-focused events:
       return [
         EventType.TURNOVER_LOST,     // Can't lose turnover if opponent has ball
         EventType.OUR_UNFORCED_ERROR // We can't error if opponent has ball
@@ -197,12 +200,12 @@ export default function CategorizedActionButtons({
           <button
             onClick={() => {
               setShowFoulSelection(false)
-              onFoulClick?.('dungloe')
+              onFoulClick?.('own')
             }}
             disabled={disabled}
             className="flex-1 btn-primary !py-3 !px-4 flex flex-col items-center space-y-1 text-sm bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500"
           >
-            <span className="font-bold">Dungloe Foul</span>
+            <span className="font-bold">Our Foul</span>
             <span className="text-xs opacity-80">Select who fouled</span>
           </button>
           <button
@@ -214,7 +217,7 @@ export default function CategorizedActionButtons({
             className="flex-1 btn-primary !py-3 !px-4 flex flex-col items-center space-y-1 text-sm bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
           >
             <span className="font-bold">Opp Foul</span>
-            <span className="text-xs opacity-80">Dungloe wins free</span>
+            <span className="text-xs opacity-80">We win free</span>
           </button>
         </div>
 
@@ -322,11 +325,11 @@ export default function CategorizedActionButtons({
 
   // Show free kick options menu
   if (pendingFreeKick) {
-    const isDungloeFoul = pendingFoul === 'dungloe'
-    const headerText = isDungloeFoul
+    const isOwnFoul = pendingFoul === 'own'
+    const headerText = isOwnFoul
       ? 'Opponent Free - Select Outcome'
-      : 'Dungloe Free - Select Outcome'
-    const tipText = isDungloeFoul
+      : 'Our Free - Select Outcome'
+    const tipText = isOwnFoul
       ? 'Record what opponent did with the free kick'
       : 'Move the ball to play a short free (menu will close)'
 
@@ -385,7 +388,7 @@ export default function CategorizedActionButtons({
   return (
     <div className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       {/* Action Buttons */}
-      <div className="p-2 flex flex-wrap gap-1.5 justify-center min-h-[48px]">
+      <div className="p-2 flex flex-wrap gap-1 justify-center min-h-[48px]">
         {currentCategory?.buttons.map((button) => {
           const Icon = button.icon
           const isContextDisabled = isButtonDisabled(button.eventType)
@@ -397,26 +400,56 @@ export default function CategorizedActionButtons({
               onClick={() => onActionSelect(button.eventType)}
               disabled={isDisabled}
               title={isContextDisabled ? 'Not applicable with current possession' : ''}
-              className={`btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs ${
+              className={`btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs ${
                 isDisabled ? 'opacity-30 cursor-not-allowed' : ''
               }`}
             >
-              <Icon size={14} />
+              <Icon size={13} />
               <span>{button.label}</span>
             </button>
           )
         })}
 
-        {/* 45 button - shown in scoring category when Dungloe has possession (like Wide but off defender) */}
-        {activeCategory === 'scoring' && currentPossession === PossessionTeam.DUNGLOE && (
+        {/* 45 button - inline with scoring buttons when our team has possession */}
+        {activeCategory === 'scoring' && currentPossession === PossessionTeam.OWN && on45Click && (
           <button
             onClick={on45Click}
             disabled={disabled}
-            className="btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+            className="btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
           >
-            <Flag size={14} />
+            <Flag size={13} />
             <span>45</span>
           </button>
+        )}
+
+        {/* Penalty buttons - inline with scoring, highlighted when in penalty area */}
+        {activeCategory === 'scoring' && (
+          <>
+            <button
+              onClick={() => onActionSelect(EventType.PENALTY_GOAL)}
+              disabled={disabled}
+              className={`btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs ${
+                isInPenaltyArea
+                  ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 ring-1 ring-red-400/50'
+                  : 'bg-gradient-to-r from-red-600/60 to-rose-600/60 hover:from-red-600 hover:to-rose-600'
+              }`}
+            >
+              <Crosshair size={13} />
+              <span>Pen Goal</span>
+            </button>
+            <button
+              onClick={() => onActionSelect(EventType.PENALTY_MISS)}
+              disabled={disabled}
+              className={`btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs ${
+                isInPenaltyArea
+                  ? 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 ring-1 ring-orange-400/50'
+                  : 'bg-gradient-to-r from-orange-600/60 to-amber-600/60 hover:from-orange-600 hover:to-amber-600'
+              }`}
+            >
+              <Crosshair size={13} />
+              <span>Pen Miss</span>
+            </button>
+          </>
         )}
       </div>
 

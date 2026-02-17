@@ -49,8 +49,8 @@ class MatchUpdate(BaseModel):
     match_date: Optional[datetime] = None
     venue: Optional[MatchVenue] = None
     status: Optional[MatchStatus] = None
-    dungloe_goals: Optional[int] = Field(None, ge=0)
-    dungloe_points: Optional[int] = Field(None, ge=0)
+    team_goals: Optional[int] = Field(None, ge=0)
+    team_points: Optional[int] = Field(None, ge=0)
     opponent_goals: Optional[int] = Field(None, ge=0)
     opponent_points: Optional[int] = Field(None, ge=0)
     notes: Optional[str] = Field(None, max_length=1000)
@@ -79,8 +79,8 @@ class MatchResponse(MatchBase):
     """Schema for match responses."""
     id: UUID
     status: MatchStatus
-    dungloe_goals: int
-    dungloe_points: int
+    team_goals: int
+    team_points: int
     opponent_goals: int
     opponent_points: int
     started_at: Optional[datetime]
@@ -101,10 +101,10 @@ class MatchResponse(MatchBase):
     # Live match phase tracking
     current_phase: Optional[str] = Field(None, description="Current match phase: first_half, half_time, second_half")
     second_half_started_at: Optional[datetime] = Field(None, description="When second half started")
-    attacking_right_first_half: Optional[bool] = Field(None, description="True if Dungloe attacks right in 1st half")
+    attacking_right_first_half: Optional[bool] = Field(None, description="True if own team attacks right in 1st half")
 
     # Computed fields
-    dungloe_total_score: int = Field(..., description="Total Dungloe score (goals*3 + points)")
+    team_total_score: int = Field(..., description="Total team score (goals*3 + points)")
     opponent_total_score: int = Field(..., description="Total opponent score (goals*3 + points)")
     result: str = Field(..., description="Match result: win/loss/draw/pending")
 
@@ -152,13 +152,13 @@ class MatchCompleteRequest(BaseModel):
 class MatchPhaseUpdate(BaseModel):
     """Schema for updating match phase (for resumable recording)."""
     phase: str = Field(..., description="Match phase: first_half, half_time, second_half")
-    attacking_right_first_half: Optional[bool] = Field(None, description="True if Dungloe attacks right in 1st half")
+    attacking_right_first_half: Optional[bool] = Field(None, description="True if team attacks right in 1st half")
 
 
 class MatchScoreUpdate(BaseModel):
     """Schema for quickly updating match scores."""
-    dungloe_goals: int = Field(..., ge=0)
-    dungloe_points: int = Field(..., ge=0)
+    team_goals: int = Field(..., ge=0)
+    team_points: int = Field(..., ge=0)
     opponent_goals: int = Field(..., ge=0)
     opponent_points: int = Field(..., ge=0)
 
@@ -177,14 +177,14 @@ class MatchStatsResponse(BaseModel):
     match_id: UUID
     
     # Possession stats
-    dungloe_possession_percentage: float
+    team_possession_percentage: float
     opponent_possession_percentage: float
     
     # Shot stats
-    dungloe_total_shots: int
-    dungloe_scores: int
-    dungloe_wides: int
-    dungloe_accuracy: float
+    team_total_shots: int
+    team_scores: int
+    team_wides: int
+    team_accuracy: float
     
     opponent_total_shots: int
     opponent_scores: int
@@ -192,20 +192,20 @@ class MatchStatsResponse(BaseModel):
     opponent_accuracy: float
     
     # Turnover stats
-    dungloe_turnovers_won: int
-    dungloe_turnovers_lost: int
+    team_turnovers_won: int
+    team_turnovers_lost: int
     opponent_turnovers_won: int
     opponent_turnovers_lost: int
     
     # Kickout stats
-    dungloe_kickouts_won: int
-    dungloe_kickouts_lost: int
+    team_kickouts_won: int
+    team_kickouts_lost: int
     opponent_kickouts_won: int
     opponent_kickouts_lost: int
     
     # Card stats
-    dungloe_yellow_cards: int
-    dungloe_red_cards: int
+    team_yellow_cards: int
+    team_red_cards: int
     opponent_yellow_cards: int
     opponent_red_cards: int
 

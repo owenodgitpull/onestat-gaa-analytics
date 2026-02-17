@@ -141,7 +141,7 @@ export default function AiInsightsSection({
 
       {/* Dynamic Charts */}
       {loadingAICharts && dynamicCharts.length === 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map(i => (
             <div key={i} className="glass-card p-6 h-[300px] flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
@@ -152,7 +152,7 @@ export default function AiInsightsSection({
           ))}
         </div>
       ) : dynamicCharts.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {dynamicCharts.map(chart => (
             <DynamicChart
               key={chart.id}

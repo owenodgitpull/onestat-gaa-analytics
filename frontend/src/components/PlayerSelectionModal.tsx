@@ -7,7 +7,7 @@ interface PlayerSelectionModalProps {
   onClose: () => void
   onSelectPlayer: (player: Player) => void
   eventType: string  // Accept any event type string
-  team: 'dungloe' | 'opponent'
+  team: 'own' | 'opponent'
   players: Player[]
 }
 
@@ -40,13 +40,13 @@ const EVENT_LABELS: Record<string, EventLabelEntry> = {
   // Foul
   foul_committed: { title: 'Who Committed Foul?', icon: User, color: 'text-red-400' },
   // New explicit kickout labels
-  own_kickout_dungloe_won: { title: 'Who Won Our Kickout?', icon: User, color: 'text-emerald-400' },
+  own_kickout_won: { title: 'Who Won Our Kickout?', icon: User, color: 'text-emerald-400' },
   own_kickout_opposition_won: { title: 'Opposition Won (No Player)', icon: User, color: 'text-red-400' },
-  opp_kickout_dungloe_won: { title: 'Who Won Opposition Kickout?', icon: User, color: 'text-emerald-400' },
+  opp_kickout_won: { title: 'Who Won Opposition Kickout?', icon: User, color: 'text-emerald-400' },
   opp_kickout_opposition_won: { title: 'Opposition Won (No Player)', icon: User, color: 'text-red-400' },
-  own_kickout_dungloe_won_break: { title: 'Who Won Break (Our Kickout)?', icon: User, color: 'text-emerald-400' },
+  own_kickout_won_break: { title: 'Who Won Break (Our Kickout)?', icon: User, color: 'text-emerald-400' },
   own_kickout_opposition_won_break: { title: 'Opposition Won Break (No Player)', icon: User, color: 'text-red-400' },
-  opp_kickout_dungloe_won_break: { title: 'Who Won Break (Opp Kickout)?', icon: User, color: 'text-emerald-400' },
+  opp_kickout_won_break: { title: 'Who Won Break (Opp Kickout)?', icon: User, color: 'text-emerald-400' },
   opp_kickout_opposition_won_break: { title: 'Opposition Won Break (No Player)', icon: User, color: 'text-red-400' },
 }
 
@@ -71,7 +71,7 @@ export default function PlayerSelectionModal({
   const Icon = eventInfo.icon
 
   // Ensure players is an array
-  const playerList = team === 'dungloe' ? (Array.isArray(providedPlayers) ? providedPlayers : []) : OPPONENT_PLAYERS
+  const playerList = team === 'own' ? (Array.isArray(providedPlayers) ? providedPlayers : []) : OPPONENT_PLAYERS
   
   // Show message if no players available
   if (!playerList || playerList.length === 0) {
@@ -132,7 +132,7 @@ export default function PlayerSelectionModal({
             <div>
               <h2 className="text-2xl font-bold text-white">{eventInfo.title}</h2>
               <p className="text-sm text-white/60 capitalize">
-                {eventType} • {team === 'dungloe' ? 'Dungloe' : 'Opponent'}
+                {eventType} • {team === 'own' ? 'Us' : 'Opponent'}
               </p>
             </div>
           </div>

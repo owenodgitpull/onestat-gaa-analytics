@@ -174,7 +174,7 @@ function NewSessionModal({ isOpen, onClose, onCreate }: {
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().split('T')[0])
   const [sessionType, setSessionType] = useState<'training' | 'gym' | 'recovery'>('training')
   const [startTime, setStartTime] = useState('19:00')
-  const [location, setLocation] = useState('Dungloe GAA Grounds')
+  const [location, setLocation] = useState('Home Grounds')
   const [drills, setDrills] = useState<string[]>([])
   const [newDrill, setNewDrill] = useState('')
   const [gpsFile, setGpsFile] = useState<File | null>(null)
@@ -1069,7 +1069,7 @@ export default function Attendance() {
             <BarChart3 size={18} className="text-indigo-400" />
             Training Analytics
           </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <PeakPerformanceChart data={trainingOverview!.peak_performance} />
             <SpeedZoneChart data={trainingOverview!.speed_zones} />
             <ReadinessTable data={trainingOverview!.readiness} />

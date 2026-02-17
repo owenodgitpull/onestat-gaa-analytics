@@ -179,7 +179,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
       )}
 
       {/* Status Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="stat-card">
           <div className="text-white text-sm font-semibold mb-2">Total Alerts</div>
           <div className="stat-value">{healthData.total_alerts}</div>

@@ -17,6 +17,7 @@ import json
 import logging
 
 from app.database import get_db, async_session_maker
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.match import Match, MatchStatus
 from app.models.match_gps import MatchGPSData
 from app.models.training_performance import GPSUploadLog
@@ -44,7 +45,8 @@ async def upload_match_gps(
     match_id: UUID,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="STATSports PDF or CSV file"),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Upload a STATSports GPS data file for a completed match.
@@ -309,6 +311,13 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
             upload_log.status = "completed"
             await db.commit()
 
+            # Notify players that GPS data is available
+            try:
+                from app.services.notification_service import NotificationService
+                await NotificationService.notify_gps_uploaded(db, match_id)
+            except Exception as ne:
+                logger.warning(f"Failed to send GPS upload notifications: {ne}")
+
         except Exception as e:
             logger.error(f"Match GPS upload processing failed: {e}")
             upload_log.status = "failed"
@@ -345,7 +354,8 @@ async def trigger_match_reanalysis_with_gps(db: AsyncSession, match_id: UUID):
 @router.get("/{match_id}/gps", response_model=list[MatchGPSDataResponse])
 async def get_match_gps(
     match_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get all GPS data for a match."""
     # Verify match exists
@@ -398,7 +408,8 @@ async def get_match_gps(
 async def get_match_gps_upload_status(
     match_id: UUID,
     upload_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get the status of a match GPS upload."""
     query = select(GPSUploadLog).where(
@@ -426,7 +437,8 @@ async def get_match_gps_upload_status(
 @router.get("/{match_id}/gps/summary", response_model=MatchGPSSummary)
 async def get_match_gps_summary(
     match_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a summary of GPS data for a match."""
     # Get match
@@ -494,7 +506,8 @@ async def get_match_gps_summary(
 async def add_match_gps_manually(
     match_id: UUID,
     data: MatchGPSBulkCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Manually add GPS data for players in a match."""
     # Verify match exists and is completed
@@ -560,7 +573,8 @@ async def add_match_gps_manually(
 @router.delete("/{match_id}/gps", status_code=204)
 async def delete_match_gps(
     match_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete all GPS data for a match.
@@ -595,7 +609,8 @@ async def delete_match_gps(
 async def get_player_match_gps_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get match GPS history for a player."""
     query = select(MatchGPSData, Player.name, Match.opponent, Match.match_date).join(

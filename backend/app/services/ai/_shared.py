@@ -55,7 +55,7 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 STATIC_CHARTS = {
     "season": [
-        {"id": "score-progression", "desc": "Line chart of Dungloe vs opponent scores per match"},
+        {"id": "score-progression", "desc": "Line chart of Team vs opponent scores per match"},
         {"id": "shot-map", "desc": "Pitch scatter plot of all shot locations"},
         {"id": "possession-funnel", "desc": "Funnel chart showing possession → shots → scores conversion"},
         {"id": "kickout-trend", "desc": "Line chart of kickout win % per match"},
@@ -123,7 +123,7 @@ TOOLS = [
                 },
                 "team": {
                     "type": "string",
-                    "enum": ["dungloe", "opponent"],
+                    "enum": ["own", "opponent"],
                     "description": "Optional filter for team"
                 },
                 "half": {
@@ -183,6 +183,23 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {}
+        }
+    },
+    {
+        "name": "get_stats_by_half",
+        "description": "Get per-half statistics broken down by match. Returns first half vs second half possession, scoring, turnovers for each match. Essential for half-specific analysis like '2nd half possession trend'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "Optional - specific match UUID. If omitted returns all completed matches."
+                },
+                "half": {
+                    "type": "integer",
+                    "description": "Optional - filter to 1 (first half) or 2 (second half) only. If omitted returns both halves."
+                }
+            }
         }
     },
     {
@@ -358,6 +375,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession) -> st
         return await get_player_season_stats(db, **tool_input)
     elif tool_name == "get_team_season_stats":
         return await get_team_season_stats(db)
+    elif tool_name == "get_stats_by_half":
+        return await get_stats_by_half(db, tool_input.get("match_id"), tool_input.get("half"))
     elif tool_name == "get_scoring_patterns":
         return await get_scoring_patterns(db, tool_input.get("match_id"))
     elif tool_name == "get_turnover_analysis":
@@ -387,16 +406,16 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
     """
     import uuid as uuid_mod
 
-    # Events that mark the START of a new Dungloe possession
+    # Events that mark the START of a new team possession
     POSSESSION_START_TYPES = {
         EventType.TURNOVER_WON, EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON,
-        EventType.OWN_KICKOUT_DUNGLOE_WON, EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK,
-        EventType.OPP_KICKOUT_DUNGLOE_WON, EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK,
+        EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
+        EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK,
         EventType.INTERCEPTION, EventType.BLOCK, EventType.FREE_WON, EventType.FOUL_WON,
     }
 
-    # Default outcomes: all scoring events
-    DEFAULT_OUTCOMES = {"goal", "point", "two_point", "point_free", "two_point_free", "forty_five"}
+    # Default outcomes: all scoring events + wides
+    DEFAULT_OUTCOMES = {"goal", "point", "two_point", "point_free", "two_point_free", "forty_five", "wide", "wide_free"}
     target_outcomes = set(o.lower() for o in outcomes) if outcomes else DEFAULT_OUTCOMES
 
     # Resolve match_id
@@ -441,13 +460,15 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         for p in pr.scalars().all():
             players[str(p.id)] = p.name
 
-    # Get match info for labels
+    # Get match info for labels + attacking direction
     match_ids_in_events = list(set(str(e.match_id) for e in all_events))
     match_info = {}
+    match_attacking_right = {}
     if match_ids_in_events:
         mr = await db.execute(select(Match).where(Match.id.in_(match_ids_in_events)))
         for m in mr.scalars().all():
             match_info[str(m.id)] = m.opponent
+            match_attacking_right[str(m.id)] = bool(getattr(m, 'attacking_right_first_half', True))
 
     # Group events by match
     events_by_match: dict[str, list] = {}
@@ -459,10 +480,10 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
     for mid, events in events_by_match.items():
         opponent = match_info.get(mid, "Unknown")
 
-        # Find all Dungloe outcome events matching target types
+        # Find all own-team outcome events matching target types
         outcome_events = [
             e for e in events
-            if e.team == Team.DUNGLOE
+            if e.team == Team.OWN
             and (e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type)) in target_outcomes
             and e.pitch_x is not None and e.pitch_y is not None
         ]
@@ -474,7 +495,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             except ValueError:
                 continue
 
-            # Trace backwards through ALL events — collect Dungloe events, stop at opponent events
+            # Trace backwards through ALL events — collect own-team events, stop at opponent events
             # This captures the full attacking sequence: block → interception → turnover → goal
             # In GAA, a "move" can span several minutes as the ball is worked up the field
             chain = [oe]
@@ -487,7 +508,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 # Stop if we hit an opponent event — they had the ball, so our move starts AFTER this
                 if prev.team == Team.OPPONENT:
                     break
-                # This is a Dungloe event — include it in the chain
+                # This is an own-team event — include it in the chain
                 chain.insert(0, prev)
                 last_minute = prev.minute
 
@@ -633,8 +654,8 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             query = query.where(MatchEvent.event_type.in_(resolved_types))
     if team:
         # Convert string to Team enum if needed
-        if team == 'dungloe':
-            query = query.where(MatchEvent.team == Team.DUNGLOE)
+        if team == 'own':
+            query = query.where(MatchEvent.team == Team.OWN)
         elif team == 'opponent':
             query = query.where(MatchEvent.team == Team.OPPONENT)
     if half:
@@ -706,22 +727,22 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
     events = events_result.scalars().all()
 
     # Calculate scores - use EventType and Team enums
-    dungloe_goals = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.GOAL])
-    dungloe_points = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.POINT])
-    dungloe_2pts = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.TWO_POINT])
+    tm_goals = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.GOAL])
+    tm_points = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.POINT])
+    tm_2pts = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TWO_POINT])
 
     opp_goals = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.GOAL])
     opp_points = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.POINT])
     opp_2pts = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.TWO_POINT])
 
-    dungloe_total = dungloe_goals * 3 + dungloe_points + dungloe_2pts * 2
+    tm_total = tm_goals * 3 + tm_points + tm_2pts * 2
     opp_total = opp_goals * 3 + opp_points + opp_2pts * 2
 
     # Get top scorers
     scoring_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
     player_scores = {}
     for e in events:
-        if e.team == Team.DUNGLOE and e.event_type in scoring_types and e.player_id:
+        if e.team == Team.OWN and e.event_type in scoring_types and e.player_id:
             pid = str(e.player_id)
             if pid not in player_scores:
                 player_scores[pid] = {'goals': 0, 'points': 0, '2pts': 0}
@@ -752,9 +773,9 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
     top_scorers.sort(key=lambda x: x['total'], reverse=True)
 
     # Count other stats - use EventType and Team enums
-    turnovers_won = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.TURNOVER_WON])
-    turnovers_lost = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.TURNOVER_LOST])
-    wides = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.WIDE])
+    turnovers_won = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_WON])
+    turnovers_lost = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST])
+    wides = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.WIDE])
     opp_turnovers_won = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.TURNOVER_WON])
     opp_wides = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.WIDE])
 
@@ -762,10 +783,10 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
     scoring_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
     missed_types = [EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT, EventType.SAVED, EventType.FORTY_FIVE_MISSED]
 
-    dungloe_scores = len([e for e in events if e.team == Team.DUNGLOE and e.event_type in scoring_types])
-    dungloe_misses = len([e for e in events if e.team == Team.DUNGLOE and e.event_type in missed_types])
-    dungloe_total_shots = dungloe_scores + dungloe_misses
-    dungloe_accuracy = (dungloe_scores / dungloe_total_shots * 100) if dungloe_total_shots > 0 else 0
+    tm_scores = len([e for e in events if e.team == Team.OWN and e.event_type in scoring_types])
+    tm_misses = len([e for e in events if e.team == Team.OWN and e.event_type in missed_types])
+    tm_total_shots = tm_scores + tm_misses
+    tm_accuracy = (tm_scores / tm_total_shots * 100) if tm_total_shots > 0 else 0
 
     opp_scores = len([e for e in events if e.team == Team.OPPONENT and e.event_type in scoring_types])
     opp_misses = len([e for e in events if e.team == Team.OPPONENT and e.event_type in missed_types])
@@ -779,25 +800,25 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
     )
     possession_events = possession_result.scalars().all()
 
-    dungloe_possession = 50.0  # Default
+    tm_possession = 50.0  # Default
     opp_possession = 50.0
 
     if possession_events:
         total_duration = sum(p.duration_seconds or 0 for p in possession_events)
         if total_duration > 0:
-            dungloe_duration = sum(
+            tm_duration = sum(
                 p.duration_seconds or 0
                 for p in possession_events
-                if p.team == PossessionTeam.DUNGLOE
+                if p.team == PossessionTeam.OWN
             )
-            dungloe_possession = round((dungloe_duration / total_duration) * 100, 1)
-            opp_possession = round(100 - dungloe_possession, 1)
+            tm_possession = round((tm_duration / total_duration) * 100, 1)
+            opp_possession = round(100 - tm_possession, 1)
         else:
             # Fallback: use event count if no durations
             total_poss_events = len(possession_events)
-            dungloe_poss_events = sum(1 for p in possession_events if p.team == PossessionTeam.DUNGLOE)
-            dungloe_possession = round((dungloe_poss_events / total_poss_events) * 100, 1) if total_poss_events > 0 else 50.0
-            opp_possession = round(100 - dungloe_possession, 1)
+            tm_poss_events = sum(1 for p in possession_events if p.team == PossessionTeam.OWN)
+            tm_possession = round((tm_poss_events / total_poss_events) * 100, 1) if total_poss_events > 0 else 50.0
+            opp_possession = round(100 - tm_possession, 1)
 
     return safe_json({
         "match": {
@@ -807,20 +828,20 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
             "status": match.status.value if match.status else None
         },
         "score": {
-            "dungloe": f"{dungloe_goals}-{dungloe_2pts}-{dungloe_points} ({dungloe_total}pts)" if dungloe_2pts else f"{dungloe_goals}-{dungloe_points} ({dungloe_total}pts)",
-            "dungloe_total": dungloe_total,
+            "team": f"{tm_goals}-{tm_2pts}-{tm_points} ({tm_total}pts)" if tm_2pts else f"{tm_goals}-{tm_points} ({tm_total}pts)",
+            "team_total": tm_total,
             "opponent": f"{opp_goals}-{opp_2pts}-{opp_points} ({opp_total}pts)" if opp_2pts else f"{opp_goals}-{opp_points} ({opp_total}pts)",
             "opponent_total": opp_total,
-            "result": "W" if dungloe_total > opp_total else "L" if dungloe_total < opp_total else "D"
+            "result": "W" if tm_total > opp_total else "L" if tm_total < opp_total else "D"
         },
         "top_scorers": top_scorers[:5],
         "stats": {
             "turnovers_won": turnovers_won,
             "turnovers_lost": turnovers_lost,
             "wides": wides,
-            "dungloe_total_shots": dungloe_total_shots,
-            "dungloe_accuracy": dungloe_accuracy,
-            "dungloe_possession_percentage": dungloe_possession,
+            "team_total_shots": tm_total_shots,
+            "team_accuracy": tm_accuracy,
+            "team_possession_percentage": tm_possession,
             "opponent_total_shots": opp_total_shots,
             "opponent_accuracy": opp_accuracy,
             "opponent_possession_percentage": opp_possession,
@@ -939,14 +960,14 @@ async def get_team_season_stats(db: AsyncSession) -> str:
     events = events_result.scalars().all()
 
     # Calculate totals - compare against EventType enum
-    dungloe_goals = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.GOAL])
-    dungloe_points = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.POINT])
-    dungloe_two_pts = len([e for e in events if e.team == Team.DUNGLOE and e.event_type == EventType.TWO_POINT])
+    tm_goals = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.GOAL])
+    tm_points = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.POINT])
+    tm_two_pts = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TWO_POINT])
     opp_goals = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.GOAL])
     opp_points = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.POINT])
     opp_two_pts = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.TWO_POINT])
 
-    dungloe_total = dungloe_goals * 3 + dungloe_points + dungloe_two_pts * 2
+    tm_total = tm_goals * 3 + tm_points + tm_two_pts * 2
     opp_total = opp_goals * 3 + opp_points + opp_two_pts * 2
 
     # Win/Loss record
@@ -960,7 +981,7 @@ async def get_team_season_stats(db: AsyncSession) -> str:
         match_events = [e for e in events if str(e.match_id) == str(match.id)]
         d_score = sum(
             3 if e.event_type == EventType.GOAL else (2 if e.event_type == EventType.TWO_POINT else 1)
-            for e in match_events if e.team == Team.DUNGLOE and e.event_type in scoring_events
+            for e in match_events if e.team == Team.OWN and e.event_type in scoring_events
         )
         o_score = sum(
             3 if e.event_type == EventType.GOAL else (2 if e.event_type == EventType.TWO_POINT else 1)
@@ -983,11 +1004,11 @@ async def get_team_season_stats(db: AsyncSession) -> str:
             "win_rate": round(wins / max(1, len(matches)) * 100, 1)
         },
         "scoring": {
-            "total_goals": dungloe_goals,
-            "total_points": dungloe_points,
-            "total_two_pointers": dungloe_two_pts,
-            "total_score": dungloe_total,
-            "avg_per_match": round(dungloe_total / max(1, len(matches)), 1)
+            "total_goals": tm_goals,
+            "total_points": tm_points,
+            "total_two_pointers": tm_two_pts,
+            "total_score": tm_total,
+            "avg_per_match": round(tm_total / max(1, len(matches)), 1)
         },
         "defense": {
             "goals_conceded": opp_goals,
@@ -996,15 +1017,87 @@ async def get_team_season_stats(db: AsyncSession) -> str:
             "total_conceded": opp_total,
             "avg_conceded": round(opp_total / max(1, len(matches)), 1)
         },
-        "net_score": dungloe_total - opp_total
+        "net_score": tm_total - opp_total
     })
+
+
+async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = None) -> str:
+    """Get per-half stats (possession, scoring, turnovers) broken down by match."""
+    # Get matches
+    query = select(Match).where(Match.status == MatchStatus.COMPLETED).order_by(Match.match_date)
+    if match_id:
+        query = select(Match).where(Match.id == match_id)
+    matches = (await db.execute(query)).scalars().all()
+    if not matches:
+        return safe_json({"message": "No matches found"})
+
+    # Get all events for these matches
+    match_ids = [m.id for m in matches]
+    events = (await db.execute(
+        select(MatchEvent).where(MatchEvent.match_id.in_(match_ids)).order_by(MatchEvent.minute)
+    )).scalars().all()
+
+    scoring_types = {EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
+                     EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE}
+    wide_types = {EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED}
+    turnover_won_types = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.BLOCK}
+    turnover_lost_types = {EventType.TURNOVER_LOST}
+
+    results = []
+    for match in matches:
+        m_events = [e for e in events if e.match_id == match.id]
+        # Split by half using minute (≤35 = 1st half, >35 = 2nd half)
+        halves_to_process = []
+        if half is None or half == 1:
+            halves_to_process.append((1, [e for e in m_events if (e.minute or 0) <= 35]))
+        if half is None or half == 2:
+            halves_to_process.append((2, [e for e in m_events if (e.minute or 0) > 35]))
+
+        for h_num, h_events in halves_to_process:
+            total = len(h_events)
+            team_events = [e for e in h_events if e.team == Team.OWN]
+            opp_events = [e for e in h_events if e.team == Team.OPPONENT]
+
+            d_scores = [e for e in team_events if e.event_type in scoring_types]
+            o_scores = [e for e in opp_events if e.event_type in scoring_types]
+            d_wides = [e for e in team_events if e.event_type in wide_types]
+            d_turnovers_won = [e for e in team_events if e.event_type in turnover_won_types]
+            d_turnovers_lost = [e for e in team_events if e.event_type in turnover_lost_types]
+
+            d_total_pts = sum(
+                3 if e.event_type == EventType.GOAL else (2 if e.event_type == EventType.TWO_POINT else 1)
+                for e in d_scores
+            )
+            o_total_pts = sum(
+                3 if e.event_type == EventType.GOAL else (2 if e.event_type == EventType.TWO_POINT else 1)
+                for e in o_scores
+            )
+
+            possession_pct = round(len(team_events) / total * 100, 1) if total > 0 else 0
+
+            results.append({
+                "match": f"vs {match.opponent}",
+                "match_date": match.match_date.strftime("%d %b") if match.match_date else "?",
+                "half": h_num,
+                "team_possession_pct": possession_pct,
+                "team_scores": len(d_scores),
+                "team_score_total": d_total_pts,
+                "opponent_scores": len(o_scores),
+                "opponent_score_total": o_total_pts,
+                "team_wides": len(d_wides),
+                "team_turnovers_won": len(d_turnovers_won),
+                "team_turnovers_lost": len(d_turnovers_lost),
+                "total_events": total,
+            })
+
+    return safe_json({"stats_by_half": results, "matches_count": len(matches)})
 
 
 async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
     """Analyze scoring patterns by zone."""
     scoring_event_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SHORT]
     query = select(MatchEvent).where(
-        MatchEvent.team == 'dungloe',
+        MatchEvent.team == Team.OWN,
         MatchEvent.event_type.in_(scoring_event_types)
     )
 
@@ -1081,11 +1174,11 @@ async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
         else:
             zone = "attacking_third"
 
-        if e.event_type == EventType.TURNOVER_WON and e.team == Team.DUNGLOE:
+        if e.event_type == EventType.TURNOVER_WON and e.team == Team.OWN:
             zones[zone]["won"] += 1
-        elif e.event_type == EventType.TURNOVER_LOST and e.team == Team.DUNGLOE:
+        elif e.event_type == EventType.TURNOVER_LOST and e.team == Team.OWN:
             zones[zone]["lost"] += 1
-        elif e.event_type == EventType.UNFORCED_ERROR and e.team == Team.DUNGLOE:
+        elif e.event_type == EventType.UNFORCED_ERROR and e.team == Team.OWN:
             zones[zone]["lost"] += 1  # Our unforced error = we lost
         elif e.event_type == EventType.UNFORCED_ERROR and e.team == Team.OPPONENT:
             zones[zone]["won"] += 1  # Opponent's unforced error = we won
@@ -1432,7 +1525,7 @@ async def generate_insight_alerts(
             for m in recent_matches:
                 lines.append(
                     f"  {m.match_date} vs {m.opponent}: "
-                    f"Dungloe {m.dungloe_goals}-{m.dungloe_points} "
+                    f"Team {m.team_goals}-{m.team_points} "
                     f"Opp {m.opponent_goals}-{m.opponent_points}"
                 )
             match_context = "Recent match results:\n" + "\n".join(lines)

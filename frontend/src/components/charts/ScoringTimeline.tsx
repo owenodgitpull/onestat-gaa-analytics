@@ -10,11 +10,11 @@ interface ScoringTimelineProps {
 
 export default function ScoringTimeline({ events, opponent, insight }: ScoringTimelineProps) {
   const timelineData = useMemo(() => {
-    const intervals: Record<string, { dungloe: number; opponent: number }> = {}
+    const intervals: Record<string, { own: number; opponent: number }> = {}
 
     for (let i = 0; i <= 70; i += 10) {
       const label = i === 70 ? '70+' : `${i}-${i + 9}`
-      intervals[label] = { dungloe: 0, opponent: 0 }
+      intervals[label] = { own: 0, opponent: 0 }
     }
 
     const scoringEvents = ['goal', 'point', 'two_point', 'point_free', 'two_point_free']
@@ -22,7 +22,7 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
     events.forEach((e: any) => {
       if (!scoringEvents.includes(e.event_type)) return
 
-      const team = e.team || (e.is_home_team ? 'dungloe' : 'opponent')
+      const team = e.team || (e.is_home_team ? 'own' : 'opponent')
       const minute = e.minute || 0
       const intervalIdx = Math.min(Math.floor(minute / 10), 7)
       const label = intervalIdx === 7 ? '70+' : `${intervalIdx * 10}-${intervalIdx * 10 + 9}`
@@ -31,12 +31,12 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
       if (e.event_type === 'goal') value = 3
       else if (e.event_type === 'two_point' || e.event_type === 'two_point_free') value = 2
 
-      intervals[label][team as 'dungloe' | 'opponent'] += value
+      intervals[label][team as 'own' | 'opponent'] += value
     })
 
     return Object.entries(intervals).map(([name, data]) => ({
       name,
-      Dungloe: data.dungloe,
+      Us: data.own,
       [opponent]: data.opponent
     }))
   }, [events, opponent])
@@ -61,7 +61,7 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
                 color: '#fff'
               }}
             />
-            <Bar dataKey="Dungloe" fill="#6366f1" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Us" fill="#6366f1" radius={[4, 4, 0, 0]} />
             <Bar dataKey={opponent} fill="#f97316" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -69,7 +69,7 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
       <div className="flex justify-center gap-6 mt-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded bg-indigo-500"></span>
-          <span className="text-white/60">Dungloe</span>
+          <span className="text-white/60">Us</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded bg-orange-500"></span>

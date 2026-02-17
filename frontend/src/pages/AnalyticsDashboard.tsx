@@ -374,7 +374,7 @@ export default function AnalyticsDashboard() {
                       </div>
                     </div>
                     <div className="text-lg font-bold text-white">
-                      {match.dungloe_score} - {match.opponent_score}
+                      {match.team_score} - {match.opponent_score}
                     </div>
                     <div className="text-xs text-white/40 mt-1">
                       {new Date(match.match_date).toLocaleDateString()}
@@ -441,7 +441,7 @@ export default function AnalyticsDashboard() {
                   vs {liveMatch.opponent}
                 </span>
                 <span className="text-sm font-semibold text-indigo-300">
-                  {liveMatch.dungloe_goals}-{String(liveMatch.dungloe_points).padStart(2, '0')} / {liveMatch.opponent_goals}-{String(liveMatch.opponent_points).padStart(2, '0')}
+                  {liveMatch.team_goals}-{String(liveMatch.team_points).padStart(2, '0')} / {liveMatch.opponent_goals}-{String(liveMatch.opponent_points).padStart(2, '0')}
                 </span>
                 {liveMatch.current_phase && (
                   <span className="text-xs text-white/50 font-medium">
@@ -508,7 +508,7 @@ export default function AnalyticsDashboard() {
             <p className="text-sm text-white/50 mb-4">
               {seasonDashboard.kpi_cards.metadata.matches_played} Matches | {seasonDashboard.kpi_cards.metadata.win_rate}% Win Rate ({seasonDashboard.kpi_cards.metadata.wins}W-{seasonDashboard.kpi_cards.metadata.losses}L-{seasonDashboard.kpi_cards.metadata.draws}D)
             </p>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {KPI_PAIRINGS.map((pairing, pairIdx) => {
                 const cards = seasonDashboard.kpi_cards!.cards
                 const frontCard = cards.find(c => c.key === pairing[0])
@@ -638,7 +638,7 @@ export default function AnalyticsDashboard() {
           </>
         ) : (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="stat-card">
                 <div className="text-white/70 text-sm font-semibold mb-2">Matches Played</div>
                 <div className="stat-value">{season_summary.matches_played}</div>

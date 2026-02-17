@@ -18,6 +18,7 @@ from datetime import date
 import logging
 
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.fitness_test import FitnessTest
 from app.models.player import Player
 from app.schemas.fitness_test import (
@@ -69,7 +70,8 @@ def fitness_test_to_response(test: FitnessTest, player_name: str = None) -> Fitn
 @router.post("/", response_model=FitnessTestResponse, status_code=201)
 async def create_fitness_test(
     data: FitnessTestCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a single fitness test record."""
     # Verify player exists
@@ -92,7 +94,8 @@ async def create_fitness_test(
 @router.post("/bulk", response_model=list[FitnessTestResponse], status_code=201)
 async def bulk_create_fitness_tests(
     data: FitnessTestBulkCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Bulk create fitness tests for a team testing day."""
     # Get all players for name lookup
@@ -119,6 +122,15 @@ async def bulk_create_fitness_tests(
         responses.append(fitness_test_to_response(test, players[str(test.player_id)]))
 
     await db.commit()
+
+    # Notify players that fitness results are available
+    try:
+        from app.services.notification_service import NotificationService
+        tested_player_ids = [t.player_id for t in data.tests if str(t.player_id) in players]
+        await NotificationService.notify_fitness_results(db, tested_player_ids)
+    except Exception as e:
+        logger.warning(f"Failed to send fitness test notifications: {e}")
+
     return responses
 
 
@@ -128,7 +140,8 @@ async def list_fitness_tests(
     date_from: Optional[date] = Query(None, description="Filter tests from this date"),
     date_to: Optional[date] = Query(None, description="Filter tests to this date"),
     limit: int = Query(100, ge=1, le=500),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """List fitness tests with optional filters."""
     query = select(FitnessTest, Player.name).join(
@@ -153,7 +166,8 @@ async def list_fitness_tests(
 @router.get("/{test_id}", response_model=FitnessTestResponse)
 async def get_fitness_test(
     test_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a single fitness test by ID."""
     query = select(FitnessTest, Player.name).join(
@@ -173,7 +187,8 @@ async def get_fitness_test(
 async def update_fitness_test(
     test_id: UUID,
     data: FitnessTestUpdate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update a fitness test."""
     query = select(FitnessTest, Player.name).join(
@@ -202,7 +217,8 @@ async def update_fitness_test(
 @router.delete("/{test_id}", status_code=204)
 async def delete_fitness_test(
     test_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a fitness test."""
     query = select(FitnessTest).where(FitnessTest.id == test_id)
@@ -222,7 +238,8 @@ async def delete_fitness_test(
 async def get_player_fitness_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get fitness test history for a player."""
     query = select(FitnessTest, Player.name).join(
@@ -242,7 +259,8 @@ async def get_player_fitness_history(
 @router.get("/player/{player_id}/latest", response_model=Optional[FitnessTestResponse])
 async def get_player_latest_test(
     player_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get the most recent fitness test for a player."""
     query = select(FitnessTest, Player.name).join(
@@ -265,7 +283,8 @@ async def get_player_latest_test(
 @router.get("/player/{player_id}/comparison", response_model=Optional[FitnessTestComparison])
 async def get_player_test_comparison(
     player_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Compare a player's latest test to their previous test."""
     # Get player name
@@ -354,7 +373,8 @@ async def get_player_test_comparison(
 
 @router.get("/squad/latest", response_model=list[FitnessTestResponse])
 async def get_squad_latest_tests(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get the latest fitness test for each player."""
     # Subquery to get the latest test date for each player
@@ -380,7 +400,8 @@ async def get_squad_latest_tests(
 
 @router.get("/squad/summary", response_model=SquadFitnessSummary)
 async def get_squad_fitness_summary(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get aggregated squad fitness metrics and overview."""
     # Get total active players
@@ -511,7 +532,8 @@ async def get_squad_fitness_summary(
 
 @router.get("/squad/cards", response_model=list[PlayerFitnessCard])
 async def get_squad_fitness_cards(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get fitness status cards for all active players."""
     # Get all active players
@@ -598,7 +620,8 @@ async def get_squad_fitness_cards(
 @router.post("/{test_id}/analyze", response_model=FitnessAnalysisResponse)
 async def analyze_fitness_test(
     test_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Trigger AI analysis for a fitness test.

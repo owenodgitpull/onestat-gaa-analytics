@@ -21,12 +21,12 @@ function totalScore(goals: number, points: number): number {
 
 // Get result badge
 function getResult(match: Match): { label: string; class: string } {
-  const dungloeTotal = totalScore(match.dungloe_goals, match.dungloe_points)
+  const teamTotal = totalScore(match.team_goals, match.team_points)
   const oppTotal = totalScore(match.opponent_goals, match.opponent_points)
 
-  if (dungloeTotal > oppTotal) {
+  if (teamTotal > oppTotal) {
     return { label: 'W', class: 'bg-emerald-500/20 text-emerald-400' }
-  } else if (dungloeTotal < oppTotal) {
+  } else if (teamTotal < oppTotal) {
     return { label: 'L', class: 'bg-red-500/20 text-red-400' }
   }
   return { label: 'D', class: 'bg-amber-500/20 text-amber-400' }
@@ -91,7 +91,7 @@ export default function Results() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedMatches.map((match) => {
             const result = getResult(match)
-            const dungloeTotal = totalScore(match.dungloe_goals, match.dungloe_points)
+            const teamTotal = totalScore(match.team_goals, match.team_points)
             const oppTotal = totalScore(match.opponent_goals, match.opponent_points)
 
             return (
@@ -118,10 +118,10 @@ export default function Results() {
                 <div className="flex items-center justify-center space-x-4 py-4 mb-4 bg-white/5 rounded-xl">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white">
-                      {formatGAAScore(match.dungloe_goals, match.dungloe_points)}
+                      {formatGAAScore(match.team_goals, match.team_points)}
                     </div>
-                    <div className="text-xs text-white/60">Dungloe</div>
-                    <div className="text-xs text-white/40">({dungloeTotal} pts)</div>
+                    <div className="text-xs text-white/60">Us</div>
+                    <div className="text-xs text-white/40">({teamTotal} pts)</div>
                   </div>
                   <div className="text-white/40">-</div>
                   <div className="text-center">

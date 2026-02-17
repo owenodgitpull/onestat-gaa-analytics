@@ -1,18 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Route } from 'lucide-react'
-import { possessionAPI } from '@/services/api'
+import { Route, ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react'
+import { matchesAPI } from '@/services/api'
+import type { PitchPath } from '@/services/api'
 
 interface PathsTakenChartProps {
   matchId: string
-  events: any[]
   pollInterval?: number
-}
-
-interface Path {
-  points: { x: number; y: number }[]
-  minute: number
-  outcome: string // 'goal' | 'point' | 'two_point' | 'wide' etc
 }
 
 const OUTCOME_COLORS: Record<string, string> = {
@@ -23,99 +17,127 @@ const OUTCOME_COLORS: Record<string, string> = {
   two_point_free: '#a78bfa',
   wide: '#f59e0b',
   wide_free: '#fbbf24',
+  forty_five: '#06b6d4',
+  penalty_goal: '#10b981',
 }
 
-export default function PathsTakenChart({ matchId, events, pollInterval = 0 }: PathsTakenChartProps) {
-  const [mode, setMode] = useState<'scores' | 'wides'>('scores')
-  const [selectedPath, setSelectedPath] = useState<number | null>(null)
+const OUTCOME_LABELS: Record<string, string> = {
+  goal: 'Goal', point: 'Point', point_free: 'Point (free)',
+  two_point: '2-Pointer', two_point_free: '2-Pointer (free)',
+  wide: 'Wide', wide_free: 'Wide (free)', forty_five: '45m free',
+  short: 'Short', saved: 'Saved', penalty_goal: 'Penalty',
+}
 
-  const { data: possessionEvents } = useQuery({
-    queryKey: ['possession-events', matchId],
-    queryFn: () => possessionAPI.getByMatch(matchId),
+const SCORING_TYPES = new Set(['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five', 'penalty_goal'])
+const WIDE_TYPES = new Set(['wide', 'wide_free'])
+
+const PITCH_X_OFFSET = 183
+const PITCH_Y_OFFSET = 123
+const PITCH_W = 1960
+const PITCH_H = 1167
+
+const toSvg = (px: number, py: number) => ({
+  x: (px / 100) * PITCH_W + PITCH_X_OFFSET,
+  y: (py / 100) * PITCH_H + PITCH_Y_OFFSET,
+})
+
+// Convert pitch coordinates to a zone description
+// normX: 0 = own goal, 100 = opponent goal (always normalized for own team attacking direction)
+const getZone = (normX: number, y: number): string => {
+  let lateral = ''
+  if (y < 30) lateral = ', left side'
+  else if (y > 70) lateral = ', right side'
+
+  if (normX <= 5) return `own goal area`
+  if (normX <= 13) return `own 13m line${lateral}`
+  if (normX <= 20) return `own 20m line${lateral}`
+  if (normX <= 35) return `own 45${lateral}`
+  if (normX <= 50) return `midfield${lateral}`
+  if (normX <= 65) return `opp 45${lateral}`
+  if (normX <= 80) return `outside opp 40m arc${lateral}`
+  if (normX <= 90) return `inside opp 40m arc${lateral}`
+  if (normX <= 97) return `opp 13m line${lateral}`
+  return `opp goal area`
+}
+
+// Normalize raw pitch x (0=left of screen) to attacking x (0=own goal, 100=opp goal)
+const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boolean): number => {
+  const isFirstHalf = minute <= 30
+  const attackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
+  return attackingRight ? rawX : 100 - rawX
+}
+
+// Build a human-readable path description from coordinates
+const describePath = (
+  points: { x: number; y: number }[],
+  minute: number,
+  attackingRightFirstHalf: boolean,
+  startedWith?: string | null,
+): string => {
+  if (points.length === 0) return ''
+  if (points.length === 1) {
+    const nx = normalizeX(points[0].x, minute, attackingRightFirstHalf)
+    return `Shot from ${getZone(nx, points[0].y)}`
+  }
+
+  const zones = points.map(p => {
+    const nx = normalizeX(p.x, minute, attackingRightFirstHalf)
+    return getZone(nx, p.y)
+  })
+  // Deduplicate consecutive zones
+  const uniqueZones = zones.filter((z, i) => i === 0 || z !== zones[i - 1])
+
+  const startAction = startedWith
+    ? startedWith.replace(/_/g, ' ')
+    : 'play'
+
+  if (uniqueZones.length === 1) return `${startAction} in ${uniqueZones[0]}`
+
+  return `${startAction} from ${uniqueZones[0]} → ${uniqueZones.slice(1).join(' → ')}`
+}
+
+export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTakenChartProps) {
+  const [mode, setMode] = useState<'scores' | 'wides'>('scores')
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null) // null = show all
+
+  const { data: pathsData } = useQuery({
+    queryKey: ['pitch-paths', matchId],
+    queryFn: () => matchesAPI.getPitchPaths(matchId),
     enabled: !!matchId,
     refetchInterval: pollInterval || false,
   })
 
-  // Build paths: for each scoring/wide event, trace back the preceding Dungloe possession events
-  const paths = useMemo(() => {
-    if (!possessionEvents || possessionEvents.length === 0) return { scores: [], wides: [] }
+  const allPaths = pathsData?.paths || []
+  const attackingRightFirstHalf = pathsData?.attacking_right_first_half ?? true
 
-    // Sort possession events by time
-    const sortedPoss = [...possessionEvents].sort((a, b) => {
-      if (a.minute !== b.minute) return a.minute - b.minute
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    })
-
-    // Build possession phases for Dungloe: consecutive events where team is dungloe/home
-    const phases: { events: typeof sortedPoss; endMinute: number }[] = []
-    let currentPhase: typeof sortedPoss = []
-
-    for (const pe of sortedPoss) {
-      const isDungloe = pe.is_home_team === true
-      if (isDungloe) {
-        currentPhase.push(pe)
-      } else {
-        if (currentPhase.length > 0) {
-          phases.push({ events: currentPhase, endMinute: currentPhase[currentPhase.length - 1].minute })
-          currentPhase = []
-        }
-      }
+  const { scores, wides } = useMemo(() => {
+    const scores: PitchPath[] = []
+    const wides: PitchPath[] = []
+    for (const p of allPaths) {
+      if (SCORING_TYPES.has(p.outcome)) scores.push(p)
+      else if (WIDE_TYPES.has(p.outcome)) wides.push(p)
     }
-    if (currentPhase.length > 0) {
-      phases.push({ events: currentPhase, endMinute: currentPhase[currentPhase.length - 1].minute })
-    }
+    return { scores, wides }
+  }, [allPaths])
 
-    // Categorize scoring/wide match events for Dungloe
-    const scoringTypes = ['goal', 'point', 'two_point', 'point_free', 'two_point_free']
-    const wideTypes = ['wide', 'wide_free']
-
-    const dungloeEvents = events.filter((e: any) => {
-      const team = e.team || (e.is_home_team ? 'dungloe' : 'opponent')
-      return team === 'dungloe'
-    })
-
-    const matchToPhase = (matchEvent: any): Path | null => {
-      const eventMinute = matchEvent.minute || 0
-      // Find the closest phase that ends at or just before this event
-      let bestPhase = null
-      let bestDiff = Infinity
-      for (const phase of phases) {
-        const diff = eventMinute - phase.endMinute
-        if (diff >= -1 && diff < bestDiff) {
-          bestDiff = diff
-          bestPhase = phase
-        }
-      }
-
-      if (!bestPhase || bestPhase.events.length < 2) return null
-
-      const points = bestPhase.events.map(pe => ({
-        x: pe.x_coord ?? 0,
-        y: pe.y_coord ?? 0,
-      }))
-
-      return {
-        points,
-        minute: eventMinute,
-        outcome: matchEvent.event_type,
-      }
-    }
-
-    const scorePaths: Path[] = dungloeEvents
-      .filter((e: any) => scoringTypes.includes(e.event_type))
-      .map(matchToPhase)
-      .filter((p): p is Path => p !== null)
-
-    const widePaths: Path[] = dungloeEvents
-      .filter((e: any) => wideTypes.includes(e.event_type))
-      .map(matchToPhase)
-      .filter((p): p is Path => p !== null)
-
-    return { scores: scorePaths, wides: widePaths }
-  }, [possessionEvents, events])
-
-  const currentPaths = mode === 'scores' ? paths.scores : paths.wides
+  const currentPaths = mode === 'scores' ? scores : wides
   const hasData = currentPaths.length > 0
+
+  // Reset selection when switching mode
+  const handleModeChange = (newMode: 'scores' | 'wides') => {
+    setMode(newMode)
+    setSelectedIdx(null)
+  }
+
+  const goToPath = (idx: number) => {
+    if (idx < 0) setSelectedIdx(currentPaths.length - 1)
+    else if (idx >= currentPaths.length) setSelectedIdx(0)
+    else setSelectedIdx(idx)
+  }
+
+  // Which paths to render on pitch
+  const visiblePaths = selectedIdx !== null ? [currentPaths[selectedIdx]] : currentPaths
+  const activeDetail = selectedIdx !== null ? currentPaths[selectedIdx] : null
 
   return (
     <div className="glass-card p-4">
@@ -125,29 +147,28 @@ export default function PathsTakenChart({ matchId, events, pollInterval = 0 }: P
       </h3>
 
       {/* Mode Toggle */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-3">
         <button
-          onClick={() => { setMode('scores'); setSelectedPath(null) }}
+          onClick={() => handleModeChange('scores')}
           className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
             mode === 'scores' ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
           }`}
         >
-          Scores ({paths.scores.length})
+          Scores ({scores.length})
         </button>
         <button
-          onClick={() => { setMode('wides'); setSelectedPath(null) }}
+          onClick={() => handleModeChange('wides')}
           className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
             mode === 'wides' ? 'bg-amber-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
           }`}
         >
-          Wides ({paths.wides.length})
+          Wides ({wides.length})
         </button>
       </div>
 
-      {/* Pitch with paths */}
-      <div className="relative">
-        <svg viewBox="0 0 2332 1446" className="w-full h-auto rounded-lg overflow-hidden">
-          {/* Pitch background */}
+      {/* Pitch SVG — natural aspect ratio */}
+      <div className="rounded-lg overflow-hidden">
+        <svg viewBox="0 0 2332 1446" className="w-full h-auto">
           <rect width="2332" height="1446" fill="#2d5016" />
           <image
             href="/pitch-svg.svg"
@@ -155,94 +176,147 @@ export default function PathsTakenChart({ matchId, events, pollInterval = 0 }: P
             height="1446"
             preserveAspectRatio="xMidYMid meet"
           />
-
-          {/* Semi-transparent overlay to make paths stand out */}
           <rect width="2332" height="1446" fill="rgba(0,0,0,0.3)" />
 
-          {/* Path lines */}
-          {hasData && currentPaths.map((path, pathIdx) => {
-            const isSelected = selectedPath === pathIdx
-            const isOther = selectedPath !== null && !isSelected
-            const color = OUTCOME_COLORS[path.outcome] || '#ffffff'
+          {hasData && visiblePaths.map((path, vIdx) => {
+            const points = path.points || []
+            if (points.length === 0) return null
 
-            // Convert pitch coords (0-100) to SVG coords
-            // Pitch area: x 183–2143 (1960 units), y 123–1290 (1167 units)
-            const svgPoints = path.points.map(p => ({
-              x: (p.x / 100) * 1960 + 183,
-              y: (p.y / 100) * 1167 + 123,
-            }))
+            // Find the real index in currentPaths for numbering
+            const realIdx = selectedIdx !== null ? selectedIdx : currentPaths.indexOf(path)
+            const svgPoints = points.map(p => toSvg(p.x, p.y))
+            const color = OUTCOME_COLORS[path.outcome] || '#6366f1'
+            const num = realIdx + 1
+            const isHighlighted = selectedIdx === null || vIdx === 0
 
-            if (svgPoints.length < 2) return null
+            if (svgPoints.length === 1) {
+              return (
+                <g key={vIdx} opacity={isHighlighted ? 1 : 0.25}>
+                  <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={36} fill={color} stroke="white" strokeWidth={4} />
+                  <text x={svgPoints[0].x} y={svgPoints[0].y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
+                </g>
+              )
+            }
 
             const pathD = svgPoints.map((p, i) =>
               i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
             ).join(' ')
+            const last = svgPoints[svgPoints.length - 1]
 
             return (
-              <g
-                key={pathIdx}
-                opacity={isOther ? 0.15 : isSelected ? 1 : 0.7}
-                className="cursor-pointer transition-opacity"
-                onClick={() => setSelectedPath(isSelected ? null : pathIdx)}
-              >
-                {/* Path line */}
-                <path
-                  d={pathD}
-                  fill="none"
-                  stroke={color}
-                  strokeWidth={isSelected ? 8 : 5}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-
-                {/* Start dot */}
-                <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={isSelected ? 18 : 12} fill={color} opacity="0.6" />
-
-                {/* End dot (outcome) */}
-                <circle
-                  cx={svgPoints[svgPoints.length - 1].x}
-                  cy={svgPoints[svgPoints.length - 1].y}
-                  r={isSelected ? 22 : 16}
-                  fill={color}
-                  stroke="white"
-                  strokeWidth={isSelected ? 4 : 2}
-                />
-
-                {/* Minute label on end dot */}
-                {(isSelected || selectedPath === null) && (
-                  <text
-                    x={svgPoints[svgPoints.length - 1].x}
-                    y={svgPoints[svgPoints.length - 1].y + 5}
-                    textAnchor="middle"
-                    fill="white"
-                    fontSize={isSelected ? 20 : 16}
-                    fontWeight="bold"
-                  >
-                    {path.minute}'
-                  </text>
-                )}
+              <g key={vIdx} opacity={isHighlighted ? 0.9 : 0.2}>
+                <path d={pathD} fill="none" stroke={color} strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" opacity={0.2} />
+                <path d={pathD} fill="none" stroke={color} strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" />
+                {svgPoints.slice(1, -1).map((p, di) => (
+                  <circle key={di} cx={p.x} cy={p.y} r={14} fill={color} stroke="white" strokeWidth={2} opacity={0.7} />
+                ))}
+                <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={22} fill={color} stroke="white" strokeWidth={3} opacity={0.8} />
+                <circle cx={last.x} cy={last.y} r={36} fill={color} stroke="white" strokeWidth={4} />
+                <text x={last.x} y={last.y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
               </g>
             )
           })}
         </svg>
       </div>
 
-      {/* Legend / Info */}
-      {hasData ? (
-        <div className="mt-3 flex flex-wrap gap-2 text-xs">
-          {selectedPath !== null && currentPaths[selectedPath] ? (
-            <div className="w-full p-2 rounded-lg bg-white/5 border border-white/10 text-white/80">
-              <span className="font-semibold">{currentPaths[selectedPath].minute}'</span>
-              {' — '}
-              {currentPaths[selectedPath].outcome.replace(/_/g, ' ')}
-              {' — '}
-              {currentPaths[selectedPath].points.length} touches in buildup
+      {/* Path Navigator */}
+      {hasData && (
+        <div className="mt-3">
+          {/* Navigation controls */}
+          <div className="flex items-center gap-2 mb-2">
+            {/* Show all / single toggle */}
+            <button
+              onClick={() => setSelectedIdx(selectedIdx !== null ? null : 0)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                selectedIdx === null
+                  ? 'bg-white/15 text-white border border-white/20'
+                  : 'bg-white/5 text-white/50 border border-white/10 hover:bg-white/10'
+              }`}
+            >
+              {selectedIdx === null ? <Eye size={12} /> : <EyeOff size={12} />}
+              {selectedIdx === null ? 'All' : 'All'}
+            </button>
+
+            {/* Path number pills */}
+            <div className="flex-1 flex items-center gap-1 overflow-x-auto no-scrollbar">
+              {currentPaths.map((path, idx) => {
+                const color = OUTCOME_COLORS[path.outcome] || '#6366f1'
+                const isSelected = selectedIdx === idx
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedIdx(isSelected ? null : idx)}
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 transition-all"
+                    style={{
+                      backgroundColor: isSelected ? color : 'transparent',
+                      border: `2px solid ${isSelected ? color : 'rgba(255,255,255,0.2)'}`,
+                      opacity: isSelected ? 1 : 0.6,
+                    }}
+                  >
+                    {idx + 1}
+                  </button>
+                )
+              })}
             </div>
-          ) : (
-            <p className="text-white/40">Tap a path to see details</p>
+
+            {/* Prev/Next arrows */}
+            {selectedIdx !== null && (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => goToPath(selectedIdx - 1)}
+                  className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-white/70 hover:bg-white/20 transition-all"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <button
+                  onClick={() => goToPath(selectedIdx + 1)}
+                  className="w-7 h-7 rounded-lg bg-white/10 flex items-center justify-center text-white/70 hover:bg-white/20 transition-all"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Detail card for selected path */}
+          {activeDetail && (() => {
+            const color = OUTCOME_COLORS[activeDetail.outcome] || '#6366f1'
+            const outcomeLabel = OUTCOME_LABELS[activeDetail.outcome] || activeDetail.outcome?.replace(/_/g, ' ')
+            const pathDesc = describePath(
+              activeDetail.points || [], activeDetail.minute,
+              attackingRightFirstHalf, activeDetail.started_with
+            )
+            return (
+              <div className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10">
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                  style={{ backgroundColor: color }}
+                >
+                  {selectedIdx! + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white font-semibold text-sm">
+                    {activeDetail.player || 'Unknown'} — <span style={{ color }}>{outcomeLabel}</span>
+                    <span className="text-white/40 font-normal ml-1">{activeDetail.minute}'</span>
+                  </div>
+                  <div className="text-white/50 text-xs leading-relaxed mt-0.5">
+                    {pathDesc}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Summary when viewing all */}
+          {selectedIdx === null && (
+            <p className="text-white/40 text-xs text-center mt-1">
+              Tap a number to focus on a single path
+            </p>
           )}
         </div>
-      ) : (
+      )}
+
+      {!hasData && (
         <div className="mt-4 text-center text-white/40 text-sm py-4">
           {mode === 'scores' ? 'No scoring paths recorded yet' : 'No wide paths recorded yet'}
         </div>

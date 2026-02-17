@@ -128,8 +128,8 @@ class SeasonDashboardService:
         # A possession phase = each time a team gains the ball.
         # Walk events in time order; only count when team changes from previous.
         # Also group events into phases so attacks are counted per-phase (max 1 per phase).
-        dungloe_phases_by_match: dict[str, list[list]] = {}  # mid -> [[phase1_events], ...]
-        dungloe_poss_count = {}
+        team_phases_by_match: dict[str, list[list]] = {}  # mid -> [[phase1_events], ...]
+        team_poss_count = {}
         opp_phases_by_match: dict[str, list[list]] = {}
         opp_poss_count = {}
         prev_team_by_match: dict = {}  # track last team per match
@@ -138,15 +138,15 @@ class SeasonDashboardService:
             mid = pe.match_id
             prev = prev_team_by_match.get(mid)
 
-            if pe.team == PossessionTeam.DUNGLOE:
-                if prev != PossessionTeam.DUNGLOE:
+            if pe.team == PossessionTeam.OWN:
+                if prev != PossessionTeam.OWN:
                     # New possession phase — start a new list
-                    dungloe_phases_by_match.setdefault(mid, []).append([])
-                    dungloe_poss_count[mid] = dungloe_poss_count.get(mid, 0) + 1
-                elif mid not in dungloe_phases_by_match:
-                    dungloe_phases_by_match[mid] = [[]]
-                    dungloe_poss_count[mid] = 1
-                dungloe_phases_by_match[mid][-1].append(pe)
+                    team_phases_by_match.setdefault(mid, []).append([])
+                    team_poss_count[mid] = team_poss_count.get(mid, 0) + 1
+                elif mid not in team_phases_by_match:
+                    team_phases_by_match[mid] = [[]]
+                    team_poss_count[mid] = 1
+                team_phases_by_match[mid][-1].append(pe)
             elif pe.team == PossessionTeam.OPPONENT:
                 if prev != PossessionTeam.OPPONENT:
                     opp_phases_by_match.setdefault(mid, []).append([])
@@ -157,24 +157,24 @@ class SeasonDashboardService:
                 opp_phases_by_match[mid][-1].append(pe)
 
             # Update previous team (skip contested — doesn't reset either team)
-            if pe.team in (PossessionTeam.DUNGLOE, PossessionTeam.OPPONENT):
+            if pe.team in (PossessionTeam.OWN, PossessionTeam.OPPONENT):
                 prev_team_by_match[mid] = pe.team
 
         # Count attacks per match — max 1 attack per possession phase.
         # A phase counts as an attack if ANY event enters the opposition 45m zone.
-        # pitch_x 0=Dungloe goal, 100=Opponent goal.  GAA pitch ~145m.
-        # Opposition 45m line ≈ (145-45)/145 * 100 ≈ 69 for Dungloe attacking.
-        # Dungloe 45m line ≈ 45/145 * 100 ≈ 31 for Opponent attacking.
-        DUNGLOE_ATTACK_THRESHOLD = 69.0  # inside opponent's 45
-        OPP_ATTACK_THRESHOLD = 31.0      # inside Dungloe's 45
-        dungloe_attacks = {}
+        # pitch_x 0=own team goal, 100=Opponent goal.  GAA pitch ~145m.
+        # Opposition 45m line ≈ (145-45)/145 * 100 ≈ 69 for own team attacking.
+        # Own team 45m line ≈ 45/145 * 100 ≈ 31 for Opponent attacking.
+        TEAM_ATTACK_THRESHOLD = 69.0  # inside opponent's 45
+        OPP_ATTACK_THRESHOLD = 31.0   # inside own team's 45
+        team_attacks = {}
         opp_attacks = {}
-        for mid, phases in dungloe_phases_by_match.items():
+        for mid, phases in team_phases_by_match.items():
             count = 0
             for phase_events in phases:
-                if any(pe.pitch_x >= DUNGLOE_ATTACK_THRESHOLD for pe in phase_events):
+                if any(pe.pitch_x >= TEAM_ATTACK_THRESHOLD for pe in phase_events):
                     count += 1
-            dungloe_attacks[mid] = count
+            team_attacks[mid] = count
         for mid, phases in opp_phases_by_match.items():
             count = 0
             for phase_events in phases:
@@ -194,11 +194,11 @@ class SeasonDashboardService:
                 )
             ).group_by(MatchEvent.match_id, MatchEvent.team)
         )
-        dungloe_shots = {}
+        team_shots = {}
         opp_shots = {}
         for row in shots_result:
-            if row.team == Team.DUNGLOE:
-                dungloe_shots[row.match_id] = row.count
+            if row.team == Team.OWN:
+                team_shots[row.match_id] = row.count
             else:
                 opp_shots[row.match_id] = row.count
 
@@ -214,11 +214,11 @@ class SeasonDashboardService:
                 )
             ).group_by(MatchEvent.match_id, MatchEvent.team)
         )
-        dungloe_scores = {}
+        team_scores = {}
         opp_scores = {}
         for row in scores_result:
-            if row.team == Team.DUNGLOE:
-                dungloe_scores[row.match_id] = row.count
+            if row.team == Team.OWN:
+                team_scores[row.match_id] = row.count
             else:
                 opp_scores[row.match_id] = row.count
 
@@ -229,10 +229,10 @@ class SeasonDashboardService:
 
         for mid in match_ids:
             m = matches_map[mid]
-            dp = dungloe_poss_count.get(mid, 0)
-            da = dungloe_attacks.get(mid, 0)
-            dsh = dungloe_shots.get(mid, 0)
-            dsc = dungloe_scores.get(mid, 0)
+            dp = team_poss_count.get(mid, 0)
+            da = team_attacks.get(mid, 0)
+            dsh = team_shots.get(mid, 0)
+            dsc = team_scores.get(mid, 0)
             t_poss += dp; t_att += da; t_sh += dsh; t_sc += dsc
 
             op = opp_poss_count.get(mid, 0)
@@ -281,10 +281,10 @@ class SeasonDashboardService:
         kickout_types = [
             EventType.KICKOUT_WON, EventType.KICKOUT_LOST,
             EventType.BREAKING_BALL_WON, EventType.BREAKING_BALL_LOST,
-            EventType.OWN_KICKOUT_DUNGLOE_WON, EventType.OWN_KICKOUT_OPPOSITION_WON,
-            EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
-            EventType.OPP_KICKOUT_DUNGLOE_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
-            EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+            EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_OPPOSITION_WON,
+            EventType.OWN_KICKOUT_WON_BREAK, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+            EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
+            EventType.OPP_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
         ]
         events_result = await db.execute(
             select(MatchEvent).where(
@@ -299,13 +299,13 @@ class SeasonDashboardService:
         # Sets for classification
         won_clean_types = {
             EventType.KICKOUT_WON,
-            EventType.OWN_KICKOUT_DUNGLOE_WON,
-            EventType.OPP_KICKOUT_DUNGLOE_WON,
+            EventType.OWN_KICKOUT_WON,
+            EventType.OPP_KICKOUT_WON,
         }
         won_break_types = {
             EventType.BREAKING_BALL_WON,
-            EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK,
-            EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK,
+            EventType.OWN_KICKOUT_WON_BREAK,
+            EventType.OPP_KICKOUT_WON_BREAK,
         }
         lost_clean_types = {
             EventType.KICKOUT_LOST,
@@ -326,19 +326,19 @@ class SeasonDashboardService:
 
             # Detailed types encode who won in the name, legacy types use team field
             if e.event_type in won_clean_types:
-                if e.event_type == EventType.KICKOUT_WON and e.team != Team.DUNGLOE:
+                if e.event_type == EventType.KICKOUT_WON and e.team != Team.OWN:
                     continue
                 match_kickouts[mid]["won_clean"] += 1
             elif e.event_type in won_break_types:
-                if e.event_type == EventType.BREAKING_BALL_WON and e.team != Team.DUNGLOE:
+                if e.event_type == EventType.BREAKING_BALL_WON and e.team != Team.OWN:
                     continue
                 match_kickouts[mid]["won_break"] += 1
             elif e.event_type in lost_clean_types:
-                if e.event_type == EventType.KICKOUT_LOST and e.team != Team.DUNGLOE:
+                if e.event_type == EventType.KICKOUT_LOST and e.team != Team.OWN:
                     continue
                 match_kickouts[mid]["lost_clean"] += 1
             elif e.event_type in lost_break_types:
-                if e.event_type == EventType.BREAKING_BALL_LOST and e.team != Team.DUNGLOE:
+                if e.event_type == EventType.BREAKING_BALL_LOST and e.team != Team.OWN:
                     continue
                 match_kickouts[mid]["lost_break"] += 1
 
@@ -365,7 +365,7 @@ class SeasonDashboardService:
 
     @staticmethod
     async def _turnover_source_leaderboard(db: AsyncSession, matches: list) -> list:
-        """Top 5 Dungloe players by defensive ball-winning."""
+        """Top 5 own team players by defensive ball-winning."""
         if not matches:
             return []
 
@@ -375,7 +375,7 @@ class SeasonDashboardService:
             select(MatchEvent).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_(DEFENSIVE_EVENTS),
                     MatchEvent.player_id.isnot(None),
                 )
@@ -602,7 +602,7 @@ class SeasonDashboardService:
             select(MatchEvent).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_(SCORE_EVENTS),
                     MatchEvent.player_id.isnot(None),
                 )
@@ -660,7 +660,7 @@ class SeasonDashboardService:
             select(MatchEvent).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_(DEFENSIVE_EVENTS),
                     MatchEvent.player_id.isnot(None),
                 )
@@ -816,12 +816,12 @@ class SeasonDashboardService:
         # Aggregate into zones by team — TIME-WEIGHTED using duration_seconds
         # Each PossessionEvent has duration_seconds = time until next event.
         # Territory = total seconds spent in each zone, not tap count.
-        dungloe_zones = {"defensive": 0, "midfield": 0, "attacking": 0}
+        team_zones = {"defensive": 0, "midfield": 0, "attacking": 0}
         opp_zones = {"defensive": 0, "midfield": 0, "attacking": 0}
         # Per-match tracking
-        match_dungloe = {}  # mid -> {defensive, midfield, attacking} (seconds)
+        match_team = {}  # mid -> {defensive, midfield, attacking} (seconds)
         match_opp = {}
-        dungloe_count = 0
+        team_count = 0
         opp_count = 0
 
         for pe in all_poss:
@@ -841,11 +841,11 @@ class SeasonDashboardService:
             else:
                 zone = "attacking"
 
-            if pe.team == PossessionTeam.DUNGLOE:
-                dungloe_zones[zone] += duration
-                dungloe_count += duration
-                match_dungloe.setdefault(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
-                match_dungloe[mid][zone] += duration
+            if pe.team == PossessionTeam.OWN:
+                team_zones[zone] += duration
+                team_count += duration
+                match_team.setdefault(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
+                match_team[mid][zone] += duration
             elif pe.team == PossessionTeam.OPPONENT:
                 opp_zones[zone] += duration
                 opp_count += duration
@@ -867,7 +867,7 @@ class SeasonDashboardService:
         per_match = []
         for m in matches:
             mid = m.id
-            d_z = match_dungloe.get(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
+            d_z = match_team.get(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
             o_z = match_opp.get(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
             d_total = sum(d_z.values())
             o_total = sum(o_z.values())
@@ -876,19 +876,19 @@ class SeasonDashboardService:
                 "match_id": str(mid),
                 "opponent": m.opponent or "Unknown",
                 "date": m.match_date.isoformat() if m.match_date else "",
-                "dungloe_pcts": calc_pcts(d_z),
+                "team_pcts": calc_pcts(d_z),
                 "opponent_pcts": calc_pcts(o_z),
                 "possession_pct": round(d_total / total_poss * 100, 1) if total_poss > 0 else 50.0,
             })
 
-        total_all = dungloe_count + opp_count
+        total_all = team_count + opp_count
         return {
-            "season_totals": dungloe_zones,
-            "season_pcts": calc_pcts(dungloe_zones),
+            "season_totals": team_zones,
+            "season_pcts": calc_pcts(team_zones),
             "opponent_totals": opp_zones,
             "opponent_pcts": calc_pcts(opp_zones),
             "per_match": per_match,
-            "possession_pct": round(dungloe_count / total_all * 100, 1) if total_all > 0 else 50.0,
+            "possession_pct": round(team_count / total_all * 100, 1) if total_all > 0 else 50.0,
         }
 
     # ------------------------------------------------------------------
@@ -908,8 +908,8 @@ class SeasonDashboardService:
         if n == 0:
             return empty
 
-        wins = sum(1 for m in matches if m.dungloe_total_score > m.opponent_total_score)
-        losses = sum(1 for m in matches if m.dungloe_total_score < m.opponent_total_score)
+        wins = sum(1 for m in matches if m.team_total_score > m.opponent_total_score)
+        losses = sum(1 for m in matches if m.team_total_score < m.opponent_total_score)
         draws = n - wins - losses
         win_rate = round(wins / n * 100, 1)
 
@@ -921,7 +921,7 @@ class SeasonDashboardService:
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_([EventType.TURNOVER_WON, EventType.TURNOVER_LOST]),
                 )
             )
@@ -934,14 +934,14 @@ class SeasonDashboardService:
 
         # --- Kickout retention (own kickouts) ---
         own_ko_won_types = [
-            EventType.OWN_KICKOUT_DUNGLOE_WON,
-            EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK,
+            EventType.OWN_KICKOUT_WON,
+            EventType.OWN_KICKOUT_WON_BREAK,
         ]
         own_ko_lost_types = [
             EventType.OWN_KICKOUT_OPPOSITION_WON,
             EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
         ]
-        # Include legacy kickout types for Dungloe team
+        # Include legacy kickout types for own team
         legacy_ko_types = [EventType.KICKOUT_WON, EventType.KICKOUT_LOST]
 
         ko_result = await db.execute(
@@ -964,10 +964,10 @@ class SeasonDashboardService:
                 own_ko_total += row.cnt
             elif row.event_type in own_ko_lost_types:
                 own_ko_total += row.cnt
-            elif row.event_type == EventType.KICKOUT_WON and row.team == Team.DUNGLOE:
+            elif row.event_type == EventType.KICKOUT_WON and row.team == Team.OWN:
                 own_ko_won += row.cnt
                 own_ko_total += row.cnt
-            elif row.event_type == EventType.KICKOUT_LOST and row.team == Team.DUNGLOE:
+            elif row.event_type == EventType.KICKOUT_LOST and row.team == Team.OWN:
                 own_ko_total += row.cnt
 
         kickout_retention = round(own_ko_won / own_ko_total * 100, 1) if own_ko_total > 0 else 0
@@ -978,7 +978,7 @@ class SeasonDashboardService:
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type == EventType.FOUL_COMMITTED,
                 )
             )
@@ -991,7 +991,7 @@ class SeasonDashboardService:
 
         # --- Productivity score ---
         total_points_scored = sum(
-            (m.dungloe_goals * 3) + m.dungloe_points for m in matches
+            (m.team_goals * 3) + m.team_points for m in matches
         )
         total_possessions = funnel.get("season_totals", {}).get("possessions", 0)
         productivity = round(
@@ -1027,7 +1027,7 @@ class SeasonDashboardService:
             }
 
         # Recent avg scored / conceded
-        recent_scored = sum((m.dungloe_goals * 3) + m.dungloe_points for m in recent_matches) / trend_window
+        recent_scored = sum((m.team_goals * 3) + m.team_points for m in recent_matches) / trend_window
         recent_conceded = sum((m.opponent_goals * 3) + m.opponent_points for m in recent_matches) / trend_window
 
         # Recent turnovers (per match)
@@ -1036,7 +1036,7 @@ class SeasonDashboardService:
             .where(
                 and_(
                     MatchEvent.match_id.in_(recent_ids),
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_([EventType.TURNOVER_WON, EventType.TURNOVER_LOST]),
                 )
             )
@@ -1054,7 +1054,7 @@ class SeasonDashboardService:
             .where(
                 and_(
                     MatchEvent.match_id.in_(recent_ids),
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type == EventType.FOUL_COMMITTED,
                 )
             )
@@ -1082,10 +1082,10 @@ class SeasonDashboardService:
                 r_ko_total += row.cnt
             elif row.event_type in own_ko_lost_types:
                 r_ko_total += row.cnt
-            elif row.event_type == EventType.KICKOUT_WON and row.team == Team.DUNGLOE:
+            elif row.event_type == EventType.KICKOUT_WON and row.team == Team.OWN:
                 r_ko_won += row.cnt
                 r_ko_total += row.cnt
-            elif row.event_type == EventType.KICKOUT_LOST and row.team == Team.DUNGLOE:
+            elif row.event_type == EventType.KICKOUT_LOST and row.team == Team.OWN:
                 r_ko_total += row.cnt
         recent_ko_ret = round(r_ko_won / r_ko_total * 100, 1) if r_ko_total > 0 else 0
 
@@ -1095,7 +1095,7 @@ class SeasonDashboardService:
             .where(
                 and_(
                     MatchEvent.match_id.in_(recent_ids),
-                    MatchEvent.team == Team.DUNGLOE,
+                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_(SHOT_EVENTS),
                 )
             )
@@ -1110,7 +1110,7 @@ class SeasonDashboardService:
         recent_shot_eff = round(r_scores / r_shots * 100, 1) if r_shots > 0 else 0
 
         # Recent productivity
-        recent_pts = sum((m.dungloe_goals * 3) + m.dungloe_points for m in recent_matches)
+        recent_pts = sum((m.team_goals * 3) + m.team_points for m in recent_matches)
         # Approximate recent possessions from shot count (rough proxy)
         recent_productivity = round(recent_pts / (r_shots * 1.5) * 10, 2) if r_shots > 0 else 0
 

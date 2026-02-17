@@ -13,26 +13,33 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1';
 
+/** Exported for contexts that need direct fetch (e.g. ClubContext) */
+export const API_BASE = API_BASE_URL;
+
 // ============================================================================
 // Utility Functions
 // ============================================================================
 
 /**
- * Generic fetch wrapper with error handling
+ * Generic fetch wrapper with error handling.
+ *
+ * Authentication is handled via httpOnly cookies — no Authorization header.
+ * All requests include `credentials: 'include'` so cookies are sent cross-origin.
  */
-async function fetchAPI<T>(
+export async function fetchAPI<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
-  const defaultHeaders = {
+
+  const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
   };
 
   try {
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,
@@ -42,7 +49,7 @@ async function fetchAPI<T>(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
-        errorData.detail || `API Error: ${response.status} ${response.statusText}`
+        errorData.detail || errorData.error || `API Error: ${response.status} ${response.statusText}`
       );
     }
 
@@ -208,6 +215,14 @@ export const matchesAPI = {
       return null;
     }
   },
+
+  /**
+   * Get pitch path visualizations for a match (traces possession chains from events)
+   */
+  getPitchPaths: async (matchId: string, outcomes?: string[]): Promise<PitchPathsResponse> => {
+    const params = outcomes ? `?outcomes=${outcomes.join(',')}` : '';
+    return fetchAPI<PitchPathsResponse>(`/matches/${matchId}/pitch-paths${params}`);
+  },
 };
 
 // ============================================================================
@@ -237,7 +252,7 @@ export const matchEventsAPI = {
       method: 'POST',
       body: JSON.stringify({
         ...rest,
-        team: is_home_team ? 'dungloe' : 'opponent',
+        team: is_home_team ? 'own' : 'opponent',
         pitch_x: x_coord,
         pitch_y: y_coord
       }),
@@ -323,7 +338,7 @@ export const possessionAPI = {
       method: 'POST',
       body: JSON.stringify({
         ...rest,
-        team: is_home_team ? 'dungloe' : 'opponent',
+        team: is_home_team ? 'own' : 'opponent',
         pitch_x: rest.x_coord,
         pitch_y: rest.y_coord
       }),
@@ -451,7 +466,7 @@ export interface MatchTrend {
   match_id: string;
   opponent: string;
   match_date: string;
-  dungloe_score: number;
+  team_score: number;
   opponent_score: number;
   result: string;
 }
@@ -544,7 +559,7 @@ export interface TerritoryMatchData {
   match_id: string;
   opponent: string;
   date: string;
-  dungloe_pcts: TerritoryZonePcts;
+  team_pcts: TerritoryZonePcts;
   opponent_pcts: TerritoryZonePcts;
   possession_pct: number;
 }
@@ -714,8 +729,8 @@ export interface PostMatchReport {
     status: string;
   };
   score: {
-    dungloe: string;
-    dungloe_total: number;
+    team: string;
+    team_total: number;
     opponent: string;
     opponent_total: number;
     result: string;
@@ -894,6 +909,25 @@ export interface InsightAlert {
   created_at: string;
 }
 
+// Pitch Paths types
+export interface PitchPath {
+  label: string;
+  outcome: string;
+  minute: number;
+  player: string | null;
+  opponent: string;
+  started_by: string | null;
+  started_with: string | null;
+  points: { x: number; y: number }[];
+}
+
+export interface PitchPathsResponse {
+  paths: PitchPath[];
+  insight: string;
+  title?: string;
+  attacking_right_first_half?: boolean;
+}
+
 // Chat Session types
 export interface ChatSessionSummary {
   id: string;
@@ -940,6 +974,7 @@ const aiAPI = {
     const url = `${API_BASE_URL}/ai/chat/stream`;
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         conversation_history: conversationHistory,
@@ -1631,6 +1666,7 @@ const matchGpsAPI = {
     const url = `${API_BASE_URL}/matches/${matchId}/gps/upload`;
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       body: formData,
     });
 
@@ -1683,6 +1719,56 @@ const matchGpsAPI = {
   },
 };
 
+// ============================================================================
+// Onboarding API
+// ============================================================================
+
+const onboardingAPI = {
+  createClub: (data: {
+    name: string;
+    short_name?: string;
+    county?: string;
+    province?: string;
+    home_ground?: string;
+    primary_colour?: string;
+    secondary_colour?: string;
+  }) => fetchAPI<any>('/onboarding/club', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+
+  uploadLogo: async (clubId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `${API_BASE_URL}/onboarding/club/${clubId}/logo`;
+    const res = await fetch(url, { method: 'POST', credentials: 'include', body: formData });
+    if (!res.ok) throw new Error('Failed to upload logo');
+    return res.json();
+  },
+
+  previewPlayers: async (clubId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `${API_BASE_URL}/onboarding/club/${clubId}/players/preview`;
+    const res = await fetch(url, { method: 'POST', credentials: 'include', body: formData });
+    if (!res.ok) throw new Error('Failed to parse player file');
+    return res.json();
+  },
+
+  confirmPlayers: (clubId: string, players: Array<{
+    name: string;
+    position?: string;
+    jersey_number?: number;
+    date_of_birth?: string;
+  }>) => fetchAPI<any>(`/onboarding/club/${clubId}/players/confirm`, {
+    method: 'POST',
+    body: JSON.stringify({ players }),
+  }),
+
+  completeOnboarding: (clubId: string) =>
+    fetchAPI<any>(`/onboarding/club/${clubId}/complete`, { method: 'PATCH' }),
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -1696,6 +1782,7 @@ export const api = {
   squadHealth: squadHealthAPI,
   fitnessTests: fitnessTestsAPI,
   matchGps: matchGpsAPI,
+  onboarding: onboardingAPI,
 };
 
 export default api;

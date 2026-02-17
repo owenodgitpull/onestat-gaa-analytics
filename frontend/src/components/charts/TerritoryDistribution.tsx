@@ -6,7 +6,7 @@ interface TerritoryDistributionProps {
 }
 
 export default function TerritoryDistribution({ data }: TerritoryDistributionProps) {
-  const [selectedTeam, setSelectedTeam] = useState<'dungloe' | 'opponent'>('dungloe')
+  const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
   const [timeScope, setTimeScope] = useState<'season' | 'last_match'>('season')
   const [activeDot, setActiveDot] = useState<number | null>(null)
   const sparkRef = useRef<HTMLDivElement>(null)
@@ -64,9 +64,9 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
   const hasLastMatch = lastMatch !== null
 
   // Select the correct percentages based on both toggles
-  const seasonPcts = selectedTeam === 'dungloe' ? data.season_pcts : data.opponent_pcts
+  const seasonPcts = selectedTeam === 'own' ? data.season_pcts : data.opponent_pcts
   const lastMatchPcts = lastMatch
-    ? (selectedTeam === 'dungloe' ? lastMatch.dungloe_pcts : lastMatch.opponent_pcts)
+    ? (selectedTeam === 'own' ? lastMatch.team_pcts : lastMatch.opponent_pcts)
     : null
 
   const pcts = timeScope === 'last_match' && lastMatchPcts ? lastMatchPcts : seasonPcts
@@ -74,7 +74,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
     ? lastMatch.possession_pct
     : data.possession_pct
 
-  const teamColor = selectedTeam === 'dungloe' ? '#6366f1' : '#f97316'
+  const teamColor = selectedTeam === 'own' ? '#6366f1' : '#f97316'
 
   // Determine which zone is dominant
   const maxZone = pcts.defensive >= pcts.midfield && pcts.defensive >= pcts.attacking
@@ -90,7 +90,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
       const atkDelta = Math.round(lastMatchPcts.attacking) - Math.round(seasonPcts.attacking)
       const defDelta = Math.round(lastMatchPcts.defensive) - Math.round(seasonPcts.defensive)
 
-      if (selectedTeam === 'dungloe') {
+      if (selectedTeam === 'own') {
         if (Math.abs(atkDelta) >= 5) {
           const direction = atkDelta > 0 ? 'up' : 'down'
           return `Attacking third ${direction} ${Math.abs(atkDelta)}pp vs season avg (${Math.round(lastMatchPcts.attacking)}% vs ${Math.round(seasonPcts.attacking)}%). ${
@@ -117,7 +117,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
     }
 
     // Season average insights (existing logic)
-    if (selectedTeam === 'dungloe') {
+    if (selectedTeam === 'own') {
       if (pcts.midfield > 40 && pcts.attacking < 30) {
         return 'High midfield but low attacking % — sideways football, not penetrating the scoring zone'
       }
@@ -161,14 +161,14 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
         <div className="flex items-center gap-2">
           <div className="flex bg-white/10 rounded-lg p-0.5">
             <button
-              onClick={() => setSelectedTeam('dungloe')}
+              onClick={() => setSelectedTeam('own')}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
-                selectedTeam === 'dungloe'
+                selectedTeam === 'own'
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-white/60 hover:text-white'
               }`}
             >
-              Dungloe
+              Us
             </button>
             <button
               onClick={() => setSelectedTeam('opponent')}
@@ -346,7 +346,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
       {/* Per-match sparkline trend */}
       {data.per_match.length > 1 && (() => {
         const points = data.per_match.map((m) =>
-          selectedTeam === 'dungloe' ? m.dungloe_pcts.attacking : m.opponent_pcts.attacking
+          selectedTeam === 'own' ? m.team_pcts.attacking : m.opponent_pcts.attacking
         )
         const svgW = 300
         const svgH = 40
@@ -376,7 +376,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
               <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-10" preserveAspectRatio="none">
                 {/* Season average reference line */}
                 {(() => {
-                  const seasonAtk = selectedTeam === 'dungloe'
+                  const seasonAtk = selectedTeam === 'own'
                     ? data.season_pcts.attacking
                     : data.opponent_pcts.attacking
                   const avgY = pad + (1 - (seasonAtk - minVal) / range) * (svgH - pad * 2)

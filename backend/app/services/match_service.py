@@ -24,14 +24,15 @@ class MatchService:
     """Service for match-related operations."""
     
     @staticmethod
-    async def create_match(db: AsyncSession, match_data: MatchCreate) -> Match:
+    async def create_match(db: AsyncSession, match_data: MatchCreate, club_id=None) -> Match:
         """
         Create a new match.
-        
+
         Args:
             db: Database session
             match_data: Match creation data
-            
+            club_id: UUID of the club (for multi-tenancy)
+
         Returns:
             Created match
         """
@@ -41,6 +42,7 @@ class MatchService:
             venue=match_data.venue,
             notes=match_data.notes,
             status=MatchStatus.SCHEDULED,
+            club_id=club_id,
         )
         
         db.add(match)
@@ -66,15 +68,18 @@ class MatchService:
         limit: int = 50,
         status: Optional[MatchStatus] = None,
         venue: Optional[MatchVenue] = None,
+        club_id=None,
     ) -> tuple[List[Match], int]:
         """
         List matches with filtering and pagination.
-        
+
         Returns:
             Tuple of (matches, total_count)
         """
         # Build base query
         conditions = [Match.is_deleted == False]
+        if club_id:
+            conditions.append(Match.club_id == club_id)
         
         if status:
             conditions.append(Match.status == status)
@@ -224,6 +229,13 @@ class MatchService:
                     await db.commit()
                     logger.info(f"Saved post-match AI analysis for match {match_id}")
 
+                    # Notify players that the match report is ready
+                    try:
+                        from app.services.notification_service import NotificationService
+                        await NotificationService.notify_match_report(db, UUID(match_id))
+                    except Exception as ne:
+                        logger.warning(f"Failed to send match report notifications: {ne}")
+
         except Exception as e:
             logger.error(f"Failed to generate post-match analysis for {match_id}: {e}", exc_info=True)
     
@@ -262,30 +274,30 @@ class MatchService:
         stats = {
             "match_id": str(match_id),
             # Possession
-            "dungloe_possession_percentage": 0.0,
+            "team_possession_percentage": 0.0,
             "opponent_possession_percentage": 0.0,
             # Shots
-            "dungloe_total_shots": 0,
-            "dungloe_scores": 0,
-            "dungloe_wides": 0,
-            "dungloe_accuracy": 0.0,
+            "team_total_shots": 0,
+            "team_scores": 0,
+            "team_wides": 0,
+            "team_accuracy": 0.0,
             "opponent_total_shots": 0,
             "opponent_scores": 0,
             "opponent_wides": 0,
             "opponent_accuracy": 0.0,
             # Turnovers
-            "dungloe_turnovers_won": 0,
-            "dungloe_turnovers_lost": 0,
+            "team_turnovers_won": 0,
+            "team_turnovers_lost": 0,
             "opponent_turnovers_won": 0,
             "opponent_turnovers_lost": 0,
             # Kickouts
-            "dungloe_kickouts_won": 0,
-            "dungloe_kickouts_lost": 0,
+            "team_kickouts_won": 0,
+            "team_kickouts_lost": 0,
             "opponent_kickouts_won": 0,
             "opponent_kickouts_lost": 0,
             # Cards
-            "dungloe_yellow_cards": 0,
-            "dungloe_red_cards": 0,
+            "team_yellow_cards": 0,
+            "team_red_cards": 0,
             "opponent_yellow_cards": 0,
             "opponent_red_cards": 0,
         }
@@ -296,23 +308,23 @@ class MatchService:
             total_duration = sum(p.duration_seconds or 0 for p in possession_events)
             
             if total_duration > 0:
-                dungloe_duration = sum(
+                team_duration = sum(
                     p.duration_seconds or 0
                     for p in possession_events
-                    if p.team == PossessionTeam.DUNGLOE
+                    if p.team == PossessionTeam.OWN
                 )
-                stats["dungloe_possession_percentage"] = round((dungloe_duration / total_duration) * 100, 1)
-                stats["opponent_possession_percentage"] = round(100 - stats["dungloe_possession_percentage"], 1)
+                stats["team_possession_percentage"] = round((team_duration / total_duration) * 100, 1)
+                stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
             else:
                 # Fallback: if no durations yet, use event count (initial possession)
                 total_events = len(possession_events)
-                dungloe_events = sum(1 for p in possession_events if p.team == PossessionTeam.DUNGLOE)
-                stats["dungloe_possession_percentage"] = round((dungloe_events / total_events) * 100, 1)
-                stats["opponent_possession_percentage"] = round(100 - stats["dungloe_possession_percentage"], 1)
+                team_events = sum(1 for p in possession_events if p.team == PossessionTeam.OWN)
+                stats["team_possession_percentage"] = round((team_events / total_events) * 100, 1)
+                stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
         
         # Calculate event stats
         for event in events:
-            team_prefix = "dungloe" if event.team == Team.DUNGLOE else "opponent"
+            team_prefix = "team" if event.team == Team.OWN else "opponent"
             
             # Scoring events (goals, points, 2-pointers from play or frees/45s)
             scoring_events = [
@@ -340,21 +352,35 @@ class MatchService:
                 # Unforced error counts as possession lost
                 stats[f"{team_prefix}_turnovers_lost"] += 1
             
-            # Kickouts (legacy + detailed types)
+            # Kickouts — decode from event type name, NOT from event.team
+            # OWN_KICKOUT = our team kicking out, OPP_KICKOUT = Opponent kicking out
+            # WON = our team won, OPPOSITION_WON = Opponent won
+
+            # Our team's own kickouts
             elif event.event_type in (
-                EventType.KICKOUT_WON,
-                EventType.OWN_KICKOUT_DUNGLOE_WON, EventType.OPP_KICKOUT_DUNGLOE_WON,
-                EventType.BREAKING_BALL_WON,
-                EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK, EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK,
+                EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
             ):
-                stats[f"{team_prefix}_kickouts_won"] += 1
+                stats["team_kickouts_won"] += 1  # Team retained own kickout
             elif event.event_type in (
-                EventType.KICKOUT_LOST,
-                EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
-                EventType.BREAKING_BALL_LOST,
-                EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+                EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
             ):
-                stats[f"{team_prefix}_kickouts_lost"] += 1
+                stats["team_kickouts_lost"] += 1  # Team lost own kickout
+
+            # Opponent's own kickouts
+            elif event.event_type in (
+                EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+            ):
+                stats["opponent_kickouts_won"] += 1  # Opponent retained own kickout
+            elif event.event_type in (
+                EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK,
+            ):
+                stats["opponent_kickouts_lost"] += 1  # Opponent lost own kickout (team won it)
+
+            # Legacy types (pre-detailed kickout tracking)
+            elif event.event_type in (EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON):
+                stats["team_kickouts_won"] += 1
+            elif event.event_type in (EventType.KICKOUT_LOST, EventType.BREAKING_BALL_LOST):
+                stats["team_kickouts_lost"] += 1
             
             # Cards
             elif event.event_type == EventType.YELLOW_CARD:
@@ -363,7 +389,7 @@ class MatchService:
                 stats[f"{team_prefix}_red_cards"] += 1
         
         # Calculate accuracy
-        for team_prefix in ["dungloe", "opponent"]:
+        for team_prefix in ["team", "opponent"]:
             total = stats[f"{team_prefix}_total_shots"]
             if total > 0:
                 scores = stats[f"{team_prefix}_scores"]

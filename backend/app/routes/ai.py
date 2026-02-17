@@ -20,6 +20,7 @@ import logging
 from datetime import datetime
 
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.services.ai import (
     analyze_match,
     live_match_insight,
@@ -215,11 +216,13 @@ async def _generate_session_title(first_message: str) -> str:
 @router.get("/chat/sessions")
 async def list_chat_sessions(
     limit: int = 50,
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """List all chat sessions, newest first."""
     query = (
         select(ChatSession)
+        .where(ChatSession.club_id == user.club_id)
         .order_by(ChatSession.updated_at.desc())
         .limit(limit)
     )
@@ -241,6 +244,7 @@ async def list_chat_sessions(
 @router.get("/chat/sessions/{session_id}")
 async def get_chat_session(
     session_id: str,
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a full chat session with all messages."""
@@ -278,10 +282,11 @@ async def get_chat_session(
 
 @router.post("/chat/sessions")
 async def create_chat_session(
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new empty chat session."""
-    session = ChatSession()
+    session = ChatSession(club_id=user.club_id)
     db.add(session)
     await db.commit()
     await db.refresh(session)
@@ -297,6 +302,7 @@ async def create_chat_session(
 @router.delete("/chat/sessions/{session_id}")
 async def delete_chat_session(
     session_id: str,
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a chat session and all its messages."""
@@ -316,6 +322,7 @@ async def delete_chat_session(
 async def rename_chat_session(
     session_id: str,
     body: SessionRenameRequest,
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Rename a chat session."""
@@ -339,7 +346,8 @@ async def rename_chat_session(
 @router.post("/analyze-match", response_model=AnalysisResponse)
 async def analyze_match_endpoint(
     request: MatchAnalysisRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Analyze a completed match.
@@ -365,7 +373,8 @@ async def analyze_match_endpoint(
 @router.post("/live-insight", response_model=AnalysisResponse)
 async def live_insight_endpoint(
     request: LiveInsightRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get real-time tactical insight during a match.
@@ -391,7 +400,8 @@ async def live_insight_endpoint(
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(
     request: ChatRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Conversational interface for the AI analyst.
@@ -417,7 +427,8 @@ async def chat_endpoint(
 @router.post("/chat/stream")
 async def chat_stream_endpoint(
     request: ChatRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Streaming conversational interface using Server-Sent Events.
@@ -520,7 +531,8 @@ async def chat_stream_endpoint(
 async def post_match_report_endpoint(
     match_id: str,
     force_regenerate: bool = False,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Generate a comprehensive post-match report.
@@ -566,7 +578,8 @@ async def ai_health_check():
 
 @router.get("/chart-recommendations", response_model=ChartRecommendationsResponse)
 async def get_chart_recommendations_endpoint(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get AI-powered chart recommendations for the dashboard.
@@ -593,7 +606,8 @@ async def get_chart_recommendations_endpoint(
 @router.post("/chart-analysis", response_model=ChartAnalysisResponse)
 async def analyze_chart_endpoint(
     request: ChartAnalysisRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get AI-generated analysis for a specific chart.
@@ -620,7 +634,8 @@ async def analyze_chart_endpoint(
 @router.post("/generate-chart", response_model=AgenticChartResponse)
 async def generate_chart_endpoint(
     request: AgenticChartRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Agentic chart generation using LLM-generated code.
@@ -645,7 +660,8 @@ async def generate_chart_endpoint(
 @router.post("/custom-insight", response_model=CustomInsightResponse)
 async def custom_insight_endpoint(
     request: CustomInsightRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Generate a custom visualization based on a natural language question.
@@ -669,7 +685,8 @@ async def custom_insight_endpoint(
 @router.post("/dashboard-charts", response_model=DashboardChartsResponse)
 async def get_dashboard_charts_endpoint(
     request: DashboardChartsRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Generate actual Recharts-compatible chart specifications for the dashboard.
@@ -697,7 +714,8 @@ async def get_dashboard_charts_endpoint(
 @router.post("/generate-replacement-chart", response_model=SingleChartResponse)
 async def generate_replacement_chart_endpoint(
     request: SingleChartRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Generate a single replacement chart when one is dismissed.
@@ -718,7 +736,8 @@ async def generate_replacement_chart_endpoint(
 
 @router.get("/outlier-suggestions", response_model=OutlierSuggestionsResponse)
 async def get_outlier_suggestions_endpoint(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Detect seasonal outliers and generate AI chart suggestions.
@@ -741,7 +760,8 @@ async def get_outlier_suggestions_endpoint(
 @router.post("/analyze-gps", response_model=GPSAnalysisResponse)
 async def analyze_gps_endpoint(
     request: GPSAnalysisRequest,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Analyze GPS data for a match and provide insights.
@@ -824,6 +844,7 @@ async def get_insight_alerts(
     dashboard: Optional[str] = None,
     include_dismissed: bool = False,
     limit: int = 20,
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -831,7 +852,12 @@ async def get_insight_alerts(
     """
     from sqlalchemy import or_
 
-    query = select(InsightAlert).order_by(InsightAlert.created_at.desc()).limit(limit)
+    query = (
+        select(InsightAlert)
+        .where(InsightAlert.club_id == user.club_id)
+        .order_by(InsightAlert.created_at.desc())
+        .limit(limit)
+    )
 
     if not include_dismissed:
         query = query.where(InsightAlert.is_dismissed == False)
@@ -865,6 +891,7 @@ async def get_insight_alerts(
 @router.patch("/insight-alerts/{alert_id}/dismiss")
 async def dismiss_insight_alert(
     alert_id: str,
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Dismiss an insight alert."""

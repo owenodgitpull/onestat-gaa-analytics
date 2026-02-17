@@ -15,6 +15,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from contextlib import asynccontextmanager
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import logging
 import os
 
@@ -23,7 +26,8 @@ from app.database import engine, Base, get_db
 
 # Import routes
 from app.routes import players
-from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, fitness_tests
+from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, fitness_tests, club, onboarding, player_portal, notifications
+from app.routes import auth as auth_routes
 
 # Configure logging
 logging.basicConfig(
@@ -45,7 +49,7 @@ async def lifespan(app: FastAPI):
     This is the modern FastAPI way (replaces @app.on_event)
     """
     # Startup
-    logger.info("🏉 Starting Dungloe GAA Analytics API...")
+    logger.info("🏉 Starting GAA Analytics API...")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     
     # Initialize database tables (in dev - use Alembic in production)
@@ -66,13 +70,23 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI application
 app = FastAPI(
-    title="Dungloe GAA Analytics API",
+    title="GAA Analytics API",
     description="Team analytics platform with AI-powered insights for GAA clubs",
     version="1.0.0",
     docs_url="/docs",  # Swagger UI at /docs
     redoc_url="/redoc",  # ReDoc at /redoc
     lifespan=lifespan,  # Lifecycle manager
 )
+
+
+# ---------- Rate limiting ----------
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["100/minute"],  # Global default
+    storage_uri="memory://",
+)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # Configure CORS (Cross-Origin Resource Sharing)
@@ -90,7 +104,7 @@ app.add_middleware(
         "https://dungloe-gaa-analytics.vercel.app",  # Production frontend
         os.getenv("FRONTEND_URL", ""),  # From environment
     ],
-    allow_credentials=True,  # Allow cookies
+    allow_credentials=True,  # Allow cookies (httpOnly auth cookies)
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE)
     allow_headers=["*"],  # Allow all headers
 )
@@ -147,7 +161,7 @@ async def root():
     Useful for monitoring and load balancers.
     """
     return {
-        "message": "Dungloe GAA Analytics API",
+        "message": "GAA Analytics API",
         "status": "operational",
         "version": "1.0.0",
         "docs": "/docs",
@@ -206,6 +220,11 @@ app.include_router(rag.router, prefix="/api/v1/rag", tags=["RAG Knowledge Base"]
 app.include_router(squad_health.router, prefix="/api/v1/squad-health", tags=["Squad Health"])
 app.include_router(match_gps.router, prefix="/api/v1/matches", tags=["Match GPS Data"])
 app.include_router(fitness_tests.router, prefix="/api/v1/fitness-tests", tags=["Fitness Tests"])
+app.include_router(club.router, prefix="/api/v1/club", tags=["Club"])
+app.include_router(onboarding.router, prefix="/api/v1/onboarding", tags=["Onboarding"])
+app.include_router(auth_routes.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(player_portal.router, prefix="/api/v1/player-portal", tags=["Player Portal"])
+app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
 
 
 if __name__ == "__main__":

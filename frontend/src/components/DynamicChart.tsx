@@ -43,7 +43,7 @@ interface DynamicChartProps {
 const DEFAULT_COLORS = [
   '#6366f1', // indigo (primary brand)
   '#10b981', // emerald (positive/success)
-  '#f59e0b', // amber (Dungloe gold)
+  '#f59e0b', // amber (accent gold)
   '#8b5cf6', // violet (glass depth)
   '#06b6d4', // cyan (cool secondary)
 ]

@@ -9,13 +9,13 @@ interface ShotOutcomeChartProps {
 }
 
 export default function ShotOutcomeChart({ events, opponent, insight }: ShotOutcomeChartProps) {
-  const [selectedTeam, setSelectedTeam] = useState<'dungloe' | 'opponent'>('dungloe')
+  const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
 
   const outcomeData = useMemo(() => {
     const outcomes = { Goals: 0, Points: 0, Wides: 0, Shorts: 0, Saved: 0 }
 
     events.forEach((e: any) => {
-      const team = e.team || (e.is_home_team ? 'dungloe' : 'opponent')
+      const team = e.team || (e.is_home_team ? 'own' : 'opponent')
       if (team !== selectedTeam) return
 
       switch (e.event_type) {
@@ -51,12 +51,12 @@ export default function ShotOutcomeChart({ events, opponent, insight }: ShotOutc
 
       <div className="flex gap-2 mb-4">
         <button
-          onClick={() => setSelectedTeam('dungloe')}
+          onClick={() => setSelectedTeam('own')}
           className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-            selectedTeam === 'dungloe' ? 'bg-indigo-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+            selectedTeam === 'own' ? 'bg-indigo-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
           }`}
         >
-          Dungloe
+          Us
         </button>
         <button
           onClick={() => setSelectedTeam('opponent')}

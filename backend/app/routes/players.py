@@ -16,6 +16,7 @@ from typing import Optional
 from uuid import UUID
 
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.player import Player, PlayerStatus, PlayerPosition
 from app.schemas.player import (
     PlayerCreate,
@@ -32,7 +33,8 @@ router = APIRouter()
 @router.post("/", response_model=PlayerResponse, status_code=201)
 async def create_player(
     player: PlayerCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Create a new player.
@@ -48,7 +50,7 @@ async def create_player(
         400: If validation fails
     """
     # Create player model from schema
-    db_player = Player(**player.model_dump())
+    db_player = Player(**player.model_dump(), club_id=user.club_id)
     
     # Add to database
     db.add(db_player)
@@ -66,7 +68,8 @@ async def list_players(
     position: Optional[PlayerPosition] = Query(None, description="Filter by position"),
     search: Optional[str] = Query(None, description="Search by name"),
     active_only: bool = Query(True, description="Show only active players"),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     List all players with filtering and pagination.
@@ -82,8 +85,8 @@ async def list_players(
         Paginated list of players with metadata
     """
     # Build base query
-    query = select(Player)
-    
+    query = select(Player).where(Player.club_id == user.club_id)
+
     # Apply filters
     if active_only:
         query = query.where(Player.active == True)
@@ -130,7 +133,8 @@ async def list_players(
 @router.get("/{player_id}", response_model=PlayerDetail)
 async def get_player(
     player_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get a single player by ID with detailed information.
@@ -151,10 +155,10 @@ async def get_player(
         404: Player not found
     """
     # Query player with eager loading of relationships
-    query = select(Player).where(Player.id == player_id)
+    query = select(Player).where(Player.id == player_id, Player.club_id == user.club_id)
     result = await db.execute(query)
     player = result.scalar_one_or_none()
-    
+
     if not player:
         raise HTTPException(status_code=404, detail="Player not found")
     
@@ -182,7 +186,8 @@ async def get_player(
 async def update_player(
     player_id: UUID,
     player_update: PlayerUpdate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Update a player's information.
@@ -201,10 +206,10 @@ async def update_player(
         404: Player not found
     """
     # Get existing player
-    query = select(Player).where(Player.id == player_id)
+    query = select(Player).where(Player.id == player_id, Player.club_id == user.club_id)
     result = await db.execute(query)
     db_player = result.scalar_one_or_none()
-    
+
     if not db_player:
         raise HTTPException(status_code=404, detail="Player not found")
     
@@ -224,7 +229,8 @@ async def update_player(
 async def delete_player(
     player_id: UUID,
     hard_delete: bool = Query(False, description="Permanently delete (default: soft delete)"),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Delete a player.
@@ -246,10 +252,10 @@ async def delete_player(
         404: Player not found
     """
     # Get player
-    query = select(Player).where(Player.id == player_id)
+    query = select(Player).where(Player.id == player_id, Player.club_id == user.club_id)
     result = await db.execute(query)
     db_player = result.scalar_one_or_none()
-    
+
     if not db_player:
         raise HTTPException(status_code=404, detail="Player not found")
     

@@ -226,17 +226,17 @@ The `data` dict contains pre-fetched data with these fields:
 
 CRITICAL: All event_type and team values are LOWERCASE strings. Use lowercase in all comparisons:
   e["event_type"] == "goal"   (NOT "GOAL")
-  e["team"] == "dungloe"      (NOT "Dungloe")
+  e["team"] == "own"           (NOT "Own" or "Dungloe")
 
 Event types (all lowercase): goal, point, two_point, wide, short, saved, turnover_won, turnover_lost,
 unforced_error, kickout_won, kickout_lost, breaking_ball_won, breaking_ball_lost,
-own_kickout_dungloe_won, own_kickout_opposition_won, own_kickout_dungloe_won_break,
-own_kickout_opposition_won_break, opp_kickout_dungloe_won, opp_kickout_opposition_won,
-opp_kickout_dungloe_won_break, opp_kickout_opposition_won_break,
+own_kickout_won, own_kickout_opposition_won, own_kickout_won_break,
+own_kickout_opposition_won_break, opp_kickout_won, opp_kickout_opposition_won,
+opp_kickout_won_break, opp_kickout_opposition_won_break,
 yellow_card, black_card, red_card, free_won, free_conceded, point_free,
 two_point_free, wide_free, forty_five, forty_five_missed, block, interception, substitution
 
-Team values (lowercase): "dungloe", "opponent"
+Team values (lowercase): "own", "opponent"
 
 ## Current Data State
 {json.dumps(data_summary, indent=2)}
@@ -281,9 +281,9 @@ use chart_type "pitch". The data array should contain path objects:
 Coordinates: x 0-100 (0=own goal, 100=opponent goal), y 0-100 (0=left sideline, 100=right sideline).
 The frontend renders these as colored polylines on a GAA pitch SVG.
 
-To build paths: group Dungloe events by match, sort by minute then creation order.
+To build paths: group own-team events by match, sort by minute then creation order.
 For goal paths, find all events in the same minute or the 1-2 minutes leading up to a goal event,
-all belonging to team "dungloe", and collect their pitch_x/pitch_y as the path points.
+all belonging to team "own", and collect their pitch_x/pitch_y as the path points.
 The final point should be the goal event's coordinates.
 
 ## Code Rules
@@ -536,26 +536,26 @@ async def generate_dashboard_charts(
     events = raw_data.get("events", [])
 
     # Pre-calculate key stats to give accurate data to the AI
-    dungloe_events = [e for e in events if e.get("team") == "dungloe"]
+    team_events = [e for e in events if e.get("team") == "own"]
     opp_events = [e for e in events if e.get("team") == "opponent"]
 
-    dungloe_goals = len([e for e in dungloe_events if e.get("event_type") == "goal"])
-    dungloe_points = len([e for e in dungloe_events if e.get("event_type") == "point"])
-    dungloe_two_pts = len([e for e in dungloe_events if e.get("event_type") == "two_point"])
+    tm_goals = len([e for e in team_events if e.get("event_type") == "goal"])
+    tm_points = len([e for e in team_events if e.get("event_type") == "point"])
+    tm_two_pts = len([e for e in team_events if e.get("event_type") == "two_point"])
     opp_goals = len([e for e in opp_events if e.get("event_type") == "goal"])
     opp_points = len([e for e in opp_events if e.get("event_type") == "point"])
     opp_two_pts = len([e for e in opp_events if e.get("event_type") == "two_point"])
 
-    dungloe_total = dungloe_goals * 3 + dungloe_points + dungloe_two_pts * 2
+    tm_total = tm_goals * 3 + tm_points + tm_two_pts * 2
     opp_total = opp_goals * 3 + opp_points + opp_two_pts * 2
 
     # Calculate per-match scores
     match_results = []
     for match in matches:
         match_events = [e for e in events if e.get("match_id") == match.get("id")]
-        d_goals = len([e for e in match_events if e.get("team") == "dungloe" and e.get("event_type") == "goal"])
-        d_pts = len([e for e in match_events if e.get("team") == "dungloe" and e.get("event_type") in ["point", "two_point"]])
-        d_2pts = len([e for e in match_events if e.get("team") == "dungloe" and e.get("event_type") == "two_point"])
+        d_goals = len([e for e in match_events if e.get("team") == "own" and e.get("event_type") == "goal"])
+        d_pts = len([e for e in match_events if e.get("team") == "own" and e.get("event_type") in ["point", "two_point"]])
+        d_2pts = len([e for e in match_events if e.get("team") == "own" and e.get("event_type") == "two_point"])
         o_goals = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") == "goal"])
         o_pts = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") in ["point", "two_point"]])
         o_2pts = len([e for e in match_events if e.get("team") == "opponent" and e.get("event_type") == "two_point"])
@@ -567,8 +567,8 @@ async def generate_dashboard_charts(
         match_results.append({
             "opponent": match.get("opponent"),
             "date": match.get("date"),
-            "dungloe_score": f"{d_goals}-{d_pts + d_2pts}",
-            "dungloe_total": d_score,
+            "team_score": f"{d_goals}-{d_pts + d_2pts}",
+            "team_total": d_score,
             "opponent_score": f"{o_goals}-{o_pts + o_2pts}",
             "opponent_total": o_score,
             "result": result
@@ -576,7 +576,7 @@ async def generate_dashboard_charts(
 
     # Get top scorers
     player_scores = {}
-    for e in dungloe_events:
+    for e in team_events:
         if e.get("event_type") in ["goal", "point", "two_point"] and e.get("player"):
             player = e.get("player")
             if player not in player_scores:
@@ -598,12 +598,14 @@ async def generate_dashboard_charts(
     )[:8]
 
     # Turnovers
-    turnovers_won = len([e for e in dungloe_events if e.get("event_type") == "turnover_won"])
-    turnovers_lost = len([e for e in dungloe_events if e.get("event_type") == "turnover_lost"])
+    turnovers_won = len([e for e in team_events if e.get("event_type") == "turnover_won"])
+    turnovers_lost = len([e for e in team_events if e.get("event_type") == "turnover_lost"])
 
     # Kickouts
-    kickouts_won = len([e for e in events if "kickout" in e.get("event_type", "") and "dungloe_won" in e.get("event_type", "")])
-    kickouts_lost = len([e for e in events if "kickout" in e.get("event_type", "") and "opposition_won" in e.get("event_type", "")])
+    kickout_won_types = {"own_kickout_won", "own_kickout_won_break", "opp_kickout_won", "opp_kickout_won_break", "kickout_won", "breaking_ball_won"}
+    kickout_lost_types = {"own_kickout_opposition_won", "own_kickout_opposition_won_break", "opp_kickout_opposition_won", "opp_kickout_opposition_won_break", "kickout_lost", "breaking_ball_lost"}
+    kickouts_won = len([e for e in events if e.get("event_type", "") in kickout_won_types])
+    kickouts_lost = len([e for e in events if e.get("event_type", "") in kickout_lost_types])
 
     # Shot locations for heat map
     shot_types = ["goal", "point", "two_point", "wide", "saved", "short"]
@@ -617,12 +619,12 @@ async def generate_dashboard_charts(
 {json.dumps(match_results, indent=2)}
 
 ### Season Totals (GAA scoring: goal=3pts, point=1pt, two-pointer=2pts):
-- Dungloe: {dungloe_goals} goals, {dungloe_points} points, {dungloe_two_pts} two-pointers = {dungloe_total} total score
+- Team: {tm_goals} goals, {tm_points} points, {tm_two_pts} two-pointers = {tm_total} total score
 - Opponents: {opp_goals} goals, {opp_points} points, {opp_two_pts} two-pointers = {opp_total} total score
 
 ### Pre-Computed Scoring Distribution (use these EXACT numbers for any pie/bar chart about scoring breakdown):
-- If making a Dungloe scoring breakdown chart, use: [{{"name": "Goals", "value": {dungloe_goals}}}, {{"name": "Points", "value": {dungloe_points}}}, {{"name": "Two-Pointers", "value": {dungloe_two_pts}}}]
-- CRITICAL: "Goals" value = {dungloe_goals} (the COUNT of goals, NOT {dungloe_goals * 3}). Never multiply goals by 3 in chart data.
+- If making a team scoring breakdown chart, use: [{{"name": "Goals", "value": {tm_goals}}}, {{"name": "Points", "value": {tm_points}}}, {{"name": "Two-Pointers", "value": {tm_two_pts}}}]
+- CRITICAL: "Goals" value = {tm_goals} (the COUNT of goals, NOT {tm_goals * 3}). Never multiply goals by 3 in chart data.
 
 ### Turnovers: Won {turnovers_won}, Lost {turnovers_lost}, Net {turnovers_won - turnovers_lost}
 ### Kickouts: Won {kickouts_won}, Lost {kickouts_lost}

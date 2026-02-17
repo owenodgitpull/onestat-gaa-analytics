@@ -48,7 +48,7 @@ export default function ManualEventEntryModal({
   const [playerComingOn, setPlayerComingOn] = useState<string>('')
   const [minute, setMinute] = useState<number>(currentMinute)
   const [half, setHalf] = useState<number>(currentHalf)
-  const [team, setTeam] = useState<PossessionTeam>(PossessionTeam.DUNGLOE)
+  const [team, setTeam] = useState<PossessionTeam>(PossessionTeam.OWN)
 
   // Sync defaults when modal opens
   useEffect(() => {
@@ -96,7 +96,7 @@ export default function ManualEventEntryModal({
     EventType.WIDE,
     EventType.SHORT,
     EventType.SAVED
-  ].includes(eventType) || team === PossessionTeam.DUNGLOE
+  ].includes(eventType) || team === PossessionTeam.OWN
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -123,14 +123,14 @@ export default function ManualEventEntryModal({
             <label className="block text-white/80 font-semibold mb-2">Team</label>
             <div className="grid grid-cols-2 gap-3">
               <button
-                onClick={() => setTeam(PossessionTeam.DUNGLOE)}
+                onClick={() => setTeam(PossessionTeam.OWN)}
                 className={`p-4 rounded-xl font-semibold transition-all ${
-                  team === PossessionTeam.DUNGLOE
+                  team === PossessionTeam.OWN
                     ? 'bg-indigo-600 text-white'
                     : 'glass-card text-white/70 hover:text-white'
                 }`}
               >
-                Dungloe
+                Us
               </button>
               <button
                 onClick={() => setTeam(PossessionTeam.OPPONENT)}
@@ -190,7 +190,7 @@ export default function ManualEventEntryModal({
           </div>
 
           {/* Player Selection (conditional) */}
-          {eventType === EventType.SUBSTITUTION && team === PossessionTeam.DUNGLOE ? (
+          {eventType === EventType.SUBSTITUTION && team === PossessionTeam.OWN ? (
             <>
               {/* Player Coming Off */}
               <div>
@@ -227,7 +227,7 @@ export default function ManualEventEntryModal({
                 </select>
               </div>
             </>
-          ) : requiresPlayer && team === PossessionTeam.DUNGLOE ? (
+          ) : requiresPlayer && team === PossessionTeam.OWN ? (
             <div>
               <label className="block text-white/80 font-semibold mb-2">Player</label>
               <select

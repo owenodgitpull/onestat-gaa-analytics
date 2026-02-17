@@ -24,7 +24,7 @@ export default function LoadingSkeleton({ variant = 'page' }: LoadingSkeletonPro
     return (
       <div className="space-y-4 animate-pulse">
         <div className="h-5 w-40 rounded bg-white/10" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="glass-card p-4">
               <div className="h-3 w-20 rounded bg-white/10 mb-3" />
@@ -49,7 +49,7 @@ export default function LoadingSkeleton({ variant = 'page' }: LoadingSkeletonPro
       </div>
 
       {/* Stat cards skeleton */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="glass-card p-4">
             <div className="h-3 w-20 rounded bg-white/10 mb-3" />

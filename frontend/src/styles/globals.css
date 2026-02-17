@@ -16,6 +16,14 @@
   }
 }
 
+@layer utilities {
+  .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+}
+
 @layer components {
   /* ─── Static background — ambient light, shimmer streaks, particles ─── */
   .app-background {
@@ -136,14 +144,13 @@
     border-radius: inherit;
     background: linear-gradient(
       105deg,
-      transparent 30%,
-      rgba(255, 255, 255, 0.03) 45%,
-      rgba(255, 255, 255, 0.06) 50%,
+      transparent 40%,
       rgba(255, 255, 255, 0.03) 55%,
-      transparent 70%
+      rgba(255, 255, 255, 0.06) 60%,
+      rgba(255, 255, 255, 0.03) 65%,
+      transparent 80%
     );
-    background-size: 250% 100%;
-    animation: card-shimmer 120s ease-in-out infinite;
+    background-size: 100% 100%;
     pointer-events: none;
     z-index: 0;
   }
@@ -337,12 +344,6 @@
   to { --border-angle: 360deg; }
 }
 
-/* ─── Keyframes — only card shimmer, very slow ─── */
-
-@keyframes card-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {

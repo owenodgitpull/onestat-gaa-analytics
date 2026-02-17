@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react'
 import type { AIChartSpec } from '@/services/api'
 
-const STORAGE_KEY = 'dungloe-dashboard-layout'
-const OLD_PINNED_KEY = 'dungloe-pinned-charts'
+const STORAGE_KEY = 'gaa-dashboard-layout'
+const OLD_PINNED_KEY = 'gaa-pinned-charts'
 const MAX_PINNED = 4
 
 export const DEFAULT_CHART_ORDER = [

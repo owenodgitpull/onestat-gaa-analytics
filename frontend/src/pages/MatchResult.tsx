@@ -36,6 +36,7 @@ import { useMatchEvents } from '../hooks/useMatchEvents'
 import { usePlayers } from '../hooks/usePlayers'
 import { calculateManOfMatch } from '../utils/motm'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
+import { getWeatherIcon, getWeatherLabel } from '../components/WeatherPickerPopover'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import type { MatchStats } from '../types'
 
@@ -91,7 +92,7 @@ export default function MatchResult() {
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(['all']))
 
   // Team filter state - which team's events to show on pitch
-  const [teamFilter, setTeamFilter] = useState<'dungloe' | 'opponent'>('dungloe')
+  const [teamFilter, setTeamFilter] = useState<'own' | 'opponent'>('own')
 
   // Handle GPS file upload
   const handleGpsUpload = async (file: File) => {
@@ -156,16 +157,25 @@ export default function MatchResult() {
     }
   }
 
-  // Calculate Man of the Match
+  // Extract Man of the Match — prefer AI pick, fall back to formula
   const manOfMatch = useMemo(() => {
+    // Try to parse AI MOTM from the analysis text
+    if (postMatchReport?.analysis) {
+      // Match patterns like "**Man of the Match: Player Name**" or "Man of the Match: Player Name"
+      const motmMatch = postMatchReport.analysis.match(/\*?\*?Man of the Match[:\s—–-]+\*?\*?\s*([A-Z][a-zA-Z'\-]+(?:\s+[A-Z][a-zA-Z'\-]+)+)/i)
+      if (motmMatch) {
+        const name = motmMatch[1].replace(/\*+/g, '').trim()
+        return { playerName: name, breakdown: { goals: 0, points: 0, twoPointers: 0, turnoversWon: 0, turnoversLost: 0, kickoutsWon: 0 }, score: 0, playerId: '', aiPicked: true }
+      }
+    }
+    // Fallback to formula-based calculation
     if (!eventsData?.events || !players) return null
-    // Map events to include team info
     const eventsWithTeam = eventsData.events.map((e: any) => ({
       ...e,
-      team: e.team || (e.is_home_team ? 'dungloe' : 'opponent')
+      team: e.team || (e.is_home_team ? 'own' : 'opponent')
     }))
     return calculateManOfMatch(eventsWithTeam, players)
-  }, [eventsData, players])
+  }, [eventsData, players, postMatchReport])
 
   // Filter events for pitch display
   const filteredEvents = useMemo(() => {
@@ -179,7 +189,7 @@ export default function MatchResult() {
       pitch_x: e.pitch_x,
       pitch_y: e.pitch_y,
       event_type: e.event_type,
-      team: e.team || (e.is_home_team ? 'dungloe' : 'opponent'),
+      team: e.team || (e.is_home_team ? 'own' : 'opponent'),
       player_name: e.player_name,
       minute: e.minute
     }))
@@ -211,7 +221,7 @@ export default function MatchResult() {
     )
   }
 
-  const dungloeTotal = totalScore(match.dungloe_goals, match.dungloe_points)
+  const teamTotal = totalScore(match.team_goals, match.team_points)
   const oppTotal = totalScore(match.opponent_goals, match.opponent_points)
 
   return (
@@ -227,11 +237,11 @@ export default function MatchResult() {
 
       {/* Header */}
       <div className="glass-card p-6 mb-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
           {/* Left: Match Info */}
           <div className="space-y-3">
             <h1 className="text-2xl font-bold text-white">
-              Dungloe vs {match.opponent}
+              vs {match.opponent}
             </h1>
             <div className="flex flex-wrap gap-3 text-sm text-white/60">
               <div className="flex items-center space-x-1">
@@ -242,6 +252,18 @@ export default function MatchResult() {
                 <MapPin size={16} />
                 <span className="capitalize">{match.venue}</span>
               </div>
+              {match.weather_condition && (() => {
+                const WeatherIcon = getWeatherIcon(match.weather_condition)
+                return (
+                  <div className="flex items-center space-x-1">
+                    <WeatherIcon size={16} />
+                    <span>{getWeatherLabel(match.weather_condition)}</span>
+                    {match.temperature_celsius != null && (
+                      <span>{match.temperature_celsius}°C</span>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
             <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-slate-700/50">
               <Clock size={20} className="text-white/60" />
@@ -253,10 +275,10 @@ export default function MatchResult() {
           <div className="flex items-center justify-center space-x-6 text-center">
             <div>
               <div className="text-4xl font-bold text-white">
-                {formatGAAScore(match.dungloe_goals, match.dungloe_points)}
+                {formatGAAScore(match.team_goals, match.team_points)}
               </div>
-              <div className="text-white/60 text-sm mt-1">Dungloe</div>
-              <div className="text-white/40 text-xs">({dungloeTotal} pts)</div>
+              <div className="text-white/60 text-sm mt-1">Us</div>
+              <div className="text-white/40 text-xs">({teamTotal} pts)</div>
             </div>
             <div className="text-2xl text-white/40 font-light">vs</div>
             <div>
@@ -269,7 +291,7 @@ export default function MatchResult() {
           </div>
 
           {/* Right: Man of the Match */}
-          <div className="flex justify-center lg:justify-end">
+          <div className="flex justify-center md:justify-end">
             {manOfMatch ? (
               <div className="glass-card p-4 bg-gradient-to-r from-amber-600/20 to-yellow-600/20 border border-amber-500/30">
                 <div className="flex items-center space-x-3">
@@ -280,9 +302,14 @@ export default function MatchResult() {
                     </div>
                     <div className="text-lg font-bold text-white">{manOfMatch.playerName}</div>
                     <div className="text-sm text-white/60">
-                      {manOfMatch.breakdown.goals > 0 && `${manOfMatch.breakdown.goals}G `}
-                      {manOfMatch.breakdown.points > 0 && `${manOfMatch.breakdown.points}P `}
-                      {manOfMatch.breakdown.twoPointers > 0 && `${manOfMatch.breakdown.twoPointers}x2PT`}
+                      {(manOfMatch as any).aiPicked
+                        ? <span className="text-amber-400/70 text-xs">AI Selected</span>
+                        : <>
+                            {manOfMatch.breakdown.goals > 0 && `${manOfMatch.breakdown.goals}G `}
+                            {manOfMatch.breakdown.points > 0 && `${manOfMatch.breakdown.points}P `}
+                            {manOfMatch.breakdown.twoPointers > 0 && `${manOfMatch.breakdown.twoPointers}x2PT`}
+                          </>
+                      }
                     </div>
                   </div>
                 </div>
@@ -464,9 +491,9 @@ export default function MatchResult() {
       )}
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Left: Pitch + Filter Toggles */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="md:col-span-2 space-y-4">
           {/* Pitch with Events */}
           <div className="glass-card p-4">
             <div className="flex items-center justify-between mb-3">
@@ -477,14 +504,14 @@ export default function MatchResult() {
               {/* Team Toggle */}
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setTeamFilter('dungloe')}
+                  onClick={() => setTeamFilter('own')}
                   className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                    teamFilter === 'dungloe'
+                    teamFilter === 'own'
                       ? 'bg-indigo-600 text-white'
                       : 'bg-white/10 text-white/60 hover:bg-white/20'
                   }`}
                 >
-                  Dungloe
+                  Us
                 </button>
                 <button
                   onClick={() => setTeamFilter('opponent')}
@@ -499,7 +526,7 @@ export default function MatchResult() {
               </div>
             </div>
             <div className="mb-2 text-sm text-white/40 text-center">
-              {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown for {teamFilter === 'dungloe' ? 'Dungloe' : match.opponent}
+              {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown for {teamFilter === 'own' ? 'Us' : match.opponent}
             </div>
             <GAAPitch readonly={true} events={filteredEvents} showZones={true} />
           </div>
@@ -513,7 +540,7 @@ export default function MatchResult() {
             <div className="flex flex-wrap gap-3 text-sm">
               <div className="flex items-center space-x-2">
                 <span className="w-4 h-4 rounded-full bg-emerald-500"></span>
-                <span className="text-white/60">Goals (Dungloe)</span>
+                <span className="text-white/60">Goals (Us)</span>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="w-4 h-4 rounded-full bg-orange-500"></span>
@@ -586,7 +613,7 @@ export default function MatchResult() {
       </div>
 
       {/* Analytics Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
         {/* Possession & Territory Chart */}
         <PossessionTerritoryChart
           stats={matchStats}
@@ -615,7 +642,6 @@ export default function MatchResult() {
       <div className="mt-6">
         <PathsTakenChart
           matchId={matchId!}
-          events={eventsData?.events || []}
         />
       </div>
 
@@ -637,7 +663,7 @@ export default function MatchResult() {
             <GPSInsightsPanel insights={gpsAnalysis.insights} isLoading={gpsAnalysisLoading} />
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
             {/* Team 5-Minute Volume Chart */}
             <TeamVolumeChart gpsData={gpsData} events={eventsData?.events || []} />
 
@@ -645,7 +671,7 @@ export default function MatchResult() {
             <TeamIntensityGauge gpsData={gpsData} />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
             {/* Player Distance Chart */}
             <PlayerDistanceChart gpsData={gpsData} />
 
@@ -680,44 +706,44 @@ export default function MatchResult() {
 // Stats Table Component - matches live match styling
 function StatsTable({ stats, opponent }: { stats: MatchStats; opponent: string }) {
   // Calculate kickout retention rates
-  const totalDungloeKickouts = stats.dungloe_kickouts_won + stats.dungloe_kickouts_lost
+  const totalTeamKickouts = stats.team_kickouts_won + stats.team_kickouts_lost
   const totalOpponentKickouts = stats.opponent_kickouts_won + stats.opponent_kickouts_lost
-  const dungloeKickoutRetention = totalDungloeKickouts > 0
-    ? ((stats.dungloe_kickouts_won / totalDungloeKickouts) * 100).toFixed(1)
+  const teamKickoutRetention = totalTeamKickouts > 0
+    ? ((stats.team_kickouts_won / totalTeamKickouts) * 100).toFixed(1)
     : '0.0'
   const opponentKickoutRetention = totalOpponentKickouts > 0
     ? ((stats.opponent_kickouts_won / totalOpponentKickouts) * 100).toFixed(1)
     : '0.0'
 
   // Calculate conversion rates
-  const dungloeConversion = stats.dungloe_total_shots > 0
-    ? ((stats.dungloe_scores / stats.dungloe_total_shots) * 100).toFixed(1)
+  const teamConversion = stats.team_total_shots > 0
+    ? ((stats.team_scores / stats.team_total_shots) * 100).toFixed(1)
     : '0.0'
   const opponentConversion = stats.opponent_total_shots > 0
     ? ((stats.opponent_scores / stats.opponent_total_shots) * 100).toFixed(1)
     : '0.0'
 
-  // Round dungloe possession and calculate opponent as remainder to ensure they add to 100
-  const dungloePos = Math.round(stats.dungloe_possession_percentage)
-  const opponentPos = 100 - dungloePos
+  // Round team possession and calculate opponent as remainder to ensure they add to 100
+  const teamPos = Math.round(stats.team_possession_percentage)
+  const opponentPos = 100 - teamPos
 
   const statRows = [
-    { label: 'POSSESSION', dungloe: `${dungloePos}%`, opponent: `${opponentPos}%` },
-    { label: 'SHOTS', dungloe: stats.dungloe_total_shots, opponent: stats.opponent_total_shots },
-    { label: 'SCORES', dungloe: stats.dungloe_scores, opponent: stats.opponent_scores },
-    { label: 'WIDES', dungloe: stats.dungloe_wides, opponent: stats.opponent_wides },
-    { label: 'ACCURACY', dungloe: `${Math.round(stats.dungloe_accuracy)}%`, opponent: `${Math.round(stats.opponent_accuracy)}%` },
-    { label: 'CONVERSION', dungloe: `${dungloeConversion}%`, opponent: `${opponentConversion}%` },
-    { label: 'TURNOVERS WON', dungloe: stats.dungloe_turnovers_won, opponent: stats.opponent_turnovers_won },
-    { label: 'KICKOUTS WON', dungloe: `${stats.dungloe_kickouts_won}/${totalDungloeKickouts}`, opponent: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}` },
-    { label: 'KICKOUT RETENTION', dungloe: `${dungloeKickoutRetention}%`, opponent: `${opponentKickoutRetention}%` },
+    { label: 'POSSESSION', team: `${teamPos}%`, opponent: `${opponentPos}%` },
+    { label: 'SHOTS', team: stats.team_total_shots, opponent: stats.opponent_total_shots },
+    { label: 'SCORES', team: stats.team_scores, opponent: stats.opponent_scores },
+    { label: 'WIDES', team: stats.team_wides, opponent: stats.opponent_wides },
+    { label: 'ACCURACY', team: `${Math.round(stats.team_accuracy)}%`, opponent: `${Math.round(stats.opponent_accuracy)}%` },
+    { label: 'CONVERSION', team: `${teamConversion}%`, opponent: `${opponentConversion}%` },
+    { label: 'TURNOVERS WON', team: stats.team_turnovers_won, opponent: stats.opponent_turnovers_won },
+    { label: 'OWN KICKOUTS WON', team: `${stats.team_kickouts_won}/${totalTeamKickouts}`, opponent: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}` },
+    { label: 'KICKOUT RETENTION', team: `${teamKickoutRetention}%`, opponent: `${opponentKickoutRetention}%` },
   ]
 
   return (
     <div className="overflow-hidden rounded-lg border border-white/10">
       {/* Table Header */}
       <div className="grid grid-cols-3 bg-blue-600/30 border border-blue-500/50">
-        <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Dungloe</div>
+        <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Us</div>
         <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Stat</div>
         <div className="py-2 px-3 text-center text-sm font-bold text-white">{opponent}</div>
       </div>
@@ -725,7 +751,7 @@ function StatsTable({ stats, opponent }: { stats: MatchStats; opponent: string }
       {statRows.map((row) => (
         <div key={row.label} className="grid grid-cols-3 border-t border-white/10">
           <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-            {row.dungloe}
+            {row.team}
           </div>
           <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-xs font-semibold text-white border-r border-white/10 flex items-center justify-center">
             {row.label}
@@ -740,7 +766,7 @@ function StatsTable({ stats, opponent }: { stats: MatchStats; opponent: string }
 }
 
 // Helper function to get pitch area description with variety
-function getPitchArea(x: number | null, y: number | null, eventTeamIsDungloe: boolean, opponentName: string): string {
+function getPitchArea(x: number | null, y: number | null, eventTeamIsOwn: boolean, opponentName: string): string {
   if (x === null || y === null) return 'the field'
 
   // Get lateral position description
@@ -766,10 +792,10 @@ function getPitchArea(x: number | null, y: number | null, eventTeamIsDungloe: bo
   // Calculate distances
   const distFromRightGoal = 100 - x
   const distFromLeftGoal = x
-  const distFromAttackingGoal = eventTeamIsDungloe ? distFromRightGoal : distFromLeftGoal
-  const distFromDefendingGoal = eventTeamIsDungloe ? distFromLeftGoal : distFromRightGoal
-  const defendingTeamName = eventTeamIsDungloe ? opponentName : 'Dungloe'
-  const attackingTeamName = eventTeamIsDungloe ? 'Dungloe' : opponentName
+  const distFromAttackingGoal = eventTeamIsOwn ? distFromRightGoal : distFromLeftGoal
+  const distFromDefendingGoal = eventTeamIsOwn ? distFromLeftGoal : distFromRightGoal
+  const defendingTeamName = eventTeamIsOwn ? opponentName : 'our team'
+  const attackingTeamName = eventTeamIsOwn ? 'our team' : opponentName
 
   // In attacking half (closer to opponent's goal)
   // Thresholds calibrated to pitch-area coords (0=goal line, 100=opposite goal)
@@ -808,9 +834,9 @@ function getPitchArea(x: number | null, y: number | null, eventTeamIsDungloe: bo
 // Format event description like live match
 function formatEventDescription(event: any, players: any[], opponentName: string): string {
   const player = players?.find(p => p.id === String(event.player_id))
-  const isDungloe = event.team === 'dungloe' || event.is_home_team
-  const area = getPitchArea(event.pitch_x, event.pitch_y, isDungloe, opponentName)
-  const playerName = isDungloe ? (player?.name || event.player_name || 'Dungloe player') : opponentName
+  const isOwn = event.team === 'own' || event.is_home_team
+  const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName)
+  const playerName = isOwn ? (player?.name || event.player_name || 'our player') : opponentName
 
   switch (event.event_type) {
     case 'point':
@@ -846,29 +872,29 @@ function formatEventDescription(event: any, players: any[], opponentName: string
     case 'kickout_lost':
       return `Kickout lost clean to ${opponentName} in ${area}`
     case 'breaking_ball_won':
-      return isDungloe
+      return isOwn
         ? `${playerName} won breaking ball in ${area}`
         : `${opponentName} won breaking ball in ${area}`
     case 'breaking_ball_lost':
-      return isDungloe
-        ? `Dungloe lost breaking ball in ${area}`
+      return isOwn
+        ? `We lost breaking ball in ${area}`
         : `${opponentName} lost breaking ball in ${area}`
-    // Detailed kickout types — own kickout (Dungloe kicking out)
+    // Detailed kickout types — own kickout (our team kicking out)
     // Replace team name in area with "their" to avoid "Ardara ... in Ardara's half"
-    case 'own_kickout_dungloe_won':
+    case 'own_kickout_won':
       return `${playerName} won own kickout clean in ${area}`
     case 'own_kickout_opposition_won':
-      return `${opponentName} won Dungloe's kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
-    case 'own_kickout_dungloe_won_break':
+      return `${opponentName} won our kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
+    case 'own_kickout_won_break':
       return `${playerName} won breaking ball from own kickout in ${area}`
     case 'own_kickout_opposition_won_break':
-      return `${opponentName} won breaking ball from Dungloe's kickout in ${area.replace(`${opponentName}'s`, 'their')}`
+      return `${opponentName} won breaking ball from our kickout in ${area.replace(`${opponentName}'s`, 'their')}`
     // Detailed kickout types — opponent kickout (Opposition kicking out)
-    case 'opp_kickout_dungloe_won':
+    case 'opp_kickout_won':
       return `${playerName} won ${opponentName} kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
     case 'opp_kickout_opposition_won':
       return `${opponentName} won own kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
-    case 'opp_kickout_dungloe_won_break':
+    case 'opp_kickout_won_break':
       return `${playerName} won breaking ball from ${opponentName} kickout in ${area.replace(`${opponentName}'s`, 'their')}`
     case 'opp_kickout_opposition_won_break':
       return `${opponentName} won breaking ball from own kickout in ${area.replace(`${opponentName}'s`, 'their')}`
@@ -889,7 +915,7 @@ function formatEventDescription(event: any, players: any[], opponentName: string
 function EventItem({ event, players, opponentName }: { event: any; players: any[]; opponentName: string }) {
   const getEventStyle = (eventType: string) => {
     if (['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'].includes(eventType)) {
-      return event.team === 'dungloe' || event.is_home_team
+      return event.team === 'own' || event.is_home_team
         ? 'border-l-emerald-500 bg-emerald-500/10'
         : 'border-l-red-500 bg-red-500/10'
     }
@@ -998,7 +1024,7 @@ function GPSInsightsPanel({ insights, isLoading }: { insights: any; isLoading: b
       {/* Intensity Summary */}
       <p className="text-white/70 text-sm mb-4">{insights.intensity_summary}</p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Alerts Column */}
         <div>
           <h4 className="text-sm font-semibold text-white/60 mb-2 flex items-center gap-1">

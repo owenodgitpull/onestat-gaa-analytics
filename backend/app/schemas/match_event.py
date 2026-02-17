@@ -14,11 +14,11 @@ from app.models.match_event import EventType, Team
 class MatchEventBase(BaseModel):
     """Base schema for MatchEvent data."""
     event_type: EventType = Field(..., description="Type of event (goal, point, turnover, etc.)")
-    team: Team = Field(..., description="Which team (dungloe/opponent)")
+    team: Team = Field(..., description="Which team (own/opponent)")
     player_id: Optional[UUID] = Field(None, description="Player who performed the action")
     assist_player_id: Optional[UUID] = Field(None, description="Player who assisted (for scores)")
     minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match (0-120)")
-    pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=Dungloe goal, 100=opponent goal)")
+    pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
     notes: Optional[str] = Field(None, max_length=500, description="Optional event notes")
 
@@ -118,7 +118,7 @@ class QuickScoreRequest(BaseModel):
     """
     match_id: UUID
     event_type: EventType = Field(..., description="GOAL, POINT, or TWO_POINT")
-    team: Team = Field(default=Team.DUNGLOE, description="Usually Dungloe")
+    team: Team = Field(default=Team.OWN, description="Usually own team")
     player_id: UUID = Field(..., description="Who scored")
     assist_player_id: Optional[UUID] = Field(None, description="Who assisted (optional)")
     pitch_x: float = Field(..., ge=0, le=100, description="Current ball X position")

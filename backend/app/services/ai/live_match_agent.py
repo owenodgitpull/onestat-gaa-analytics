@@ -116,7 +116,7 @@ async def generate_kpi_insights(kpi_data: dict) -> dict[str, str]:
 
         meta = kpi_data.get("metadata", {})
         meta_str = (
-            f"Dungloe: {meta.get('matches_played', 0)} matches played, "
+            f"Team: {meta.get('matches_played', 0)} matches played, "
             f"{meta.get('win_rate', 0)}% win rate "
             f"({meta.get('wins', 0)}W-{meta.get('losses', 0)}L-{meta.get('draws', 0)}D)"
         )

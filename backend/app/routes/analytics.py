@@ -11,6 +11,7 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.player import Player
@@ -80,7 +81,7 @@ class MatchTrend(BaseModel):
     match_id: str
     opponent: str
     match_date: str
-    dungloe_score: int
+    team_score: int
     opponent_score: int
     result: str  # W/L/D
 
@@ -194,7 +195,7 @@ class TerritoryMatchData(BaseModel):
     match_id: str
     opponent: str
     date: str
-    dungloe_pcts: TerritoryZonePcts
+    team_pcts: TerritoryZonePcts
     opponent_pcts: TerritoryZonePcts
     possession_pct: float
 
@@ -332,7 +333,8 @@ def get_pitch_zone(x: float, y: float) -> str:
 
 @router.get("/dashboard", response_model=DashboardData)
 async def get_dashboard_data(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get all dashboard data in a single request.
@@ -344,19 +346,20 @@ async def get_dashboard_data(
         select(Match).where(
             and_(
                 Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False
+                Match.is_deleted == False,
+                Match.club_id == user.club_id,
             )
         ).order_by(Match.match_date.desc())
     )
     matches = matches_result.scalars().all()
 
     # Calculate season summary
-    wins = sum(1 for m in matches if m.dungloe_total_score > m.opponent_total_score)
-    losses = sum(1 for m in matches if m.dungloe_total_score < m.opponent_total_score)
-    draws = sum(1 for m in matches if m.dungloe_total_score == m.opponent_total_score)
+    wins = sum(1 for m in matches if m.team_total_score > m.opponent_total_score)
+    losses = sum(1 for m in matches if m.team_total_score < m.opponent_total_score)
+    draws = sum(1 for m in matches if m.team_total_score == m.opponent_total_score)
 
-    total_goals_scored = sum(m.dungloe_goals or 0 for m in matches)
-    total_points_scored = sum(m.dungloe_points or 0 for m in matches)
+    total_goals_scored = sum(m.team_goals or 0 for m in matches)
+    total_points_scored = sum(m.team_points or 0 for m in matches)
     total_goals_conceded = sum(m.opponent_goals or 0 for m in matches)
     total_points_conceded = sum(m.opponent_points or 0 for m in matches)
 
@@ -401,7 +404,7 @@ async def get_dashboard_data(
     ]
 
     for event in all_events:
-        if event.player_id and event.team == Team.DUNGLOE and event.event_type in scoring_events:
+        if event.player_id and event.team == Team.OWN and event.event_type in scoring_events:
             pid = str(event.player_id)
             if pid not in player_scores:
                 player_scores[pid] = {'goals': 0, 'points': 0, 'two_pointers': 0}
@@ -447,7 +450,7 @@ async def get_dashboard_data(
     player_turnovers = {}
 
     for event in all_events:
-        if event.player_id and event.team == Team.DUNGLOE:
+        if event.player_id and event.team == Team.OWN:
             pid = str(event.player_id)
             if pid not in player_turnovers:
                 player_turnovers[pid] = {'won': 0, 'lost': 0}
@@ -499,7 +502,7 @@ async def get_dashboard_data(
     zone_stats = {}
 
     for event in all_events:
-        if event.pitch_x is not None and event.team == Team.DUNGLOE:
+        if event.pitch_x is not None and event.team == Team.OWN:
             zone = get_pitch_zone(float(event.pitch_x), float(event.pitch_y) if event.pitch_y else 50)
             if zone not in zone_stats:
                 zone_stats[zone] = {'lost': 0, 'won': 0, 'errors': 0}
@@ -527,10 +530,10 @@ async def get_dashboard_data(
             match_id=str(m.id),
             opponent=m.opponent,
             match_date=m.match_date.isoformat() if m.match_date else "",
-            dungloe_score=m.dungloe_total_score,
+            team_score=m.team_total_score,
             opponent_score=m.opponent_total_score,
-            result="W" if m.dungloe_total_score > m.opponent_total_score else (
-                "L" if m.dungloe_total_score < m.opponent_total_score else "D"
+            result="W" if m.team_total_score > m.opponent_total_score else (
+                "L" if m.team_total_score < m.opponent_total_score else "D"
             )
         )
         for m in matches
@@ -548,30 +551,33 @@ async def get_dashboard_data(
 
 @router.get("/season-summary", response_model=SeasonSummary)
 async def get_season_summary(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get season summary statistics only."""
-    dashboard = await get_dashboard_data(db)
+    dashboard = await get_dashboard_data(user=user, db=db)
     return dashboard.season_summary
 
 
 @router.get("/top-scorers", response_model=List[TopScorer])
 async def get_top_scorers(
     limit: int = Query(10, ge=1, le=50),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get top scorers leaderboard."""
-    dashboard = await get_dashboard_data(db)
+    dashboard = await get_dashboard_data(user=user, db=db)
     return dashboard.top_scorers[:limit]
 
 
 @router.get("/shot-locations", response_model=List[ShotLocation])
 async def get_shot_locations(
-    team: Optional[str] = Query(None, description="Filter by team: dungloe or opponent"),
-    db: AsyncSession = Depends(get_db)
+    team: Optional[str] = Query(None, description="Filter by team: own or opponent"),
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get all shot locations for heat map visualization."""
-    dashboard = await get_dashboard_data(db)
+    dashboard = await get_dashboard_data(user=user, db=db)
     locations = dashboard.shot_locations
 
     if team:
@@ -583,7 +589,8 @@ async def get_shot_locations(
 @router.get("/player/{player_id}/matches", response_model=List[PlayerMatchStats])
 async def get_player_match_stats(
     player_id: str,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get match-by-match statistics for a specific player.
@@ -602,7 +609,8 @@ async def get_player_match_stats(
         select(Match).where(
             and_(
                 Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False
+                Match.is_deleted == False,
+                Match.club_id == user.club_id,
             )
         ).order_by(Match.match_date.desc())
     )
@@ -620,7 +628,7 @@ async def get_player_match_stats(
             and_(
                 MatchEvent.match_id.in_(match_ids),
                 MatchEvent.player_id == player_uuid,
-                MatchEvent.team == Team.DUNGLOE
+                MatchEvent.team == Team.OWN
             )
         )
     )
@@ -632,7 +640,7 @@ async def get_player_match_stats(
             and_(
                 MatchEvent.match_id.in_(match_ids),
                 MatchEvent.assist_player_id == player_uuid,
-                MatchEvent.team == Team.DUNGLOE
+                MatchEvent.team == Team.OWN
             )
         )
     )
@@ -667,8 +675,8 @@ async def get_player_match_stats(
 
     kickout_won_events = {
         EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON,
-        EventType.OWN_KICKOUT_DUNGLOE_WON, EventType.OWN_KICKOUT_DUNGLOE_WON_BREAK,
-        EventType.OPP_KICKOUT_DUNGLOE_WON, EventType.OPP_KICKOUT_DUNGLOE_WON_BREAK,
+        EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
+        EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK,
     }
 
     kickout_lost_events = {
@@ -774,7 +782,8 @@ class PlayerShotEvent(BaseModel):
 @router.get("/player/{player_id}/shot-events", response_model=List[PlayerShotEvent])
 async def get_player_shot_events(
     player_id: str,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get all shot events for a specific player with pitch coordinates.
@@ -799,7 +808,8 @@ async def get_player_shot_events(
         select(Match).where(
             and_(
                 Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False
+                Match.is_deleted == False,
+                Match.club_id == user.club_id,
             )
         )
     )
@@ -815,7 +825,7 @@ async def get_player_shot_events(
             and_(
                 MatchEvent.match_id.in_(match_ids),
                 MatchEvent.player_id == player_uuid,
-                MatchEvent.team == Team.DUNGLOE,
+                MatchEvent.team == Team.OWN,
                 MatchEvent.event_type.in_(shot_event_types)
             )
         )
@@ -844,7 +854,8 @@ async def get_player_shot_events(
 
 @router.get("/season-dashboard", response_model=SeasonDashboardData)
 async def get_season_dashboard(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get season dashboard data for canonical charts.
@@ -885,7 +896,8 @@ async def get_season_dashboard(
 
 @router.get("/training-overview", response_model=TrainingOverviewData)
 async def get_training_overview(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Get training analytics overview data.

@@ -16,6 +16,7 @@ from uuid import UUID
 from datetime import datetime
 
 from app.database import get_db
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.player_health import PlayerHealthAlert, AlertSeverity
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
@@ -27,7 +28,7 @@ router = APIRouter()
 
 
 @router.get("/ai-summary")
-async def get_squad_health_ai_summary(db: AsyncSession = Depends(get_db)):
+async def get_squad_health_ai_summary(user: AuthenticatedUser = Depends(require_club), db: AsyncSession = Depends(get_db),):
     """
     Get a 1-2 sentence AI-generated summary of squad health status.
     Uses Haiku for fast, cheap inference.
@@ -57,7 +58,7 @@ async def get_squad_health_ai_summary(db: AsyncSession = Depends(get_db)):
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=150,
-            system="You are a GAA strength & conditioning analyst for Dungloe GAA. "
+            system="You are a GAA strength & conditioning analyst. "
                    "Give a 1-2 sentence squad health summary. Be specific with numbers. "
                    "Highlight any concerns or positive trends.",
             messages=[{
@@ -77,7 +78,7 @@ async def get_squad_health_ai_summary(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/summary")
-async def get_squad_health_summary(db: AsyncSession = Depends(get_db)):
+async def get_squad_health_summary(user: AuthenticatedUser = Depends(require_club), db: AsyncSession = Depends(get_db),):
     """
     Get squad-wide health summary for dashboard.
 
@@ -94,7 +95,8 @@ async def get_squad_health_summary(db: AsyncSession = Depends(get_db)):
 async def get_all_alerts(
     severity: Optional[str] = None,
     active_only: bool = True,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get all health alerts, optionally filtered by severity."""
     query = select(PlayerHealthAlert)
@@ -139,7 +141,8 @@ async def get_all_alerts(
 @router.get("/player/{player_id}")
 async def get_player_health(
     player_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get health alerts and workload for a specific player."""
     # Get active alerts
@@ -182,7 +185,8 @@ async def get_player_health(
 async def acknowledge_alert(
     alert_id: UUID,
     acknowledged_by: str = "coach",
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Acknowledge a health alert."""
     result = await db.execute(
@@ -204,7 +208,8 @@ async def acknowledge_alert(
 @router.post("/alerts/{alert_id}/dismiss")
 async def dismiss_alert(
     alert_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Dismiss/deactivate a health alert."""
     result = await db.execute(
@@ -224,7 +229,8 @@ async def dismiss_alert(
 @router.post("/analyze/player/{player_id}")
 async def trigger_player_analysis(
     player_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Manually trigger workload analysis for a player."""
     alerts = await WorkloadAnalysisService.trigger_analysis_for_player(
@@ -247,7 +253,7 @@ async def trigger_player_analysis(
 
 
 @router.post("/analyze/squad")
-async def trigger_squad_analysis(db: AsyncSession = Depends(get_db)):
+async def trigger_squad_analysis(user: AuthenticatedUser = Depends(require_club), db: AsyncSession = Depends(get_db),):
     """Manually trigger workload analysis for all players."""
     results = await WorkloadAnalysisService.trigger_analysis_for_all_players(
         db, "manual_squad_trigger"

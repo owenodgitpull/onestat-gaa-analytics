@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import the Base and all models
 from app.database import Base
 from app.models import (
+    Club,
     Player,
     FitnessTest,
     Match,
@@ -24,6 +25,7 @@ from app.models import (
     MatchLineup,
     ChatSession,
     ChatSessionMessage,
+    User,
 )
 
 # this is the Alembic Config object

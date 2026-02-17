@@ -20,6 +20,7 @@ import base64
 import os
 
 from app.database import get_db, async_session_maker
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.training_performance import TrainingGPSData, WeightTrainingSession, WeightExercise, GPSUploadLog
 from app.services.workload_analysis_service import WorkloadAnalysisService
 from app.models.attendance import TrainingSession, Attendance, AttendanceStatus
@@ -49,7 +50,8 @@ async def upload_gps_data(
     background_tasks: BackgroundTasks,
     session_id: UUID = Form(..., description="Training session UUID"),
     file: UploadFile = File(..., description="STATSports PDF or CSV file"),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Upload a STATSports GPS data file.
@@ -592,7 +594,8 @@ CSV:
 @router.get("/gps/upload/{upload_id}", response_model=GPSUploadStatus)
 async def get_upload_status(
     upload_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get the status of a GPS upload."""
     query = select(GPSUploadLog).where(GPSUploadLog.id == upload_id)
@@ -616,7 +619,8 @@ async def get_upload_status(
 
 @router.get("/ai-summary/latest")
 async def get_latest_training_ai_summary(
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get the latest AI-generated training session summary."""
     result = await db.execute(
@@ -640,7 +644,8 @@ async def get_latest_training_ai_summary(
 @router.get("/gps/session/{session_id}", response_model=list[TrainingGPSDataResponse])
 async def get_session_gps_data(
     session_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get all GPS data for a training session."""
     query = select(TrainingGPSData).where(TrainingGPSData.session_id == session_id)
@@ -687,7 +692,8 @@ async def get_session_gps_data(
 @router.post("/gps/manual", response_model=list[TrainingGPSDataResponse], status_code=201)
 async def add_gps_data_manually(
     data: GPSDataBulkCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Manually add GPS data for multiple players."""
     # Verify session exists
@@ -744,7 +750,8 @@ async def add_gps_data_manually(
 @router.post("/weights", response_model=WeightTrainingSessionResponse, status_code=201)
 async def create_weight_session(
     data: WeightTrainingSessionCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a weight training session with exercises."""
     # Verify training session exists
@@ -811,7 +818,8 @@ async def create_weight_session(
 @router.get("/weights/session/{session_id}", response_model=list[WeightTrainingSessionResponse])
 async def get_session_weight_data(
     session_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get all weight training data for a session."""
     query = (
@@ -866,7 +874,8 @@ async def get_session_weight_data(
 async def get_player_weight_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get weight training history for a player."""
     query = (
@@ -922,7 +931,8 @@ async def get_player_weight_history(
 async def get_player_gps_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get GPS history for a player."""
     query = (

@@ -8,7 +8,7 @@ Used to generate heat maps, possession stats, and flow diagrams.
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, DateTime, Float, Integer, Enum, ForeignKey
+from sqlalchemy import Column, DateTime, Float, Integer, String, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -17,7 +17,7 @@ import enum
 
 class PossessionTeam(enum.Enum):
     """Which team has possession."""
-    DUNGLOE = "dungloe"
+    OWN = "own"
     OPPONENT = "opponent"
     CONTESTED = "contested"  # Ball is loose/contested
 
@@ -42,7 +42,7 @@ class PossessionEvent(Base):
     match_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Possession details
-    team: Column[PossessionTeam] = Column(Enum(PossessionTeam), nullable=False)
+    team: Column[str] = Column(String(20), nullable=False)  # PossessionTeam values: own, opponent, contested
     
     # Timing (minutes and seconds into match)
     minute: Column[Optional[int]] = Column(Integer, nullable=True)

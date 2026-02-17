@@ -48,11 +48,12 @@ class TrainingSession(Base):
     __tablename__ = "training_sessions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id"), nullable=True, index=True)
     session_date = Column(Date, nullable=False, index=True)
     session_type = Column(SQLEnum(SessionType), default=SessionType.TRAINING, nullable=False)
     start_time = Column(String(10), nullable=True)  # "19:00" format
     end_time = Column(String(10), nullable=True)
-    location = Column(String(100), nullable=True, default="Dungloe GAA Grounds")
+    location = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
     ai_summary = Column(Text, nullable=True)
     ai_summary_generated_at = Column(DateTime, nullable=True)

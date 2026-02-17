@@ -1,5 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AuthProvider } from './contexts/AuthContext'
+import { ClubProvider } from './contexts/ClubContext'
+import RequireAuth from './components/RequireAuth'
 import MatchRecording from './pages/MatchRecording'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import Results from './pages/Results'
@@ -9,7 +12,19 @@ import Players from './pages/Players'
 import PlayerView from './pages/PlayerView'
 import MatchPrep from './pages/MatchPrep'
 import Navigation from './components/Navigation'
+import PlayerNavigation from './components/PlayerNavigation'
 import AIAnalystPage from './pages/AIAnalystPage'
+import Onboarding from './pages/Onboarding'
+import Login from './pages/Login'
+import AuthCallback from './pages/AuthCallback'
+
+// Player portal pages
+import PlayerDashboard from './pages/player/PlayerDashboard'
+import { lazy, Suspense } from 'react'
+
+const LeaderboardPage = lazy(() => import('./pages/player/LeaderboardPage'))
+const MyStatsPage = lazy(() => import('./pages/player/MyStatsPage'))
+const PlayerProfile = lazy(() => import('./pages/player/PlayerProfile'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,40 +35,88 @@ const queryClient = new QueryClient({
   },
 })
 
+function PlayerLoading() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router>
-        {/* Animated background with floating orbs and shimmer */}
-        <div className="app-background">
-          <div className="app-bg-orb" />
-          <div className="app-bg-shimmer" />
-        </div>
+      <AuthProvider>
+        <Router>
+          {/* Animated background with floating orbs and shimmer */}
+          <div className="app-background">
+            <div className="app-bg-orb" />
+            <div className="app-bg-shimmer" />
+          </div>
 
-        <div className="min-h-screen relative z-10">
-          <Navigation />
-          <main className="md:ml-14 px-4 py-6">
-            <div className="max-w-7xl mx-auto">
-              <Routes>
-                <Route path="/" element={<AnalyticsDashboard />} />
-                <Route path="/match/:matchId" element={<MatchRecording />} />
-                <Route path="/match-prep/:matchId" element={<MatchPrep />} />
-                <Route path="/results" element={<Results />} />
-                <Route path="/results/:matchId" element={<MatchResult />} />
-                <Route path="/players" element={<Players />} />
-                <Route path="/players/:playerId" element={<PlayerView />} />
-                <Route path="/training" element={<Attendance />} />
-                <Route path="/attendance" element={<Attendance />} />
-                <Route path="/analyst" element={<AIAnalystPage />} />
-                <Route path="/analyst/:sessionId" element={<AIAnalystPage />} />
-              </Routes>
-            </div>
-          </main>
-        </div>
-      </Router>
+          <div className="min-h-screen relative z-10">
+            <Routes>
+              {/* Public routes — no auth required */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+
+              {/* Onboarding — requires auth but no Navigation */}
+              <Route path="/onboarding" element={
+                <RequireAuth>
+                  <Onboarding />
+                </RequireAuth>
+              } />
+
+              {/* Player Portal — bottom tab nav, mobile-first */}
+              <Route path="/player/*" element={
+                <RequireAuth>
+                  <ClubProvider>
+                    <main className="px-4 py-5 pb-24 max-w-lg mx-auto">
+                      <Suspense fallback={<PlayerLoading />}>
+                        <Routes>
+                          <Route path="/" element={<PlayerDashboard />} />
+                          <Route path="/leaderboards" element={<LeaderboardPage />} />
+                          <Route path="/stats" element={<MyStatsPage />} />
+                          <Route path="/profile" element={<PlayerProfile />} />
+                        </Routes>
+                      </Suspense>
+                    </main>
+                    <PlayerNavigation />
+                  </ClubProvider>
+                </RequireAuth>
+              } />
+
+              {/* Admin app — top nav + sidebar */}
+              <Route path="*" element={
+                <RequireAuth>
+                  <ClubProvider>
+                    <Navigation />
+                    <main className="md:ml-14 px-4 py-6">
+                      <div className="max-w-7xl mx-auto">
+                        <Routes>
+                          <Route path="/" element={<AnalyticsDashboard />} />
+                          <Route path="/match/:matchId" element={<MatchRecording />} />
+                          <Route path="/match-prep/:matchId" element={<MatchPrep />} />
+                          <Route path="/results" element={<Results />} />
+                          <Route path="/results/:matchId" element={<MatchResult />} />
+                          <Route path="/players" element={<Players />} />
+                          <Route path="/players/:playerId" element={<PlayerView />} />
+                          <Route path="/training" element={<Attendance />} />
+                          <Route path="/attendance" element={<Attendance />} />
+                          <Route path="/analyst" element={<AIAnalystPage />} />
+                          <Route path="/analyst/:sessionId" element={<AIAnalystPage />} />
+                        </Routes>
+                      </div>
+                    </main>
+                  </ClubProvider>
+                </RequireAuth>
+              } />
+            </Routes>
+          </div>
+        </Router>
+      </AuthProvider>
     </QueryClientProvider>
   )
 }
 
 export default App
-

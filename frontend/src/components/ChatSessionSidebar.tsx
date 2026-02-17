@@ -35,99 +35,101 @@ export default function ChatSessionSidebar({
   isOpen,
   onClose,
 }: ChatSessionSidebarProps) {
+  if (!isOpen) return null
+
   return (
     <>
       {/* Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/30 z-40 lg:bg-black/20"
-          onClick={onClose}
-          style={{ top: '56px' }}
-        />
-      )}
+      <div
+        className="fixed z-40"
+        onClick={onClose}
+        style={{ top: 56, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.3)' }}
+      />
 
       {/* Panel */}
       <div
-        className={`fixed top-14 bottom-0 z-50 w-[260px] flex flex-col transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className="fixed z-50 flex flex-col"
         style={{
-          left: '56px',
-          background: 'linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04))',
-          backdropFilter: 'blur(24px)',
-          WebkitBackdropFilter: 'blur(24px)',
-          borderRight: '1px solid rgba(255,255,255,0.10)',
-          boxShadow: '4px 0 24px rgba(0,0,0,0.3)',
+          top: 56,
+          left: 56,
+          bottom: 0,
+          width: 260,
+          background: '#0d0d1f',
+          borderRight: '1px solid rgba(255,255,255,0.1)',
+          boxShadow: '4px 0 24px rgba(0,0,0,0.5)',
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <span className="text-sm font-semibold text-white/80">Chat History</span>
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}
+        >
+          <span style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>Chat History</span>
           <button
             onClick={onClose}
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+            className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ color: '#999' }}
           >
             <X size={16} />
           </button>
         </div>
 
         {/* New Chat button */}
-        <div className="px-3 py-3">
+        <div style={{ padding: '12px 12px' }}>
           <button
-            onClick={() => {
-              onNewChat()
-              onClose()
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-white transition-all"
+            onClick={() => { onNewChat(); onClose() }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium"
             style={{
-              background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.18))',
-              border: '1px solid rgba(99,102,241,0.3)',
+              color: '#fff',
+              background: 'rgba(99,102,241,0.2)',
+              border: '1px solid rgba(99,102,241,0.35)',
             }}
           >
             <Plus size={16} />
-            New Chat
+            <span>New Chat</span>
           </button>
         </div>
 
         {/* Session list */}
-        <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
+        <div className="flex-1 overflow-y-auto" style={{ padding: '0 8px 12px' }}>
           {sessions.length === 0 ? (
-            <div className="text-center py-8">
-              <MessageSquare size={24} className="text-white/15 mx-auto mb-2" />
-              <p className="text-xs text-white/30">No conversations yet</p>
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <MessageSquare size={24} style={{ color: '#333', margin: '0 auto 8px' }} />
+              <p style={{ color: '#555', fontSize: 12 }}>No conversations yet</p>
             </div>
           ) : (
             sessions.map((session) => {
               const isActive = session.id === currentSessionId
               return (
-                <button
+                <div
                   key={session.id}
-                  onClick={() => {
-                    onSelectSession(session.id)
-                    onClose()
+                  onClick={() => { onSelectSession(session.id); onClose() }}
+                  className="group flex items-center gap-2.5 rounded-lg cursor-pointer"
+                  style={{
+                    padding: '10px 12px',
+                    marginBottom: 2,
+                    color: isActive ? '#fff' : '#ccc',
+                    background: isActive ? 'rgba(99,102,241,0.15)' : 'transparent',
+                    borderLeft: isActive ? '2px solid #818cf8' : '2px solid transparent',
                   }}
-                  className={`group w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-left transition-all ${
-                    isActive
-                      ? 'bg-indigo-500/10 border-l-2 border-indigo-500 text-white'
-                      : 'text-white/70 hover:bg-white/5 hover:text-white border-l-2 border-transparent'
-                  }`}
                 >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{session.title}</p>
-                    <p className="text-[11px] text-white/30 mt-0.5">
-                      {relativeTime(session.updated_at)}
+                  <MessageSquare size={15} style={{ color: '#666', flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {session.title}
+                    </p>
+                    <p style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                      {relativeTime(session.updated_at)} · {session.message_count} msg{session.message_count !== 1 ? 's' : ''}
                     </p>
                   </div>
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDeleteSession(session.id)
-                    }}
-                    className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded flex items-center justify-center text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
+                    onClick={(e) => { e.stopPropagation(); onDeleteSession(session.id) }}
+                    className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded flex items-center justify-center transition-all flex-shrink-0"
+                    style={{ color: '#888' }}
                   >
                     <Trash2 size={13} />
                   </button>
-                </button>
+                </div>
               )
             })
           )}

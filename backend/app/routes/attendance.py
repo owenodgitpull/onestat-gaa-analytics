@@ -15,6 +15,7 @@ import asyncio
 import logging
 
 from app.database import get_db, async_session_maker
+from app.auth.dependencies import AuthenticatedUser, require_club
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
 logger = logging.getLogger(__name__)
@@ -41,10 +42,11 @@ router = APIRouter()
 @router.post("/sessions", response_model=TrainingSessionResponse, status_code=201)
 async def create_session(
     session: TrainingSessionCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a new training session."""
-    db_session = TrainingSession(**session.model_dump())
+    db_session = TrainingSession(**session.model_dump(), club_id=user.club_id)
     db.add(db_session)
     await db.commit()
     await db.refresh(db_session)
@@ -62,10 +64,11 @@ async def list_sessions(
     end_date: Optional[date] = Query(None, description="Filter to date"),
     session_type: Optional[SessionType] = Query(None, description="Filter by type"),
     limit: int = Query(50, ge=1, le=100),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """List training sessions with optional filters."""
-    query = select(TrainingSession).options(selectinload(TrainingSession.attendance_records))
+    query = select(TrainingSession).options(selectinload(TrainingSession.attendance_records)).where(TrainingSession.club_id == user.club_id)
 
     if start_date:
         query = query.where(TrainingSession.session_date >= start_date)
@@ -101,7 +104,8 @@ async def list_sessions(
 @router.get("/sessions/{session_id}", response_model=TrainingSessionDetail)
 async def get_session(
     session_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get a training session with attendance records."""
     query = (
@@ -159,7 +163,8 @@ async def get_session(
 async def update_session(
     session_id: UUID,
     update: TrainingSessionUpdate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update a training session."""
     query = select(TrainingSession).where(TrainingSession.id == session_id)
@@ -186,7 +191,8 @@ async def update_session(
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(
     session_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete a training session (cascades to attendance records)."""
     query = select(TrainingSession).where(TrainingSession.id == session_id)
@@ -207,7 +213,8 @@ async def delete_session(
 async def add_attendance(
     session_id: UUID,
     attendance: AttendanceCreate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Add a single attendance record to a session."""
     # Verify session exists
@@ -250,7 +257,8 @@ async def add_attendance(
 async def bulk_add_attendance(
     bulk: AttendanceBulkCreate,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Add multiple attendance records for a session."""
     # Verify session exists
@@ -323,7 +331,8 @@ async def trigger_workload_analysis_for_players(player_ids: list, trigger_source
 async def update_attendance(
     attendance_id: UUID,
     update: AttendanceUpdate,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Update an attendance record."""
     query = select(Attendance).where(Attendance.id == attendance_id)
@@ -360,7 +369,8 @@ async def update_attendance(
 @router.delete("/attendance/{attendance_id}", status_code=204)
 async def delete_attendance(
     attendance_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete an attendance record."""
     query = select(Attendance).where(Attendance.id == attendance_id)
@@ -381,7 +391,8 @@ async def delete_attendance(
 async def get_attendance_overview(
     start_date: Optional[date] = Query(None, description="Start date for report"),
     end_date: Optional[date] = Query(None, description="End date for report"),
-    db: AsyncSession = Depends(get_db)
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get attendance overview with player summaries."""
     # Default to last 30 days if no dates provided

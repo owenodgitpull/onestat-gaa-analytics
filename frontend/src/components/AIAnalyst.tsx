@@ -145,7 +145,7 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
           {messages.length === 0 && !loading && !isStreaming ? (
             <div className="text-center py-8">
               <Sparkles className="mx-auto mb-4 text-amber-400" size={48} />
-              <h3 className="text-xl font-bold text-white mb-2">Ask me anything about Dungloe GAA</h3>
+              <h3 className="text-xl font-bold text-white mb-2">Ask me anything about our team</h3>
               <p className="text-white/60 mb-6">I can analyze matches, player performance, GPS data, attendance, and more.</p>
 
               <div className="grid gap-2">
@@ -188,7 +188,7 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
                   <img
                     src="/clg-logo.png"
                     className="w-8 h-8 rounded-full object-cover ring-1 ring-white/20 flex-shrink-0"
-                    alt="Dungloe GAA"
+                    alt="AI Analyst"
                   />
                 )}
               </div>

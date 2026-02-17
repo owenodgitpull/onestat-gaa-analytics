@@ -37,15 +37,15 @@ class EventType(enum.Enum):
     BREAKING_BALL_WON = "breaking_ball_won"
     BREAKING_BALL_LOST = "breaking_ball_lost"
 
-    # Kickouts (detailed — own kickout = Dungloe kicking out)
-    OWN_KICKOUT_DUNGLOE_WON = "own_kickout_dungloe_won"
+    # Kickouts (detailed — own kickout = our team kicking out)
+    OWN_KICKOUT_WON = "own_kickout_won"
     OWN_KICKOUT_OPPOSITION_WON = "own_kickout_opposition_won"
-    OWN_KICKOUT_DUNGLOE_WON_BREAK = "own_kickout_dungloe_won_break"
+    OWN_KICKOUT_WON_BREAK = "own_kickout_won_break"
     OWN_KICKOUT_OPPOSITION_WON_BREAK = "own_kickout_opposition_won_break"
     # Kickouts (detailed — opp kickout = Opposition kicking out)
-    OPP_KICKOUT_DUNGLOE_WON = "opp_kickout_dungloe_won"
+    OPP_KICKOUT_WON = "opp_kickout_won"
     OPP_KICKOUT_OPPOSITION_WON = "opp_kickout_opposition_won"
-    OPP_KICKOUT_DUNGLOE_WON_BREAK = "opp_kickout_dungloe_won_break"
+    OPP_KICKOUT_WON_BREAK = "opp_kickout_won_break"
     OPP_KICKOUT_OPPOSITION_WON_BREAK = "opp_kickout_opposition_won_break"
     
     # Cards
@@ -61,6 +61,8 @@ class EventType(enum.Enum):
     WIDE_FREE = "wide_free"  # Free kick went wide
     FORTY_FIVE = "forty_five"  # 45m free kick scored (always 1 point)
     FORTY_FIVE_MISSED = "forty_five_missed"  # 45m free kick missed
+    PENALTY_GOAL = "penalty_goal"  # Penalty scored (counts as goal = 3 points)
+    PENALTY_MISS = "penalty_miss"  # Penalty missed (wide/saved)
     FOUL_COMMITTED = "foul_committed"  # Player committed a foul
     FOUL_WON = "foul_won"  # Player was fouled
 
@@ -76,7 +78,7 @@ class EventType(enum.Enum):
 
 class Team(enum.Enum):
     """Which team the event belongs to."""
-    DUNGLOE = "dungloe"
+    OWN = "own"
     OPPONENT = "opponent"
 
 
@@ -174,8 +176,8 @@ class MatchEvent(Base):
         if self.pitch_x is None:
             return False
 
-        if self.team == Team.DUNGLOE:
-            # Dungloe attacking toward x=100
+        if self.team == Team.OWN:
+            # Own team attacking toward x=100
             # 2-point if shooting from outside 40m arc
             return self.pitch_x < 72.3
         else:
