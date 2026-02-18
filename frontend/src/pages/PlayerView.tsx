@@ -51,7 +51,7 @@ import {
 import { api } from '../services/api'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1'
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
 
 // Types
 interface Player {

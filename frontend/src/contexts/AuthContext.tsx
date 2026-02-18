@@ -4,7 +4,7 @@ import { generateCodeVerifier, generateCodeChallenge } from '../lib/pkce';
 const COGNITO_DOMAIN = import.meta.env.VITE_COGNITO_DOMAIN;
 const COGNITO_CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID;
 const COGNITO_REDIRECT_URI = import.meta.env.VITE_COGNITO_REDIRECT_URI;
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
 /** Session storage key for cached user info (NOT tokens — those are httpOnly cookies). */
 const USER_STORAGE_KEY = 'gaa_user';
@@ -237,18 +237,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistUser(authUser, data.expires_in || 3600);
   }, [scheduleRefresh, persistUser]);
 
-  const logout = useCallback(async () => {
-    // Revoke on backend + clear httpOnly cookies
-    try {
-      await fetch(`${API_BASE_URL}/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } catch {
-      // Best effort
-    }
+  const logout = useCallback(() => {
+    // Fire backend revoke without waiting — don't block the redirect
+    fetch(`${API_BASE_URL}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {});
 
-    // Clear local state
+    // Clear local state immediately
     setUserState(null);
     sessionStorage.removeItem(USER_STORAGE_KEY);
     if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);

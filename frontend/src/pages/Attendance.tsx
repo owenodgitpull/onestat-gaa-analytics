@@ -36,7 +36,7 @@ import ReadinessTable from '../components/charts/training/ReadinessTable'
 import MonotonyScatter from '../components/charts/training/MonotonyScatter'
 import InsightAlertsPanel from '../components/InsightAlertsPanel'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1'
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
 
 // Types
 interface TrainingSession {
