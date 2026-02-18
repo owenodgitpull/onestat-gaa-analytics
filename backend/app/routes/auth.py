@@ -35,6 +35,12 @@ router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
 
+def _looks_like_uuid(value: str) -> bool:
+    """Check if a string looks like a UUID (8-4-4-4-12 hex pattern)."""
+    import re
+    return bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', value, re.I))
+
+
 # ---------- cookie helpers ----------
 
 def _is_production() -> bool:
@@ -172,7 +178,18 @@ async def exchange_token(
         )
     cognito_sub = id_claims.get("sub", "")
     email = id_claims.get("email", "")
-    name = id_claims.get("name") or id_claims.get("cognito:username") or email.split("@")[0]
+
+    # Extract name from token — prefer explicit "name" claim (requires profile scope).
+    # cognito:username is often the sub UUID, so only use it if it looks like a real name.
+    raw_name = id_claims.get("name") or ""
+    if not raw_name:
+        candidate = id_claims.get("cognito:username") or ""
+        # Only use cognito:username if it doesn't look like a UUID
+        if candidate and not _looks_like_uuid(candidate):
+            raw_name = candidate
+    if not raw_name and email:
+        raw_name = email.split("@")[0]
+    token_name = raw_name or ""
 
     # Upsert user
     result = await db.execute(
@@ -190,8 +207,9 @@ async def exchange_token(
         if user:
             # Link the pre-created invite to this Cognito account
             user.cognito_sub = cognito_sub
-            if name and user.name != name:
-                user.name = name
+            # Only overwrite name if token has a real name and DB name looks like a UUID
+            if token_name and (not user.name or _looks_like_uuid(user.name)):
+                user.name = token_name
             await db.commit()
             await db.refresh(user)
             logger.info(f"Linked invited user to cognito_sub: {email}")
@@ -199,7 +217,7 @@ async def exchange_token(
             user = User(
                 cognito_sub=cognito_sub,
                 email=email,
-                name=name,
+                name=token_name or email.split("@")[0] or "User",
                 role="club_admin",
             )
             db.add(user)
@@ -207,11 +225,12 @@ async def exchange_token(
             await db.refresh(user)
             logger.info(f"Created new user on token exchange: {email}")
     else:
-        # Update email/name if changed in Cognito
+        # Update email if changed in Cognito
         if email and user.email != email:
             user.email = email
-        if name and user.name != name:
-            user.name = name
+        # Only update name if token has a real name AND the DB name is a UUID placeholder
+        if token_name and _looks_like_uuid(user.name):
+            user.name = token_name
         from datetime import datetime
         user.last_login_at = datetime.utcnow()
         await db.commit()

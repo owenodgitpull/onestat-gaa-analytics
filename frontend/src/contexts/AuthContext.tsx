@@ -188,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       response_type: 'code',
       client_id: COGNITO_CLIENT_ID,
       redirect_uri: COGNITO_REDIRECT_URI,
-      scope: 'openid profile email',
+      scope: 'openid email',
       code_challenge: challenge,
       code_challenge_method: 'S256',
       state,

@@ -865,7 +865,7 @@ async def get_season_dashboard(
     """
     from app.services.season_dashboard_service import SeasonDashboardService
 
-    data = await SeasonDashboardService.get_all(db)
+    data = await SeasonDashboardService.get_all(db, user.club_id)
 
     td = data["territory_distribution"]
     kpi_raw = data.get("kpi_cards")

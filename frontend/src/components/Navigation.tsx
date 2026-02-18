@@ -12,10 +12,12 @@ import {
   Settings,
   MessageSquare,
   History,
+  Camera,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useAuth } from '../contexts/AuthContext'
-import { useState } from 'react'
+import { useClub } from '../contexts/ClubContext'
+import { useState, useRef } from 'react'
 import NewMatchModal from './NewMatchModal'
 import AIAnalyst from './AIAnalyst'
 
@@ -24,10 +26,35 @@ export default function Navigation() {
   const navigate = useNavigate()
   const createMatch = useCreateMatch()
   const { user, logout } = useAuth()
+  const { club } = useClub()
   const [isCreatingMatch, setIsCreatingMatch] = useState(false)
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showAIChat, setShowAIChat] = useState(false)
+  const [profilePic, setProfilePic] = useState<string | null>(() => {
+    return localStorage.getItem('gaa_profile_pic')
+  })
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleProfilePicChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      setProfilePic(dataUrl)
+      localStorage.setItem('gaa_profile_pic', dataUrl)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Get initials from name (first letter of first + last name)
+  const getInitials = (name?: string) => {
+    if (!name) return null
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    return parts[0][0]?.toUpperCase() || null
+  }
 
 
   const isActive = (path: string) => {
@@ -185,10 +212,14 @@ export default function Navigation() {
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
                 className="flex items-center space-x-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
-                  <span className="text-xs font-bold text-white">
-                    {user?.name?.[0]?.toUpperCase() || <UserCircle size={20} />}
-                  </span>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center overflow-hidden">
+                  {profilePic ? (
+                    <img src={profilePic} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-bold text-white">
+                      {getInitials(user?.name) || <UserCircle size={20} />}
+                    </span>
+                  )}
                 </div>
                 <ChevronDown size={14} className="text-white/60" />
               </button>
@@ -200,11 +231,32 @@ export default function Navigation() {
                     className="fixed inset-0 z-10"
                     onClick={() => setShowProfileMenu(false)}
                   />
-                  <div className="absolute right-0 top-full mt-2 w-48 py-2 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-20">
+                  <div className="absolute right-0 top-full mt-2 w-56 py-2 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-20">
                     {user && (
-                      <div className="px-4 py-2 border-b border-white/10">
-                        <p className="text-sm font-medium text-white truncate">{user.name}</p>
-                        <p className="text-xs text-white/50 truncate">{user.email}</p>
+                      <div className="px-4 py-3 border-b border-white/10 flex items-center gap-3">
+                        <div className="relative group flex-shrink-0">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center overflow-hidden">
+                            {profilePic ? (
+                              <img src={profilePic} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="text-sm font-bold text-white">
+                                {getInitials(user.name) || <UserCircle size={24} />}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                            className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Camera size={14} className="text-white" />
+                          </button>
+                          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleProfilePicChange} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{user.name}</p>
+                          <p className="text-xs text-white/50 truncate">{user.email}</p>
+                          {club && <p className="text-xs text-indigo-400 truncate">{club.name}</p>}
+                        </div>
                       </div>
                     )}
                     <button className="w-full px-4 py-2 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white flex items-center gap-2">

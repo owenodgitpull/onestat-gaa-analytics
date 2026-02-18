@@ -38,25 +38,26 @@ class SeasonDashboardService:
     """Static methods for season dashboard data aggregation."""
 
     @staticmethod
-    async def _get_completed_matches(db: AsyncSession):
-        """Get all completed, non-deleted matches ordered by date."""
+    async def _get_completed_matches(db: AsyncSession, club_id=None):
+        """Get all completed, non-deleted matches ordered by date, filtered by club."""
+        conditions = [
+            Match.status == MatchStatus.COMPLETED,
+            Match.is_deleted == False,
+        ]
+        if club_id:
+            conditions.append(Match.club_id == club_id)
         result = await db.execute(
-            select(Match).where(
-                and_(
-                    Match.status == MatchStatus.COMPLETED,
-                    Match.is_deleted == False,
-                )
-            ).order_by(Match.match_date.asc())
+            select(Match).where(and_(*conditions)).order_by(Match.match_date.asc())
         )
         return result.scalars().all()
 
     @staticmethod
-    async def get_all(db: AsyncSession) -> dict:
+    async def get_all(db: AsyncSession, club_id=None) -> dict:
         """
         Run all 5 aggregations concurrently, sharing the match list.
         Returns the complete season dashboard payload.
         """
-        matches = await SeasonDashboardService._get_completed_matches(db)
+        matches = await SeasonDashboardService._get_completed_matches(db, club_id)
 
         funnel, kickouts, turnovers, red_zone, radar, territory = await asyncio.gather(
             SeasonDashboardService._possession_funnel(db, matches),
@@ -1197,31 +1198,31 @@ class SeasonDashboardService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    async def get_possession_funnel(db: AsyncSession) -> dict:
-        matches = await SeasonDashboardService._get_completed_matches(db)
+    async def get_possession_funnel(db: AsyncSession, club_id=None) -> dict:
+        matches = await SeasonDashboardService._get_completed_matches(db, club_id)
         return await SeasonDashboardService._possession_funnel(db, matches)
 
     @staticmethod
-    async def get_kickout_trends(db: AsyncSession) -> list:
-        matches = await SeasonDashboardService._get_completed_matches(db)
+    async def get_kickout_trends(db: AsyncSession, club_id=None) -> list:
+        matches = await SeasonDashboardService._get_completed_matches(db, club_id)
         return await SeasonDashboardService._kickout_trends(db, matches)
 
     @staticmethod
-    async def get_turnover_source_leaderboard(db: AsyncSession) -> list:
-        matches = await SeasonDashboardService._get_completed_matches(db)
+    async def get_turnover_source_leaderboard(db: AsyncSession, club_id=None) -> list:
+        matches = await SeasonDashboardService._get_completed_matches(db, club_id)
         return await SeasonDashboardService._turnover_source_leaderboard(db, matches)
 
     @staticmethod
-    async def get_red_zone_players(db: AsyncSession) -> list:
-        matches = await SeasonDashboardService._get_completed_matches(db)
+    async def get_red_zone_players(db: AsyncSession, club_id=None) -> list:
+        matches = await SeasonDashboardService._get_completed_matches(db, club_id)
         return await SeasonDashboardService._red_zone_players(db, matches)
 
     @staticmethod
-    async def get_workhorse_radar_data(db: AsyncSession) -> dict:
-        matches = await SeasonDashboardService._get_completed_matches(db)
+    async def get_workhorse_radar_data(db: AsyncSession, club_id=None) -> dict:
+        matches = await SeasonDashboardService._get_completed_matches(db, club_id)
         return await SeasonDashboardService._workhorse_radar_data(db, matches)
 
     @staticmethod
-    async def get_territory_distribution(db: AsyncSession) -> dict:
-        matches = await SeasonDashboardService._get_completed_matches(db)
+    async def get_territory_distribution(db: AsyncSession, club_id=None) -> dict:
+        matches = await SeasonDashboardService._get_completed_matches(db, club_id)
         return await SeasonDashboardService._territory_distribution(db, matches)
