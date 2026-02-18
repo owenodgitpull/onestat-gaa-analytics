@@ -135,12 +135,16 @@ class SeasonDashboardService:
         opp_poss_count = {}
         prev_team_by_match: dict = {}  # track last team per match
 
+        # pe.team is a plain string (String(20) column), so compare with enum .value
+        OWN = PossessionTeam.OWN.value        # "own"
+        OPP = PossessionTeam.OPPONENT.value    # "opponent"
+
         for pe in all_poss:
             mid = pe.match_id
             prev = prev_team_by_match.get(mid)
 
-            if pe.team == PossessionTeam.OWN:
-                if prev != PossessionTeam.OWN:
+            if pe.team == OWN:
+                if prev != OWN:
                     # New possession phase — start a new list
                     team_phases_by_match.setdefault(mid, []).append([])
                     team_poss_count[mid] = team_poss_count.get(mid, 0) + 1
@@ -148,8 +152,8 @@ class SeasonDashboardService:
                     team_phases_by_match[mid] = [[]]
                     team_poss_count[mid] = 1
                 team_phases_by_match[mid][-1].append(pe)
-            elif pe.team == PossessionTeam.OPPONENT:
-                if prev != PossessionTeam.OPPONENT:
+            elif pe.team == OPP:
+                if prev != OPP:
                     opp_phases_by_match.setdefault(mid, []).append([])
                     opp_poss_count[mid] = opp_poss_count.get(mid, 0) + 1
                 elif mid not in opp_phases_by_match:
@@ -158,7 +162,7 @@ class SeasonDashboardService:
                 opp_phases_by_match[mid][-1].append(pe)
 
             # Update previous team (skip contested — doesn't reset either team)
-            if pe.team in (PossessionTeam.OWN, PossessionTeam.OPPONENT):
+            if pe.team in (OWN, OPP):
                 prev_team_by_match[mid] = pe.team
 
         # Count attacks per match — max 1 attack per possession phase.
@@ -842,12 +846,12 @@ class SeasonDashboardService:
             else:
                 zone = "attacking"
 
-            if pe.team == PossessionTeam.OWN:
+            if pe.team == PossessionTeam.OWN.value:
                 team_zones[zone] += duration
                 team_count += duration
                 match_team.setdefault(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
                 match_team[mid][zone] += duration
-            elif pe.team == PossessionTeam.OPPONENT:
+            elif pe.team == PossessionTeam.OPPONENT.value:
                 opp_zones[zone] += duration
                 opp_count += duration
                 match_opp.setdefault(mid, {"defensive": 0, "midfield": 0, "attacking": 0})
