@@ -265,7 +265,7 @@ export default function Navigation() {
                     </button>
                     <hr className="my-1 border-white/10" />
                     <button
-                      onClick={async () => { await logout(); navigate('/login'); }}
+                      onClick={() => logout()}
                       className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2"
                     >
                       <LogOut size={16} />

@@ -252,6 +252,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserState(null);
     sessionStorage.removeItem(USER_STORAGE_KEY);
     if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
+
+    // Redirect to Cognito logout to end the hosted UI session,
+    // otherwise the next login auto-completes without prompting credentials.
+    const logoutUrl = new URL(`${COGNITO_DOMAIN}/logout`);
+    logoutUrl.searchParams.set('client_id', COGNITO_CLIENT_ID);
+    logoutUrl.searchParams.set('logout_uri', window.location.origin + '/login');
+    window.location.href = logoutUrl.toString();
   }, []);
 
   return (
