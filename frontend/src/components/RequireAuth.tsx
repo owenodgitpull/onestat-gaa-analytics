@@ -14,7 +14,7 @@ export default function RequireAuth({ children, requiredRole }: RequireAuthProps
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -34,7 +34,12 @@ export default function RequireAuth({ children, requiredRole }: RequireAuthProps
   }
 
   // Auto-redirect: players hitting admin routes → /player
-  if (user?.role === 'player' && !location.pathname.startsWith('/player') && location.pathname !== '/onboarding') {
+  // Exempt /select-player (new players need to pick their name before entering portal)
+  if (user?.role === 'player' && !location.pathname.startsWith('/player') && location.pathname !== '/onboarding' && location.pathname !== '/select-player') {
+    // If player hasn't selected their player profile yet, redirect to selection
+    if (!user.player_id) {
+      return <Navigate to="/select-player" replace />;
+    }
     return <Navigate to="/player" replace />;
   }
 

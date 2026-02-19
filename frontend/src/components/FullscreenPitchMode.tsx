@@ -152,11 +152,11 @@ export default function FullscreenPitchMode({
 
         {/* Timer + Phase */}
         <div className="flex items-center gap-2">
-          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-600/30 text-indigo-300 border border-indigo-500/30">
+          <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-600/30 text-emerald-300 border border-emerald-500/30">
             {phaseLabel}
           </span>
           <div className="flex items-center gap-1 px-3 py-1 rounded-lg bg-white/5 border border-white/10">
-            <Clock size={14} className="text-indigo-400" />
+            <Clock size={14} className="text-emerald-400" />
             <span className="font-mono text-lg font-bold text-white">{formatTime}</span>
           </div>
         </div>

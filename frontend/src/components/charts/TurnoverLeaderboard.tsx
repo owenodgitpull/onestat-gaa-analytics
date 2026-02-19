@@ -33,7 +33,7 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
         <span className="text-center">#</span>
         <span>Player</span>
         <span className="text-center text-cyan-400/70">INT</span>
-        <span className="text-center text-indigo-400/70">BLK</span>
+        <span className="text-center text-emerald-400/70">BLK</span>
         <span className="text-center text-emerald-400/70">T/O</span>
         <span className="text-center text-white/60">TOT</span>
       </div>
@@ -55,7 +55,7 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
                 className="absolute inset-y-0 left-0 rounded-lg opacity-[0.07]"
                 style={{
                   width: `${barWidth}%`,
-                  backgroundColor: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : '#6366f1',
+                  backgroundColor: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : '#10b981',
                 }}
               />
 
@@ -77,7 +77,7 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
               </span>
 
               {/* Blocks */}
-              <span className={`text-center relative text-sm ${p.blocks > 0 ? 'text-indigo-400 font-semibold' : 'text-white/20'}`}>
+              <span className={`text-center relative text-sm ${p.blocks > 0 ? 'text-emerald-400 font-semibold' : 'text-white/20'}`}>
                 {p.blocks}
               </span>
 
@@ -102,7 +102,7 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
         <span className="text-center text-cyan-400/60 font-semibold">
           {data.reduce((s, p) => s + p.interceptions, 0)}
         </span>
-        <span className="text-center text-indigo-400/60 font-semibold">
+        <span className="text-center text-emerald-400/60 font-semibold">
           {data.reduce((s, p) => s + p.blocks, 0)}
         </span>
         <span className="text-center text-emerald-400/60 font-semibold">

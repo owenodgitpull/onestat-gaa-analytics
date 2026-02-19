@@ -205,11 +205,11 @@ export default function StepClubBranding({ data, onChange, onLogoChange }: StepC
           <button
             onClick={() => fileInputRef.current?.click()}
             className="w-full glass-card p-8 flex flex-col items-center gap-3
-                       hover:border-indigo-400/30 transition-all duration-300 cursor-pointer group"
+                       hover:border-emerald-400/30 transition-all duration-300 cursor-pointer group"
           >
             <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center
-                            group-hover:bg-indigo-500/20 transition-colors duration-300">
-              <ImageIcon className="w-6 h-6 text-white/40 group-hover:text-indigo-300 transition-colors" />
+                            group-hover:bg-emerald-500/20 transition-colors duration-300">
+              <ImageIcon className="w-6 h-6 text-white/40 group-hover:text-emerald-300 transition-colors" />
             </div>
             <div className="text-center">
               <p className="text-sm text-white/60 group-hover:text-white/80 transition-colors">

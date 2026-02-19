@@ -57,11 +57,11 @@ export default function AiInsightsSection({
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-600 flex items-center justify-center">
             <Sparkles size={20} className="text-white" />
           </div>
           <span className="text-white">AI Insights</span>
-          <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">Dynamic</span>
+          <span className="text-xs bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full">Dynamic</span>
         </h2>
         <button
           onClick={onRegenerateAll}
@@ -83,7 +83,7 @@ export default function AiInsightsSection({
 
           {loadingSuggestions ? (
             <div className="glass-card p-6 flex items-center justify-center gap-3">
-              <RefreshCw size={18} className="animate-spin text-purple-400" />
+              <RefreshCw size={18} className="animate-spin text-cyan-400" />
               <span className="text-white/50 text-sm">Scanning for seasonal patterns and outliers...</span>
             </div>
           ) : (
@@ -107,7 +107,7 @@ export default function AiInsightsSection({
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <button
                           onClick={() => setExpandedSuggestion(isExpanded ? null : suggestion.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30 transition-colors"
                         >
                           {isExpanded ? <X size={12} /> : <Eye size={12} />}
                           {isExpanded ? 'Close' : 'View'}
@@ -145,7 +145,7 @@ export default function AiInsightsSection({
           {[1, 2, 3, 4].map(i => (
             <div key={i} className="glass-card p-6 h-[300px] flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
-                <RefreshCw size={24} className="animate-spin text-purple-400" />
+                <RefreshCw size={24} className="animate-spin text-cyan-400" />
                 <span className="text-white/50 text-sm">AI generating chart {i}...</span>
               </div>
             </div>
@@ -167,7 +167,7 @@ export default function AiInsightsSection({
         </div>
       ) : (
         <div className="glass-card p-8 text-center">
-          <Sparkles size={32} className="text-purple-400 mx-auto mb-3" />
+          <Sparkles size={32} className="text-cyan-400 mx-auto mb-3" />
           <p className="text-white/60 mb-4">No AI charts available. Click "Regenerate All" to generate insights.</p>
           <button onClick={onRegenerateAll} className="btn-primary">
             Generate Charts

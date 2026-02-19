@@ -43,7 +43,7 @@ export default function PlayerProfile() {
           border: '1px solid rgba(255,255,255,0.10)',
         }}
       >
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
           {dashboard?.jersey_number || <User size={28} />}
         </div>
         <div>
@@ -75,10 +75,10 @@ export default function PlayerProfile() {
           className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/5 transition-colors"
         >
           <div className="flex items-center gap-3">
-            {notificationsEnabled ? <Bell size={18} className="text-indigo-400" /> : <BellOff size={18} className="text-white/40" />}
+            {notificationsEnabled ? <Bell size={18} className="text-emerald-400" /> : <BellOff size={18} className="text-white/40" />}
             <span className="text-sm text-white/80">Push Notifications</span>
           </div>
-          <div className={`w-10 h-6 rounded-full flex items-center transition-colors ${notificationsEnabled ? 'bg-indigo-500 justify-end' : 'bg-white/15 justify-start'}`}>
+          <div className={`w-10 h-6 rounded-full flex items-center transition-colors ${notificationsEnabled ? 'bg-emerald-500 justify-end' : 'bg-white/15 justify-start'}`}>
             <div className="w-5 h-5 rounded-full bg-white mx-0.5 shadow" />
           </div>
         </button>

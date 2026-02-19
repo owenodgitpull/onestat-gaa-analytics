@@ -84,7 +84,7 @@ export default function PeakPerformanceChart({ data }: Props) {
               yAxisId="distance"
               dataKey="avg_distance"
               name="Avg Distance"
-              fill="#6366f1"
+              fill="#10b981"
               radius={[4, 4, 0, 0]}
               barSize={24}
             />

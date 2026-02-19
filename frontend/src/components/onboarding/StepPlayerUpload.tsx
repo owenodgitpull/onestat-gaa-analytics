@@ -141,7 +141,7 @@ export default function StepPlayerUpload({
           className={`
             flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
             ${activeTab === 'upload'
-              ? 'bg-indigo-500/20 border border-indigo-400/30 text-white'
+              ? 'bg-emerald-500/20 border border-emerald-400/30 text-white'
               : 'bg-white/5 border border-white/10 text-white/50 hover:text-white/70 hover:bg-white/8'
             }
           `}
@@ -154,7 +154,7 @@ export default function StepPlayerUpload({
           className={`
             flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
             ${activeTab === 'manual'
-              ? 'bg-indigo-500/20 border border-indigo-400/30 text-white'
+              ? 'bg-emerald-500/20 border border-emerald-400/30 text-white'
               : 'bg-white/5 border border-white/10 text-white/50 hover:text-white/70 hover:bg-white/8'
             }
           `}
@@ -176,21 +176,21 @@ export default function StepPlayerUpload({
               glass-card p-10 flex flex-col items-center gap-4 cursor-pointer
               transition-all duration-300 group
               ${dragOver
-                ? 'border-indigo-400/50 bg-indigo-500/10'
-                : 'hover:border-indigo-400/30'
+                ? 'border-emerald-400/50 bg-emerald-500/10'
+                : 'hover:border-emerald-400/30'
               }
             `}
           >
             <div
               className={`
                 w-14 h-14 rounded-full flex items-center justify-center transition-colors duration-300
-                ${dragOver ? 'bg-indigo-500/30' : 'bg-white/5 group-hover:bg-indigo-500/20'}
+                ${dragOver ? 'bg-emerald-500/30' : 'bg-white/5 group-hover:bg-emerald-500/20'}
               `}
             >
               {uploading ? (
-                <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Upload className="w-6 h-6 text-white/40 group-hover:text-indigo-300 transition-colors" />
+                <Upload className="w-6 h-6 text-white/40 group-hover:text-emerald-300 transition-colors" />
               )}
             </div>
             <div className="text-center">
@@ -314,7 +314,7 @@ export default function StepPlayerUpload({
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-medium text-white">{p.name}</span>
                     {p.position && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/20">
                         {p.position}
                       </span>
                     )}

@@ -71,7 +71,7 @@ export default function StepReview({ clubData, playerCount, logoFile, onConfirm,
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* County & Province */}
           <div className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
-            <Shield className="w-5 h-5 text-indigo-400 mt-0.5 flex-shrink-0" />
+            <Shield className="w-5 h-5 text-emerald-400 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-xs text-white/40 font-medium uppercase tracking-wider">County</p>
               <p className="text-sm text-white mt-0.5">
@@ -114,7 +114,7 @@ export default function StepReview({ clubData, playerCount, logoFile, onConfirm,
 
           {/* Player Count */}
           <div className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/5">
-            <Users className="w-5 h-5 text-violet-400 mt-0.5 flex-shrink-0" />
+            <Users className="w-5 h-5 text-cyan-400 mt-0.5 flex-shrink-0" />
             <div>
               <p className="text-xs text-white/40 font-medium uppercase tracking-wider">Players</p>
               <p className="text-sm text-white mt-0.5">

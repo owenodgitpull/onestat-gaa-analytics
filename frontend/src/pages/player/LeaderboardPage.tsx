@@ -9,8 +9,8 @@ const CATEGORIES = [
   { key: 'clinical_rating', icon: Target, label: 'Clinical', color: '#10b981' },
   { key: 'the_wall', icon: Shield, label: 'The Wall', color: '#ef4444' },
   { key: 'workhorse', icon: TrendingUp, label: 'Workhorse', color: '#3b82f6' },
-  { key: 'speed_demon', icon: Zap, label: 'Speed', color: '#a855f7' },
-  { key: 'sprint_king', icon: Footprints, label: 'Sprints', color: '#6366f1' },
+  { key: 'speed_demon', icon: Zap, label: 'Speed', color: '#06b6d4' },
+  { key: 'sprint_king', icon: Footprints, label: 'Sprints', color: '#10b981' },
   { key: 'iron_man', icon: Clock, label: 'Iron Man', color: '#14b8a6' },
   { key: 'motm_points', icon: Star, label: 'MOTM', color: '#eab308' },
 ];
@@ -129,18 +129,18 @@ export default function LeaderboardPage() {
                   key={entry.player_id}
                   className={`flex items-center gap-3 rounded-xl px-3.5 py-3 transition-all ${
                     isMe
-                      ? 'ring-1 ring-indigo-500/40 shadow-lg shadow-indigo-500/10'
+                      ? 'ring-1 ring-emerald-500/40 shadow-lg shadow-emerald-500/10'
                       : ''
                   }`}
                   style={{
                     background: isMe
-                      ? 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.08))'
+                      ? 'linear-gradient(135deg, rgba(0,230,118,0.15), rgba(0,176,255,0.08))'
                       : 'linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02))',
                     border: isMe ? undefined : '1px solid rgba(255,255,255,0.06)',
                   }}
                 >
                   {/* Rank */}
-                  <div className={`w-8 text-center font-bold ${entry.rank <= 3 ? 'text-amber-400' : isMe ? 'text-indigo-400' : 'text-white/40'}`}>
+                  <div className={`w-8 text-center font-bold ${entry.rank <= 3 ? 'text-amber-400' : isMe ? 'text-emerald-400' : 'text-white/40'}`}>
                     {entry.rank <= 3 ? (
                       <span className="text-lg">{['🥇', '🥈', '🥉'][entry.rank - 1]}</span>
                     ) : (
@@ -152,7 +152,7 @@ export default function LeaderboardPage() {
                   <div className="flex-1 min-w-0">
                     <div className={`text-sm font-medium truncate ${isMe ? 'text-white' : 'text-white/80'}`}>
                       {entry.player_name}
-                      {isMe && <span className="text-indigo-400 ml-1 text-xs">(You)</span>}
+                      {isMe && <span className="text-emerald-400 ml-1 text-xs">(You)</span>}
                     </div>
                     {entry.detail && (
                       <div className="text-[11px] text-white/40 truncate">{entry.detail}</div>
@@ -161,7 +161,7 @@ export default function LeaderboardPage() {
 
                   {/* Value */}
                   <div className="text-right">
-                    <div className={`text-sm font-bold ${isMe ? 'text-indigo-400' : 'text-white'}`}>
+                    <div className={`text-sm font-bold ${isMe ? 'text-emerald-400' : 'text-white'}`}>
                       {typeof entry.value === 'number' ? (
                         Number.isInteger(entry.value) ? entry.value : entry.value.toFixed(1)
                       ) : entry.value}

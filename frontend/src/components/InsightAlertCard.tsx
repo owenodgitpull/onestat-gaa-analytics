@@ -5,8 +5,8 @@ import type { InsightAlert } from '@/services/api'
 const CATEGORY_CONFIG: Record<InsightAlert['category'], { label: string; icon: typeof AlertTriangle; colorClass: string }> = {
   warning: { label: 'Warning', icon: AlertTriangle, colorClass: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
   positive: { label: 'Positive', icon: TrendingUp, colorClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
-  tactical: { label: 'Tactical', icon: Crosshair, colorClass: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' },
-  workload: { label: 'Workload', icon: Activity, colorClass: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
+  tactical: { label: 'Tactical', icon: Crosshair, colorClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+  workload: { label: 'Workload', icon: Activity, colorClass: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
 }
 
 const SEVERITY_DOT: Record<InsightAlert['severity'], string> = {

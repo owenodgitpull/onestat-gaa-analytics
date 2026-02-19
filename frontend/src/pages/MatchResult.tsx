@@ -384,7 +384,7 @@ export default function MatchResult() {
                     </button>
                     <button
                       onClick={() => setShowGpsUpload(true)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
                     >
                       <Upload size={16} />
                       Replace GPS Data
@@ -395,7 +395,7 @@ export default function MatchResult() {
             ) : (
               <button
                 onClick={() => setShowGpsUpload(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
               >
                 <Upload size={16} />
                 Upload GPS Data
@@ -428,7 +428,7 @@ export default function MatchResult() {
                 <p className="text-white/60 text-sm mb-4">
                   Upload a STATSports PDF or CSV export for this match. The AI analysis will be regenerated to include GPS insights.
                 </p>
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:border-indigo-500/50 transition-colors">
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-white/20 rounded-xl cursor-pointer hover:border-emerald-500/50 transition-colors">
                   <div className="flex flex-col items-center">
                     <Upload size={32} className="text-white/40 mb-2" />
                     <span className="text-sm text-white/60">Click to select file</span>
@@ -449,14 +449,14 @@ export default function MatchResult() {
 
             {uploadStatus === 'uploading' && (
               <div className="flex flex-col items-center py-8">
-                <Loader2 size={40} className="text-indigo-500 animate-spin mb-3" />
+                <Loader2 size={40} className="text-emerald-500 animate-spin mb-3" />
                 <span className="text-white">Uploading file...</span>
               </div>
             )}
 
             {uploadStatus === 'processing' && (
               <div className="flex flex-col items-center py-8">
-                <Loader2 size={40} className="text-indigo-500 animate-spin mb-3" />
+                <Loader2 size={40} className="text-emerald-500 animate-spin mb-3" />
                 <span className="text-white">Processing GPS data...</span>
                 <span className="text-white/60 text-sm mt-2">AI will regenerate analysis with GPS insights</span>
               </div>
@@ -507,7 +507,7 @@ export default function MatchResult() {
                   onClick={() => setTeamFilter('own')}
                   className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
                     teamFilter === 'own'
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-emerald-600 text-white'
                       : 'bg-white/10 text-white/60 hover:bg-white/20'
                   }`}
                 >
@@ -547,11 +547,11 @@ export default function MatchResult() {
                 <span className="text-white/60">Goals (Opponent)</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-indigo-500"></span>
+                <span className="w-4 h-4 rounded-full bg-emerald-500"></span>
                 <span className="text-white/60">Points</span>
               </div>
               <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-purple-500"></span>
+                <span className="w-4 h-4 rounded-full bg-cyan-500"></span>
                 <span className="text-white/60">2-Pointers</span>
               </div>
               <div className="flex items-center space-x-2">
@@ -649,7 +649,7 @@ export default function MatchResult() {
       {gpsData && gpsData.length > 0 && (
         <div className="mt-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
               <Zap size={20} className="text-white" />
             </div>
             <span>GPS Performance Data</span>
@@ -685,7 +685,7 @@ export default function MatchResult() {
       {postMatchReport?.analysis && (
         <div className="glass-card p-6 mt-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
               <Brain size={20} className="text-white" />
             </div>
             <span>Match Summary</span>
@@ -753,7 +753,7 @@ function StatsTable({ stats, opponent }: { stats: MatchStats; opponent: string }
           <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
             {row.team}
           </div>
-          <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-xs font-semibold text-white border-r border-white/10 flex items-center justify-center">
+          <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-xs font-semibold text-white border-r border-white/10 flex items-center justify-center">
             {row.label}
           </div>
           <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -936,7 +936,7 @@ function EventItem({ event, players, opponentName }: { event: any; players: any[
   return (
     <div className={`p-3 rounded-lg border-l-4 ${getEventStyle(event.event_type)}`}>
       <div className="flex items-start justify-between">
-        <div className="flex-shrink-0 w-10 h-10 rounded-md bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center font-bold text-white text-sm shadow-md mr-3">
+        <div className="flex-shrink-0 w-10 h-10 rounded-md bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center font-bold text-white text-sm shadow-md mr-3">
           {event.minute}'
         </div>
         <p className="flex-1 text-white/90 text-sm leading-relaxed">
@@ -951,9 +951,9 @@ function EventItem({ event, players, opponentName }: { event: any; players: any[
 function AIInsightCard({ insight }: { insight?: string }) {
   if (!insight) return null
   return (
-    <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-indigo-600/10 to-purple-600/10 border border-indigo-500/20">
+    <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-emerald-600/10 to-cyan-600/10 border border-emerald-500/20">
       <div className="flex items-start gap-2">
-        <Brain size={14} className="text-indigo-400 mt-0.5 flex-shrink-0" />
+        <Brain size={14} className="text-emerald-400 mt-0.5 flex-shrink-0" />
         <p className="text-xs text-white/70 leading-relaxed">{insight}</p>
       </div>
     </div>
@@ -982,7 +982,7 @@ function GPSInsightsPanel({ insights, isLoading }: { insights: any; isLoading: b
     return (
       <div className="glass-card p-4 mb-4 animate-pulse">
         <div className="flex items-center gap-2">
-          <Brain size={20} className="text-indigo-400" />
+          <Brain size={20} className="text-emerald-400" />
           <span className="text-white/60">Analyzing GPS data...</span>
         </div>
       </div>
@@ -1008,7 +1008,7 @@ function GPSInsightsPanel({ insights, isLoading }: { insights: any; isLoading: b
       {/* Header with overall intensity */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Brain size={20} className="text-indigo-400" />
+          <Brain size={20} className="text-emerald-400" />
           <span className="text-lg font-bold text-white">AI Performance Insights</span>
         </div>
         <span className={`px-3 py-1 rounded-full text-sm font-bold ${
@@ -1097,9 +1097,9 @@ function GPSInsightsPanel({ insights, isLoading }: { insights: any; isLoading: b
           </h4>
           <div className="space-y-2">
             {insights.patterns?.map((pattern: any, idx: number) => (
-              <div key={idx} className="p-2 rounded-lg bg-indigo-500/10 border border-indigo-500/30">
+              <div key={idx} className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
                 <div className="text-xs text-white/80">{pattern.insight}</div>
-                <div className="text-xs text-indigo-400 mt-1">→ {pattern.recommendation}</div>
+                <div className="text-xs text-emerald-400 mt-1">→ {pattern.recommendation}</div>
               </div>
             ))}
             {insights.top_performers?.length > 0 && (
@@ -1177,7 +1177,7 @@ function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[
     if (diff < -15) return { direction: 'down', message: 'Work rate dropped significantly in 2nd half', color: '#ef4444' }
     if (diff < -5) return { direction: 'slight-down', message: 'Slight drop in 2nd half intensity', color: '#f59e0b' }
     if (diff > 5) return { direction: 'up', message: 'Team maintained/increased intensity', color: '#10b981' }
-    return { direction: 'stable', message: 'Consistent work rate throughout', color: '#6366f1' }
+    return { direction: 'stable', message: 'Consistent work rate throughout', color: '#10b981' }
   }, [chartData])
 
   return (
@@ -1222,7 +1222,7 @@ function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[
                 return (
                   <Cell
                     key={`cell-${index}`}
-                    fill={isLowVolume ? '#f59e0b' : isFirstHalf ? '#06b6d4' : '#8b5cf6'}
+                    fill={isLowVolume ? '#f59e0b' : isFirstHalf ? '#06b6d4' : '#06b6d4'}
                   />
                 )
               })}
@@ -1238,7 +1238,7 @@ function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[
           <span className="text-white/60">1st Half</span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded bg-purple-500"></span>
+          <span className="w-3 h-3 rounded bg-cyan-500"></span>
           <span className="text-white/60">2nd Half</span>
         </div>
         <div className="flex items-center gap-1">
@@ -1421,7 +1421,7 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
   return (
     <div className="glass-card p-4">
       <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-        <TrendingUp size={20} className="text-indigo-400" />
+        <TrendingUp size={20} className="text-emerald-400" />
         Distance Covered
       </h3>
 
@@ -1444,11 +1444,11 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
               ]}
               labelFormatter={(label) => chartData.find(d => d.name === label)?.fullName || label}
             />
-            <Bar dataKey="distance" fill="#6366f1" radius={[0, 4, 4, 0]} name="Total Distance">
+            <Bar dataKey="distance" fill="#10b981" radius={[0, 4, 4, 0]} name="Total Distance">
               {chartData.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
-                  fill={index === 0 ? '#10b981' : index < 3 ? '#6366f1' : '#4f46e5'}
+                  fill={index === 0 ? '#10b981' : index < 3 ? '#10b981' : '#059669'}
                 />
               ))}
             </Bar>
@@ -1507,8 +1507,8 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
           <div className="text-xl font-bold text-cyan-400">{teamTotals.totalHSR.toFixed(1)}km</div>
           <div className="text-xs text-white/60">High Speed</div>
         </div>
-        <div className="bg-gradient-to-br from-purple-600/20 to-pink-600/20 rounded-lg p-2 text-center border border-purple-500/30">
-          <div className="text-xl font-bold text-purple-400">{teamTotals.avgMaxSpeed.toFixed(1)}</div>
+        <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-lg p-2 text-center border border-cyan-500/30">
+          <div className="text-xl font-bold text-cyan-400">{teamTotals.avgMaxSpeed.toFixed(1)}</div>
           <div className="text-xs text-white/60">Avg Max km/h</div>
         </div>
       </div>
@@ -1529,7 +1529,7 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
                     width: `${Math.max(percentage, 15)}%`,
                     background: idx === 0
                       ? 'linear-gradient(90deg, #f97316, #ef4444)'
-                      : 'linear-gradient(90deg, #6366f1, #8b5cf6)'
+                      : 'linear-gradient(90deg, #10b981, #06b6d4)'
                   }}
                 >
                   {player.sprints}

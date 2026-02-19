@@ -253,7 +253,7 @@ The code must output a JSON object with this structure:
     "config": {{
         "xKey": "field for x-axis",
         "yKeys": ["field1", "field2"],  // Fields to plot
-        "colors": ["#6366f1", "#10b981"],  // ONLY use: #6366f1 (indigo), #10b981 (emerald), #f59e0b (amber), #8b5cf6 (violet), #06b6d4 (cyan). Never red.
+        "colors": ["#10b981", "#06b6d4"],  // ONLY use: #10b981 (emerald), #06b6d4 (cyan), #f59e0b (amber), #F97316 (orange), #14b8a6 (teal). Never red.
         "legend": true,
         "stacked": false  // For bar charts
     }},
@@ -289,7 +289,7 @@ The final point should be the goal event's coordinates.
 ## Code Rules
 1. Use the provided `data` dictionary which contains pre-fetched data
 2. Return a valid JSON object matching the schema above
-3. Use ONLY these hex colors: #6366f1 (indigo), #10b981 (emerald), #f59e0b (amber), #8b5cf6 (violet), #06b6d4 (cyan). Never use red.
+3. Use ONLY these hex colors: #10b981 (emerald), #06b6d4 (cyan), #f59e0b (amber), #F97316 (orange), #14b8a6 (teal). Never use red.
 4. Generate an insight based on patterns in the data
 5. Keep data arrays under 50 items for performance
 
@@ -683,7 +683,7 @@ Return a JSON object with this exact structure:
                 // Recharts-specific config
                 "xKey": "name",  // Key for X axis
                 "dataKeys": ["value1", "value2"],  // Keys to plot
-                "colors": ["#6366f1", "#10b981"],  // ONLY use: #6366f1 (indigo), #10b981 (emerald), #f59e0b (amber), #8b5cf6 (violet), #06b6d4 (cyan). Never red.
+                "colors": ["#10b981", "#06b6d4"],  // ONLY use: #10b981 (emerald), #06b6d4 (cyan), #f59e0b (amber), #F97316 (orange), #14b8a6 (teal). Never red.
                 "stacked": false,  // For bar charts
                 "showLegend": true
             }}
@@ -802,7 +802,7 @@ Return a JSON object:
             "config": {{
                 "xKey": "...",
                 "dataKeys": ["..."],
-                "colors": ["#6366f1"],  // ONLY use: #6366f1, #10b981, #f59e0b, #8b5cf6, #06b6d4. Never red.
+                "colors": ["#10b981"],  // ONLY use: #10b981, #06b6d4, #f59e0b, #F97316, #14b8a6. Never red.
                 "showLegend": true/false,
                 "stacked": false
             }}

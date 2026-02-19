@@ -32,6 +32,7 @@ from app.models.chat_session import ChatSession, ChatSessionMessage
 from app.models.user import User
 from app.models.push_subscription import PushSubscription
 from app.models.notification import Notification, NotificationType
+from app.models.player_challenge import PlayerChallenge
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -80,5 +81,6 @@ __all__ = [
     "PushSubscription",
     "Notification",
     "NotificationType",
+    "PlayerChallenge",
 ]
 

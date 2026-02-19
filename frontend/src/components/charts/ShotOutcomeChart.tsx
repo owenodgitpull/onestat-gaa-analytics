@@ -32,7 +32,7 @@ export default function ShotOutcomeChart({ events, opponent, insight }: ShotOutc
     })
 
     const colors = {
-      Goals: '#10b981', Points: '#6366f1', Wides: '#f59e0b', Shorts: '#ef4444', Saved: '#8b5cf6'
+      Goals: '#10b981', Points: '#06b6d4', Wides: '#f59e0b', Shorts: '#ef4444', Saved: '#14b8a6'
     }
 
     return Object.entries(outcomes)
@@ -53,7 +53,7 @@ export default function ShotOutcomeChart({ events, opponent, insight }: ShotOutc
         <button
           onClick={() => setSelectedTeam('own')}
           className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-            selectedTeam === 'own' ? 'bg-indigo-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+            selectedTeam === 'own' ? 'bg-orange-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
           }`}
         >
           Us
@@ -101,7 +101,7 @@ export default function ShotOutcomeChart({ events, opponent, insight }: ShotOutc
       )}
 
       {insight && (
-        <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-indigo-600/10 to-purple-600/10 border border-indigo-500/20">
+        <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-orange-600/15 to-amber-600/15 border border-orange-500/30">
           <p className="text-xs text-white/70 leading-relaxed">{insight}</p>
         </div>
       )}

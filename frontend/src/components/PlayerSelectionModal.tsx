@@ -26,9 +26,9 @@ type EventLabelEntry = { title: string; icon: typeof User | typeof Trophy; color
 const EVENT_LABELS: Record<string, EventLabelEntry> = {
   goal: { title: 'Who Scored?', icon: Trophy, color: 'text-emerald-400' },
   point: { title: 'Who Scored?', icon: Trophy, color: 'text-blue-400' },
-  assist: { title: 'Who Assisted?', icon: User, color: 'text-purple-400' },
+  assist: { title: 'Who Assisted?', icon: User, color: 'text-cyan-400' },
   turnover: { title: 'Who Won?', icon: User, color: 'text-amber-400' },
-  kickout: { title: 'Who Won?', icon: User, color: 'text-indigo-400' },
+  kickout: { title: 'Who Won?', icon: User, color: 'text-emerald-400' },
   wide: { title: 'Who Took?', icon: User, color: 'text-red-400' },
   saved: { title: 'Who Shot (Saved)?', icon: User, color: 'text-blue-400' },
   // Turnovers
@@ -170,14 +170,14 @@ export default function PlayerSelectionModal({
                   p-4 rounded-xl border-2 transition-all duration-200 text-left
                   ${
                     selectedPlayerId === player.id
-                      ? 'border-indigo-500 bg-indigo-500/20 scale-95'
+                      ? 'border-emerald-500 bg-emerald-500/20 scale-95'
                       : 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/40 hover:scale-105'
                   }
                 `}
               >
                 <div className="flex items-center space-x-3">
                   {/* Jersey Number */}
-                  <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+                  <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
                     <span className="text-xl font-bold">{player.jersey_number || '?'}</span>
                   </div>
                   {/* Player Info */}

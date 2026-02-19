@@ -36,10 +36,10 @@ const getEventColor = (event: PitchEvent): string => {
       return isOwn ? '#10b981' : '#f97316'  // emerald vs orange
     case 'point':
     case 'point_free':
-      return isOwn ? '#6366f1' : '#fb7185'  // indigo vs rose
+      return isOwn ? '#10b981' : '#fb7185'  // emerald vs rose
     case 'two_point':
     case 'two_point_free':
-      return isOwn ? '#8b5cf6' : '#fb7185'  // purple vs rose
+      return isOwn ? '#06b6d4' : '#fb7185'  // cyan vs rose
     case 'wide':
     case 'wide_free':
       return '#fbbf24'  // amber
@@ -215,7 +215,7 @@ export default function GAAPitch({
               fill="none"
               stroke={
                 localBallPosition.team === PossessionTeam.OWN
-                  ? '#4f46e5'
+                  ? '#059669'
                   : '#ef4444'
               }
               strokeWidth="4"

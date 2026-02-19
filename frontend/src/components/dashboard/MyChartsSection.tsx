@@ -92,7 +92,7 @@ export default function MyChartsSection({
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center">
             <LayoutGrid size={20} className="text-white" />
           </div>
           <span className="text-white">Core Stats</span>

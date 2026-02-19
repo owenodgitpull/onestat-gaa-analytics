@@ -92,10 +92,10 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
       {/* Modal */}
       <div className="relative w-full max-w-md bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-indigo-600/20 to-purple-600/20">
+          <div className="flex items-center justify-between p-6 border-b border-white/10 bg-gradient-to-r from-emerald-600/20 to-cyan-600/20">
           <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-lg bg-indigo-600/30">
-              <Circle size={24} className="text-indigo-300" fill="currentColor" />
+            <div className="p-2 rounded-lg bg-emerald-600/30">
+              <Circle size={24} className="text-emerald-300" fill="currentColor" />
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">New Match</h2>
@@ -125,7 +125,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
               placeholder="Enter opponent name (e.g., Glenties)"
               className={`w-full px-4 py-3 rounded-lg bg-white/5 border ${
                 errors.opponent ? 'border-red-500/50' : 'border-white/10'
-              } text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all`}
+              } text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-transparent transition-all`}
               autoFocus
             />
             {errors.opponent && (
@@ -146,7 +146,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
                 onChange={(e) => setMatchDate(e.target.value)}
                 className={`w-full px-4 py-3 pl-11 rounded-lg bg-white/5 border ${
                   errors.matchDate ? 'border-red-500/50' : 'border-white/10'
-                } text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all
+                } text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-transparent transition-all
                 [color-scheme:dark]
                 `}
               />
@@ -168,11 +168,11 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
                 onClick={() => setVenue('home')}
                 className={`p-4 rounded-xl border-2 transition-all ${
                   venue === 'home'
-                    ? 'border-indigo-500 bg-indigo-500/20 scale-105'
+                    ? 'border-emerald-500 bg-emerald-500/20 scale-105'
                     : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
                 }`}
               >
-                <Home size={24} className={`mx-auto mb-2 ${venue === 'home' ? 'text-indigo-400' : 'text-white/60'}`} />
+                <Home size={24} className={`mx-auto mb-2 ${venue === 'home' ? 'text-emerald-400' : 'text-white/60'}`} />
                 <div className="text-sm font-medium text-white">Home</div>
               </button>
 
@@ -181,11 +181,11 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
                 onClick={() => setVenue('away')}
                 className={`p-4 rounded-xl border-2 transition-all ${
                   venue === 'away'
-                    ? 'border-indigo-500 bg-indigo-500/20 scale-105'
+                    ? 'border-emerald-500 bg-emerald-500/20 scale-105'
                     : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
                 }`}
               >
-                <Bus size={24} className={`mx-auto mb-2 ${venue === 'away' ? 'text-indigo-400' : 'text-white/60'}`} />
+                <Bus size={24} className={`mx-auto mb-2 ${venue === 'away' ? 'text-emerald-400' : 'text-white/60'}`} />
                 <div className="text-sm font-medium text-white">Away</div>
               </button>
 
@@ -194,11 +194,11 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
                 onClick={() => setVenue('neutral')}
                 className={`p-4 rounded-xl border-2 transition-all ${
                   venue === 'neutral'
-                    ? 'border-indigo-500 bg-indigo-500/20 scale-105'
+                    ? 'border-emerald-500 bg-emerald-500/20 scale-105'
                     : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
                 }`}
               >
-                <Globe size={24} className={`mx-auto mb-2 ${venue === 'neutral' ? 'text-indigo-400' : 'text-white/60'}`} />
+                <Globe size={24} className={`mx-auto mb-2 ${venue === 'neutral' ? 'text-emerald-400' : 'text-white/60'}`} />
                 <div className="text-sm font-medium text-white">Neutral</div>
               </button>
             </div>
@@ -217,11 +217,11 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
                   onClick={() => setWeatherCondition(weatherCondition === value ? null : value)}
                   className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
                     weatherCondition === value
-                      ? 'border-indigo-500 bg-indigo-500/20 scale-105'
+                      ? 'border-emerald-500 bg-emerald-500/20 scale-105'
                       : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
                   }`}
                 >
-                  <Icon size={20} className={weatherCondition === value ? 'text-indigo-400' : 'text-white/60'} />
+                  <Icon size={20} className={weatherCondition === value ? 'text-emerald-400' : 'text-white/60'} />
                   <div className="text-[10px] font-medium text-white leading-tight">{label}</div>
                 </button>
               ))}
@@ -241,7 +241,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
                 value={temperature}
                 onChange={(e) => setTemperature(e.target.value)}
                 placeholder="e.g. 12"
-                className="w-full px-4 py-2.5 pl-9 pr-10 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-transparent transition-all text-sm"
+                className="w-full px-4 py-2.5 pl-9 pr-10 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-transparent transition-all text-sm"
                 min="-20"
                 max="45"
                 step="1"
@@ -261,7 +261,8 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
             </button>
             <button
               type="submit"
-              className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30"
+              className="flex-1 px-6 py-3 rounded-xl text-[#0a1a10] font-semibold transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 hover:brightness-110"
+              style={{ background: 'var(--gradient-primary)' }}
             >
               Create Match
             </button>

@@ -43,7 +43,7 @@ export default function OnboardingProgress({ currentStep, onStepClick }: Onboard
                     ${isCompleted
                       ? 'bg-emerald-500/30 border-emerald-400/50 text-emerald-300'
                       : isActive
-                        ? 'bg-indigo-500/30 border-indigo-400/50 text-white ring-2 ring-indigo-400/30 ring-offset-2 ring-offset-transparent'
+                        ? 'bg-emerald-500/30 border-emerald-400/50 text-white ring-2 ring-emerald-400/30 ring-offset-2 ring-offset-transparent'
                         : 'bg-white/5 border-white/10 text-white/40'
                     }
                     ${isClickable && !isActive ? 'hover:ring-2 hover:ring-emerald-400/20' : ''}

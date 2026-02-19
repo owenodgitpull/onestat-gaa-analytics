@@ -1681,7 +1681,7 @@ export default function MatchRecording() {
       return { text: 'Match not started', subtext: 'Select lineup and start first half', bg: 'from-slate-600/20 to-slate-700/20 border-white/10', accent: 'text-white/50' }
     }
     if (matchPhase === 'half_time') {
-      return { text: 'Half Time', subtext: 'Tap "Start Second Half" to continue', bg: 'from-indigo-600/20 to-violet-600/20 border-indigo-500/40', accent: 'text-indigo-400' }
+      return { text: 'Half Time', subtext: 'Tap "Start Second Half" to continue', bg: 'from-emerald-600/20 to-cyan-600/20 border-emerald-500/40', accent: 'text-emerald-400' }
     }
     if (matchPhase === 'finished') {
       return { text: 'Match Finished', subtext: 'Recording complete', bg: 'from-slate-600/20 to-slate-700/20 border-white/10', accent: 'text-white/50' }
@@ -1736,9 +1736,9 @@ export default function MatchRecording() {
     }
 
     const bg = isOwn
-      ? 'from-indigo-600/20 to-blue-600/20 border-indigo-500/40'
+      ? 'from-emerald-600/20 to-blue-600/20 border-emerald-500/40'
       : 'from-red-600/20 to-rose-600/20 border-red-500/40'
-    const accent = isOwn ? 'text-indigo-400' : 'text-red-400'
+    const accent = isOwn ? 'text-emerald-400' : 'text-red-400'
 
     return { text, subtext: '', bg, accent }
   }
@@ -1782,8 +1782,8 @@ export default function MatchRecording() {
                 </div>
                 {matchPhase !== 'not_started' && (
                   <div className="flex items-center gap-2">
-                    <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500/20 to-violet-500/20 border border-indigo-500/30 animate-pulse">
-                      <Clock size={20} className="text-indigo-400" />
+                    <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30 animate-pulse">
+                      <Clock size={20} className="text-emerald-400" />
                       <span className="font-mono text-2xl font-bold text-white">{formatTime()}</span>
                     </div>
                     {IS_DEV_SPEED && (
@@ -1817,7 +1817,7 @@ export default function MatchRecording() {
                 <div className="flex items-center space-x-2">
                   <div className="text-right">
                     <div className="text-xs text-white/60">Possession</div>
-                    <div className="text-sm font-bold text-indigo-400">{stats.possession.team}%</div>
+                    <div className="text-sm font-bold text-emerald-400">{stats.possession.team}%</div>
                   </div>
                   <div className="text-right">
                     <div className="text-xs text-white/60">Accuracy</div>
@@ -1929,7 +1929,7 @@ export default function MatchRecording() {
                   <div className="glass-card-live-inner px-4 py-3" style={{ borderRadius: 'calc(0.75rem - 2px)' }}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-indigo-400">{statusLabel.text}</span>
+                        <span className="text-sm font-bold text-emerald-400">{statusLabel.text}</span>
                         {statusLabel.subtext && <span className="text-xs text-white/50">{statusLabel.subtext}</span>}
                       </div>
                     </div>
@@ -1950,16 +1950,16 @@ export default function MatchRecording() {
                         }}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all active:scale-95 ${
                           ballPosition.team === PossessionTeam.OWN
-                            ? 'bg-indigo-500/20 border-indigo-500/40 hover:bg-indigo-500/30'
+                            ? 'bg-emerald-500/20 border-emerald-500/40 hover:bg-emerald-500/30'
                             : 'bg-red-500/20 border-red-500/40 hover:bg-red-500/30'
                         }`}
                         title="Tap to swap possession"
                       >
                         <ArrowLeftRight size={14} className="text-white/70" />
-                        <span className={`text-xs font-bold ${ballPosition.team === PossessionTeam.OWN ? 'text-indigo-300' : 'text-red-300'}`}>
+                        <span className={`text-xs font-bold ${ballPosition.team === PossessionTeam.OWN ? 'text-emerald-300' : 'text-red-300'}`}>
                           {ballPosition.team === PossessionTeam.OWN ? 'Us' : matchDisplay.opponent}
                         </span>
-                        <div className={`w-2 h-2 rounded-full ${ballPosition.team === PossessionTeam.OWN ? 'bg-indigo-400' : 'bg-red-400'} animate-pulse`} />
+                        <div className={`w-2 h-2 rounded-full ${ballPosition.team === PossessionTeam.OWN ? 'bg-emerald-400' : 'bg-red-400'} animate-pulse`} />
                       </button>
                     )}
                   </div>
@@ -2044,7 +2044,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {stats.possession.team}%
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       POSSESSION
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2057,7 +2057,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {stats.shots.team}
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       SHOTS
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2070,7 +2070,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {stats.scores.team}
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       SCORES
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2083,7 +2083,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {stats.wides.team}
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       WIDES
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2096,7 +2096,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {stats.accuracy}%
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       ACCURACY
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2109,7 +2109,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {stats.conversionRate}%
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       CONVERSION
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2122,7 +2122,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {stats.turnovers.won}
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       TURNOVERS WON
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2135,7 +2135,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {stats.kickouts.teamWon}/{stats.kickouts.teamTotal}
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       OWN KICKOUTS WON
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2148,7 +2148,7 @@ export default function MatchRecording() {
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
                       {teamKickoutRetention}%
                     </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
+                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
                       KICKOUT RETENTION
                     </div>
                     <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
@@ -2188,7 +2188,7 @@ export default function MatchRecording() {
                             key={event.id}
                             className={`flex items-start space-x-3 p-3 rounded-lg border ${eventColor} backdrop-blur-sm transition-all hover:scale-[1.02] hover:shadow-lg`}
                           >
-                            <div className="flex-shrink-0 w-10 h-10 rounded-md bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center font-bold text-white text-xs shadow-md">
+                            <div className="flex-shrink-0 w-10 h-10 rounded-md bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center font-bold text-white text-xs shadow-md">
                               {event.half === 1 && event.minute > 30
                                 ? `30+${event.minute - 30}'`
                                 : event.half === 2 && event.minute > 60
@@ -2246,7 +2246,7 @@ export default function MatchRecording() {
                           onClick={() => setEventMapTeamFilter('own')}
                           className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
                             eventMapTeamFilter === 'own'
-                              ? 'bg-indigo-600 text-white'
+                              ? 'bg-emerald-600 text-white'
                               : 'bg-white/10 text-white/60 hover:bg-white/20'
                           }`}
                         >

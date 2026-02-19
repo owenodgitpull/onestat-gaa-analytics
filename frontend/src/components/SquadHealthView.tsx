@@ -168,10 +168,10 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
 
       {/* AI Summary */}
       {aiSummary && (
-        <div className="glass-card p-4 border border-indigo-500/20">
+        <div className="glass-card p-4 border border-emerald-500/20">
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
-              <Bot size={16} className="text-indigo-400" />
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+              <Bot size={16} className="text-emerald-400" />
             </div>
             <div className="text-sm leading-relaxed">{renderAnalysisText(aiSummary)}</div>
           </div>
@@ -229,7 +229,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
                       <div className="text-sm text-white/60">{alert.player_name}</div>
                       <div className="text-sm text-white/40 mt-1">{alert.message}</div>
                       {alert.recommendation && (
-                        <div className="text-sm text-indigo-300 mt-2 flex items-start gap-1">
+                        <div className="text-sm text-emerald-300 mt-2 flex items-start gap-1">
                           <CheckCircle size={14} className="mt-0.5 flex-shrink-0" />
                           <span>{alert.recommendation}</span>
                         </div>
@@ -249,7 +249,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
           {allAlerts.length > 1 && (
             <button
               onClick={() => setShowAllAlerts(!showAllAlerts)}
-              className="mt-3 text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+              className="mt-3 text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
             >
               {showAllAlerts ? 'Show less' : `View ${allAlerts.length - 1} more alert${allAlerts.length - 1 > 1 ? 's' : ''}`}
             </button>
@@ -260,7 +260,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
       {/* Player Workload Grid */}
       <div className="glass-card p-6">
         <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-white">
-          <Activity size={20} className="text-indigo-400" />
+          <Activity size={20} className="text-emerald-400" />
           Player Workload Status
         </h3>
 
@@ -270,7 +270,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
               <Link
                 key={player.player_id}
                 to={`/players/${player.player_id}`}
-                className={`p-4 rounded-xl border hover:border-indigo-500/30 transition-colors cursor-pointer block ${getStatusBg(player.status)}`}
+                className={`p-4 rounded-xl border hover:border-emerald-500/30 transition-colors cursor-pointer block ${getStatusBg(player.status)}`}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">

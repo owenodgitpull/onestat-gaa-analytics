@@ -41,10 +41,10 @@ interface ActionButton {
 }
 
 const categoryConfig: Record<CategoryId, { label: string; icon: typeof Target; color: string }> = {
-  scoring: { label: 'Shooting', icon: Target, color: '#6366f1' },
+  scoring: { label: 'Shooting', icon: Target, color: '#10b981' },
   turnovers: { label: 'Turnovers', icon: Zap, color: '#f59e0b' },
   our_kickouts: { label: 'Our K/O', icon: CheckCircle, color: '#10b981' },
-  opp_kickouts: { label: 'Opp K/O', icon: AlertCircle, color: '#8b5cf6' },
+  opp_kickouts: { label: 'Opp K/O', icon: AlertCircle, color: '#06b6d4' },
   foul: { label: 'Foul', icon: Hand, color: '#06b6d4' },
 }
 
@@ -230,7 +230,7 @@ export default function RadialActionWheel({
             }}
             className={`absolute rounded-full flex items-center justify-center transition-all duration-200 ${
               isActive
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 scale-110'
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 scale-110'
                 : 'bg-slate-800/90 text-white/70 hover:text-white hover:bg-slate-700/90'
             } border border-white/20`}
             style={{
@@ -269,8 +269,8 @@ export default function RadialActionWheel({
                 }}
                 className={`absolute rounded-xl flex flex-col items-center justify-center transition-all duration-200 border border-white/20 ${
                   foul.team === 'own'
-                    ? 'bg-indigo-600/80 hover:bg-indigo-500/80 text-white'
-                    : 'bg-violet-600/80 hover:bg-violet-500/80 text-white'
+                    ? 'bg-emerald-600/80 hover:bg-emerald-500/80 text-white'
+                    : 'bg-cyan-600/80 hover:bg-cyan-500/80 text-white'
                 }`}
                 style={{
                   width: 56,
@@ -316,7 +316,7 @@ export default function RadialActionWheel({
               className={`absolute rounded-xl flex flex-col items-center justify-center transition-all duration-200 border border-white/20 ${
                 btnDisabled
                   ? 'bg-slate-800/40 text-white/30 cursor-not-allowed'
-                  : 'bg-slate-800/90 text-white hover:bg-indigo-600/80 hover:scale-110 hover:shadow-lg active:scale-95'
+                  : 'bg-slate-800/90 text-white hover:bg-emerald-600/80 hover:scale-110 hover:shadow-lg active:scale-95'
               }`}
               style={{
                 width: 50,

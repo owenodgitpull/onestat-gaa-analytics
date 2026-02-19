@@ -41,18 +41,30 @@ interface DynamicChartProps {
 
 // Default colors for charts — 5-color palette, no red
 const DEFAULT_COLORS = [
-  '#6366f1', // indigo (primary brand)
-  '#10b981', // emerald (positive/success)
+  '#10b981', // emerald (primary brand)
+  '#06b6d4', // cyan (secondary brand)
   '#f59e0b', // amber (accent gold)
-  '#8b5cf6', // violet (glass depth)
-  '#06b6d4', // cyan (cool secondary)
+  '#14b8a6', // teal (depth)
+  '#22d3ee', // cyan-light (cool secondary)
 ]
+
+// Remap old brand colours from cached AI charts to new palette
+const LEGACY_COLOR_MAP: Record<string, string> = {
+  '#6366f1': '#10b981', // indigo → emerald
+  '#8b5cf6': '#06b6d4', // violet → cyan
+  '#4f46e5': '#059669', // indigo-dark → emerald-dark
+  '#818cf8': '#34d399', // indigo-light → emerald-light
+  '#a78bfa': '#22d3ee', // violet-light → cyan-light
+  '#a855f7': '#06b6d4', // purple → cyan
+}
+const remapColors = (colors: string[]) =>
+  colors.map(c => LEGACY_COLOR_MAP[c.toLowerCase()] || c)
 
 export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinned, canPin, isLoading }: DynamicChartProps) {
   const [isHovered, setIsHovered] = useState(false)
 
   const { type, title, insight, data, config } = chart
-  const colors = config.colors || DEFAULT_COLORS
+  const colors = remapColors(config.colors || DEFAULT_COLORS)
   const dataKeys = config.dataKeys || ['value']
   const xKey = config.xKey || 'name'
 
@@ -281,10 +293,10 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
 
         const OUTCOME_COLORS: Record<string, string> = {
           goal: '#10b981',
-          point: '#6366f1',
-          point_free: '#818cf8',
-          two_point: '#8b5cf6',
-          two_point_free: '#a78bfa',
+          point: '#10b981',
+          point_free: '#34d399',
+          two_point: '#06b6d4',
+          two_point_free: '#22d3ee',
           wide: '#f59e0b',
           wide_free: '#fbbf24',
           forty_five: '#06b6d4',
@@ -320,7 +332,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                 if (points.length === 0) return null
 
                 const svgPoints = points.map((p: { x: number; y: number }) => toSvg(p.x, p.y))
-                const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#6366f1'
+                const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#10b981'
                 const num = idx + 1
 
                 if (svgPoints.length === 1) {
@@ -361,7 +373,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
             {data.length > 0 && (
               <div className="mt-3 space-y-2">
                 {data.map((item: any, idx: number) => {
-                  const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#6366f1'
+                  const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#10b981'
                   const outcomeLabel = OUTCOME_LABELS[item.outcome] || item.outcome?.replace(/_/g, ' ')
                   const touches = item.points?.length || 0
                   return (
@@ -444,7 +456,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
               onClick={() => onUnpin(chart.id)}
               className={`p-1.5 rounded-lg transition-all duration-200 ${
                 isHovered
-                  ? 'opacity-100 bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'
+                  ? 'opacity-100 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
                   : 'opacity-0'
               }`}
               title="Unpin chart"
@@ -458,7 +470,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
               className={`p-1.5 rounded-lg transition-all duration-200 ${
                 isHovered
                   ? canPin
-                    ? 'opacity-100 bg-white/10 hover:bg-indigo-500/30 text-white/70 hover:text-indigo-400'
+                    ? 'opacity-100 bg-white/10 hover:bg-emerald-500/30 text-white/70 hover:text-emerald-400'
                     : 'opacity-100 bg-white/5 text-white/30 cursor-not-allowed'
                   : 'opacity-0'
               }`}

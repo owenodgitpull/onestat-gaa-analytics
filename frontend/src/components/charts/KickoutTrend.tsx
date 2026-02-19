@@ -205,8 +205,8 @@ export default function KickoutTrend({ data }: KickoutTrendProps) {
 
       {/* Data-derived insight */}
       {kickoutInsight && (
-        <div className="mt-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-3 py-2">
-          <p className="text-xs text-indigo-200/90 leading-relaxed">
+        <div className="mt-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-3 py-2">
+          <p className="text-xs text-emerald-200/90 leading-relaxed">
             {kickoutInsight.line1}
             {' '}
             {kickoutInsight.line2}

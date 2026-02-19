@@ -61,14 +61,14 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
                 color: '#fff'
               }}
             />
-            <Bar dataKey="Us" fill="#6366f1" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="Us" fill="#10b981" radius={[4, 4, 0, 0]} />
             <Bar dataKey={opponent} fill="#f97316" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
       <div className="flex justify-center gap-6 mt-2 text-xs">
         <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded bg-indigo-500"></span>
+          <span className="w-3 h-3 rounded bg-emerald-500"></span>
           <span className="text-white/60">Us</span>
         </div>
         <div className="flex items-center gap-2">
@@ -78,7 +78,7 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
       </div>
 
       {insight && (
-        <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-indigo-600/10 to-purple-600/10 border border-indigo-500/20">
+        <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-orange-600/15 to-amber-600/15 border border-orange-500/30">
           <p className="text-xs text-white/70 leading-relaxed">{insight}</p>
         </div>
       )}

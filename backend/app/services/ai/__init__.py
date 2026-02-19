@@ -12,6 +12,9 @@ from app.services.ai.post_match_agent import (
 from app.services.ai.live_match_agent import live_match_insight, generate_kpi_insights
 from app.services.ai.chat_agent import chat_with_analyst, chat_with_analyst_stream
 from app.services.ai.training_agent import analyze_training_session
+from app.services.ai.player_insights_agent import generate_player_insights
+from app.services.ai.challenge_agent import generate_player_challenges
+from app.services.ai.season_story_agent import generate_season_story
 from app.services.ai._shared import generate_insight_alerts, STATIC_CHARTS
 from app.services.ai.chart_engine import (
     get_dynamic_chart_recommendations,
@@ -40,5 +43,8 @@ __all__ = [
     "generate_single_chart",
     "generate_outlier_suggestions",
     "generate_insight_alerts",
+    "generate_player_insights",
+    "generate_player_challenges",
+    "generate_season_story",
     "STATIC_CHARTS",
 ]

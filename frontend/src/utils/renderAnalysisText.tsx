@@ -49,7 +49,7 @@ export function renderAnalysisText(text: string): JSX.Element[] {
     const numberedHeader = trimmed.match(/^(\d+)\.\s+\*\*(.+?)\*\*(.*)$/)
     if (numberedHeader) {
       elements.push(
-        <h4 key={idx} className="text-base font-semibold text-indigo-400 mt-4 mb-2">
+        <h4 key={idx} className="text-base font-semibold text-emerald-400 mt-4 mb-2">
           {numberedHeader[1]}. {numberedHeader[2]}{numberedHeader[3]}
         </h4>
       )
@@ -60,7 +60,7 @@ export function renderAnalysisText(text: string): JSX.Element[] {
     const boldHeader = trimmed.match(/^\*\*(.+?)\*\*:?$/)
     if (boldHeader) {
       elements.push(
-        <h4 key={idx} className="text-base font-semibold text-indigo-400 mt-4 mb-2">
+        <h4 key={idx} className="text-base font-semibold text-emerald-400 mt-4 mb-2">
           {boldHeader[1]}
         </h4>
       )
@@ -74,7 +74,7 @@ export function renderAnalysisText(text: string): JSX.Element[] {
       const formattedContent = content.replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
       elements.push(
         <div key={idx} className="flex items-start gap-2 ml-2 mb-1">
-          <span className="text-indigo-400 mt-1">•</span>
+          <span className="text-emerald-400 mt-1">•</span>
           <span
             className="text-white/80 leading-relaxed"
             dangerouslySetInnerHTML={{ __html: formattedContent }}

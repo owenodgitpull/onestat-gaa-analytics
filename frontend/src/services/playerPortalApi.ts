@@ -102,6 +102,14 @@ export interface GPSEntry {
   dynamic_stress_load: number | null;
   player_load: number | null;
   playing_minutes: number | null;
+  sprint_distance_m: number | null;
+  hml_distance_m: number | null;
+  avg_speed_ms: number | null;
+  acceleration_count: number | null;
+  deceleration_count: number | null;
+  avg_heart_rate: number | null;
+  max_heart_rate: number | null;
+  time_in_red_zone_mins: number | null;
 }
 
 export interface FitnessEntry {
@@ -132,6 +140,76 @@ export interface AttendanceSummary {
   longest_streak: number;
   by_type: Record<string, { total: number; attended: number }>;
   sessions: AttendanceSession[];
+}
+
+export interface WorkloadEntry {
+  date: string;
+  acute_load_7d: number | null;
+  chronic_load_28d: number | null;
+  acwr: number | null;
+  training_load: number;
+  match_load: number;
+  total_load: number;
+  total_distance_m: number;
+  high_speed_distance_m: number;
+  sprint_count: number;
+}
+
+export interface AIInsight {
+  insights: string[];
+  generated_at: string;
+}
+
+export interface PlayerChallenge {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  status: string;
+  metric_key: string;
+  target_value: number;
+  current_value: number;
+  progress_pct: number;
+  expires_at: string | null;
+  created_at: string | null;
+}
+
+export interface SeasonStory {
+  story: string | null;
+  generated_at: string;
+}
+
+export interface HeadToHeadPlayerStats {
+  player_id: string;
+  player_name: string;
+  goals: number;
+  points: number;
+  two_pointers: number;
+  total_score_value: number;
+  accuracy_pct: number | null;
+  turnovers_won: number;
+  turnovers_lost: number;
+  blocks: number;
+  interceptions: number;
+  matches_played: number;
+  avg_distance_km: number | null;
+  avg_sprints: number | null;
+  avg_max_speed_kmh: number | null;
+  attendance_rate: number | null;
+}
+
+export interface HeadToHeadData {
+  me: HeadToHeadPlayerStats;
+  them: HeadToHeadPlayerStats;
+  my_ranks: Record<string, number | null>;
+  their_ranks: Record<string, number | null>;
+}
+
+export interface RosterPlayer {
+  id: string;
+  name: string;
+  jersey_number: number | null;
+  position: string | null;
 }
 
 // ---- API Functions ----
@@ -165,4 +243,22 @@ export const playerPortalAPI = {
 
   getMyAttendance: () =>
     fetchAPI<AttendanceSummary>('/player-portal/my-stats/attendance'),
+
+  getMyWorkload: () =>
+    fetchAPI<{ workload_entries: WorkloadEntry[] }>('/player-portal/my-stats/workload'),
+
+  getMyAIInsights: () =>
+    fetchAPI<AIInsight>('/player-portal/my-stats/ai-insights'),
+
+  getMyChallenges: () =>
+    fetchAPI<{ challenges: PlayerChallenge[] }>('/player-portal/my-stats/challenges'),
+
+  getSeasonStory: () =>
+    fetchAPI<SeasonStory>('/player-portal/my-stats/season-story'),
+
+  getHeadToHead: (otherPlayerId: string) =>
+    fetchAPI<HeadToHeadData>(`/player-portal/head-to-head/${otherPlayerId}`),
+
+  getRoster: () =>
+    fetchAPI<{ players: RosterPlayer[] }>('/player-portal/roster'),
 };

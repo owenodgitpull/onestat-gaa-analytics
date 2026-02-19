@@ -56,7 +56,7 @@ export default function FoulModal({
             >
               <div className="flex items-center space-x-3">
                 {player.jersey_number && (
-                  <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold">
+                  <div className="w-10 h-10 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold">
                     {player.jersey_number}
                   </div>
                 )}

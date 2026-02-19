@@ -17,12 +17,12 @@ const SHOT_TYPE_CONFIG: Record<ShotType, { label: string; color: string; match: 
   },
   point: {
     label: 'Points',
-    color: '#6366f1',
+    color: '#10b981',
     match: (s) => s.is_score && ['point', 'point_free', 'forty_five'].includes(s.event_type),
   },
   two_point: {
     label: '2-Ptrs',
-    color: '#a855f7',
+    color: '#06b6d4',
     match: (s) => s.is_score && ['two_point', 'two_point_free'].includes(s.event_type),
   },
   miss: {
@@ -115,7 +115,7 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
                 onClick={() => setShotFilter(filter)}
                 className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
                   shotFilter === filter
-                    ? 'bg-indigo-600 text-white'
+                    ? 'bg-orange-600 text-white'
                     : 'bg-white/10 text-white/60 hover:bg-white/20'
                 }`}
               >
@@ -210,11 +210,11 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
         </div>
         <div className="bg-white/5 rounded-xl p-2 text-center">
           <div className="text-white/50 text-[10px] mb-0.5">Points</div>
-          <div className="text-xl font-bold text-indigo-400">{points.length}</div>
+          <div className="text-xl font-bold text-emerald-400">{points.length}</div>
         </div>
         <div className="bg-white/5 rounded-xl p-2 text-center">
           <div className="text-white/50 text-[10px] mb-0.5">2-Ptrs</div>
-          <div className="text-xl font-bold text-purple-400">{twoPointers.length}</div>
+          <div className="text-xl font-bold text-cyan-400">{twoPointers.length}</div>
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ export default function Login() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -38,9 +38,9 @@ export default function Login() {
           onClick={login}
           className="relative w-full py-3 px-6 rounded-xl text-white font-semibold text-base transition-all hover:scale-[1.02] active:scale-[0.98] backdrop-blur-md overflow-hidden"
           style={{
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.2))',
-            border: '1px solid rgba(139,92,246,0.35)',
-            boxShadow: '0 4px 24px rgba(99,102,241,0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
+            background: 'linear-gradient(135deg, rgba(0,230,118,0.25), rgba(0,176,255,0.2))',
+            border: '1px solid rgba(0,176,255,0.35)',
+            boxShadow: '0 4px 24px rgba(0,230,118,0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
           }}
         >
           <span
@@ -56,7 +56,7 @@ export default function Login() {
           Don't have an account?{' '}
           <button
             onClick={login}
-            className="text-indigo-400 hover:text-indigo-300 underline transition-colors"
+            className="text-emerald-400 hover:text-emerald-300 underline transition-colors"
           >
             Sign up
           </button>

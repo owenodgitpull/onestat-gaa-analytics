@@ -81,8 +81,8 @@ export default function ChatSessionSidebar({
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium"
             style={{
               color: '#fff',
-              background: 'rgba(99,102,241,0.2)',
-              border: '1px solid rgba(99,102,241,0.35)',
+              background: 'rgba(0,230,118,0.2)',
+              border: '1px solid rgba(0,230,118,0.35)',
             }}
           >
             <Plus size={16} />
@@ -109,8 +109,8 @@ export default function ChatSessionSidebar({
                     padding: '10px 12px',
                     marginBottom: 2,
                     color: isActive ? '#fff' : '#ccc',
-                    background: isActive ? 'rgba(99,102,241,0.15)' : 'transparent',
-                    borderLeft: isActive ? '2px solid #818cf8' : '2px solid transparent',
+                    background: isActive ? 'rgba(0,230,118,0.15)' : 'transparent',
+                    borderLeft: isActive ? '2px solid #34d399' : '2px solid transparent',
                   }}
                 >
                   <MessageSquare size={15} style={{ color: '#666', flexShrink: 0 }} />

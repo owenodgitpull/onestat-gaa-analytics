@@ -126,7 +126,7 @@ export default function ManualEventEntryModal({
                 onClick={() => setTeam(PossessionTeam.OWN)}
                 className={`p-4 rounded-xl font-semibold transition-all ${
                   team === PossessionTeam.OWN
-                    ? 'bg-indigo-600 text-white'
+                    ? 'bg-emerald-600 text-white'
                     : 'glass-card text-white/70 hover:text-white'
                 }`}
               >
@@ -151,7 +151,7 @@ export default function ManualEventEntryModal({
             <select
               value={eventType}
               onChange={(e) => setEventType(e.target.value as EventType)}
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <optgroup label="Scoring">
                 <option value={EventType.GOAL}>Goal</option>
@@ -198,7 +198,7 @@ export default function ManualEventEntryModal({
                 <select
                   value={playerId}
                   onChange={(e) => setPlayerId(e.target.value)}
-                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="">Select player...</option>
                   {getPlayersOnField().map((player) => (
@@ -216,7 +216,7 @@ export default function ManualEventEntryModal({
                   value={playerComingOn}
                   onChange={(e) => setPlayerComingOn(e.target.value)}
                   disabled={!playerId}
-                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">Select player...</option>
                   {getPlayersOnBench().map((player) => (
@@ -233,7 +233,7 @@ export default function ManualEventEntryModal({
               <select
                 value={playerId}
                 onChange={(e) => setPlayerId(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="">Select player...</option>
                 {players.filter(p => p.active).map((player) => (
@@ -255,7 +255,7 @@ export default function ManualEventEntryModal({
                 max="35"
                 value={minute}
                 onChange={(e) => setMinute(parseInt(e.target.value) || 1)}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <p className="text-xs text-white/40 mt-1">
                 Match minute: {half === 2 ? minute + 30 : minute}'
@@ -266,7 +266,7 @@ export default function ManualEventEntryModal({
               <select
                 value={half}
                 onChange={(e) => setHalf(parseInt(e.target.value))}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value={1}>1st Half</option>
                 <option value={2}>2nd Half</option>
@@ -281,7 +281,7 @@ export default function ManualEventEntryModal({
             </button>
             <button
               onClick={handleSubmit}
-              className="flex-1 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95"
+              className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95"
             >
               Add Event
             </button>

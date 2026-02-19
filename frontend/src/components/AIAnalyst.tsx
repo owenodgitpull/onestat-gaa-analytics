@@ -124,7 +124,7 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
         {/* Header */}
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
               <Bot size={20} className="text-white" />
             </div>
             <div>
@@ -167,14 +167,14 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
                 className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 {msg.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
                     <Bot size={16} className="text-white" />
                   </div>
                 )}
                 <div
                   className={`max-w-[80%] p-3 rounded-2xl ${
                     msg.role === 'user'
-                      ? 'bg-indigo-600/80 backdrop-blur-sm border border-indigo-500/30 text-white rounded-br-sm'
+                      ? 'bg-emerald-600/80 backdrop-blur-sm border border-emerald-500/30 text-white rounded-br-sm'
                       : 'glass-card text-white rounded-bl-sm'
                   }`}
                 >
@@ -198,7 +198,7 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
           {/* Loading: 3-dot bounce (waiting for first token) */}
           {loading && !thinkingTool && (
             <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
                 <Bot size={16} className="text-white" />
               </div>
               <div className="glass-card p-3 rounded-2xl rounded-bl-sm">
@@ -214,12 +214,12 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
           {/* Thinking indicator (tool calls in progress) */}
           {thinkingTool && (
             <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
                 <Bot size={16} className="text-white" />
               </div>
               <div className="glass-card p-3 rounded-2xl rounded-bl-sm">
                 <div className="flex items-center gap-2">
-                  <Loader2 className="animate-spin text-indigo-400" size={16} />
+                  <Loader2 className="animate-spin text-emerald-400" size={16} />
                   <span className="text-sm text-white/70">
                     Looking up {friendlyToolName(thinkingTool)}...
                   </span>
@@ -231,13 +231,13 @@ export default function AIAnalyst({ isOpen, onClose, initialContext }: AIAnalyst
           {/* Streaming text (progressive render) */}
           {isStreaming && streamingContent && (
             <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
                 <Bot size={16} className="text-white" />
               </div>
               <div className="max-w-[80%] p-3 rounded-2xl glass-card text-white rounded-bl-sm">
                 <div className="text-sm">
                   {renderAnalysisText(streamingContent)}
-                  <span className="inline-block w-0.5 h-4 bg-indigo-400 animate-pulse ml-0.5 align-text-bottom" />
+                  <span className="inline-block w-0.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />
                 </div>
               </div>
             </div>

@@ -33,19 +33,19 @@ export default function PlayerNavigation() {
               key={tab.path}
               to={tab.path}
               className={`flex flex-col items-center justify-center flex-1 py-1 transition-all ${
-                active ? 'text-indigo-400' : 'text-white/40'
+                active ? 'text-orange-400' : 'text-white/40'
               }`}
             >
               <div
                 className={`w-10 h-10 rounded-xl flex items-center justify-center mb-0.5 transition-all ${
                   active
-                    ? 'bg-indigo-500/15 shadow-lg shadow-indigo-500/20'
+                    ? 'bg-orange-500/15 shadow-lg shadow-orange-500/20'
                     : ''
                 }`}
               >
                 <tab.icon size={22} strokeWidth={active ? 2.5 : 1.5} />
               </div>
-              <span className={`text-[10px] font-medium ${active ? 'text-indigo-400' : 'text-white/40'}`}>
+              <span className={`text-[10px] font-medium ${active ? 'text-orange-400' : 'text-white/40'}`}>
                 {tab.label}
               </span>
             </Link>

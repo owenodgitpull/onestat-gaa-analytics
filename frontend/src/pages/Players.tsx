@@ -13,12 +13,14 @@ import {
   Trophy,
   Target,
   Filter,
-  UserPlus
+  Link2,
+  Copy,
+  Check,
+  RefreshCw
 } from 'lucide-react'
-import { api, TopScorer } from '@/services/api'
+import { api, TopScorer, fetchAPI } from '@/services/api'
 import { usePlayers } from '@/hooks/usePlayers'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
-import InvitePlayerModal from '@/components/InvitePlayerModal'
 
 // Position categories for filtering
 const positionCategories = [
@@ -39,7 +41,9 @@ const positionMapping: Record<string, string> = {
 export default function Players() {
   const [searchQuery, setSearchQuery] = useState('')
   const [positionFilter, setPositionFilter] = useState('all')
-  const [invitePlayer, setInvitePlayer] = useState<{ id: string; name: string } | null>(null)
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [generatingCode, setGeneratingCode] = useState(false)
 
   const { data: players, isLoading } = usePlayers()
 
@@ -83,6 +87,32 @@ export default function Players() {
     })
   }, [filteredPlayers, playerScores])
 
+  const inviteLink = inviteCode ? `${window.location.origin}/join/${inviteCode}` : null
+
+  const generateInviteCode = async () => {
+    setGeneratingCode(true)
+    try {
+      const data = await fetchAPI<{ invite_code: string }>('/auth/invite-code/generate', { method: 'POST' })
+      setInviteCode(data.invite_code)
+      setCopied(false)
+    } catch {
+      // silently fail
+    } finally {
+      setGeneratingCode(false)
+    }
+  }
+
+  const copyLink = async () => {
+    if (!inviteLink) return
+    try {
+      await navigator.clipboard.writeText(inviteLink)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // fallback
+    }
+  }
+
   if (isLoading) {
     return <LoadingSkeleton />
   }
@@ -92,7 +122,7 @@ export default function Players() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
             <Users size={24} className="text-white" />
           </div>
           <div>
@@ -113,7 +143,7 @@ export default function Players() {
             placeholder="Search by name or number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full pl-12 pr-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -121,13 +151,66 @@ export default function Players() {
           <select
             value={positionFilter}
             onChange={(e) => setPositionFilter(e.target.value)}
-            className="px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
           >
             {positionCategories.map(cat => (
               <option key={cat.id} value={cat.id} className="bg-slate-800 text-white">{cat.label}</option>
             ))}
           </select>
         </div>
+      </div>
+
+      {/* Player Invite Link */}
+      <div className="glass-card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Link2 size={18} className="text-emerald-400" />
+          <span className="text-sm font-semibold text-white">Player Invite Link</span>
+          <span className="text-[11px] text-white/40 ml-1">Share with team players to self-register</span>
+        </div>
+        {inviteLink ? (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white/70 truncate font-mono">
+              {inviteLink}
+            </div>
+            <button
+              onClick={copyLink}
+              className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors ${
+                copied
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'bg-white/10 text-white hover:bg-white/20'
+              }`}
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button
+              onClick={generateInviteCode}
+              disabled={generatingCode}
+              className="px-3 py-2 rounded-lg text-sm font-medium bg-white/10 text-white hover:bg-white/20 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+              title="Generate new link (invalidates old one)"
+            >
+              <RefreshCw size={14} className={generatingCode ? 'animate-spin' : ''} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={generateInviteCode}
+            disabled={generatingCode}
+            className="relative px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02] active:scale-[0.98] backdrop-blur-md overflow-hidden flex items-center gap-2 disabled:opacity-50"
+            style={{
+              background: 'linear-gradient(135deg, rgba(0,230,118,0.25), rgba(0,176,255,0.2))',
+              border: '1px solid rgba(0,176,255,0.35)',
+              boxShadow: '0 4px 24px rgba(0,230,118,0.15), inset 0 1px 0 rgba(255,255,255,0.1)',
+            }}
+          >
+            {generatingCode ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Link2 size={14} />
+            )}
+            Generate Invite Link
+          </button>
+        )}
       </div>
 
       {/* Top Scorers Banner */}
@@ -177,7 +260,7 @@ export default function Players() {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-lg font-bold text-white">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center text-lg font-bold text-white">
                     {player.jersey_number || player.name.charAt(0)}
                   </div>
                   <div>
@@ -196,7 +279,7 @@ export default function Players() {
                         <span className="text-white">{stats.goals}G</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Target size={14} className="text-indigo-400" />
+                        <Target size={14} className="text-emerald-400" />
                         <span className="text-white">{stats.points}P</span>
                       </div>
                       {stats.two_pointers > 0 && (
@@ -210,14 +293,6 @@ export default function Players() {
                       </div>
                     </div>
                   )}
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setInvitePlayer({ id: player.id, name: player.name }); }}
-                    className="px-2 py-1 rounded-lg text-xs font-medium bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-colors flex items-center gap-1"
-                    title="Invite to App"
-                  >
-                    <UserPlus size={12} />
-                    <span className="hidden sm:inline">Invite</span>
-                  </button>
                   <div className={`px-2 py-1 rounded text-xs font-medium ${
                     player.active
                       ? 'bg-emerald-500/20 text-emerald-400'
@@ -245,11 +320,6 @@ export default function Players() {
         )}
       </div>
 
-      <InvitePlayerModal
-        isOpen={!!invitePlayer}
-        onClose={() => setInvitePlayer(null)}
-        player={invitePlayer}
-      />
     </div>
   )
 }

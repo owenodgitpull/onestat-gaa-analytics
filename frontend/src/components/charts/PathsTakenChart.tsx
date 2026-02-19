@@ -11,10 +11,10 @@ interface PathsTakenChartProps {
 
 const OUTCOME_COLORS: Record<string, string> = {
   goal: '#10b981',
-  point: '#6366f1',
-  point_free: '#818cf8',
-  two_point: '#8b5cf6',
-  two_point_free: '#a78bfa',
+  point: '#10b981',
+  point_free: '#34d399',
+  two_point: '#06b6d4',
+  two_point_free: '#22d3ee',
   wide: '#f59e0b',
   wide_free: '#fbbf24',
   forty_five: '#06b6d4',
@@ -185,7 +185,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
             // Find the real index in currentPaths for numbering
             const realIdx = selectedIdx !== null ? selectedIdx : currentPaths.indexOf(path)
             const svgPoints = points.map(p => toSvg(p.x, p.y))
-            const color = OUTCOME_COLORS[path.outcome] || '#6366f1'
+            const color = OUTCOME_COLORS[path.outcome] || '#10b981'
             const num = realIdx + 1
             const isHighlighted = selectedIdx === null || vIdx === 0
 
@@ -240,7 +240,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
             {/* Path number pills */}
             <div className="flex-1 flex items-center gap-1 overflow-x-auto no-scrollbar">
               {currentPaths.map((path, idx) => {
-                const color = OUTCOME_COLORS[path.outcome] || '#6366f1'
+                const color = OUTCOME_COLORS[path.outcome] || '#10b981'
                 const isSelected = selectedIdx === idx
                 return (
                   <button
@@ -280,7 +280,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
 
           {/* Detail card for selected path */}
           {activeDetail && (() => {
-            const color = OUTCOME_COLORS[activeDetail.outcome] || '#6366f1'
+            const color = OUTCOME_COLORS[activeDetail.outcome] || '#10b981'
             const outcomeLabel = OUTCOME_LABELS[activeDetail.outcome] || activeDetail.outcome?.replace(/_/g, ' ')
             const pathDesc = describePath(
               activeDetail.points || [], activeDetail.minute,

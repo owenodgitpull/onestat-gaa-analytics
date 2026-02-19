@@ -309,7 +309,7 @@ export default function MatchPrep() {
                 {matchDate}
               </span>
               {match.competition && (
-                <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-semibold">
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold">
                   {match.competition}
                 </span>
               )}
@@ -327,7 +327,7 @@ export default function MatchPrep() {
           <button
             onClick={handleSave}
             disabled={saving || selectedCount === 0}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save size={16} />
             Save Lineup

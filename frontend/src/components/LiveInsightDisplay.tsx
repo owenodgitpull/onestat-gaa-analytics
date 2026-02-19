@@ -134,7 +134,7 @@ export default function LiveInsightDisplay({
         // Convert single newlines to <br>
         .replace(/\n/g, '<br />')
         // Convert bullet points
-        .replace(/^[-•]\s*/gm, '<span class="text-indigo-400 mr-1">•</span>')
+        .replace(/^[-•]\s*/gm, '<span class="text-emerald-400 mr-1">•</span>')
 
       return (
         <p
@@ -148,24 +148,24 @@ export default function LiveInsightDisplay({
 
   const getTriggerColor = (trigger: string): string => {
     const colors: Record<string, string> = {
-      goal_scored: 'from-indigo-600/30 to-violet-600/30 border-indigo-500/50',
-      scoring_run: 'from-blue-600/30 to-indigo-600/30 border-blue-500/50',
+      goal_scored: 'from-emerald-600/30 to-cyan-600/30 border-emerald-500/50',
+      scoring_run: 'from-blue-600/30 to-emerald-600/30 border-blue-500/50',
       scoring_drought: 'from-amber-600/30 to-orange-600/30 border-amber-500/50',
       card_issued: 'from-red-600/30 to-rose-600/30 border-red-500/50',
       turnover_crisis: 'from-orange-600/30 to-red-600/30 border-orange-500/50',
-      half_time: 'from-purple-600/30 to-indigo-600/30 border-purple-500/50',
+      half_time: 'from-cyan-600/30 to-emerald-600/30 border-cyan-500/50',
       interval: 'from-slate-600/30 to-gray-600/30 border-slate-500/50',
       momentum_shift: 'from-cyan-600/30 to-blue-600/30 border-cyan-500/50',
-      substitution: 'from-violet-600/30 to-purple-600/30 border-violet-500/50'
+      substitution: 'from-cyan-600/30 to-teal-600/30 border-cyan-500/50'
     }
     return colors[trigger] || 'from-slate-600/30 to-gray-600/30 border-slate-500/50'
   }
 
   if (!latestInsight && !loading) {
     return (
-      <div className="glass-card p-4 bg-gradient-to-r from-indigo-600/10 to-purple-600/10 border border-indigo-500/20">
+      <div className="glass-card p-4 bg-gradient-to-r from-emerald-600/10 to-cyan-600/10 border border-emerald-500/20">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center">
             <Bot size={20} className="text-white" />
           </div>
           <div>
@@ -191,13 +191,13 @@ export default function LiveInsightDisplay({
           }`}
         >
           <div className="flex items-start space-x-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center flex-shrink-0">
               <Sparkles size={20} className="text-white" />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center space-x-2">
-                  <span className="text-xs font-semibold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded">
+                  <span className="text-xs font-semibold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded">
                     {getTriggerLabel(latestInsight.trigger)}
                   </span>
                   <span className="text-xs text-white/60 flex items-center">
@@ -212,7 +212,7 @@ export default function LiveInsightDisplay({
               {latestInsight.insight.length > 120 && (
                 <button
                   onClick={() => setInsightExpanded(!insightExpanded)}
-                  className="text-xs text-indigo-300 hover:text-indigo-200 mt-1 transition-colors"
+                  className="text-xs text-emerald-300 hover:text-emerald-200 mt-1 transition-colors"
                 >
                   {insightExpanded ? 'Show less' : 'Read more'}
                 </button>
@@ -252,7 +252,7 @@ export default function LiveInsightDisplay({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2 mb-1">
-                    <span className="text-[10px] font-semibold text-indigo-300 bg-indigo-500/20 px-1.5 py-0.5 rounded">
+                    <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-500/20 px-1.5 py-0.5 rounded">
                       {getTriggerLabel(insight.trigger)}
                     </span>
                     <span className="text-[10px] text-white/50">{insight.minute}'</span>

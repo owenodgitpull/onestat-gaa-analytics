@@ -326,7 +326,7 @@ export default function AnalyticsDashboard() {
                       i === 0 ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
                       i === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500' :
                       i === 2 ? 'bg-gradient-to-br from-orange-600 to-orange-700' :
-                      'bg-gradient-to-br from-indigo-600 to-purple-600'
+                      'bg-gradient-to-br from-emerald-600 to-cyan-600'
                     }`}>
                       #{i + 1}
                     </div>
@@ -337,7 +337,7 @@ export default function AnalyticsDashboard() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                      <div className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
                         {player.total_score}
                       </div>
                       <div className="text-xs text-white/60">{player.matches_played} games</div>
@@ -403,9 +403,10 @@ export default function AnalyticsDashboard() {
             onClick={() => setViewMode('season')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
               viewMode === 'season'
-                ? 'bg-indigo-600 text-white'
+                ? 'text-[#0a1a10]'
                 : 'text-white/60 hover:text-white'
             }`}
+            style={viewMode === 'season' ? { background: 'var(--gradient-primary)' } : {}}
           >
             <BarChart3 size={18} />
             Season Stats
@@ -414,9 +415,10 @@ export default function AnalyticsDashboard() {
             onClick={() => setViewMode('health')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
               viewMode === 'health'
-                ? 'bg-rose-600 text-white'
+                ? 'text-[#0a1a10]'
                 : 'text-white/60 hover:text-white'
             }`}
+            style={viewMode === 'health' ? { background: 'var(--gradient-primary)' } : {}}
           >
             <Heart size={18} />
             Squad Health
@@ -440,7 +442,7 @@ export default function AnalyticsDashboard() {
                 <span className="text-sm font-bold text-white whitespace-nowrap">
                   vs {liveMatch.opponent}
                 </span>
-                <span className="text-sm font-semibold text-indigo-300">
+                <span className="text-sm font-semibold text-emerald-300">
                   {liveMatch.team_goals}-{String(liveMatch.team_points).padStart(2, '0')} / {liveMatch.opponent_goals}-{String(liveMatch.opponent_points).padStart(2, '0')}
                 </span>
                 {liveMatch.current_phase && (
@@ -556,7 +558,7 @@ export default function AnalyticsDashboard() {
                           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setActiveTooltip(null)} />
                           <div className="relative w-full max-w-sm bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
                             {/* Header */}
-                            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-gradient-to-r from-indigo-600/15 to-violet-600/15">
+                            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10 bg-gradient-to-r from-orange-600/15 to-amber-600/15">
                               <h3 className="text-sm font-bold text-white">{card.label}</h3>
                               <button onClick={() => setActiveTooltip(null)} className="p-1 rounded-lg hover:bg-white/10 transition-colors">
                                 <X size={16} className="text-white/60" />
@@ -578,8 +580,8 @@ export default function AnalyticsDashboard() {
                               {/* AI team insight */}
                               {card.insight && (
                                 <div className="pt-3 border-t border-white/10">
-                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400/60 mb-1.5">AI Insight</div>
-                                  <div className="text-sm text-indigo-300/90 italic leading-relaxed">{card.insight}</div>
+                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400/60 mb-1.5">AI Insight</div>
+                                  <div className="text-sm text-emerald-300/90 italic leading-relaxed">{card.insight}</div>
                                 </div>
                               )}
                             </div>
@@ -682,7 +684,7 @@ export default function AnalyticsDashboard() {
 
         <DragOverlay>
           {activeSectionId && (
-            <div className="opacity-60 rounded-2xl ring-2 ring-indigo-500/50 bg-slate-900/80 p-4">
+            <div className="opacity-60 rounded-2xl ring-2 ring-emerald-500/50 bg-slate-900/80 p-4">
               <div className="text-white/80 font-semibold text-sm capitalize">
                 {activeSectionId.replace(/-/g, ' ')}
               </div>

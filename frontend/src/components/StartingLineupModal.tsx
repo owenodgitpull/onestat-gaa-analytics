@@ -114,8 +114,8 @@ export default function StartingLineupModal({
       <div className="relative w-full max-w-6xl glass-card p-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
-            <div className="p-3 rounded-full bg-indigo-500/20">
-              <Users className="text-indigo-400" size={28} />
+            <div className="p-3 rounded-full bg-emerald-500/20">
+              <Users className="text-emerald-400" size={28} />
             </div>
             <h2 className="text-2xl font-bold text-white">Select Starting Lineup</h2>
           </div>
@@ -323,7 +323,7 @@ export default function StartingLineupModal({
             <button
               onClick={() => onConfirm(lineup)}
               disabled={Object.keys(lineup).length === 0}
-              className="flex-1 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Confirm Lineup ({Object.keys(lineup).length}/20)
             </button>

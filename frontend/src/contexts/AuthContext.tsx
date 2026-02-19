@@ -23,9 +23,9 @@ interface AuthContextType {
   user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: () => Promise<void>;
+  login: (signUp?: boolean) => Promise<void>;
   logout: () => Promise<void>;
-  exchangeCode: (code: string) => Promise<void>;
+  exchangeCode: (code: string, inviteCode?: string) => Promise<void>;
   setUser: (user: AuthUser) => void;
 }
 
@@ -175,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(false);
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const login = useCallback(async () => {
+  const login = useCallback(async (signUp?: boolean) => {
     const verifier = generateCodeVerifier();
     const challenge = await generateCodeChallenge(verifier);
     const state = crypto.randomUUID();
@@ -194,10 +194,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       state,
     });
 
-    window.location.href = `${COGNITO_DOMAIN}/oauth2/authorize?${params.toString()}`;
+    // Cognito hosted UI: /signup goes directly to create account page
+    const endpoint = signUp ? 'signup' : 'oauth2/authorize';
+    window.location.href = `${COGNITO_DOMAIN}/${endpoint}?${params.toString()}`;
   }, []);
 
-  const exchangeCode = useCallback(async (code: string) => {
+  const exchangeCode = useCallback(async (code: string, inviteCode?: string) => {
     const verifier = sessionStorage.getItem('pkce_verifier');
     sessionStorage.removeItem('pkce_verifier');
 
@@ -205,15 +207,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Missing PKCE verifier');
     }
 
+    const body: Record<string, string> = {
+      code,
+      redirect_uri: COGNITO_REDIRECT_URI,
+      code_verifier: verifier,
+    };
+    if (inviteCode) {
+      body.invite_code = inviteCode;
+    }
+
     const resp = await fetch(`${API_BASE_URL}/auth/token`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code,
-        redirect_uri: COGNITO_REDIRECT_URI,
-        code_verifier: verifier,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!resp.ok) {

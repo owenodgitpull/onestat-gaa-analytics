@@ -269,7 +269,7 @@ export default function AIAnalystPage() {
     return (
       <div className="-mx-4 -mt-6 px-4 pt-2 min-h-[calc(100vh-3.5rem)] flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="animate-spin text-indigo-400 mx-auto mb-3" size={32} />
+          <Loader2 className="animate-spin text-emerald-400 mx-auto mb-3" size={32} />
           <p className="text-white/50 text-sm">Loading conversation...</p>
         </div>
       </div>
@@ -293,7 +293,7 @@ export default function AIAnalystPage() {
           <div className="max-w-3xl w-full mx-auto">
             {/* Greeting */}
             <div className="text-center mb-8">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center mx-auto mb-4">
                 <Bot size={32} className="text-white" />
               </div>
               <h1 className="text-3xl font-bold text-white mb-2">{getGreeting()}, Owen</h1>
@@ -359,19 +359,19 @@ export default function AIAnalystPage() {
             className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
                 <Bot size={14} className="text-white" />
               </div>
             )}
             <div
               className={`max-w-[85%] p-3 rounded-2xl ${
                 msg.role === 'user'
-                  ? 'backdrop-blur-xl border border-indigo-400/20 text-white rounded-br-sm'
+                  ? 'backdrop-blur-xl border border-emerald-400/20 text-white rounded-br-sm'
                   : 'glass-card text-white rounded-bl-sm'
               }`}
               style={msg.role === 'user' ? {
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.10))',
-                boxShadow: '0 4px 16px rgba(99,102,241,0.15), inset 0 1px 0 rgba(255,255,255,0.08)',
+                background: 'linear-gradient(135deg, rgba(0,230,118,0.15), rgba(0,176,255,0.10))',
+                boxShadow: '0 4px 16px rgba(0,230,118,0.15), inset 0 1px 0 rgba(255,255,255,0.08)',
               } : undefined}
             >
               {msg.role === 'assistant' ? (
@@ -386,7 +386,7 @@ export default function AIAnalystPage() {
         {/* Loading: 3-dot bounce */}
         {loading && !thinkingTool && (
           <div className="flex gap-3 justify-start">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
               <Bot size={14} className="text-white" />
             </div>
             <div className="glass-card p-3 rounded-2xl rounded-bl-sm">
@@ -402,12 +402,12 @@ export default function AIAnalystPage() {
         {/* Thinking indicator */}
         {thinkingTool && (
           <div className="flex gap-3 justify-start">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
               <Bot size={14} className="text-white" />
             </div>
             <div className="glass-card p-3 rounded-2xl rounded-bl-sm">
               <div className="flex items-center gap-2">
-                <Loader2 className="animate-spin text-indigo-400" size={14} />
+                <Loader2 className="animate-spin text-emerald-400" size={14} />
                 <span className="text-sm text-white/70">
                   Looking up {friendlyToolName(thinkingTool)}...
                 </span>
@@ -419,13 +419,13 @@ export default function AIAnalystPage() {
         {/* Streaming text */}
         {isStreaming && streamingContent && (
           <div className="flex gap-3 justify-start">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
               <Bot size={14} className="text-white" />
             </div>
             <div className="max-w-[85%] p-3 rounded-2xl glass-card text-white rounded-bl-sm">
               <div className="text-sm">
                 {renderAnalysisText(streamingContent)}
-                <span className="inline-block w-0.5 h-4 bg-indigo-400 animate-pulse ml-0.5 align-text-bottom" />
+                <span className="inline-block w-0.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />
               </div>
             </div>
           </div>
@@ -533,7 +533,7 @@ export default function AIAnalystPage() {
                 onClick={() => setMobileView('chat')}
                 className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
                   mobileView === 'chat'
-                    ? 'bg-indigo-500/30 text-indigo-300 border border-indigo-500/40'
+                    ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
                     : 'bg-white/5 text-white/50 border border-white/10'
                 }`}
               >
@@ -544,14 +544,14 @@ export default function AIAnalystPage() {
                 onClick={() => setMobileView('viz')}
                 className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
                   mobileView === 'viz'
-                    ? 'bg-indigo-500/30 text-indigo-300 border border-indigo-500/40'
+                    ? 'bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
                     : 'bg-white/5 text-white/50 border border-white/10'
                 }`}
               >
                 <BarChart3 size={12} className="inline mr-1" />
                 Visuals
                 {visualizations.length > 0 && (
-                  <span className="ml-1 bg-indigo-500/40 text-indigo-200 px-1.5 rounded-full text-[10px]">
+                  <span className="ml-1 bg-emerald-500/40 text-emerald-200 px-1.5 rounded-full text-[10px]">
                     {visualizations.length}
                   </span>
                 )}

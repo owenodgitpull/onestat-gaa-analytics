@@ -203,7 +203,7 @@ export default function CategorizedActionButtons({
               onFoulClick?.('own')
             }}
             disabled={disabled}
-            className="flex-1 btn-primary !py-3 !px-4 flex flex-col items-center space-y-1 text-sm bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500"
+            className="flex-1 btn-primary !py-3 !px-4 flex flex-col items-center space-y-1 text-sm bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500"
           >
             <span className="font-bold">Our Foul</span>
             <span className="text-xs opacity-80">Select who fouled</span>
@@ -234,13 +234,13 @@ export default function CategorizedActionButtons({
   // Show kickout position selection prompt
   if (pendingKickoutPosition) {
     return (
-      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-indigo-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-emerald-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
         {/* Kickout Position Header */}
-        <div className="px-3 py-2 bg-gradient-to-r from-indigo-600/30 to-violet-600/30 border-b border-indigo-500/30">
+        <div className="px-3 py-2 bg-gradient-to-r from-emerald-600/30 to-cyan-600/30 border-b border-emerald-500/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <MapPin size={16} className="text-indigo-400" />
-              <span className="text-sm font-semibold text-indigo-300">Select Kickout Position</span>
+              <MapPin size={16} className="text-emerald-400" />
+              <span className="text-sm font-semibold text-emerald-300">Select Kickout Position</span>
             </div>
             <button
               onClick={onCancelKickout}
@@ -274,7 +274,7 @@ export default function CategorizedActionButtons({
     return (
       <div className={`bg-slate-900 backdrop-blur-xl border-2 border-blue-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
         {/* 45 Header */}
-        <div className="px-3 py-2 bg-gradient-to-r from-blue-600/30 to-indigo-600/30 border-b border-blue-500/30">
+        <div className="px-3 py-2 bg-gradient-to-r from-blue-600/30 to-emerald-600/30 border-b border-blue-500/30">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Flag size={16} className="text-blue-400" />
@@ -302,7 +302,7 @@ export default function CategorizedActionButtons({
                 disabled={disabled}
                 className={`btn-primary !py-1.5 !px-4 flex items-center space-x-1.5 text-xs ${
                   isScored
-                    ? 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500'
+                    ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500'
                     : 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700'
                 }`}
               >
@@ -415,7 +415,7 @@ export default function CategorizedActionButtons({
           <button
             onClick={on45Click}
             disabled={disabled}
-            className="btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+            className="btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700"
           >
             <Flag size={13} />
             <span>45</span>
@@ -465,7 +465,7 @@ export default function CategorizedActionButtons({
               onClick={() => setActiveCategory(category.id)}
               className={`flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 ${
                 isActive
-                  ? 'bg-indigo-600 text-white'
+                  ? 'bg-emerald-600 text-white'
                   : 'text-white/60 hover:text-white hover:bg-white/5'
               }`}
             >

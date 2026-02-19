@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --gradient-primary: linear-gradient(135deg, #00E676, #00B0FF);
+  --gradient-primary-text: linear-gradient(135deg, #00E676 0%, #00C853 40%, #00B0FF 100%);
+  --color-primary: #00E676;
+  --color-primary-end: #00B0FF;
+  --color-accent: #F97316;
+}
+
 @layer base {
   * {
     @apply border-white/10;
@@ -34,13 +42,13 @@
     /* Base gradient with subtle color variation */
     background:
       /* Light source — soft glow from top-left corner */
-      radial-gradient(ellipse 80% 60% at 15% 10%, rgba(99, 102, 241, 0.12) 0%, transparent 60%),
-      /* Secondary light — warm violet from bottom-right */
-      radial-gradient(ellipse 70% 50% at 85% 85%, rgba(139, 92, 246, 0.08) 0%, transparent 55%),
-      /* Subtle blue fill in center area */
-      radial-gradient(ellipse 50% 40% at 50% 50%, rgba(59, 130, 246, 0.04) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 60% at 15% 10%, rgba(0, 230, 118, 0.10) 0%, transparent 60%),
+      /* Secondary light — cool cyan from bottom-right */
+      radial-gradient(ellipse 70% 50% at 85% 85%, rgba(0, 176, 255, 0.07) 0%, transparent 55%),
+      /* Subtle teal fill in center area */
+      radial-gradient(ellipse 50% 40% at 50% 50%, rgba(0, 200, 83, 0.04) 0%, transparent 60%),
       /* Base dark gradient */
-      linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0e0b20 65%, #080c16 100%);
+      linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0b1420 65%, #080c16 100%);
   }
 
   /* Diagonal light streak — like light refracting through glass */
@@ -52,11 +60,11 @@
       135deg,
       transparent 0%,
       transparent 30%,
-      rgba(139, 92, 246, 0.025) 38%,
-      rgba(99, 102, 241, 0.045) 45%,
+      rgba(0, 230, 118, 0.025) 38%,
+      rgba(0, 176, 255, 0.04) 45%,
       rgba(255, 255, 255, 0.02) 50%,
-      rgba(99, 102, 241, 0.045) 55%,
-      rgba(139, 92, 246, 0.025) 62%,
+      rgba(0, 176, 255, 0.04) 55%,
+      rgba(0, 230, 118, 0.025) 62%,
       transparent 70%,
       transparent 100%
     );
@@ -72,9 +80,9 @@
       55deg,
       transparent 0%,
       transparent 55%,
-      rgba(59, 130, 246, 0.02) 65%,
-      rgba(99, 102, 241, 0.03) 72%,
-      rgba(59, 130, 246, 0.02) 79%,
+      rgba(0, 200, 83, 0.02) 65%,
+      rgba(0, 176, 255, 0.03) 72%,
+      rgba(0, 200, 83, 0.02) 79%,
       transparent 88%,
       transparent 100%
     );
@@ -88,25 +96,25 @@
     pointer-events: none;
     background-image:
       radial-gradient(1px 1px at 10% 15%, rgba(255, 255, 255, 0.15) 50%, transparent 100%),
-      radial-gradient(1px 1px at 25% 35%, rgba(139, 92, 246, 0.2) 50%, transparent 100%),
+      radial-gradient(1px 1px at 25% 35%, rgba(0, 230, 118, 0.18) 50%, transparent 100%),
       radial-gradient(1px 1px at 40% 8%, rgba(255, 255, 255, 0.12) 50%, transparent 100%),
-      radial-gradient(1px 1px at 55% 52%, rgba(99, 102, 241, 0.18) 50%, transparent 100%),
+      radial-gradient(1px 1px at 55% 52%, rgba(0, 176, 255, 0.16) 50%, transparent 100%),
       radial-gradient(1px 1px at 70% 20%, rgba(255, 255, 255, 0.1) 50%, transparent 100%),
-      radial-gradient(1px 1px at 85% 45%, rgba(139, 92, 246, 0.15) 50%, transparent 100%),
-      radial-gradient(1px 1px at 15% 70%, rgba(99, 102, 241, 0.12) 50%, transparent 100%),
+      radial-gradient(1px 1px at 85% 45%, rgba(0, 230, 118, 0.14) 50%, transparent 100%),
+      radial-gradient(1px 1px at 15% 70%, rgba(0, 176, 255, 0.12) 50%, transparent 100%),
       radial-gradient(1px 1px at 35% 85%, rgba(255, 255, 255, 0.08) 50%, transparent 100%),
-      radial-gradient(1px 1px at 60% 75%, rgba(139, 92, 246, 0.14) 50%, transparent 100%),
+      radial-gradient(1px 1px at 60% 75%, rgba(0, 230, 118, 0.12) 50%, transparent 100%),
       radial-gradient(1px 1px at 80% 65%, rgba(255, 255, 255, 0.1) 50%, transparent 100%),
-      radial-gradient(1px 1px at 92% 30%, rgba(99, 102, 241, 0.16) 50%, transparent 100%),
+      radial-gradient(1px 1px at 92% 30%, rgba(0, 176, 255, 0.14) 50%, transparent 100%),
       radial-gradient(1.5px 1.5px at 20% 50%, rgba(255, 255, 255, 0.06) 50%, transparent 100%),
       radial-gradient(1px 1px at 48% 28%, rgba(255, 255, 255, 0.08) 50%, transparent 100%),
-      radial-gradient(1px 1px at 75% 88%, rgba(139, 92, 246, 0.1) 50%, transparent 100%),
-      radial-gradient(1.5px 1.5px at 5% 45%, rgba(99, 102, 241, 0.1) 50%, transparent 100%),
+      radial-gradient(1px 1px at 75% 88%, rgba(0, 230, 118, 0.1) 50%, transparent 100%),
+      radial-gradient(1.5px 1.5px at 5% 45%, rgba(0, 176, 255, 0.1) 50%, transparent 100%),
       radial-gradient(1px 1px at 65% 42%, rgba(255, 255, 255, 0.07) 50%, transparent 100%),
-      radial-gradient(1px 1px at 30% 18%, rgba(139, 92, 246, 0.12) 50%, transparent 100%),
-      radial-gradient(1px 1px at 88% 78%, rgba(99, 102, 241, 0.08) 50%, transparent 100%),
+      radial-gradient(1px 1px at 30% 18%, rgba(0, 230, 118, 0.1) 50%, transparent 100%),
+      radial-gradient(1px 1px at 88% 78%, rgba(0, 176, 255, 0.08) 50%, transparent 100%),
       radial-gradient(1px 1px at 45% 62%, rgba(255, 255, 255, 0.09) 50%, transparent 100%),
-      radial-gradient(1px 1px at 12% 92%, rgba(139, 92, 246, 0.11) 50%, transparent 100%);
+      radial-gradient(1px 1px at 12% 92%, rgba(0, 230, 118, 0.1) 50%, transparent 100%);
   }
 
   /* Soft noise/grain for depth — not used as child, sits in shimmer div */
@@ -163,7 +171,7 @@
     left: 8%;
     right: 8%;
     height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), rgba(139, 92, 246, 0.2), rgba(255, 255, 255, 0.25), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), rgba(0, 176, 255, 0.18), rgba(255, 255, 255, 0.25), transparent);
     border-radius: inherit;
     pointer-events: none;
     z-index: 1;
@@ -190,7 +198,7 @@
       inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
       inset 0 -1px 0 0 rgba(255, 255, 255, 0.04),
       0 0 0 1px rgba(255, 255, 255, 0.1),
-      0 0 40px -10px rgba(99, 102, 241, 0.15);
+      0 0 40px -10px rgba(0, 230, 118, 0.12);
   }
 
   /* Stats cards */
@@ -210,7 +218,7 @@
       0 16px 48px 0 rgba(0, 0, 0, 0.7),
       inset 0 1px 0 0 rgba(255, 255, 255, 0.18),
       0 0 0 1px rgba(255, 255, 255, 0.1),
-      0 0 50px -10px rgba(99, 102, 241, 0.2);
+      0 0 50px -10px rgba(0, 230, 118, 0.15);
   }
 
   .stat-label {
@@ -221,17 +229,19 @@
     @apply text-4xl font-bold text-white;
   }
 
-  /* Buttons — glassy with indigo tint */
+  /* Buttons — glassy with emerald/cyan tint */
   .btn-primary {
-    @apply backdrop-blur-md text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 active:scale-95;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(139, 92, 246, 0.18));
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    box-shadow: 0 4px 20px -3px rgba(99, 102, 241, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    @apply backdrop-blur-md px-6 py-3 rounded-xl font-semibold transition-all duration-300 active:scale-95;
+    background: var(--gradient-primary);
+    color: #0a1a10;
+    border: 1px solid rgba(0, 230, 118, 0.3);
+    box-shadow: 0 4px 20px -3px rgba(0, 230, 118, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
   .btn-primary:hover {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(139, 92, 246, 0.25));
-    border-color: rgba(99, 102, 241, 0.45);
-    box-shadow: 0 8px 30px -3px rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    background: var(--gradient-primary);
+    filter: brightness(1.1);
+    border-color: rgba(0, 230, 118, 0.45);
+    box-shadow: 0 8px 30px -3px rgba(0, 230, 118, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
     transform: translateY(-1px);
   }
 
@@ -243,7 +253,7 @@
   .btn-glass:hover {
     border-color: rgba(255, 255, 255, 0.25);
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08));
-    box-shadow: 0 4px 24px -5px rgba(99, 102, 241, 0.2);
+    box-shadow: 0 4px 24px -5px rgba(0, 230, 118, 0.15);
   }
 
   .btn-danger {
@@ -281,14 +291,14 @@
   .input-glass {
     @apply w-full px-4 py-3 rounded-xl backdrop-blur-sm
            text-white placeholder-white/30 transition-all duration-300
-           focus:outline-none focus:ring-2 focus:ring-indigo-500/40;
+           focus:outline-none focus:ring-2 focus:ring-emerald-500/40;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03));
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
   }
   .input-glass:focus {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.05));
-    border-color: rgba(99, 102, 241, 0.4);
+    border-color: rgba(0, 176, 255, 0.4);
   }
 
   /* Pitch Styles */
@@ -309,7 +319,7 @@
 @layer utilities {
   /* Gradients */
   .text-gradient {
-    @apply bg-gradient-to-r from-indigo-400 to-violet-400 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent;
   }
 
   .text-gradient-gold {
@@ -323,9 +333,9 @@
   border-radius: 1rem;
   padding: 2px;
   background: conic-gradient(from var(--border-angle, 0deg),
-    rgba(99, 102, 241, 0.6), rgba(139, 92, 246, 0.6), rgba(99, 102, 241, 0.1),
+    rgba(0, 230, 118, 0.6), rgba(0, 176, 255, 0.6), rgba(0, 230, 118, 0.1),
     transparent 40%, transparent 60%,
-    rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.6), rgba(99, 102, 241, 0.6));
+    rgba(0, 230, 118, 0.1), rgba(0, 176, 255, 0.6), rgba(0, 230, 118, 0.6));
   animation: border-rotate 2s linear infinite;
 }
 .glass-card-live > .glass-card-live-inner {

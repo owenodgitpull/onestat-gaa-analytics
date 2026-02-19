@@ -24,7 +24,7 @@ export default function MonotonyScatter({ data }: Props) {
         <p className="text-white font-medium mb-1">
           {new Date(d.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
         </p>
-        <p className="text-sm text-indigo-400">DSL: {d.avg_dsl}</p>
+        <p className="text-sm text-emerald-400">DSL: {d.avg_dsl}</p>
         <p className="text-sm text-amber-400">Duration: {d.avg_duration_mins} mins</p>
       </div>
     )
@@ -98,8 +98,8 @@ export default function MonotonyScatter({ data }: Props) {
             />
             <Scatter
               data={data}
-              fill="#818cf8"
-              stroke="#6366f1"
+              fill="#34d399"
+              stroke="#10b981"
               strokeWidth={1}
               r={6}
             />

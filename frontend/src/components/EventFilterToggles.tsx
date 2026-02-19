@@ -11,7 +11,7 @@ interface FilterCategory {
 }
 
 const filterCategories: FilterCategory[] = [
-  { id: 'all', label: 'All Events', eventTypes: null, color: 'indigo' },
+  { id: 'all', label: 'All Events', eventTypes: null, color: 'primary' },
   {
     id: 'shots',
     label: 'Shots',
@@ -20,7 +20,7 @@ const filterCategories: FilterCategory[] = [
   },
   { id: 'goals', label: 'Goals', eventTypes: ['goal'], color: 'emerald' },
   { id: 'points', label: 'Points', eventTypes: ['point', 'point_free'], color: 'blue' },
-  { id: 'two_pointers', label: '2-Pointers', eventTypes: ['two_point', 'two_point_free'], color: 'purple' },
+  { id: 'two_pointers', label: '2-Pointers', eventTypes: ['two_point', 'two_point_free'], color: 'teal' },
   { id: 'wides', label: 'Wides', eventTypes: ['wide', 'wide_free', 'short'], color: 'red' },
   {
     id: 'turnovers',
@@ -44,11 +44,11 @@ const filterCategories: FilterCategory[] = [
 
 // Color mapping for dynamic classes
 const colorClasses: Record<string, { active: string; inactive: string }> = {
-  indigo: { active: 'bg-indigo-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
+  primary: { active: 'bg-orange-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   amber: { active: 'bg-amber-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   emerald: { active: 'bg-emerald-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   blue: { active: 'bg-blue-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
-  purple: { active: 'bg-purple-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
+  teal: { active: 'bg-teal-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   red: { active: 'bg-red-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   orange: { active: 'bg-orange-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   cyan: { active: 'bg-cyan-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },

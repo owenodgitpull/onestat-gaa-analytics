@@ -137,6 +137,5 @@ class AttendanceSummary(BaseModel):
     by_type: dict  # e.g. {"training": {"total": 20, "attended": 18}, ...}
 
 
-class InvitePlayerRequest(BaseModel):
+class SelectPlayerRequest(BaseModel):
     player_id: UUID
-    email: str

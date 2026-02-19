@@ -19,8 +19,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   clinical_rating: 'from-emerald-500/20 to-green-500/15 border-emerald-500/30',
   the_wall: 'from-red-500/20 to-rose-500/15 border-red-500/30',
   workhorse: 'from-blue-500/20 to-cyan-500/15 border-blue-500/30',
-  speed_demon: 'from-purple-500/20 to-violet-500/15 border-purple-500/30',
-  sprint_king: 'from-indigo-500/20 to-blue-500/15 border-indigo-500/30',
+  speed_demon: 'from-cyan-500/20 to-teal-500/15 border-cyan-500/30',
+  sprint_king: 'from-emerald-500/20 to-cyan-500/15 border-emerald-500/30',
   iron_man: 'from-teal-500/20 to-emerald-500/15 border-teal-500/30',
   motm_points: 'from-yellow-500/20 to-amber-500/15 border-yellow-500/30',
 };
@@ -66,22 +66,22 @@ export default function PlayerDashboard() {
       <div
         className="rounded-2xl p-5 relative overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, rgba(99,102,241,0.20), rgba(139,92,246,0.12), rgba(59,130,246,0.08))',
-          border: '1px solid rgba(99,102,241,0.25)',
-          boxShadow: '0 8px 32px rgba(99,102,241,0.15)',
+          background: 'linear-gradient(135deg, rgba(0,230,118,0.20), rgba(0,176,255,0.12), rgba(59,130,246,0.08))',
+          border: '1px solid rgba(0,230,118,0.25)',
+          boxShadow: '0 8px 32px rgba(0,230,118,0.15)',
         }}
       >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full -translate-y-8 translate-x-8 blur-2xl" />
+        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -translate-y-8 translate-x-8 blur-2xl" />
         <div className="relative">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-indigo-500/30">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-emerald-500/30">
               {data.jersey_number || '#'}
             </div>
             <div>
               <h1 className="text-xl font-bold text-white">{data.player_name}</h1>
               <p className="text-sm text-white/50 capitalize">{data.position || 'Player'}</p>
               {bestRank && (
-                <p className="text-sm text-indigo-400 font-medium mt-0.5">
+                <p className="text-sm text-emerald-400 font-medium mt-0.5">
                   #{bestRank.rank} {bestRank.display_name}
                 </p>
               )}
@@ -137,7 +137,7 @@ export default function PlayerDashboard() {
                   {m.team_score} v {m.opponent_score}
                 </div>
                 {m.key_stat && (
-                  <div className="text-[11px] text-indigo-400 mt-1">{m.key_stat}</div>
+                  <div className="text-[11px] text-emerald-400 mt-1">{m.key_stat}</div>
                 )}
               </div>
             ))}
@@ -150,7 +150,7 @@ export default function PlayerDashboard() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Leaderboards</h2>
-            <Link to="/player/leaderboards" className="text-xs text-indigo-400 flex items-center gap-0.5">
+            <Link to="/player/leaderboards" className="text-xs text-emerald-400 flex items-center gap-0.5">
               View all <ChevronRight size={14} />
             </Link>
           </div>

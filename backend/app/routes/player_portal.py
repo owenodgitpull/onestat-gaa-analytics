@@ -10,13 +10,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 
+from datetime import datetime, timedelta
+
 from app.auth.dependencies import AuthenticatedUser, require_club
 from app.database import get_db
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.match_gps import MatchGPSData
 from app.models.player import Player
+from app.models.player_challenge import PlayerChallenge
 from app.models.attendance import Attendance, AttendanceStatus, TrainingSession
+from app.models.player_health import PlayerWorkloadSnapshot
 from app.services.leaderboard_service import (
     LeaderboardService,
     SCORING_EVENTS,
@@ -400,6 +404,14 @@ async def get_my_gps(
                 "dynamic_stress_load": g.dynamic_stress_load,
                 "player_load": g.player_load,
                 "playing_minutes": g.playing_minutes,
+                "sprint_distance_m": g.sprint_distance_m,
+                "hml_distance_m": g.hml_distance_m,
+                "avg_speed_ms": g.avg_speed_ms,
+                "acceleration_count": g.acceleration_count,
+                "deceleration_count": g.deceleration_count,
+                "avg_heart_rate": g.avg_heart_rate,
+                "max_heart_rate": g.max_heart_rate,
+                "time_in_red_zone_mins": g.time_in_red_zone_mins,
             })
 
     # Training GPS if available
@@ -423,6 +435,14 @@ async def get_my_gps(
                 "dynamic_stress_load": g.dynamic_stress_load if hasattr(g, 'dynamic_stress_load') else None,
                 "player_load": g.player_load if hasattr(g, 'player_load') else None,
                 "playing_minutes": None,
+                "sprint_distance_m": getattr(g, 'sprint_distance_m', None),
+                "hml_distance_m": getattr(g, 'hml_distance_m', None),
+                "avg_speed_ms": getattr(g, 'avg_speed_ms', None),
+                "acceleration_count": getattr(g, 'acceleration_count', None),
+                "deceleration_count": getattr(g, 'deceleration_count', None),
+                "avg_heart_rate": getattr(g, 'avg_heart_rate', None),
+                "max_heart_rate": getattr(g, 'max_heart_rate', None),
+                "time_in_red_zone_mins": getattr(g, 'time_in_red_zone_mins', None),
             })
     except Exception:
         pass  # Training GPS may not exist
@@ -555,6 +575,345 @@ async def get_my_attendance(
         "longest_streak": longest_streak,
         "by_type": by_type,
         "sessions": session_rows,
+    }
+
+
+# ------------------------------------------------------------------
+# Workload Endpoint
+# ------------------------------------------------------------------
+
+@router.get("/my-stats/workload")
+async def get_my_workload(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """ACWR and workload data for the last 60 days."""
+    player = await _get_player_for_user(db, user)
+
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(days=60)
+
+    result = await db.execute(
+        select(PlayerWorkloadSnapshot).where(
+            and_(
+                PlayerWorkloadSnapshot.player_id == player.id,
+                PlayerWorkloadSnapshot.snapshot_date >= cutoff,
+            )
+        ).order_by(PlayerWorkloadSnapshot.snapshot_date.asc())
+    )
+    snapshots = result.scalars().all()
+
+    entries = []
+    for s in snapshots:
+        entries.append({
+            "date": s.snapshot_date.isoformat() if s.snapshot_date else "",
+            "acute_load_7d": s.acute_load_7d,
+            "chronic_load_28d": s.chronic_load_28d,
+            "acwr": s.acwr,
+            "training_load": s.training_load,
+            "match_load": s.match_load,
+            "total_load": s.total_load,
+            "total_distance_m": s.total_distance_m,
+            "high_speed_distance_m": s.high_speed_distance_m,
+            "sprint_count": s.sprint_count,
+        })
+
+    return {"workload_entries": entries}
+
+
+# ------------------------------------------------------------------
+# AI Personal Insights
+# ------------------------------------------------------------------
+
+@router.get("/my-stats/ai-insights")
+async def get_my_ai_insights(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI-powered personal insights for the player."""
+    player = await _get_player_for_user(db, user)
+
+    from app.services.ai.player_insights_agent import generate_player_insights
+    result = await generate_player_insights(db, player.id, user.club_id)
+    return result
+
+
+# ------------------------------------------------------------------
+# Challenges
+# ------------------------------------------------------------------
+
+@router.get("/my-stats/challenges")
+async def get_my_challenges(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Weekly challenges with live progress evaluation."""
+    player = await _get_player_for_user(db, user)
+    now = datetime.utcnow()
+
+    # Fetch existing active challenges
+    result = await db.execute(
+        select(PlayerChallenge).where(
+            and_(
+                PlayerChallenge.player_id == player.id,
+                PlayerChallenge.status == "active",
+            )
+        )
+    )
+    active_challenges = list(result.scalars().all())
+
+    # If none active, generate new ones
+    if not active_challenges:
+        from app.services.ai.challenge_agent import generate_player_challenges
+        challenge_defs = await generate_player_challenges(db, player.id, user.club_id)
+
+        for cd in challenge_defs:
+            c = PlayerChallenge(
+                player_id=player.id,
+                club_id=user.club_id,
+                title=cd["title"],
+                description=cd.get("description"),
+                category=cd["category"],
+                status="active",
+                metric_key=cd["metric_key"],
+                target_value=cd["target_value"],
+                current_value=0.0,
+                evaluation_window=cd["evaluation_window"],
+                created_at=now,
+                expires_at=now + timedelta(days=7),
+            )
+            db.add(c)
+            active_challenges.append(c)
+
+        await db.flush()
+
+    # Evaluate active challenges against live data
+    from app.services.challenge_evaluator import ChallengeEvaluator
+    active_challenges = await ChallengeEvaluator.evaluate_challenges(
+        db, player.id, user.club_id, active_challenges
+    )
+    await db.commit()
+
+    # Also fetch recently completed/expired for display
+    recent_result = await db.execute(
+        select(PlayerChallenge).where(
+            and_(
+                PlayerChallenge.player_id == player.id,
+                PlayerChallenge.status.in_(["completed", "expired", "failed"]),
+                PlayerChallenge.expires_at >= now - timedelta(days=7),
+            )
+        )
+    )
+    recent_done = list(recent_result.scalars().all())
+
+    all_challenges = active_challenges + recent_done
+
+    return {
+        "challenges": [
+            {
+                "id": str(c.id),
+                "title": c.title,
+                "description": c.description,
+                "category": c.category,
+                "status": c.status,
+                "metric_key": c.metric_key,
+                "target_value": c.target_value,
+                "current_value": c.current_value,
+                "progress_pct": min(100, round((c.current_value / c.target_value) * 100, 1)) if c.target_value > 0 else 0,
+                "expires_at": c.expires_at.isoformat() if c.expires_at else None,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+            }
+            for c in all_challenges
+        ]
+    }
+
+
+# ------------------------------------------------------------------
+# Season Story
+# ------------------------------------------------------------------
+
+@router.get("/my-stats/season-story")
+async def get_my_season_story(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI-generated season narrative for the player."""
+    player = await _get_player_for_user(db, user)
+
+    from app.services.ai.season_story_agent import generate_season_story
+    result = await generate_season_story(db, player.id, user.club_id)
+    return result
+
+
+# ------------------------------------------------------------------
+# Head-to-Head Comparison
+# ------------------------------------------------------------------
+
+@router.get("/head-to-head/{other_player_id}")
+async def get_head_to_head(
+    other_player_id: UUID,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Side-by-side comparison between the current player and another."""
+    player = await _get_player_for_user(db, user)
+
+    # Verify other player exists and is in same club
+    other_result = await db.execute(
+        select(Player).where(
+            and_(Player.id == other_player_id, Player.club_id == user.club_id)
+        )
+    )
+    other_player = other_result.scalar_one_or_none()
+    if not other_player:
+        raise HTTPException(status_code=404, detail="Player not found in your club.")
+
+    matches = await _get_club_completed_matches(db, user.club_id)
+    match_ids = [m.id for m in matches] if matches else []
+
+    async def _player_stats(pid: UUID, pname: str) -> dict:
+        """Compute season stats + GPS averages + attendance for one player."""
+        stats = {
+            "player_id": str(pid),
+            "player_name": pname,
+            "goals": 0, "points": 0, "two_pointers": 0,
+            "total_score_value": 0, "accuracy_pct": None,
+            "turnovers_won": 0, "turnovers_lost": 0,
+            "blocks": 0, "interceptions": 0,
+            "matches_played": 0,
+            "avg_distance_km": None, "avg_sprints": None,
+            "avg_max_speed_kmh": None,
+            "attendance_rate": None,
+        }
+        if not match_ids:
+            return stats
+
+        # Events
+        ev_result = await db.execute(
+            select(MatchEvent).where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.player_id == pid,
+                )
+            )
+        )
+        events = ev_result.scalars().all()
+        matches_played_ids = set(str(e.match_id) for e in events)
+        stats["matches_played"] = len(matches_played_ids)
+
+        goals = sum(1 for e in events if e.event_type in (EventType.GOAL, EventType.PENALTY_GOAL))
+        pts = sum(1 for e in events if e.event_type in (EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE))
+        tp = sum(1 for e in events if e.event_type in (EventType.TWO_POINT, EventType.TWO_POINT_FREE))
+        stats["goals"] = goals
+        stats["points"] = pts
+        stats["two_pointers"] = tp
+        stats["total_score_value"] = goals * 3 + pts + tp * 2
+
+        total_shots = sum(1 for e in events if e.event_type in SHOT_EVENTS)
+        total_scores = sum(1 for e in events if e.event_type in SCORING_EVENTS)
+        stats["accuracy_pct"] = round(total_scores / total_shots * 100, 1) if total_shots > 0 else None
+
+        stats["turnovers_won"] = sum(1 for e in events if e.event_type == EventType.TURNOVER_WON)
+        stats["turnovers_lost"] = sum(1 for e in events if e.event_type == EventType.TURNOVER_LOST)
+        stats["blocks"] = sum(1 for e in events if e.event_type == EventType.BLOCK)
+        stats["interceptions"] = sum(1 for e in events if e.event_type == EventType.INTERCEPTION)
+
+        # GPS averages
+        gps_result = await db.execute(
+            select(MatchGPSData).where(
+                and_(
+                    MatchGPSData.match_id.in_(match_ids),
+                    MatchGPSData.player_id == pid,
+                )
+            )
+        )
+        gps_rows = gps_result.scalars().all()
+        if gps_rows:
+            dists = [g.total_distance_m for g in gps_rows if g.total_distance_m]
+            sprints = [g.sprint_count for g in gps_rows if g.sprint_count]
+            speeds = [g.max_speed_ms for g in gps_rows if g.max_speed_ms]
+            if dists:
+                stats["avg_distance_km"] = round(sum(dists) / len(dists) / 1000, 2)
+            if sprints:
+                stats["avg_sprints"] = round(sum(sprints) / len(sprints), 1)
+            if speeds:
+                stats["avg_max_speed_kmh"] = round(max(speeds) * 3.6, 1)
+
+        # Attendance
+        sessions_result = await db.execute(
+            select(TrainingSession.id).where(TrainingSession.club_id == user.club_id)
+        )
+        session_ids = [r[0] for r in sessions_result.all()]
+        if session_ids:
+            att_result = await db.execute(
+                select(Attendance).where(
+                    and_(
+                        Attendance.session_id.in_(session_ids),
+                        Attendance.player_id == pid,
+                    )
+                )
+            )
+            records = att_result.scalars().all()
+            total_att = len(records)
+            present = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE))
+            stats["attendance_rate"] = round(present / total_att * 100, 1) if total_att > 0 else None
+
+        return stats
+
+    my_stats = await _player_stats(player.id, player.name)
+    their_stats = await _player_stats(other_player.id, other_player.name)
+
+    # Leaderboard ranks for both
+    boards = await LeaderboardService.get_all_leaderboards(db, user.club_id, player.id)
+    my_ranks = {}
+    their_ranks = {}
+    for b in boards:
+        cat = b["category"]
+        my_ranks[cat] = b["my_rank"]
+        # Find other player's rank from context
+        for entry in b.get("top_3", []) + b.get("context_window", []):
+            if entry["player_id"] == str(other_player_id):
+                their_ranks[cat] = entry["rank"]
+                break
+
+    # If we didn't find other player in context windows, re-query for them
+    if len(their_ranks) < len(boards):
+        other_boards = await LeaderboardService.get_all_leaderboards(db, user.club_id, other_player.id)
+        for b in other_boards:
+            cat = b["category"]
+            if cat not in their_ranks:
+                their_ranks[cat] = b["my_rank"]
+
+    return {
+        "me": my_stats,
+        "them": their_stats,
+        "my_ranks": my_ranks,
+        "their_ranks": their_ranks,
+    }
+
+
+# ------------------------------------------------------------------
+# Roster list (for H2H player picker)
+# ------------------------------------------------------------------
+
+@router.get("/roster")
+async def get_roster(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Active players in the club (for H2H picker)."""
+    result = await db.execute(
+        select(Player).where(
+            and_(Player.club_id == user.club_id, Player.active == True)
+        ).order_by(Player.name)
+    )
+    players = result.scalars().all()
+    return {
+        "players": [
+            {"id": str(p.id), "name": p.name, "jersey_number": p.jersey_number, "position": p.position}
+            for p in players
+        ]
     }
 
 

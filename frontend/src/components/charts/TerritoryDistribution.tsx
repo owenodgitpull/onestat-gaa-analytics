@@ -74,7 +74,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
     ? lastMatch.possession_pct
     : data.possession_pct
 
-  const teamColor = selectedTeam === 'own' ? '#6366f1' : '#f97316'
+  const teamColor = selectedTeam === 'own' ? '#10b981' : '#f97316'
 
   // Determine which zone is dominant
   const maxZone = pcts.defensive >= pcts.midfield && pcts.defensive >= pcts.attacking
@@ -164,7 +164,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
               onClick={() => setSelectedTeam('own')}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                 selectedTeam === 'own'
-                  ? 'bg-indigo-600 text-white shadow-sm'
+                  ? 'bg-orange-600 text-white shadow-sm'
                   : 'text-white/60 hover:text-white'
               }`}
             >
@@ -313,10 +313,10 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
       {/* Possession Bar */}
       <div className="mt-4 pt-3 border-t border-white/10">
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-indigo-400 font-semibold w-10">{Math.round(possessionPct)}%</span>
+          <span className="text-emerald-400 font-semibold w-10">{Math.round(possessionPct)}%</span>
           <div className="flex-1 h-2 rounded-full overflow-hidden flex bg-white/10">
             <div
-              className="bg-indigo-500 transition-all"
+              className="bg-emerald-500 transition-all"
               style={{ width: `${possessionPct}%` }}
             />
             <div

@@ -40,7 +40,11 @@ export default function AuthCallback() {
 
     exchangedRef.current = true;
 
-    exchangeCode(code).catch((err) => {
+    // If user came via an invite link, pass the code to token exchange
+    const inviteCode = sessionStorage.getItem('invite_code');
+    sessionStorage.removeItem('invite_code');
+
+    exchangeCode(code, inviteCode || undefined).catch((err) => {
       setError(err.message || 'Token exchange failed');
     });
   }, [searchParams, exchangeCode, isAuthenticated]);
@@ -50,6 +54,8 @@ export default function AuthCallback() {
     if (isAuthenticated && user) {
       if (!user.club_id) {
         navigate('/onboarding', { replace: true });
+      } else if (user.role === 'player' && !user.player_id) {
+        navigate('/select-player', { replace: true });
       } else if (user.role === 'player') {
         navigate('/player', { replace: true });
       } else {
@@ -73,7 +79,7 @@ export default function AuthCallback() {
           <p className="text-white/60 mb-6">{error}</p>
           <button
             onClick={() => navigate('/login', { replace: true })}
-            className="px-6 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors"
+            className="px-6 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-500 transition-colors"
           >
             Back to Login
           </button>
@@ -85,7 +91,7 @@ export default function AuthCallback() {
   return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="text-center">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p className="text-white/60">Signing you in...</p>
       </div>
     </div>

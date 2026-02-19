@@ -14,7 +14,7 @@ interface PossessionFunnelProps {
   data: PossessionFunnelData
 }
 
-const OWN_COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#34d399']
+const OWN_COLORS = ['#10b981', '#06b6d4', '#10b981', '#34d399']
 const OPP_COLORS = ['#f97316', '#fb923c', '#ef4444', '#f87171']
 
 export default function PossessionFunnel({ data }: PossessionFunnelProps) {
@@ -91,7 +91,7 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
               onClick={() => setShowOpponent(false)}
               className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
                 !showOpponent
-                  ? 'bg-indigo-600 text-white shadow-sm'
+                  ? 'bg-orange-600 text-white shadow-sm'
                   : 'text-white/60 hover:text-white'
               }`}
             >

@@ -136,61 +136,26 @@ export default function Navigation() {
           </Link>
 
           {/* Main Navigation Links */}
-          <div className="flex items-center space-x-1">
-            <Link
-              to="/"
-              className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
-                isActive('/')
-                  ? 'text-indigo-400 bg-indigo-500/10'
-                  : 'text-white/70 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              DASHBOARD
-            </Link>
-
-            <Link
-              to="/results"
-              className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
-                isActive('/results')
-                  ? 'text-indigo-400 bg-indigo-500/10'
-                  : 'text-white/70 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              RESULTS
-            </Link>
-
-            <Link
-              to="/players"
-              className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
-                isActive('/players')
-                  ? 'text-indigo-400 bg-indigo-500/10'
-                  : 'text-white/70 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              PLAYERS
-            </Link>
-
-            <Link
-              to="/training"
-              className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
-                isActive('/training')
-                  ? 'text-indigo-400 bg-indigo-500/10'
-                  : 'text-white/70 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              TRAINING
-            </Link>
-
-            <Link
-              to="/analyst"
-              className={`px-4 py-2 text-sm font-medium transition-colors rounded-lg ${
-                isActive('/analyst')
-                  ? 'text-indigo-400 bg-indigo-500/10'
-                  : 'text-white/70 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              ANALYST
-            </Link>
+          <div className="flex items-center space-x-1 h-full">
+            {[
+              { to: '/', label: 'DASHBOARD' },
+              { to: '/results', label: 'RESULTS' },
+              { to: '/players', label: 'PLAYERS' },
+              { to: '/training', label: 'TRAINING' },
+              { to: '/analyst', label: 'ANALYST' },
+            ].map(({ to, label }) => (
+              <Link
+                key={to}
+                to={to}
+                className={`px-4 text-sm font-medium transition-all h-14 flex items-center border-b-2 ${
+                  isActive(to)
+                    ? 'text-white border-emerald-400'
+                    : 'text-white/70 border-transparent hover:text-white hover:border-white/20'
+                }`}
+              >
+                {label}
+              </Link>
+            ))}
           </div>
 
           {/* Right Side - New Match + Profile */}
@@ -199,8 +164,8 @@ export default function Navigation() {
             <button
               onClick={() => setIsNewMatchModalOpen(true)}
               disabled={isCreatingMatch}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg backdrop-blur-md text-white text-sm font-medium transition-all disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.25), rgba(139,92,246,0.18))', border: '1px solid rgba(99,102,241,0.3)', boxShadow: '0 4px 15px -3px rgba(99,102,241,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all disabled:opacity-50"
+              style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
             >
               <PlusCircle size={16} className={isCreatingMatch ? 'animate-spin' : ''} />
               <span className="hidden sm:inline">{isCreatingMatch ? 'Creating...' : 'New Match'}</span>
@@ -212,7 +177,7 @@ export default function Navigation() {
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
                 className="flex items-center space-x-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors"
               >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center overflow-hidden">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center overflow-hidden">
                   {profilePic ? (
                     <img src={profilePic} alt="" className="w-full h-full object-cover" />
                   ) : (
@@ -235,7 +200,7 @@ export default function Navigation() {
                     {user && (
                       <div className="px-4 py-3 border-b border-white/10 flex items-center gap-3">
                         <div className="relative group flex-shrink-0">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center overflow-hidden">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center overflow-hidden">
                             {profilePic ? (
                               <img src={profilePic} alt="" className="w-full h-full object-cover" />
                             ) : (
@@ -255,7 +220,7 @@ export default function Navigation() {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-white truncate">{user.name}</p>
                           <p className="text-xs text-white/50 truncate">{user.email}</p>
-                          {club && <p className="text-xs text-indigo-400 truncate">{club.name}</p>}
+                          {club && <p className="text-xs text-emerald-400 truncate">{club.name}</p>}
                         </div>
                       </div>
                     )}
@@ -287,7 +252,7 @@ export default function Navigation() {
               <button
                 key={idx}
                 onClick={() => window.dispatchEvent(new CustomEvent('toggle-chat-sidebar'))}
-                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all text-white/40 hover:text-purple-400 hover:bg-purple-500/10"
+                className="w-10 h-10 rounded-xl flex items-center justify-center transition-all text-white/40 hover:text-emerald-400 hover:bg-emerald-500/10"
                 title={item.label}
               >
                 <item.icon size={20} />
@@ -298,7 +263,7 @@ export default function Navigation() {
                 to={item.path}
                 className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
                   item.active
-                    ? 'text-white border border-indigo-500/40 shadow-lg shadow-indigo-600/20' + ' ' + 'bg-gradient-to-br from-indigo-500/25 to-violet-500/20 backdrop-blur-md'
+                    ? 'text-white border border-orange-500/40 shadow-lg shadow-orange-600/20' + ' ' + 'bg-gradient-to-br from-orange-500/25 to-amber-500/20 backdrop-blur-md'
                     : 'text-white/40 hover:text-white hover:bg-white/10'
                 }`}
                 title={item.label}
@@ -315,7 +280,7 @@ export default function Navigation() {
           {(location.pathname === '/' || location.pathname.startsWith('/results')) && (
             <button
               onClick={() => setIsNewMatchModalOpen(true)}
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"
               title="New Match"
             >
               <PlusCircle size={20} />
@@ -328,7 +293,7 @@ export default function Navigation() {
           {/* AI Analyst */}
           <Link
             to="/analyst"
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-purple-400 hover:bg-purple-500/10 transition-all"
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"
             title="AI Analyst"
           >
             <MessageSquare size={20} />

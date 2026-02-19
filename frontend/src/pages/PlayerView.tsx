@@ -152,7 +152,7 @@ const fetchPlayerShotEvents = async (id: string): Promise<ShotEvent[]> => {
 }
 
 // Stat Card component
-function StatCard({ label, value, subtext, icon: Icon, color = 'indigo' }: {
+function StatCard({ label, value, subtext, icon: Icon, color = 'emerald' }: {
   label: string
   value: string | number
   subtext?: string
@@ -160,8 +160,7 @@ function StatCard({ label, value, subtext, icon: Icon, color = 'indigo' }: {
   color?: string
 }) {
   const colorClasses: Record<string, string> = {
-    indigo: 'from-indigo-600 to-purple-600',
-    emerald: 'from-indigo-600 to-violet-600',
+    emerald: 'from-emerald-600 to-cyan-600',
     amber: 'from-amber-600 to-orange-600',
     red: 'from-red-600 to-pink-600'
   }
@@ -550,7 +549,7 @@ export default function PlayerView() {
     { name: 'Turnovers Won', value: totalTurnoversWon },
     { name: 'Frees Won', value: totalFreesWon },
   ]
-  const DONUT_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#f59e0b']
+  const DONUT_COLORS = ['#10b981', '#06b6d4', '#06b6d4', '#f59e0b']
 
   // Readiness vs Intensity data (from matchGpsHistory)
   const intensityData = matchGpsHistory?.slice().reverse().map(d => ({
@@ -567,7 +566,7 @@ export default function PlayerView() {
           <ChevronLeft size={24} />
         </Link>
         <div className="flex items-center gap-4 flex-1">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-3xl font-bold text-white">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center text-3xl font-bold text-white">
             {player.jersey_number || player.name.charAt(0)}
           </div>
           <div>
@@ -599,7 +598,7 @@ export default function PlayerView() {
             onClick={() => setActiveTab(tab.id as any)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all ${
               activeTab === tab.id
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
                 : 'bg-white/5 text-white/60 hover:bg-white/10'
             }`}
           >
@@ -779,9 +778,9 @@ export default function PlayerView() {
                   </div>
                   {latestFitnessTest.ai_analysis.recommendations?.length > 0 && (
                     <div className="mt-6">
-                      <h4 className="text-sm font-semibold text-indigo-400 mb-2">Training Recommendations</h4>
+                      <h4 className="text-sm font-semibold text-emerald-400 mb-2">Training Recommendations</h4>
                       <ul className="space-y-2">{latestFitnessTest.ai_analysis.recommendations.map((r: string, i: number) => (
-                        <li key={i} className="text-sm text-white/80 flex items-start gap-2"><span className="text-indigo-400 mt-0.5">•</span>{r}</li>
+                        <li key={i} className="text-sm text-white/80 flex items-start gap-2"><span className="text-emerald-400 mt-0.5">•</span>{r}</li>
                       ))}</ul>
                     </div>
                   )}
@@ -789,7 +788,7 @@ export default function PlayerView() {
                     <div className="mt-6">
                       <h4 className="text-sm font-semibold text-white/60 mb-2">Position Suitability</h4>
                       <div className="flex flex-wrap gap-2">{latestFitnessTest.ai_analysis.position_fit.map((p: string, i: number) => (
-                        <span key={i} className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-400 text-sm">{p}</span>
+                        <span key={i} className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-sm">{p}</span>
                       ))}</div>
                     </div>
                   )}
@@ -801,11 +800,11 @@ export default function PlayerView() {
                   <h3 className="text-xl font-bold text-white mb-4">Test History</h3>
                   <div className="space-y-3">
                     {fitnessHistory.map((test: any, i: number) => (
-                      <div key={test.id} className={`p-4 rounded-xl ${i === 0 ? 'bg-indigo-500/10 border border-indigo-500/30' : 'bg-white/5'}`}>
+                      <div key={test.id} className={`p-4 rounded-xl ${i === 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-white/5'}`}>
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-white">
                             {new Date(test.test_date).toLocaleDateString()}
-                            {i === 0 && <span className="ml-2 text-xs text-indigo-400">(Latest)</span>}
+                            {i === 0 && <span className="ml-2 text-xs text-emerald-400">(Latest)</span>}
                           </span>
                           <div className="flex items-center gap-4 text-sm">
                             {test.cmj_cm && <span className="text-white/60">CMJ: <span className="text-white">{test.cmj_cm}cm</span></span>}
@@ -906,7 +905,7 @@ function OverviewTab({
   donutData: { name: string; value: number }[]
   defensiveTotal: number
 }) {
-  const DONUT_COLORS = ['#6366f1', '#8b5cf6', '#06b6d4', '#f59e0b']
+  const DONUT_COLORS = ['#10b981', '#06b6d4', '#06b6d4', '#f59e0b']
   const hasData = matchesPlayed > 0
 
   // Computed insights — no AI calls, derived from data
@@ -924,9 +923,9 @@ function OverviewTab({
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total Score" value={totalScore} subtext={`${totalGoals}G + ${totalPoints}P`} icon={Target} color="emerald" />
-        <StatCard label="Matches Played" value={matchesPlayed} icon={Trophy} color="indigo" />
+        <StatCard label="Matches Played" value={matchesPlayed} icon={Trophy} color="emerald" />
         <StatCard label="Avg per Match" value={matchesPlayed > 0 ? (totalScore / matchesPlayed).toFixed(1) : '0'} icon={TrendingUp} color="amber" />
-        <StatCard label="Attendance Rate" value={`${attendanceStats?.attendance_rate || 0}%`} subtext={`${attendanceStats?.present_count || 0}/${attendanceStats?.total_sessions || 0} sessions`} icon={Calendar} color="indigo" />
+        <StatCard label="Attendance Rate" value={`${attendanceStats?.attendance_rate || 0}%`} subtext={`${attendanceStats?.present_count || 0}/${attendanceStats?.total_sessions || 0} sessions`} icon={Calendar} color="emerald" />
       </div>
 
       {/* KPI Cards */}
@@ -934,8 +933,8 @@ function OverviewTab({
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <KpiCard label="Clinical Rating" value={`${clinicalRating}%`} subtitle={`${totalScores} scores from ${totalShots} shots`} icon={Target} gradient="from-emerald-600 to-teal-600" />
           <KpiCard label="Restart King" value={restartKing} subtitle={`${totalKickoutsWon} kickouts + ${totalFreesWon} frees won`} icon={Trophy} gradient="from-amber-600 to-orange-600" />
-          <KpiCard label="The Wall" value={`${theWall}/game`} subtitle={`${totalBlocks} blocks + ${totalInterceptions} intercepts`} icon={Shield} gradient="from-indigo-600 to-purple-600" />
-          <KpiCard label="Speed Attainment" value={maxSpeedKmh === '-' ? '-' : `${maxSpeedKmh} km/h`} subtitle="Peak speed from GPS" icon={Zap} gradient="from-violet-600 to-fuchsia-600" />
+          <KpiCard label="The Wall" value={`${theWall}/game`} subtitle={`${totalBlocks} blocks + ${totalInterceptions} intercepts`} icon={Shield} gradient="from-emerald-600 to-cyan-600" />
+          <KpiCard label="Speed Attainment" value={maxSpeedKmh === '-' ? '-' : `${maxSpeedKmh} km/h`} subtitle="Peak speed from GPS" icon={Zap} gradient="from-cyan-600 to-blue-600" />
           <KpiCard label="Clean Play" value={`${cleanPlayPct}%`} subtitle={`${cleanPlayMatches}/${matchesPlayed} matches card-free`} icon={CheckCircle} gradient="from-cyan-600 to-blue-600" />
           <KpiCard label="Attendance" value={`${attendanceStats?.attendance_rate || 0}%`} subtitle={`${attendanceStats?.present_count || 0} of ${attendanceStats?.total_sessions || 0} sessions`} icon={Calendar} gradient="from-pink-600 to-rose-600" />
         </div>
@@ -955,7 +954,7 @@ function OverviewTab({
                 <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="70%">
                   <PolarGrid stroke="#374151" />
                   <PolarAngleAxis dataKey="axis" tick={{ fill: '#9ca3af', fontSize: 12 }} />
-                  <Radar dataKey="value" stroke="#6366f1" fill="#6366f1" fillOpacity={0.3} strokeWidth={2} />
+                  <Radar dataKey="value" stroke="#10b981" fill="#10b981" fillOpacity={0.3} strokeWidth={2} />
                   <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} formatter={(value: number) => [`${Math.round(value)}`, 'Score']} />
                 </RadarChart>
               </ResponsiveContainer>
@@ -1022,8 +1021,8 @@ function OverviewTab({
                   cursor={false}
                 />
                 <Legend />
-                <Bar dataKey="score" fill="#6366f1" name="Score" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="turnovers" fill="#8b5cf6" name="Turnovers Won" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="score" fill="#10b981" name="Score" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="turnovers" fill="#06b6d4" name="Turnovers Won" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="defence" fill="#f59e0b" name="Blocks + Intercepts" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -1077,12 +1076,12 @@ function PerformanceTab({
               <ComposedChart data={intensityData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis dataKey="name" stroke="#9ca3af" fontSize={11} />
-                <YAxis yAxisId="left" stroke="#6366f1" fontSize={12} label={{ value: 'Stress Load', angle: -90, position: 'insideLeft', fill: '#6366f1', fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" stroke="#8b5cf6" fontSize={12} label={{ value: 'Distance (km)', angle: 90, position: 'insideRight', fill: '#8b5cf6', fontSize: 11 }} />
+                <YAxis yAxisId="left" stroke="#10b981" fontSize={12} label={{ value: 'Stress Load', angle: -90, position: 'insideLeft', fill: '#10b981', fontSize: 11 }} />
+                <YAxis yAxisId="right" orientation="right" stroke="#06b6d4" fontSize={12} label={{ value: 'Distance (km)', angle: 90, position: 'insideRight', fill: '#06b6d4', fontSize: 11 }} />
                 <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none', borderRadius: '8px' }} cursor={false} />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="intensity" stroke="#6366f1" name="Stress Load" strokeWidth={2} dot={{ r: 3 }} />
-                <Line yAxisId="right" type="monotone" dataKey="workload" stroke="#8b5cf6" name="Distance (km)" strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="left" type="monotone" dataKey="intensity" stroke="#10b981" name="Stress Load" strokeWidth={2} dot={{ r: 3 }} />
+                <Line yAxisId="right" type="monotone" dataKey="workload" stroke="#06b6d4" name="Distance (km)" strokeWidth={2} dot={{ r: 3 }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -1132,7 +1131,7 @@ function PerformanceTab({
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-white/60">{new Date(data.created_at).toLocaleDateString()}</span>
                   {data.playing_minutes && (
-                    <span className="text-xs px-2 py-1 rounded bg-indigo-500/20 text-indigo-400">{data.playing_minutes} mins played</span>
+                    <span className="text-xs px-2 py-1 rounded bg-emerald-500/20 text-emerald-400">{data.playing_minutes} mins played</span>
                   )}
                 </div>
                 <div className="grid grid-cols-4 gap-4">

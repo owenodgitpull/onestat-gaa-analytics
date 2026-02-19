@@ -289,7 +289,7 @@ function NewSessionModal({ isOpen, onClose, onCreate }: {
               />
               <button
                 onClick={handleAddDrill}
-                className="px-4 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                className="px-4 py-2 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
               >
                 <Plus size={20} />
               </button>
@@ -299,7 +299,7 @@ function NewSessionModal({ isOpen, onClose, onCreate }: {
                 {drills.map((drill, index) => (
                   <span
                     key={index}
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-indigo-600/20 text-indigo-300 text-sm"
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-600/20 text-emerald-300 text-sm"
                   >
                     {drill}
                     <button
@@ -466,7 +466,7 @@ function SessionDetailModal({ session, onClose }: {
                 <div className="text-xs text-white/60">Players</div>
               </div>
               <div className="p-3 rounded-xl bg-white/5 text-center">
-                <div className="text-2xl font-bold text-indigo-400">{gpsStats.avgDistance.toLocaleString()}</div>
+                <div className="text-2xl font-bold text-emerald-400">{gpsStats.avgDistance.toLocaleString()}</div>
                 <div className="text-xs text-white/60">Avg Distance (m)</div>
               </div>
               <div className="p-3 rounded-xl bg-white/5 text-center">
@@ -478,7 +478,7 @@ function SessionDetailModal({ session, onClose }: {
                 <div className="text-xs text-white/60">Avg HSR (m)</div>
               </div>
               <div className="p-3 rounded-xl bg-white/5 text-center">
-                <div className="text-2xl font-bold text-purple-400">{gpsStats.avgSprints}</div>
+                <div className="text-2xl font-bold text-cyan-400">{gpsStats.avgSprints}</div>
                 <div className="text-xs text-white/60">Avg Sprints</div>
               </div>
               <div className="p-3 rounded-xl bg-white/5 text-center">
@@ -657,7 +657,7 @@ function TrainingLeaderboard({ leaderboard, squadAverages }: { leaderboard: Lead
             onClick={() => setMetric(m.key)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               metric === m.key
-                ? 'bg-indigo-600 text-white'
+                ? 'bg-emerald-600 text-white'
                 : 'bg-white/10 text-white/60 hover:bg-white/20'
             }`}
           >
@@ -841,7 +841,7 @@ export default function Attendance() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
             <Dumbbell size={24} className="text-white" />
           </div>
           <div>
@@ -867,10 +867,10 @@ export default function Attendance() {
 
       {/* AI Training Insight */}
       {aiSummary?.summary && (
-        <div className="glass-card p-4 border border-indigo-500/20">
+        <div className="glass-card p-4 border border-emerald-500/20">
           <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
-              <Bot size={16} className="text-indigo-400" />
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+              <Bot size={16} className="text-emerald-400" />
             </div>
             <div>
               <div className="text-sm leading-relaxed">{renderAnalysisText(aiSummary.summary)}</div>
@@ -892,7 +892,7 @@ export default function Attendance() {
         <div className="space-y-4 relative z-10">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Zap size={18} className="text-indigo-400" />
+              <Zap size={18} className="text-emerald-400" />
               {kpiView === 'last-session' ? 'Latest Session Overview' : 'Season Overview'}
             </h2>
             <div className="flex items-center gap-2">
@@ -906,7 +906,7 @@ export default function Attendance() {
                   onClick={() => setKpiView('last-session')}
                   className={`px-3 py-1.5 text-xs font-medium transition-all ${
                     kpiView === 'last-session'
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-emerald-600 text-white'
                       : 'bg-white/10 text-white/60 hover:bg-white/20'
                   }`}
                 >
@@ -916,7 +916,7 @@ export default function Attendance() {
                   onClick={() => setKpiView('overview')}
                   className={`px-3 py-1.5 text-xs font-medium transition-all ${
                     kpiView === 'overview'
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-emerald-600 text-white'
                       : 'bg-white/10 text-white/60 hover:bg-white/20'
                   }`}
                 >
@@ -933,7 +933,7 @@ export default function Attendance() {
                 <div className="text-xs text-white/60 mt-1">Players</div>
               </div>
               <div className="glass-card p-4 text-center">
-                <div className="text-2xl font-bold text-indigo-400">{latestGPSStats.avgDistance.toLocaleString()}</div>
+                <div className="text-2xl font-bold text-emerald-400">{latestGPSStats.avgDistance.toLocaleString()}</div>
                 <div className="text-xs text-white/60 mt-1">Avg Distance (m)</div>
               </div>
               <div className="glass-card p-4 text-center">
@@ -945,7 +945,7 @@ export default function Attendance() {
                 <div className="text-xs text-white/60 mt-1">Avg HSR (m)</div>
               </div>
               <div className="glass-card p-4 text-center">
-                <div className="text-2xl font-bold text-purple-400">{latestGPSStats.avgSprints}</div>
+                <div className="text-2xl font-bold text-cyan-400">{latestGPSStats.avgSprints}</div>
                 <div className="text-xs text-white/60 mt-1">Avg Sprints</div>
               </div>
               <div className="glass-card p-4 text-center">
@@ -1032,7 +1032,7 @@ export default function Attendance() {
                 <div className="hidden group-hover/tip:block absolute top-9 right-2 bg-slate-900/95 border border-white/20 rounded-lg p-2.5 text-xs text-white/80 leading-relaxed z-30 w-52 shadow-xl backdrop-blur-sm text-left">
                   Average left/right step balance across all players from the latest session. 50/50 is ideal — imbalance may indicate fatigue or injury risk.
                 </div>
-                <div className="text-2xl font-bold text-indigo-400">
+                <div className="text-2xl font-bold text-emerald-400">
                   {overviewKpis.team_balance_left_pct.toFixed(1)}% L
                 </div>
                 <div className="text-xs text-white/60 mt-1">Team Step Balance</div>
@@ -1066,7 +1066,7 @@ export default function Attendance() {
       ) && (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-            <BarChart3 size={18} className="text-indigo-400" />
+            <BarChart3 size={18} className="text-emerald-400" />
             Training Analytics
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1090,14 +1090,14 @@ export default function Attendance() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                    session.session_type === 'training' ? 'bg-indigo-600/20' :
+                    session.session_type === 'training' ? 'bg-emerald-600/20' :
                     session.session_type === 'gym' ? 'bg-orange-600/20' :
-                    'bg-violet-600/20'
+                    'bg-cyan-600/20'
                   }`}>
                     <Calendar size={24} className={`${
-                      session.session_type === 'training' ? 'text-indigo-400' :
+                      session.session_type === 'training' ? 'text-emerald-400' :
                       session.session_type === 'gym' ? 'text-orange-400' :
-                      'text-violet-400'
+                      'text-cyan-400'
                     }`} />
                   </div>
                   <div>

@@ -42,7 +42,7 @@ export default function InsightAlertsPanel({ dashboard }: InsightAlertsPanelProp
   return (
     <div>
       <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-white">
-        <Sparkles size={20} className="text-indigo-400" />
+        <Sparkles size={20} className="text-emerald-400" />
         AI Insight Alerts
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

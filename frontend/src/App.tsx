@@ -17,6 +17,8 @@ import AIAnalystPage from './pages/AIAnalystPage'
 import Onboarding from './pages/Onboarding'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
+import JoinClub from './pages/JoinClub'
+import SelectPlayer from './pages/SelectPlayer'
 
 // Player portal pages
 import PlayerDashboard from './pages/player/PlayerDashboard'
@@ -38,7 +40,7 @@ const queryClient = new QueryClient({
 function PlayerLoading() {
   return (
     <div className="flex items-center justify-center py-20">
-      <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
     </div>
   )
 }
@@ -59,11 +61,19 @@ function App() {
               {/* Public routes — no auth required */}
               <Route path="/login" element={<Login />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/join/:code" element={<JoinClub />} />
 
               {/* Onboarding — requires auth but no Navigation */}
               <Route path="/onboarding" element={
                 <RequireAuth>
                   <Onboarding />
+                </RequireAuth>
+              } />
+
+              {/* Player self-selection — requires auth but no ClubProvider/Navigation */}
+              <Route path="/select-player" element={
+                <RequireAuth>
+                  <SelectPlayer />
                 </RequireAuth>
               } />
 

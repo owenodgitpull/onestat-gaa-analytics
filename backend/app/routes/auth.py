@@ -1,5 +1,5 @@
 """
-Auth routes — token exchange, user profile, logout, setup.
+Auth routes — token exchange, user profile, logout, setup, invite codes.
 
 /auth/token proxies the Cognito code→token exchange so the SPA
 never needs the token endpoint URL. It also upserts the User record
@@ -10,6 +10,8 @@ Tokens are stored in httpOnly cookies — never exposed to JavaScript.
 
 import logging
 import os
+import secrets
+import string
 from typing import Optional
 from uuid import UUID
 
@@ -28,7 +30,7 @@ from app.models.club import Club
 from app.models.player import Player
 from app.models.user import User
 from app.schemas.user import UserResponse, SetupProfileRequest
-from app.schemas.player_portal import InvitePlayerRequest
+from app.schemas.player_portal import SelectPlayerRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -104,6 +106,7 @@ class TokenExchangeRequest(BaseModel):
     code: str
     redirect_uri: str
     code_verifier: str
+    invite_code: Optional[str] = None
 
 
 class CookieAuthResponse(BaseModel):
@@ -214,16 +217,30 @@ async def exchange_token(
             await db.refresh(user)
             logger.info(f"Linked invited user to cognito_sub: {email}")
         else:
+            # If invite_code provided, look up the club and assign player role
+            invite_club_id = None
+            if body.invite_code:
+                club_result = await db.execute(
+                    select(Club).where(
+                        Club.invite_code == body.invite_code,
+                        Club.is_active == True,
+                    )
+                )
+                invite_club = club_result.scalar_one_or_none()
+                if invite_club:
+                    invite_club_id = invite_club.id
+
             user = User(
                 cognito_sub=cognito_sub,
                 email=email,
                 name=token_name or email.split("@")[0] or "User",
-                role="club_admin",
+                role="player" if invite_club_id else "club_admin",
+                club_id=invite_club_id,
             )
             db.add(user)
             await db.commit()
             await db.refresh(user)
-            logger.info(f"Created new user on token exchange: {email}")
+            logger.info(f"Created new user on token exchange: {email} (invite_code={'yes' if invite_club_id else 'no'})")
     else:
         # Update email if changed in Cognito
         if email and user.email != email:
@@ -388,24 +405,138 @@ async def setup_profile(
     return db_user
 
 
-@router.post("/invite-player", response_model=UserResponse)
+def _generate_invite_code() -> str:
+    """Generate a random 8-character alphanumeric invite code (uppercase)."""
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(8))
+
+
+@router.post("/invite-code/generate")
 @limiter.limit("10/minute")
-async def invite_player(
+async def generate_invite_code(
     request: Request,
-    body: InvitePlayerRequest,
     user: AuthenticatedUser = Depends(require_role("club_admin")),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Admin invites a player to the app by linking email → player_id.
-
-    Creates or updates a User record with role="player" and the given player_id.
-    The player can then log in via Cognito with that email.
+    Generate (or regenerate) a shareable invite code for the admin's club.
+    Old code is replaced — previous links become invalid.
     """
     if not user.club_id:
         raise HTTPException(status_code=403, detail="No club associated")
 
-    # Verify player belongs to admin's club
+    result = await db.execute(
+        select(Club).where(Club.id == user.club_id)
+    )
+    club = result.scalar_one_or_none()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club not found")
+
+    # Generate a unique code (retry on collision)
+    for _ in range(5):
+        code = _generate_invite_code()
+        existing = await db.execute(
+            select(Club).where(Club.invite_code == code)
+        )
+        if not existing.scalar_one_or_none():
+            break
+    else:
+        raise HTTPException(status_code=500, detail="Could not generate unique code")
+
+    club.invite_code = code
+    await db.commit()
+
+    return {"invite_code": code}
+
+
+@router.get("/invite-code/{code}/verify")
+async def verify_invite_code(
+    code: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public endpoint — verify an invite code and return club info.
+    Used by the /join/:code landing page.
+    """
+    result = await db.execute(
+        select(Club).where(
+            Club.invite_code == code.upper(),
+            Club.is_active == True,
+        )
+    )
+    club = result.scalar_one_or_none()
+
+    if not club:
+        return {"valid": False, "club_name": None, "logo_url": None}
+
+    return {
+        "valid": True,
+        "club_name": club.name,
+        "logo_url": club.logo_url,
+    }
+
+
+@router.get("/roster")
+async def get_roster(
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return the player roster for the user's club with claimed status.
+    Used by /select-player page. Requires auth but NOT require_club
+    (player just joined via invite code and has club_id set).
+    """
+    if not user.club_id:
+        raise HTTPException(status_code=403, detail="No club associated")
+
+    # Get all players in the club
+    result = await db.execute(
+        select(Player).where(
+            Player.club_id == user.club_id,
+            Player.active == True,
+        )
+    )
+    players = result.scalars().all()
+
+    # Get all user→player links for this club
+    claimed_result = await db.execute(
+        select(User.player_id).where(
+            User.club_id == user.club_id,
+            User.player_id.isnot(None),
+        )
+    )
+    claimed_ids = {row[0] for row in claimed_result.all()}
+
+    roster = []
+    for p in players:
+        roster.append({
+            "id": str(p.id),
+            "name": p.name,
+            "jersey_number": p.jersey_number,
+            "position": p.position,
+            "is_claimed": p.id in claimed_ids,
+        })
+
+    # Sort by jersey number (None last), then name
+    roster.sort(key=lambda x: (x["jersey_number"] is None, x["jersey_number"] or 0, x["name"]))
+
+    return {"players": roster}
+
+
+@router.post("/select-player", response_model=UserResponse)
+async def select_player(
+    body: SelectPlayerRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Player selects their name from the roster, linking player_id to user.
+    409 if already claimed by another user.
+    """
+    if not user.club_id:
+        raise HTTPException(status_code=403, detail="No club associated")
+
+    # Verify player belongs to user's club
     result = await db.execute(
         select(Player).where(
             Player.id == body.player_id,
@@ -416,34 +547,25 @@ async def invite_player(
     if not player:
         raise HTTPException(status_code=404, detail="Player not found in your club")
 
-    # Check if a user with this email already exists
-    result = await db.execute(
-        select(User).where(User.email == body.email)
-    )
-    existing_user = result.scalar_one_or_none()
-
-    if existing_user:
-        # Prevent hijacking users from other clubs
-        if existing_user.club_id and existing_user.club_id != user.club_id:
-            raise HTTPException(status_code=409, detail="This email is already registered with another club")
-        # Update existing user to link player
-        existing_user.player_id = body.player_id
-        existing_user.role = "player"
-        existing_user.club_id = user.club_id
-        await db.commit()
-        await db.refresh(existing_user)
-        return existing_user
-    else:
-        # Create a new user record (will be matched on Cognito login via email)
-        new_user = User(
-            cognito_sub=None,  # Will be filled on first login
-            email=body.email,
-            name=player.name,
-            club_id=user.club_id,
-            role="player",
-            player_id=body.player_id,
+    # Check if already claimed by another user
+    claimed_result = await db.execute(
+        select(User).where(
+            User.player_id == body.player_id,
+            User.id != user.user_id,
         )
-        db.add(new_user)
-        await db.commit()
-        await db.refresh(new_user)
-        return new_user
+    )
+    if claimed_result.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="This player has already been claimed by another account")
+
+    # Link player to user
+    result = await db.execute(
+        select(User).where(User.id == user.user_id)
+    )
+    db_user = result.scalar_one_or_none()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    db_user.player_id = body.player_id
+    await db.commit()
+    await db.refresh(db_user)
+    return db_user

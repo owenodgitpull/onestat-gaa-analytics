@@ -108,7 +108,7 @@ export default function PossessionSelectionModal({
         {step === 'direction' ? (
           <>
             {/* Header - Attack Direction */}
-            <div className="p-6 border-b border-white/10 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 text-center">
+            <div className="p-6 border-b border-white/10 bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 text-center">
               <h2 className="text-2xl font-bold text-white mb-2">Attack Direction</h2>
               <p className="text-white/70 text-sm">Which way is {homeTeam} attacking this half?</p>
             </div>
@@ -128,11 +128,11 @@ export default function PossessionSelectionModal({
                 onClick={() => handleDirectionSelect('right')}
                 onMouseEnter={() => setHoveredDirection('right')}
                 onMouseLeave={() => setHoveredDirection(null)}
-                className="w-full p-4 rounded-xl bg-gradient-to-r from-indigo-600/20 to-violet-600/20 border-2 border-indigo-500/30 hover:border-indigo-500 hover:from-indigo-600/30 hover:to-violet-600/30 transition-all group"
+                className="w-full p-4 rounded-xl bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-2 border-emerald-500/30 hover:border-emerald-500 hover:from-emerald-600/30 hover:to-cyan-600/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shadow-lg">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center shadow-lg">
                       <ArrowRight size={24} className="text-white" />
                     </div>
                     <div className="text-left">
@@ -155,11 +155,11 @@ export default function PossessionSelectionModal({
                 onClick={() => handleDirectionSelect('left')}
                 onMouseEnter={() => setHoveredDirection('left')}
                 onMouseLeave={() => setHoveredDirection(null)}
-                className="w-full p-4 rounded-xl bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border-2 border-blue-500/30 hover:border-blue-500 hover:from-blue-600/30 hover:to-indigo-600/30 transition-all group"
+                className="w-full p-4 rounded-xl bg-gradient-to-r from-blue-600/20 to-emerald-600/20 border-2 border-blue-500/30 hover:border-blue-500 hover:from-blue-600/30 hover:to-emerald-600/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-emerald-600 flex items-center justify-center shadow-lg">
                       <ArrowLeft size={24} className="text-white" />
                     </div>
                     <div className="text-left">
@@ -174,9 +174,9 @@ export default function PossessionSelectionModal({
         ) : (
           <>
             {/* Header - Possession */}
-            <div className="p-8 border-b border-white/10 bg-gradient-to-r from-indigo-600/20 to-purple-600/20 text-center">
-              <div className="inline-flex p-3 rounded-full bg-indigo-600/30 mb-4">
-                <Users size={32} className="text-indigo-300" />
+            <div className="p-8 border-b border-white/10 bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 text-center">
+              <div className="inline-flex p-3 rounded-full bg-emerald-600/30 mb-4">
+                <Users size={32} className="text-emerald-300" />
               </div>
               <h2 className="text-3xl font-bold text-white mb-2">Who Has Possession?</h2>
               <p className="text-white/70">Select which team won the throw-in</p>
@@ -187,16 +187,16 @@ export default function PossessionSelectionModal({
               {/* Home Team */}
               <button
                 onClick={() => handlePossessionSelect('home')}
-                className="w-full p-6 rounded-xl bg-gradient-to-r from-indigo-600/20 to-violet-600/20 border-2 border-indigo-500/30 hover:border-indigo-500 hover:from-indigo-600/30 hover:to-violet-600/30 transition-all group"
+                className="w-full p-6 rounded-xl bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-2 border-emerald-500/30 hover:border-emerald-500 hover:from-emerald-600/30 hover:to-cyan-600/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
                       {homeTeam[0]?.toUpperCase() || 'H'}
                     </div>
                     <div className="text-left">
                       <div className="text-xl font-bold text-white">{homeTeam}</div>
-                      <div className="text-sm text-indigo-300">Home Team</div>
+                      <div className="text-sm text-emerald-300">Home Team</div>
                     </div>
                   </div>
                   <ChevronRight size={24} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
@@ -246,7 +246,7 @@ export default function PossessionSelectionModal({
                 direction={attackingRight ? 'right' : 'left'}
                 homeTeam={homeTeam}
               />
-              <div className="p-3 mt-2 rounded-lg bg-indigo-600/10 border border-indigo-500/30">
+              <div className="p-3 mt-2 rounded-lg bg-emerald-600/10 border border-emerald-500/30">
                 <p className="text-xs text-white/70 text-center">
                   {homeTeam} attacking {attackingRight ? 'left → right' : 'right → left'} this half
                 </p>

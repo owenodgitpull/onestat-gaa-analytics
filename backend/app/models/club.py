@@ -41,6 +41,7 @@ class Club(Base):
     primary_colour = Column(String(7), nullable=True)
     secondary_colour = Column(String(7), nullable=True)
     logo_url = Column(String(500), nullable=True)
+    invite_code = Column(String(8), unique=True, nullable=True, index=True)
     is_active = Column(Boolean, default=True, nullable=False)
     onboarding_completed = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
