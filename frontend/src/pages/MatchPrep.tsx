@@ -253,7 +253,7 @@ export default function MatchPrep() {
         is_substitute: position_id.startsWith('sub-'),
       }))
       await api.matchLineups.saveLineup(matchId, entries)
-      navigate(`/match/${matchId}`)
+      navigate(`/match/${matchId}/setup`)
     } catch (err) {
       console.error('Failed to save lineup:', err)
       setSaving(false)

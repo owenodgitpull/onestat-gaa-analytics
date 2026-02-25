@@ -33,6 +33,9 @@ from app.models.user import User
 from app.models.push_subscription import PushSubscription
 from app.models.notification import Notification, NotificationType
 from app.models.player_challenge import PlayerChallenge
+from app.models.video_session import VideoSession
+from app.models.video_event import VideoEvent, VIDEO_EVENT_TYPES, PITCH_ZONES, TWO_POINTER_ZONES
+from app.models.possession_chain import PossessionChain
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -82,5 +85,11 @@ __all__ = [
     "Notification",
     "NotificationType",
     "PlayerChallenge",
+    "VideoSession",
+    "VideoEvent",
+    "VIDEO_EVENT_TYPES",
+    "PITCH_ZONES",
+    "TWO_POINTER_ZONES",
+    "PossessionChain",
 ]
 

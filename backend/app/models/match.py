@@ -102,6 +102,10 @@ class Match(Base):
     temperature_celsius: Column[Optional[int]] = Column(Integer, nullable=True)  # Temperature in Celsius
     wind_speed_kmh: Column[Optional[int]] = Column(Integer, nullable=True)  # Wind speed in km/h
 
+    # Strip colours (hex, e.g. "#FF0000")
+    team_strip_colour: Column[Optional[str]] = Column(String(7), nullable=True)
+    opponent_strip_colour: Column[Optional[str]] = Column(String(7), nullable=True)
+
     # AI-generated post-match analysis (generated when match completes)
     ai_analysis: Column[Optional[str]] = Column(Text, nullable=True)
     ai_analysis_generated_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
@@ -148,6 +152,13 @@ class Match(Base):
 
     gps_data = relationship(
         "MatchGPSData",
+        back_populates="match",
+        lazy="selectin",
+        cascade="all, delete-orphan"
+    )
+
+    video_sessions = relationship(
+        "VideoSession",
         back_populates="match",
         lazy="selectin",
         cascade="all, delete-orphan"

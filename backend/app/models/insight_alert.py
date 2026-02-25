@@ -26,6 +26,7 @@ class AlertSource(enum.Enum):
     TRAINING_GPS = "training_gps"
     MATCH_GPS = "match_gps"
     MANUAL = "manual"
+    VIDEO_SYNC = "video_sync"
 
 
 class InsightAlert(Base):

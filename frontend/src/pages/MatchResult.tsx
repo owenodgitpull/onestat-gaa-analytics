@@ -3,7 +3,7 @@
  * Read-only view of a completed match with event visualization on pitch
  */
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -21,7 +21,8 @@ import {
   AlertCircle,
   Loader2,
   X,
-  Target
+  Target,
+  Video
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { api } from '../services/api'
@@ -73,7 +74,7 @@ export default function MatchResult() {
   })
 
   // Fetch AI GPS analysis when GPS data exists
-  const { data: gpsAnalysis, isLoading: gpsAnalysisLoading, refetch: refetchGpsAnalysis } = useQuery({
+  const { data: gpsAnalysis, isLoading: gpsAnalysisLoading } = useQuery({
     queryKey: ['gps-analysis', matchId],
     queryFn: () => api.ai.analyzeGps(gpsData!, { opponent: match?.opponent, date: match?.match_date }),
     enabled: !!gpsData && gpsData.length > 0,
@@ -84,7 +85,7 @@ export default function MatchResult() {
   const [showGpsUpload, setShowGpsUpload] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle')
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [uploadId, setUploadId] = useState<string | null>(null)
+  const [, setUploadId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -401,6 +402,13 @@ export default function MatchResult() {
                 Upload GPS Data
               </button>
             )}
+            <Link
+              to={`/results/${matchId}/video`}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
+            >
+              <Video size={16} />
+              Video Analysis
+            </Link>
           </div>
         </div>
       </div>
@@ -947,33 +955,20 @@ function EventItem({ event, players, opponentName }: { event: any; players: any[
   )
 }
 
-// AI Insight Card Component
-function AIInsightCard({ insight }: { insight?: string }) {
-  if (!insight) return null
-  return (
-    <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-emerald-600/10 to-cyan-600/10 border border-emerald-500/20">
-      <div className="flex items-start gap-2">
-        <Brain size={14} className="text-emerald-400 mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-white/70 leading-relaxed">{insight}</p>
-      </div>
-    </div>
-  )
-}
-
 // ============ GPS Performance Charts ============
 
 interface GPSData {
   id: string
   player_id: string
-  player_name: string
-  total_distance_m: number | null
-  high_speed_running_m: number | null
-  sprint_distance_m: number | null
-  hml_distance_m: number | null
-  max_speed_ms: number | null
-  sprint_count: number | null
-  player_load: number | null
-  playing_minutes: number | null
+  player_name?: string
+  total_distance_m?: number
+  high_speed_running_m?: number
+  sprint_distance_m?: number
+  hml_distance_m?: number
+  max_speed_ms?: number
+  sprint_count?: number
+  player_load?: number
+  playing_minutes?: number
 }
 
 // GPS Insights Panel - Displays AI-generated insights
@@ -1256,7 +1251,7 @@ function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[
 
 // Team Intensity Gauge - Shows HMLD per minute with color zones
 function TeamIntensityGauge({ gpsData }: { gpsData: GPSData[] }) {
-  const { intensity, totalHMLD, totalMinutes, status, statusColor } = useMemo(() => {
+  const { intensity, totalHMLD, status, statusColor } = useMemo(() => {
     // Sum all players' HMLD and playing minutes
     let totalHMLD = 0
     let totalMinutes = 0
@@ -1445,7 +1440,7 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
               labelFormatter={(label) => chartData.find(d => d.name === label)?.fullName || label}
             />
             <Bar dataKey="distance" fill="#10b981" radius={[0, 4, 4, 0]} name="Total Distance">
-              {chartData.map((entry, index) => (
+              {chartData.map((_entry, index) => (
                 <Cell
                   key={`cell-${index}`}
                   fill={index === 0 ? '#10b981' : index < 3 ? '#10b981' : '#059669'}

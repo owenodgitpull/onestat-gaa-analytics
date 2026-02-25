@@ -16,6 +16,7 @@ from app.services.ai.player_insights_agent import generate_player_insights
 from app.services.ai.challenge_agent import generate_player_challenges
 from app.services.ai.season_story_agent import generate_season_story
 from app.services.ai._shared import generate_insight_alerts, STATIC_CHARTS
+from app.services.ai.video_enrichment_agent import generate_video_match_report, enrich_video_events
 from app.services.ai.chart_engine import (
     get_dynamic_chart_recommendations,
     get_chart_analysis,
@@ -47,4 +48,6 @@ __all__ = [
     "generate_player_challenges",
     "generate_season_story",
     "STATIC_CHARTS",
+    "generate_video_match_report",
+    "enrich_video_events",
 ]

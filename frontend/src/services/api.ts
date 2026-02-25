@@ -173,6 +173,21 @@ export const matchesAPI = {
   },
 
   /**
+   * Update match score
+   */
+  updateScore: async (matchId: string, score: {
+    team_goals: number;
+    team_points: number;
+    opponent_goals: number;
+    opponent_points: number;
+  }): Promise<Match> => {
+    return fetchAPI<Match>(`/matches/${matchId}/score`, {
+      method: 'PUT',
+      body: JSON.stringify(score),
+    });
+  },
+
+  /**
    * Get match statistics
    */
   getStats: async (matchId: string): Promise<MatchStats> => {

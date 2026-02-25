@@ -35,7 +35,7 @@ export default function Login() {
         <p className="text-white/60 mb-8">Sign in with your team account</p>
 
         <button
-          onClick={login}
+          onClick={() => login()}
           className="relative w-full py-3 px-6 rounded-xl text-white font-semibold text-base transition-all hover:scale-[1.02] active:scale-[0.98] backdrop-blur-md overflow-hidden"
           style={{
             background: 'linear-gradient(135deg, rgba(0,230,118,0.25), rgba(0,176,255,0.2))',
@@ -55,7 +55,7 @@ export default function Login() {
         <p className="text-white/40 text-xs mt-6">
           Don't have an account?{' '}
           <button
-            onClick={login}
+            onClick={() => login(true)}
             className="text-emerald-400 hover:text-emerald-300 underline transition-colors"
           >
             Sign up

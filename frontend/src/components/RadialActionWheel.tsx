@@ -105,7 +105,7 @@ export default function RadialActionWheel({
   onCancelKickout,
   activeCategory: externalCategory,
   onCategoryChange,
-  awaitingKickout = false,
+  awaitingKickout: _awaitingKickout = false,
 }: RadialActionWheelProps) {
   const [internalCategory, setInternalCategory] = useState<CategoryId>('scoring')
   const [showFoulSelection, setShowFoulSelection] = useState(false)

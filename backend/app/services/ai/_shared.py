@@ -1588,6 +1588,24 @@ async def generate_insight_alerts(
                 upload_context = "\n".join(lines)
         except Exception as e:
             logger.warning(f"Insight context: match GPS specifics failed: {e}")
+    elif source == "video_sync" and match_id:
+        try:
+            match_q = select(Match).where(Match.id == match_id)
+            match_r = await db.execute(match_q)
+            match_obj = match_r.scalar_one_or_none()
+            if match_obj:
+                # Count match events after sync
+                event_count_q = select(func.count(MatchEvent.id)).where(MatchEvent.match_id == match_id)
+                event_count_r = await db.execute(event_count_q)
+                event_count = event_count_r.scalar() or 0
+                upload_context = (
+                    f"Just synced: Video events for match vs {match_obj.opponent} ({match_obj.match_date}), "
+                    f"{event_count} total match events after sync. "
+                    f"Score: Team {match_obj.team_goals}-{match_obj.team_points} "
+                    f"Opp {match_obj.opponent_goals}-{match_obj.opponent_points}"
+                )
+        except Exception as e:
+            logger.warning(f"Insight context: video sync specifics failed: {e}")
 
     # --- Build prompt and call Sonnet ---
     system_prompt = f"""You are an elite GAA performance analyst for Dungloe GAA club.
@@ -1656,7 +1674,13 @@ Return your insights as a JSON array."""
             return []
 
         # Persist to DB
-        source_enum = AlertSource.TRAINING_GPS if source == "training_gps" else AlertSource.MATCH_GPS
+        source_map = {
+            "training_gps": AlertSource.TRAINING_GPS,
+            "match_gps": AlertSource.MATCH_GPS,
+            "video_sync": AlertSource.VIDEO_SYNC,
+            "manual": AlertSource.MANUAL,
+        }
+        source_enum = source_map.get(source, AlertSource.MATCH_GPS)
         created = []
         for ins in insights[:3]:
             try:

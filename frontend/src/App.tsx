@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
 import { ClubProvider } from './contexts/ClubContext'
 import RequireAuth from './components/RequireAuth'
+import MatchSetup from './pages/MatchSetup'
 import MatchRecording from './pages/MatchRecording'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import Results from './pages/Results'
@@ -14,6 +15,8 @@ import MatchPrep from './pages/MatchPrep'
 import Navigation from './components/Navigation'
 import PlayerNavigation from './components/PlayerNavigation'
 import AIAnalystPage from './pages/AIAnalystPage'
+import VideoTagging from './pages/VideoTagging'
+import VideoSessionList from './pages/VideoSessionList'
 import Onboarding from './pages/Onboarding'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
@@ -105,10 +108,13 @@ function App() {
                       <div className="max-w-7xl mx-auto">
                         <Routes>
                           <Route path="/" element={<AnalyticsDashboard />} />
+                          <Route path="/match/:matchId/setup" element={<MatchSetup />} />
                           <Route path="/match/:matchId" element={<MatchRecording />} />
                           <Route path="/match-prep/:matchId" element={<MatchPrep />} />
                           <Route path="/results" element={<Results />} />
                           <Route path="/results/:matchId" element={<MatchResult />} />
+                          <Route path="/results/:matchId/video" element={<VideoSessionList />} />
+                          <Route path="/video/:sessionId" element={<VideoTagging />} />
                           <Route path="/players" element={<Players />} />
                           <Route path="/players/:playerId" element={<PlayerView />} />
                           <Route path="/training" element={<Attendance />} />

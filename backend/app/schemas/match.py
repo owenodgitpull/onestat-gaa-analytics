@@ -60,7 +60,11 @@ class MatchUpdate(BaseModel):
     pitch_condition: Optional[PitchCondition] = None
     temperature_celsius: Optional[int] = Field(None, ge=-20, le=45)
     wind_speed_kmh: Optional[int] = Field(None, ge=0, le=150)
-    
+
+    # Strip colours
+    team_strip_colour: Optional[str] = Field(None, max_length=7)
+    opponent_strip_colour: Optional[str] = Field(None, max_length=7)
+
     @field_validator('match_date', mode='before')
     @classmethod
     def remove_timezone(cls, v):
@@ -93,6 +97,10 @@ class MatchResponse(MatchBase):
     pitch_condition: Optional[PitchCondition] = None
     temperature_celsius: Optional[int] = None
     wind_speed_kmh: Optional[int] = None
+
+    # Strip colours
+    team_strip_colour: Optional[str] = Field(None, description="Team strip colour hex")
+    opponent_strip_colour: Optional[str] = Field(None, description="Opponent strip colour hex")
 
     # AI analysis (generated when match completes)
     ai_analysis: Optional[str] = Field(None, description="AI-generated post-match analysis")

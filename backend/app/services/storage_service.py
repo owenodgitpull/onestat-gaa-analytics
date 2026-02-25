@@ -232,6 +232,48 @@ class StorageService:
             logger.error(f"Failed to generate presigned URL: {e}")
             return None
 
+    def generate_presigned_upload_url(
+        self,
+        folder: str,
+        filename: str,
+        content_type: str = "video/mp4",
+        expires_in: int = 3600,
+    ) -> Optional[dict]:
+        """
+        Generate a presigned PUT URL for direct browser-to-R2 upload.
+
+        Args:
+            folder: Folder name (e.g., "video")
+            filename: Original filename
+            content_type: MIME type of the file
+            expires_in: URL expiration time in seconds (default 1 hour)
+
+        Returns:
+            Dict with 'upload_url' and 'key', or None if generation failed
+        """
+        if not self.is_configured:
+            logger.error("R2 not configured - cannot generate presigned upload URL")
+            return None
+
+        try:
+            key = self._generate_key(folder, filename)
+
+            url = self.client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': self.bucket_name,
+                    'Key': key,
+                    'ContentType': content_type,
+                },
+                ExpiresIn=expires_in,
+            )
+
+            return {"upload_url": url, "key": key}
+
+        except ClientError as e:
+            logger.error(f"Failed to generate presigned upload URL: {e}")
+            return None
+
     def delete_file(self, key: str) -> bool:
         """
         Delete a file from R2.

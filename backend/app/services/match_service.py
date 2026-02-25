@@ -311,14 +311,14 @@ class MatchService:
                 team_duration = sum(
                     p.duration_seconds or 0
                     for p in possession_events
-                    if p.team == PossessionTeam.OWN
+                    if p.team == PossessionTeam.OWN.value
                 )
                 stats["team_possession_percentage"] = round((team_duration / total_duration) * 100, 1)
                 stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
             else:
                 # Fallback: if no durations yet, use event count (initial possession)
                 total_events = len(possession_events)
-                team_events = sum(1 for p in possession_events if p.team == PossessionTeam.OWN)
+                team_events = sum(1 for p in possession_events if p.team == PossessionTeam.OWN.value)
                 stats["team_possession_percentage"] = round((team_events / total_events) * 100, 1)
                 stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
         

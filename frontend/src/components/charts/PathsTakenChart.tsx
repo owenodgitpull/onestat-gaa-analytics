@@ -167,7 +167,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
       </div>
 
       {/* Pitch SVG — natural aspect ratio */}
-      <div className="rounded-lg overflow-hidden">
+      <div className="rounded-lg overflow-hidden max-w-2xl mx-auto">
         <svg viewBox="0 0 2332 1446" className="w-full h-auto">
           <rect width="2332" height="1446" fill="#2d5016" />
           <image

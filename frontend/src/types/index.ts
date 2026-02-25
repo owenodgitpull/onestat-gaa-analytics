@@ -60,6 +60,8 @@ export interface Match {
   current_phase?: string | null;
   second_half_started_at?: string | null;
   attacking_right_first_half?: boolean | null;
+  team_strip_colour?: string | null;
+  opponent_strip_colour?: string | null;
   created_at?: string;
   updated_at?: string;
 }

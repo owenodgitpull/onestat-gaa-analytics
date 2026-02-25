@@ -29,7 +29,6 @@ import {
   AlertCircle,
   Plus,
   Maximize,
-  MapPin,
   Target,
   ArrowLeftRight
 } from 'lucide-react'
@@ -64,7 +63,7 @@ export default function MatchRecording() {
   const recordEvent = useRecordEvent()
   const recordPossession = useRecordPossession()
   const deleteEvent = useDeleteEvent()
-  const updateMatchPhase = useUpdateMatchPhase()
+  useUpdateMatchPhase() // initialized for future use
 
   // Local state
   const [ballPosition, setBallPosition] = useState<BallPosition>({
@@ -103,6 +102,13 @@ export default function MatchRecording() {
   const [weatherOverride, setWeatherOverride] = useState<{ condition: string | null; temp: number | null } | null>(null)
   const [isWeatherPickerOpen, setIsWeatherPickerOpen] = useState(false)
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
+
+  // Compute players currently on the field (starting 15 + subbed on, minus subbed off)
+  const playersOnField = useMemo(() => {
+    if (!matchLineup.length) return players.filter(p => p.active)
+    const onFieldIds = new Set(matchLineup.filter(l => l.is_on_field).map(l => l.player_id))
+    return players.filter(p => onFieldIds.has(p.id))
+  }, [matchLineup, players])
 
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -2317,7 +2323,7 @@ export default function MatchRecording() {
           onSelectPlayer={selectingFoulPlayer ? handleFoulPlayerSelected : handlePlayerSelected}
           eventType={selectingFoulPlayer ? EventType.FOUL_COMMITTED : (pendingEvent?.eventType as any)}
           team="own"
-          players={players}
+          players={playersOnField}
         />
       )}
 

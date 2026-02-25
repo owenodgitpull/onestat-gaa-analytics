@@ -5,7 +5,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { Upload, Image as ImageIcon, X } from 'lucide-react';
+import { Image as ImageIcon, X } from 'lucide-react';
 
 interface ClubData {
   name: string;

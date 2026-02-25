@@ -75,7 +75,7 @@ export default function Navigation() {
         temperature_celsius: data.temperature_celsius,
       })
       setIsNewMatchModalOpen(false)
-      navigate(`/match/${match.id}`)
+      navigate(`/match/${match.id}/setup`)
     } catch (error) {
       console.error('Failed to create match:', error)
       alert('Failed to create match. Please try again.')

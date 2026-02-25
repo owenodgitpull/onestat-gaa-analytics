@@ -29,7 +29,6 @@ import {
 } from 'lucide-react'
 import {
   ResponsiveContainer,
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -351,7 +350,7 @@ function FitnessMetricCard({
 }
 
 // Computed insight generators — no AI calls, data-driven
-function computeRadarInsight(radar: { axis: string; value: number }[], playerName: string): string | null {
+function computeRadarInsight(radar: { axis: string; value: number }[], _playerName: string): string | null {
   if (radar.length === 0) return null
   const sorted = [...radar].sort((a, b) => b.value - a.value)
   const strongest = sorted[0]
@@ -549,7 +548,6 @@ export default function PlayerView() {
     { name: 'Turnovers Won', value: totalTurnoversWon },
     { name: 'Frees Won', value: totalFreesWon },
   ]
-  const DONUT_COLORS = ['#10b981', '#06b6d4', '#06b6d4', '#f59e0b']
 
   // Readiness vs Intensity data (from matchGpsHistory)
   const intensityData = matchGpsHistory?.slice().reverse().map(d => ({
@@ -613,7 +611,7 @@ export default function PlayerView() {
         <OverviewTab
           player={player}
           matchStats={matchStats || []}
-          attendanceStats={attendanceStats}
+          attendanceStats={attendanceStats ?? null}
           shotEvents={shotEvents || []}
           matchesPlayed={matchesPlayed}
           totalGoals={totalGoals}
@@ -684,7 +682,6 @@ export default function PlayerView() {
           gpsData={gpsData || []}
           matchGpsHistory={matchGpsHistory || []}
           intensityData={intensityData}
-          player={player}
         />
       )}
 
@@ -763,31 +760,31 @@ export default function PlayerView() {
                     </div>
                   )}
                   <div className="grid md:grid-cols-2 gap-6">
-                    {latestFitnessTest.ai_analysis.strengths?.length > 0 && (
+                    {(latestFitnessTest.ai_analysis.strengths?.length ?? 0) > 0 && (
                       <div>
                         <h4 className="text-sm font-semibold text-emerald-400 mb-2 flex items-center gap-2"><CheckCircle size={14} /> Strengths</h4>
-                        <ul className="space-y-1">{latestFitnessTest.ai_analysis.strengths.map((s: string, i: number) => <li key={i} className="text-sm text-white/80">{s}</li>)}</ul>
+                        <ul className="space-y-1">{latestFitnessTest.ai_analysis.strengths?.map((s: string, i: number) => <li key={i} className="text-sm text-white/80">{s}</li>)}</ul>
                       </div>
                     )}
-                    {latestFitnessTest.ai_analysis.weaknesses?.length > 0 && (
+                    {(latestFitnessTest.ai_analysis.weaknesses?.length ?? 0) > 0 && (
                       <div>
                         <h4 className="text-sm font-semibold text-amber-400 mb-2 flex items-center gap-2"><AlertTriangle size={14} /> Areas to Improve</h4>
-                        <ul className="space-y-1">{latestFitnessTest.ai_analysis.weaknesses.map((w: string, i: number) => <li key={i} className="text-sm text-white/80">{w}</li>)}</ul>
+                        <ul className="space-y-1">{latestFitnessTest.ai_analysis.weaknesses?.map((w: string, i: number) => <li key={i} className="text-sm text-white/80">{w}</li>)}</ul>
                       </div>
                     )}
                   </div>
-                  {latestFitnessTest.ai_analysis.recommendations?.length > 0 && (
+                  {(latestFitnessTest.ai_analysis.recommendations?.length ?? 0) > 0 && (
                     <div className="mt-6">
                       <h4 className="text-sm font-semibold text-emerald-400 mb-2">Training Recommendations</h4>
-                      <ul className="space-y-2">{latestFitnessTest.ai_analysis.recommendations.map((r: string, i: number) => (
+                      <ul className="space-y-2">{latestFitnessTest.ai_analysis.recommendations?.map((r: string, i: number) => (
                         <li key={i} className="text-sm text-white/80 flex items-start gap-2"><span className="text-emerald-400 mt-0.5">•</span>{r}</li>
                       ))}</ul>
                     </div>
                   )}
-                  {latestFitnessTest.ai_analysis.position_fit?.length > 0 && (
+                  {(latestFitnessTest.ai_analysis.position_fit?.length ?? 0) > 0 && (
                     <div className="mt-6">
                       <h4 className="text-sm font-semibold text-white/60 mb-2">Position Suitability</h4>
-                      <div className="flex flex-wrap gap-2">{latestFitnessTest.ai_analysis.position_fit.map((p: string, i: number) => (
+                      <div className="flex flex-wrap gap-2">{latestFitnessTest.ai_analysis.position_fit?.map((p: string, i: number) => (
                         <span key={i} className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-sm">{p}</span>
                       ))}</div>
                     </div>
@@ -1053,12 +1050,11 @@ function OverviewTab({
 // Performance Tab — extracted so AI insight hooks run at top level
 // ============================================================================
 function PerformanceTab({
-  gpsData, matchGpsHistory, intensityData, player,
+  gpsData, matchGpsHistory, intensityData,
 }: {
   gpsData: GPSDataPoint[]
   matchGpsHistory: any[]
   intensityData: { name: string; intensity: number; workload: number }[]
-  player: Player
 }) {
   const intensityInsightText = computeIntensityInsight(intensityData)
 

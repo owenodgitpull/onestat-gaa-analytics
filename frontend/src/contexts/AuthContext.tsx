@@ -244,7 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistUser(authUser, data.expires_in || 3600);
   }, [scheduleRefresh, persistUser]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     // Fire backend revoke without waiting — don't block the redirect
     fetch(`${API_BASE_URL}/auth/logout`, {
       method: 'POST',
