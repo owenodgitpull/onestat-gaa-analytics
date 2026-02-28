@@ -203,6 +203,27 @@ class StorageService:
             logger.error(f"Failed to download from R2: {e}")
             return None
 
+    def download_file_to_path(self, key: str, dest_path: str) -> bool:
+        """
+        Stream a file from R2 directly to a local path (no full-file memory buffer).
+
+        Args:
+            key: S3 key of the file
+            dest_path: Local file path to write to
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_configured:
+            return False
+
+        try:
+            self.client.download_file(self.bucket_name, key, dest_path)
+            return True
+        except ClientError as e:
+            logger.error(f"Failed to stream download from R2: {e}")
+            return False
+
     def get_download_url(self, key: str, expires_in: int = 3600) -> Optional[str]:
         """
         Generate a pre-signed URL for downloading a file.

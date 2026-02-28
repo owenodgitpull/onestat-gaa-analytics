@@ -107,6 +107,22 @@ export function useDeleteVideoSession() {
   });
 }
 
+/** Set the half-time timestamp for a full-match video. */
+export function useSetHalftime() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId, halftimeMs }: { sessionId: string; halftimeMs: number }) =>
+      videoSessionsAPI.setHalftime(sessionId, halftimeMs),
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<VideoSession>(
+        videoSessionKeys.detail(variables.sessionId),
+        data
+      );
+    },
+  });
+}
+
 /** Run LLM enrichment. */
 export function useEnrichVideoSession() {
   return useMutation({

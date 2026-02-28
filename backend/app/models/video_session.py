@@ -35,6 +35,7 @@ class VideoSession(Base):
     video_r2_key: Column[Optional[str]] = Column(String(500), nullable=True)
     video_duration_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
     video_size_bytes: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    halftime_timestamp_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
 
     # Processing status
     status: Column[str] = Column(String(30), nullable=False, default="pending")

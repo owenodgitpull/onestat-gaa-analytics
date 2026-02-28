@@ -43,12 +43,17 @@ const SUBSTITUTE_POSITIONS: LineupPosition[] = [
   { id: 'sub-5', x: 0, y: 0, label: 'SUB' },
 ]
 
+export interface LineupEntry {
+  playerId: string
+  jerseyNumber: number | null
+}
+
 interface StartingLineupModalProps {
   isOpen: boolean
   onClose: () => void
-  onConfirm: (lineup: Record<string, string>) => void
+  onConfirm: (lineup: Record<string, LineupEntry>) => void
   players: Player[]
-  lastMatchLineup?: Record<string, string>
+  lastMatchLineup?: Record<string, LineupEntry>
 }
 
 export default function StartingLineupModal({
@@ -58,7 +63,7 @@ export default function StartingLineupModal({
   players,
   lastMatchLineup
 }: StartingLineupModalProps) {
-  const [lineup, setLineup] = useState<Record<string, string>>({})
+  const [lineup, setLineup] = useState<Record<string, LineupEntry>>({})
   const [selectingPosition, setSelectingPosition] = useState<string | null>(null)
 
   if (!isOpen) return null
@@ -85,9 +90,27 @@ export default function StartingLineupModal({
 
   const handlePlayerSelect = (playerId: string) => {
     if (selectingPosition) {
-      setLineup(prev => ({ ...prev, [selectingPosition]: playerId }))
+      const player = players.find(p => p.id === playerId)
+      setLineup(prev => ({
+        ...prev,
+        [selectingPosition]: {
+          playerId,
+          jerseyNumber: player?.jersey_number ?? null,
+        },
+      }))
       setSelectingPosition(null)
     }
+  }
+
+  const handleJerseyChange = (positionId: string, value: string) => {
+    const num = value === '' ? null : parseInt(value, 10)
+    setLineup(prev => ({
+      ...prev,
+      [positionId]: {
+        ...prev[positionId],
+        jerseyNumber: num !== null && !isNaN(num) ? num : null,
+      },
+    }))
   }
 
   const handleUseLastLineup = () => {
@@ -101,7 +124,7 @@ export default function StartingLineupModal({
   }
 
   const getAvailablePlayers = () => {
-    const selectedIds = Object.values(lineup)
+    const selectedIds = Object.values(lineup).map(e => e.playerId)
     return players.filter(p => p.active && !selectedIds.includes(p.id))
   }
 
@@ -153,7 +176,9 @@ export default function StartingLineupModal({
 
               {/* Jersey Icons */}
               {FORMATION_POSITIONS.map((pos) => {
-                const assignedPlayer = lineup[pos.id] ? getPlayerById(lineup[pos.id]) : null
+                const entry = lineup[pos.id]
+                const assignedPlayer = entry ? getPlayerById(entry.playerId) : null
+                const displayLabel = entry?.jerseyNumber != null ? `${entry.jerseyNumber}` : pos.label
 
                 return (
                   <div
@@ -171,7 +196,7 @@ export default function StartingLineupModal({
                         ? 'bg-red-600 text-white ring-2 ring-white shadow-lg'
                         : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
                     }`}>
-                      {pos.label}
+                      {displayLabel}
                     </div>
 
                     {/* Player Name */}
@@ -190,7 +215,9 @@ export default function StartingLineupModal({
             {/* Substitutes - Below the pitch */}
             <div className="flex justify-center gap-6 px-4">
               {SUBSTITUTE_POSITIONS.map((pos, index) => {
-                const assignedPlayer = lineup[pos.id] ? getPlayerById(lineup[pos.id]) : null
+                const entry = lineup[pos.id]
+                const assignedPlayer = entry ? getPlayerById(entry.playerId) : null
+                const displayLabel = entry?.jerseyNumber != null ? `${entry.jerseyNumber}` : `S${index + 1}`
 
                 return (
                   <div
@@ -204,7 +231,7 @@ export default function StartingLineupModal({
                         ? 'bg-red-600 text-white ring-2 ring-white shadow-lg'
                         : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
                     }`}>
-                      {`S${index + 1}`}
+                      {displayLabel}
                     </div>
 
                     {/* Player Name */}
@@ -226,7 +253,9 @@ export default function StartingLineupModal({
             {selectingPosition ? (
               <>
                 <h3 className="text-xl font-bold text-white mb-4">
-                  Select Player for {FORMATION_POSITIONS.find(p => p.id === selectingPosition)?.label}
+                  Select Player for {FORMATION_POSITIONS.find(p => p.id === selectingPosition)?.label
+                    || SUBSTITUTE_POSITIONS.find(p => p.id === selectingPosition)?.label
+                    || selectingPosition}
                 </h3>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {getAvailablePlayers().length > 0 ? (
@@ -236,7 +265,12 @@ export default function StartingLineupModal({
                         onClick={() => handlePlayerSelect(player.id)}
                         className="w-full glass-card-hover p-4 text-left"
                       >
-                        <p className="text-white font-semibold">{player.name}</p>
+                        <p className="text-white font-semibold">
+                          {player.jersey_number != null && (
+                            <span className="text-emerald-400 mr-2">#{player.jersey_number}</span>
+                          )}
+                          {player.name}
+                        </p>
                       </button>
                     ))
                   ) : (
@@ -262,12 +296,23 @@ export default function StartingLineupModal({
                   <div className="mb-3">
                     <p className="text-white/50 text-sm font-semibold mb-2">Starting XV</p>
                     {FORMATION_POSITIONS.map((pos) => {
-                      const player = lineup[pos.id] ? getPlayerById(lineup[pos.id]) : null
+                      const entry = lineup[pos.id]
+                      const player = entry ? getPlayerById(entry.playerId) : null
                       return (
                         <div key={pos.id} className="glass-card p-3 flex items-center justify-between mb-1">
                           <span className="text-white/70 font-medium">{pos.label}</span>
                           {player ? (
                             <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="1"
+                                max="99"
+                                value={entry.jerseyNumber ?? ''}
+                                onChange={(e) => handleJerseyChange(pos.id, e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-12 h-8 bg-white/10 border border-white/20 rounded text-center text-white text-sm font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
+                                placeholder="#"
+                              />
                               <span className="text-white font-semibold">{player.name}</span>
                               <button
                                 onClick={() => handleRemovePlayer(pos.id)}
@@ -287,12 +332,23 @@ export default function StartingLineupModal({
                   <div>
                     <p className="text-white/50 text-sm font-semibold mb-2">Substitutes</p>
                     {SUBSTITUTE_POSITIONS.map((pos, index) => {
-                      const player = lineup[pos.id] ? getPlayerById(lineup[pos.id]) : null
+                      const entry = lineup[pos.id]
+                      const player = entry ? getPlayerById(entry.playerId) : null
                       return (
                         <div key={pos.id} className="glass-card p-3 flex items-center justify-between mb-1">
                           <span className="text-white/70 font-medium">Sub {index + 1}</span>
                           {player ? (
                             <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min="1"
+                                max="99"
+                                value={entry.jerseyNumber ?? ''}
+                                onChange={(e) => handleJerseyChange(pos.id, e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-12 h-8 bg-white/10 border border-white/20 rounded text-center text-white text-sm font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
+                                placeholder="#"
+                              />
                               <span className="text-white font-semibold">{player.name}</span>
                               <button
                                 onClick={() => handleRemovePlayer(pos.id)}

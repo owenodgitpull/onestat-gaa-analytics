@@ -34,6 +34,11 @@ class VideoUploadCompleteRequest(BaseModel):
     video_size_bytes: Optional[int] = None
 
 
+class SetHalftimeRequest(BaseModel):
+    """Set the half-time timestamp for a full-match video session."""
+    halftime_timestamp_ms: int = Field(..., gt=0)
+
+
 class VideoSessionResponse(BaseModel):
     """VideoSession response schema."""
     id: UUID
@@ -44,6 +49,7 @@ class VideoSessionResponse(BaseModel):
     video_r2_key: Optional[str]
     video_duration_ms: Optional[int]
     video_size_bytes: Optional[int]
+    halftime_timestamp_ms: Optional[int]
     status: str
     ai_model_used: Optional[str]
     ai_events_generated: Optional[int]

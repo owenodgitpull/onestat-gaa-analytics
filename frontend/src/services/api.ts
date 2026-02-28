@@ -47,6 +47,13 @@ export async function fetchAPI<T>(
     });
 
     if (!response.ok) {
+      // 401 = session expired → clear local state and redirect to login
+      if (response.status === 401 && !endpoint.startsWith('/auth/')) {
+        sessionStorage.removeItem('gaa_user');
+        window.location.href = '/login';
+        throw new Error('Session expired');
+      }
+
       const errorData = await response.json().catch(() => ({}));
       throw new Error(
         errorData.detail || errorData.error || `API Error: ${response.status} ${response.statusText}`
@@ -376,6 +383,7 @@ interface MatchLineupEntry {
   player_id: string;
   position_id: string;
   is_substitute: boolean;
+  jersey_number?: number | null;
 }
 
 interface MatchLineupResponse {
@@ -387,6 +395,7 @@ interface MatchLineupResponse {
   is_on_field: boolean;
   player_name: string;
   player_jersey_number: number | null;
+  match_jersey_number: number | null;
 }
 
 const matchLineupsAPI = {

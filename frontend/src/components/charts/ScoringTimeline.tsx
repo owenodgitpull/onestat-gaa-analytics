@@ -5,10 +5,11 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recha
 interface ScoringTimelineProps {
   events: any[]
   opponent: string
+  teamName?: string
   insight?: string
 }
 
-export default function ScoringTimeline({ events, opponent, insight }: ScoringTimelineProps) {
+export default function ScoringTimeline({ events, opponent, teamName = 'Own', insight }: ScoringTimelineProps) {
   const timelineData = useMemo(() => {
     const intervals: Record<string, { own: number; opponent: number }> = {}
 
@@ -36,7 +37,7 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
 
     return Object.entries(intervals).map(([name, data]) => ({
       name,
-      Us: data.own,
+      [teamName]: data.own,
       [opponent]: data.opponent
     }))
   }, [events, opponent])
@@ -61,7 +62,7 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
                 color: '#fff'
               }}
             />
-            <Bar dataKey="Us" fill="#10b981" radius={[4, 4, 0, 0]} />
+            <Bar dataKey={teamName} fill="#10b981" radius={[4, 4, 0, 0]} />
             <Bar dataKey={opponent} fill="#f97316" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -69,7 +70,7 @@ export default function ScoringTimeline({ events, opponent, insight }: ScoringTi
       <div className="flex justify-center gap-6 mt-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded bg-emerald-500"></span>
-          <span className="text-white/60">Us</span>
+          <span className="text-white/60">{teamName}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="w-3 h-3 rounded bg-orange-500"></span>

@@ -24,12 +24,13 @@ interface VideoPlayerProps {
   onTimeUpdate?: (currentTimeMs: number) => void
   onDurationChange?: (durationMs: number) => void
   onPlayStateChange?: (playing: boolean) => void
+  halftimeMs?: number
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange }, ref) => {
+  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null)
     const [playing, setPlaying] = useState(false)
     const [currentTime, setCurrentTime] = useState(0)
@@ -147,7 +148,8 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               src={src}
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleDurationChange}
-              className="w-full h-full object-contain"
+              onClick={togglePlay}
+              className="w-full h-full object-contain cursor-pointer"
               preload="metadata"
             />
           ) : (
@@ -192,19 +194,30 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </span>
 
           {/* Scrubber */}
-          <input
-            type="range"
-            min={0}
-            max={duration}
-            value={currentTime}
-            onChange={(e) => {
-              const ms = parseInt(e.target.value)
-              if (videoRef.current) {
-                videoRef.current.currentTime = ms / 1000
-              }
-            }}
-            className="flex-1 h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-emerald-500"
-          />
+          <div className="flex-1 relative">
+            <input
+              type="range"
+              min={0}
+              max={duration}
+              value={currentTime}
+              onChange={(e) => {
+                const ms = parseInt(e.target.value)
+                if (videoRef.current) {
+                  videoRef.current.currentTime = ms / 1000
+                }
+              }}
+              className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-emerald-500"
+            />
+            {halftimeMs != null && duration > 0 && (
+              <div
+                className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
+                style={{ left: `${(halftimeMs / duration) * 100}%` }}
+              >
+                <span className="text-[9px] font-bold text-amber-400 -translate-y-3.5 select-none">HT</span>
+                <div className="w-0.5 h-full bg-amber-400 rounded-full" />
+              </div>
+            )}
+          </div>
 
           {/* Playback speed */}
           <div className="relative">

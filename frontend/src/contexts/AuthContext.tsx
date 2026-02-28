@@ -245,21 +245,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [scheduleRefresh, persistUser]);
 
   const logout = useCallback(async () => {
-    // Fire backend revoke without waiting — don't block the redirect
-    fetch(`${API_BASE_URL}/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-    }).catch(() => {});
-
     // Clear local state immediately
     setUserState(null);
     sessionStorage.removeItem(USER_STORAGE_KEY);
     if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
 
+    // MUST await backend logout so httpOnly cookies are cleared before redirect.
+    // Otherwise /auth/me on the next page load finds valid cookies → auto-login.
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch {
+      // Continue with redirect even if revoke fails
+    }
+
     // Redirect to Cognito logout to end the hosted UI session,
     // otherwise the next login auto-completes without prompting credentials.
     const logoutUrl = new URL(`${COGNITO_DOMAIN}/logout`);
     logoutUrl.searchParams.set('client_id', COGNITO_CLIENT_ID);
+    logoutUrl.searchParams.set('response_type', 'code');
     logoutUrl.searchParams.set('logout_uri', window.location.origin + '/login');
     window.location.href = logoutUrl.toString();
   }, []);

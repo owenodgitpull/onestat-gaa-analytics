@@ -28,6 +28,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePlayers } from '../hooks/usePlayers'
 import api from '../services/api'
 import LoadingSkeleton from '../components/LoadingSkeleton'
+import ConfirmationModal from '../components/ConfirmationModal'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
 import type { LeaderboardPlayer } from '../services/api'
 import PeakPerformanceChart from '../components/charts/training/PeakPerformanceChart'
@@ -732,6 +733,7 @@ export default function Attendance() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [aiSummary, setAiSummary] = useState<{ summary: string | null; session_date: string | null } | null>(null)
   const [kpiView, setKpiView] = useState<'last-session' | 'overview'>('last-session')
+  const [deleteSessionTarget, setDeleteSessionTarget] = useState<string | null>(null)
 
   useEffect(() => {
     fetch(`${API_BASE}/training/ai-summary/latest`)
@@ -1123,9 +1125,7 @@ export default function Attendance() {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      if (confirm('Delete this session?')) {
-                        deleteMutation.mutate(session.id)
-                      }
+                      setDeleteSessionTarget(session.id)
                     }}
                     className="p-2 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
                   >
@@ -1164,6 +1164,20 @@ export default function Attendance() {
       <SessionDetailModal
         session={selectedSession || null}
         onClose={() => setSelectedSessionId(null)}
+      />
+
+      <ConfirmationModal
+        isOpen={!!deleteSessionTarget}
+        onClose={() => setDeleteSessionTarget(null)}
+        onConfirm={() => {
+          if (deleteSessionTarget) deleteMutation.mutate(deleteSessionTarget)
+          setDeleteSessionTarget(null)
+        }}
+        title="Delete Session"
+        message="Delete this training session? All attendance records for this session will be lost."
+        confirmText="Delete"
+        cancelText="Keep"
+        variant="danger"
       />
     </div>
   )

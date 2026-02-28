@@ -41,7 +41,7 @@ PITCH_ZONES = [
     "SQ_LEFT", "SQ_CENTRE", "SQ_RIGHT",
 ]
 
-# Zones outside the 40m arc (two-pointer territory)
+# Zones outside the 40m arc (two-pointer territory) — DEF, MID, HF rows
 TWO_POINTER_ZONES = [
     "DEF_LEFT", "DEF_CENTRE", "DEF_RIGHT",
     "MID_LEFT", "MID_CENTRE", "MID_RIGHT",
@@ -101,6 +101,9 @@ class VideoEvent(Base):
 
     # Narrative
     description: Column[Optional[str]] = Column(Text, nullable=True)
+
+    # AI batch tracking (for selective Improve Analysis re-runs)
+    batch_index: Column[Optional[int]] = Column(Integer, nullable=True)
 
     # Source & verification
     source: Column[str] = Column(String(20), nullable=False, default="human_tag")

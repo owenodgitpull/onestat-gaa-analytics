@@ -9,6 +9,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Video, Plus, Trash2, Clock, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
 import { useVideoSessions, useDeleteVideoSession } from '../hooks/useVideoSessions'
 import VideoUploadModal from '../components/VideoUploadModal'
+import ConfirmationModal from '../components/ConfirmationModal'
 import type { VideoSession } from '../services/videoApi'
 
 function formatBytes(bytes: number | null): string {
@@ -41,16 +42,17 @@ export default function VideoSessionList() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
   const [showUpload, setShowUpload] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<VideoSession | null>(null)
 
   const { data, isLoading } = useVideoSessions(matchId || null)
   const deleteSession = useDeleteVideoSession()
 
   const sessions = data?.sessions || []
 
-  const handleDelete = (session: VideoSession) => {
-    if (!matchId) return
-    if (!confirm(`Delete "${session.title}"? This will also delete the video file.`)) return
-    deleteSession.mutate({ sessionId: session.id, matchId })
+  const handleDeleteConfirm = () => {
+    if (!matchId || !deleteTarget) return
+    deleteSession.mutate({ sessionId: deleteTarget.id, matchId })
+    setDeleteTarget(null)
   }
 
   return (
@@ -132,7 +134,7 @@ export default function VideoSessionList() {
 
                     {/* Delete */}
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(session) }}
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(session) }}
                       className="p-2 text-white/20 hover:text-red-400 transition-colors"
                       title="Delete session"
                     >
@@ -154,6 +156,18 @@ export default function VideoSessionList() {
           matchId={matchId}
         />
       )}
+
+      {/* Delete confirmation modal */}
+      <ConfirmationModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Video Session"
+        message={`Delete "${deleteTarget?.title}"? This will permanently remove the video file and all tagged events.`}
+        confirmText="Delete"
+        cancelText="Keep"
+        variant="danger"
+      />
     </div>
   )
 }

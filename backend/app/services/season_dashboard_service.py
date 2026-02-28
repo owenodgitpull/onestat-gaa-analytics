@@ -711,11 +711,12 @@ class SeasonDashboardService:
         kickout_data = await SeasonDashboardService._kickout_trends(db, matches)
         if len(kickout_data) >= 2:
             latest_ko = kickout_data[-1]
-            latest_total = latest_ko.get("won_clean", 0) + latest_ko.get("won_break", 0) + latest_ko.get("lost", 0)
+            latest_lost = latest_ko.get("lost_clean", 0) + latest_ko.get("lost_break", 0)
+            latest_total = latest_ko.get("won_clean", 0) + latest_ko.get("won_break", 0) + latest_lost
             latest_win_rate = ((latest_ko.get("won_clean", 0) + latest_ko.get("won_break", 0)) / latest_total * 100) if latest_total > 0 else 0
 
             prior_wins = sum(k.get("won_clean", 0) + k.get("won_break", 0) for k in kickout_data[:-1])
-            prior_total = sum(k.get("won_clean", 0) + k.get("won_break", 0) + k.get("lost", 0) for k in kickout_data[:-1])
+            prior_total = sum(k.get("won_clean", 0) + k.get("won_break", 0) + k.get("lost_clean", 0) + k.get("lost_break", 0) for k in kickout_data[:-1])
             avg_win_rate = (prior_wins / prior_total * 100) if prior_total > 0 else 0
 
             if abs(latest_win_rate - avg_win_rate) >= 20:
@@ -733,7 +734,7 @@ class SeasonDashboardService:
                                 "opponent": k["opponent"],
                                 "win_rate": round(
                                     (k["won_clean"] + k["won_break"])
-                                    / max(k["won_clean"] + k["won_break"] + k["lost"], 1) * 100, 1
+                                    / max(k["won_clean"] + k["won_break"] + k.get("lost_clean", 0) + k.get("lost_break", 0), 1) * 100, 1
                                 ),
                             }
                             for k in kickout_data

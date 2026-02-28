@@ -33,6 +33,7 @@ class MatchLineup(Base):
     position_id: Column[str] = Column(String, nullable=False)  # e.g. 'gk', 'fb-left', 'sub-1'
     is_substitute: Column[bool] = Column(Boolean, default=False, nullable=False)  # True if on bench
     is_on_field: Column[bool] = Column(Boolean, default=True, nullable=False)  # Current status during match
+    jersey_number: Column[Optional[int]] = Column(Integer, nullable=True)  # Match-day override
 
     # Timestamps
     created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)

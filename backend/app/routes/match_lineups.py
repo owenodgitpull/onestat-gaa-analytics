@@ -27,6 +27,7 @@ class MatchLineupCreate(BaseModel):
     player_id: str  # UUID as string
     position_id: str  # e.g. 'gk', 'fb-left', 'sub-1'
     is_substitute: bool
+    jersey_number: int | None = None  # Match-day override
 
 
 class MatchLineupResponse(BaseModel):
@@ -37,7 +38,8 @@ class MatchLineupResponse(BaseModel):
     is_substitute: bool
     is_on_field: bool
     player_name: str
-    player_jersey_number: int | None
+    player_jersey_number: int | None  # Effective: match override or player default
+    match_jersey_number: int | None  # Explicit match-day override (null = using default)
 
     model_config = {"from_attributes": True}
 
@@ -90,7 +92,8 @@ async def set_match_lineup(
             player_id=player_uuid,
             position_id=lineup_entry.position_id,
             is_substitute=lineup_entry.is_substitute,
-            is_on_field=not lineup_entry.is_substitute  # Starters on field, subs on bench
+            is_on_field=not lineup_entry.is_substitute,  # Starters on field, subs on bench
+            jersey_number=lineup_entry.jersey_number,
         )
         db.add(new_lineup)
         created_lineups.append(new_lineup)
@@ -109,7 +112,8 @@ async def set_match_lineup(
             is_substitute=lineup_entry.is_substitute,
             is_on_field=lineup_entry.is_on_field,
             player_name=lineup_entry.player.name,
-            player_jersey_number=lineup_entry.player.jersey_number
+            player_jersey_number=lineup_entry.jersey_number or lineup_entry.player.jersey_number,
+            match_jersey_number=lineup_entry.jersey_number,
         ))
 
     return response
@@ -146,7 +150,8 @@ async def get_match_lineup(
             is_substitute=lineup_entry.is_substitute,
             is_on_field=lineup_entry.is_on_field,
             player_name=lineup_entry.player.name,
-            player_jersey_number=lineup_entry.player.jersey_number
+            player_jersey_number=lineup_entry.jersey_number or lineup_entry.player.jersey_number,
+            match_jersey_number=lineup_entry.jersey_number,
         ))
 
     return response
@@ -191,7 +196,8 @@ async def get_last_match_lineup(
             is_substitute=lineup_entry.is_substitute,
             is_on_field=lineup_entry.is_on_field,
             player_name=lineup_entry.player.name,
-            player_jersey_number=lineup_entry.player.jersey_number
+            player_jersey_number=lineup_entry.jersey_number or lineup_entry.player.jersey_number,
+            match_jersey_number=lineup_entry.jersey_number,
         ))
 
     return response

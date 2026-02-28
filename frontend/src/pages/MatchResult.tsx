@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { api } from '../services/api'
+import { useClubName } from '../contexts/ClubContext'
 import GAAPitch from '../components/GAAPitch'
 import EventFilterToggles, { getEventTypesForFilters } from '../components/EventFilterToggles'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
@@ -53,6 +54,7 @@ function totalScore(goals: number, points: number): number {
 
 export default function MatchResult() {
   const { matchId } = useParams<{ matchId: string }>()
+  const clubName = useClubName()
   const { data: match, isLoading: matchLoading } = useMatch(matchId || null)
   const { data: matchStats } = useMatchStats(matchId || null)
   const { data: eventsData } = useMatchEvents(matchId || null)
@@ -534,7 +536,7 @@ export default function MatchResult() {
               </div>
             </div>
             <div className="mb-2 text-sm text-white/40 text-center">
-              {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown for {teamFilter === 'own' ? 'Us' : match.opponent}
+              {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown for {teamFilter === 'own' ? clubName : match.opponent}
             </div>
             <GAAPitch readonly={true} events={filteredEvents} showZones={true} />
           </div>

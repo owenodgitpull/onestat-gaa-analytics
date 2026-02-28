@@ -20,6 +20,7 @@ import { useClub } from '../contexts/ClubContext'
 import { useState, useRef } from 'react'
 import NewMatchModal from './NewMatchModal'
 import AIAnalyst from './AIAnalyst'
+import ConfirmationModal from './ConfirmationModal'
 
 export default function Navigation() {
   const location = useLocation()
@@ -31,6 +32,7 @@ export default function Navigation() {
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showAIChat, setShowAIChat] = useState(false)
+  const [errorAlert, setErrorAlert] = useState<string | null>(null)
   const [profilePic, setProfilePic] = useState<string | null>(() => {
     return localStorage.getItem('gaa_profile_pic')
   })
@@ -78,7 +80,7 @@ export default function Navigation() {
       navigate(`/match/${match.id}/setup`)
     } catch (error) {
       console.error('Failed to create match:', error)
-      alert('Failed to create match. Please try again.')
+      setErrorAlert('Failed to create match. Please try again.')
     } finally {
       setIsCreatingMatch(false)
     }
@@ -313,6 +315,15 @@ export default function Navigation() {
         isOpen={showAIChat}
         onClose={() => setShowAIChat(false)}
         initialContext="I have access to all match data, player statistics, GPS performance benchmarks, and tactical information from the knowledge base."
+      />
+
+      {/* Error Alert Modal */}
+      <ConfirmationModal
+        isOpen={!!errorAlert}
+        onClose={() => setErrorAlert(null)}
+        title="Something Went Wrong"
+        message={errorAlert || ''}
+        variant="danger"
       />
     </>
   )

@@ -16,7 +16,7 @@ import { useMatch } from '../hooks/useMatches'
 import { usePlayers } from '../hooks/usePlayers'
 import { useClub } from '../contexts/ClubContext'
 import { api } from '../services/api'
-import StartingLineupModal from '../components/StartingLineupModal'
+import StartingLineupModal, { type LineupEntry } from '../components/StartingLineupModal'
 
 type Mode = 'choose' | 'post-match'
 
@@ -43,8 +43,8 @@ export default function MatchSetup() {
 
   // Lineup
   const [showLineupModal, setShowLineupModal] = useState(false)
-  const [lineup, setLineup] = useState<Record<string, string> | null>(null)
-  const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, string> | undefined>(undefined)
+  const [lineup, setLineup] = useState<Record<string, LineupEntry> | null>(null)
+  const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
 
   // Submission
   const [submitting, setSubmitting] = useState(false)
@@ -62,8 +62,13 @@ export default function MatchSetup() {
     api.matchLineups.getLastLineup()
       .then(entries => {
         if (entries.length > 0) {
-          const obj: Record<string, string> = {}
-          entries.forEach(e => { obj[e.position_id] = e.player_id })
+          const obj: Record<string, LineupEntry> = {}
+          entries.forEach(e => {
+            obj[e.position_id] = {
+              playerId: e.player_id,
+              jerseyNumber: e.match_jersey_number ?? e.player_jersey_number,
+            }
+          })
           setLastMatchLineup(obj)
         }
       })
@@ -101,10 +106,11 @@ export default function MatchSetup() {
 
       // 3. Save lineup (if set)
       if (lineup && Object.keys(lineup).length > 0) {
-        const entries = Object.entries(lineup).map(([position_id, player_id]) => ({
-          player_id,
+        const entries = Object.entries(lineup).map(([position_id, entry]) => ({
+          player_id: entry.playerId,
           position_id,
           is_substitute: position_id.startsWith('sub-'),
+          jersey_number: entry.jerseyNumber,
         }))
         await api.matchLineups.saveLineup(matchId, entries)
       }
@@ -145,7 +151,7 @@ export default function MatchSetup() {
     day: 'numeric',
     month: 'short',
   })
-  const clubName = club?.short_name || club?.name || 'Us'
+  const clubName = club?.short_name || club?.name || 'Team'
   const lineupCount = lineup ? Object.keys(lineup).length : 0
 
   return (

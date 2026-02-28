@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { X, Search, User, Trophy } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { X, Search, User, Trophy, Hash } from 'lucide-react'
 import type { Player } from '../types'
 
 interface PlayerSelectionModalProps {
@@ -9,6 +9,7 @@ interface PlayerSelectionModalProps {
   eventType: string  // Accept any event type string
   team: 'own' | 'opponent'
   players: Player[]
+  teamName?: string
 }
 
 // Type for event label entries
@@ -47,23 +48,38 @@ export default function PlayerSelectionModal({
   onSelectPlayer,
   eventType,
   team,
-  players: providedPlayers
+  players: providedPlayers,
+  teamName,
 }: PlayerSelectionModalProps) {
   const [search, setSearch] = useState('')
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
 
+  // Use provided players (filtered to on-field players by parent)
+  const playerList = Array.isArray(providedPlayers) ? providedPlayers : []
+
+  // Build jersey → player map for quick number entry
+  // All hooks MUST be before any early returns to satisfy React rules of hooks
+  const byJersey = useMemo(() => {
+    const map = new Map<number, Player>()
+    playerList.forEach(p => { if (p.jersey_number != null) map.set(p.jersey_number, p) })
+    return map
+  }, [playerList])
+
+  // Jersey numbers present in the squad, sorted
+  const jerseyNumbers = useMemo(() =>
+    Array.from(byJersey.keys()).sort((a, b) => a - b),
+    [byJersey]
+  )
+
   if (!isOpen) return null
 
-  const eventInfo = EVENT_LABELS[eventType] || { 
-    title: 'Select Player', 
-    icon: User, 
-    color: 'text-white' 
+  const eventInfo = EVENT_LABELS[eventType] || {
+    title: 'Select Player',
+    icon: User,
+    color: 'text-white'
   }
   const Icon = eventInfo.icon
 
-  // Use provided players (filtered to on-field players by parent)
-  const playerList = Array.isArray(providedPlayers) ? providedPlayers : []
-  
   // Show message if no players available
   if (!playerList || playerList.length === 0) {
     return (
@@ -88,7 +104,7 @@ export default function PlayerSelectionModal({
       </div>
     )
   }
-  
+
   const filteredPlayers = playerList.filter((player) =>
     player.name.toLowerCase().includes(search.toLowerCase()) ||
     (player.jersey_number?.toString() || '').includes(search)
@@ -123,7 +139,7 @@ export default function PlayerSelectionModal({
             <div>
               <h2 className="text-2xl font-bold text-white">{eventInfo.title}</h2>
               <p className="text-sm text-white/60 capitalize">
-                {eventType} • {team === 'own' ? 'Us' : 'Opponent'}
+                {eventType} • {team === 'own' ? (teamName || 'Own') : 'Opposition'}
               </p>
             </div>
           </div>
@@ -135,8 +151,30 @@ export default function PlayerSelectionModal({
           </button>
         </div>
 
+        {/* Jersey number quick-select */}
+        {jerseyNumbers.length > 0 && (
+          <div className="px-6 pt-4 pb-2 border-b border-white/10">
+            <div className="flex items-center gap-2 mb-2">
+              <Hash size={14} className="text-white/30" />
+              <span className="text-[11px] text-white/40 uppercase tracking-wider font-semibold">Quick select by number</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {jerseyNumbers.map(num => (
+                <button
+                  key={num}
+                  onClick={() => { const p = byJersey.get(num); if (p) handleSelect(p) }}
+                  className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 text-white/80 text-sm font-bold hover:bg-emerald-500/20 hover:border-emerald-500/40 active:scale-95 transition-all"
+                  title={byJersey.get(num)?.name}
+                >
+                  {num}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Search */}
-        <div className="p-6 border-b border-white/10">
+        <div className="px-6 py-3 border-b border-white/10">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={20} />
             <input

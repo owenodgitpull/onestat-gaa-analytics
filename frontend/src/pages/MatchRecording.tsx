@@ -7,7 +7,7 @@ import PossessionSelectionModal from '@/components/PossessionSelectionModal'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import ConfirmationModal from '@/components/ConfirmationModal'
 import ManualEventEntryModal from '@/components/ManualEventEntryModal'
-import StartingLineupModal from '@/components/StartingLineupModal'
+import StartingLineupModal, { type LineupEntry } from '@/components/StartingLineupModal'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
 import EventFilterToggles, { getEventTypesForFilters } from '@/components/EventFilterToggles'
 import PossessionTerritoryChart from '@/components/charts/PossessionTerritoryChart'
@@ -22,6 +22,7 @@ import { useRecordEvent, useMatchEvents, useDeleteEvent } from '@/hooks/useMatch
 import { useRecordPossession } from '@/hooks/usePossession'
 import { usePlayers } from '@/hooks/usePlayers'
 import { api } from '@/services/api'
+import { useClubName } from '@/contexts/ClubContext'
 import {
   Clock,
   Activity,
@@ -50,6 +51,7 @@ export default function MatchRecording() {
   const { matchId: matchIdParam } = useParams()
   const matchId = matchIdParam || null
   const navigate = useNavigate()
+  const clubName = useClubName()
 
   // Fetch data from backend
   const { data: match, isLoading: matchLoading } = useMatch(matchId)
@@ -90,10 +92,11 @@ export default function MatchRecording() {
   } | null>(null) // Kickout event waiting for position selection
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
+  const [errorAlert, setErrorAlert] = useState<string | null>(null)
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
-  const [startingLineup, setStartingLineup] = useState<Record<string, string>>({})
-  const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, string> | undefined>(undefined)
+  const [startingLineup, setStartingLineup] = useState<Record<string, LineupEntry>>({})
+  const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
   const [teamAttackingRight, setTeamAttackingRight] = useState<boolean>(true) // true = attacking towards x=100
   const [pendingFreeKick, setPendingFreeKick] = useState<{ position: BallPosition; player?: Player } | null>(null) // Track free kick state with optional player
   const [pending45, setPending45] = useState<{ position: BallPosition } | null>(null) // Track 45 state
@@ -190,9 +193,12 @@ export default function MatchRecording() {
           setMatchLineup(lineup)
 
           // Rebuild startingLineup object from loaded lineup
-          const lineupObj: Record<string, string> = {}
+          const lineupObj: Record<string, LineupEntry> = {}
           lineup.forEach((entry) => {
-            lineupObj[entry.position_id] = entry.player_id
+            lineupObj[entry.position_id] = {
+              playerId: entry.player_id,
+              jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number,
+            }
           })
           setStartingLineup(lineupObj)
         } catch (error) {
@@ -209,9 +215,12 @@ export default function MatchRecording() {
       try {
         const lastLineup = await api.matchLineups.getLastLineup()
         if (lastLineup && lastLineup.length > 0) {
-          const lineupObj: Record<string, string> = {}
+          const lineupObj: Record<string, LineupEntry> = {}
           lastLineup.forEach((entry) => {
-            lineupObj[entry.position_id] = entry.player_id
+            lineupObj[entry.position_id] = {
+              playerId: entry.player_id,
+              jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number,
+            }
           })
           setLastMatchLineup(lineupObj)
         }
@@ -502,7 +511,7 @@ export default function MatchRecording() {
       setEventToDelete(null)
     } catch (error) {
       console.error('Failed to delete event:', error)
-      alert('Failed to delete event. Please try again.')
+      setErrorAlert('Failed to delete event. Please try again.')
     }
   }
 
@@ -831,7 +840,7 @@ export default function MatchRecording() {
       setPendingKickoutEvent(null)
       setAwaitingKickout(false)
       setActiveKickoutTab('scoring')
-      alert('Failed to record kickout. Please try again.')
+      setErrorAlert('Failed to record kickout. Please try again.')
     }
   }
 
@@ -936,7 +945,7 @@ export default function MatchRecording() {
       }))
     } catch (error) {
       console.error('Failed to record foul:', error)
-      alert('Failed to record foul. Please try again.')
+      setErrorAlert('Failed to record foul. Please try again.')
     }
 
     // Close player modal and reset foul player selection flag
@@ -1047,17 +1056,18 @@ export default function MatchRecording() {
   }
 
   // Handle starting lineup confirmation
-  const handleLineupConfirm = async (lineup: Record<string, string>) => {
+  const handleLineupConfirm = async (lineup: Record<string, LineupEntry>) => {
     setStartingLineup(lineup)
     setIsLineupModalOpen(false)
 
     // Save lineup to backend
     if (matchId) {
       try {
-        const lineupEntries = Object.entries(lineup).map(([positionId, playerId]) => ({
-          player_id: playerId,
+        const lineupEntries = Object.entries(lineup).map(([positionId, entry]) => ({
+          player_id: entry.playerId,
           position_id: positionId,
-          is_substitute: positionId.startsWith('sub-')
+          is_substitute: positionId.startsWith('sub-'),
+          jersey_number: entry.jerseyNumber,
         }))
 
         await api.matchLineups.saveLineup(matchId, lineupEntries)
@@ -1235,7 +1245,7 @@ export default function MatchRecording() {
       console.log('Free kick result recorded successfully')
     } catch (error) {
       console.error('Failed to record free kick result:', error)
-      alert('Failed to record free kick. Please try again.')
+      setErrorAlert('Failed to record free kick. Please try again.')
     }
   }
 
@@ -1390,7 +1400,7 @@ export default function MatchRecording() {
       console.log('Event recorded without player selection')
     } catch (error) {
       console.error('Failed to record event:', error)
-      alert('Failed to record event. Please try again.')
+      setErrorAlert('Failed to record event. Please try again.')
     }
   }
 
@@ -1582,7 +1592,7 @@ export default function MatchRecording() {
         setSeconds(0)
       } catch (error) {
         console.error('Failed to start match:', error)
-        alert('Failed to start match. Please try again.')
+        setErrorAlert('Failed to start match. Please try again.')
       }
     } else if (matchPhase === 'half_time') {
       // Auto-flip attack direction for second half
@@ -1644,7 +1654,7 @@ export default function MatchRecording() {
       navigate('/')
     } catch (error) {
       console.error('Failed to end match:', error)
-      alert('Failed to end match. Please try again.')
+      setErrorAlert('Failed to end match. Please try again.')
     }
   }
 
@@ -1704,16 +1714,16 @@ export default function MatchRecording() {
       return { text: 'Kickout — Tap Landing Position', subtext: 'Tap the pitch where the ball lands', bg: 'from-white/5 to-white/10 border-white/20', accent: 'text-white/80' }
     }
     if (pendingFreeKick) {
-      const freeTeam = ballPosition.team === PossessionTeam.OWN ? 'Us' : matchDisplay.opponent
+      const freeTeam = ballPosition.team === PossessionTeam.OWN ? clubName : matchDisplay.opponent
       return { text: `Free Kick — ${freeTeam}`, subtext: 'Select outcome or move ball for short free', bg: 'from-cyan-600/20 to-blue-600/20 border-cyan-500/40', accent: 'text-cyan-400' }
     }
     if (pending45) {
-      return { text: '45m Free — Us', subtext: 'Select outcome or move ball to cancel', bg: 'from-cyan-600/20 to-blue-600/20 border-cyan-500/40', accent: 'text-cyan-400' }
+      return { text: `45m Free — ${clubName}`, subtext: 'Select outcome or move ball to cancel', bg: 'from-cyan-600/20 to-blue-600/20 border-cyan-500/40', accent: 'text-cyan-400' }
     }
 
     // Normal play — derive zone and side from ball position
     const isOwn = ballPosition.team === PossessionTeam.OWN
-    const teamName = isOwn ? 'Us' : matchDisplay.opponent
+    const teamName = isOwn ? clubName : matchDisplay.opponent
 
     // attackingProgress: 0 = deep in our end, 100 = deep in opponent's end
     const attackingProgress = teamAttackingRight ? ballPosition.x : (100 - ballPosition.x)
@@ -1728,11 +1738,11 @@ export default function MatchRecording() {
 
     let text: string
     if (isOwn) {
-      if (attackingProgress >= 78) text = `Us inside the 21m line${side}`
-      else if (attackingProgress >= 55) text = `Us inside the 45m line${side}`
-      else if (attackingProgress >= 45) text = `Us around midfield${side}`
-      else if (attackingProgress >= 22) text = `Us in our own half${side}`
-      else text = `Us deep in our own half${side}`
+      if (attackingProgress >= 78) text = `${clubName} inside the 21m line${side}`
+      else if (attackingProgress >= 55) text = `${clubName} inside the 45m line${side}`
+      else if (attackingProgress >= 45) text = `${clubName} around midfield${side}`
+      else if (attackingProgress >= 22) text = `${clubName} in our own half${side}`
+      else text = `${clubName} deep in our own half${side}`
     } else {
       if (attackingProgress <= 22) text = `${teamName} inside our 21m line${side}`
       else if (attackingProgress <= 45) text = `${teamName} inside our 45m line${side}`
@@ -1743,8 +1753,8 @@ export default function MatchRecording() {
 
     const bg = isOwn
       ? 'from-emerald-600/20 to-blue-600/20 border-emerald-500/40'
-      : 'from-red-600/20 to-rose-600/20 border-red-500/40'
-    const accent = isOwn ? 'text-emerald-400' : 'text-red-400'
+      : 'from-orange-600/10 to-white/5 border-orange-500/30'
+    const accent = isOwn ? 'text-emerald-400' : 'text-orange-300'
 
     return { text, subtext: '', bg, accent }
   }
@@ -1957,15 +1967,15 @@ export default function MatchRecording() {
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all active:scale-95 ${
                           ballPosition.team === PossessionTeam.OWN
                             ? 'bg-emerald-500/20 border-emerald-500/40 hover:bg-emerald-500/30'
-                            : 'bg-red-500/20 border-red-500/40 hover:bg-red-500/30'
+                            : 'bg-white/10 border-orange-500/30 hover:bg-white/15'
                         }`}
                         title="Tap to swap possession"
                       >
                         <ArrowLeftRight size={14} className="text-white/70" />
-                        <span className={`text-xs font-bold ${ballPosition.team === PossessionTeam.OWN ? 'text-emerald-300' : 'text-red-300'}`}>
-                          {ballPosition.team === PossessionTeam.OWN ? 'Us' : matchDisplay.opponent}
+                        <span className={`text-xs font-bold ${ballPosition.team === PossessionTeam.OWN ? 'text-emerald-300' : 'text-orange-300'}`}>
+                          {ballPosition.team === PossessionTeam.OWN ? clubName : matchDisplay.opponent}
                         </span>
-                        <div className={`w-2 h-2 rounded-full ${ballPosition.team === PossessionTeam.OWN ? 'bg-emerald-400' : 'bg-red-400'} animate-pulse`} />
+                        <div className={`w-2 h-2 rounded-full ${ballPosition.team === PossessionTeam.OWN ? 'bg-emerald-400' : 'bg-orange-400'} animate-pulse`} />
                       </button>
                     )}
                   </div>
@@ -2271,7 +2281,7 @@ export default function MatchRecording() {
                       </div>
                     </div>
                     <div className="mb-2 text-sm text-white/40 text-center">
-                      {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown for {eventMapTeamFilter === 'own' ? 'Us' : matchDisplay.opponent}
+                      {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown for {eventMapTeamFilter === 'own' ? clubName : matchDisplay.opponent}
                     </div>
                     <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
                   </div>
@@ -2330,7 +2340,7 @@ export default function MatchRecording() {
       {/* Possession Selection Modal */}
       <PossessionSelectionModal
         isOpen={isPossessionModalOpen}
-        homeTeam="Us"
+        homeTeam={clubName}
         awayTeam={matchDisplay.opponent}
         onSelect={handlePossessionSelected}
         skipDirection={matchPhase === 'half_time'}
@@ -2415,6 +2425,15 @@ export default function MatchRecording() {
             ? formatEventDescription(allEvents[0])
             : undefined
         }
+      />
+
+      {/* Error Alert Modal */}
+      <ConfirmationModal
+        isOpen={!!errorAlert}
+        onClose={() => setErrorAlert(null)}
+        title="Something Went Wrong"
+        message={errorAlert || ''}
+        variant="danger"
       />
     </div>
   )

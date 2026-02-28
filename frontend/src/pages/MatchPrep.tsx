@@ -115,8 +115,8 @@ export default function MatchPrep() {
   const [match, setMatch] = useState<Match | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [workloads, setWorkloads] = useState<PlayerWorkload[]>([])
-  const [lineup, setLineup] = useState<Record<string, string>>({})
-  const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, string> | null>(null)
+  const [lineup, setLineup] = useState<Record<string, { playerId: string; jerseyNumber: number | null }>>({})
+  const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, { playerId: string; jerseyNumber: number | null }> | null>(null)
   const [selectingPosition, setSelectingPosition] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -141,18 +141,24 @@ export default function MatchPrep() {
 
         // Load existing lineup for this match
         if (existingLineup.length > 0) {
-          const lineupObj: Record<string, string> = {}
+          const lineupObj: Record<string, { playerId: string; jerseyNumber: number | null }> = {}
           existingLineup.forEach(entry => {
-            lineupObj[entry.position_id] = entry.player_id
+            lineupObj[entry.position_id] = {
+              playerId: entry.player_id,
+              jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number,
+            }
           })
           setLineup(lineupObj)
         }
 
         // Load last match lineup for quick-reuse
         if (lastLineup.length > 0) {
-          const lastObj: Record<string, string> = {}
+          const lastObj: Record<string, { playerId: string; jerseyNumber: number | null }> = {}
           lastLineup.forEach(entry => {
-            lastObj[entry.position_id] = entry.player_id
+            lastObj[entry.position_id] = {
+              playerId: entry.player_id,
+              jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number,
+            }
           })
           setLastMatchLineup(lastObj)
         }
@@ -180,7 +186,7 @@ export default function MatchPrep() {
   }, [players])
 
   // Available players (not already selected)
-  const selectedIds = useMemo(() => new Set(Object.values(lineup)), [lineup])
+  const selectedIds = useMemo(() => new Set(Object.values(lineup).map(e => e.playerId)), [lineup])
 
   const availablePlayers = useMemo(() => {
     return players
@@ -196,7 +202,7 @@ export default function MatchPrep() {
   }, [players, selectedIds])
 
   const selectedCount = Object.keys(lineup).length
-  const startingCount = FORMATION_POSITIONS.filter(p => lineup[p.id]).length
+  const startingCount = FORMATION_POSITIONS.filter(p => !!lineup[p.id]).length
 
   const handlePositionClick = (positionId: string) => {
     if (lineup[positionId]) {
@@ -212,7 +218,14 @@ export default function MatchPrep() {
 
   const handlePlayerSelect = (playerId: string) => {
     if (selectingPosition) {
-      setLineup(prev => ({ ...prev, [selectingPosition]: playerId }))
+      const player = players.find(p => p.id === playerId)
+      setLineup(prev => ({
+        ...prev,
+        [selectingPosition]: {
+          playerId,
+          jerseyNumber: player?.jersey_number ?? null,
+        },
+      }))
       setSelectingPosition(null)
       setSaved(false)
     }
@@ -229,10 +242,11 @@ export default function MatchPrep() {
     if (!matchId) return
     setSaving(true)
     try {
-      const entries = Object.entries(lineup).map(([position_id, player_id]) => ({
-        player_id,
+      const entries = Object.entries(lineup).map(([position_id, entry]) => ({
+        player_id: entry.playerId,
         position_id,
         is_substitute: position_id.startsWith('sub-'),
+        jersey_number: entry.jerseyNumber,
       }))
       await api.matchLineups.saveLineup(matchId, entries)
       setSaved(true)
@@ -247,10 +261,11 @@ export default function MatchPrep() {
     if (!matchId) return
     setSaving(true)
     try {
-      const entries = Object.entries(lineup).map(([position_id, player_id]) => ({
-        player_id,
+      const entries = Object.entries(lineup).map(([position_id, entry]) => ({
+        player_id: entry.playerId,
         position_id,
         is_substitute: position_id.startsWith('sub-'),
+        jersey_number: entry.jerseyNumber,
       }))
       await api.matchLineups.saveLineup(matchId, entries)
       navigate(`/match/${matchId}/setup`)
@@ -371,9 +386,10 @@ export default function MatchPrep() {
               </svg>
 
               {FORMATION_POSITIONS.map(pos => {
-                const playerId = lineup[pos.id]
-                const player = playerId ? playerMap.get(playerId) : null
-                const workload = playerId ? workloadMap.get(playerId) : undefined
+                const entry = lineup[pos.id]
+                const player = entry ? playerMap.get(entry.playerId) : null
+                const workload = entry ? workloadMap.get(entry.playerId) : undefined
+                const displayLabel = entry?.jerseyNumber != null ? `${entry.jerseyNumber}` : pos.label
 
                 return (
                   <div
@@ -387,7 +403,7 @@ export default function MatchPrep() {
                         ? `bg-red-600 text-white ${getJerseyRing(workload)} shadow-lg`
                         : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
                     }`}>
-                      {player ? (player.jersey_number ?? pos.label) : pos.label}
+                      {player ? displayLabel : pos.label}
                     </div>
                     {player && (
                       <div className="absolute top-full mt-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
@@ -407,9 +423,9 @@ export default function MatchPrep() {
             {/* Substitutes */}
             <div className="flex justify-center gap-6 mt-4">
               {SUBSTITUTE_POSITIONS.map((pos, index) => {
-                const playerId = lineup[pos.id]
-                const player = playerId ? playerMap.get(playerId) : null
-                const workload = playerId ? workloadMap.get(playerId) : undefined
+                const entry = lineup[pos.id]
+                const player = entry ? playerMap.get(entry.playerId) : null
+                const workload = entry ? workloadMap.get(entry.playerId) : undefined
 
                 return (
                   <div
@@ -525,8 +541,9 @@ export default function MatchPrep() {
                 <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Starting XV</p>
                 <div className="space-y-1">
                   {FORMATION_POSITIONS.map(pos => {
-                    const player = lineup[pos.id] ? playerMap.get(lineup[pos.id]) : null
-                    const wl = lineup[pos.id] ? workloadMap.get(lineup[pos.id]) : undefined
+                    const entry = lineup[pos.id]
+                    const player = entry ? playerMap.get(entry.playerId) : null
+                    const wl = entry ? workloadMap.get(entry.playerId) : undefined
                     return (
                       <div key={pos.id} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
                         <div className="flex items-center gap-2">
@@ -559,8 +576,9 @@ export default function MatchPrep() {
                 <p className="text-white/40 text-xs font-semibold uppercase tracking-wider mb-2">Substitutes</p>
                 <div className="space-y-1">
                   {SUBSTITUTE_POSITIONS.map((pos, i) => {
-                    const player = lineup[pos.id] ? playerMap.get(lineup[pos.id]) : null
-                    const wl = lineup[pos.id] ? workloadMap.get(lineup[pos.id]) : undefined
+                    const entry = lineup[pos.id]
+                    const player = entry ? playerMap.get(entry.playerId) : null
+                    const wl = entry ? workloadMap.get(entry.playerId) : undefined
                     return (
                       <div key={pos.id} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
                         <div className="flex items-center gap-2">

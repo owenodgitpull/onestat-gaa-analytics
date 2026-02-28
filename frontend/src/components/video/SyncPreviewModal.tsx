@@ -26,7 +26,7 @@ function EventRow({ event, icon: Icon, color }: { event: SyncPreviewEvent; icon:
       <Icon size={14} className={color} />
       <span className="text-white/80 font-medium">{event.event_type.replace(/_/g, ' ')}</span>
       <span className="text-white/40">
-        {event.team === 'team_a' ? 'Own' : 'Opp'} &bull; {event.minute}'
+        {event.team === 'team_a' ? 'Own' : 'Opposition'} &bull; {event.minute}'
       </span>
       {event.pitch_zone && (
         <span className="text-white/30 text-xs">{event.pitch_zone}</span>

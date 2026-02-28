@@ -1,9 +1,9 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Info, AlertCircle } from 'lucide-react'
 
 interface ConfirmationModalProps {
   isOpen: boolean
   onClose: () => void
-  onConfirm: () => void
+  onConfirm?: () => void
   title: string
   message: string
   confirmText?: string
@@ -29,11 +29,22 @@ export default function ConfirmationModal({
     info: 'text-blue-400'
   }
 
+  const variantBgColors = {
+    danger: 'bg-red-500/10',
+    warning: 'bg-amber-500/10',
+    info: 'bg-blue-500/10'
+  }
+
   const variantButtonColors = {
     danger: 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800',
     warning: 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800',
     info: 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800'
   }
+
+  const IconComponent = variant === 'info' ? Info : variant === 'danger' ? AlertCircle : AlertTriangle
+
+  // Alert-only mode: no onConfirm → just a dismiss button
+  const alertOnly = !onConfirm
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -47,8 +58,8 @@ export default function ConfirmationModal({
       <div className="relative w-full max-w-md glass-card p-8">
         {/* Icon */}
         <div className="flex justify-center mb-6">
-          <div className={`p-4 rounded-full bg-white/5 ${variantColors[variant]}`}>
-            <AlertTriangle size={48} />
+          <div className={`p-4 rounded-full ${variantBgColors[variant]} ${variantColors[variant]}`}>
+            <IconComponent size={48} />
           </div>
         </div>
 
@@ -63,23 +74,32 @@ export default function ConfirmationModal({
         </p>
 
         {/* Action Buttons */}
-        <div className="flex space-x-4">
+        {alertOnly ? (
           <button
             onClick={onClose}
-            className="flex-1 btn-glass"
+            className={`w-full text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95 ${variantButtonColors[variant]}`}
           >
-            {cancelText}
+            OK
           </button>
-          <button
-            onClick={() => {
-              onConfirm()
-              onClose()
-            }}
-            className={`flex-1 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95 ${variantButtonColors[variant]}`}
-          >
-            {confirmText}
-          </button>
-        </div>
+        ) : (
+          <div className="flex space-x-4">
+            <button
+              onClick={onClose}
+              className="flex-1 btn-glass"
+            >
+              {cancelText}
+            </button>
+            <button
+              onClick={() => {
+                onConfirm()
+                onClose()
+              }}
+              className={`flex-1 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95 ${variantButtonColors[variant]}`}
+            >
+              {confirmText}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

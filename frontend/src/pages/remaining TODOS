@@ -1,0 +1,75 @@
+Still Needed for Production Multi-Tenancy
+
+  Must-have (blocking launch):
+  1. Backfill Dungloe data — existing matches, players, events, GPS, etc. all have club_id = NULL. Need a migration to stamp them with Dungloe's club UUID
+  2. Remove remaining Dungloe hardcodes — we cleaned most but should do a final sweep (AI knowledge base, any "Dungloe" strings in prompts)
+  3. Production deployment — currently localhost. Need hosted backend (e.g. AWS ECS/Lambda), managed Postgres (RDS), frontend hosting (S3+CloudFront or Vercel)        
+  4. Production Cognito config — real domain callback URLs, custom email templates, SES for email delivery
+  5. Custom domain + SSL — e.g. app.onestat.ie
+  6. Club-scoped file storage — GPS uploads, logos need per-club S3 paths (not local filesystem)
+  7. Database indexes — add composite indexes on club_id for all high-traffic tables (matches, players, events)
+  8. End-to-end auth testing — you mentioned this is pending
+Add guardrails to ensure the Agents dont get their data from newspaper articles on players etc.
+Gel Claude to review the entire website send screenshots
+Export as pdf - select what to export on dashboard.
+Need an edit event to allow events to be edited or even removed and add a new one - can be done in match (unlikely as user is recording) or post match more likely but allow both.
+* Add guardrails to ensure the Agents dont get their data from newspaper articles on players etc.
+* Get Claude to review the entire website send screenshots
+* Export as pdf - select what to export on dashboard.
+* Need an edit event to allow events to be edited or even removed and add a new one - can be done in match (unlikely as user is recording) or post match more likely but allow both.
+* Also during a match there is no way to view the team again. We need a view team selection modal (we can reuse the team selection that is use before a match) from here we should allow substitutes, we should add a minus icon or a rotate icon prob the latter is best and if its clicked a message will be shown inline select player coming on for Curran or whoever was chosen to be subbed.
+* File storage in r2, pdfs, videos images, link back to metadata tables in SQL. Data Lake for Dungloe but could be done for each team too* New match button should change to continue match when a match is ongoing and the user has clicked away.
+Saved - needs to be shown as Goal chances and tracked that way for analytics - can add it to the stats on left hand side too
+Try and get the AI to recognise transitions - so a fast transition is obviously a long kick and the ball moved (jumped) co-ordinates dramaticall
+* custom knowledge base section - a page of its own where you can view the knowledge the Agents have and add or remove knowlede - need to then get it injected dynamically via RAG when a query requires it.
+* tidy up paths to goal
+* ensure team data like basic stuff home ground, colours, coaches etc gets injected into prompt.
+  Should-have (before selling):
+  * beef up chart library - only 6 non AI charts/graphs - add more, also add custom KPIs, and allow users to hide show KPIs.
+  9. Billing/subscriptions — Stripe integration, pricing tiers
+  10. Landing page — marketing site to drive signups
+  11. Admin dashboard — manage clubs, view usage, deactivate accounts
+  12. GDPR compliance — player data consent, data export/deletion, privacy policy
+  13. Rate limiting — prevent API abuse per-club
+  14. Invite system — club admins invite other users (managers, coaches) to their club
+  15. Role-based access — currently everyone is club_admin; may want viewer, coach, analyst roles
+
+  16. Club-specific AI knowledge base — currently shared; each club could add their own tactical docs (this is massive in my opinion, if we demo'd this to McGuinness he would be asking us what or where does AI get its tactial knowledge) we can tell him there is defailt knowledge from x various sources. but that he can upload is own. Very powerful. We are essentially allowing them to train the LLm themselves.
+  17. White-labelling — club colours/logo flowing through the full UI (partially done via onboarding)
+  18. Mobile app wrapper — PWA or Capacitor for app store presence
+  19. Automated backups — RDS snapshots + point-in-time recovery
+  20. Monitoring/alerting — error tracking (Sentry), uptime monitoring
+
+  1. Natural Language Match Querying
+Nobody is doing this. After a match is processed, let the manager talk to the match. Not read a report – actually ask questions in plain English and get answers grounded in the video data.
+"Show me every time we lost possession in our own half."
+"What did number 7 do in the last 10 minutes?"
+"Compare our kickout strategy in the first half vs the second half."
+"Find me every time we had a 3-on-2 overlap on the left wing."
+The LLM has the full structured event data. It can query it instantly, generate charts on the fly, and even jump the video player to the relevant timestamp. This turns your analytics platform from something you read into something you interrogate. Managers don't think in dashboards, they think in questions. Let them ask.
+
+5. Player Development Trajectories
+Over a season, track not just what a player did but how they're developing. The LLM analyses the arc.
+"Dylan's shooting accuracy has improved from 55% to 75% over 8 matches. His shot selection has changed – he's taking fewer long-range shots and getting into better positions inside the 21. His movement off the ball has measurably improved based on the zones he's receiving possession in."
+Turn this into a personal development report for each player, generated monthly. Players see their own growth visualised. Parents of underage players see their child's progression. This is retention gold for your platform – people don't cancel a subscription that's showing them they're getting better.
+6. Video Clip Auto-Generation
+When Gemini analyses the match video and tags events with timestamps, you already have the data to auto-generate highlight clips. FFmpeg can cut clips programmatically.
+"Here are Dylan's 4 scoring moments this match" – four 15-second clips, auto-cut, ready to share. Players share these on Instagram, WhatsApp groups, club social media. Every shared clip is free marketing for your platform. Every clip has a subtle OneStat watermark.
+You could even auto-generate a 2-minute match highlights reel ranked by event significance (goals first, then points, then key defensive moments). The LLM decides the narrative order. FFmpeg stitches it. The club has a highlights package without anyone editing video.
+7. Training Session Design
+This is the bridge between match analytics and the training ground. After analysing 3-4 matches, the LLM has identified weaknesses. Now it suggests specific training drills.
+"Your kickout win rate is 45%. Here are 3 kickout drills focused on movement patterns and communication, specifically targeting the short kickout to the left where you're being pressed."
+"Your team concedes 60% of scores from turnovers in your own half-forward line. Here's a drill focused on decision-making under pressure in that zone, emphasising when to go short vs kick long."
+Integrate with your Training section in the nav bar. The match analysis directly feeds training recommendations. That closes the loop between analysis and action, which is where most analytics platforms stop.
+
+
+8. The Commentary Track (very nice to have - not important)
+This one is almost whimsical but could be brilliant for engagement. After processing a match, generate an AI commentary track that can be played over the video. The LLM has the timestamps, the events, the context. It can narrate the match like a commentator.
+"And Dungloe work it out from the back, number 5 finds number 8 on the wing, he solos past his man, lovely ball inside to number 14 who turns and... POINT! What a score, that's his third from play today and Dungloe lead by two."
+Players would absolutely watch their own matches with AI commentary. It's fun, it's shareable, and it demonstrates the depth of your analysis in the most accessible way possible.
+The one that changes everything though is number 4 – real-time tactical suggestions. That's the feature that would make managers feel like they have an analyst on the sideline. And you're closer to it than you think, because your manual tagging tool is already generating the real-time event stream you'd need.
+
+
+SCALING:
+The only AWS service that would genuinely help is SQS for job queuing if you had many clubs processing videos etc simultaneously, but that's a
+   scaling problem for later. For now, background tasks + Fly.io handles it.

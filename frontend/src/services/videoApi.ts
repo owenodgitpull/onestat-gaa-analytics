@@ -5,7 +5,7 @@
  * event CRUD, and LLM enrichment.
  */
 
-import { fetchAPI } from './api';
+import { fetchAPI, API_BASE } from './api';
 
 // ============================================================================
 // Types
@@ -20,6 +20,7 @@ export interface VideoSession {
   video_r2_key: string | null;
   video_duration_ms: number | null;
   video_size_bytes: number | null;
+  halftime_timestamp_ms: number | null;
   status: string;
   ai_model_used: string | null;
   ai_events_generated: number | null;
@@ -200,6 +201,109 @@ export const videoSessionsAPI = {
   /** Run LLM enrichment on tagged events. */
   enrich: (sessionId: string) =>
     fetchAPI<EnrichmentResult>(`/video/session/${sessionId}/enrich`, { method: 'POST' }),
+
+  /** Set the half-time timestamp for a full-match video. */
+  setHalftime: (sessionId: string, halftimeMs: number) =>
+    fetchAPI<VideoSession>(
+      `/video/session/${sessionId}/set-halftime`,
+      { method: 'POST', body: JSON.stringify({ halftime_timestamp_ms: halftimeMs }) }
+    ),
+
+  /** Trigger keyframe + Claude Vision auto-analysis. */
+  autoAnalyze: (sessionId: string) =>
+    fetchAPI<{ status: string }>(`/video/session/${sessionId}/keyframe-analyze`, { method: 'POST' }),
+
+  /** Re-run low-confidence batches through Sonnet for better accuracy. */
+  improveAnalysis: (sessionId: string) =>
+    fetchAPI<{ status: string }>(`/video/session/${sessionId}/improve-analysis`, { method: 'POST' }),
+
+  /**
+   * SSE streaming analysis — starts background task then connects to progress stream.
+   *
+   * Two-step approach:
+   * 1. POST /keyframe-analyze — starts background task (returns immediately)
+   * 2. GET /analysis-progress — SSE stream reads from in-memory queue
+   *
+   * This is reliable because the heavy work runs in a proven background task,
+   * and the SSE endpoint is a lightweight reader with no imports or DB work.
+   */
+  streamAnalysis: (
+    sessionId: string,
+    callbacks: {
+      onProgress: (stage: string, detail?: Record<string, unknown>) => void
+      onBatchComplete?: () => void
+      onDone: (totalEvents: number) => void
+      onError: (message: string) => void
+    }
+  ): { promise: Promise<void>; abort: () => void } => {
+    const controller = new AbortController();
+
+    const promise = (async () => {
+      // 1. Start the background analysis task
+      await fetchAPI(`/video/session/${sessionId}/keyframe-analyze`, { method: 'POST' });
+
+      // 2. Connect to SSE progress stream
+      const url = `${API_BASE}/video/session/${sessionId}/analysis-progress`;
+      const response = await fetch(url, {
+        credentials: 'include',
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        callbacks.onError(errorData.detail || `API Error: ${response.status}`);
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        callbacks.onError('No response stream available');
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+
+          try {
+            const payload = JSON.parse(trimmed.slice(6));
+            switch (payload.type) {
+              case 'progress':
+                callbacks.onProgress(payload.stage, payload);
+                if (payload.batch_complete && callbacks.onBatchComplete) {
+                  callbacks.onBatchComplete();
+                }
+                break;
+              case 'done':
+                callbacks.onDone(payload.total_events);
+                return;
+              case 'error':
+                callbacks.onError(payload.message);
+                return;
+              case 'heartbeat':
+                break;
+            }
+          } catch {
+            // skip malformed SSE lines
+          }
+        }
+      }
+    })();
+
+    return { promise, abort: () => controller.abort() };
+  },
 
   /**
    * Upload file directly to R2 via presigned URL.
