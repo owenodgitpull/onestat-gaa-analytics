@@ -675,6 +675,16 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
 
     # Default outcomes: all scoring events + wides
     DEFAULT_OUTCOMES = {"goal", "point", "two_point", "point_free", "two_point_free", "forty_five", "wide", "wide_free"}
+
+    # Dead ball events — these reset possession (score, wide, saved shot, short)
+    # When tracing backwards, hitting one of these means the previous move ended here
+    DEAD_BALL_TYPES = {
+        EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
+        EventType.POINT_FREE, EventType.TWO_POINT_FREE,
+        EventType.FORTY_FIVE, EventType.FORTY_FIVE_MISSED,
+        EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT, EventType.SAVED,
+        EventType.PENALTY_GOAL, EventType.PENALTY_MISS,
+    }
     target_outcomes = set(o.lower() for o in outcomes) if outcomes else DEFAULT_OUTCOMES
 
     # Resolve match_id
@@ -754,9 +764,8 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             except ValueError:
                 continue
 
-            # Trace backwards through ALL events — collect own-team events, stop at opponent events
-            # This captures the full attacking sequence: block → interception → turnover → goal
-            # In GAA, a "move" can span several minutes as the ball is worked up the field
+            # Trace backwards through ALL events — collect own-team events, stop at boundaries
+            # Boundaries: opponent event, dead ball (score/wide/saved), or big time gap
             chain = [oe]
             last_minute = oe.minute
             for i in range(oe_idx - 1, -1, -1):
@@ -766,6 +775,9 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                     break
                 # Stop if we hit an opponent event — they had the ball, so our move starts AFTER this
                 if prev.team == Team.OPPONENT:
+                    break
+                # Stop if we hit a dead ball event (score, wide, saved) — possession resets after these
+                if prev.event_type in DEAD_BALL_TYPES:
                     break
                 # This is an own-team event — include it in the chain
                 chain.insert(0, prev)
