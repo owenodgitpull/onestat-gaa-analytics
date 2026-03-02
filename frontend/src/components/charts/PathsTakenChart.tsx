@@ -82,6 +82,17 @@ const prettyAction = (raw: string): string => {
     foul_won: 'a foul won',
     breaking_ball_won: 'a breaking ball won',
     mark: 'a mark',
+    hand_pass: 'a hand pass',
+    kick_pass: 'a kick pass',
+    goal: 'a goal',
+    point: 'a point',
+    two_point: 'a two-pointer',
+    point_free: 'a pointed free',
+    wide: 'a wide',
+    wide_free: 'a wide free',
+    forty_five: 'a 45',
+    saved: 'a saved shot',
+    short: 'a short shot',
   }
   return map[raw] || raw.replace(/_/g, ' ')
 }

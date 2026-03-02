@@ -330,19 +330,31 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
           if (normX <= 97) return `the 13m line${lateral}`
           return `the square`
         }
+        const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boolean): number => {
+          const isFirstHalf = minute <= 35
+          const attackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
+          return attackingRight ? rawX : 100 - rawX
+        }
         const prettyAction = (raw: string): string => {
           const map: Record<string, string> = {
             turnover_won: 'a turnover won', kickout_won: 'a kickout won',
             own_kickout_won: 'an own kickout won', opp_kickout_won: 'an opposition kickout won',
+            own_kickout_won_break: 'a breaking ball from own kickout',
+            opp_kickout_won_break: 'a breaking ball from opposition kickout',
             interception: 'an interception', block: 'a block',
             free_won: 'a free won', foul_won: 'a foul won', breaking_ball_won: 'a breaking ball won',
+            mark: 'a mark', hand_pass: 'a hand pass', kick_pass: 'a kick pass',
+            goal: 'a goal', point: 'a point', two_point: 'a two-pointer',
+            point_free: 'a pointed free', wide: 'a wide', wide_free: 'a wide free',
+            forty_five: 'a 45', saved: 'a saved shot', short: 'a short shot',
           }
           return map[raw] || raw.replace(/_/g, ' ')
         }
-        const describePathNL = (points: {x:number;y:number}[], startedWith?: string): string => {
+        const describePathNL = (points: {x:number;y:number}[], startedWith?: string, minute?: number, attackingRight?: boolean): string => {
           if (!points || points.length === 0) return ''
-          // For chat pitch viz, raw x already has 0=own goal, 100=opp goal
-          const zones = points.map(p => getZone(p.x, p.y))
+          const atkRight = attackingRight ?? true
+          const min = minute ?? 15
+          const zones = points.map(p => getZone(normalizeX(p.x, min, atkRight), p.y))
           const unique = zones.filter((z, i) => i === 0 || z !== zones[i - 1])
           if (points.length === 1) return `Shot taken from ${unique[0]}`
           const action = startedWith ? prettyAction(startedWith) : 'play'
@@ -414,7 +426,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                 {data.map((item: any, idx: number) => {
                   const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#10b981'
                   const outcomeLabel = OUTCOME_LABELS[item.outcome] || item.outcome?.replace(/_/g, ' ')
-                  const pathDesc = describePathNL(item.points || [], item.started_with)
+                  const pathDesc = describePathNL(item.points || [], item.started_with, item.minute, item.attacking_right_first_half)
                   return (
                     <div key={idx} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10">
                       {/* Number badge */}

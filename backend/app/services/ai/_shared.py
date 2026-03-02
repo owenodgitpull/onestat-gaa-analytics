@@ -801,6 +801,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 "started_by": started_by,
                 "started_with": started_with,
                 "points": points,
+                "attacking_right_first_half": match_attacking_right.get(mid, True),
             })
 
     # Sort by match then minute
