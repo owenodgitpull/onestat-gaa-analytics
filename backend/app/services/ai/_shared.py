@@ -1172,14 +1172,14 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
             tm_duration = sum(
                 p.duration_seconds or 0
                 for p in possession_events
-                if p.team == PossessionTeam.OWN
+                if p.team == PossessionTeam.OWN.value
             )
             tm_possession = round((tm_duration / total_duration) * 100, 1)
             opp_possession = round(100 - tm_possession, 1)
         else:
             # Fallback: use event count if no durations
             total_poss_events = len(possession_events)
-            tm_poss_events = sum(1 for p in possession_events if p.team == PossessionTeam.OWN)
+            tm_poss_events = sum(1 for p in possession_events if p.team == PossessionTeam.OWN.value)
             tm_possession = round((tm_poss_events / total_poss_events) * 100, 1) if total_poss_events > 0 else 50.0
             opp_possession = round(100 - tm_possession, 1)
 
