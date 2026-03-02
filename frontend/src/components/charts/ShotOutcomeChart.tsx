@@ -6,9 +6,10 @@ interface ShotOutcomeChartProps {
   events: any[]
   opponent: string
   insight?: string
+  insightLoading?: boolean
 }
 
-export default function ShotOutcomeChart({ events, opponent, insight }: ShotOutcomeChartProps) {
+export default function ShotOutcomeChart({ events, opponent, insight, insightLoading = false }: ShotOutcomeChartProps) {
   const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
 
   const outcomeData = useMemo(() => {
@@ -100,11 +101,16 @@ export default function ShotOutcomeChart({ events, opponent, insight }: ShotOutc
         </div>
       )}
 
-      {insight && (
+      {insight ? (
         <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-orange-600/15 to-amber-600/15 border border-orange-500/30">
           <p className="text-xs text-white/70 leading-relaxed">{insight}</p>
         </div>
-      )}
+      ) : insightLoading ? (
+        <div className="mt-4 p-3 rounded-lg bg-white/5 border border-white/10 animate-pulse">
+          <div className="h-3 bg-white/10 rounded w-3/4 mb-1.5" />
+          <div className="h-3 bg-white/10 rounded w-1/2" />
+        </div>
+      ) : null}
     </div>
   )
 }

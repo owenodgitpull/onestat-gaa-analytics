@@ -61,7 +61,7 @@ export default function MatchResult() {
   const { data: players } = usePlayers()
 
   // Fetch post-match AI analysis
-  const { data: postMatchReport, refetch: refetchReport } = useQuery({
+  const { data: postMatchReport, refetch: refetchReport, isLoading: reportLoading } = useQuery({
     queryKey: ['post-match-report', matchId],
     queryFn: () => api.ai.getPostMatchReport(matchId!),
     enabled: !!matchId && match?.status === 'completed',
@@ -633,6 +633,7 @@ export default function MatchResult() {
               matchId={matchId!}
               opponent={match.opponent}
               insight={postMatchReport?.insights?.possession}
+              insightLoading={reportLoading}
             />
 
             {/* Scoring Timeline */}
@@ -640,6 +641,7 @@ export default function MatchResult() {
               events={eventsData?.events || []}
               opponent={match.opponent}
               insight={postMatchReport?.insights?.scoring}
+              insightLoading={reportLoading}
             />
 
             {/* Shot Outcome Breakdown */}
@@ -647,6 +649,7 @@ export default function MatchResult() {
               events={eventsData?.events || []}
               opponent={match.opponent}
               insight={postMatchReport?.insights?.shooting}
+              insightLoading={reportLoading}
             />
           </div>
 
@@ -702,7 +705,7 @@ export default function MatchResult() {
       )}
 
       {/* Match Summary Section */}
-      {postMatchReport?.analysis && (
+      {postMatchReport?.analysis ? (
         <div className="glass-card p-6 mt-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
@@ -718,7 +721,27 @@ export default function MatchResult() {
             <span>AI-generated analysis based on match data</span>
           </div>
         </div>
-      )}
+      ) : reportLoading ? (
+        <div className="glass-card p-6 mt-6">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center animate-pulse">
+              <Brain size={20} className="text-white" />
+            </div>
+            <span>Match Summary</span>
+          </h2>
+          <div className="space-y-3 animate-pulse">
+            <div className="h-4 bg-white/10 rounded w-full" />
+            <div className="h-4 bg-white/10 rounded w-5/6" />
+            <div className="h-4 bg-white/10 rounded w-4/6" />
+            <div className="h-4 bg-white/10 rounded w-full mt-4" />
+            <div className="h-4 bg-white/10 rounded w-3/4" />
+          </div>
+          <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 text-xs text-white/40">
+            <Brain size={14} />
+            <span>Generating AI analysis...</span>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
