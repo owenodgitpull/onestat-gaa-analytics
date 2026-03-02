@@ -41,23 +41,23 @@ const toSvg = (px: number, py: number) => ({
   y: (py / 100) * PITCH_H + PITCH_Y_OFFSET,
 })
 
-// Convert pitch coordinates to a zone description
+// Convert pitch coordinates to a GAA-friendly zone name
 // normX: 0 = own goal, 100 = opponent goal (always normalized for own team attacking direction)
 const getZone = (normX: number, y: number): string => {
   let lateral = ''
-  if (y < 30) lateral = ', left side'
-  else if (y > 70) lateral = ', right side'
+  if (y < 30) lateral = ' on the left'
+  else if (y > 70) lateral = ' on the right'
 
-  if (normX <= 5) return `own goal area`
-  if (normX <= 13) return `own 13m line${lateral}`
-  if (normX <= 20) return `own 20m line${lateral}`
-  if (normX <= 35) return `own 45${lateral}`
+  if (normX <= 5) return `the own goal area`
+  if (normX <= 13) return `the own 13m line${lateral}`
+  if (normX <= 20) return `the own 21m line${lateral}`
+  if (normX <= 35) return `the own 45m line${lateral}`
   if (normX <= 50) return `midfield${lateral}`
-  if (normX <= 65) return `opp 45${lateral}`
-  if (normX <= 80) return `outside opp 40m arc${lateral}`
-  if (normX <= 90) return `inside opp 40m arc${lateral}`
-  if (normX <= 97) return `opp 13m line${lateral}`
-  return `opp goal area`
+  if (normX <= 65) return `the opposition 45m line${lateral}`
+  if (normX <= 80) return `outside the arc${lateral}`
+  if (normX <= 90) return `inside the arc${lateral}`
+  if (normX <= 97) return `the 13m line${lateral}`
+  return `the square`
 }
 
 // Normalize raw pitch x (0=left of screen) to attacking x (0=own goal, 100=opp goal)
@@ -67,7 +67,26 @@ const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boole
   return attackingRight ? rawX : 100 - rawX
 }
 
-// Build a human-readable path description from coordinates
+// Prettify event type names for natural language
+const prettyAction = (raw: string): string => {
+  const map: Record<string, string> = {
+    turnover_won: 'a turnover won',
+    kickout_won: 'a kickout won',
+    own_kickout_won: 'an own kickout won',
+    own_kickout_won_break: 'a breaking ball from own kickout',
+    opp_kickout_won: 'an opposition kickout won',
+    opp_kickout_won_break: 'a breaking ball from opposition kickout',
+    interception: 'an interception',
+    block: 'a block',
+    free_won: 'a free won',
+    foul_won: 'a foul won',
+    breaking_ball_won: 'a breaking ball won',
+    mark: 'a mark',
+  }
+  return map[raw] || raw.replace(/_/g, ' ')
+}
+
+// Build a human-readable natural language path description
 const describePath = (
   points: { x: number; y: number }[],
   minute: number,
@@ -75,10 +94,6 @@ const describePath = (
   startedWith?: string | null,
 ): string => {
   if (points.length === 0) return ''
-  if (points.length === 1) {
-    const nx = normalizeX(points[0].x, minute, attackingRightFirstHalf)
-    return `Shot from ${getZone(nx, points[0].y)}`
-  }
 
   const zones = points.map(p => {
     const nx = normalizeX(p.x, minute, attackingRightFirstHalf)
@@ -87,13 +102,25 @@ const describePath = (
   // Deduplicate consecutive zones
   const uniqueZones = zones.filter((z, i) => i === 0 || z !== zones[i - 1])
 
-  const startAction = startedWith
-    ? startedWith.replace(/_/g, ' ')
-    : 'play'
+  if (points.length === 1) {
+    return `Shot taken from ${uniqueZones[0]}`
+  }
 
-  if (uniqueZones.length === 1) return `${startAction} in ${uniqueZones[0]}`
+  const origin = uniqueZones[0]
+  const startAction = startedWith ? prettyAction(startedWith) : 'play'
 
-  return `${startAction} from ${uniqueZones[0]} → ${uniqueZones.slice(1).join(' → ')}`
+  if (uniqueZones.length === 1) {
+    return `Started with ${startAction} in ${origin}`
+  }
+
+  if (uniqueZones.length === 2) {
+    return `Started with ${startAction} at ${origin}, finished from ${uniqueZones[1]}`
+  }
+
+  // 3+ zones: describe the journey through intermediate zones
+  const middle = uniqueZones.slice(1, -1)
+  const end = uniqueZones[uniqueZones.length - 1]
+  return `Started with ${startAction} at ${origin}, worked through ${middle.join(', ')} and finished from ${end}`
 }
 
 export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTakenChartProps) {

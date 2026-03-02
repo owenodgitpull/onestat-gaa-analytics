@@ -314,6 +314,45 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
           y: (py / 100) * PITCH_H + PITCH_Y_OFFSET,
         })
 
+        // Zone + description helpers for natural language path labels
+        const getZone = (normX: number, y: number): string => {
+          let lateral = ''
+          if (y < 30) lateral = ' on the left'
+          else if (y > 70) lateral = ' on the right'
+          if (normX <= 5) return `the own goal area`
+          if (normX <= 13) return `the own 13m line${lateral}`
+          if (normX <= 20) return `the own 21m line${lateral}`
+          if (normX <= 35) return `the own 45m line${lateral}`
+          if (normX <= 50) return `midfield${lateral}`
+          if (normX <= 65) return `the opposition 45m line${lateral}`
+          if (normX <= 80) return `outside the arc${lateral}`
+          if (normX <= 90) return `inside the arc${lateral}`
+          if (normX <= 97) return `the 13m line${lateral}`
+          return `the square`
+        }
+        const prettyAction = (raw: string): string => {
+          const map: Record<string, string> = {
+            turnover_won: 'a turnover won', kickout_won: 'a kickout won',
+            own_kickout_won: 'an own kickout won', opp_kickout_won: 'an opposition kickout won',
+            interception: 'an interception', block: 'a block',
+            free_won: 'a free won', foul_won: 'a foul won', breaking_ball_won: 'a breaking ball won',
+          }
+          return map[raw] || raw.replace(/_/g, ' ')
+        }
+        const describePathNL = (points: {x:number;y:number}[], startedWith?: string): string => {
+          if (!points || points.length === 0) return ''
+          // For chat pitch viz, raw x already has 0=own goal, 100=opp goal
+          const zones = points.map(p => getZone(p.x, p.y))
+          const unique = zones.filter((z, i) => i === 0 || z !== zones[i - 1])
+          if (points.length === 1) return `Shot taken from ${unique[0]}`
+          const action = startedWith ? prettyAction(startedWith) : 'play'
+          if (unique.length === 1) return `Started with ${action} in ${unique[0]}`
+          if (unique.length === 2) return `Started with ${action} at ${unique[0]}, finished from ${unique[1]}`
+          const middle = unique.slice(1, -1)
+          const end = unique[unique.length - 1]
+          return `Started with ${action} at ${unique[0]}, worked through ${middle.join(', ')} and finished from ${end}`
+        }
+
         return (
           <div>
             {/* Pitch SVG — clean with numbered markers only */}
@@ -375,9 +414,9 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                 {data.map((item: any, idx: number) => {
                   const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#10b981'
                   const outcomeLabel = OUTCOME_LABELS[item.outcome] || item.outcome?.replace(/_/g, ' ')
-                  const touches = item.points?.length || 0
+                  const pathDesc = describePathNL(item.points || [], item.started_with)
                   return (
-                    <div key={idx} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                    <div key={idx} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10">
                       {/* Number badge */}
                       <div
                         className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
@@ -389,15 +428,10 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                       <div className="flex-1 min-w-0">
                         <div className="text-white font-semibold text-sm">
                           {item.player || 'Unknown'} — <span style={{ color }}>{outcomeLabel}</span>
+                          <span className="text-white/40 font-normal ml-1">{item.minute}'</span>
                         </div>
-                        <div className="text-white/50 text-xs">
-                          vs {item.opponent || '?'} · {item.minute}' · {touches} touch{touches !== 1 ? 'es' : ''} in buildup
-                          {item.started_by && item.started_by !== item.player && (
-                            <> · Started by <span className="text-white/70">{item.started_by}</span> ({item.started_with?.replace(/_/g, ' ')})</>
-                          )}
-                          {item.started_by && item.started_by === item.player && item.started_with && item.started_with !== item.outcome && (
-                            <> · Started with {item.started_with?.replace(/_/g, ' ')}</>
-                          )}
+                        <div className="text-white/50 text-xs leading-relaxed mt-0.5">
+                          {pathDesc}
                         </div>
                       </div>
                     </div>
