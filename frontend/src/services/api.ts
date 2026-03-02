@@ -8,7 +8,9 @@ import type {
   Player,
   MatchEvent,
   PossessionEvent,
-  MatchStats
+  MatchStats,
+  FixturePreview,
+  FormResult,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
@@ -68,6 +70,34 @@ export async function fetchAPI<T>(
 }
 
 // ============================================================================
+// Player Comparison Types
+// ============================================================================
+
+export interface ComparisonPlayerStats {
+  player_id: string;
+  player_name: string;
+  goals: number;
+  points: number;
+  two_pointers: number;
+  total_score_value: number;
+  accuracy_pct: number | null;
+  turnovers_won: number;
+  turnovers_lost: number;
+  blocks: number;
+  interceptions: number;
+  matches_played: number;
+  avg_distance_km: number | null;
+  avg_sprints: number | null;
+  avg_max_speed_kmh: number | null;
+  attendance_rate: number | null;
+}
+
+export interface PlayerComparisonData {
+  player_a: ComparisonPlayerStats;
+  player_b: ComparisonPlayerStats;
+}
+
+// ============================================================================
 // Player API
 // ============================================================================
 
@@ -106,6 +136,13 @@ export const playersAPI = {
       body: JSON.stringify(player),
     });
   },
+
+  /**
+   * Compare two players side-by-side (manager view)
+   */
+  comparePlayers: async (playerAId: string, playerBId: string): Promise<PlayerComparisonData> => {
+    return fetchAPI<PlayerComparisonData>(`/players/compare/${playerAId}/${playerBId}`);
+  },
 };
 
 // ============================================================================
@@ -138,6 +175,8 @@ export const matchesAPI = {
     notes?: string | null;
     weather_condition?: string | null;
     temperature_celsius?: number | null;
+    competition?: string | null;
+    referee?: string | null;
   }): Promise<Match> => {
     return fetchAPI<Match>('/matches/', {
       method: 'POST',
@@ -219,7 +258,7 @@ export const matchesAPI = {
    */
   getNextScheduled: async (): Promise<Match | null> => {
     try {
-      const response = await fetchAPI<{ matches: Match[] }>('/matches/?status=scheduled&limit=1');
+      const response = await fetchAPI<{ matches: Match[] }>('/matches/?status=scheduled&sort=asc&limit=1');
       return response.matches.length > 0 ? response.matches[0] : null;
     } catch {
       return null;
@@ -1793,6 +1832,42 @@ const onboardingAPI = {
     fetchAPI<any>(`/onboarding/club/${clubId}/complete`, { method: 'PATCH' }),
 };
 
+// ============================================================================
+// Fixtures API
+// ============================================================================
+
+export interface CsvImportResult {
+  created: number
+  skipped: number
+  errors: string[]
+  message: string
+}
+
+export const fixturesAPI = {
+  getAll: () => fetchAPI<Match[]>('/fixtures/'),
+
+  getPreview: (matchId: string) =>
+    fetchAPI<FixturePreview>(`/fixtures/${matchId}/preview`),
+
+  sync: () =>
+    fetchAPI<{ status: string; message: string }>('/fixtures/sync', { method: 'POST' }),
+
+  getOpponentForm: (name: string) =>
+    fetchAPI<FormResult[]>(`/fixtures/opponent/${encodeURIComponent(name)}/form`),
+
+  importFile: async (file: File): Promise<CsvImportResult> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const url = `${API_BASE_URL}/fixtures/import`
+    const res = await fetch(url, { method: 'POST', credentials: 'include', body: formData })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || 'Failed to import fixtures')
+    }
+    return res.json()
+  },
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -1807,6 +1882,7 @@ export const api = {
   fitnessTests: fitnessTestsAPI,
   matchGps: matchGpsAPI,
   onboarding: onboardingAPI,
+  fixtures: fixturesAPI,
 };
 
 export default api;

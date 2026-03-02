@@ -3,9 +3,11 @@
  * Shows list of completed matches with glassmorphism styling
  */
 
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Trophy, Calendar, MapPin, ChevronRight, RefreshCw } from 'lucide-react'
+import { Trophy, Calendar, MapPin, ChevronRight, RefreshCw, Activity, Video, ClipboardList } from 'lucide-react'
 import { useMatches } from '../hooks/useMatches'
+import { useClubName } from '../contexts/ClubContext'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import type { Match } from '../types'
 
@@ -32,8 +34,33 @@ function getResult(match: Match): { label: string; class: string } {
   return { label: 'D', class: 'bg-amber-500/20 text-amber-400' }
 }
 
+function DataBadge({ icon: Icon, label, color }: { icon: typeof Activity; label: string; color: string }) {
+  const [showTooltip, setShowTooltip] = useState(false)
+
+  return (
+    <span
+      className="relative"
+      onClick={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setShowTooltip((v) => !v)
+      }}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <Icon size={14} className={color} />
+      {showTooltip && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-[10px] rounded bg-black/90 text-white whitespace-nowrap z-10">
+          {label}
+        </span>
+      )}
+    </span>
+  )
+}
+
 export default function Results() {
   const { data: matches, isLoading, error, refetch } = useMatches()
+  const clubName = useClubName()
 
   // Filter to completed matches only
   const completedMatches = matches?.filter((m) => m.status === 'completed') || []
@@ -93,6 +120,7 @@ export default function Results() {
             const result = getResult(match)
             const teamTotal = totalScore(match.team_goals, match.team_points)
             const oppTotal = totalScore(match.opponent_goals, match.opponent_points)
+            const hasAnyData = match.has_gps || match.has_video || match.has_events
 
             return (
               <Link
@@ -120,7 +148,7 @@ export default function Results() {
                     <div className="text-2xl font-bold text-white">
                       {formatGAAScore(match.team_goals, match.team_points)}
                     </div>
-                    <div className="text-xs text-white/60">Us</div>
+                    <div className="text-xs text-white/60">{clubName}</div>
                     <div className="text-xs text-white/40">({teamTotal} pts)</div>
                   </div>
                   <div className="text-white/40">-</div>
@@ -139,9 +167,18 @@ export default function Results() {
                     <Calendar size={14} />
                     <span>{new Date(match.match_date).toLocaleDateString()}</span>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <MapPin size={14} />
-                    <span className="capitalize">{match.venue}</span>
+                  <div className="flex items-center space-x-3">
+                    {hasAnyData && (
+                      <div className="flex items-center space-x-1.5">
+                        {match.has_gps && <DataBadge icon={Activity} label="GPS data" color="text-emerald-400" />}
+                        {match.has_video && <DataBadge icon={Video} label="Video analysis" color="text-purple-400" />}
+                        {match.has_events && <DataBadge icon={ClipboardList} label="Match events" color="text-blue-400" />}
+                      </div>
+                    )}
+                    <div className="flex items-center space-x-1">
+                      <MapPin size={14} />
+                      <span className="capitalize">{match.venue}</span>
+                    </div>
                   </div>
                 </div>
               </Link>

@@ -29,6 +29,7 @@ from app.services.leaderboard_service import (
     _score_value,
     _format_gaa_score,
 )
+from app.services.player_comparison_service import PlayerComparisonService
 
 logger = logging.getLogger(__name__)
 
@@ -633,7 +634,7 @@ async def get_my_ai_insights(
     """AI-powered personal insights for the player."""
     player = await _get_player_for_user(db, user)
 
-    from app.services.ai.player_insights_agent import generate_player_insights
+    from app.services.ai import generate_player_insights
     result = await generate_player_insights(db, player.id, user.club_id)
     return result
 
@@ -664,7 +665,7 @@ async def get_my_challenges(
 
     # If none active, generate new ones
     if not active_challenges:
-        from app.services.ai.challenge_agent import generate_player_challenges
+        from app.services.ai import generate_player_challenges
         challenge_defs = await generate_player_challenges(db, player.id, user.club_id)
 
         for cd in challenge_defs:
@@ -740,7 +741,7 @@ async def get_my_season_story(
     """AI-generated season narrative for the player."""
     player = await _get_player_for_user(db, user)
 
-    from app.services.ai.season_story_agent import generate_season_story
+    from app.services.ai import generate_season_story
     result = await generate_season_story(db, player.id, user.club_id)
     return result
 
@@ -768,101 +769,14 @@ async def get_head_to_head(
     if not other_player:
         raise HTTPException(status_code=404, detail="Player not found in your club.")
 
-    matches = await _get_club_completed_matches(db, user.club_id)
-    match_ids = [m.id for m in matches] if matches else []
+    match_ids = await PlayerComparisonService._get_completed_match_ids(db, user.club_id)
 
-    async def _player_stats(pid: UUID, pname: str) -> dict:
-        """Compute season stats + GPS averages + attendance for one player."""
-        stats = {
-            "player_id": str(pid),
-            "player_name": pname,
-            "goals": 0, "points": 0, "two_pointers": 0,
-            "total_score_value": 0, "accuracy_pct": None,
-            "turnovers_won": 0, "turnovers_lost": 0,
-            "blocks": 0, "interceptions": 0,
-            "matches_played": 0,
-            "avg_distance_km": None, "avg_sprints": None,
-            "avg_max_speed_kmh": None,
-            "attendance_rate": None,
-        }
-        if not match_ids:
-            return stats
-
-        # Events
-        ev_result = await db.execute(
-            select(MatchEvent).where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OWN,
-                    MatchEvent.player_id == pid,
-                )
-            )
-        )
-        events = ev_result.scalars().all()
-        matches_played_ids = set(str(e.match_id) for e in events)
-        stats["matches_played"] = len(matches_played_ids)
-
-        goals = sum(1 for e in events if e.event_type in (EventType.GOAL, EventType.PENALTY_GOAL))
-        pts = sum(1 for e in events if e.event_type in (EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE))
-        tp = sum(1 for e in events if e.event_type in (EventType.TWO_POINT, EventType.TWO_POINT_FREE))
-        stats["goals"] = goals
-        stats["points"] = pts
-        stats["two_pointers"] = tp
-        stats["total_score_value"] = goals * 3 + pts + tp * 2
-
-        total_shots = sum(1 for e in events if e.event_type in SHOT_EVENTS)
-        total_scores = sum(1 for e in events if e.event_type in SCORING_EVENTS)
-        stats["accuracy_pct"] = round(total_scores / total_shots * 100, 1) if total_shots > 0 else None
-
-        stats["turnovers_won"] = sum(1 for e in events if e.event_type == EventType.TURNOVER_WON)
-        stats["turnovers_lost"] = sum(1 for e in events if e.event_type == EventType.TURNOVER_LOST)
-        stats["blocks"] = sum(1 for e in events if e.event_type == EventType.BLOCK)
-        stats["interceptions"] = sum(1 for e in events if e.event_type == EventType.INTERCEPTION)
-
-        # GPS averages
-        gps_result = await db.execute(
-            select(MatchGPSData).where(
-                and_(
-                    MatchGPSData.match_id.in_(match_ids),
-                    MatchGPSData.player_id == pid,
-                )
-            )
-        )
-        gps_rows = gps_result.scalars().all()
-        if gps_rows:
-            dists = [g.total_distance_m for g in gps_rows if g.total_distance_m]
-            sprints = [g.sprint_count for g in gps_rows if g.sprint_count]
-            speeds = [g.max_speed_ms for g in gps_rows if g.max_speed_ms]
-            if dists:
-                stats["avg_distance_km"] = round(sum(dists) / len(dists) / 1000, 2)
-            if sprints:
-                stats["avg_sprints"] = round(sum(sprints) / len(sprints), 1)
-            if speeds:
-                stats["avg_max_speed_kmh"] = round(max(speeds) * 3.6, 1)
-
-        # Attendance
-        sessions_result = await db.execute(
-            select(TrainingSession.id).where(TrainingSession.club_id == user.club_id)
-        )
-        session_ids = [r[0] for r in sessions_result.all()]
-        if session_ids:
-            att_result = await db.execute(
-                select(Attendance).where(
-                    and_(
-                        Attendance.session_id.in_(session_ids),
-                        Attendance.player_id == pid,
-                    )
-                )
-            )
-            records = att_result.scalars().all()
-            total_att = len(records)
-            present = sum(1 for r in records if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE))
-            stats["attendance_rate"] = round(present / total_att * 100, 1) if total_att > 0 else None
-
-        return stats
-
-    my_stats = await _player_stats(player.id, player.name)
-    their_stats = await _player_stats(other_player.id, other_player.name)
+    my_stats = await PlayerComparisonService.compute_player_stats(
+        db, user.club_id, player.id, player.name, match_ids
+    )
+    their_stats = await PlayerComparisonService.compute_player_stats(
+        db, user.club_id, other_player.id, other_player.name, match_ids
+    )
 
     # Leaderboard ranks for both
     boards = await LeaderboardService.get_all_leaderboards(db, user.club_id, player.id)

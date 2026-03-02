@@ -6,6 +6,7 @@ No AI calls — just deterministic queries for canonical charts.
 """
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
@@ -14,6 +15,8 @@ from app.models.match_event import MatchEvent, EventType, Team
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.models.match_gps import MatchGPSData
 from app.models.player import Player
+
+logger = logging.getLogger(__name__)
 
 
 # Event type groupings
@@ -70,16 +73,17 @@ class SeasonDashboardService:
 
         kpi = await SeasonDashboardService._kpi_cards(db, matches, funnel)
 
-        # Generate dynamic AI insights for KPI cards (non-blocking — fallback to empty)
+        # Generate dynamic AI insights for KPI cards (cached — only regenerate when data changes)
         try:
-            from app.services.ai import generate_kpi_insights
-            insights = await generate_kpi_insights(kpi)
+            from app.services.ai import generate_kpi_insights, get_fixture_context
+            fixture_ctx = await get_fixture_context(db)
+            insights = await _get_cached_kpi_insights(db, kpi, fixture_ctx, club_id)
+            logger.info(f"KPI insights result: {len(insights)} keys returned: {list(insights.keys()) if insights else 'empty'}")
             if insights:
                 for card in kpi.get("cards", []):
                     card["insight"] = insights.get(card["key"], "")
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"KPI insights generation failed: {e}")
+            logger.warning(f"KPI insights generation failed: {e}", exc_info=True)
 
         return {
             "possession_funnel": funnel,
@@ -246,12 +250,14 @@ class SeasonDashboardService:
             osc = opp_scores.get(mid, 0)
             o_poss += op; o_att += oa; o_sh += osh; o_sc += osc
 
-            per_match.append({
-                "match_id": str(mid),
-                "opponent": m.opponent,
-                "date": m.match_date.isoformat() if m.match_date else "",
-                "possessions": dp, "attacks": da, "shots": dsh, "scores": dsc,
-            })
+            # Only include matches that have event data
+            if dp + op + dsh + osh > 0:
+                per_match.append({
+                    "match_id": str(mid),
+                    "opponent": m.opponent,
+                    "date": m.match_date.isoformat() if m.match_date else "",
+                    "possessions": dp, "attacks": da, "shots": dsh, "scores": dsc,
+                })
 
         def rate(num, den): return round((num / den * 100) if den > 0 else 0, 1)
 
@@ -869,7 +875,7 @@ class SeasonDashboardService:
                 "attacking": round(zones["attacking"] / total * 100, 1),
             }
 
-        # Per-match breakdowns
+        # Per-match breakdowns — only include matches that have possession data
         per_match = []
         for m in matches:
             mid = m.id
@@ -878,6 +884,8 @@ class SeasonDashboardService:
             d_total = sum(d_z.values())
             o_total = sum(o_z.values())
             total_poss = d_total + o_total
+            if total_poss == 0:
+                continue  # Skip matches with no possession events
             per_match.append({
                 "match_id": str(mid),
                 "opponent": m.opponent or "Unknown",
@@ -1231,3 +1239,105 @@ class SeasonDashboardService:
     async def get_territory_distribution(db: AsyncSession, club_id=None) -> dict:
         matches = await SeasonDashboardService._get_completed_matches(db, club_id)
         return await SeasonDashboardService._territory_distribution(db, matches)
+
+
+# =============================================================================
+# KPI Insights Caching — avoids re-running AI on every dashboard load
+# =============================================================================
+
+async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
+    """
+    Compute a SHA256 fingerprint of the current data state.
+    Changes when matches complete, GPS uploads happen, training sessions added, or video synced.
+    """
+    import hashlib
+    from app.models.match_gps import MatchGPSData
+    from app.models.video_session import VideoSession
+
+    parts = []
+
+    # Count of completed matches
+    match_count_q = select(func.count(Match.id)).where(
+        Match.status == MatchStatus.COMPLETED,
+        Match.is_deleted == False,
+    )
+    if club_id:
+        match_count_q = match_count_q.where(Match.club_id == club_id)
+    match_count = (await db.execute(match_count_q)).scalar() or 0
+    parts.append(f"matches:{match_count}")
+
+    # Latest match completed_at
+    latest_match_q = select(func.max(Match.completed_at)).where(
+        Match.status == MatchStatus.COMPLETED,
+        Match.is_deleted == False,
+    )
+    if club_id:
+        latest_match_q = latest_match_q.where(Match.club_id == club_id)
+    latest_match = (await db.execute(latest_match_q)).scalar()
+    parts.append(f"latest_match:{latest_match}")
+
+    # Latest GPS upload
+    latest_gps = (await db.execute(
+        select(func.max(MatchGPSData.created_at))
+    )).scalar()
+    parts.append(f"latest_gps:{latest_gps}")
+
+    # Latest training session
+    from app.models.attendance import TrainingSession
+    latest_training_q = select(func.max(TrainingSession.session_date))
+    if club_id:
+        latest_training_q = latest_training_q.where(TrainingSession.club_id == club_id)
+    latest_training = (await db.execute(latest_training_q)).scalar()
+    parts.append(f"latest_training:{latest_training}")
+
+    fingerprint_str = "|".join(parts)
+    return hashlib.sha256(fingerprint_str.encode()).hexdigest()
+
+
+async def _get_cached_kpi_insights(db: AsyncSession, kpi_data: dict, fixture_context: str, club_id) -> dict:
+    """
+    Check cache before calling AI for KPI insights.
+    Returns cached result if data hasn't changed, otherwise generates + caches.
+    """
+    from app.models.season_cache import SeasonCache
+    from app.services.ai import generate_kpi_insights
+
+    fingerprint = await _compute_data_fingerprint(db, club_id)
+
+    # Check cache
+    cache_q = select(SeasonCache).where(
+        SeasonCache.cache_type == "kpi_insights",
+    )
+    if club_id:
+        cache_q = cache_q.where(SeasonCache.club_id == club_id)
+    cache_result = await db.execute(cache_q)
+    cache = cache_result.scalar_one_or_none()
+
+    if cache and cache.data_fingerprint == fingerprint and cache.cached_result:
+        logger.info(f"KPI insights cache HIT (fingerprint={fingerprint[:12]}...)")
+        return cache.cached_result
+
+    # Cache miss — generate via Season Agent
+    logger.info(f"KPI insights cache MISS (fingerprint={fingerprint[:12]}...) — calling Season Agent")
+    insights = await generate_kpi_insights(db, kpi_data, fixture_context=fixture_context)
+
+    # Only cache non-empty successful results
+    if insights:
+        if cache:
+            cache.data_fingerprint = fingerprint
+            cache.cached_result = insights
+            cache.cached_at = datetime.utcnow()
+        else:
+            import uuid
+            new_cache = SeasonCache(
+                id=uuid.uuid4(),
+                club_id=club_id,
+                cache_type="kpi_insights",
+                data_fingerprint=fingerprint,
+                cached_result=insights,
+                cached_at=datetime.utcnow(),
+            )
+            db.add(new_cache)
+        await db.commit()
+
+    return insights

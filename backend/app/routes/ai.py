@@ -28,9 +28,7 @@ from app.services.ai import (
     chat_with_analyst_stream,
     generate_post_match_report,
     get_dynamic_chart_recommendations,
-    get_chart_analysis,
     generate_agentic_chart,
-    generate_custom_insight,
     generate_dashboard_charts,
     generate_single_chart,
     generate_outlier_suggestions,
@@ -99,20 +97,10 @@ class PostMatchReportResponse(BaseModel):
     version: Optional[int] = 1
 
 
-class ChartAnalysisRequest(BaseModel):
-    chart_type: str
-    chart_data: dict
-
-
 class ChartRecommendationsResponse(BaseModel):
     recommendations: dict
     season_state: dict
     generated_at: str
-
-
-class ChartAnalysisResponse(BaseModel):
-    analysis: str
-    chart_type: str
 
 
 class AgenticChartRequest(BaseModel):
@@ -124,16 +112,6 @@ class AgenticChartResponse(BaseModel):
     chart: Optional[dict] = None
     error: Optional[str] = None
     generated_code: Optional[str] = None
-
-
-class CustomInsightRequest(BaseModel):
-    question: str
-
-
-class CustomInsightResponse(BaseModel):
-    question: str
-    chart_suggestion: str
-    chart: dict
 
 
 class DashboardChartsRequest(BaseModel):
@@ -416,7 +394,8 @@ async def chat_endpoint(
         response = await chat_with_analyst(
             db,
             history,
-            request.message
+            request.message,
+            club_id=user.club_id
         )
         return ChatResponse(response=response)
     except Exception as e:
@@ -479,7 +458,7 @@ async def chat_stream_endpoint(
         collected_vizs = []
 
         async for event_line in chat_with_analyst_stream(
-            db, history, request.message, session_id=session_id
+            db, history, request.message, session_id=session_id, club_id=user.club_id
         ):
             # Parse and collect viz/text from the event
             yield event_line
@@ -548,6 +527,24 @@ async def post_match_report_endpoint(
     - force_regenerate: If true, regenerate even if cached (e.g. after GPS upload)
     """
     try:
+        # Check if match has any events before generating AI report
+        from sqlalchemy import func as sql_func
+        from app.models.match_event import MatchEvent
+        from app.models.match import Match
+        event_count_result = await db.execute(
+            select(sql_func.count(MatchEvent.id)).where(MatchEvent.match_id == match_id)
+        )
+        if (event_count_result.scalar() or 0) == 0:
+            match_result = await db.execute(select(Match).where(Match.id == match_id))
+            match_obj = match_result.scalar_one_or_none()
+            return PostMatchReportResponse(
+                match={"id": match_id, "opponent": match_obj.opponent if match_obj else "Unknown"},
+                score={"team": "0-0", "opponent": "0-0"},
+                analysis="",
+                insights={},
+                generated_at="",
+            )
+
         report = await generate_post_match_report(db, match_id, force_regenerate=force_regenerate)
         return PostMatchReportResponse(**report)
     except Exception as e:
@@ -603,34 +600,6 @@ async def get_chart_recommendations_endpoint(
         raise HTTPException(status_code=500, detail=f"Recommendations failed: {str(e)}")
 
 
-@router.post("/chart-analysis", response_model=ChartAnalysisResponse)
-async def analyze_chart_endpoint(
-    request: ChartAnalysisRequest,
-    user: AuthenticatedUser = Depends(require_club),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get AI-generated analysis for a specific chart.
-
-    Provides contextual insights about what the chart data means,
-    using knowledge base context proactively (GPS benchmarks,
-    historical performance, tactical principles).
-    """
-    try:
-        analysis = await get_chart_analysis(
-            db,
-            request.chart_type,
-            request.chart_data
-        )
-        return ChartAnalysisResponse(
-            analysis=analysis,
-            chart_type=request.chart_type
-        )
-    except Exception as e:
-        logger.error(f"Chart analysis failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
-
 @router.post("/generate-chart", response_model=AgenticChartResponse)
 async def generate_chart_endpoint(
     request: AgenticChartRequest,
@@ -650,36 +619,11 @@ async def generate_chart_endpoint(
     - "Top scorers efficiency chart"
     """
     try:
-        result = await generate_agentic_chart(db, request.request)
+        result = await generate_agentic_chart(db, request.request, club_id=user.club_id)
         return AgenticChartResponse(**result)
     except Exception as e:
         logger.error(f"Agentic chart generation failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Chart generation failed: {str(e)}")
-
-
-@router.post("/custom-insight", response_model=CustomInsightResponse)
-async def custom_insight_endpoint(
-    request: CustomInsightRequest,
-    user: AuthenticatedUser = Depends(require_club),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Generate a custom visualization based on a natural language question.
-
-    The AI determines the best chart type to answer your question,
-    then generates the chart with insights.
-
-    Example questions:
-    - "Where should we focus our training on shooting?"
-    - "Which players perform best under pressure?"
-    - "How do we compare home vs away?"
-    """
-    try:
-        result = await generate_custom_insight(db, request.question)
-        return CustomInsightResponse(**result)
-    except Exception as e:
-        logger.error(f"Custom insight failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Insight generation failed: {str(e)}")
 
 
 @router.post("/dashboard-charts", response_model=DashboardChartsResponse)

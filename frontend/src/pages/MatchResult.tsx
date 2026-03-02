@@ -623,37 +623,47 @@ export default function MatchResult() {
       </div>
 
       {/* Analytics Charts Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-        {/* Possession & Territory Chart */}
-        <PossessionTerritoryChart
-          stats={matchStats}
-          events={eventsData?.events || []}
-          matchId={matchId!}
-          opponent={match.opponent}
-          insight={postMatchReport?.insights?.possession}
-        />
+      {(eventsData?.events?.length ?? 0) > 0 ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+            {/* Possession & Territory Chart */}
+            <PossessionTerritoryChart
+              stats={matchStats}
+              events={eventsData?.events || []}
+              matchId={matchId!}
+              opponent={match.opponent}
+              insight={postMatchReport?.insights?.possession}
+            />
 
-        {/* Scoring Timeline */}
-        <ScoringTimeline
-          events={eventsData?.events || []}
-          opponent={match.opponent}
-          insight={postMatchReport?.insights?.scoring}
-        />
+            {/* Scoring Timeline */}
+            <ScoringTimeline
+              events={eventsData?.events || []}
+              opponent={match.opponent}
+              insight={postMatchReport?.insights?.scoring}
+            />
 
-        {/* Shot Outcome Breakdown */}
-        <ShotOutcomeChart
-          events={eventsData?.events || []}
-          opponent={match.opponent}
-          insight={postMatchReport?.insights?.shooting}
-        />
-      </div>
+            {/* Shot Outcome Breakdown */}
+            <ShotOutcomeChart
+              events={eventsData?.events || []}
+              opponent={match.opponent}
+              insight={postMatchReport?.insights?.shooting}
+            />
+          </div>
 
-      {/* Paths Taken Chart */}
-      <div className="mt-6">
-        <PathsTakenChart
-          matchId={matchId!}
-        />
-      </div>
+          {/* Paths Taken Chart */}
+          <div className="mt-6">
+            <PathsTakenChart
+              matchId={matchId!}
+            />
+          </div>
+        </>
+      ) : (
+        <div className="glass-card p-8 mt-6 text-center">
+          <Activity size={32} className="text-white/20 mx-auto mb-3" />
+          <p className="text-white/40 text-sm">Awaiting match events</p>
+          <p className="text-white/20 text-xs mt-1">Charts and analysis will appear once events are recorded</p>
+        </div>
+      )}
 
       {/* GPS Performance Section - Only shows when GPS data exists */}
       {gpsData && gpsData.length > 0 && (
@@ -734,8 +744,11 @@ function StatsTable({ stats, opponent }: { stats: MatchStats; opponent: string }
     : '0.0'
 
   // Round team possession and calculate opponent as remainder to ensure they add to 100
+  // When no possession data exists (both 0), show 0% for both instead of 0/100
   const teamPos = Math.round(stats.team_possession_percentage)
-  const opponentPos = 100 - teamPos
+  const opponentPos = stats.team_possession_percentage === 0 && stats.opponent_possession_percentage === 0
+    ? 0
+    : 100 - teamPos
 
   const statRows = [
     { label: 'POSSESSION', team: `${teamPos}%`, opponent: `${opponentPos}%` },

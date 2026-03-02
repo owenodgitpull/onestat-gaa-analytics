@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   User,
@@ -25,7 +25,8 @@ import {
   Brain,
   Shield,
   Crosshair,
-  Lightbulb
+  Lightbulb,
+  GitCompareArrows
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -392,6 +393,7 @@ function computeIntensityInsight(data: { intensity: number; workload: number }[]
 
 export default function PlayerView() {
   const { playerId } = useParams<{ playerId: string }>()
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'overview' | 'matches' | 'training' | 'fitness' | 'attendance'>('overview')
 
   const { data: player, isLoading: loadingPlayer } = useQuery({
@@ -580,6 +582,13 @@ export default function PlayerView() {
             </div>
           </div>
         </div>
+        <button
+          onClick={() => navigate(`/players/compare?a=${playerId}`)}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-white/10 text-white hover:bg-white/20 border border-white/20 transition-all flex-shrink-0"
+        >
+          <GitCompareArrows size={16} />
+          Compare
+        </button>
       </div>
 
       {/* Tab Navigation */}

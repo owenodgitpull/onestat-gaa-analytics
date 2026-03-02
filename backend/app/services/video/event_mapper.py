@@ -50,8 +50,19 @@ class VideoEventMapper:
         "SPOIL": EventType.OTHER,
         "HOOK": EventType.OTHER,
 
-        # Kickouts — these need context to map to detailed kickout types
-        # Handled separately in to_match_event_type()
+        # Kickouts — granular types map directly
+        "OWN_KICKOUT_WON": EventType.OWN_KICKOUT_WON,
+        "OWN_KICKOUT_OPPOSITION_WON": EventType.OWN_KICKOUT_OPPOSITION_WON,
+        "OWN_KICKOUT_WON_BREAK": EventType.OWN_KICKOUT_WON_BREAK,
+        "OWN_KICKOUT_OPPOSITION_WON_BREAK": EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+        "OPP_KICKOUT_WON": EventType.OPP_KICKOUT_WON,
+        "OPP_KICKOUT_OPPOSITION_WON": EventType.OPP_KICKOUT_OPPOSITION_WON,
+        "OPP_KICKOUT_WON_BREAK": EventType.OPP_KICKOUT_WON_BREAK,
+        "OPP_KICKOUT_OPPOSITION_WON_BREAK": EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+
+        # Unforced errors
+        "OUR_UNFORCED_ERROR": EventType.UNFORCED_ERROR,
+        "OPP_UNFORCED_ERROR": EventType.UNFORCED_ERROR,
     }
 
     # MatchEvent EventType → VideoEvent type (reverse mapping)
@@ -84,17 +95,18 @@ class VideoEventMapper:
         EventType.SUBSTITUTION: "SUB_ON",
         EventType.OTHER: "WATER_BREAK",
 
-        # Kickouts
+        # Kickouts (legacy simplified)
         EventType.KICKOUT_WON: "KICKOUT_SHORT",
         EventType.KICKOUT_LOST: "KICKOUT_LONG",
-        EventType.OWN_KICKOUT_WON: "KICKOUT_SHORT",
-        EventType.OWN_KICKOUT_OPPOSITION_WON: "KICKOUT_SHORT",
-        EventType.OWN_KICKOUT_WON_BREAK: "KICKOUT_LONG",
-        EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK: "KICKOUT_LONG",
-        EventType.OPP_KICKOUT_WON: "KICKOUT_SHORT",
-        EventType.OPP_KICKOUT_OPPOSITION_WON: "KICKOUT_SHORT",
-        EventType.OPP_KICKOUT_WON_BREAK: "KICKOUT_LONG",
-        EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK: "KICKOUT_LONG",
+        # Kickouts (granular — map to granular video types)
+        EventType.OWN_KICKOUT_WON: "OWN_KICKOUT_WON",
+        EventType.OWN_KICKOUT_OPPOSITION_WON: "OWN_KICKOUT_OPPOSITION_WON",
+        EventType.OWN_KICKOUT_WON_BREAK: "OWN_KICKOUT_WON_BREAK",
+        EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK: "OWN_KICKOUT_OPPOSITION_WON_BREAK",
+        EventType.OPP_KICKOUT_WON: "OPP_KICKOUT_WON",
+        EventType.OPP_KICKOUT_OPPOSITION_WON: "OPP_KICKOUT_OPPOSITION_WON",
+        EventType.OPP_KICKOUT_WON_BREAK: "OPP_KICKOUT_WON_BREAK",
+        EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK: "OPP_KICKOUT_OPPOSITION_WON_BREAK",
         EventType.BREAKING_BALL_WON: "BALL_WON",
         EventType.BREAKING_BALL_LOST: "TURNOVER_LOST",
     }

@@ -99,6 +99,15 @@ const ZONE_DEFS: ZoneDef[] = [
   { id: 'SQ_RIGHT',   xMin: 83, xMax: 100, yMin: 67, yMax: 100 },
 ]
 
+// ── Utility: convert x/y coordinates to zone ─────────────────────────────
+
+/** Convert pitch x/y (0-100) to the corresponding PitchZone. */
+export function xyToZone(x: number, y: number): PitchZone {
+  const row = x < 17 ? 'DEF' : x < 33 ? 'MID' : x < 50 ? 'HF' : x < 67 ? 'FWD' : x < 83 ? 'IF' : 'SQ'
+  const col = y < 33 ? 'LEFT' : y < 67 ? 'CENTRE' : 'RIGHT'
+  return `${row}_${col}` as PitchZone
+}
+
 // ── SVG pitch constants (matching pitch-svg.svg) ─────────────────────────
 
 const PITCH = {

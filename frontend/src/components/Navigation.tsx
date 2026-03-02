@@ -88,11 +88,18 @@ export default function Navigation() {
 
   // Get sidebar items based on current page
   const getSidebarItems = () => {
+    if (location.pathname.startsWith('/fixtures')) {
+      return [
+        { icon: CalendarDays, label: 'Fixtures', path: '/fixtures', active: true },
+        { icon: Trophy, label: 'Results', path: '/results', active: false },
+        { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
+      ]
+    }
     if (location.pathname === '/' || location.pathname.startsWith('/results')) {
       return [
         { icon: BarChart3, label: 'Dashboard', path: '/', active: location.pathname === '/' },
         { icon: Trophy, label: 'Results', path: '/results', active: location.pathname.startsWith('/results') },
-        { icon: CalendarDays, label: 'Schedule', path: '/results', active: false },
+        { icon: CalendarDays, label: 'Fixtures', path: '/fixtures', active: false },
       ]
     }
     if (location.pathname.startsWith('/players')) {
@@ -142,6 +149,7 @@ export default function Navigation() {
             {[
               { to: '/', label: 'DASHBOARD' },
               { to: '/results', label: 'RESULTS' },
+              { to: '/fixtures', label: 'FIXTURES' },
               { to: '/players', label: 'PLAYERS' },
               { to: '/training', label: 'TRAINING' },
               { to: '/analyst', label: 'ANALYST' },

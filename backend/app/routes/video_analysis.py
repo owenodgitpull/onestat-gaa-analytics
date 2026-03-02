@@ -310,6 +310,9 @@ async def auto_analyze_video(
     session.error_message = None
     await db.commit()
 
+    # Create progress queue for SSE streaming (before launching task)
+    _progress_queues[str(session_id)] = asyncio.Queue()
+
     background_tasks.add_task(
         _run_gemini_analysis, session_id, session.video_r2_key, session.half, session.halftime_timestamp_ms, session.match_id
     )
@@ -321,12 +324,15 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
     """
     Background task: download video to disk, optionally split, run Gemini, bulk-insert events.
 
+    Emits progress to _progress_queues so the SSE endpoint can stream to frontend.
     Resumable: on retry, skips halves that already have gemini_auto events.
     Each half's events are committed immediately so partial progress is preserved.
     """
+    await _emit_progress(session_id, {"type": "progress", "stage": "initializing"})
+
     import tempfile
     from pathlib import Path
-    from sqlalchemy import func
+    from sqlalchemy import func, delete
     from app.database import async_session_maker
     from app.services.storage_service import storage as storage_svc
     from app.services.ai.gemini_video_agent import analyze_video_with_gemini
@@ -341,48 +347,32 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
             session = result.scalar_one_or_none()
             if not session:
                 logger.error(f"Auto-analyze: session {session_id} not found")
+                await _emit_progress(session_id, {"type": "error", "message": "Session not found"})
                 return
 
-            # 1b. Build match context for Gemini (team names, colours, venue)
-            match_context = None
-            try:
-                if match_id:
-                    match_result = await db.execute(
-                        select(Match).where(Match.id == match_id)
+            # 1b. Build match context for Gemini (team names, colours, venue, final score)
+            match_context = await _build_match_context(db, match_id) if match_id else None
+            if match_context:
+                logger.info(f"Auto-analyze: match context built — {match_context.get('our_team')} vs {match_context.get('opponent')}")
+
+            # 1c. Load roster for jersey → player_id resolution
+            roster = await _load_roster(db, match_id) if match_id else []
+            jersey_to_player = {}
+            for r in roster:
+                jn = r.get("jersey_number")
+                if jn is not None:
+                    jersey_to_player[jn] = r.get("player_id")
+            logger.info(f"Auto-analyze: roster has {len(roster)} players")
+
+            # 2. Delete existing AI events on re-run (both gemini_auto and keyframe_auto)
+            for source in ("gemini_auto", "keyframe_auto"):
+                await db.execute(
+                    delete(VideoEvent).where(
+                        VideoEvent.video_session_id == session_id,
+                        VideoEvent.source == source,
                     )
-                    match = match_result.scalar_one_or_none()
-                    if match:
-                        club = None
-                        if match.club_id:
-                            club_result = await db.execute(
-                                select(Club).where(Club.id == match.club_id)
-                            )
-                            club = club_result.scalar_one_or_none()
-
-                        match_context = {
-                            "our_team": (club.short_name or club.name) if club else "Team A",
-                            "opponent": match.opponent or "Team B",
-                            "our_colour": match.team_strip_colour or (club.primary_colour if club else None),
-                            "opp_colour": match.opponent_strip_colour,
-                            "venue": match.venue.value.upper() if match.venue else None,
-                        }
-                        logger.info(f"Auto-analyze: match context built — {match_context.get('our_team')} vs {match_context.get('opponent')}")
-            except Exception as ctx_err:
-                logger.warning(f"Auto-analyze: failed to build match context: {ctx_err}")
-                match_context = None
-
-            # 2. Check which halves already have gemini events (for retry)
-            existing_halves_result = await db.execute(
-                select(VideoEvent.half)
-                .where(
-                    VideoEvent.video_session_id == session_id,
-                    VideoEvent.source == "gemini_auto",
                 )
-                .group_by(VideoEvent.half)
-            )
-            completed_halves = {row[0] for row in existing_halves_result.all()}
-            if completed_halves:
-                logger.info(f"Auto-analyze: halves already done: {completed_halves} (retry detected)")
+            await db.commit()
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 # 3. Stream video from R2 to disk (run in thread to avoid blocking event loop)
@@ -413,23 +403,19 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
 
                 # 5. Run Gemini on each half, commit events per-half for resilience
                 total_created = 0
-                for run_path, run_half in analysis_runs:
-                    # Skip halves already completed on a previous attempt
-                    if run_half in completed_halves:
-                        logger.info(f"Auto-analyze: skipping half {run_half} (already has events)")
-                        Path(run_path).unlink(missing_ok=True)
-                        # Count existing events for the total
-                        count_result = await db.execute(
-                            select(func.count(VideoEvent.id)).where(
-                                VideoEvent.video_session_id == session_id,
-                                VideoEvent.source == "gemini_auto",
-                                VideoEvent.half == run_half,
-                            )
-                        )
-                        total_created += count_result.scalar() or 0
-                        continue
+                total_halves = len(analysis_runs)
 
+                for run_path, run_half in analysis_runs:
+                    # Upload to Gemini
+                    await _emit_progress(session_id, {
+                        "type": "progress", "stage": "uploading_to_gemini", "half": run_half,
+                    })
                     logger.info(f"Auto-analyze: sending half {run_half} to Gemini for session {session_id}")
+
+                    await _emit_progress(session_id, {
+                        "type": "progress", "stage": "analyzing",
+                        "completed": run_half - 1, "total": total_halves,
+                    })
                     run_events = await analyze_video_with_gemini(run_path, half=run_half, match_context=match_context)
 
                     # Delete this file now that Gemini has uploaded it
@@ -453,6 +439,12 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
                             else:
                                 scoring_ctx = {"is_two_pointer": is_two_pt, "source": "FROM_PLAY"}
 
+                        # Jersey → player_id resolution (team_a only)
+                        player_id = None
+                        jn = ed.get("jersey_number")
+                        if jn and ed.get("team") == "team_a":
+                            player_id = jersey_to_player.get(jn)
+
                         event = VideoEvent(
                             video_session_id=session.id,
                             match_id=session.match_id,
@@ -463,6 +455,7 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
                             match_second=ed.get("match_second", 0),
                             video_timestamp_ms=ed.get("video_timestamp_ms"),
                             pitch_zone=ed.get("pitch_zone"),
+                            player_id=player_id,
                             jersey_number=ed.get("jersey_number"),
                             player_confidence=ed.get("player_confidence"),
                             event_confidence=ed.get("event_confidence", "MEDIUM"),
@@ -480,6 +473,13 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
                     total_created += half_count
                     logger.info(f"Auto-analyze: half {run_half} committed — {half_count} events")
 
+                    await _emit_progress(session_id, {
+                        "type": "progress", "stage": "analyzing",
+                        "completed": run_half, "total": total_halves,
+                        "events_so_far": total_created,
+                        "half_complete": True,
+                    })
+
             # 6. Update session (all halves done)
             # Re-fetch session to avoid stale state after per-half commits
             result = await db.execute(
@@ -492,6 +492,7 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
             await db.commit()
 
             logger.info(f"Auto-analyze complete: session {session_id}, {total_created} events total")
+            await _emit_progress(session_id, {"type": "done", "total_events": total_created})
 
         except Exception as e:
             logger.error(f"Auto-analyze failed for session {session_id}: {e}", exc_info=True)
@@ -506,6 +507,11 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
                     await db.commit()
             except Exception:
                 logger.error(f"Failed to update session error status for {session_id}")
+            await _emit_progress(session_id, {"type": "error", "message": str(e)[:500]})
+        finally:
+            # Clean up queue after a delay (let SSE consumer read final event)
+            await asyncio.sleep(5)
+            _progress_queues.pop(str(session_id), None)
 
 
 @router.post("/session/{session_id}/enrich", response_model=EnrichmentResponse)
@@ -542,6 +548,84 @@ async def enrich_video_session(
         report=report,
         possession_chains_created=0,
     )
+
+
+# ── Ball position samples (minimap tracking) ─────────────────────────────
+
+
+@router.post("/session/{session_id}/ball-samples")
+async def save_ball_samples(
+    session_id: UUID,
+    payload: dict,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk save ball position samples from the minimap tracker."""
+    from app.models.ball_position_sample import BallPositionSample
+
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    samples = payload.get("samples", [])
+    if not samples:
+        return {"saved": 0}
+
+    for s in samples:
+        db.add(BallPositionSample(
+            video_session_id=session_id,
+            video_timestamp_ms=s["video_timestamp_ms"],
+            pitch_x=s["pitch_x"],
+            pitch_y=s["pitch_y"],
+            possession_team=s["possession_team"],
+        ))
+
+    await db.commit()
+    return {"saved": len(samples)}
+
+
+@router.get("/session/{session_id}/ball-samples")
+async def get_ball_samples(
+    session_id: UUID,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve all ball position samples for a video session."""
+    from app.models.ball_position_sample import BallPositionSample
+
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    result = await db.execute(
+        select(BallPositionSample)
+        .where(BallPositionSample.video_session_id == session_id)
+        .order_by(BallPositionSample.video_timestamp_ms)
+    )
+    samples = result.scalars().all()
+
+    return {
+        "samples": [
+            {
+                "video_timestamp_ms": s.video_timestamp_ms,
+                "pitch_x": s.pitch_x,
+                "pitch_y": s.pitch_y,
+                "possession_team": s.possession_team,
+            }
+            for s in samples
+        ]
+    }
 
 
 # ── Keyframe Claude Vision pipeline ──────────────────────────────────────

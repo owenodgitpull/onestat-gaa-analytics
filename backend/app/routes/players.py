@@ -25,6 +25,7 @@ from app.schemas.player import (
     PlayerDetail,
     PlayerListResponse
 )
+from app.services.player_comparison_service import PlayerComparisonService
 
 # Create router with prefix and tags
 router = APIRouter()
@@ -127,6 +128,19 @@ async def list_players(
         page=page,
         page_size=page_size,
         pages=pages
+    )
+
+
+@router.get("/compare/{player_a_id}/{player_b_id}")
+async def compare_players(
+    player_a_id: UUID,
+    player_b_id: UUID,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compare two players side-by-side (manager view)."""
+    return await PlayerComparisonService.compare_players(
+        db, user.club_id, player_a_id, player_b_id
     )
 
 

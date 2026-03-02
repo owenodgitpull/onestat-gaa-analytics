@@ -14,6 +14,7 @@ from sqlalchemy import select
 
 from app.services.ai._shared import (
     client, GAA_ESSENTIALS, TOOLS, execute_tool, get_cached_tools,
+    get_fixture_context, get_weather_context, get_club_context,
 )
 from app.services.rag_service import RAGService
 
@@ -22,13 +23,15 @@ logger = logging.getLogger(__name__)
 SLIDING_WINDOW_SIZE = 10
 
 
-async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_message: str) -> str:
+async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_message: str, club_id=None) -> str:
     """
     Conversational interface for asking questions about matches and players.
     Maintains conversation context.
 
     Uses RAG for dynamic knowledge base context.
     """
+    # Get club context for prompt personalisation
+    club_name, club_context = await get_club_context(db, club_id)
 
     # Get relevant knowledge base context via RAG
     try:
@@ -57,14 +60,23 @@ async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_m
     except Exception as e:
         logger.warning(f"Insight alerts context failed: {e}")
 
-    system_prompt = f"""You are a GAA analyst assistant for Dungloe GAA club.
+    # Get fixture and weather context
+    fixture_context = await get_fixture_context(db)
+    weather_context = await get_weather_context(db)
+
+    system_prompt = f"""You are a GAA analyst assistant for {club_name}.
 Answer questions about matches, players, tactics, and performance.
 Use the available tools to look up specific data when needed.
 
 {GAA_ESSENTIALS}
+{club_context}
 
 ## Knowledge Base Context (tactics, GPS data, rules, playbooks)
 {kb_context}
+
+{fixture_context}
+
+{weather_context}
 
 INSTRUCTIONS:
 - Use knowledge base context to reference GPS/fitness data, rules, and tactical documents.
@@ -72,6 +84,8 @@ INSTRUCTIONS:
 - Compare current data to benchmarks from the knowledge base.
 - Be proactive — surface relevant context without being asked.
 - Reference recent AI insight alerts when relevant to the conversation.
+- You know about upcoming fixtures and opponent form — reference these when the user asks about preparation, training plans, or upcoming games.
+- You have weather data from past matches — use this to identify performance patterns in different conditions (e.g., wet weather scoring, windy day kickout strategy).
 {insight_alerts_text}
 """
 
@@ -124,12 +138,16 @@ async def _build_chat_system_prompt(
     db: AsyncSession,
     user_message: str,
     conversation_summary: Optional[str] = None,
+    club_id=None,
 ) -> list:
     """Build the system prompt with RAG context and insight alerts.
 
     Returns a list of content blocks (with cache_control on the first block)
     for Anthropic prompt caching.
     """
+    # Get club context for prompt personalisation
+    club_name, club_context = await get_club_context(db, club_id)
+
     # Get relevant knowledge base context via RAG
     try:
         kb_context = await RAGService.get_context_for_query(
@@ -157,19 +175,28 @@ async def _build_chat_system_prompt(
     except Exception as e:
         logger.warning(f"Insight alerts context failed: {e}")
 
+    # Get fixture and weather context
+    fixture_context = await get_fixture_context(db)
+    weather_context = await get_weather_context(db)
+
     # Build summary section
     summary_section = ""
     if conversation_summary:
         summary_section = f"\n## Earlier in this conversation\n{conversation_summary}\n"
 
-    prompt_text = f"""You are a GAA analyst assistant for Dungloe GAA club.
+    prompt_text = f"""You are a GAA analyst assistant for {club_name}.
 Answer questions about matches, players, tactics, and performance.
 Use the available tools to look up specific data when needed.
 
 {GAA_ESSENTIALS}
+{club_context}
 
 ## Knowledge Base Context (tactics, GPS data, rules, playbooks)
 {kb_context}
+
+{fixture_context}
+
+{weather_context}
 {summary_section}
 INSTRUCTIONS:
 - Use knowledge base context to reference GPS/fitness data, rules, and tactical documents.
@@ -177,6 +204,8 @@ INSTRUCTIONS:
 - Compare current data to benchmarks from the knowledge base.
 - Be proactive — surface relevant context without being asked.
 - Reference recent AI insight alerts when relevant to the conversation.
+- You know about upcoming fixtures and opponent form — reference these when the user asks about preparation, training plans, or upcoming games.
+- You have weather data from past matches — use this to identify performance patterns in different conditions (e.g., wet weather scoring, windy day kickout strategy).
 - Format your responses with markdown: use **bold** for key stats, headers (##) for sections, and bullet points for lists.
 - For PATHS, MOVEMENT, SPATIAL patterns, shot LOCATIONS, attacking MOVES, anything on the PITCH → use get_pitch_paths tool. It's instant (no extra AI call) and traces the full possession chain from kickout/turnover to score.
 - For statistical charts (trends, comparisons, distributions, bar/line/pie) → use generate_chart tool.
@@ -252,6 +281,7 @@ async def chat_with_analyst_stream(
     conversation_history: list,
     user_message: str,
     session_id: Optional[str] = None,
+    club_id=None,
 ) -> AsyncGenerator[str, None]:
     """
     Streaming variant of chat_with_analyst.
@@ -275,7 +305,7 @@ async def chat_with_analyst_stream(
             )
 
         system_prompt = await _build_chat_system_prompt(
-            db, user_message, conversation_summary=conversation_summary
+            db, user_message, conversation_summary=conversation_summary, club_id=club_id
         )
         messages = messages_to_use + [{"role": "user", "content": user_message}]
 

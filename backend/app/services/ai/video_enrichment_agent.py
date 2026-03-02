@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.services.ai._shared import client
+from app.services.ai._shared import client, get_club_context
 from app.models.video_session import VideoSession
 from app.models.video_event import VideoEvent, TWO_POINTER_ZONES, SCORING_EVENT_TYPES
 from app.models.match import Match
@@ -115,14 +115,15 @@ async def generate_video_match_report(db: AsyncSession, session_id: UUID) -> str
             return "No events to analyze."
 
         events_summary = _build_events_summary(events)
+        club_name, _ = await get_club_context(db, match.club_id if match else None)
         match_context = ""
         if match:
-            match_context = f"Match: Dungloe vs {match.opponent}, {match.match_date.strftime('%d %b %Y')}, Venue: {match.venue.value if match.venue else 'unknown'}"
+            match_context = f"Match: {club_name} vs {match.opponent}, {match.match_date.strftime('%d %b %Y')}, Venue: {match.venue.value if match.venue else 'unknown'}"
 
         response = client.messages.create(
             model="claude-sonnet-4-5-20250514",
             max_tokens=2000,
-            system="""You are a GAA tactical analyst for Dungloe GAA. Analyze match events tagged from video.
+            system=f"""You are a GAA tactical analyst for {club_name}. Analyze match events tagged from video.
 
 Write a structured tactical report covering:
 1. **Score Summary** — final score with GAA notation (G-PP), two-pointer breakdown

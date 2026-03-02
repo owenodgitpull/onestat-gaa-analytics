@@ -48,7 +48,8 @@ export interface Match {
   venue: string;
   is_home: boolean;
   status: string;
-  competition?: string;
+  competition?: string | null;
+  referee?: string | null;
   team_goals: number;
   team_points: number;
   opponent_goals: number;
@@ -62,8 +63,34 @@ export interface Match {
   attacking_right_first_half?: boolean | null;
   team_strip_colour?: string | null;
   opponent_strip_colour?: string | null;
+  has_gps?: boolean;
+  has_video?: boolean;
+  has_events?: boolean;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface FormResult {
+  date: string
+  opponent_faced: string
+  score_for: string
+  score_against: string
+  result: 'W' | 'L' | 'D'
+  competition: string | null
+}
+
+export interface FixturePreview {
+  match: Match
+  our_form: FormResult[]
+  opponent_form: FormResult[]
+  last_meeting: {
+    date: string
+    venue: string | null
+    our_score: string
+    their_score: string
+    result: 'W' | 'L' | 'D'
+    competition: string | null
+  } | null
 }
 
 export enum MatchVenue {

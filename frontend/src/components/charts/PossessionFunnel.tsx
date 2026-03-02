@@ -34,7 +34,7 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
   ]
 
   // Insight text — plain language, showing what happened
-  const possToAttackText = `${totals.attacks} of ${totals.possessions} possessions reached the 45`
+  const possToAttackText = `${totals.attacks} of ${totals.possessions} possessions reached the opposition 45`
   const attackToShotText = totals.shots > totals.attacks
     ? `${totals.shots} shots from ${totals.attacks} attacks`
     : `${totals.shots} of ${totals.attacks} attacks produced a shot`

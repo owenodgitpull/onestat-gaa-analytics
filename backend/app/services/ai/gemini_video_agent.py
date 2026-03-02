@@ -5,8 +5,9 @@ Uploads match video to Gemini File API, then requests structured event detection
 Returns list of detected events to be bulk-inserted as VideoEvents with
 source="gemini_auto", is_verified=False.
 
-Focused on 16 high-value event types (scores, wides, kickouts, turnovers, cards,
-game state). Granular events (passes, solos, tackles) are left for manual tagging.
+Focused on 14 high-value event types (scores, wides, kickouts, cards,
+game state). Granular events (passes, solos, tackles, turnovers) are left
+for manual tagging.
 
 Accepts optional match_context (team names, jersey colours, venue) to improve
 team attribution accuracy.
@@ -143,8 +144,17 @@ def _recover_partial_events(truncated_text: str) -> list[dict]:
     return recovered
 
 
-def _raw_event_to_dict(raw: dict) -> dict:
-    """Convert a raw event dict (from Gemini JSON) to VideoEvent-compatible dict."""
+_FILTERED_EVENT_TYPES = {"TURNOVER_WON", "TURNOVER_LOST"}
+
+
+def _raw_event_to_dict(raw: dict) -> dict | None:
+    """Convert a raw event dict (from Gemini JSON) to VideoEvent-compatible dict.
+
+    Returns None for filtered event types (turnovers) so they can be skipped.
+    """
+    if raw.get("event_type") in _FILTERED_EVENT_TYPES:
+        return None
+
     event_dict = {
         "event_type": raw.get("event_type", "UNKNOWN"),
         "team": raw.get("team", "team_a"),
@@ -204,11 +214,11 @@ def _clean_json_response(text: str) -> str:
     return cleaned
 
 
-# ── Focused prompt (16 high-value event types) ────────────────────────────
+# ── Focused prompt (14 high-value event types) ────────────────────────────
 
 SYSTEM_PROMPT = """You are a GAA (Gaelic Athletic Association) football match analyst.
 You analyse match footage and produce structured, timestamped logs
-of key match events — scores, wides, kickouts, turnovers, cards, and game state.
+of key match events — scores, wides, kickouts, cards, and game state.
 
 === SPORT CONTEXT ===
 Sport: Gaelic Football (GAA)
@@ -241,7 +251,7 @@ Watch the ENTIRE video from start to finish. For every key event, record:
 6. CONTEXT: scoring_context for scores/wides, kickout_context for kickouts
 7. DESCRIPTION: Short free-text (under 10 words)
 
-=== EVENT TAXONOMY (16 types — log ONLY these) ===
+=== EVENT TAXONOMY (14 types — log ONLY these) ===
 
 SCORING:
   POINT_SCORED    - Ball over the bar (ONLY log if flag raised or certain)
@@ -256,10 +266,6 @@ SET PIECES:
   KICKOUT_SHORT   - Goalkeeper restart, short to defender/midfielder
   KICKOUT_LONG    - Goalkeeper restart, long beyond midfield
 
-TURNOVERS:
-  TURNOVER_WON    - Team wins possession from opposition
-  TURNOVER_LOST   - Team loses possession (poor pass, dispossessed, etc.)
-
 DISCIPLINE:
   YELLOW_CARD     - Yellow card shown
   RED_CARD        - Red card shown
@@ -269,9 +275,20 @@ GAME STATE:
   HALF_TIME       - Half-time whistle
   FULL_TIME       - Full-time whistle
 
-Do NOT log: hand passes, kick passes, solos, catches, pickups, tackles,
-blocks, interceptions, hooks, spoils, throw-ins, sideline kicks, subs,
-injuries, water breaks, or any event type not listed above.
+Do NOT log: turnovers, hand passes, kick passes, solos, catches, pickups,
+tackles, blocks, interceptions, hooks, spoils, throw-ins, sideline kicks,
+subs, injuries, water breaks, or any event type not listed above.
+
+=== CARD vs FREE DISAMBIGUATION ===
+A referee raising their arm to signal a free kick is NOT a card.
+Only log YELLOW_CARD, RED_CARD, or BLACK_CARD if you can clearly see the
+referee holding up an actual card object. If in doubt, do NOT log a card.
+
+=== POINT vs GOAL DISAMBIGUATION ===
+Ball going behind the posts viewed from above or behind = POINT (over the bar).
+Ball going INTO THE NET (below the crossbar) = GOAL.
+If you see a GREEN FLAG raised by the umpire = GOAL. WHITE FLAG = POINT.
+When in doubt, default to POINT — goals are rare (typically 0-3 per team).
 
 === PITCH ZONE GRID (18 zones — for scoring events) ===
 
@@ -345,7 +362,23 @@ def _build_initial_prompt(half: Optional[int], match_context: Optional[dict] = N
         )
         parts.append(team_block)
 
-    msg = "Analyse this GAA football match video and identify key events (scores, wides, kickouts, turnovers, cards)."
+    # Final score anchor (when available from match setup)
+    if match_context:
+        score_team = match_context.get("final_score_team")
+        score_opp = match_context.get("final_score_opponent")
+        if score_team and score_opp:
+            our_team = match_context.get("our_team", "Team A")
+            opponent = match_context.get("opponent", "Team B")
+            score_block = (
+                "=== KNOWN FINAL SCORE (ground truth) ===\n"
+                f"{our_team} {score_team} — {opponent} {score_opp}\n"
+                "Your detected scores MUST reconcile to this total.\n"
+                "If your running tally diverges, re-check whether an event "
+                "was a point or a goal, or whether a wide was actually a score.\n"
+            )
+            parts.append(score_block)
+
+    msg = "Analyse this GAA football match video and identify key events (scores, wides, kickouts, cards)."
     if half:
         msg += f" This is half {half} of the match."
     msg += " Include scoring_context for scoring events and kickout_context for kickouts."
@@ -582,5 +615,5 @@ def _analyze_video_sync(
     if not all_raw_events:
         raise RuntimeError("Gemini analysis returned zero events")
 
-    # 6. Convert to VideoEvent-compatible dicts
-    return [_raw_event_to_dict(raw) for raw in all_raw_events]
+    # 6. Convert to VideoEvent-compatible dicts (filter out turnovers)
+    return [d for raw in all_raw_events if (d := _raw_event_to_dict(raw)) is not None]

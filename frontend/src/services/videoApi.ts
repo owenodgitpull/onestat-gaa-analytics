@@ -161,6 +161,13 @@ export interface EnrichmentResult {
   possession_chains_created: number;
 }
 
+export interface BallPositionSampleData {
+  video_timestamp_ms: number;
+  pitch_x: number;
+  pitch_y: number;
+  possession_team: string;
+}
+
 // ============================================================================
 // Video Session API
 // ============================================================================
@@ -209,19 +216,30 @@ export const videoSessionsAPI = {
       { method: 'POST', body: JSON.stringify({ halftime_timestamp_ms: halftimeMs }) }
     ),
 
-  /** Trigger keyframe + Claude Vision auto-analysis. */
+  /** Trigger Gemini 2.5 Flash auto-analysis. */
   autoAnalyze: (sessionId: string) =>
-    fetchAPI<{ status: string }>(`/video/session/${sessionId}/keyframe-analyze`, { method: 'POST' }),
+    fetchAPI<{ status: string }>(`/video/session/${sessionId}/auto-analyze`, { method: 'POST' }),
 
   /** Re-run low-confidence batches through Sonnet for better accuracy. */
   improveAnalysis: (sessionId: string) =>
     fetchAPI<{ status: string }>(`/video/session/${sessionId}/improve-analysis`, { method: 'POST' }),
 
+  /** Bulk save ball position samples from the minimap tracker. */
+  saveBallSamples: (sessionId: string, samples: BallPositionSampleData[]) =>
+    fetchAPI<{ saved: number }>(`/video/session/${sessionId}/ball-samples`, {
+      method: 'POST',
+      body: JSON.stringify({ samples }),
+    }),
+
+  /** Retrieve all ball position samples for a session. */
+  getBallSamples: (sessionId: string) =>
+    fetchAPI<{ samples: BallPositionSampleData[] }>(`/video/session/${sessionId}/ball-samples`),
+
   /**
    * SSE streaming analysis — starts background task then connects to progress stream.
    *
    * Two-step approach:
-   * 1. POST /keyframe-analyze — starts background task (returns immediately)
+   * 1. POST /auto-analyze — starts Gemini background task (returns immediately)
    * 2. GET /analysis-progress — SSE stream reads from in-memory queue
    *
    * This is reliable because the heavy work runs in a proven background task,
@@ -239,8 +257,8 @@ export const videoSessionsAPI = {
     const controller = new AbortController();
 
     const promise = (async () => {
-      // 1. Start the background analysis task
-      await fetchAPI(`/video/session/${sessionId}/keyframe-analyze`, { method: 'POST' });
+      // 1. Start the background analysis task (Gemini)
+      await fetchAPI(`/video/session/${sessionId}/auto-analyze`, { method: 'POST' });
 
       // 2. Connect to SSE progress stream
       const url = `${API_BASE}/video/session/${sessionId}/analysis-progress`;
@@ -282,7 +300,7 @@ export const videoSessionsAPI = {
             switch (payload.type) {
               case 'progress':
                 callbacks.onProgress(payload.stage, payload);
-                if (payload.batch_complete && callbacks.onBatchComplete) {
+                if ((payload.batch_complete || payload.half_complete) && callbacks.onBatchComplete) {
                   callbacks.onBatchComplete();
                 }
                 break;

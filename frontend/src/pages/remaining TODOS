@@ -9,10 +9,12 @@ Still Needed for Production Multi-Tenancy
   6. Club-scoped file storage — GPS uploads, logos need per-club S3 paths (not local filesystem)
   7. Database indexes — add composite indexes on club_id for all high-traffic tables (matches, players, events)
   8. End-to-end auth testing — you mentioned this is pending
-Add guardrails to ensure the Agents dont get their data from newspaper articles on players etc.
-Gel Claude to review the entire website send screenshots
-Export as pdf - select what to export on dashboard.
-Need an edit event to allow events to be edited or even removed and add a new one - can be done in match (unlikely as user is recording) or post match more likely but allow both.
+  [09:53, 01/03/2026] Owen O'Donnell: https://once.sport/ We could allow managers to express their ideas once as a feature add on aswell. taking examples from here
+[09:54, 01/03/2026] Owen O'Donnell: their are a lot of big wins with video tagging of events, charts graphs obviously, but the ability for the AI to be able to pull up 'Conor Greenes' goals or turnovers etc would be unreal. WOuld need a lambda or something to run to gather multiple clips could split using FFMpeg
+[13:26, 01/03/2026] Owen O'Donnell: Are opponents shots blocked and our team shots block captured if it goes out for 45 check as its valuable , flow is dungloe takes shot, its blocked, 45 (score or miss)
+[13:53, 01/03/2026] Owen O'Donnell: Black cards need to be logged. Add a timer from when it was given (10 mins in sin bin)
+[21:58, 01/03/2026] Owen O'Donnell: Add fixtures to todos. A calendar view so ai can have it and could even tell us the form of the opponents based on league results which we can scrape from county site
+
 * Add guardrails to ensure the Agents dont get their data from newspaper articles on players etc.
 * Get Claude to review the entire website send screenshots
 * Export as pdf - select what to export on dashboard.
@@ -73,3 +75,141 @@ The one that changes everything though is number 4 – real-time tactical sugges
 SCALING:
 The only AWS service that would genuinely help is SQS for job queuing if you had many clubs processing videos etc simultaneously, but that's a
    scaling problem for later. For now, background tasks + Fly.io handles it.
+
+
+   ** Computer vision using YOLO:
+   It depends on what "difficult" means to you. If you're comfortable with Python and have built backend services before, this is very doable. It's not research-level hard – every component has tutorials, pre-trained models, and open-source libraries. It's integration work.
+Let me walk through exactly what you'd need to build, component by component.
+Player Detection (YOLO) – 2-3 days
+This is the easiest piece. You install the ultralytics package (pip install ultralytics), load a pre-trained YOLOv8 model, and point it at a frame. Out of the box, with zero fine-tuning, it will detect every person in the image and give you bounding boxes.
+pythonfrom ultralytics import YOLO
+
+model = YOLO('yolov8n.pt')  # nano model, fastest
+results = model('frame_0847.jpg')
+
+for box in results[0].boxes:
+    x1, y1, x2, y2 = box.xyxy[0]  # bounding box coordinates
+    confidence = box.conf[0]        # how sure it is
+    class_id = box.cls[0]           # 0 = person
+That's it. That gives you bounding boxes around every person in the frame. The nano model runs in about 10-15ms per frame on a GPU, so your entire match at 1fps processes in under a minute.
+The catch is it detects everyone – players, referee, umpires, people walking behind the wire. You'd fine-tune it on GAA footage to only detect on-pitch players, but even without fine-tuning you could filter by position (ignore detections outside the pitch boundaries) and size (spectators behind the wire will have smaller bounding boxes than players).
+Fine-tuning needs 200-300 images labelled with bounding boxes. You'd use Roboflow (free tier) to upload frames, draw boxes around players, and export a training dataset. Training takes 1-2 hours on a GPU. Add maybe 2 days if you want to do this properly.
+Team Classification – Half a day
+Once you have bounding boxes, you crop each player from the frame and check what colour their jersey is. This is basic OpenCV, no model needed.
+pythonimport cv2
+import numpy as np
+
+def classify_team(frame, bbox):
+    x1, y1, x2, y2 = bbox
+    player_crop = frame[y1:y2, x1:x2]
+    
+    # Take upper 40% of crop (torso, where jersey is)
+    h = player_crop.shape[0]
+    torso = player_crop[int(h*0.1):int(h*0.5), :]
+    
+    # Convert to HSV for better colour detection
+    hsv = cv2.cvtColor(torso, cv2.COLOR_BGR2HSV)
+    
+    # Count pixels matching each team's colour range
+    # You'd configure these ranges per match
+    red_mask = cv2.inRange(hsv, red_lower, red_upper)
+    blue_mask = cv2.inRange(hsv, blue_lower, blue_upper)
+    
+    red_pixels = np.sum(red_mask > 0)
+    blue_pixels = np.sum(blue_mask > 0)
+    
+    if red_pixels > blue_pixels:
+        return 'team_a'
+    else:
+        return 'team_b'
+You'd set the colour ranges at the start of each match. Could even make this a step in the upload flow – show the manager a frame, ask them to tap a player from each team, and auto-detect the colour ranges from those selections.
+ByteTrack Player Tracking – 1-2 days
+ByteTrack links detections across frames. "This bounding box in frame 1 is the same player as this bounding box in frame 2." The library exists and works with YOLO output directly.
+pythonfrom bytetrack import BYTETracker
+
+tracker = BYTETracker()
+
+for frame_idx, frame in enumerate(frames):
+    detections = yolo_model(frame)
+    tracked = tracker.update(detections)
+    
+    for track in tracked:
+        track_id = track.track_id    # consistent player ID across frames
+        bbox = track.tlbr             # bounding box
+        # Now you know player #track_id was at this position in this frame
+This gives you continuous trajectories. From trajectories you can calculate speed (distance between positions divided by time between frames), distance covered (sum of all position changes), and whether someone is sprinting (speed above a threshold, say 20km/h).
+The tricky part is that tracking IDs are arbitrary (player gets ID 1, 2, 3 etc based on when they're first detected) – they don't map to jersey numbers. But that's fine. The LLM can handle the mapping when it sees "Track ID 7 is wearing red, positioned at corner forward" and infer which player it likely is.
+Pitch Homography – 1-2 days
+This is the most conceptually complex piece but the code is straightforward. You identify known points on the pitch in the video frame (corner flags, line intersections, goal posts) and compute a transformation matrix.
+pythonimport cv2
+import numpy as np
+
+# Points in the video frame (pixels) - you identify these once per ground
+frame_points = np.array([
+    [120, 380],   # left corner flag
+    [1150, 375],  # right corner flag
+    [480, 180],   # left goal post
+    [720, 178],   # right goal post
+], dtype=np.float32)
+
+# Corresponding real-world pitch coordinates (metres)
+pitch_points = np.array([
+    [0, 0],       # left corner flag
+    [145, 0],     # right corner flag (pitch is 145m long)
+    [55, 90],     # left goal post
+    [90, 90],     # right goal post
+], dtype=np.float32)
+
+# Compute the transformation
+H, _ = cv2.findHomography(frame_points, pitch_points)
+
+# Now convert any pixel to pitch coordinates
+def pixel_to_pitch(px, py):
+    point = np.array([[[px, py]]], dtype=np.float32)
+    transformed = cv2.perspectiveTransform(point, H)
+    return transformed[0][0]  # [x_metres, y_metres]
+The one-time calibration per ground takes maybe 10 minutes manually – you open a frame, click on 4-8 known points, and save the mapping. For clubs that always film from the same spot, this is a one-and-done setup. You'd build a simple calibration UI: show the frame, let the manager tap the corner flags and goal posts, store the homography matrix.
+Ball Detection – 1 day (but lower priority)
+Same as player detection but you fine-tune YOLO to detect the ball. This needs more training data (500+ labelled frames) because the ball is small and fast. Honestly, I'd skip this initially and add it later. The LLM can infer ball position from the context of player positions and events. Ball detection is a nice-to-have that improves possession tracking accuracy but isn't essential for the core pipeline to work.
+Putting it all together – 2-3 days
+You've got the individual components. Now you wire them into your existing Keyframe pipeline. After Layer 1 (motion delta) selects candidate frames, you run the CV pipeline on those frames:
+pythondef enrich_frame(frame_path, homography_matrix, tracker):
+    frame = cv2.imread(frame_path)
+    
+    # YOLO detection
+    detections = yolo_model(frame)
+    
+    # Track across frames
+    tracked = tracker.update(detections)
+    
+    # For each tracked player
+    players = []
+    for track in tracked:
+        bbox = track.tlbr
+        team = classify_team(frame, bbox)
+        
+        # Convert centre of bbox to pitch coordinates
+        centre_x = (bbox[0] + bbox[2]) / 2
+        centre_y = bbox[3]  # bottom of bbox (feet position)
+        pitch_pos = pixel_to_pitch(centre_x, centre_y, homography_matrix)
+        
+        players.append({
+            'track_id': track.track_id,
+            'team': team,
+            'pitch_x': round(pitch_pos[0], 1),
+            'pitch_y': round(pitch_pos[1], 1),
+            'bbox': bbox.tolist(),
+            'speed_kmh': calculate_speed(track),
+            'is_sprinting': calculate_speed(track) > 20,
+        })
+    
+    return {
+        'players': players,
+        'team_a_count': sum(1 for p in players if p['team'] == 'team_a'),
+        'team_b_count': sum(1 for p in players if p['team'] == 'team_b'),
+    }
+That metadata object gets attached to each frame and sent to the LLM alongside the image in your existing batch processing.
+Total effort: roughly 2-3 weeks for one developer. The breakdown is about 3 days for YOLO setup and optional fine-tuning, half a day for colour classification, 2 days for ByteTrack integration, 2 days for homography with a calibration UI, 1 day for ball detection if you want it, 3 days for integration into your existing pipeline and testing, and 2-3 days for edge cases and debugging.
+The hardest part won't be any individual component – it'll be handling edge cases. Players overlapping each other causing ByteTrack to swap IDs. Shadows making colour classification unreliable. Camera shake throwing off homography. Rain making everything harder. You'd spend more time on these edge cases than on the initial implementation.
+What I'd suggest for your timeline
+Since you already have the Keyframe Algorithm running without CV, get that fully working and tested with real matches first. Once you're confident in the Keyframe + LLM pipeline, bolt on YOLO + colour classification as the first CV addition. Those two alone give the LLM player positions and team identification, which is the biggest accuracy improvement. Then add ByteTrack and homography as a second CV iteration. That way you're shipping value incrementally rather than trying to build everything at once.

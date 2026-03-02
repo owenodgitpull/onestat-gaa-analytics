@@ -578,12 +578,13 @@ export default function AnalyticsDashboard() {
                                 </div>
                               )}
                               {/* AI team insight */}
-                              {card.insight && (
-                                <div className="pt-3 border-t border-white/10">
-                                  <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400/60 mb-1.5">AI Insight</div>
-                                  <div className="text-sm text-emerald-300/90 italic leading-relaxed">{card.insight}</div>
-                                </div>
-                              )}
+                              <div className="pt-3 border-t border-white/10">
+                                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-400/60 mb-1.5">AI Insight</div>
+                                {card.insight
+                                  ? <div className="text-sm text-emerald-300/90 italic leading-relaxed">{card.insight}</div>
+                                  : <div className="text-sm text-white/25 italic">Unavailable right now — check back later</div>
+                                }
+                              </div>
                             </div>
                           </div>
                         </div>,

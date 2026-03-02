@@ -7,7 +7,7 @@ Represents a single match with opponent, date, venue, and final scores.
 import uuid
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text, ForeignKey
+from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 from app.database import Base
@@ -93,6 +93,10 @@ class Match(Base):
     second_half_started_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
     attacking_right_first_half: Column[Optional[bool]] = Column(Boolean, nullable=True)  # True = Dungloe attacks right in 1st half
     
+    # Competition and referee (populated by fixture scraping or manual entry)
+    competition: Column[Optional[str]] = Column(String(200), nullable=True)
+    referee: Column[Optional[str]] = Column(String(200), nullable=True)
+
     # Optional notes
     notes: Column[Optional[str]] = Column(String, nullable=True)
 
@@ -113,6 +117,9 @@ class Match(Base):
     # GPS analysis tracking (for re-analysis when GPS data is uploaded post-match)
     ai_analysis_version: Column[int] = Column(Integer, default=1, nullable=False)
     gps_analysis_included: Column[bool] = Column(Boolean, default=False, nullable=False)
+
+    # Chart insights (cached from analyze_match to avoid separate LLM call)
+    chart_insights = Column(JSON, nullable=True)
 
     # Soft delete
     is_deleted: Column[bool] = Column(Boolean, default=False, nullable=False)

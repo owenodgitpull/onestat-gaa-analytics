@@ -16,6 +16,8 @@ class MatchBase(BaseModel):
     opponent: str = Field(..., min_length=1, max_length=100, description="Name of the opposing team")
     match_date: datetime = Field(..., description="Date and time of the match")
     venue: MatchVenue = Field(..., description="Match venue (home/away/neutral)")
+    competition: Optional[str] = Field(None, max_length=200, description="Competition name")
+    referee: Optional[str] = Field(None, max_length=200, description="Referee name")
     notes: Optional[str] = Field(None, max_length=1000, description="Optional match notes")
 
     # Weather and pitch conditions (optional, for pattern analysis)
@@ -53,6 +55,8 @@ class MatchUpdate(BaseModel):
     team_points: Optional[int] = Field(None, ge=0)
     opponent_goals: Optional[int] = Field(None, ge=0)
     opponent_points: Optional[int] = Field(None, ge=0)
+    competition: Optional[str] = Field(None, max_length=200)
+    referee: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = Field(None, max_length=1000)
 
     # Weather and pitch conditions
@@ -92,6 +96,10 @@ class MatchResponse(MatchBase):
     created_at: datetime
     updated_at: datetime
 
+    # Competition and referee
+    competition: Optional[str] = Field(None, description="Competition name")
+    referee: Optional[str] = Field(None, description="Referee name")
+
     # Weather/pitch (inherited from MatchBase but explicitly listed for clarity)
     weather_condition: Optional[WeatherCondition] = None
     pitch_condition: Optional[PitchCondition] = None
@@ -110,6 +118,11 @@ class MatchResponse(MatchBase):
     current_phase: Optional[str] = Field(None, description="Current match phase: first_half, half_time, second_half")
     second_half_started_at: Optional[datetime] = Field(None, description="When second half started")
     attacking_right_first_half: Optional[bool] = Field(None, description="True if own team attacks right in 1st half")
+
+    # Data availability flags
+    has_gps: bool = Field(False, description="Whether GPS data exists for this match")
+    has_video: bool = Field(False, description="Whether video sessions exist")
+    has_events: bool = Field(False, description="Whether manually recorded events exist")
 
     # Computed fields
     team_total_score: int = Field(..., description="Total team score (goals*3 + points)")

@@ -66,18 +66,21 @@ async def list_matches(
     limit: int = Query(50, ge=1, le=100, description="Number of records to return"),
     status: Optional[MatchStatus] = Query(None, description="Filter by match status"),
     venue: Optional[MatchVenue] = Query(None, description="Filter by venue"),
+    sort: Optional[str] = Query(None, description="Sort order: 'asc' or 'desc' (default desc)"),
     user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """
     List all matches with pagination and filtering.
-    
+
     - **skip**: Pagination offset
     - **limit**: Number of matches to return (max 100)
     - **status**: Filter by status (scheduled/in_progress/completed/cancelled)
     - **venue**: Filter by venue (home/away/neutral)
+    - **sort**: Sort by date: 'asc' (earliest first) or 'desc' (latest first, default)
     """
-    matches, total = await MatchService.list_matches(db, skip, limit, status, venue, club_id=user.club_id)
+    sort_asc = sort == "asc"
+    matches, total = await MatchService.list_matches(db, skip, limit, status, venue, club_id=user.club_id, sort_asc=sort_asc)
     
     # Convert to response models with computed fields
     match_responses = []
@@ -86,6 +89,9 @@ async def list_matches(
         response.team_total_score = match.team_total_score
         response.opponent_total_score = match.opponent_total_score
         response.result = match.result
+        response.has_gps = bool(match.gps_data)
+        response.has_video = bool(match.video_sessions)
+        response.has_events = bool(match.events)
         match_responses.append(response)
     
     total_pages = math.ceil(total / limit) if total > 0 else 0
@@ -119,7 +125,10 @@ async def get_match(
     response.team_total_score = match.team_total_score
     response.opponent_total_score = match.opponent_total_score
     response.result = match.result
-    
+    response.has_gps = bool(match.gps_data)
+    response.has_video = bool(match.video_sessions)
+    response.has_events = bool(match.events)
+
     return response
 
 

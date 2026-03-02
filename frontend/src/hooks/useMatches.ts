@@ -71,6 +71,8 @@ export function useCreateMatch() {
       notes?: string | null;
       weather_condition?: string | null;
       temperature_celsius?: number | null;
+      competition?: string | null;
+      referee?: string | null;
     }) => api.matches.create(data),
     onSuccess: () => {
       // Invalidate matches list to refetch

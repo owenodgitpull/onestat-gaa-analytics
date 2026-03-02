@@ -17,6 +17,9 @@ import PlayerNavigation from './components/PlayerNavigation'
 import AIAnalystPage from './pages/AIAnalystPage'
 import VideoTagging from './pages/VideoTagging'
 import VideoSessionList from './pages/VideoSessionList'
+import PlayerComparison from './pages/PlayerComparison'
+import Fixtures from './pages/Fixtures'
+import FixturePreview from './pages/FixturePreview'
 import Onboarding from './pages/Onboarding'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
@@ -111,11 +114,14 @@ function App() {
                           <Route path="/match/:matchId/setup" element={<MatchSetup />} />
                           <Route path="/match/:matchId" element={<MatchRecording />} />
                           <Route path="/match-prep/:matchId" element={<MatchPrep />} />
+                          <Route path="/fixtures" element={<Fixtures />} />
+                          <Route path="/fixtures/:matchId/preview" element={<FixturePreview />} />
                           <Route path="/results" element={<Results />} />
                           <Route path="/results/:matchId" element={<MatchResult />} />
                           <Route path="/results/:matchId/video" element={<VideoSessionList />} />
                           <Route path="/video/:sessionId" element={<VideoTagging />} />
                           <Route path="/players" element={<Players />} />
+                          <Route path="/players/compare" element={<PlayerComparison />} />
                           <Route path="/players/:playerId" element={<PlayerView />} />
                           <Route path="/training" element={<Attendance />} />
                           <Route path="/attendance" element={<Attendance />} />

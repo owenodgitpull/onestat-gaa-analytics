@@ -28,7 +28,7 @@ from app.database import engine, Base, get_db
 from app.routes import players
 from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, fitness_tests, club, onboarding, player_portal, notifications
 from app.routes import auth as auth_routes
-from app.routes import video_analysis, video_events
+from app.routes import video_analysis, video_events, fixtures
 
 # Configure logging
 logging.basicConfig(
@@ -226,6 +226,7 @@ app.include_router(onboarding.router, prefix="/api/v1/onboarding", tags=["Onboar
 app.include_router(auth_routes.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(player_portal.router, prefix="/api/v1/player-portal", tags=["Player Portal"])
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
+app.include_router(fixtures.router, prefix="/api/v1/fixtures", tags=["Fixtures"])
 app.include_router(video_analysis.router, prefix="/api/v1/video", tags=["Video Analysis"])
 app.include_router(video_events.router, prefix="/api/v1/video/events", tags=["Video Events"])
 

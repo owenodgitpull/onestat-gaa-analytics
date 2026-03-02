@@ -37,6 +37,8 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [duration, setDuration] = useState(0)
     const [playbackRate, setPlaybackRate] = useState(1)
     const [showRateMenu, setShowRateMenu] = useState(false)
+    const [flashIcon, setFlashIcon] = useState<'play' | 'pause' | null>(null)
+    const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     useImperativeHandle(ref, () => ({
       seekTo: (ms: number) => {
@@ -91,12 +93,18 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
     }
 
+    const triggerFlash = useCallback((icon: 'play' | 'pause') => {
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      setFlashIcon(icon)
+      flashTimer.current = setTimeout(() => setFlashIcon(null), 600)
+    }, [])
+
     useEffect(() => {
       const video = videoRef.current
       if (!video) return
 
-      const onPlay = () => { setPlaying(true); onPlayStateChange?.(true) }
-      const onPause = () => { setPlaying(false); onPlayStateChange?.(false) }
+      const onPlay = () => { setPlaying(true); onPlayStateChange?.(true); triggerFlash('play') }
+      const onPause = () => { setPlaying(false); onPlayStateChange?.(false); triggerFlash('pause') }
 
       video.addEventListener('play', onPlay)
       video.addEventListener('pause', onPause)
@@ -104,7 +112,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         video.removeEventListener('play', onPlay)
         video.removeEventListener('pause', onPause)
       }
-    }, [onPlayStateChange])
+    }, [onPlayStateChange, triggerFlash])
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -143,15 +151,41 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         {/* Video element */}
         <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
           {src ? (
-            <video
-              ref={videoRef}
-              src={src}
-              onTimeUpdate={handleTimeUpdate}
-              onLoadedMetadata={handleDurationChange}
-              onClick={togglePlay}
-              className="w-full h-full object-contain cursor-pointer"
-              preload="metadata"
-            />
+            <>
+              <video
+                ref={videoRef}
+                src={src}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleDurationChange}
+                onClick={togglePlay}
+                className="w-full h-full object-contain cursor-pointer"
+                preload="metadata"
+              />
+
+              {/* Centre play button — visible when paused */}
+              {!playing && (
+                <div
+                  className="absolute inset-0 flex items-center justify-center cursor-pointer z-10"
+                  onClick={togglePlay}
+                >
+                  <div className="flex items-center justify-center w-16 h-16 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 shadow-xl shadow-black/30 transition-transform hover:scale-110 active:scale-95">
+                    <Play size={28} className="text-white ml-1" fill="white" />
+                  </div>
+                </div>
+              )}
+
+              {/* Flash icon — brief indicator on play/pause transition */}
+              {flashIcon && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 animate-[fadeOut_0.6s_ease-out_forwards]">
+                  <div className="flex items-center justify-center w-20 h-20 rounded-full bg-black/40 backdrop-blur-sm">
+                    {flashIcon === 'play'
+                      ? <Play size={36} className="text-white ml-1" fill="white" />
+                      : <Pause size={36} className="text-white" fill="white" />
+                    }
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white/30">
               <span>No video loaded</span>

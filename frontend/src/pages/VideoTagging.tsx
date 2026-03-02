@@ -5,8 +5,9 @@
  * Video auto-pauses on event tap and auto-resumes after completion.
  * Pitch and player overlays render ON TOP of the video player.
  * Scoreboard in header with GAA format (1-03) and total.
+ * Fullscreen mode hides app header and maximises video area.
  *
- * Layout:
+ * Layout (normal):
  * ┌──────────────────────────────────────────────────┐
  * │  ← Back | Title | Scoreboard | [Auto] [Sync]    │
  * ├──────────────────────────────────┬───────────────┤
@@ -18,21 +19,33 @@
  * ├──────────────────────────────────────────────────┤
  * │  ▾ Event Log (collapsible)                        │
  * └──────────────────────────────────────────────────┘
+ *
+ * Layout (fullscreen):
+ * ┌──────────────────────────────────────────────────┐
+ * │  [X] Title | Scoreboard | [Auto] [Report] [Sync] │
+ * ├──────────────────────────────────┬───────────────┤
+ * │                                  │  Quick Action  │
+ * │   Video Player (flex-1)          │  Sidebar       │
+ * │   + BallMinimap                  │                │
+ * ├──────────────────────────────────┴───────────────┤
+ * │  Possession status bar                            │
+ * └──────────────────────────────────────────────────┘
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import EventTimeline from '../components/video/EventTimeline'
 import VideoQuickActions, { type Category, type OverlayPendingEvent } from '../components/video/VideoQuickActions'
 import VideoEventLog from '../components/video/VideoEventLog'
 import PitchOverlay from '../components/video/PitchOverlay'
+import BallMinimap from '../components/video/BallMinimap'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
 import SyncPreviewModal from '../components/video/SyncPreviewModal'
 import ConfirmationModal from '../components/ConfirmationModal'
 import HalftimeMarker from '../components/video/HalftimeMarker'
-import { type PitchZone, TWO_POINTER_ZONES } from '../components/video/PitchZoneSelector'
+import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video/PitchZoneSelector'
 import { useClubName } from '../contexts/ClubContext'
 import { useVideoSession, useSetHalftime } from '../hooks/useVideoSessions'
 import {
@@ -45,12 +58,35 @@ import {
   useSyncConfirm,
 } from '../hooks/useVideoEvents'
 import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
-import type { VideoEventCreateData, VideoSyncPreview, VideoSyncStatus } from '../services/videoApi'
+import type { VideoEventCreateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData } from '../services/videoApi'
 import { api } from '../services/api'
 import { useQuery } from '@tanstack/react-query'
 import type { Player } from '../types'
 
 type OverlayState = 'none' | 'pitch' | 'player'
+
+/** Derive a human-readable status label from ball position and possession. */
+function getStatusLabel(
+  pos: { x: number; y: number },
+  possession: 'team_a' | 'team_b',
+  clubName: string,
+  opponentName: string,
+): string {
+  const teamLabel = possession === 'team_a' ? clubName : opponentName
+  // x: 0 = own DEF → 100 = attacking SQ
+  const zone =
+    pos.x < 17 ? 'inside own 21m line' :
+    pos.x < 33 ? 'inside own 45m line' :
+    pos.x < 50 ? 'around midfield' :
+    pos.x < 67 ? 'past the 45m line' :
+    pos.x < 83 ? 'inside the 21m line' :
+    'in the square'
+  const side =
+    pos.y < 33 ? ', left side' :
+    pos.y > 67 ? ', right side' :
+    ''
+  return `${teamLabel} ${zone}${side}`
+}
 
 export default function VideoTagging() {
   const { sessionId } = useParams<{ sessionId: string }>()
@@ -62,9 +98,17 @@ export default function VideoTagging() {
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [videoDurationMs, setVideoDurationMs] = useState(0)
   const [selectedZone, setSelectedZone] = useState<PitchZone | null>(null)
-  const [, setIsPlaying] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
   const [possession, setPossession] = useState<'team_a' | 'team_b'>('team_a')
   const [activeTab, setActiveTab] = useState<Category>('scoring')
+
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Minimap ball tracking
+  const [ballPosition, setBallPosition] = useState<{ x: number; y: number } | null>({ x: 50, y: 50 })
+  const [ballTrail, setBallTrail] = useState<Array<{ x: number; y: number }>>([])
+  const positionSamples = useRef<BallPositionSampleData[]>([])
 
   // Three-tap overlay flow
   const [overlayState, setOverlayState] = useState<OverlayState>('none')
@@ -155,16 +199,73 @@ export default function VideoTagging() {
     }
   }, [session?.status])
 
-  // Escape key cancels overlay
+  // Escape key cancels overlay or exits fullscreen; F key toggles fullscreen
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && overlayState !== 'none') {
-        cancelOverlay()
+      if (e.key === 'Escape') {
+        if (overlayState !== 'none') {
+          cancelOverlay()
+        } else if (isFullscreen) {
+          setIsFullscreen(false)
+        }
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        // Only toggle fullscreen when no overlay active and no input focused
+        const tag = (e.target as HTMLElement)?.tagName
+        if (overlayState === 'none' && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+          setIsFullscreen(prev => !prev)
+        }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [overlayState])
+  }, [overlayState, isFullscreen])
+
+  // ── Ball position sampling (every 5s while playing) ─────────────────
+  useEffect(() => {
+    if (!isPlaying || !ballPosition) return
+    const interval = setInterval(() => {
+      const ms = playerRef.current?.getCurrentTimeMs?.()
+      const tsMs = ms ?? currentTimeMs
+      positionSamples.current.push({
+        video_timestamp_ms: tsMs,
+        pitch_x: ballPosition.x,
+        pitch_y: ballPosition.y,
+        possession_team: possession,
+      })
+      setBallTrail(prev => [...prev.slice(-49), { x: ballPosition.x, y: ballPosition.y }])
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [isPlaying, ballPosition, possession, currentTimeMs])
+
+  // ── Bulk save samples every 30s + on unmount/beforeunload ──────────
+  const flushSamples = useCallback(() => {
+    if (!sessionId || positionSamples.current.length === 0) return
+    const toSave = [...positionSamples.current]
+    positionSamples.current = []
+    videoSessionsAPI.saveBallSamples(sessionId, toSave).catch(() => {
+      // Re-queue on failure
+      positionSamples.current.unshift(...toSave)
+    })
+  }, [sessionId])
+
+  useEffect(() => {
+    const interval = setInterval(flushSamples, 30000)
+    const handleBeforeUnload = () => {
+      if (!sessionId || positionSamples.current.length === 0) return
+      const blob = new Blob(
+        [JSON.stringify({ samples: positionSamples.current })],
+        { type: 'application/json' },
+      )
+      navigator.sendBeacon(`/api/v1/video/session/${sessionId}/ball-samples`, blob)
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      flushSamples()
+    }
+  }, [flushSamples, sessionId])
 
   // ── Running score (computed from events) ──────────────────────────────
 
@@ -202,6 +303,12 @@ export default function VideoTagging() {
   const handleDurationChange = useCallback((ms: number) => setVideoDurationMs(ms), [])
   const handleSeek = useCallback((ms: number) => playerRef.current?.seekTo(ms), [])
 
+  // Minimap handlers
+  const handleMinimapBallMove = useCallback((x: number, y: number) => {
+    setBallPosition({ x, y })
+    setBallTrail(prev => [...prev.slice(-49), { x, y }])
+  }, [])
+
   /** Create the event, apply auto-flip/auto-switch, resume video.
    *  Stored in a ref so overlay handlers always call the latest version. */
   const finalizeEventRef = useRef<(pending: OverlayPendingEvent, data: VideoEventCreateData) => void>(() => {})
@@ -233,10 +340,21 @@ export default function VideoTagging() {
     }
   }
 
-  /** Start the three-tap overlay flow: pause video → show pitch or player overlay */
+  /** Start the three-tap overlay flow: pause video → show pitch or player overlay.
+   *  Auto-populates position from minimap ball when available. */
   const handleEventTap = useCallback((pending: OverlayPendingEvent) => {
     wasPlayingRef.current = playerRef.current?.isPlaying() || false
     playerRef.current?.pause()
+
+    // Pre-populate position from minimap ball
+    if (ballPosition) {
+      pending.eventData.pitch_x = ballPosition.x
+      pending.eventData.pitch_y = ballPosition.y
+      if (!pending.eventData.pitch_zone) {
+        pending.eventData.pitch_zone = xyToZone(ballPosition.x, ballPosition.y)
+      }
+    }
+    pending.eventData.possession_team = possession
 
     setPendingOverlay(pending)
 
@@ -247,10 +365,10 @@ export default function VideoTagging() {
     } else {
       setOverlayState('none')
     }
-  }, [])
+  }, [ballPosition, possession])
 
-  /** Pitch zone tapped → update event data and advance to player select or complete */
-  const handlePitchZoneTap = useCallback((zone: PitchZone) => {
+  /** Pitch location tapped → update event data with zone + precise x,y and advance */
+  const handlePitchZoneTap = useCallback((zone: PitchZone, pitchX?: number, pitchY?: number) => {
     setSelectedZone(zone)
 
     setPendingOverlay(prev => {
@@ -258,6 +376,13 @@ export default function VideoTagging() {
 
       const isTwoPointer = TWO_POINTER_ZONES.includes(zone)
       const updatedData = { ...prev.eventData, pitch_zone: zone }
+
+      // Store precise coordinates when available
+      if (pitchX != null && pitchY != null) {
+        updatedData.pitch_x = pitchX
+        updatedData.pitch_y = pitchY
+      }
+
       if (updatedData.scoring_context && updatedData.event_type === 'POINT_SCORED') {
         updatedData.scoring_context = { ...updatedData.scoring_context, is_two_pointer: isTwoPointer }
       }
@@ -436,11 +561,11 @@ export default function VideoTagging() {
           refetchSession()
           refetchEvents()
         },
-        onError: (message) => {
-          setIsAutoAnalyzing(false)
-          setAnalysisProgress(null)
+        onError: (_message) => {
           sseAbortRef.current = null
-          setAlertModal({ title: 'Analysis Failed', message, variant: 'danger' })
+          setAnalysisProgress(null)
+          // SSE stream failed but background task may still be running — fall back to polling
+          startAnalyzePoll()
         },
       })
       sseAbortRef.current = abort
@@ -558,6 +683,234 @@ export default function VideoTagging() {
   }
   const handleSkipHalftime = () => setHalftimeSkipped(true)
 
+  const opponentName = matchData?.opponent || 'Opposition'
+
+  // ── Shared sub-components ─────────────────────────────────────────────
+
+  /** Scoreboard widget — used in both normal and fullscreen headers */
+  const scoreboard = (
+    <div className="flex items-center rounded-2xl border border-white/[0.12] overflow-hidden backdrop-blur-xl shadow-lg shadow-black/20"
+      style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 50%, rgba(255,255,255,0.06) 100%)' }}
+    >
+      {/* Team A */}
+      <div className={`flex items-center gap-2.5 px-5 py-2.5 transition-all ${
+        possession === 'team_a'
+          ? 'bg-gradient-to-r from-emerald-500/20 to-emerald-500/5'
+          : ''
+      }`}>
+        <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
+        <span className="text-xs font-semibold text-white/60 uppercase tracking-wide">{clubName}</span>
+        <span className="text-2xl font-black text-white tabular-nums min-w-[52px] text-center drop-shadow-sm">
+          {currentScore.team_a_goals}-{String(currentScore.team_a_points).padStart(2, '0')}
+        </span>
+        <span className="text-[11px] text-white/25 font-semibold tabular-nums">({teamATotal})</span>
+      </div>
+      <div className="px-2 text-[10px] text-white/20 font-bold">v</div>
+      {/* Team B */}
+      <div className={`flex items-center gap-2.5 px-5 py-2.5 transition-all ${
+        possession === 'team_b'
+          ? 'bg-gradient-to-l from-orange-500/20 to-orange-500/5'
+          : ''
+      }`}>
+        <span className="text-[11px] text-white/25 font-semibold tabular-nums">({teamBTotal})</span>
+        <span className="text-2xl font-black text-white tabular-nums min-w-[52px] text-center drop-shadow-sm">
+          {currentScore.team_b_goals}-{String(currentScore.team_b_points).padStart(2, '0')}
+        </span>
+        <span className="text-xs font-semibold text-white/60 uppercase tracking-wide">{opponentName}</span>
+        <div className="w-3 h-3 rounded-full bg-orange-500 shadow-sm shadow-orange-500/50" />
+      </div>
+    </div>
+  )
+
+  /** Action buttons row — Auto-Analyse, Report, Sync */
+  const actionButtons = (
+    <div className="flex gap-2">
+      <button
+        onClick={handleAutoAnalyzeClick}
+        disabled={!canAutoAnalyze}
+        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border border-purple-400/20 backdrop-blur-sm shadow-lg shadow-purple-500/10 hover:shadow-purple-500/25 hover:border-purple-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white"
+        style={{ background: 'linear-gradient(135deg, rgba(147,51,234,0.5) 0%, rgba(124,58,237,0.4) 50%, rgba(139,92,246,0.3) 100%)' }}
+        title={needsHalftime ? 'Mark half-time first' : 'Beta — accuracy is still being improved. Results may need significant manual correction.'}
+      >
+        {isAutoAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+        {isAutoAnalyzing ? 'AI Analysing...' : 'Auto-Analyse (Beta)'}
+      </button>
+      <button
+        onClick={handleEnrich}
+        disabled={isEnriching || events.length === 0}
+        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border border-violet-400/20 backdrop-blur-sm shadow-lg shadow-violet-500/10 hover:shadow-violet-500/25 hover:border-violet-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white"
+        style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.45) 0%, rgba(109,40,217,0.35) 50%, rgba(139,92,246,0.25) 100%)' }}
+      >
+        {isEnriching ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+        Report
+      </button>
+      <button
+        onClick={handleSyncClick}
+        disabled={syncPreview.isPending || events.length === 0}
+        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border border-emerald-400/20 backdrop-blur-sm shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/25 hover:border-emerald-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white"
+        style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.45) 0%, rgba(5,150,105,0.35) 50%, rgba(52,211,153,0.25) 100%)' }}
+      >
+        {syncPreview.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+        Save to Match
+      </button>
+    </div>
+  )
+
+  /** Video player with minimap, fullscreen button overlay, and pitch overlay */
+  const videoArea = (
+    <div className="flex-1 relative group/video">
+      <VideoPlayer
+        ref={playerRef}
+        src={session.download_url}
+        onTimeUpdate={handleTimeUpdate}
+        onDurationChange={handleDurationChange}
+        onPlayStateChange={setIsPlaying}
+        halftimeMs={session.halftime_timestamp_ms ?? undefined}
+      />
+
+      {/* Fullscreen toggle — overlaid on video, top-left, visible on hover */}
+      {overlayState === 'none' && (
+        <button
+          onClick={() => setIsFullscreen(prev => !prev)}
+          className="absolute top-2 left-2 z-20 p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg opacity-70 sm:opacity-0 sm:group-hover/video:opacity-100 transition-all"
+          title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen (F)'}
+        >
+          <Maximize size={18} />
+        </button>
+      )}
+
+      {/* Ball minimap (always visible, dims when overlay active) */}
+      <BallMinimap
+        ballPosition={ballPosition}
+        possession={possession}
+        onBallMove={handleMinimapBallMove}
+        trail={ballTrail}
+        disabled={overlayState !== 'none'}
+      />
+
+      {/* Pitch zone overlay (step 2 of three-tap) */}
+      {overlayState === 'pitch' && pendingOverlay && (
+        <PitchOverlay
+          eventLabel={pendingOverlay.action.label}
+          onZoneSelect={handlePitchZoneTap}
+          onCancel={cancelOverlay}
+          suggestedZone={ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined}
+        />
+      )}
+    </div>
+  )
+
+  /** Quick Actions sidebar */
+  const sidebar = (
+    <VideoQuickActions
+      possession={possession}
+      onPossessionChange={setPossession}
+      selectedZone={selectedZone}
+      currentTimestampMs={currentTimeMs}
+      half={session.half || 1}
+      onEventTap={handleEventTap}
+      onCreateEvent={handleDirectCreate}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      disabled={isAutoAnalyzing || overlayState !== 'none'}
+      teamName={clubName}
+      ballPitchX={ballPosition?.x}
+      ballPitchY={ballPosition?.y}
+    />
+  )
+
+  /** Possession status bar */
+  const statusBar = ballPosition ? (
+    <div
+      className={`flex items-center justify-between px-4 py-2 rounded-lg border transition-all ${
+        possession === 'team_a'
+          ? 'bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-emerald-500/20'
+          : 'bg-gradient-to-r from-orange-500/15 to-orange-500/5 border-orange-500/20'
+      }`}
+    >
+      <span className="text-sm text-white/80 font-medium">
+        {getStatusLabel(ballPosition, possession, clubName, opponentName)}
+      </span>
+      <button
+        onClick={() => setPossession(p => p === 'team_a' ? 'team_b' : 'team_a')}
+        className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-all ${
+          possession === 'team_a'
+            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+            : 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
+        }`}
+      >
+        <span className="relative flex h-2 w-2">
+          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+            possession === 'team_a' ? 'bg-emerald-400' : 'bg-orange-400'
+          }`} />
+          <span className={`relative inline-flex rounded-full h-2 w-2 ${
+            possession === 'team_a' ? 'bg-emerald-500' : 'bg-orange-500'
+          }`} />
+        </span>
+        {possession === 'team_a' ? clubName : opponentName}
+      </button>
+    </div>
+  ) : null
+
+  // ── Fullscreen mode ──────────────────────────────────────────────────
+
+  if (isFullscreen) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col">
+        {/* Compact top bar */}
+        <div className="flex items-center justify-between px-3 py-2 bg-slate-900/90 border-b border-white/10 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="p-1.5 text-white/50 hover:text-white transition-colors"
+              title="Exit fullscreen (Esc)"
+            >
+              <X size={18} />
+            </button>
+            <span className="text-sm font-semibold text-white truncate max-w-[200px]">{session.title}</span>
+          </div>
+
+          {scoreboard}
+          {actionButtons}
+        </div>
+
+        {/* Main area: video + sidebar */}
+        <div className="flex-1 flex overflow-hidden">
+          {videoArea}
+          {sidebar}
+        </div>
+
+        {/* Status bar */}
+        {statusBar && (
+          <div className="flex-shrink-0 px-3 py-1">
+            {statusBar}
+          </div>
+        )}
+
+        {/* Player Selection Modal (step 3 of three-tap flow) */}
+        <PlayerSelectionModal
+          isOpen={overlayState === 'player'}
+          onClose={handlePlayerSkip}
+          onSelectPlayer={handlePlayerSelect}
+          eventType={pendingOverlay?.action.playerModalEventType || 'point'}
+          team={possession === 'team_a' ? 'own' : 'opponent'}
+          players={playerList}
+        />
+
+        {/* Alert/error modal */}
+        <ConfirmationModal
+          isOpen={!!alertModal}
+          onClose={() => setAlertModal(null)}
+          title={alertModal?.title || ''}
+          message={alertModal?.message || ''}
+          variant={alertModal?.variant || 'danger'}
+        />
+      </div>
+    )
+  }
+
+  // ── Normal mode ──────────────────────────────────────────────────────
+
   return (
     <div className="max-w-[1600px] mx-auto space-y-3">
       {/* ── Header with scoreboard ─────────────────────────────────────── */}
@@ -577,60 +930,10 @@ export default function VideoTagging() {
         </div>
 
         {/* Centre: scoreboard */}
-        <div className="flex items-center bg-slate-800/80 rounded-xl border border-white/10 overflow-hidden">
-          {/* Team A */}
-          <div className={`flex items-center gap-2 px-4 py-2 ${
-            possession === 'team_a' ? 'bg-emerald-500/10' : ''
-          }`}>
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            <span className="text-xs font-semibold text-white/70">{clubName}</span>
-            <span className="text-xl font-extrabold text-white tabular-nums min-w-[48px] text-center">
-              {currentScore.team_a_goals}-{String(currentScore.team_a_points).padStart(2, '0')}
-            </span>
-            <span className="text-[11px] text-white/30 font-medium">({teamATotal})</span>
-          </div>
-          <div className="px-2 text-[10px] text-white/30 font-bold">v</div>
-          {/* Team B */}
-          <div className={`flex items-center gap-2 px-4 py-2 ${
-            possession === 'team_b' ? 'bg-white/5' : ''
-          }`}>
-            <span className="text-[11px] text-white/30 font-medium">({teamBTotal})</span>
-            <span className="text-xl font-extrabold text-white tabular-nums min-w-[48px] text-center">
-              {currentScore.team_b_goals}-{String(currentScore.team_b_points).padStart(2, '0')}
-            </span>
-            <span className="text-xs font-semibold text-white/70">{matchData?.opponent || 'Opposition'}</span>
-            <div className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-          </div>
-        </div>
+        {scoreboard}
 
         {/* Right: action buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleAutoAnalyzeClick}
-            disabled={!canAutoAnalyze}
-            className="flex items-center gap-1.5 px-3 py-2 bg-purple-600/80 hover:bg-purple-600 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-all"
-            title={needsHalftime ? 'Mark half-time first' : undefined}
-          >
-            {isAutoAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            {isAutoAnalyzing ? 'AI Analysing...' : 'Auto-Analyse'}
-          </button>
-          <button
-            onClick={handleEnrich}
-            disabled={isEnriching || events.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 bg-violet-600/80 hover:bg-violet-600 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-all"
-          >
-            {isEnriching ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-            Report
-          </button>
-          <button
-            onClick={handleSyncClick}
-            disabled={syncPreview.isPending || events.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600/80 hover:bg-emerald-600 disabled:opacity-40 text-white rounded-lg text-xs font-medium transition-all"
-          >
-            {syncPreview.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            Sync
-          </button>
-        </div>
+        {actionButtons}
       </div>
 
       {/* Auto-analyze processing banner */}
@@ -640,20 +943,11 @@ export default function VideoTagging() {
             <Loader2 size={16} className="animate-spin text-purple-400" />
             <span className="text-sm text-purple-300">
               {analysisProgress ? (
-                analysisProgress.stage === 'initializing' ? 'Connecting to AI...' :
-                analysisProgress.stage === 'downloading' ? 'Downloading video...' :
-                analysisProgress.stage === 'extracting' ? (
-                  analysisProgress.totalFrames
-                    ? `Extracting frames... ${analysisProgress.totalFrames} frames found`
-                    : 'Extracting key frames...'
-                ) :
-                analysisProgress.stage === 'filtering' ? (
-                  analysisProgress.survivingFrames
-                    ? `Filtering... ${analysisProgress.survivingFrames} key frames from ${analysisProgress.totalFrames}`
-                    : 'Filtering static frames...'
-                ) :
+                analysisProgress.stage === 'initializing' ? 'Preparing video for AI analysis...' :
+                analysisProgress.stage === 'uploading_to_gemini' ? 'Uploading video to Gemini...' :
+                analysisProgress.stage === 'processing_video' ? 'Gemini is processing video...' :
                 analysisProgress.stage === 'analyzing' ? (
-                  `Analysing batch ${analysisProgress.completedBatches || 0} of ${analysisProgress.totalBatches || '?'}` +
+                  `Analysing half ${analysisProgress.completedBatches || 0} of ${analysisProgress.totalBatches || '?'}` +
                   (analysisProgress.eventsSoFar ? ` — ${analysisProgress.eventsSoFar} events detected` : '')
                 ) :
                 'AI is analysing your video...'
@@ -722,45 +1016,13 @@ export default function VideoTagging() {
       {/* ── Video Player + Quick Actions sidebar ───────────────────────── */}
       <div className="relative bg-black rounded-lg overflow-hidden">
         <div className="flex">
-          {/* Video area — overlays render inside here */}
-          <div className="flex-1 relative">
-            <VideoPlayer
-              ref={playerRef}
-              src={session.download_url}
-              onTimeUpdate={handleTimeUpdate}
-              onDurationChange={handleDurationChange}
-              onPlayStateChange={setIsPlaying}
-              halftimeMs={session.halftime_timestamp_ms ?? undefined}
-            />
-
-            {/* Pitch zone overlay (step 2 of three-tap) */}
-            {overlayState === 'pitch' && pendingOverlay && (
-              <PitchOverlay
-                eventLabel={pendingOverlay.action.label}
-                onZoneSelect={handlePitchZoneTap}
-                onCancel={cancelOverlay}
-              />
-            )}
-
-            {/* (Player modal rendered outside video area below) */}
-          </div>
-
-          {/* Quick Actions sidebar */}
-          <VideoQuickActions
-            possession={possession}
-            onPossessionChange={setPossession}
-            selectedZone={selectedZone}
-            currentTimestampMs={currentTimeMs}
-            half={session.half || 1}
-            onEventTap={handleEventTap}
-            onCreateEvent={handleDirectCreate}
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            disabled={isAutoAnalyzing || overlayState !== 'none'}
-            teamName={clubName}
-          />
+          {videoArea}
+          {sidebar}
         </div>
       </div>
+
+      {/* ── Tracking status bar ──────────────────────────────────────────── */}
+      {statusBar}
 
       {/* ── Event Timeline ──────────────────────────────────────────────── */}
       <EventTimeline

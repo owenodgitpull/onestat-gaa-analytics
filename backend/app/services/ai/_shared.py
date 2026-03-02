@@ -95,11 +95,30 @@ GAA_ESSENTIALS = """
 10. RHF  11. CHF (Playmaker)  12. LHF
 13. RCF  14. FF (Full Forward)  15. LCF
 
-## Dungloe GAA
-- Club in County Donegal, Ulster province
-- Competes in Donegal Senior Football Championship
-- Blue and gold colours
 """
+
+
+async def get_club_context(db: AsyncSession, club_id) -> tuple:
+    """Returns (club_name, club_context_str) for use in prompts."""
+    if not club_id:
+        return "the team", ""
+    from app.models.club import Club
+    result = await db.execute(select(Club).where(Club.id == club_id))
+    club = result.scalar_one_or_none()
+    if not club:
+        return "the team", ""
+    name = club.short_name or club.name
+    context = f"\n## Your Club\n- {club.name}"
+    if club.county:
+        context += f"\n- County {club.county}"
+    if club.province:
+        context += f", {club.province} province"
+    if club.primary_colour or club.secondary_colour:
+        colours = " and ".join(filter(None, [club.primary_colour, club.secondary_colour]))
+        if colours:
+            context += f"\n- Colours: {colours}"
+    return name, context
+
 
 # =============================================================================
 # TOOL DEFINITIONS
@@ -287,6 +306,34 @@ TOOLS = [
         }
     },
     {
+        "name": "get_match_gps",
+        "description": "Get GPS/physical performance data for a specific match. Returns per-player distance, HSR, sprints, max speed, HMLD, player load with position tags, substitution info, and outlier flags. Also includes team totals and outfield averages.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "The UUID of the match"
+                }
+            },
+            "required": ["match_id"]
+        }
+    },
+    {
+        "name": "get_training_session_gps",
+        "description": "Get GPS data for a specific training session. Returns per-player distance, HSR, sprints, max speed, DSL with aggregates and top performers. Also fetches recent session averages for contextual comparison.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "The UUID of the training session"
+                }
+            },
+            "required": ["session_id"]
+        }
+    },
+    {
         "name": "get_pitch_paths",
         "description": "Build pitch visualizations showing paths/movement on the GAA pitch. Use for: paths to goals, scoring paths, shot locations, attacking moves, spatial patterns. Returns a ready-to-render pitch chart — much faster than generate_chart for spatial/path data. Supports filtering by outcome (goal, point, wide, etc.) and by match.",
         "input_schema": {
@@ -358,6 +405,11 @@ def get_cached_tools() -> list:
     return cached
 
 
+def get_tools_subset(tool_names: list[str]) -> list[dict]:
+    """Return only the tool definitions matching the given names."""
+    return [t for t in TOOLS if t["name"] in tool_names]
+
+
 # =============================================================================
 # TOOL EXECUTION
 # =============================================================================
@@ -387,6 +439,10 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession) -> st
         return await get_team_gps_summary(db, **tool_input)
     elif tool_name == "get_attendance_data":
         return await get_attendance_data(db, **tool_input)
+    elif tool_name == "get_match_gps":
+        return await get_match_gps(db, **tool_input)
+    elif tool_name == "get_training_session_gps":
+        return await get_training_session_gps(db, **tool_input)
     elif tool_name == "get_pitch_paths":
         return await get_pitch_paths(db, **tool_input)
     elif tool_name == "generate_chart":
@@ -395,6 +451,209 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession) -> st
         return safe_json(tool_input)  # pass-through — frontend renders it
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
+
+
+async def get_match_gps(db: AsyncSession, match_id: str) -> str:
+    """Get GPS/physical performance data for a specific match with player details."""
+    from app.models.match_gps import MatchGPSData
+    from app.models.match_event import MatchEvent, EventType
+    import uuid as uuid_mod
+
+    try:
+        match_uuid = uuid_mod.UUID(match_id)
+    except (ValueError, AttributeError):
+        return safe_json({"error": f"'{match_id}' is not a valid match UUID"})
+
+    # Fetch GPS data with player names and positions
+    gps_query = (
+        select(MatchGPSData, Player.name, Player.position)
+        .join(Player, MatchGPSData.player_id == Player.id, isouter=True)
+        .where(MatchGPSData.match_id == match_uuid)
+    )
+    gps_result = await db.execute(gps_query)
+    gps_rows = gps_result.all()
+
+    if not gps_rows:
+        return safe_json({"message": "No GPS data available for this match"})
+
+    # Fetch substitution events
+    sub_lookup = {}
+    sub_result = await db.execute(
+        select(MatchEvent).where(
+            MatchEvent.match_id == match_uuid,
+            MatchEvent.event_type == EventType.SUBSTITUTION,
+        )
+    )
+    for ev in sub_result.scalars().all():
+        if ev.player_id and ev.minute:
+            sub_lookup[ev.player_id] = ev.minute
+
+    # Calculate team totals and outfield averages
+    outfield_rows = [
+        (g, name, pos) for g, name, pos in gps_rows
+        if pos is None or (pos.value if hasattr(pos, 'value') else pos) != "goalkeeper"
+    ]
+
+    total_distance = sum(g.total_distance_m or 0 for g, _, _ in gps_rows)
+    total_hsr = sum(g.high_speed_running_m or 0 for g, _, _ in gps_rows)
+    total_sprints = sum(g.sprint_count or 0 for g, _, _ in gps_rows)
+    total_hmld = sum(g.hml_distance_m or 0 for g, _, _ in gps_rows)
+
+    outfield_distance = sum(g.total_distance_m or 0 for g, _, _ in outfield_rows)
+    outfield_sprints = sum(g.sprint_count or 0 for g, _, _ in outfield_rows)
+    avg_distance = outfield_distance / len(outfield_rows) if outfield_rows else 0
+    avg_sprints = outfield_sprints / len(outfield_rows) if outfield_rows else 0
+
+    # Build per-player data
+    players = []
+    for g, player_name, player_position in gps_rows:
+        pos_val = player_position.value if hasattr(player_position, 'value') else player_position if player_position else None
+        is_gk = pos_val == "goalkeeper"
+        was_subbed = g.player_id and g.player_id in sub_lookup
+
+        player_data = {
+            "name": player_name or "Unknown",
+            "position": pos_val,
+            "total_distance_m": round(g.total_distance_m or 0),
+            "distance_km": round((g.total_distance_m or 0) / 1000, 1),
+            "high_speed_running_m": round(g.high_speed_running_m or 0),
+            "hml_distance_m": round(g.hml_distance_m or 0),
+            "sprint_count": g.sprint_count or 0,
+            "max_speed_kmh": round((g.max_speed_ms or 0) * 3.6, 1),
+            "player_load": round(g.player_load or 0),
+            "playing_minutes": g.playing_minutes or g.duration_mins,
+        }
+
+        if was_subbed:
+            player_data["subbed_off_minute"] = sub_lookup[g.player_id]
+
+        # Outlier flags for outfield full-match players
+        if not is_gk and not was_subbed and g.total_distance_m and avg_distance > 0:
+            diff_pct = ((g.total_distance_m - avg_distance) / avg_distance) * 100
+            if diff_pct > 20:
+                player_data["workload_flag"] = "HIGH"
+            elif diff_pct < -20:
+                player_data["workload_flag"] = "LOW"
+
+        players.append(player_data)
+
+    return safe_json({
+        "player_count": len(gps_rows),
+        "team_totals": {
+            "total_distance_km": round(total_distance / 1000, 1),
+            "total_hsr_km": round(total_hsr / 1000, 1),
+            "total_hmld_km": round(total_hmld / 1000, 1),
+            "total_sprints": total_sprints,
+        },
+        "outfield_averages": {
+            "avg_distance_km": round(avg_distance / 1000, 1),
+            "avg_sprints": round(avg_sprints, 0),
+        },
+        "substitutions_count": len(sub_lookup),
+        "players": players,
+    })
+
+
+async def get_training_session_gps(db: AsyncSession, session_id: str) -> str:
+    """Get GPS data for a specific training session with per-player stats and recent averages."""
+    from app.models.training_performance import TrainingGPSData
+    from app.models.attendance import TrainingSession
+    import uuid as uuid_mod
+
+    try:
+        sid = uuid_mod.UUID(session_id)
+    except (ValueError, AttributeError):
+        return safe_json({"error": f"'{session_id}' is not a valid session UUID"})
+
+    # Get session info
+    sess_result = await db.execute(
+        select(TrainingSession).where(TrainingSession.id == sid)
+    )
+    session = sess_result.scalar_one_or_none()
+    if not session:
+        return safe_json({"error": "Training session not found"})
+
+    # Get GPS data for this session joined with player names
+    result = await db.execute(
+        select(TrainingGPSData, Player.name)
+        .join(Player, TrainingGPSData.player_id == Player.id)
+        .where(TrainingGPSData.session_id == sid)
+    )
+    rows = result.all()
+
+    if not rows:
+        return safe_json({"message": "No GPS data for this training session"})
+
+    # Compute aggregates
+    distances = [r[0].total_distance_m for r in rows if r[0].total_distance_m]
+    hsrs = [r[0].high_speed_running_m for r in rows if r[0].high_speed_running_m]
+    sprints = [r[0].sprint_count for r in rows if r[0].sprint_count]
+    dsls = [r[0].dynamic_stress_load for r in rows if r[0].dynamic_stress_load]
+
+    avg_dist = round(sum(distances) / len(distances)) if distances else 0
+    avg_hsr = round(sum(hsrs) / len(hsrs)) if hsrs else 0
+    avg_sprints = round(sum(sprints) / len(sprints)) if sprints else 0
+    avg_dsl = round(sum(dsls) / len(dsls)) if dsls else 0
+
+    # Per-player data
+    players = []
+    for gps, player_name in rows:
+        players.append({
+            "name": player_name,
+            "total_distance_m": round(gps.total_distance_m or 0),
+            "high_speed_running_m": round(gps.high_speed_running_m or 0),
+            "sprint_count": gps.sprint_count or 0,
+            "max_speed_kmh": round((gps.max_speed_ms or 0) * 3.6, 1),
+            "dynamic_stress_load": round(gps.dynamic_stress_load or 0),
+            "player_load": round(gps.player_load or 0) if gps.player_load else None,
+        })
+
+    # Fetch recent session averages (last 4 sessions before this one) for contextual comparison
+    from datetime import timedelta
+    recent_avg = {}
+    try:
+        recent_sessions_q = (
+            select(TrainingSession.id)
+            .where(
+                TrainingSession.id != sid,
+                TrainingSession.session_date < session.session_date,
+            )
+            .order_by(TrainingSession.session_date.desc())
+            .limit(4)
+        )
+        recent_sess_result = await db.execute(recent_sessions_q)
+        recent_sess_ids = [r[0] for r in recent_sess_result.all()]
+
+        if recent_sess_ids:
+            from sqlalchemy import func as sqla_func
+            avg_q = select(
+                sqla_func.avg(TrainingGPSData.total_distance_m).label("avg_dist"),
+                sqla_func.avg(TrainingGPSData.high_speed_running_m).label("avg_hsr"),
+                sqla_func.avg(TrainingGPSData.sprint_count).label("avg_sprints"),
+            ).where(TrainingGPSData.session_id.in_(recent_sess_ids))
+            avg_result = await db.execute(avg_q)
+            avg_row = avg_result.one()
+            recent_avg = {
+                "sessions_compared": len(recent_sess_ids),
+                "avg_distance_m": round(float(avg_row.avg_dist or 0)),
+                "avg_hsr_m": round(float(avg_row.avg_hsr or 0)),
+                "avg_sprints": round(float(avg_row.avg_sprints or 0), 1),
+            }
+    except Exception as e:
+        logger.warning(f"Recent session comparison failed: {e}")
+
+    return safe_json({
+        "session_date": str(session.session_date),
+        "player_count": len(rows),
+        "averages": {
+            "avg_distance_m": avg_dist,
+            "avg_hsr_m": avg_hsr,
+            "avg_sprints": avg_sprints,
+            "avg_dsl": avg_dsl,
+        },
+        "recent_session_averages": recent_avg,
+        "players": players,
+    })
 
 
 async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list = None) -> str:
@@ -600,10 +859,10 @@ def _normalize_agentic_chart(raw_chart: dict) -> dict:
 
 
 async def _execute_generate_chart(db: AsyncSession, query: str) -> str:
-    """Generate a chart via the agentic chart engine and normalize it."""
+    """Generate a chart via the chart engine code-gen and normalize it."""
     try:
-        from app.services.ai.chart_engine import generate_agentic_chart
-        result = await generate_agentic_chart(db, query)
+        from app.services.ai.chart_engine import _execute_chart_codegen
+        result = await _execute_chart_codegen(db, query)
         if result.get("success") and result.get("chart"):
             normalized = _normalize_agentic_chart(result["chart"])
             return safe_json({"success": True, "chart": normalized})
@@ -691,6 +950,110 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         })
 
     return safe_json({"events": events_data, "total": len(events_data)})
+
+
+async def get_fixture_context(db: AsyncSession) -> str:
+    """
+    Build a text block describing upcoming fixtures and recent form.
+
+    Used by KPI insights, insight alerts, and the chat agent to provide
+    fixture awareness without each function fetching independently.
+    Returns empty string if no upcoming fixtures.
+    """
+    try:
+        now = datetime.utcnow()
+        # Next 3 upcoming fixtures
+        fixture_query = (
+            select(Match)
+            .where(
+                Match.status == MatchStatus.SCHEDULED,
+                Match.is_deleted == False,
+                Match.match_date >= now,
+            )
+            .order_by(Match.match_date.asc())
+            .limit(3)
+        )
+        fixture_result = await db.execute(fixture_query)
+        fixtures = fixture_result.scalars().all()
+        if not fixtures:
+            return ""
+
+        lines = ["## Upcoming Fixtures"]
+        for f in fixtures:
+            venue = f.venue.value if f.venue else "TBD"
+            comp = f.competition or ""
+            line = f"  - {f.match_date.strftime('%a %d %b %Y %H:%M')} vs {f.opponent} ({venue})"
+            if comp:
+                line += f" — {comp}"
+            lines.append(line)
+
+        # Opponent form from scraped fixtures (for the NEXT match only)
+        next_fixture = fixtures[0]
+        try:
+            from app.services.fixture_scraper import FixtureScraperService
+            opponent_form = await FixtureScraperService.get_opponent_form(
+                db, next_fixture.opponent, club_id=next_fixture.club_id
+            )
+            if opponent_form:
+                lines.append(f"\n  Next opponent ({next_fixture.opponent}) recent form:")
+                for r in opponent_form[:5]:
+                    lines.append(
+                        f"    {r['result']} vs {r['opponent_faced']} "
+                        f"({r['score_for']}-{r['score_against']}, {r['date'][:10]})"
+                    )
+        except Exception as e:
+            logger.debug(f"Opponent form lookup failed: {e}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.warning(f"Fixture context fetch failed: {e}")
+        return ""
+
+
+async def get_weather_context(db: AsyncSession, limit: int = 5) -> str:
+    """
+    Build a text block of weather/pitch conditions from recent completed matches.
+
+    Helps the AI correlate performance with conditions.
+    Returns empty string if no weather data recorded.
+    """
+    try:
+        from app.models.match import WeatherCondition, PitchCondition
+
+        weather_query = (
+            select(Match)
+            .where(
+                Match.status == MatchStatus.COMPLETED,
+                Match.is_deleted == False,
+                Match.weather_condition.isnot(None),
+            )
+            .order_by(Match.match_date.desc())
+            .limit(limit)
+        )
+        weather_result = await db.execute(weather_query)
+        matches = weather_result.scalars().all()
+        if not matches:
+            return ""
+
+        lines = ["## Match Weather & Pitch Conditions"]
+        for m in matches:
+            weather = m.weather_condition.value if m.weather_condition else "unknown"
+            pitch = m.pitch_condition.value if m.pitch_condition else "unknown"
+            temp = f"{m.temperature_celsius}°C" if m.temperature_celsius is not None else "N/A"
+            wind = f"{m.wind_speed_kmh} km/h" if m.wind_speed_kmh is not None else "N/A"
+            result = m.result or "N/A"
+            score = f"{m.team_goals}-{m.team_points} to {m.opponent_goals}-{m.opponent_points}"
+            lines.append(
+                f"  - vs {m.opponent} ({m.match_date.strftime('%d %b')}): "
+                f"{weather}, pitch {pitch}, {temp}, wind {wind} → {result} ({score})"
+            )
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.warning(f"Weather context fetch failed: {e}")
+        return ""
 
 
 async def get_match_summary(db: AsyncSession, match_id) -> str:
@@ -1447,272 +1810,3 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
             "period": f"Last {weeks} weeks",
         })
 
-
-# =============================================================================
-# INSIGHT ALERT GENERATION
-# =============================================================================
-
-async def generate_insight_alerts(
-    db: AsyncSession,
-    source: str,
-    session_id=None,
-    match_id=None,
-) -> list[dict]:
-    """
-    Generate cross-cutting insight alerts after a data upload.
-
-    Gathers context from training GPS, match results, squad readiness,
-    and previous insights, then asks Sonnet to detect noteworthy patterns.
-    Returns 0-3 insight dicts and persists them as InsightAlert rows.
-    """
-    from app.models.insight_alert import InsightAlert, AlertCategory, AlertSource
-    from app.models.training_performance import TrainingGPSData
-    from app.models.attendance import TrainingSession
-    from datetime import timedelta
-
-    # --- Gather context ---
-    now = datetime.utcnow()
-    four_weeks_ago = now - timedelta(weeks=4)
-
-    # 1. Last 4 weeks training GPS (team averages per session)
-    training_context = ""
-    try:
-        gps_query = (
-            select(
-                TrainingSession.id,
-                TrainingSession.session_date,
-                func.avg(TrainingGPSData.total_distance).label("avg_distance"),
-                func.avg(TrainingGPSData.sprint_count).label("avg_sprints"),
-                func.avg(TrainingGPSData.max_speed).label("avg_max_speed"),
-                func.avg(TrainingGPSData.high_speed_running).label("avg_hsr"),
-                func.count(TrainingGPSData.id).label("player_count"),
-            )
-            .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
-            .where(TrainingSession.session_date >= four_weeks_ago)
-            .group_by(TrainingSession.id, TrainingSession.session_date)
-            .order_by(TrainingSession.session_date.desc())
-            .limit(12)
-        )
-        gps_result = await db.execute(gps_query)
-        gps_rows = gps_result.all()
-        if gps_rows:
-            lines = []
-            for row in gps_rows:
-                lines.append(
-                    f"  {row.session_date}: {row.player_count} players, "
-                    f"avg dist={round(row.avg_distance or 0)}m, "
-                    f"avg sprints={round(row.avg_sprints or 0)}, "
-                    f"avg HSR={round(row.avg_hsr or 0)}m, "
-                    f"avg max speed={round(row.avg_max_speed or 0, 1)} km/h"
-                )
-            training_context = "Recent training sessions (last 4 weeks):\n" + "\n".join(lines)
-    except Exception as e:
-        logger.warning(f"Insight context: training GPS fetch failed: {e}")
-
-    # 2. Last 5 match results
-    match_context = ""
-    try:
-        matches_query = (
-            select(Match)
-            .where(Match.status == "completed")
-            .order_by(Match.match_date.desc())
-            .limit(5)
-        )
-        matches_result = await db.execute(matches_query)
-        recent_matches = matches_result.scalars().all()
-        if recent_matches:
-            lines = []
-            for m in recent_matches:
-                lines.append(
-                    f"  {m.match_date} vs {m.opponent}: "
-                    f"Team {m.team_goals}-{m.team_points} "
-                    f"Opp {m.opponent_goals}-{m.opponent_points}"
-                )
-            match_context = "Recent match results:\n" + "\n".join(lines)
-    except Exception as e:
-        logger.warning(f"Insight context: match fetch failed: {e}")
-
-    # 3. Previous undismissed insights (avoid repetition)
-    previous_insights_text = ""
-    try:
-        prev_query = (
-            select(InsightAlert)
-            .where(InsightAlert.is_dismissed == False)
-            .order_by(InsightAlert.created_at.desc())
-            .limit(10)
-        )
-        prev_result = await db.execute(prev_query)
-        prev_alerts = prev_result.scalars().all()
-        if prev_alerts:
-            lines = [f"  - [{a.category.value}] {a.title}: {a.message}" for a in prev_alerts]
-            previous_insights_text = "Previous undismissed insights (do NOT repeat these):\n" + "\n".join(lines)
-    except Exception as e:
-        logger.warning(f"Insight context: previous insights fetch failed: {e}")
-
-    # 4. Just-uploaded data specifics
-    upload_context = ""
-    if source == "training_gps" and session_id:
-        try:
-            sess_q = select(TrainingSession).where(TrainingSession.id == session_id)
-            sess_r = await db.execute(sess_q)
-            sess = sess_r.scalar_one_or_none()
-            gps_q = select(TrainingGPSData).where(TrainingGPSData.session_id == session_id)
-            gps_r = await db.execute(gps_q)
-            gps_data = gps_r.scalars().all()
-            if sess and gps_data:
-                lines = [f"Just uploaded: Training session {sess.session_date}, {len(gps_data)} players"]
-                for g in gps_data[:10]:
-                    lines.append(
-                        f"  {g.player_name}: dist={g.total_distance}m, sprints={g.sprint_count}, "
-                        f"HSR={g.high_speed_running}m, max_speed={g.max_speed} km/h"
-                    )
-                upload_context = "\n".join(lines)
-        except Exception as e:
-            logger.warning(f"Insight context: upload specifics failed: {e}")
-    elif source == "match_gps" and match_id:
-        try:
-            from app.models.match_gps import MatchGPSData
-            match_q = select(Match).where(Match.id == match_id)
-            match_r = await db.execute(match_q)
-            match_obj = match_r.scalar_one_or_none()
-            mgps_q = select(MatchGPSData).where(MatchGPSData.match_id == match_id)
-            mgps_r = await db.execute(mgps_q)
-            mgps_data = mgps_r.scalars().all()
-            if match_obj and mgps_data:
-                lines = [f"Just uploaded: Match GPS for {match_obj.opponent} ({match_obj.match_date}), {len(mgps_data)} players"]
-                for g in mgps_data[:10]:
-                    lines.append(
-                        f"  {g.player_name}: dist={g.total_distance}m, sprints={g.sprint_count}, "
-                        f"HSR={g.high_speed_running}m, max_speed={g.max_speed} km/h"
-                    )
-                upload_context = "\n".join(lines)
-        except Exception as e:
-            logger.warning(f"Insight context: match GPS specifics failed: {e}")
-    elif source == "video_sync" and match_id:
-        try:
-            match_q = select(Match).where(Match.id == match_id)
-            match_r = await db.execute(match_q)
-            match_obj = match_r.scalar_one_or_none()
-            if match_obj:
-                # Count match events after sync
-                event_count_q = select(func.count(MatchEvent.id)).where(MatchEvent.match_id == match_id)
-                event_count_r = await db.execute(event_count_q)
-                event_count = event_count_r.scalar() or 0
-                upload_context = (
-                    f"Just synced: Video events for match vs {match_obj.opponent} ({match_obj.match_date}), "
-                    f"{event_count} total match events after sync. "
-                    f"Score: Team {match_obj.team_goals}-{match_obj.team_points} "
-                    f"Opp {match_obj.opponent_goals}-{match_obj.opponent_points}"
-                )
-        except Exception as e:
-            logger.warning(f"Insight context: video sync specifics failed: {e}")
-
-    # --- Build prompt and call Sonnet ---
-    system_prompt = f"""You are an elite GAA performance analyst for Dungloe GAA club.
-Your job is to detect CROSS-CUTTING patterns that connect training data to match performance,
-identify multi-week trends, and spot player trajectory changes.
-
-{GAA_ESSENTIALS}
-
-## Static Charts Already Visible on Dashboards (do NOT narrate these)
-{STATIC_CHARTS_TEXT}
-
-## Rules
-1. Focus on CROSS-CUTTING patterns: training→match links, multi-week trends, player trajectory changes
-2. Reference SPECIFIC numbers and player names — no vague observations
-3. Do NOT narrate what the static charts already show (listed above)
-4. Do NOT repeat previous insights (listed below)
-5. Return 0 insights if nothing is genuinely noteworthy — quality over quantity
-6. Each insight must be actionable for a GAA manager
-7. Return a JSON array of 0-3 insight objects
-
-## JSON format for each insight:
-{{
-    "category": "warning" | "positive" | "tactical" | "workload",
-    "title": "Short heading (max 100 chars)",
-    "message": "1-3 sentences with specific numbers/names",
-    "severity": "info" | "watch" | "action",
-    "dashboard": "season" | "training" | "both"
-}}
-
-Return ONLY a valid JSON array. If nothing noteworthy, return [].
-"""
-
-    user_content = f"""Analyze this data for cross-cutting patterns:
-
-{training_context}
-
-{match_context}
-
-{upload_context}
-
-{previous_insights_text}
-
-Source of this upload: {source}
-Return your insights as a JSON array."""
-
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1500,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}],
-        )
-
-        response_text = response.content[0].text
-
-        # Parse JSON array from response
-        import re
-        json_match = re.search(r'\[[\s\S]*\]', response_text)
-        if json_match:
-            insights = json.loads(json_match.group())
-        else:
-            logger.info("Insight generation returned no JSON array — treating as 0 insights")
-            return []
-
-        if not isinstance(insights, list):
-            return []
-
-        # Persist to DB
-        source_map = {
-            "training_gps": AlertSource.TRAINING_GPS,
-            "match_gps": AlertSource.MATCH_GPS,
-            "video_sync": AlertSource.VIDEO_SYNC,
-            "manual": AlertSource.MANUAL,
-        }
-        source_enum = source_map.get(source, AlertSource.MATCH_GPS)
-        created = []
-        for ins in insights[:3]:
-            try:
-                cat_val = ins.get("category", "tactical")
-                category_enum = AlertCategory(cat_val)
-            except ValueError:
-                category_enum = AlertCategory.TACTICAL
-
-            alert = InsightAlert(
-                category=category_enum,
-                source=source_enum,
-                title=ins.get("title", "Insight")[:200],
-                message=ins.get("message", ""),
-                severity=ins.get("severity", "info"),
-                session_id=session_id,
-                match_id=match_id,
-                dashboard=ins.get("dashboard", "both"),
-            )
-            db.add(alert)
-            created.append({
-                "id": str(alert.id),
-                "category": alert.category.value,
-                "title": alert.title,
-                "message": alert.message,
-                "severity": alert.severity,
-                "dashboard": alert.dashboard,
-            })
-
-        await db.commit()
-        logger.info(f"Generated {len(created)} insight alerts from {source}")
-        return created
-
-    except Exception as e:
-        logger.error(f"Insight alert generation failed: {e}")
-        return []

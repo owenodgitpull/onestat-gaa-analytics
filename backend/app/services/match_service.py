@@ -69,6 +69,7 @@ class MatchService:
         status: Optional[MatchStatus] = None,
         venue: Optional[MatchVenue] = None,
         club_id=None,
+        sort_asc: bool = False,
     ) -> tuple[List[Match], int]:
         """
         List matches with filtering and pagination.
@@ -93,10 +94,11 @@ class MatchService:
         total = count_result.scalar_one()
         
         # Get matches
+        order = Match.match_date.asc() if sort_asc else Match.match_date.desc()
         result = await db.execute(
             select(Match)
             .where(and_(*conditions))
-            .order_by(Match.match_date.desc())
+            .order_by(order)
             .offset(skip)
             .limit(limit)
         )
@@ -194,12 +196,19 @@ class MatchService:
         await db.commit()
         await db.refresh(match)
 
-        # Trigger AI analysis in background (non-blocking)
+        # Trigger AI analysis in background (non-blocking) — only if match has events
         if trigger_ai_analysis:
-            asyncio.create_task(
-                MatchService._generate_post_match_analysis(str(match_id))
+            event_count_result = await db.execute(
+                select(func.count(MatchEvent.id)).where(MatchEvent.match_id == match_id)
             )
-            logger.info(f"Triggered post-match AI analysis for match {match_id}")
+            event_count = event_count_result.scalar() or 0
+            if event_count > 0:
+                asyncio.create_task(
+                    MatchService._generate_post_match_analysis(str(match_id))
+                )
+                logger.info(f"Triggered post-match AI analysis for match {match_id} ({event_count} events)")
+            else:
+                logger.info(f"Skipped AI analysis for match {match_id} — no events recorded")
 
         return match
 

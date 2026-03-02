@@ -296,7 +296,7 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
 
             # Generate AI training summary
             try:
-                from app.services.ai.training_agent import analyze_training_session
+                from app.services.ai import analyze_training_session
                 result = await analyze_training_session(db, str(session_id))
                 if result.get("summary"):
                     session_query = select(TrainingSession).where(TrainingSession.id == session_id)

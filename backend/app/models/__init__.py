@@ -36,6 +36,9 @@ from app.models.player_challenge import PlayerChallenge
 from app.models.video_session import VideoSession
 from app.models.video_event import VideoEvent, VIDEO_EVENT_TYPES, PITCH_ZONES, TWO_POINTER_ZONES
 from app.models.possession_chain import PossessionChain
+from app.models.ball_position_sample import BallPositionSample
+from app.models.scraped_fixture import ScrapedFixture
+from app.models.season_cache import SeasonCache
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -91,5 +94,8 @@ __all__ = [
     "PITCH_ZONES",
     "TWO_POINTER_ZONES",
     "PossessionChain",
+    "BallPositionSample",
+    "ScrapedFixture",
+    "SeasonCache",
 ]
 

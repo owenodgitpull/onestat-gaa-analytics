@@ -60,6 +60,7 @@ class VideoSession(Base):
     match = relationship("Match", back_populates="video_sessions")
     events = relationship("VideoEvent", back_populates="video_session", lazy="selectin", cascade="all, delete-orphan")
     possession_chains = relationship("PossessionChain", back_populates="video_session", lazy="selectin", cascade="all, delete-orphan")
+    ball_samples = relationship("BallPositionSample", back_populates="video_session", cascade="all, delete-orphan")
     reviewed_by = relationship("User", foreign_keys=[reviewed_by_user_id], lazy="selectin")
 
     def __repr__(self):
