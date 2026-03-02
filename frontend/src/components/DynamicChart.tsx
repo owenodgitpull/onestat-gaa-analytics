@@ -319,14 +319,14 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
           let lateral = ''
           if (y < 30) lateral = ' on the left'
           else if (y > 70) lateral = ' on the right'
-          if (normX <= 5) return `the own goal area`
-          if (normX <= 13) return `the own 13m line${lateral}`
-          if (normX <= 20) return `the own 21m line${lateral}`
-          if (normX <= 35) return `the own 45m line${lateral}`
+          if (normX <= 4) return `our square`
+          if (normX <= 10) return `our 13m line${lateral}`
+          if (normX <= 15) return `our 21m line${lateral}`
+          if (normX <= 33) return `our 45m line${lateral}`
           if (normX <= 50) return `midfield${lateral}`
-          if (normX <= 65) return `the opposition 45m line${lateral}`
-          if (normX <= 80) return `outside the arc${lateral}`
-          if (normX <= 90) return `inside the arc${lateral}`
+          if (normX <= 68) return `the opposition 45m line${lateral}`
+          if (normX <= 86) return `outside the arc${lateral}`
+          if (normX <= 91) return `inside the arc${lateral}`
           if (normX <= 97) return `the 13m line${lateral}`
           return `the square`
         }
