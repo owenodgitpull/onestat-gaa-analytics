@@ -248,3 +248,30 @@ export interface PitchZone {
   isTwoPointZone?: boolean;
 }
 
+// Knowledge Base
+export interface KnowledgeDoc {
+  id: string;
+  filename: string;
+  original_filename: string;
+  doc_type: string;
+  is_default: boolean;
+  processing_status: 'pending' | 'processing' | 'completed' | 'failed';
+  processing_error: string | null;
+  chunk_count: number;
+  file_size_bytes: number | null;
+  content_type: string | null;
+  created_at: string | null;
+}
+
+// Club Members
+export interface ClubMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  is_active: boolean;
+  player_id: string | null;
+  last_login_at: string | null;
+  created_at: string | null;
+}
+

@@ -36,7 +36,7 @@ async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_m
     # Get relevant knowledge base context via RAG
     try:
         kb_context = await RAGService.get_context_for_query(
-            db, user_message, context_type='general', max_tokens=3000
+            db, user_message, context_type='general', max_tokens=3000, club_id=club_id
         )
     except Exception as e:
         logger.warning(f"RAG context retrieval failed: {e}")
@@ -151,7 +151,7 @@ async def _build_chat_system_prompt(
     # Get relevant knowledge base context via RAG
     try:
         kb_context = await RAGService.get_context_for_query(
-            db, user_message, context_type='general', max_tokens=3000
+            db, user_message, context_type='general', max_tokens=3000, club_id=club_id
         )
     except Exception as e:
         logger.warning(f"RAG context retrieval failed: {e}")

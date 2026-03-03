@@ -1,12 +1,11 @@
 """
-RAG (Retrieval-Augmented Generation) Service for Dungloe GAA Analytics.
+RAG (Retrieval-Augmented Generation) Service for GAA Analytics.
 
 Implements a hybrid search approach:
 1. Keyword-based search using TF-IDF style scoring
 2. Optional vector search using pgvector (when embeddings are available)
 
-This provides semantic search without requiring expensive embedding APIs,
-while supporting them when budget allows.
+Multi-tenant: all queries are scoped to club_id OR shared defaults (club_id=NULL).
 """
 
 import re
@@ -34,6 +33,7 @@ class RAGService:
     - Keyword extraction for hybrid search
     - BM25-style ranking for relevance
     - Context-aware retrieval for different use cases
+    - Multi-tenant club scoping
     """
 
     # Chunking parameters
@@ -71,22 +71,14 @@ class RAGService:
         source_file: str,
         content: str,
         doc_type: str,
-        force: bool = False
+        force: bool = False,
+        club_id=None,
     ) -> Dict[str, Any]:
         """
         Process a document for RAG retrieval.
 
         Chunks the document, extracts keywords, and stores in database.
-
-        Args:
-            db: Database session
-            source_file: Name of the source file
-            content: Full document content
-            doc_type: Type of document (rules, statsports, tactics)
-            force: If True, reprocess even if already processed
-
-        Returns:
-            Processing status and statistics
+        club_id=None means shared default (accessible to all clubs).
         """
         # Check if already processed
         content_hash = hashlib.sha256(content.encode()).hexdigest()
@@ -121,7 +113,7 @@ class RAGService:
         chunks = RAGService._chunk_document(content, doc_type)
         logger.info(f"Split {source_file} into {len(chunks)} chunks")
 
-        # Store chunks
+        # Store chunks with club_id
         for i, chunk_data in enumerate(chunks):
             chunk = DocumentChunk(
                 source_file=source_file,
@@ -131,7 +123,8 @@ class RAGService:
                 content_length=len(chunk_data['content']),
                 section_title=chunk_data.get('section'),
                 page_number=chunk_data.get('page'),
-                keywords=chunk_data['keywords']
+                keywords=chunk_data['keywords'],
+                club_id=club_id,
             )
             db.add(chunk)
 
@@ -259,20 +252,12 @@ class RAGService:
         query: str,
         doc_types: Optional[List[str]] = None,
         limit: int = 5,
-        context_type: str = 'general'
+        context_type: str = 'general',
+        club_id=None,
     ) -> List[Dict[str, Any]]:
         """
         Search for relevant document chunks using hybrid search.
-
-        Args:
-            db: Database session
-            query: Search query
-            doc_types: Filter by document types (rules, statsports, tactics)
-            limit: Maximum number of results
-            context_type: Type of context needed (live_match, analytics, post_match)
-
-        Returns:
-            List of relevant chunks with scores
+        Returns club's own chunks + shared defaults (club_id=NULL).
         """
         # Extract query keywords
         query_keywords = RAGService._extract_keywords(query)
@@ -287,6 +272,12 @@ class RAGService:
         # Filter by doc types if specified
         if doc_types:
             base_query = base_query.where(DocumentChunk.doc_type.in_(doc_types))
+
+        # Multi-tenant: club's own docs + shared defaults
+        if club_id:
+            base_query = base_query.where(
+                or_(DocumentChunk.club_id == club_id, DocumentChunk.club_id.is_(None))
+            )
 
         # Get all matching chunks
         result = await db.execute(base_query)
@@ -365,22 +356,14 @@ class RAGService:
         db: AsyncSession,
         query: str,
         context_type: str = 'general',
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
+        club_id=None,
     ) -> str:
         """
         Get relevant context for an AI query using RAG.
 
         This is the main entry point for the AI service to get
         relevant knowledge base context.
-
-        Args:
-            db: Database session
-            query: The user's query or context description
-            context_type: Type of context (live_match, analytics, post_match)
-            max_tokens: Approximate max context length
-
-        Returns:
-            Formatted context string from relevant documents
         """
         # Determine which doc types are most relevant
         doc_types = None
@@ -393,7 +376,7 @@ class RAGService:
 
         # Search for relevant chunks
         results = await RAGService.search(
-            db, query, doc_types=doc_types, limit=8
+            db, query, doc_types=doc_types, limit=8, club_id=club_id
         )
 
         if not results:
@@ -423,11 +406,12 @@ class RAGService:
         return ""
 
     @staticmethod
-    async def sync_knowledge_base(db: AsyncSession, kb_path: Path) -> Dict[str, Any]:
+    async def sync_knowledge_base(db: AsyncSession, kb_path: Path, club_id=None) -> Dict[str, Any]:
         """
         Sync all documents from the knowledge base folder to the database.
 
         Processes new documents and updates changed ones.
+        Bundled defaults use club_id=None (shared).
         """
         from app.services.knowledge_base_service import get_knowledge_base
 
@@ -446,7 +430,8 @@ class RAGService:
                     db,
                     source_file=doc.filename,
                     content=doc.content,
-                    doc_type=doc.doc_type
+                    doc_type=doc.doc_type,
+                    club_id=club_id,
                 )
 
                 if result['status'] == 'processed':
@@ -464,14 +449,23 @@ class RAGService:
         return results
 
     @staticmethod
-    async def get_stats(db: AsyncSession) -> Dict[str, Any]:
-        """Get statistics about the RAG index."""
+    async def get_stats(db: AsyncSession, club_id=None) -> Dict[str, Any]:
+        """Get statistics about the RAG index, scoped to club + shared."""
+        base_filter = select(DocumentChunk)
+        if club_id:
+            base_filter = base_filter.where(
+                or_(DocumentChunk.club_id == club_id, DocumentChunk.club_id.is_(None))
+            )
+
         # Count chunks by doc type
         result = await db.execute(
             select(
                 DocumentChunk.doc_type,
                 func.count(DocumentChunk.id).label('count'),
                 func.sum(DocumentChunk.content_length).label('total_length')
+            ).where(
+                or_(DocumentChunk.club_id == club_id, DocumentChunk.club_id.is_(None))
+                if club_id else True
             ).group_by(DocumentChunk.doc_type)
         )
 

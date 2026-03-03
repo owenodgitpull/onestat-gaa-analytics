@@ -106,7 +106,7 @@ class SeasonAgent:
         try:
             rag_query = _task_to_rag_query(task)
             kb_context = await RAGService.get_context_for_query(
-                db, rag_query, context_type='analytics', max_tokens=2000
+                db, rag_query, context_type='analytics', max_tokens=2000, club_id=club_id
             )
         except Exception as e:
             logger.warning(f"RAG context retrieval failed: {e}")

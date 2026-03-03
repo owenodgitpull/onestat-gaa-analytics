@@ -5,6 +5,8 @@ Provides endpoints for:
 - Syncing knowledge base documents to the RAG index
 - Searching the knowledge base semantically
 - Getting RAG statistics
+
+All queries are club-scoped: returns club's docs + shared defaults.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -78,18 +80,14 @@ async def sync_knowledge_base(
 ):
     """
     Sync the knowledge base folder to the RAG index.
-
-    Processes all documents in the Knowledge base folder:
-    - Chunks documents for retrieval
-    - Extracts keywords for search
-    - Skips documents that haven't changed
+    Bundled defaults are processed with club_id=None (shared).
     """
     try:
         # Get the knowledge base path
         project_root = Path(__file__).parent.parent.parent.parent
         kb_path = project_root / "Knowledge base"
 
-        result = await RAGService.sync_knowledge_base(db, kb_path)
+        result = await RAGService.sync_knowledge_base(db, kb_path, club_id=None)
         return SyncResponse(**result)
 
     except Exception as e:
@@ -105,11 +103,7 @@ async def search_knowledge_base(
 ):
     """
     Search the knowledge base using semantic/keyword search.
-
-    Uses hybrid search combining:
-    - Keyword matching with TF-IDF-style scoring
-    - GAA domain term boosting
-    - Document type relevance weighting
+    Returns club's docs + shared defaults.
     """
     try:
         results = await RAGService.search(
@@ -117,7 +111,8 @@ async def search_knowledge_base(
             query=request.query,
             doc_types=request.doc_types,
             limit=request.limit,
-            context_type=request.context_type
+            context_type=request.context_type,
+            club_id=user.club_id,
         )
 
         return SearchResponse(
@@ -139,16 +134,15 @@ async def get_context(
 ):
     """
     Get formatted context for an AI query.
-
-    This is the main endpoint for the AI service to retrieve
-    relevant knowledge base context for a given query.
+    Scoped to club's docs + shared defaults.
     """
     try:
         context = await RAGService.get_context_for_query(
             db,
             query=request.query,
             context_type=request.context_type,
-            max_tokens=request.max_tokens
+            max_tokens=request.max_tokens,
+            club_id=user.club_id,
         )
 
         # Count how many chunks were used
@@ -171,15 +165,10 @@ async def get_rag_stats(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get statistics about the RAG index.
-
-    Shows:
-    - Total documents and chunks indexed
-    - Breakdown by document type
-    - Processing details for each document
+    Get statistics about the RAG index, scoped to club + shared.
     """
     try:
-        stats = await RAGService.get_stats(db)
+        stats = await RAGService.get_stats(db, club_id=user.club_id)
         return StatsResponse(**stats)
 
     except Exception as e:

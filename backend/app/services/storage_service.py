@@ -6,9 +6,13 @@ S3-compatible object storage for:
 - Fitness test uploads
 - Knowledge base documents
 - Media files (future)
+
+Multi-tenant: all new uploads are scoped under {club_id}/ prefix.
+Legacy keys (pre-scoping) are allowed through with a warning.
 """
 
 import os
+import re
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -19,22 +23,16 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
+# Pattern: keys starting with a UUID prefix (club-scoped) or "shared/"
+_CLUB_SCOPED_RE = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/'
+)
+
 
 class StorageService:
     """
     Cloudflare R2 storage service using S3-compatible API.
-
-    Usage:
-        storage = StorageService()
-
-        # Upload a file
-        key = await storage.upload_file(file, "gps", "session_123.csv")
-
-        # Get download URL
-        url = storage.get_download_url(key)
-
-        # Delete file
-        storage.delete_file(key)
+    All new uploads are club-scoped: {club_id}/{folder}/...
     """
 
     def __init__(self):
@@ -75,29 +73,59 @@ class StorageService:
             self.client = None
             logger.warning("R2 Storage not configured - file uploads will be disabled")
 
-    def _generate_key(self, folder: str, filename: str, include_date: bool = True) -> str:
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _generate_key(
+        self, folder: str, filename: str, club_id: Optional[str] = None, include_date: bool = True
+    ) -> str:
         """
         Generate a unique S3 key for the file.
 
-        Args:
-            folder: Top-level folder (gps, fitness, knowledge, media)
-            filename: Original filename
-            include_date: Whether to include date in path
-
-        Returns:
-            S3 key like "gps/2024/01/uuid_filename.csv"
+        New format: {club_id}/{folder}/{year}/{month}/{uuid}_{filename}
+        Shared:     shared/{folder}/{uuid}_{filename}
         """
-        # Generate unique prefix to avoid collisions
         unique_id = str(uuid.uuid4())[:8]
-
-        # Clean filename
         safe_filename = "".join(c for c in filename if c.isalnum() or c in "._-")
+
+        prefix = f"{club_id}/" if club_id else "shared/"
 
         if include_date:
             now = datetime.utcnow()
-            return f"{folder}/{now.year}/{now.month:02d}/{unique_id}_{safe_filename}"
+            return f"{prefix}{folder}/{now.year}/{now.month:02d}/{unique_id}_{safe_filename}"
         else:
-            return f"{folder}/{unique_id}_{safe_filename}"
+            return f"{prefix}{folder}/{unique_id}_{safe_filename}"
+
+    @staticmethod
+    def _is_legacy_key(key: str) -> bool:
+        """Detect pre-scoping keys that don't start with a club UUID or 'shared/'."""
+        if key.startswith("shared/"):
+            return False
+        if _CLUB_SCOPED_RE.match(key):
+            return False
+        # Old format: folder/year/month/uuid_file  e.g. "video/2026/02/abc_file.mp4"
+        return True
+
+    def _validate_club_access(self, key: str, club_id: Optional[str]) -> None:
+        """
+        Guard: ensure the requesting club owns the key.
+        Legacy keys (pre-scoping) are allowed through with a warning.
+        Shared keys are accessible to everyone.
+        """
+        if not club_id:
+            return  # No club context (e.g. background tasks) — skip
+        if key.startswith("shared/"):
+            return
+        if self._is_legacy_key(key):
+            logger.warning(f"Legacy key accessed: {key} by club {club_id}")
+            return
+        if not key.startswith(f"{club_id}/"):
+            raise PermissionError(f"Access denied to key for club {club_id}")
+
+    # ------------------------------------------------------------------
+    # Upload methods
+    # ------------------------------------------------------------------
 
     def upload_file(
         self,
@@ -105,27 +133,16 @@ class StorageService:
         folder: str,
         filename: str,
         content_type: Optional[str] = None,
-        metadata: Optional[dict] = None
+        metadata: Optional[dict] = None,
+        club_id: Optional[str] = None,
     ) -> Optional[str]:
-        """
-        Upload a file to R2.
-
-        Args:
-            file_data: File-like object to upload
-            folder: Folder name (gps, fitness, knowledge, media)
-            filename: Original filename
-            content_type: MIME type (auto-detected if not provided)
-            metadata: Additional metadata to store with file
-
-        Returns:
-            S3 key of uploaded file, or None if upload failed
-        """
+        """Upload a file to R2 under the club's prefix."""
         if not self.is_configured:
             logger.error("R2 not configured - cannot upload file")
             return None
 
         try:
-            key = self._generate_key(folder, filename)
+            key = self._generate_key(folder, filename, club_id=club_id)
 
             extra_args = {}
             if content_type:
@@ -152,14 +169,15 @@ class StorageService:
         data: bytes,
         folder: str,
         filename: str,
-        content_type: Optional[str] = None
+        content_type: Optional[str] = None,
+        club_id: Optional[str] = None,
     ) -> Optional[str]:
-        """Upload bytes directly to R2."""
+        """Upload bytes directly to R2 under the club's prefix."""
         if not self.is_configured:
             return None
 
         try:
-            key = self._generate_key(folder, filename)
+            key = self._generate_key(folder, filename, club_id=club_id)
 
             extra_args = {}
             if content_type:
@@ -179,105 +197,21 @@ class StorageService:
             logger.error(f"Failed to upload bytes to R2: {e}")
             return None
 
-    def download_file(self, key: str) -> Optional[bytes]:
-        """
-        Download a file from R2.
-
-        Args:
-            key: S3 key of the file
-
-        Returns:
-            File contents as bytes, or None if download failed
-        """
-        if not self.is_configured:
-            return None
-
-        try:
-            response = self.client.get_object(
-                Bucket=self.bucket_name,
-                Key=key
-            )
-            return response['Body'].read()
-
-        except ClientError as e:
-            logger.error(f"Failed to download from R2: {e}")
-            return None
-
-    def download_file_to_path(self, key: str, dest_path: str) -> bool:
-        """
-        Stream a file from R2 directly to a local path (no full-file memory buffer).
-
-        Args:
-            key: S3 key of the file
-            dest_path: Local file path to write to
-
-        Returns:
-            True if successful, False otherwise
-        """
-        if not self.is_configured:
-            return False
-
-        try:
-            self.client.download_file(self.bucket_name, key, dest_path)
-            return True
-        except ClientError as e:
-            logger.error(f"Failed to stream download from R2: {e}")
-            return False
-
-    def get_download_url(self, key: str, expires_in: int = 3600) -> Optional[str]:
-        """
-        Generate a pre-signed URL for downloading a file.
-
-        Args:
-            key: S3 key of the file
-            expires_in: URL expiration time in seconds (default 1 hour)
-
-        Returns:
-            Pre-signed download URL, or None if generation failed
-        """
-        if not self.is_configured:
-            return None
-
-        try:
-            url = self.client.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': self.bucket_name,
-                    'Key': key
-                },
-                ExpiresIn=expires_in
-            )
-            return url
-
-        except ClientError as e:
-            logger.error(f"Failed to generate presigned URL: {e}")
-            return None
-
     def generate_presigned_upload_url(
         self,
         folder: str,
         filename: str,
         content_type: str = "video/mp4",
         expires_in: int = 3600,
+        club_id: Optional[str] = None,
     ) -> Optional[dict]:
-        """
-        Generate a presigned PUT URL for direct browser-to-R2 upload.
-
-        Args:
-            folder: Folder name (e.g., "video")
-            filename: Original filename
-            content_type: MIME type of the file
-            expires_in: URL expiration time in seconds (default 1 hour)
-
-        Returns:
-            Dict with 'upload_url' and 'key', or None if generation failed
-        """
+        """Generate a presigned PUT URL for direct browser-to-R2 upload."""
         if not self.is_configured:
             logger.error("R2 not configured - cannot generate presigned upload URL")
             return None
 
         try:
-            key = self._generate_key(folder, filename)
+            key = self._generate_key(folder, filename, club_id=club_id)
 
             url = self.client.generate_presigned_url(
                 'put_object',
@@ -295,18 +229,74 @@ class StorageService:
             logger.error(f"Failed to generate presigned upload URL: {e}")
             return None
 
-    def delete_file(self, key: str) -> bool:
-        """
-        Delete a file from R2.
+    # ------------------------------------------------------------------
+    # Download / read methods
+    # ------------------------------------------------------------------
 
-        Args:
-            key: S3 key of the file
+    def download_file(self, key: str, club_id: Optional[str] = None) -> Optional[bytes]:
+        """Download a file from R2 with club access validation."""
+        if not self.is_configured:
+            return None
 
-        Returns:
-            True if deleted successfully, False otherwise
-        """
+        self._validate_club_access(key, club_id)
+
+        try:
+            response = self.client.get_object(
+                Bucket=self.bucket_name,
+                Key=key
+            )
+            return response['Body'].read()
+
+        except ClientError as e:
+            logger.error(f"Failed to download from R2: {e}")
+            return None
+
+    def download_file_to_path(self, key: str, dest_path: str, club_id: Optional[str] = None) -> bool:
+        """Stream a file from R2 directly to a local path with club access validation."""
         if not self.is_configured:
             return False
+
+        self._validate_club_access(key, club_id)
+
+        try:
+            self.client.download_file(self.bucket_name, key, dest_path)
+            return True
+        except ClientError as e:
+            logger.error(f"Failed to stream download from R2: {e}")
+            return False
+
+    def get_download_url(self, key: str, expires_in: int = 3600, club_id: Optional[str] = None) -> Optional[str]:
+        """Generate a pre-signed download URL with club access validation."""
+        if not self.is_configured:
+            return None
+
+        self._validate_club_access(key, club_id)
+
+        try:
+            url = self.client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': self.bucket_name,
+                    'Key': key
+                },
+                ExpiresIn=expires_in
+            )
+            return url
+
+        except ClientError as e:
+            logger.error(f"Failed to generate presigned URL: {e}")
+            return None
+
+    # ------------------------------------------------------------------
+    # Delete / list / exists
+    # ------------------------------------------------------------------
+
+    def delete_file(self, key: str, club_id: Optional[str] = None) -> bool:
+        """Delete a file from R2 with club access validation."""
+        if not self.is_configured:
+            return False
+
+        self._validate_club_access(key, club_id)
 
         try:
             self.client.delete_object(
@@ -320,19 +310,13 @@ class StorageService:
             logger.error(f"Failed to delete from R2: {e}")
             return False
 
-    def list_files(self, prefix: str = "", max_keys: int = 1000) -> list:
-        """
-        List files in a folder.
-
-        Args:
-            prefix: Folder prefix to filter by (e.g., "gps/2024/")
-            max_keys: Maximum number of files to return
-
-        Returns:
-            List of file info dicts with key, size, last_modified
-        """
+    def list_files(self, prefix: str = "", club_id: Optional[str] = None, max_keys: int = 1000) -> list:
+        """List files, auto-injecting club_id prefix when provided."""
         if not self.is_configured:
             return []
+
+        if club_id:
+            prefix = f"{club_id}/{prefix}"
 
         try:
             response = self.client.list_objects_v2(
@@ -355,10 +339,12 @@ class StorageService:
             logger.error(f"Failed to list files from R2: {e}")
             return []
 
-    def file_exists(self, key: str) -> bool:
-        """Check if a file exists in R2."""
+    def file_exists(self, key: str, club_id: Optional[str] = None) -> bool:
+        """Check if a file exists in R2 with club access validation."""
         if not self.is_configured:
             return False
+
+        self._validate_club_access(key, club_id)
 
         try:
             self.client.head_object(

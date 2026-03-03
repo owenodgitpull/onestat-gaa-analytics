@@ -25,4 +25,5 @@ google-genai>=1.0.0
 opencv-python-headless==4.9.0.80
 beautifulsoup4==4.12.3
 lxml==5.1.0
+python-docx==1.1.0
 

@@ -1868,6 +1868,67 @@ export const fixturesAPI = {
   },
 };
 
+// ============================================================================
+// Knowledge Base API (document management)
+// ============================================================================
+
+export const knowledgeBaseAPI = {
+  listDocuments: () =>
+    fetchAPI('/knowledge-base/documents'),
+
+  initiateUpload: (data: { filename: string; content_type: string; doc_type: string }) =>
+    fetchAPI('/knowledge-base/documents/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  confirmUpload: (documentId: string) =>
+    fetchAPI('/knowledge-base/documents/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ document_id: documentId }),
+    }),
+
+  deleteDocument: (documentId: string) =>
+    fetchAPI(`/knowledge-base/documents/${documentId}`, {
+      method: 'DELETE',
+    }),
+};
+
+// ============================================================================
+// Club Members API (user management)
+// ============================================================================
+
+export const clubMembersAPI = {
+  listMembers: () =>
+    fetchAPI('/club/members'),
+
+  changeRole: (userId: string, role: string) =>
+    fetchAPI(`/club/members/${userId}/role`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    }),
+
+  deactivateUser: (userId: string) =>
+    fetchAPI(`/club/members/${userId}/deactivate`, {
+      method: 'PATCH',
+    }),
+
+  reactivateUser: (userId: string) =>
+    fetchAPI(`/club/members/${userId}/reactivate`, {
+      method: 'PATCH',
+    }),
+
+  inviteAdmin: (email: string, name: string) =>
+    fetchAPI('/club/members/invite-admin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, name }),
+    }),
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -1883,6 +1944,8 @@ export const api = {
   matchGps: matchGpsAPI,
   onboarding: onboardingAPI,
   fixtures: fixturesAPI,
+  knowledgeBase: knowledgeBaseAPI,
+  clubMembers: clubMembersAPI,
 };
 
 export default api;

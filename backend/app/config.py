@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     cognito_region: str = "us-east-1"
     cognito_domain: str = ""
 
+    # App
+    app_url: str = "http://localhost:3001"  # Frontend URL shown in invite emails
+
     # Derived
     @property
     def cognito_issuer(self) -> str:

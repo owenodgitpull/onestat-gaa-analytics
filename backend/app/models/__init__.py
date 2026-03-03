@@ -39,6 +39,7 @@ from app.models.possession_chain import PossessionChain
 from app.models.ball_position_sample import BallPositionSample
 from app.models.scraped_fixture import ScrapedFixture
 from app.models.season_cache import SeasonCache
+from app.models.knowledge_document import KnowledgeDocument
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -97,5 +98,6 @@ __all__ = [
     "BallPositionSample",
     "ScrapedFixture",
     "SeasonCache",
+    "KnowledgeDocument",
 ]
 

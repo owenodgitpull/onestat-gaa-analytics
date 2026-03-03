@@ -15,6 +15,7 @@ import MatchPrep from './pages/MatchPrep'
 import Navigation from './components/Navigation'
 import PlayerNavigation from './components/PlayerNavigation'
 import AIAnalystPage from './pages/AIAnalystPage'
+import Settings from './pages/Settings'
 import VideoTagging from './pages/VideoTagging'
 import VideoSessionList from './pages/VideoSessionList'
 import PlayerComparison from './pages/PlayerComparison'
@@ -127,6 +128,7 @@ function App() {
                           <Route path="/attendance" element={<Attendance />} />
                           <Route path="/analyst" element={<AIAnalystPage />} />
                           <Route path="/analyst/:sessionId" element={<AIAnalystPage />} />
+                          <Route path="/settings" element={<Settings />} />
                         </Routes>
                       </div>
                     </main>

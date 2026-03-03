@@ -65,7 +65,7 @@ class MatchAgent:
             event_types = [e.get('type', '') for e in recent_events[:5]]
             query = f"live match analysis {' '.join(event_types)} fatigue kickout tactics GPS benchmarks"
             kb_context = await RAGService.get_context_for_query(
-                db, query, context_type='live_match', max_tokens=1500
+                db, query, context_type='live_match', max_tokens=1500, club_id=club_id
             )
         except Exception as e:
             logger.warning(f"RAG context retrieval failed: {e}")
@@ -190,7 +190,7 @@ You have tools available to look up additional match data if needed. Only use th
         try:
             query = question or "post-match tactical analysis scoring turnovers GPS performance"
             kb_context = await RAGService.get_context_for_query(
-                db, query, context_type='post_match', max_tokens=3000
+                db, query, context_type='post_match', max_tokens=3000, club_id=_cid
             )
         except Exception as e:
             logger.warning(f"RAG context retrieval failed: {e}")

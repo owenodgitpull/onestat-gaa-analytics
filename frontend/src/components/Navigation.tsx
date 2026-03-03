@@ -125,6 +125,12 @@ export default function Navigation() {
         { icon: History, label: 'Chat History', path: '#chat-history', active: false },
       ]
     }
+    if (location.pathname.startsWith('/settings')) {
+      return [
+        { icon: Settings, label: 'Settings', path: '/settings', active: true },
+        { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
+      ]
+    }
     return []
   }
 
@@ -234,7 +240,10 @@ export default function Navigation() {
                         </div>
                       </div>
                     )}
-                    <button className="w-full px-4 py-2 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white flex items-center gap-2">
+                    <button
+                      onClick={() => { setShowProfileMenu(false); navigate('/settings'); }}
+                      className="w-full px-4 py-2 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white flex items-center gap-2"
+                    >
                       <Settings size={16} />
                       Settings
                     </button>

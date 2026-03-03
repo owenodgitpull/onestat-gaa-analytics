@@ -101,6 +101,7 @@ async def initiate_video_upload(
         filename=filename,
         content_type=body.content_type,
         expires_in=7200,  # 2 hours for large uploads
+        club_id=str(user.club_id),
     )
     if not presigned:
         raise HTTPException(status_code=503, detail="Storage service not available")
@@ -203,7 +204,7 @@ async def get_video_session(
     # Generate download URL for video playback
     download_url = None
     if session.video_r2_key and session.status != "pending":
-        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200)
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
 
     return _session_to_response(session, download_url=download_url)
 
@@ -227,7 +228,7 @@ async def delete_video_session(
 
     # Delete video from R2
     if session.video_r2_key:
-        storage.delete_file(session.video_r2_key)
+        storage.delete_file(session.video_r2_key, club_id=str(user.club_id))
 
     await db.delete(session)
     await db.commit()
@@ -266,7 +267,7 @@ async def set_halftime(
 
     download_url = None
     if session.video_r2_key:
-        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200)
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
 
     logger.info(f"Half-time set: session={session_id}, timestamp={body.halftime_timestamp_ms}ms")
     return _session_to_response(session, download_url=download_url)
