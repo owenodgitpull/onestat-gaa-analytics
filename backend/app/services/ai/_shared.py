@@ -65,6 +65,11 @@ STATIC_CHARTS = {
         {"id": "shooting-efficiency", "desc": "Heatmap of shot conversion by pitch zone"},
         {"id": "red-zone-list", "desc": "Table of players at risk based on workload / health alerts"},
         {"id": "top-scorers", "desc": "Leaderboard of top scoring players with goals-points breakdown"},
+        {"id": "score-momentum", "desc": "Area chart of cumulative score difference showing momentum swings"},
+        {"id": "dead-ball-vs-play", "desc": "Breakdown of scores by source — play, frees, 45s, penalties"},
+        {"id": "defensive-zones", "desc": "Pitch heatmap of blocks, interceptions, and turnovers won by zone"},
+        {"id": "kickout-landing-zones", "desc": "9-zone heatmap of kickout landing spots and win/loss rates"},
+        {"id": "kpi-sparkline-grid", "desc": "16 key metrics with sparkline trends across all matches"},
     ],
     "training": [
         {"id": "peak-performance-trend", "desc": "Line chart of team average total distance over sessions"},
@@ -965,7 +970,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     return safe_json({"events": events_data, "total": len(events_data)})
 
 
-async def get_fixture_context(db: AsyncSession) -> str:
+async def get_fixture_context(db: AsyncSession, club_id=None) -> str:
     """
     Build a text block describing upcoming fixtures and recent form.
 
@@ -976,13 +981,16 @@ async def get_fixture_context(db: AsyncSession) -> str:
     try:
         now = datetime.utcnow()
         # Next 3 upcoming fixtures
+        conditions = [
+            Match.status == MatchStatus.SCHEDULED,
+            Match.is_deleted == False,
+            Match.match_date >= now,
+        ]
+        if club_id:
+            conditions.append(Match.club_id == club_id)
         fixture_query = (
             select(Match)
-            .where(
-                Match.status == MatchStatus.SCHEDULED,
-                Match.is_deleted == False,
-                Match.match_date >= now,
-            )
+            .where(*conditions)
             .order_by(Match.match_date.asc())
             .limit(3)
         )
@@ -1024,7 +1032,7 @@ async def get_fixture_context(db: AsyncSession) -> str:
         return ""
 
 
-async def get_weather_context(db: AsyncSession, limit: int = 5) -> str:
+async def get_weather_context(db: AsyncSession, limit: int = 5, club_id=None) -> str:
     """
     Build a text block of weather/pitch conditions from recent completed matches.
 
@@ -1034,13 +1042,16 @@ async def get_weather_context(db: AsyncSession, limit: int = 5) -> str:
     try:
         from app.models.match import WeatherCondition, PitchCondition
 
+        conditions = [
+            Match.status == MatchStatus.COMPLETED,
+            Match.is_deleted == False,
+            Match.weather_condition.isnot(None),
+        ]
+        if club_id:
+            conditions.append(Match.club_id == club_id)
         weather_query = (
             select(Match)
-            .where(
-                Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False,
-                Match.weather_condition.isnot(None),
-            )
+            .where(*conditions)
             .order_by(Match.match_date.desc())
             .limit(limit)
         )

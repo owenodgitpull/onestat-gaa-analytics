@@ -100,7 +100,7 @@ class SeasonAgent:
         club_name, club_context_str = await get_club_context(db, club_id)
 
         # Get fixture context
-        fixture_context = await get_fixture_context(db)
+        fixture_context = await get_fixture_context(db, club_id=club_id)
 
         # Get RAG context
         try:

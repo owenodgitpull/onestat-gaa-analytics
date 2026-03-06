@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, AlertTriangle, TrendingUp, Crosshair, Activity } from 'lucide-react'
+import { X, AlertTriangle, TrendingUp, Crosshair, Activity, ChevronRight } from 'lucide-react'
 import type { InsightAlert } from '@/services/api'
 
 const CATEGORY_CONFIG: Record<InsightAlert['category'], { label: string; icon: typeof AlertTriangle; colorClass: string }> = {
@@ -18,24 +18,26 @@ const SEVERITY_DOT: Record<InsightAlert['severity'], string> = {
 interface InsightAlertCardProps {
   alert: InsightAlert
   onDismiss: (id: string) => void
+  onClick?: () => void
 }
 
-export default function InsightAlertCard({ alert, onDismiss }: InsightAlertCardProps) {
+export default function InsightAlertCard({ alert, onDismiss, onClick }: InsightAlertCardProps) {
   const [hovered, setHovered] = useState(false)
   const cat = CATEGORY_CONFIG[alert.category]
   const Icon = cat.icon
 
   return (
     <div
-      className="glass-card p-4 border border-white/10 hover:border-white/20 transition-all relative group"
+      className={`glass-card p-4 border border-white/10 hover:border-white/20 transition-all relative group active:scale-[0.98] ${onClick ? 'cursor-pointer' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
     >
       {/* Dismiss button */}
       {hovered && (
         <button
-          onClick={() => onDismiss(alert.id)}
-          className="absolute top-2 right-2 p-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+          onClick={(e) => { e.stopPropagation(); onDismiss(alert.id) }}
+          className="absolute top-2 right-2 p-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors z-10"
           title="Dismiss"
         >
           <X size={14} className="text-white/60" />
@@ -49,20 +51,30 @@ export default function InsightAlertCard({ alert, onDismiss }: InsightAlertCardP
           {cat.label}
         </span>
         <span className={`w-2 h-2 rounded-full ${SEVERITY_DOT[alert.severity]}`} />
+        {onClick && (
+          <ChevronRight size={16} className="text-white/30 ml-auto" />
+        )}
       </div>
 
       {/* Title + Message */}
       <h4 className="text-sm font-semibold text-white mb-1">{alert.title}</h4>
       <p className="text-xs text-white/70 leading-relaxed">{alert.message}</p>
 
-      {/* Timestamp */}
-      {alert.created_at && (
-        <p className="text-[10px] text-white/30 mt-2">
-          {new Date(alert.created_at).toLocaleDateString('en-GB', {
-            day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-          })}
-        </p>
-      )}
+      {/* Footer: timestamp + AI Insights link */}
+      <div className="flex items-center justify-between mt-2">
+        {alert.created_at ? (
+          <p className="text-[10px] text-white/30">
+            {new Date(alert.created_at).toLocaleDateString('en-GB', {
+              day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+            })}
+          </p>
+        ) : <span />}
+        {onClick && (
+          <span className="text-xs text-cyan-400 font-medium">
+            View in AI Insights &rarr;
+          </span>
+        )}
+      </div>
     </div>
   )
 }

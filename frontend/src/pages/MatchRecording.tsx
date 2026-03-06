@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
@@ -15,6 +15,7 @@ import ScoringTimeline from '@/components/charts/ScoringTimeline'
 import ShotOutcomeChart from '@/components/charts/ShotOutcomeChart'
 import PathsTakenChart from '@/components/charts/PathsTakenChart'
 import FullscreenPitchMode from '@/components/FullscreenPitchMode'
+import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '@/components/WeatherPickerPopover'
 import { BallPosition, PossessionTeam, EventType, Player, MatchEvent } from '@/types'
 import { useMatch, useMatchStats, useStartMatch, useCompleteMatch, useUpdateMatchPhase } from '@/hooks/useMatches'
@@ -23,6 +24,8 @@ import { useRecordPossession } from '@/hooks/usePossession'
 import { usePlayers } from '@/hooks/usePlayers'
 import { api } from '@/services/api'
 import { useClubName } from '@/contexts/ClubContext'
+import { useTour } from '@/hooks/useTour'
+import { matchRecordingSteps } from '@/config/tourSteps'
 import {
   Clock,
   Activity,
@@ -98,6 +101,17 @@ export default function MatchRecording() {
   const [startingLineup, setStartingLineup] = useState<Record<string, LineupEntry>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
   const [teamAttackingRight, setTeamAttackingRight] = useState<boolean>(true) // true = attacking towards x=100
+  const [ballTrail, setBallTrail] = useState<Array<{ x: number; y: number }>>([])
+  const prevTeamRef = useRef(ballPosition.team)
+
+  // Clear trail on possession change (team switch)
+  useEffect(() => {
+    if (ballPosition.team !== prevTeamRef.current) {
+      setBallTrail([])
+      prevTeamRef.current = ballPosition.team
+    }
+  }, [ballPosition.team])
+
   const [pendingFreeKick, setPendingFreeKick] = useState<{ position: BallPosition; player?: Player } | null>(null) // Track free kick state with optional player
   const [pending45, setPending45] = useState<{ position: BallPosition } | null>(null) // Track 45 state
   const [selectingFoulPlayer, setSelectingFoulPlayer] = useState<boolean>(false) // True when selecting own player who fouled
@@ -105,6 +119,13 @@ export default function MatchRecording() {
   const [weatherOverride, setWeatherOverride] = useState<{ condition: string | null; temp: number | null } | null>(null)
   const [isWeatherPickerOpen, setIsWeatherPickerOpen] = useState(false)
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
+
+  // Guided tour
+  const { startTour: startMatchTour } = useTour('matchRecording', matchRecordingSteps)
+  const matchTourTriggered = useRef(false)
+
+  // Black card sin bin timers
+  const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
 
   // Compute players currently on the field (starting 15 + subbed on, minus subbed off)
   const playersOnField = useMemo(() => {
@@ -176,13 +197,21 @@ export default function MatchRecording() {
           temperature_celsius: temp,
         } as any)
         // Refetch match data, then clear override (server data now matches)
-        await queryClient.invalidateQueries({ queryKey: ['match', matchId] })
+        await queryClient.invalidateQueries({ queryKey: ['matches', matchId] })
         setWeatherOverride(null)
       } catch (err) {
         console.error('Failed to update weather:', err)
       }
     }
   }
+
+  // Trigger guided tour on first visit with valid match
+  useEffect(() => {
+    if (match && !matchLoading && !matchTourTriggered.current) {
+      matchTourTriggered.current = true
+      startMatchTour()
+    }
+  }, [match, matchLoading, startMatchTour])
 
   // Load match lineup
   useEffect(() => {
@@ -278,9 +307,12 @@ export default function MatchRecording() {
   const teamAccuracy = matchStats?.team_accuracy?.toFixed(1) || '0'
 
   // Calculate possession % from backend stats (time-based, not event count)
-  // Always derive opponent from own team to ensure they add up to 100% (avoids race condition flicker)
-  const teamPossessionPct = Math.round(matchStats?.team_possession_percentage || 0)
-  const opponentPossessionPct = 100 - teamPossessionPct
+  // When no possession events exist (match not started), show 0/0 instead of 0/100
+  const rawTeamPct = matchStats?.team_possession_percentage ?? 0
+  const rawOppPct = matchStats?.opponent_possession_percentage ?? 0
+  const hasPossessionData = rawTeamPct > 0 || rawOppPct > 0
+  const teamPossessionPct = hasPossessionData ? Math.round(rawTeamPct) : 0
+  const opponentPossessionPct = hasPossessionData ? 100 - teamPossessionPct : 0
 
   // Use backend matchStats for all statistics (already calculated correctly)
   const teamTurnoversWon = matchStats?.team_turnovers_won || 0
@@ -300,6 +332,20 @@ export default function MatchRecording() {
   const { data: matchEventsData } = useMatchEvents(matchId)
   const allEvents = matchEventsData?.events || []
   const [visibleEventCount, setVisibleEventCount] = useState(15)
+
+  // Track players on yellow cards (for second yellow → automatic red)
+  const yellowCardPlayerIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const ev of allEvents) {
+      if (ev.event_type === 'yellow_card' && ev.player_id) {
+        ids.add(String(ev.player_id))
+      }
+    }
+    return ids
+  }, [allEvents])
+
+  // Flash state for second-yellow animation
+  const [secondYellowFlash, setSecondYellowFlash] = useState(false)
 
   // Match display data
   const matchDisplay = {
@@ -673,10 +719,24 @@ export default function MatchRecording() {
           ? `${playerName} received a yellow card`
           : `${teamName} player received a yellow card`
 
-      case 'red_card':
+      case 'black_card':
         return isOwn
-          ? `${playerName} received a red card`
-          : `${teamName} player received a red card`
+          ? `${playerName} received a black card (10 min sin bin)`
+          : `${teamName} player received a black card (10 min sin bin)`
+
+      case 'red_card': {
+        // Check if this player already had a yellow card (second yellow → automatic red)
+        const playerId = String(event.player_id)
+        const priorYellows = allEvents.filter(
+          e => e.event_type === 'yellow_card' && String(e.player_id) === playerId
+        )
+        if (isOwn && priorYellows.length > 0) {
+          return `${playerName} sent off after receiving a second yellow card (Automatic Red Card)`
+        }
+        return isOwn
+          ? `${playerName} sent off with a straight red card`
+          : `${teamName} player sent off with a straight red card`
+      }
 
       case 'block':
         return isOwn
@@ -746,6 +806,7 @@ export default function MatchRecording() {
 
     // Update local ball position
     setBallPosition(newPosition)
+    setBallTrail(prev => [...prev.slice(-49), { x: newPosition.x, y: newPosition.y }])
 
     // Record possession event to backend
     try {
@@ -763,6 +824,23 @@ export default function MatchRecording() {
       console.error('Failed to record possession:', error)
       // Don't show alert for possession tracking errors (too disruptive)
     }
+  }
+
+  // Batch-record drag waypoints as possession events (single bulk request on drag-end)
+  const handleDragPath = (waypoints: Array<{ x: number; y: number }>) => {
+    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished') return
+    const team = ballPosition.team === PossessionTeam.OWN ? 'own' : 'opponent'
+    api.possession.bulkCreate({
+      match_id: matchId,
+      team: team as 'own' | 'opponent',
+      minute,
+      waypoints,
+    }).then(res => {
+      console.log(`Drag path: ${res.created} waypoints recorded`)
+      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+    }).catch(err => {
+      console.error('Failed to record drag path:', err)
+    })
   }
 
   // Record a kickout event at the selected position
@@ -831,7 +909,7 @@ export default function MatchRecording() {
       setActiveKickoutTab('scoring')
 
       // Force refetch stats
-      await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
+      await queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
 
       console.log('Kickout recorded and ball moved to:', newBallPosition)
     } catch (error) {
@@ -1078,6 +1156,18 @@ export default function MatchRecording() {
     }
   }
 
+  /** Handle discipline card events — opens player modal then records */
+  const handleDiscipline = (eventType: EventType) => {
+    if (!matchId) return
+    // Open player modal to select who received the card
+    setPendingEvent({
+      eventType,
+      team: 'own',
+      position: ballPosition,
+    })
+    setIsPlayerModalOpen(true)
+  }
+
   const handleQuickAction = (eventType: EventType) => {
     console.log('Quick action:', eventType, 'at position:', ballPosition)
     console.log('Ball possession team:', ballPosition.team)
@@ -1222,7 +1312,9 @@ export default function MatchRecording() {
         // Ball moves to goalkeeper area for kickout
         // The team that conceded the score takes the kickout
         const kickoutTeam = isTeamTakingFree ? PossessionTeam.OPPONENT : PossessionTeam.OWN
-        const kickoutX = isTeamTakingFree ? 95 : 5 // Goal area of team taking kickout
+        const ownGoalX = teamAttackingRight ? 5 : 95
+        const oppGoalX = teamAttackingRight ? 95 : 5
+        const kickoutX = kickoutTeam === PossessionTeam.OWN ? ownGoalX : oppGoalX
 
         setBallPosition({
           x: kickoutX,
@@ -1240,7 +1332,7 @@ export default function MatchRecording() {
       setPendingFoul(null)
 
       // Force refetch stats
-      await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
+      await queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
 
       console.log('Free kick result recorded successfully')
     } catch (error) {
@@ -1303,7 +1395,10 @@ export default function MatchRecording() {
         // After score/wide, ball moves to goalkeeper area for kickout
         const kickoutTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.OWN
         // Ball goes to the goal area of the team taking the kickout
-        const kickoutX = kickoutTeam === PossessionTeam.OWN ? 5 : 95
+        // Our goal area: x=5 when attacking right, x=95 when attacking left
+        const ownGoalX = teamAttackingRight ? 5 : 95
+        const oppGoalX = teamAttackingRight ? 95 : 5
+        const kickoutX = kickoutTeam === PossessionTeam.OWN ? ownGoalX : oppGoalX
 
         setBallPosition({
           x: kickoutX,  // Edge of small rectangle (goalkeeper area)
@@ -1395,7 +1490,7 @@ export default function MatchRecording() {
       }
 
       // Force refetch stats immediately after event
-      await queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
+      await queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
 
       console.log('Event recorded without player selection')
     } catch (error) {
@@ -1423,6 +1518,14 @@ export default function MatchRecording() {
     const capturedHalf = currentHalf
     setIsPlayerModalOpen(false)
     setPendingEvent(null)
+
+    // Second yellow card → automatic red card
+    if (event.eventType === EventType.YELLOW_CARD && yellowCardPlayerIds.has(player.id)) {
+      event.eventType = EventType.RED_CARD
+      // Flash animation
+      setSecondYellowFlash(true)
+      setTimeout(() => setSecondYellowFlash(false), 2000)
+    }
 
     console.log('Recording event:', {
       eventType: event.eventType,
@@ -1464,7 +1567,9 @@ export default function MatchRecording() {
 
     if (isScore || isDeadBall) {
       const kickoutTeam = event.team === 'own' ? PossessionTeam.OPPONENT : PossessionTeam.OWN
-      const kickoutX = kickoutTeam === PossessionTeam.OWN ? 5 : 95
+      const ownGoalX = teamAttackingRight ? 5 : 95
+      const oppGoalX = teamAttackingRight ? 95 : 5
+      const kickoutX = kickoutTeam === PossessionTeam.OWN ? ownGoalX : oppGoalX
       setBallPosition({
         x: kickoutX,
         y: 50,
@@ -1481,13 +1586,13 @@ export default function MatchRecording() {
     const turnoverEventStr = String(event.eventType).toUpperCase()
     let possessionPayload: { x: number; y: number; team: PossessionTeam } | null = null
 
-    if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'INTERCEPTION' || turnoverEventStr === 'BLOCK') {
+    if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'INTERCEPTION') {
       let newTeam: PossessionTeam
       let newX = event.position.x
       let newY = event.position.y
 
-      if (turnoverEventStr === 'INTERCEPTION' || turnoverEventStr === 'BLOCK') {
-        // Interception/Block → the team who made it gets possession
+      if (turnoverEventStr === 'INTERCEPTION') {
+        // Interception → the intercepting team gets possession
         newTeam = event.team === 'own' ? PossessionTeam.OWN : PossessionTeam.OPPONENT
       } else if (turnoverEventStr.includes('TURNOVER_WON')) {
         newTeam = PossessionTeam.OWN
@@ -1530,7 +1635,7 @@ export default function MatchRecording() {
       is_home_team: event.team === 'own',
       notes: undefined
     }).then(() => {
-      queryClient.invalidateQueries({ queryKey: ['match', matchId, 'stats'] })
+      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
       console.log('Event recorded successfully!')
     }).catch((error) => {
       console.error('Failed to record event:', error)
@@ -1551,6 +1656,15 @@ export default function MatchRecording() {
       }).catch((error) => {
         console.error('Failed to record possession:', error)
       })
+    }
+
+    // Start black card 10-min countdown timer
+    if (event.eventType === EventType.BLACK_CARD) {
+      setBlackCardTimers(prev => [...prev, {
+        id: crypto.randomUUID(),
+        playerLabel: player.name.split(' ').map(n => n[0]).join('. ') + '.',
+        startedAt: Date.now(),
+      }])
     }
   }
 
@@ -1604,6 +1718,14 @@ export default function MatchRecording() {
       setPendingFreeKick(null)
       setPending45(null)
       setActiveKickoutTab('scoring')
+
+      // Reset ball to center and clear trail for second half
+      setBallPosition({
+        x: 50,
+        y: 50,
+        team: team === 'home' ? PossessionTeam.OWN : PossessionTeam.OPPONENT
+      })
+      setBallTrail([])
 
       // Persist second half start
       if (matchId) {
@@ -1659,9 +1781,9 @@ export default function MatchRecording() {
   }
 
   const getEndButtonText = () => {
-    if (matchPhase === 'first_half') return minute >= 30 ? 'End First Half (HT!)' : 'End First Half'
+    if (matchPhase === 'first_half') return minute >= 30 ? 'End First Half (HT)' : 'End First Half'
     if (matchPhase === 'second_half') {
-      return fullTimeReached ? 'End Match (Full Time!)' : 'End Match'
+      return fullTimeReached ? 'End Match (FT)' : 'End Match'
     }
     return null
   }
@@ -1741,8 +1863,8 @@ export default function MatchRecording() {
       if (attackingProgress >= 78) text = `${clubName} inside the 21m line${side}`
       else if (attackingProgress >= 55) text = `${clubName} inside the 45m line${side}`
       else if (attackingProgress >= 45) text = `${clubName} around midfield${side}`
-      else if (attackingProgress >= 22) text = `${clubName} in our own half${side}`
-      else text = `${clubName} deep in our own half${side}`
+      else if (attackingProgress >= 22) text = `${clubName} in their own half${side}`
+      else text = `${clubName} deep in their own half${side}`
     } else {
       if (attackingProgress <= 22) text = `${teamName} inside our 21m line${side}`
       else if (attackingProgress <= 45) text = `${teamName} inside our 45m line${side}`
@@ -1817,7 +1939,7 @@ export default function MatchRecording() {
                   <div className="text-4xl font-bold text-white">
                     {matchDisplay.score.team.goals}-{String(matchDisplay.score.team.points).padStart(2, '0')}
                   </div>
-                  <div className="text-white/60 text-xs mt-1">Us</div>
+                  <div className="text-white/60 text-xs mt-1">{clubName}</div>
                 </div>
                 <div className="text-xl text-white/40">vs</div>
                 <div>
@@ -1875,22 +1997,13 @@ export default function MatchRecording() {
                     )
                   )}
                   {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                    <>
-                      <button
-                        className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
-                        onClick={() => setIsFullscreenPitch(true)}
-                        title="Fullscreen pitch mode"
-                      >
-                        <Maximize size={14} />
-                      </button>
-                      <button
-                        className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
-                        onClick={() => setIsManualEntryOpen(true)}
-                      >
-                        <Plus size={14} />
-                        <span>Manual Entry</span>
-                      </button>
-                    </>
+                    <button
+                      className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
+                      onClick={() => setIsManualEntryOpen(true)}
+                    >
+                      <Plus size={14} />
+                      <span>Manual Entry</span>
+                    </button>
                   )}
                   {getEndButtonText() && (
                     <button
@@ -1912,16 +2025,16 @@ export default function MatchRecording() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Main Pitch Area */}
-            <div className="md:col-span-2">
+          <div className="flex flex-col md:flex-row gap-6">
+            {/* Left column — pitch, action buttons, event map */}
+            <div className="flex-[2] min-w-0 space-y-6">
               {/* Half Time Banner */}
               {minute >= 30 && matchPhase === 'first_half' && (
-                <div className="glass-card p-4 mb-4 bg-gradient-to-r from-orange-600/30 to-amber-600/30 border-2 border-orange-500/50 animate-pulse">
-                  <div className="flex items-center justify-center space-x-3">
-                    <Clock size={24} className="text-orange-400" />
-                    <p className="text-white font-bold text-xl">
-                      Injury Time! Click "End First Half" when ready
+                <div className="backdrop-blur-xl bg-white/5 border border-amber-500/20 rounded-xl px-4 py-3 mb-4">
+                  <div className="flex items-center justify-center space-x-2">
+                    <Clock size={16} className="text-amber-400" />
+                    <p className="text-sm font-medium text-white/90">
+                      Injury time — tap "End First Half" when ready
                     </p>
                   </div>
                 </div>
@@ -1929,108 +2042,197 @@ export default function MatchRecording() {
 
               {/* Full Time Banner */}
               {fullTimeReached && matchPhase === 'second_half' && (
-                <div className="glass-card p-4 mb-4 bg-gradient-to-r from-red-600/30 to-rose-600/30 border-2 border-red-500/50 animate-pulse">
-                  <div className="flex items-center justify-center space-x-3">
-                    <Clock size={24} className="text-red-400" />
-                    <p className="text-white font-bold text-xl">
-                      FULL TIME! Click "End Match" to save and generate AI analysis
+                <div className="backdrop-blur-xl bg-white/5 border border-emerald-500/20 rounded-xl px-4 py-3 mb-4">
+                  <div className="flex items-center justify-center space-x-2">
+                    <Clock size={16} className="text-emerald-400" />
+                    <p className="text-sm font-medium text-white/90">
+                      Full time — tap "End Match" to save and generate AI analysis
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* Dynamic Status Label */}
-              {matchPhase === 'half_time' ? (
-                <div className="glass-card-live mb-4" style={{ borderRadius: '0.75rem' }}>
-                  <div className="glass-card-live-inner px-4 py-3" style={{ borderRadius: 'calc(0.75rem - 2px)' }}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-emerald-400">{statusLabel.text}</span>
-                        {statusLabel.subtext && <span className="text-xs text-white/50">{statusLabel.subtext}</span>}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className={`rounded-xl px-4 py-3 mb-4 bg-gradient-to-r ${statusLabel.bg} border backdrop-blur-sm transition-all duration-300`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className={`text-sm font-bold ${statusLabel.accent}`}>{statusLabel.text}</span>
-                      {statusLabel.subtext && <span className="text-xs text-white/50 ml-2">{statusLabel.subtext}</span>}
-                    </div>
-                    {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !pending45 && !selectingFoulPlayer && (
-                      <button
-                        onClick={() => {
-                          const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
-                          setBallPosition(prev => ({ ...prev, team: newTeam }))
-                        }}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all active:scale-95 ${
-                          ballPosition.team === PossessionTeam.OWN
-                            ? 'bg-emerald-500/20 border-emerald-500/40 hover:bg-emerald-500/30'
-                            : 'bg-white/10 border-orange-500/30 hover:bg-white/15'
-                        }`}
-                        title="Tap to swap possession"
-                      >
-                        <ArrowLeftRight size={14} className="text-white/70" />
-                        <span className={`text-xs font-bold ${ballPosition.team === PossessionTeam.OWN ? 'text-emerald-300' : 'text-orange-300'}`}>
-                          {ballPosition.team === PossessionTeam.OWN ? clubName : matchDisplay.opponent}
-                        </span>
-                        <div className={`w-2 h-2 rounded-full ${ballPosition.team === PossessionTeam.OWN ? 'bg-emerald-400' : 'bg-orange-400'} animate-pulse`} />
-                      </button>
-                    )}
-                  </div>
+              {/* Black card sin bin timers */}
+              {blackCardTimers.length > 0 && (
+                <div className="flex items-center gap-2 mb-3">
+                  <BlackCardTimer entries={blackCardTimers} onRemove={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))} />
                 </div>
               )}
 
               {/* Pitch */}
-              <div className="glass-card p-6 relative mb-4">
+              <div data-tour="pitch-container" className="glass-card p-6 relative mb-4">
                 <GAAPitch
                   ballPosition={ballPosition}
                   onBallMove={handleBallMove}
                   showZones={true}
                   readonly={matchPhase === 'not_started' || matchPhase === 'finished' || (awaitingKickout && !pendingKickoutEvent)}
+                  trail={ballTrail}
+                  onTrailUpdate={setBallTrail}
+                  onDragPath={handleDragPath}
+                  svgOverlay={
+                    (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '8px 18px', borderRadius: 12,
+                          background: 'rgba(0,0,0,0.7)',
+                          border: `2px solid ${ballPosition.team === PossessionTeam.OWN ? 'rgba(16,185,129,0.5)' : 'rgba(249,115,22,0.4)'}`,
+                        }}
+                        data-tour="possession-indicator"
+                        >
+                          <div style={{
+                            width: 12, height: 12, borderRadius: '50%',
+                            background: ballPosition.team === PossessionTeam.OWN ? '#34d399' : '#fb923c',
+                          }} />
+                          <span style={{
+                            fontSize: 26, fontWeight: 700, whiteSpace: 'nowrap',
+                            color: ballPosition.team === PossessionTeam.OWN ? '#6ee7b7' : '#fdba74',
+                          }}>
+                            {statusLabel.text}
+                          </span>
+                        </div>
+                        {!awaitingKickout && !pendingFreeKick && !pending45 && !selectingFoulPlayer && (
+                          <button
+                            onClick={() => {
+                              const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
+                              setBallPosition(prev => ({ ...prev, team: newTeam }))
+                            }}
+                            style={{
+                              padding: 10, borderRadius: 10,
+                              background: 'rgba(0,0,0,0.7)',
+                              border: '2px solid rgba(255,255,255,0.2)',
+                              color: 'rgba(255,255,255,0.6)',
+                              cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                            title="Swap possession"
+                          >
+                            <ArrowLeftRight size={22} />
+                          </button>
+                        )}
+                      </div>
+                    ) : undefined
+                  }
                 />
 
-                {/* Coordinate Debug Display */}
-                <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs text-white/80 font-mono">
-                  x: {ballPosition.x.toFixed(1)}, y: {ballPosition.y.toFixed(1)}
-                </div>
+                {/* Fullscreen button — top-right of pitch */}
+                {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
+                  <button
+                    data-tour="fullscreen-btn"
+                    onClick={() => setIsFullscreenPitch(true)}
+                    className="absolute top-8 right-8 z-10 p-2 rounded-lg bg-black/50 backdrop-blur-sm border border-white/15 text-white/70 hover:text-white hover:bg-black/70 transition-all"
+                    title="Fullscreen pitch mode"
+                  >
+                    <Maximize size={14} />
+                  </button>
+                )}
 
-                {/* Categorized Action Buttons - Lower position */}
-                <div className="absolute z-10 w-full max-w-xl px-4 left-1/2 -translate-x-1/2" style={{ bottom: '-2.75rem' }}>
-                  <CategorizedActionButtons
-                    onActionSelect={handleQuickAction}
-                    onFoulClick={handleFoulClick}
-                    on45Click={handle45Click}
-                    disabled={matchPhase === 'not_started' || matchPhase === 'finished'}
-                    activeCategory={activeKickoutTab}
-                    onCategoryChange={setActiveKickoutTab}
-                    currentPossession={ballPosition.team}
-                    isIn2PointZone={isIn2PointZone(ballPosition.x, ballPosition.y, ballPosition.team)}
-                    isInPenaltyArea={(() => {
-                      // Ball is near opponent's goal = inside 13m line
-                      const attackingGoalX = ballPosition.team === PossessionTeam.OWN
-                        ? (teamAttackingRight ? 100 : 0)
-                        : (teamAttackingRight ? 0 : 100)
-                      return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
-                    })()}
-                    pendingFreeKick={!!pendingFreeKick}
-                    pendingFoul={pendingFoul}
-                    pending45={!!pending45}
-                    pendingKickoutPosition={!!pendingKickoutEvent}
-                    onCancelFree={handleCancelFree}
-                    onCancel45={handleCancel45}
-                    onCancelKickout={handleCancelKickout}
-                  />
-                </div>
               </div>
 
-              {/* Spacer for floating action buttons */}
-              <div style={{ marginTop: '5rem' }} />
+              {/* Categorized Action Buttons */}
+              <div className="max-w-2xl mx-auto -mt-2">
+                <CategorizedActionButtons
+                  onActionSelect={handleQuickAction}
+                  onFoulClick={handleFoulClick}
+                  on45Click={handle45Click}
+                  onDiscipline={handleDiscipline}
+                  disabled={matchPhase === 'not_started' || matchPhase === 'finished'}
+                  activeCategory={activeKickoutTab}
+                  onCategoryChange={setActiveKickoutTab}
+                  currentPossession={ballPosition.team}
+                  isIn2PointZone={isIn2PointZone(ballPosition.x, ballPosition.y, ballPosition.team)}
+                  isInPenaltyArea={(() => {
+                    // Ball is near opponent's goal = inside 13m line
+                    const attackingGoalX = ballPosition.team === PossessionTeam.OWN
+                      ? (teamAttackingRight ? 100 : 0)
+                      : (teamAttackingRight ? 0 : 100)
+                    return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
+                  })()}
+                  pendingFreeKick={!!pendingFreeKick}
+                  pendingFoul={pendingFoul}
+                  pending45={!!pending45}
+                  pendingKickoutPosition={!!pendingKickoutEvent}
+                  onCancelFree={handleCancelFree}
+                  onCancel45={handleCancel45}
+                  onCancelKickout={handleCancelKickout}
+                />
+              </div>
+
+              {/* Event Map */}
+              {matchId && matchEventsData?.events && (
+                <div className="space-y-3">
+                  <div className="glass-card p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h2 className="text-sm font-bold text-white flex items-center space-x-2">
+                        <Target size={16} />
+                        <span>Event Map</span>
+                      </h2>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setEventMapTeamFilter('own')}
+                          className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                            eventMapTeamFilter === 'own'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-white/10 text-white/60 hover:bg-white/20'
+                          }`}
+                        >
+                          {clubName}
+                        </button>
+                        <button
+                          onClick={() => setEventMapTeamFilter('opponent')}
+                          className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                            eventMapTeamFilter === 'opponent'
+                              ? 'bg-orange-600 text-white'
+                              : 'bg-white/10 text-white/60 hover:bg-white/20'
+                          }`}
+                        >
+                          {matchDisplay.opponent}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mb-1 text-xs text-white/40 text-center">
+                      {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown
+                    </div>
+                    <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
+                  </div>
+                  <EventFilterToggles activeFilters={eventMapFilters} onToggle={setEventMapFilters} />
+                </div>
+              )}
+
+              {/* Paths Taken + Possession — full width, 2 side by side */}
+              {matchId && matchEventsData?.events && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <PathsTakenChart
+                    matchId={matchId}
+                    pollInterval={15000}
+                  />
+                  <PossessionTerritoryChart
+                    stats={matchStats}
+                    events={matchEventsData.events}
+                    matchId={matchId}
+                    opponent={matchDisplay.opponent}
+                    pollInterval={15000}
+                  />
+                </div>
+              )}
+
+              {/* Scoring + Shot Outcome — full width, 2 side by side */}
+              {matchId && matchEventsData?.events && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <ScoringTimeline
+                    events={matchEventsData.events}
+                    opponent={matchDisplay.opponent}
+                  />
+                  <ShotOutcomeChart
+                    events={matchEventsData.events}
+                    opponent={matchDisplay.opponent}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Live Stats Sidebar */}
-            <div className="space-y-4">
+            <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden">
               {/* AI Live Insights */}
               <LiveInsightDisplay
                 matchId={matchId}
@@ -2050,7 +2252,7 @@ export default function MatchRecording() {
                 <div className="overflow-hidden rounded-lg border border-white/10">
                   {/* Table Header - Container-Header Highlight */}
                   <div className="grid grid-cols-3 bg-blue-600/30 border border-blue-500/50">
-                    <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Us</div>
+                    <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">{clubName}</div>
                     <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Stat</div>
                     <div className="py-2 px-3 text-center text-sm font-bold text-white">{matchDisplay.opponent}</div>
                   </div>
@@ -2174,13 +2376,13 @@ export default function MatchRecording() {
                 </div>
               </div>
 
-              {/* Recent Events */}
-              <div className="glass-card p-6">
-                <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
+              {/* Recent Events — stretches to fill remaining sidebar height */}
+              <div data-tour="event-feed" className="glass-card p-6 flex-1 flex flex-col min-h-0">
+                <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white flex-shrink-0">
                   <Clock size={20} className="text-white" />
                   <span>Recent Events</span>
                 </h3>
-                <div className="space-y-2 text-sm max-h-[500px] overflow-y-auto">
+                <div className="space-y-2 text-sm flex-1 overflow-y-auto">
                   {allEvents.length > 0 ? (
                     <>
                       {allEvents.slice(0, visibleEventCount).map((event) => {
@@ -2237,7 +2439,7 @@ export default function MatchRecording() {
                     </>
                   ) : (
                     <div className="text-center text-white/60 py-8">
-                      No events recorded yet. Start the match and record your first action!
+                      No events recorded yet. Start the match and record your first action.
                     </div>
                   )}
                 </div>
@@ -2245,78 +2447,6 @@ export default function MatchRecording() {
             </div>
           </div>
 
-          {/* Live Analytics Section — below main grid */}
-          {matchId && matchEventsData?.events && (
-            <div className="mt-6 space-y-6">
-              {/* Event Map with Filters */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="md:col-span-2 space-y-4">
-                  <div className="glass-card p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                        <Target size={20} />
-                        <span>Event Map</span>
-                      </h2>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setEventMapTeamFilter('own')}
-                          className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                            eventMapTeamFilter === 'own'
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-white/10 text-white/60 hover:bg-white/20'
-                          }`}
-                        >
-                          Us
-                        </button>
-                        <button
-                          onClick={() => setEventMapTeamFilter('opponent')}
-                          className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                            eventMapTeamFilter === 'opponent'
-                              ? 'bg-orange-600 text-white'
-                              : 'bg-white/10 text-white/60 hover:bg-white/20'
-                          }`}
-                        >
-                          {matchDisplay.opponent}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mb-2 text-sm text-white/40 text-center">
-                      {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown for {eventMapTeamFilter === 'own' ? clubName : matchDisplay.opponent}
-                    </div>
-                    <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
-                  </div>
-                  <EventFilterToggles activeFilters={eventMapFilters} onToggle={setEventMapFilters} />
-                </div>
-
-                {/* Paths Taken next to event map */}
-                <div>
-                  <PathsTakenChart
-                    matchId={matchId}
-                    pollInterval={15000}
-                  />
-                </div>
-              </div>
-
-              {/* Charts Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <PossessionTerritoryChart
-                  stats={matchStats}
-                  events={matchEventsData.events}
-                  matchId={matchId}
-                  opponent={matchDisplay.opponent}
-                  pollInterval={15000}
-                />
-                <ScoringTimeline
-                  events={matchEventsData.events}
-                  opponent={matchDisplay.opponent}
-                />
-                <ShotOutcomeChart
-                  events={matchEventsData.events}
-                  opponent={matchDisplay.opponent}
-                />
-              </div>
-            </div>
-          )}
         </>
       )}
 
@@ -2397,6 +2527,9 @@ export default function MatchRecording() {
         ballPosition={ballPosition}
         onBallMove={handleBallMove}
         readonly={matchPhase === 'not_started' || matchPhase === 'finished' || (awaitingKickout && !pendingKickoutEvent)}
+        trail={ballTrail}
+        onTrailUpdate={setBallTrail}
+        onDragPath={handleDragPath}
         matchPhase={matchPhase}
         minute={minute}
         seconds={seconds}
@@ -2405,11 +2538,43 @@ export default function MatchRecording() {
         opponentGoals={opponentGoals}
         opponentPoints={opponentPoints}
         opponent={matchDisplay.opponent}
+        matchStats={matchStats ? {
+          possession: stats.possession,
+          shots: stats.shots,
+          scores: stats.scores,
+          wides: stats.wides,
+          accuracy: {
+            team: String(stats.accuracy),
+            opponent: stats.shots.opponent > 0 ? (stats.scores.opponent / stats.shots.opponent * 100).toFixed(1) : '0.0',
+          },
+          conversion: {
+            team: String(stats.conversionRate),
+            opponent: (stats.scores.opponent + stats.wides.opponent) > 0 ? ((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1) : '0.0',
+          },
+          turnovers: { team: stats.turnovers.won, opponent: stats.turnovers.lost },
+          kickouts: {
+            team: `${stats.kickouts.teamWon}/${stats.kickouts.teamTotal}`,
+            opponent: `${stats.kickouts.opponentWon}/${stats.kickouts.opponentTotal}`,
+          },
+          kickoutRetention: { team: teamKickoutRetention, opponent: opponentKickoutRetention },
+        } : null}
+        latestEventDescription={
+          allEvents.length > 0
+            ? formatEventDescription(allEvents[0])
+            : undefined
+        }
         onActionSelect={handleQuickAction}
         onFoulClick={handleFoulClick}
         on45Click={handle45Click}
+        onDiscipline={handleDiscipline}
         currentPossession={ballPosition.team}
         isIn2PointZone={isIn2PointZone(ballPosition.x, ballPosition.y, ballPosition.team)}
+        isInPenaltyArea={(() => {
+          const attackingGoalX = ballPosition.team === PossessionTeam.OWN
+            ? (teamAttackingRight ? 100 : 0)
+            : (teamAttackingRight ? 0 : 100)
+          return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
+        })()}
         pendingFreeKick={!!pendingFreeKick}
         pendingFoul={pendingFoul}
         pending45={!!pending45}
@@ -2420,11 +2585,20 @@ export default function MatchRecording() {
         activeCategory={activeKickoutTab}
         onCategoryChange={setActiveKickoutTab}
         awaitingKickout={awaitingKickout}
-        latestEventDescription={
-          allEvents.length > 0
-            ? formatEventDescription(allEvents[0])
-            : undefined
-        }
+        teamAttackingRight={teamAttackingRight}
+        statusText={statusLabel.text}
+        statusAccent={statusLabel.accent}
+        onSwapPossession={() => {
+          const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
+          setBallPosition(prev => ({ ...prev, team: newTeam }))
+        }}
+        selectingFoulPlayer={selectingFoulPlayer}
+        onStartSecondHalf={matchPhase === 'half_time' ? startHalf : undefined}
+        onEndFirstHalf={endFirstHalf}
+        onEndMatch={endMatch}
+        fullTimeReached={fullTimeReached}
+        blackCardTimers={blackCardTimers}
+        onRemoveBlackCard={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))}
       />
 
       {/* Error Alert Modal */}
@@ -2435,6 +2609,35 @@ export default function MatchRecording() {
         message={errorAlert || ''}
         variant="danger"
       />
+
+      {/* Second Yellow → Red Card dramatic overlay */}
+      {secondYellowFlash && (
+        <div className="fixed inset-0 z-[200] pointer-events-none flex items-center justify-center animate-[secondYellowFade_2s_ease-out_forwards]">
+          <div className="bg-black/80 backdrop-blur-xl rounded-2xl border-2 border-red-500/60 px-8 py-6 flex flex-col items-center gap-3 shadow-2xl shadow-red-500/30">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-11 rounded bg-yellow-400 border-2 border-yellow-500 animate-[cardToRed_0.6s_0.3s_ease-in-out_forwards]" />
+              <div className="w-8 h-11 rounded bg-yellow-400 border-2 border-yellow-500 animate-[cardToRed_0.6s_0.5s_ease-in-out_forwards]" />
+              <span className="text-3xl font-black mx-2">=</span>
+              <div className="w-8 h-11 rounded bg-red-500 border-2 border-red-600 animate-pulse" />
+            </div>
+            <span className="text-lg font-bold text-red-400 tracking-wide">AUTOMATIC RED CARD</span>
+            <span className="text-sm text-white/60">Second yellow card — player sent off</span>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes secondYellowFade {
+          0% { opacity: 0; }
+          10% { opacity: 1; }
+          75% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes cardToRed {
+          0% { background-color: #facc15; border-color: #eab308; }
+          100% { background-color: #ef4444; border-color: #dc2626; }
+        }
+      `}</style>
     </div>
   )
 }

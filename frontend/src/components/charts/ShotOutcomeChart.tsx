@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { PieChart as PieChartIcon } from 'lucide-react'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
+import { useClubName } from '@/contexts/ClubContext'
 
 interface ShotOutcomeChartProps {
   events: any[]
@@ -10,6 +11,7 @@ interface ShotOutcomeChartProps {
 }
 
 export default function ShotOutcomeChart({ events, opponent, insight, insightLoading = false }: ShotOutcomeChartProps) {
+  const clubName = useClubName()
   const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
 
   const outcomeData = useMemo(() => {
@@ -57,7 +59,7 @@ export default function ShotOutcomeChart({ events, opponent, insight, insightLoa
             selectedTeam === 'own' ? 'bg-orange-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
           }`}
         >
-          Us
+          {clubName}
         </button>
         <button
           onClick={() => setSelectedTeam('opponent')}

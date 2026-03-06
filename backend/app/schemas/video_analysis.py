@@ -50,6 +50,8 @@ class VideoSessionResponse(BaseModel):
     video_duration_ms: Optional[int]
     video_size_bytes: Optional[int]
     halftime_timestamp_ms: Optional[int]
+    first_half_start_ms: Optional[int] = None
+    second_half_start_ms: Optional[int] = None
     status: str
     ai_model_used: Optional[str]
     ai_events_generated: Optional[int]

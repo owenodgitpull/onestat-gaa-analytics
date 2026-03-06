@@ -155,14 +155,15 @@ export default function Navigation() {
             {[
               { to: '/', label: 'DASHBOARD' },
               { to: '/results', label: 'RESULTS' },
-              { to: '/fixtures', label: 'FIXTURES' },
+              { to: '/fixtures', label: 'FIXTURES', tour: 'nav-fixtures' },
               { to: '/players', label: 'PLAYERS' },
               { to: '/training', label: 'TRAINING' },
-              { to: '/analyst', label: 'ANALYST' },
-            ].map(({ to, label }) => (
+              { to: '/analyst', label: 'ANALYST', tour: 'nav-analyst' },
+            ].map(({ to, label, tour }) => (
               <Link
                 key={to}
                 to={to}
+                data-tour={tour}
                 className={`px-4 text-sm font-medium transition-all h-14 flex items-center border-b-2 ${
                   isActive(to)
                     ? 'text-white border-emerald-400'
@@ -242,6 +243,7 @@ export default function Navigation() {
                     )}
                     <button
                       onClick={() => { setShowProfileMenu(false); navigate('/settings'); }}
+                      data-tour="nav-settings"
                       className="w-full px-4 py-2 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white flex items-center gap-2"
                     >
                       <Settings size={16} />

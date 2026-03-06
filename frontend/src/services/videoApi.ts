@@ -21,6 +21,8 @@ export interface VideoSession {
   video_duration_ms: number | null;
   video_size_bytes: number | null;
   halftime_timestamp_ms: number | null;
+  first_half_start_ms: number | null;
+  second_half_start_ms: number | null;
   status: string;
   ai_model_used: string | null;
   ai_events_generated: number | null;
@@ -214,6 +216,16 @@ export const videoSessionsAPI = {
     fetchAPI<VideoSession>(
       `/video/session/${sessionId}/set-halftime`,
       { method: 'POST', body: JSON.stringify({ halftime_timestamp_ms: halftimeMs }) }
+    ),
+
+  /** Set throw-in markers for 1st and/or 2nd half. */
+  setHalfStarts: (sessionId: string, firstHalfStartMs?: number, secondHalfStartMs?: number) =>
+    fetchAPI<VideoSession>(
+      `/video/session/${sessionId}/set-half-starts`,
+      { method: 'POST', body: JSON.stringify({
+        first_half_start_ms: firstHalfStartMs ?? null,
+        second_half_start_ms: secondHalfStartMs ?? null,
+      }) }
     ),
 
   /** Trigger Gemini 2.5 Flash auto-analysis. */

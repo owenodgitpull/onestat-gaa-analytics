@@ -54,6 +54,8 @@ export interface VideoQuickActionsProps {
   teamName?: string
   ballPitchX?: number
   ballPitchY?: number
+  /** Convert video timestamp to match minute/second (accounts for throw-in offset) */
+  calcMatchTime?: (videoMs: number) => { minute: number; second: number; half: number }
 }
 
 const SCORING_ACTIONS: ActionButton[] = [
@@ -61,7 +63,7 @@ const SCORING_ACTIONS: ActionButton[] = [
   { id: 'point', label: 'Point', eventType: 'POINT_SCORED', needsPlayer: true, needsPitch: true, playerModalTitle: 'Who Scored?', playerModalEventType: 'point', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'wide', label: 'Wide', eventType: 'WIDE', needsPlayer: true, needsPitch: true, playerModalTitle: 'Who Took?', playerModalEventType: 'wide', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'short', label: 'Short', eventType: 'SHORT', needsPlayer: true, needsPitch: true, playerModalTitle: 'Who Shot?', playerModalEventType: 'saved', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
-  { id: 'block', label: 'Block', eventType: 'BLOCK_SHOT', needsPlayer: false, needsPitch: false, disabledWhen: 'us', autoFlipTo: 'us' },
+  { id: 'block', label: 'Block', eventType: 'BLOCK_SHOT', needsPlayer: false, needsPitch: false },
   { id: 'free_won', label: 'Free Won', eventType: 'FREE_WON_MARKER', needsPlayer: false, needsPitch: true },
   { id: 'forty_five', label: '45m Free', eventType: 'FORTY_FIVE_MARKER', needsPlayer: false, needsPitch: false },
   { id: 'pen_goal', label: 'Pen Goal', eventType: 'PENALTY_GOAL_MARKER', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Took?', playerModalEventType: 'goal', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
@@ -71,7 +73,7 @@ const SCORING_ACTIONS: ActionButton[] = [
 const TURNOVER_ACTIONS: ActionButton[] = [
   { id: 'to_won', label: 'T/O Won', eventType: 'TURNOVER_WON', disabledWhen: 'us', autoFlipTo: 'us', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Won Turnover?', playerModalEventType: 'turnover_won' },
   { id: 'to_lost', label: 'T/O Lost', eventType: 'TURNOVER_LOST', disabledWhen: 'them', autoFlipTo: 'them', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Lost Possession?', playerModalEventType: 'turnover_lost' },
-  { id: 'intercept', label: 'Intercept', eventType: 'INTERCEPTION', disabledWhen: 'us', autoFlipTo: 'us', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Intercepted?', playerModalEventType: 'turnover_won' },
+  { id: 'intercept', label: 'Intercept', eventType: 'INTERCEPTION', autoFlipTo: 'us', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Intercepted?', playerModalEventType: 'turnover_won' },
   { id: 'our_error', label: 'Our Error', eventType: 'OUR_UNFORCED_ERROR', disabledWhen: 'them', autoFlipTo: 'them', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Made the Error?', playerModalEventType: 'turnover_lost' },
   { id: 'opp_error', label: 'Opp Error', eventType: 'OPP_UNFORCED_ERROR', disabledWhen: 'us', autoFlipTo: 'us', needsPlayer: false, needsPitch: false },
 ]
@@ -107,7 +109,6 @@ const CATEGORY_TABS: { id: Category; label: string; icon: typeof Target }[] = [
 const FREE_KICK_ACTIONS: ActionButton[] = [
   { id: 'free_point', label: 'Point (Free)', eventType: 'POINT_SCORED', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Scored?', playerModalEventType: 'point', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'free_wide', label: 'Wide (Free)', eventType: 'WIDE', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Took?', playerModalEventType: 'wide', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
-  { id: 'free_short', label: 'Short Free', eventType: 'SHORT', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Took?', playerModalEventType: 'saved', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
 ]
 
 const FORTY_FIVE_ACTIONS: ActionButton[] = [
@@ -129,6 +130,7 @@ export default function VideoQuickActions({
   teamName = 'Team',
   ballPitchX,
   ballPitchY,
+  calcMatchTime,
 }: VideoQuickActionsProps) {
   const [flashButton, setFlashButton] = useState<string | null>(null)
   const [showFreePanel, setShowFreePanel] = useState(false)
@@ -143,7 +145,10 @@ export default function VideoQuickActions({
   }, [flashButton])
 
   const buildEventData = useCallback((action: ActionButton, freeKickContext?: boolean): VideoEventCreateData => {
-    const totalSec = currentTimestampMs ? Math.floor(currentTimestampMs / 1000) : 0
+    const videoMs = currentTimestampMs ?? 0
+    const time = calcMatchTime
+      ? calcMatchTime(videoMs)
+      : { minute: Math.floor(videoMs / 60000), second: Math.floor((videoMs % 60000) / 1000), half }
     const isTwoPointer = selectedZone ? TWO_POINTER_ZONES.includes(selectedZone) : false
 
     // Derive zone from minimap ball position when no zone overlay will be shown
@@ -154,9 +159,9 @@ export default function VideoQuickActions({
     const data: VideoEventCreateData = {
       event_type: action.eventType,
       team: possession,
-      half,
-      match_minute: Math.floor(totalSec / 60),
-      match_second: totalSec % 60,
+      half: time.half,
+      match_minute: time.minute,
+      match_second: time.second,
       video_timestamp_ms: currentTimestampMs ?? undefined,
       pitch_zone: effectiveZone ?? undefined,
       source: 'human_tag',
@@ -176,7 +181,7 @@ export default function VideoQuickActions({
     }
 
     return data
-  }, [possession, half, currentTimestampMs, selectedZone, ballPitchX, ballPitchY])
+  }, [possession, half, currentTimestampMs, selectedZone, ballPitchX, ballPitchY, calcMatchTime])
 
   const handleActionTap = useCallback((action: ActionButton, freeKickContext?: boolean) => {
     if (disabled) return
@@ -277,19 +282,38 @@ export default function VideoQuickActions({
     return false
   }
 
-  const handleDiscipline = (type: 'YELLOW_CARD' | 'RED_CARD' | 'SUB_ON') => {
+  const handleDiscipline = (type: 'YELLOW_CARD' | 'BLACK_CARD' | 'RED_CARD' | 'SUB_ON') => {
     if (disabled) return
-    const totalSec = currentTimestampMs ? Math.floor(currentTimestampMs / 1000) : 0
+    const videoMs = currentTimestampMs ?? 0
+    const time = calcMatchTime
+      ? calcMatchTime(videoMs)
+      : { minute: Math.floor(videoMs / 60000), second: Math.floor((videoMs % 60000) / 1000), half }
     const data: VideoEventCreateData = {
       event_type: type,
       team: possession,
-      half,
-      match_minute: Math.floor(totalSec / 60),
-      match_second: totalSec % 60,
+      half: time.half,
+      match_minute: time.minute,
+      match_second: time.second,
       video_timestamp_ms: currentTimestampMs ?? undefined,
       source: 'human_tag',
     }
-    onCreateEvent(data)
+    const modalTitle = type === 'YELLOW_CARD' ? 'Yellow Card — Who?'
+      : type === 'BLACK_CARD' ? 'Black Card — Who?'
+      : type === 'RED_CARD' ? 'Red Card — Who?'
+      : 'Substitution — Who?'
+    // Route through overlay flow for player selection
+    onEventTap({
+      action: {
+        id: type.toLowerCase(),
+        label: modalTitle,
+        eventType: type,
+        needsPlayer: true,
+        needsPitch: false,
+        playerModalTitle: modalTitle,
+        playerModalEventType: type.toLowerCase(),
+      },
+      eventData: data,
+    })
   }
 
   const actions = CATEGORY_ACTIONS[activeTab]
@@ -361,6 +385,14 @@ export default function VideoQuickActions({
                 {action.label}
               </button>
             ))}
+            <button
+              onClick={() => setShowFreePanel(false)}
+              disabled={disabled}
+              className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90"
+              style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
+            >
+              Short Pass
+            </button>
             <button
               onClick={() => setShowFreePanel(false)}
               className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
@@ -436,7 +468,7 @@ export default function VideoQuickActions({
       </div>
 
       {/* Discipline row */}
-      <div className="flex gap-1.5 p-2 border-t border-white/[0.08]">
+      <div className="flex gap-1 p-2 border-t border-white/[0.08]">
         <button
           onClick={() => handleDiscipline('YELLOW_CARD')}
           disabled={disabled}
@@ -445,6 +477,15 @@ export default function VideoQuickActions({
           title="Yellow Card"
         >
           <AlertTriangle size={12} className="mx-auto" />
+        </button>
+        <button
+          onClick={() => handleDiscipline('BLACK_CARD')}
+          disabled={disabled}
+          className="flex-1 py-1.5 rounded-lg text-[10px] font-medium border border-slate-400/20 text-slate-300 hover:border-slate-400/35 disabled:opacity-30 transition-all active:scale-[0.95]"
+          style={{ background: 'linear-gradient(135deg, rgba(30,41,59,0.6) 0%, rgba(30,41,59,0.3) 100%)' }}
+          title="Black Card (10 min sin bin)"
+        >
+          <div className="w-3 h-4 rounded-[2px] bg-slate-800 border border-slate-400/40 mx-auto" />
         </button>
         <button
           onClick={() => handleDiscipline('RED_CARD')}

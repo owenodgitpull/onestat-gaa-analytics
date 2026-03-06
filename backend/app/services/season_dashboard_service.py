@@ -36,16 +36,63 @@ DEFENSIVE_EVENTS = [
     EventType.INTERCEPTION, EventType.BLOCK, EventType.TURNOVER_WON,
 ]
 
+# Score values for scoring event types
+SCORE_VALUE = {
+    EventType.GOAL: 3,
+    EventType.POINT: 1,
+    EventType.TWO_POINT: 2,
+    EventType.POINT_FREE: 1,
+    EventType.TWO_POINT_FREE: 2,
+    EventType.FORTY_FIVE: 1,
+    EventType.PENALTY_GOAL: 3,
+}
+
+# From play vs dead ball classification
+FROM_PLAY_SCORES = {EventType.GOAL, EventType.POINT, EventType.TWO_POINT}
+DEAD_BALL_SCORES = {
+    EventType.POINT_FREE, EventType.TWO_POINT_FREE,
+    EventType.FORTY_FIVE, EventType.PENALTY_GOAL,
+}
+DEAD_BALL_MISSES = {
+    EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED, EventType.PENALTY_MISS,
+}
+
+# Kickout type groupings for landing zone analysis
+OWN_KICKOUT_TYPES = [
+    EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_OPPOSITION_WON,
+    EventType.OWN_KICKOUT_WON_BREAK, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+    EventType.KICKOUT_WON, EventType.KICKOUT_LOST,
+    EventType.BREAKING_BALL_WON, EventType.BREAKING_BALL_LOST,
+]
+OPP_KICKOUT_TYPES = [
+    EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
+    EventType.OPP_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+]
+
+ALL_SCORE_EVENTS = list(SCORE_VALUE.keys())
+
 
 class SeasonDashboardService:
     """Static methods for season dashboard data aggregation."""
 
     @staticmethod
     async def _get_completed_matches(db: AsyncSession, club_id=None):
-        """Get all completed, non-deleted matches ordered by date, filtered by club."""
+        """Get all completed, non-deleted matches that have at least one
+        recorded event, ordered by date, filtered by club.
+
+        Matches with zero events (result-only, still being tagged) are
+        excluded so dashboards never show misleading zeros.
+        """
+        event_count = (
+            select(func.count(MatchEvent.id))
+            .where(MatchEvent.match_id == Match.id)
+            .correlate(Match)
+            .scalar_subquery()
+        )
         conditions = [
             Match.status == MatchStatus.COMPLETED,
             Match.is_deleted == False,
+            event_count > 0,
         ]
         if club_id:
             conditions.append(Match.club_id == club_id)
@@ -62,21 +109,31 @@ class SeasonDashboardService:
         """
         matches = await SeasonDashboardService._get_completed_matches(db, club_id)
 
-        funnel, kickouts, turnovers, red_zone, radar, territory = await asyncio.gather(
+        (funnel, kickouts, turnovers, red_zone, radar, territory,
+         score_timeline, dead_ball, def_zones, kickout_zones) = await asyncio.gather(
             SeasonDashboardService._possession_funnel(db, matches),
             SeasonDashboardService._kickout_trends(db, matches),
             SeasonDashboardService._turnover_source_leaderboard(db, matches),
             SeasonDashboardService._red_zone_players(db, matches),
             SeasonDashboardService._workhorse_radar_data(db, matches),
             SeasonDashboardService._territory_distribution(db, matches),
+            SeasonDashboardService._score_timeline(db, matches),
+            SeasonDashboardService._dead_ball_vs_play(db, matches),
+            SeasonDashboardService._defensive_action_zones(db, matches),
+            SeasonDashboardService._kickout_landing_zones(db, matches),
         )
 
         kpi = await SeasonDashboardService._kpi_cards(db, matches, funnel)
 
+        # KPI sparkline grid (depends on funnel/kickouts/territory results)
+        kpi_sparkline = await SeasonDashboardService._kpi_sparkline_grid(
+            db, matches, funnel, kickouts, territory
+        )
+
         # Generate dynamic AI insights for KPI cards (cached — only regenerate when data changes)
         try:
             from app.services.ai import generate_kpi_insights, get_fixture_context
-            fixture_ctx = await get_fixture_context(db)
+            fixture_ctx = await get_fixture_context(db, club_id=club_id)
             insights = await _get_cached_kpi_insights(db, kpi, fixture_ctx, club_id)
             logger.info(f"KPI insights result: {len(insights)} keys returned: {list(insights.keys()) if insights else 'empty'}")
             if insights:
@@ -93,6 +150,11 @@ class SeasonDashboardService:
             "workhorse_radar": radar,
             "territory_distribution": territory,
             "kpi_cards": kpi,
+            "score_timeline": score_timeline,
+            "dead_ball_breakdown": dead_ball,
+            "defensive_action_zones": def_zones,
+            "kickout_landing_zones": kickout_zones,
+            "kpi_sparkline_grid": kpi_sparkline,
         }
 
     # ------------------------------------------------------------------
@@ -587,6 +649,651 @@ class SeasonDashboardService:
         }
 
     # ------------------------------------------------------------------
+    # Score Timeline (Chart 7)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _score_timeline(db: AsyncSession, matches: list) -> dict:
+        """
+        Cumulative score difference per match, minute-by-minute.
+        Returns per_match arrays + season summary stats.
+        """
+        empty = {"per_match": {}, "summary": {
+            "avg_ht_lead": 0, "longest_drought_mins": 0,
+            "scores_final_10": 0, "best_period": "",
+        }}
+        if not matches:
+            return empty
+
+        match_ids = [m.id for m in matches]
+        matches_map = {m.id: m for m in matches}
+
+        events_result = await db.execute(
+            select(MatchEvent).where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type.in_(ALL_SCORE_EVENTS),
+                )
+            ).order_by(MatchEvent.minute.asc())
+        )
+        all_events = events_result.scalars().all()
+
+        per_match = {}
+        ht_leads = []
+        droughts = []
+        final_10_scores = 0
+
+        for m in matches:
+            mid = m.id
+            match_events = [e for e in all_events if e.match_id == mid]
+            if not match_events:
+                continue
+
+            timeline = []
+            cumulative_diff = 0
+            last_own_minute = 0
+
+            for e in match_events:
+                value = SCORE_VALUE.get(e.event_type, 0)
+                is_from_play = e.event_type in FROM_PLAY_SCORES
+                minute = e.minute or 0
+
+                if e.team == Team.OWN:
+                    cumulative_diff += value
+                    # Track drought
+                    gap = minute - last_own_minute
+                    droughts.append(gap)
+                    last_own_minute = minute
+                    # Final 10 minutes
+                    if minute >= 60:
+                        final_10_scores += 1
+                else:
+                    cumulative_diff -= value
+
+                timeline.append({
+                    "minute": minute,
+                    "team": e.team.value,
+                    "event_type": e.event_type.value,
+                    "value": value,
+                    "cumulative_diff": cumulative_diff,
+                    "is_from_play": is_from_play,
+                })
+
+            per_match[str(mid)] = {
+                "opponent": m.opponent,
+                "date": m.match_date.isoformat() if m.match_date else "",
+                "events": timeline,
+            }
+
+            # HT lead (at minute 35)
+            ht_diff = 0
+            for t in timeline:
+                if t["minute"] <= 35:
+                    ht_diff = t["cumulative_diff"]
+            ht_leads.append(ht_diff)
+
+        # Best period: split into 10-min buckets, find which has most own scores
+        bucket_scores = {}
+        for e in all_events:
+            if e.team == Team.OWN:
+                minute = e.minute or 0
+                bucket = (minute // 10) * 10
+                bucket_scores[bucket] = bucket_scores.get(bucket, 0) + 1
+        best_bucket = max(bucket_scores, key=bucket_scores.get) if bucket_scores else 0
+        best_period = f"{best_bucket}-{best_bucket + 10} min"
+
+        summary = {
+            "avg_ht_lead": round(sum(ht_leads) / len(ht_leads), 1) if ht_leads else 0,
+            "longest_drought_mins": max(droughts) if droughts else 0,
+            "scores_final_10": final_10_scores,
+            "best_period": best_period,
+        }
+
+        return {"per_match": per_match, "summary": summary}
+
+    # ------------------------------------------------------------------
+    # Dead Ball vs Play Breakdown (Chart 8)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _dead_ball_vs_play(db: AsyncSession, matches: list) -> dict:
+        """
+        Break down scores by source: from play, frees, 45s, penalties.
+        Returns per-match breakdown + season totals.
+        """
+        empty = {"per_match": {}, "season_totals": {}, "from_play_pct": 0}
+        if not matches:
+            return empty
+
+        match_ids = [m.id for m in matches]
+        matches_map = {m.id: m for m in matches}
+
+        # Get all score events + dead ball misses
+        all_types = ALL_SCORE_EVENTS + list(DEAD_BALL_MISSES)
+        events_result = await db.execute(
+            select(MatchEvent).where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type.in_(all_types),
+                )
+            )
+        )
+        all_events = events_result.scalars().all()
+
+        def empty_breakdown():
+            return {
+                "from_play": {"goals": 0, "points": 0, "two_ptrs": 0},
+                "frees": {"scored": 0, "missed": 0},
+                "forty_fives": {"scored": 0, "missed": 0},
+                "penalties": {"scored": 0, "missed": 0},
+            }
+
+        per_match = {}
+        season_own = empty_breakdown()
+        season_opp = empty_breakdown()
+
+        for m in matches:
+            mid = m.id
+            match_events = [e for e in all_events if e.match_id == mid]
+            if not match_events:
+                continue
+
+            own = empty_breakdown()
+            opp = empty_breakdown()
+
+            for e in match_events:
+                target = own if e.team == Team.OWN else opp
+
+                if e.event_type == EventType.GOAL:
+                    target["from_play"]["goals"] += 1
+                elif e.event_type == EventType.POINT:
+                    target["from_play"]["points"] += 1
+                elif e.event_type == EventType.TWO_POINT:
+                    target["from_play"]["two_ptrs"] += 1
+                elif e.event_type == EventType.POINT_FREE:
+                    target["frees"]["scored"] += 1
+                elif e.event_type == EventType.TWO_POINT_FREE:
+                    target["frees"]["scored"] += 1
+                elif e.event_type in (EventType.WIDE_FREE,):
+                    target["frees"]["missed"] += 1
+                elif e.event_type == EventType.FORTY_FIVE:
+                    target["forty_fives"]["scored"] += 1
+                elif e.event_type == EventType.FORTY_FIVE_MISSED:
+                    target["forty_fives"]["missed"] += 1
+                elif e.event_type == EventType.PENALTY_GOAL:
+                    target["penalties"]["scored"] += 1
+                elif e.event_type == EventType.PENALTY_MISS:
+                    target["penalties"]["missed"] += 1
+
+            per_match[str(mid)] = {
+                "opponent": m.opponent,
+                "date": m.match_date.isoformat() if m.match_date else "",
+                "own": own,
+                "opp": opp,
+            }
+
+            # Accumulate season totals
+            for cat in ("from_play", "frees", "forty_fives", "penalties"):
+                for key in own[cat]:
+                    season_own[cat][key] += own[cat][key]
+                    season_opp[cat][key] += opp[cat][key]
+
+        # Calculate from-play percentage
+        own_fp = (season_own["from_play"]["goals"] * 3 +
+                  season_own["from_play"]["points"] +
+                  season_own["from_play"]["two_ptrs"] * 2)
+        own_total = own_fp
+        for cat in ("frees", "forty_fives", "penalties"):
+            own_total += season_own[cat]["scored"] * (3 if cat == "penalties" else 1)
+        from_play_pct = round(own_fp / own_total * 100, 1) if own_total > 0 else 0
+
+        return {
+            "per_match": per_match,
+            "season_totals": {"own": season_own, "opponent": season_opp},
+            "from_play_pct": from_play_pct,
+        }
+
+    # ------------------------------------------------------------------
+    # Defensive Action Zones (Chart 9)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _defensive_action_zones(db: AsyncSession, matches: list) -> dict:
+        """
+        Defensive actions (interceptions, blocks, turnovers won) with coordinates.
+        Returns raw events + 6-zone grid summary.
+        """
+        empty = {"events": [], "zones": {}, "totals": {"interceptions": 0, "blocks": 0, "turnovers_won": 0}}
+        if not matches:
+            return empty
+
+        match_ids = [m.id for m in matches]
+
+        events_result = await db.execute(
+            select(MatchEvent).where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_(DEFENSIVE_EVENTS),
+                )
+            )
+        )
+        events = events_result.scalars().all()
+
+        # Get player names
+        from uuid import UUID
+        player_ids = list(set(UUID(str(e.player_id)) for e in events if e.player_id))
+        players_map = {}
+        if player_ids:
+            players_result = await db.execute(
+                select(Player).where(Player.id.in_(player_ids))
+            )
+            players_map = {str(p.id): p.name for p in players_result.scalars()}
+
+        # 6-zone grid: DEF/MID/ATK × Left/Right
+        zone_names = ["DEF_LEFT", "DEF_RIGHT", "MID_LEFT", "MID_RIGHT", "ATK_LEFT", "ATK_RIGHT"]
+        zones = {z: {"interceptions": 0, "blocks": 0, "turnovers_won": 0, "total": 0} for z in zone_names}
+        totals = {"interceptions": 0, "blocks": 0, "turnovers_won": 0}
+
+        raw_events = []
+        for e in events:
+            action_type = e.event_type.value
+            if e.event_type == EventType.INTERCEPTION:
+                totals["interceptions"] += 1
+            elif e.event_type == EventType.BLOCK:
+                totals["blocks"] += 1
+            elif e.event_type == EventType.TURNOVER_WON:
+                totals["turnovers_won"] += 1
+
+            x = float(e.pitch_x) if e.pitch_x is not None else None
+            y = float(e.pitch_y) if e.pitch_y is not None else None
+
+            raw_events.append({
+                "match_id": str(e.match_id),
+                "minute": e.minute,
+                "player_name": players_map.get(str(e.player_id), "Unknown") if e.player_id else None,
+                "action_type": action_type,
+                "pitch_x": x,
+                "pitch_y": y,
+            })
+
+            # Assign to zone
+            if x is not None and y is not None:
+                if x < 35:
+                    x_zone = "DEF"
+                elif x < 65:
+                    x_zone = "MID"
+                else:
+                    x_zone = "ATK"
+                y_zone = "LEFT" if y < 50 else "RIGHT"
+                zone_key = f"{x_zone}_{y_zone}"
+                zones[zone_key]["total"] += 1
+                if e.event_type == EventType.INTERCEPTION:
+                    zones[zone_key]["interceptions"] += 1
+                elif e.event_type == EventType.BLOCK:
+                    zones[zone_key]["blocks"] += 1
+                elif e.event_type == EventType.TURNOVER_WON:
+                    zones[zone_key]["turnovers_won"] += 1
+
+        return {"events": raw_events, "zones": zones, "totals": totals}
+
+    # ------------------------------------------------------------------
+    # Kickout Landing Zones (Chart 10)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _kickout_landing_zones(db: AsyncSession, matches: list) -> dict:
+        """
+        9-zone grid of kickout landing spots with won/lost breakdown.
+        Returns zone grid + raw events + summary stats.
+        """
+        empty = {"zones": {}, "events": [], "summary": {
+            "total": 0, "short_pct": 0, "mid_pct": 0, "long_pct": 0,
+            "best_zone": "", "worst_zone": "",
+        }}
+        if not matches:
+            return empty
+
+        match_ids = [m.id for m in matches]
+
+        all_kickout_types = OWN_KICKOUT_TYPES + OPP_KICKOUT_TYPES
+        events_result = await db.execute(
+            select(MatchEvent).where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type.in_(all_kickout_types),
+                )
+            )
+        )
+        events = events_result.scalars().all()
+
+        # Won vs lost classification
+        won_types = {
+            EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON,
+            EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
+            EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK,
+        }
+        lost_types = {
+            EventType.KICKOUT_LOST, EventType.BREAKING_BALL_LOST,
+            EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+            EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+        }
+
+        # 9-zone grid: Short/Mid/Long × Left/Centre/Right
+        zone_labels = []
+        for x_label in ("Short", "Mid", "Long"):
+            for y_label in ("Left", "Centre", "Right"):
+                zone_labels.append(f"{x_label}_{y_label}")
+        zones = {z: {"total": 0, "won": 0, "lost": 0, "win_pct": 0} for z in zone_labels}
+
+        raw_events = []
+        own_events = []
+        opp_events = []
+
+        for e in events:
+            is_own_kickout = e.event_type in OWN_KICKOUT_TYPES
+            is_won = e.event_type in won_types
+            is_lost = e.event_type in lost_types
+
+            # For legacy types, check team field
+            if e.event_type in (EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON):
+                is_won = e.team == Team.OWN
+                is_lost = not is_won
+            elif e.event_type in (EventType.KICKOUT_LOST, EventType.BREAKING_BALL_LOST):
+                is_lost = e.team == Team.OWN
+                is_won = not is_lost
+
+            x = float(e.pitch_x) if e.pitch_x is not None else None
+            y = float(e.pitch_y) if e.pitch_y is not None else None
+
+            event_data = {
+                "match_id": str(e.match_id),
+                "minute": e.minute,
+                "event_type": e.event_type.value,
+                "is_own_kickout": is_own_kickout,
+                "won": is_won,
+                "pitch_x": x,
+                "pitch_y": y,
+            }
+            raw_events.append(event_data)
+
+            if is_own_kickout:
+                own_events.append(event_data)
+            else:
+                opp_events.append(event_data)
+
+            # Assign to zone (x-axis: distance from goal, y-axis: lateral)
+            if x is not None and y is not None:
+                if x < 25:
+                    x_zone = "Short"
+                elif x < 45:
+                    x_zone = "Mid"
+                else:
+                    x_zone = "Long"
+
+                if y < 33:
+                    y_zone = "Left"
+                elif y < 67:
+                    y_zone = "Centre"
+                else:
+                    y_zone = "Right"
+
+                zone_key = f"{x_zone}_{y_zone}"
+                zones[zone_key]["total"] += 1
+                if is_won:
+                    zones[zone_key]["won"] += 1
+                elif is_lost:
+                    zones[zone_key]["lost"] += 1
+
+        # Calculate win percentages per zone
+        for z in zones.values():
+            z["win_pct"] = round(z["won"] / z["total"] * 100, 1) if z["total"] > 0 else 0
+
+        # Summary stats
+        total = sum(z["total"] for z in zones.values())
+        short_total = sum(zones[z]["total"] for z in zone_labels if z.startswith("Short"))
+        mid_total = sum(zones[z]["total"] for z in zone_labels if z.startswith("Mid"))
+        long_total = sum(zones[z]["total"] for z in zone_labels if z.startswith("Long"))
+
+        # Best/worst zones (min 3 kickouts to qualify)
+        qualified = [(k, v) for k, v in zones.items() if v["total"] >= 3]
+        best_zone = max(qualified, key=lambda x: x[1]["win_pct"])[0] if qualified else ""
+        worst_zone = min(qualified, key=lambda x: x[1]["win_pct"])[0] if qualified else ""
+
+        return {
+            "zones": zones,
+            "events": raw_events,
+            "own_events": own_events,
+            "opp_events": opp_events,
+            "summary": {
+                "total": total,
+                "short_pct": round(short_total / total * 100, 1) if total > 0 else 0,
+                "mid_pct": round(mid_total / total * 100, 1) if total > 0 else 0,
+                "long_pct": round(long_total / total * 100, 1) if total > 0 else 0,
+                "best_zone": best_zone.replace("_", " "),
+                "worst_zone": worst_zone.replace("_", " "),
+            },
+        }
+
+    # ------------------------------------------------------------------
+    # KPI Sparkline Grid (Chart 11)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _kpi_sparkline_grid(
+        db: AsyncSession, matches: list,
+        funnel: dict, kickouts: list, territory: dict
+    ) -> dict:
+        """
+        16 KPI rows with per-match values for sparklines + trend indicators.
+        Reuses funnel/kickouts/territory data + fresh queries for turnovers/fouls/scores.
+        """
+        empty = {"rows": []}
+        if not matches:
+            return empty
+
+        match_ids = [m.id for m in matches]
+        matches_map = {m.id: m for m in matches}
+        n = len(matches)
+
+        # --- Fresh per-match queries ---
+        # Turnovers won/lost per match
+        to_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_([
+                        EventType.TURNOVER_WON, EventType.TURNOVER_LOST,
+                        EventType.UNFORCED_ERROR,
+                    ]),
+                )
+            )
+            .group_by(MatchEvent.match_id, MatchEvent.event_type)
+        )
+        match_to = {}
+        for row in to_result:
+            mid = row.match_id
+            match_to.setdefault(mid, {"won": 0, "lost": 0, "errors": 0})
+            if row.event_type == EventType.TURNOVER_WON:
+                match_to[mid]["won"] = row.cnt
+            elif row.event_type == EventType.TURNOVER_LOST:
+                match_to[mid]["lost"] = row.cnt
+            elif row.event_type == EventType.UNFORCED_ERROR:
+                match_to[mid]["errors"] = row.cnt
+
+        # Fouls per match
+        foul_result = await db.execute(
+            select(MatchEvent.match_id, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type == EventType.FOUL_COMMITTED,
+                )
+            )
+            .group_by(MatchEvent.match_id)
+        )
+        match_fouls = {row.match_id: row.cnt for row in foul_result}
+
+        # Scores per match by team
+        score_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.team, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type.in_(ALL_SCORE_EVENTS),
+                )
+            )
+            .group_by(MatchEvent.match_id, MatchEvent.team)
+        )
+        match_own_scores = {}
+        match_opp_scores = {}
+        for row in score_result:
+            if row.team == Team.OWN:
+                match_own_scores[row.match_id] = row.cnt
+            else:
+                match_opp_scores[row.match_id] = row.cnt
+
+        # Shots per match
+        shot_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.team, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type.in_(SHOT_EVENTS),
+                )
+            )
+            .group_by(MatchEvent.match_id, MatchEvent.team)
+        )
+        match_own_shots = {}
+        match_opp_shots = {}
+        for row in shot_result:
+            if row.team == Team.OWN:
+                match_own_shots[row.match_id] = row.cnt
+            else:
+                match_opp_shots[row.match_id] = row.cnt
+
+        # --- Build per-match funnel lookups ---
+        funnel_per_match = {pm["match_id"]: pm for pm in funnel.get("per_match", [])}
+
+        # --- Build per-match kickout lookups ---
+        kickout_per_match = {k["match_id"]: k for k in kickouts}
+
+        # --- Build per-match territory lookups ---
+        territory_per_match = {t["match_id"]: t for t in territory.get("per_match", [])}
+
+        # --- Define 16 KPI rows ---
+        def build_values(value_fn):
+            """Build per-match values list in chronological order."""
+            values = []
+            for m in matches:
+                mid = m.id
+                try:
+                    val = value_fn(mid)
+                except Exception:
+                    val = 0
+                values.append({"match_id": str(mid), "value": round(val, 1) if val is not None else 0})
+            return values
+
+        def trend(values):
+            """Calculate trend from last 3 values vs season avg."""
+            nums = [v["value"] for v in values]
+            if len(nums) < 2:
+                return "stable"
+            season_avg = sum(nums) / len(nums) if nums else 0
+            recent = nums[-3:] if len(nums) >= 3 else nums
+            recent_avg = sum(recent) / len(recent)
+            if season_avg == 0:
+                return "stable"
+            pct_change = (recent_avg - season_avg) / abs(season_avg) * 100
+            if pct_change > 2:
+                return "up"
+            elif pct_change < -2:
+                return "down"
+            return "stable"
+
+        def make_row(id, name, category, value_fn):
+            values = build_values(value_fn)
+            nums = [v["value"] for v in values]
+            return {
+                "id": id,
+                "name": name,
+                "category": category,
+                "values": values,
+                "season_avg": round(sum(nums) / len(nums), 1) if nums else 0,
+                "last_match": nums[-1] if nums else 0,
+                "trend": trend(values),
+                "min": round(min(nums), 1) if nums else 0,
+                "max": round(max(nums), 1) if nums else 0,
+            }
+
+        rows = [
+            # POSSESSION
+            make_row("possessions", "Possessions", "POSSESSION",
+                     lambda mid: funnel_per_match.get(str(mid), {}).get("possessions", 0)),
+            make_row("attacks", "Attacks (Opp 45)", "POSSESSION",
+                     lambda mid: funnel_per_match.get(str(mid), {}).get("attacks", 0)),
+            make_row("poss_to_attack", "Attack Rate %", "POSSESSION",
+                     lambda mid: (
+                         funnel_per_match.get(str(mid), {}).get("attacks", 0) /
+                         max(funnel_per_match.get(str(mid), {}).get("possessions", 1), 1) * 100
+                     )),
+
+            # SHOOTING
+            make_row("shots", "Shots", "SHOOTING",
+                     lambda mid: match_own_shots.get(mid, 0)),
+            make_row("shot_efficiency", "Shot Efficiency %", "SHOOTING",
+                     lambda mid: (
+                         match_own_scores.get(mid, 0) /
+                         max(match_own_shots.get(mid, 1), 1) * 100
+                     )),
+            make_row("scores", "Scores", "SHOOTING",
+                     lambda mid: match_own_scores.get(mid, 0)),
+
+            # KICKOUTS
+            make_row("kickout_win_rate", "Kickout Win %", "KICKOUTS",
+                     lambda mid: (
+                         (kickout_per_match.get(str(mid), {}).get("won_clean", 0) +
+                          kickout_per_match.get(str(mid), {}).get("won_break", 0)) /
+                         max(
+                             kickout_per_match.get(str(mid), {}).get("won_clean", 0) +
+                             kickout_per_match.get(str(mid), {}).get("won_break", 0) +
+                             kickout_per_match.get(str(mid), {}).get("lost_clean", 0) +
+                             kickout_per_match.get(str(mid), {}).get("lost_break", 0),
+                             1
+                         ) * 100
+                     )),
+            make_row("kickout_clean_win", "Clean Wins", "KICKOUTS",
+                     lambda mid: kickout_per_match.get(str(mid), {}).get("won_clean", 0)),
+
+            # DEFENCE
+            make_row("turnovers_won", "Turnovers Won", "DEFENCE",
+                     lambda mid: match_to.get(mid, {}).get("won", 0)),
+            make_row("turnovers_lost", "Turnovers Lost", "DEFENCE",
+                     lambda mid: match_to.get(mid, {}).get("lost", 0)),
+            make_row("turnover_diff", "Turnover Diff", "DEFENCE",
+                     lambda mid: match_to.get(mid, {}).get("won", 0) - match_to.get(mid, {}).get("lost", 0)),
+            make_row("fouls", "Fouls", "DEFENCE",
+                     lambda mid: match_fouls.get(mid, 0)),
+
+            # SCORING
+            make_row("total_scored", "Total Scored (pts)", "SCORING",
+                     lambda mid: (matches_map[mid].team_goals * 3 + matches_map[mid].team_points) if mid in matches_map else 0),
+            make_row("total_conceded", "Total Conceded (pts)", "SCORING",
+                     lambda mid: (matches_map[mid].opponent_goals * 3 + matches_map[mid].opponent_points) if mid in matches_map else 0),
+
+            # TERRITORY
+            make_row("territory_att", "Attacking Territory %", "TERRITORY",
+                     lambda mid: territory_per_match.get(str(mid), {}).get("team_pcts", {}).get("attacking", 0)),
+            make_row("possession_pct", "Possession %", "TERRITORY",
+                     lambda mid: territory_per_match.get(str(mid), {}).get("possession_pct", 50)),
+        ]
+
+        return {"rows": rows}
+
+    # ------------------------------------------------------------------
     # Outlier Detection
     # ------------------------------------------------------------------
 
@@ -912,7 +1619,7 @@ class SeasonDashboardService:
     @staticmethod
     async def _kpi_cards(db: AsyncSession, matches: list, funnel: dict) -> dict:
         """
-        Compute 7 advanced KPI cards + metadata (matches played, win rate, W-L-D).
+        Compute 17 advanced KPI cards + metadata (matches played, win rate, W-L-D).
         """
         n = len(matches)
         empty = {
@@ -1017,6 +1724,201 @@ class SeasonDashboardService:
         avg_conceded = round(
             sum((m.opponent_goals * 3) + m.opponent_points for m in matches) / n, 1
         )
+
+        # --- Score per possession % ---
+        season_possessions = funnel.get("season_totals", {}).get("possessions", 0)
+        season_scores = funnel.get("season_totals", {}).get("scores", 0)
+        score_per_poss = round(season_scores / season_possessions * 100, 1) if season_possessions > 0 else 0
+
+        # --- Opponent score per possession % ---
+        opp_total_pts = sum((m.opponent_goals * 3) + m.opponent_points for m in matches)
+        opp_score_per_poss = round(opp_total_pts / season_possessions * 100, 1) if season_possessions > 0 else 0
+
+        # --- Turnover-to-score rate (proxy: from-play scores / turnovers won) ---
+        from_play_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_(list(FROM_PLAY_SCORES)),
+                )
+            )
+        )
+        from_play_scores_count = from_play_result.scalar() or 0
+        turnover_scores_est = min(from_play_scores_count, t_won)
+        turnover_to_score = round(turnover_scores_est / t_won * 100, 0) if t_won > 0 else 0
+
+        # --- Points conceded from play per game ---
+        opp_from_play_result = await db.execute(
+            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OPPONENT,
+                    MatchEvent.event_type.in_([EventType.GOAL, EventType.POINT, EventType.TWO_POINT]),
+                )
+            )
+            .group_by(MatchEvent.event_type)
+        )
+        opp_from_play_pts = 0
+        for row in opp_from_play_result:
+            opp_from_play_pts += row.cnt * SCORE_VALUE.get(row.event_type, 1)
+        pts_conceded_from_play = round(opp_from_play_pts / n, 1)
+
+        # --- Frees conceded in scoring range per game ---
+        frees_scoring_range_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type == EventType.FOUL_COMMITTED,
+                    MatchEvent.pitch_x.isnot(None),
+                    MatchEvent.pitch_x < 45,
+                )
+            )
+        )
+        frees_in_range = frees_scoring_range_result.scalar() or 0
+        frees_in_range_pg = round(frees_in_range / n, 1)
+
+        # --- Clean sheet rate (goals) ---
+        clean_sheets = sum(1 for m in matches if m.opponent_goals == 0)
+        clean_sheet_rate = round(clean_sheets / n * 100, 0)
+
+        # --- Goals conceded per game ---
+        goals_conceded_pg = round(sum(m.opponent_goals for m in matches) / n, 1)
+
+        # --- Opponent inside-45 entries (proxy: opponent events in our defensive third) ---
+        opp_45_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OPPONENT,
+                    MatchEvent.event_type.in_(SHOT_EVENTS + [EventType.TURNOVER_LOST, EventType.FOUL_WON]),
+                    MatchEvent.pitch_x.isnot(None),
+                    MatchEvent.pitch_x < 45,
+                )
+            )
+        )
+        opp_inside_45 = round((opp_45_result.scalar() or 0) / n, 1)
+
+        # --- Own inside-45 entries (proxy: own events in opponent's third) ---
+        own_45_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_(SHOT_EVENTS + [EventType.TURNOVER_WON, EventType.FOUL_WON]),
+                    MatchEvent.pitch_x.isnot(None),
+                    MatchEvent.pitch_x > 55,
+                )
+            )
+        )
+        own_inside_45 = round((own_45_result.scalar() or 0) / n, 1)
+
+        # --- From-play score % ---
+        from_play_detail = await db.execute(
+            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_(list(FROM_PLAY_SCORES)),
+                )
+            )
+            .group_by(MatchEvent.event_type)
+        )
+        from_play_pts = 0
+        for row in from_play_detail:
+            from_play_pts += row.cnt * SCORE_VALUE.get(row.event_type, 1)
+        from_play_pct = round(from_play_pts / total_points_scored * 100, 0) if total_points_scored > 0 else 0
+
+        # --- Free conversion % ---
+        free_scored_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_([EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]),
+                )
+            )
+        )
+        free_missed_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_([EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED]),
+                )
+            )
+        )
+        frees_scored = free_scored_result.scalar() or 0
+        frees_missed = free_missed_result.scalar() or 0
+        free_total = frees_scored + frees_missed
+        free_conv = round(frees_scored / free_total * 100, 0) if free_total > 0 else 0
+
+        # --- Goal scoring rate per game ---
+        goal_scoring_rate = round(sum(m.team_goals for m in matches) / n, 1)
+
+        # --- Goal chances created per game ---
+        goal_chances_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_([EventType.GOAL, EventType.SAVED, EventType.PENALTY_GOAL, EventType.PENALTY_MISS]),
+                )
+            )
+        )
+        goal_chances = round((goal_chances_result.scalar() or 0) / n, 1)
+
+        # --- Opp kickout win % ---
+        opp_ko_won_types = [EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK]
+        opp_ko_lost_types = [EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK]
+        opp_ko_result = await db.execute(
+            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type.in_(opp_ko_won_types + opp_ko_lost_types),
+                )
+            )
+            .group_by(MatchEvent.event_type)
+        )
+        opp_ko_won = 0
+        opp_ko_total = 0
+        for row in opp_ko_result:
+            if row.event_type in opp_ko_won_types:
+                opp_ko_won += row.cnt
+            opp_ko_total += row.cnt
+        opp_kickout_win = round(opp_ko_won / opp_ko_total * 100, 0) if opp_ko_total > 0 else 0
+
+        # --- Card rate per game + minutes with 14 men ---
+        card_result = await db.execute(
+            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_([EventType.YELLOW_CARD, EventType.BLACK_CARD, EventType.RED_CARD]),
+                )
+            )
+            .group_by(MatchEvent.event_type)
+        )
+        card_counts = {row.event_type: row.cnt for row in card_result}
+        yellow_cards = card_counts.get(EventType.YELLOW_CARD, 0)
+        black_cards = card_counts.get(EventType.BLACK_CARD, 0)
+        red_cards = card_counts.get(EventType.RED_CARD, 0)
+        total_cards = yellow_cards + black_cards + red_cards
+        card_rate = round(total_cards / n, 1)
+        mins_14_men = black_cards * 10 + red_cards * 25
+        mins_14_men_pg = round(mins_14_men / n, 0)
 
         # --- Per-match trends (last 3 vs season) ---
         trend_window = min(3, n)
@@ -1194,6 +2096,146 @@ class SeasonDashboardService:
                 "trend": make_trend(avg_conceded, recent_conceded),
             },
         ]
+
+        # --- New KPI cards (8-17) ---
+        cards.extend([
+            {
+                "key": "score_per_possession",
+                "label": "Score Per Possession %",
+                "value": score_per_poss,
+                "format": "percent",
+                "color": color(score_per_poss, lambda v: v >= 30, lambda v: v < 22),
+                "trend": make_trend(score_per_poss, score_per_poss),
+            },
+            {
+                "key": "opp_score_per_possession",
+                "label": "Opp Score Per Poss %",
+                "value": opp_score_per_poss,
+                "format": "percent",
+                "color": color(opp_score_per_poss, lambda v: v <= 20, lambda v: v > 27),
+                "trend": make_trend(opp_score_per_poss, opp_score_per_poss),
+            },
+            {
+                "key": "turnover_to_score",
+                "label": "Turnover-to-Score Rate",
+                "value": turnover_to_score,
+                "format": "percent",
+                "color": color(turnover_to_score, lambda v: v >= 35, lambda v: v < 25),
+                "trend": make_trend(turnover_to_score, turnover_to_score),
+            },
+            {
+                "key": "turnovers_conceded",
+                "label": "Turnovers Conceded",
+                "value": round(t_lost / n, 1),
+                "format": "decimal",
+                "color": color(t_lost / n if n > 0 else 0, lambda v: v <= 10, lambda v: v > 16),
+                "trend": make_trend(t_lost / n if n > 0 else 0, recent_to_counts.get(EventType.TURNOVER_LOST, 0) / trend_window),
+            },
+            {
+                "key": "pts_conceded_from_play",
+                "label": "Pts Conceded From Play",
+                "value": pts_conceded_from_play,
+                "format": "decimal",
+                "color": color(pts_conceded_from_play, lambda v: v <= 5.0, lambda v: v > 8.0),
+                "trend": make_trend(pts_conceded_from_play, pts_conceded_from_play),
+            },
+            {
+                "key": "frees_in_scoring_range",
+                "label": "Frees in Scoring Range",
+                "value": frees_in_range_pg,
+                "format": "decimal",
+                "color": color(frees_in_range_pg, lambda v: v <= 5.0, lambda v: v > 8.0),
+                "trend": make_trend(frees_in_range_pg, frees_in_range_pg),
+            },
+            {
+                "key": "clean_sheet_rate",
+                "label": "Clean Sheet Rate",
+                "value": clean_sheet_rate,
+                "format": "percent",
+                "color": color(clean_sheet_rate, lambda v: v >= 50, lambda v: v < 30),
+                "trend": make_trend(clean_sheet_rate, clean_sheet_rate),
+            },
+            {
+                "key": "goals_conceded_pg",
+                "label": "Goals Conceded / Game",
+                "value": goals_conceded_pg,
+                "format": "decimal",
+                "color": color(goals_conceded_pg, lambda v: v <= 0.7, lambda v: v > 1.2),
+                "trend": make_trend(goals_conceded_pg, goals_conceded_pg),
+            },
+            {
+                "key": "opp_inside_45",
+                "label": "Opp Inside 45 Entries",
+                "value": opp_inside_45,
+                "format": "decimal",
+                "color": color(opp_inside_45, lambda v: v <= 16, lambda v: v > 22),
+                "trend": make_trend(opp_inside_45, opp_inside_45),
+            },
+            {
+                "key": "own_inside_45",
+                "label": "Your Inside 45 Entries",
+                "value": own_inside_45,
+                "format": "decimal",
+                "color": color(own_inside_45, lambda v: v >= 24, lambda v: v < 18),
+                "trend": make_trend(own_inside_45, own_inside_45),
+            },
+            {
+                "key": "from_play_score_pct",
+                "label": "From Play Score %",
+                "value": from_play_pct,
+                "format": "percent",
+                "color": color(from_play_pct, lambda v: v >= 60, lambda v: v < 45),
+                "trend": make_trend(from_play_pct, from_play_pct),
+            },
+            {
+                "key": "free_conversion",
+                "label": "Free Conversion %",
+                "value": free_conv,
+                "format": "percent",
+                "color": color(free_conv, lambda v: v >= 80, lambda v: v < 70),
+                "trend": make_trend(free_conv, free_conv),
+            },
+            {
+                "key": "goal_scoring_rate",
+                "label": "Goal Scoring Rate",
+                "value": goal_scoring_rate,
+                "format": "decimal",
+                "color": color(goal_scoring_rate, lambda v: v >= 1.5, lambda v: v < 1.0),
+                "trend": make_trend(goal_scoring_rate, goal_scoring_rate),
+            },
+            {
+                "key": "goal_chances_created",
+                "label": "Goal Chances Created",
+                "value": goal_chances,
+                "format": "decimal",
+                "color": color(goal_chances, lambda v: v >= 3.0, lambda v: v < 2.0),
+                "trend": make_trend(goal_chances, goal_chances),
+            },
+            {
+                "key": "opp_kickout_win",
+                "label": "Opp Kickout Win %",
+                "value": opp_kickout_win,
+                "format": "percent",
+                "color": color(opp_kickout_win, lambda v: v >= 40, lambda v: v < 30),
+                "trend": make_trend(opp_kickout_win, opp_kickout_win),
+            },
+            {
+                "key": "card_rate",
+                "label": "Card Rate Per Game",
+                "value": card_rate,
+                "format": "decimal",
+                "color": color(card_rate, lambda v: v <= 1.0, lambda v: v > 2.0),
+                "trend": make_trend(card_rate, card_rate),
+            },
+            {
+                "key": "mins_14_men",
+                "label": "Minutes With 14 Men",
+                "value": mins_14_men_pg,
+                "format": "decimal",
+                "color": color(mins_14_men_pg, lambda v: v <= 5, lambda v: v > 15),
+                "trend": make_trend(mins_14_men_pg, mins_14_men_pg),
+            },
+        ])
 
         return {
             "metadata": {

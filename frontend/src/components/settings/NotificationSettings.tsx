@@ -1,8 +1,14 @@
-import { Bell, BellOff, Loader2 } from 'lucide-react'
+import { Bell, BellOff, Loader2, HelpCircle, RotateCcw } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { usePushNotifications } from '../../hooks/usePushNotifications'
+import { resetTour, resetAllTours } from '../../hooks/useTour'
+import { useTour } from '../../hooks/useTour'
+import { settingsSteps } from '../../config/tourSteps'
 
 export default function NotificationSettings() {
+  const navigate = useNavigate()
   const { isSupported, isSubscribed, isLoading, subscribe, unsubscribe } = usePushNotifications()
+  const { startTour: startSettingsTour } = useTour('settings', settingsSteps)
 
   const handleToggle = async () => {
     if (isSubscribed) {
@@ -72,6 +78,53 @@ export default function NotificationSettings() {
             </ul>
           </div>
         )}
+      </div>
+      {/* Help & Tutorials */}
+      <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center">
+            <HelpCircle size={20} className="text-white/50" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-white">Help & Tutorials</p>
+            <p className="text-xs text-white/40">Replay guided tours to learn app features</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => { resetTour('dashboard'); navigate('/') }}
+            className="px-3 py-2 rounded-lg bg-white/[0.06] hover:bg-white/10 text-sm text-white/70 hover:text-white transition-colors text-left"
+          >
+            Dashboard Tour
+          </button>
+          <button
+            onClick={() => { resetTour('matchRecording'); navigate('/') }}
+            className="px-3 py-2 rounded-lg bg-white/[0.06] hover:bg-white/10 text-sm text-white/70 hover:text-white transition-colors text-left"
+          >
+            Match Recording Tour
+          </button>
+          <button
+            onClick={() => resetTour('videoTagging')}
+            className="px-3 py-2 rounded-lg bg-white/[0.06] hover:bg-white/10 text-sm text-white/70 hover:text-white transition-colors text-left"
+          >
+            Video Tagging Tour
+          </button>
+          <button
+            onClick={() => { resetTour('settings'); startSettingsTour(true) }}
+            className="px-3 py-2 rounded-lg bg-white/[0.06] hover:bg-white/10 text-sm text-white/70 hover:text-white transition-colors text-left"
+          >
+            Settings Tour
+          </button>
+        </div>
+
+        <button
+          onClick={() => { resetAllTours(); window.location.reload() }}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-sm text-red-400 hover:text-red-300 transition-colors w-full justify-center"
+        >
+          <RotateCcw size={14} />
+          Reset All Tours
+        </button>
       </div>
     </div>
   )

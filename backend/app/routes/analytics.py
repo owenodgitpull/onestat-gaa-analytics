@@ -226,6 +226,122 @@ class KPICards(BaseModel):
     metadata: KPIMetadata
     cards: List[KPICardItem]
 
+# Score Timeline schemas
+class ScoreTimelineEvent(BaseModel):
+    minute: int
+    team: str
+    event_type: str
+    value: int
+    cumulative_diff: int
+    is_from_play: bool
+
+class ScoreTimelineMatch(BaseModel):
+    opponent: str
+    date: str
+    events: List[ScoreTimelineEvent]
+
+class ScoreTimelineSummary(BaseModel):
+    avg_ht_lead: float
+    longest_drought_mins: int
+    scores_final_10: int
+    best_period: str
+
+class ScoreTimelineData(BaseModel):
+    per_match: dict  # match_id -> ScoreTimelineMatch
+    summary: ScoreTimelineSummary
+
+# Dead Ball Breakdown schemas
+class FromPlayBreakdown(BaseModel):
+    goals: int
+    points: int
+    two_ptrs: int
+
+class DeadBallCategory(BaseModel):
+    scored: int
+    missed: int
+
+class MatchDeadBallBreakdown(BaseModel):
+    from_play: FromPlayBreakdown
+    frees: DeadBallCategory
+    forty_fives: DeadBallCategory
+    penalties: DeadBallCategory
+
+class DeadBallBreakdownData(BaseModel):
+    per_match: dict  # match_id -> {opponent, date, own, opponent}
+    season_totals: dict  # {own: MatchDeadBallBreakdown, opponent: MatchDeadBallBreakdown}
+    from_play_pct: float
+
+# Defensive Action Zones schemas
+class DefensiveEvent(BaseModel):
+    match_id: str
+    minute: Optional[int]
+    player_name: Optional[str]
+    action_type: str
+    pitch_x: Optional[float]
+    pitch_y: Optional[float]
+
+class DefensiveZoneStats(BaseModel):
+    interceptions: int
+    blocks: int
+    turnovers_won: int
+    total: int
+
+class DefensiveActionZonesData(BaseModel):
+    events: List[DefensiveEvent]
+    zones: dict  # zone_name -> DefensiveZoneStats
+    totals: dict
+
+# Kickout Landing Zones schemas
+class KickoutLandingEvent(BaseModel):
+    match_id: str
+    minute: Optional[int]
+    event_type: str
+    is_own_kickout: bool
+    won: bool
+    pitch_x: Optional[float]
+    pitch_y: Optional[float]
+
+class KickoutZoneStats(BaseModel):
+    total: int
+    won: int
+    lost: int
+    win_pct: float
+
+class KickoutLandingSummary(BaseModel):
+    total: int
+    short_pct: float
+    mid_pct: float
+    long_pct: float
+    best_zone: str
+    worst_zone: str
+
+class KickoutLandingZonesData(BaseModel):
+    zones: dict  # zone_name -> KickoutZoneStats
+    events: List[KickoutLandingEvent]
+    own_events: List[KickoutLandingEvent]
+    opp_events: List[KickoutLandingEvent]
+    summary: KickoutLandingSummary
+
+# KPI Sparkline Grid schemas
+class KPISparklineValue(BaseModel):
+    match_id: str
+    value: float
+
+class KPISparklineRow(BaseModel):
+    id: str
+    name: str
+    category: str
+    values: List[KPISparklineValue]
+    season_avg: float
+    last_match: float
+    trend: str  # up / down / stable
+    min: float
+    max: float
+
+class KPISparklineGridData(BaseModel):
+    rows: List[KPISparklineRow]
+
+
 class SeasonDashboardData(BaseModel):
     possession_funnel: PossessionFunnelData
     kickout_trends: List[KickoutTrendMatch]
@@ -234,6 +350,11 @@ class SeasonDashboardData(BaseModel):
     workhorse_radar: WorkhorseRadarData
     territory_distribution: TerritoryDistributionData
     kpi_cards: Optional[KPICards] = None
+    score_timeline: Optional[ScoreTimelineData] = None
+    dead_ball_breakdown: Optional[DeadBallBreakdownData] = None
+    defensive_action_zones: Optional[DefensiveActionZonesData] = None
+    kickout_landing_zones: Optional[KickoutLandingZonesData] = None
+    kpi_sparkline_grid: Optional[KPISparklineGridData] = None
 
 
 # Training Analytics schemas
@@ -876,6 +997,46 @@ async def get_season_dashboard(
             cards=[KPICardItem(**c) for c in kpi_raw["cards"]],
         )
 
+    # Serialize new chart data
+    score_timeline = None
+    if data.get("score_timeline"):
+        st = data["score_timeline"]
+        score_timeline = ScoreTimelineData(
+            per_match=st["per_match"],
+            summary=ScoreTimelineSummary(**st["summary"]),
+        )
+
+    dead_ball = None
+    if data.get("dead_ball_breakdown"):
+        dead_ball = DeadBallBreakdownData(**data["dead_ball_breakdown"])
+
+    def_zones = None
+    if data.get("defensive_action_zones"):
+        dz = data["defensive_action_zones"]
+        def_zones = DefensiveActionZonesData(
+            events=[DefensiveEvent(**e) for e in dz["events"]],
+            zones=dz["zones"],
+            totals=dz["totals"],
+        )
+
+    kickout_zones = None
+    if data.get("kickout_landing_zones"):
+        kz = data["kickout_landing_zones"]
+        kickout_zones = KickoutLandingZonesData(
+            zones=kz["zones"],
+            events=[KickoutLandingEvent(**e) for e in kz["events"]],
+            own_events=[KickoutLandingEvent(**e) for e in kz.get("own_events", [])],
+            opp_events=[KickoutLandingEvent(**e) for e in kz.get("opp_events", [])],
+            summary=KickoutLandingSummary(**kz["summary"]),
+        )
+
+    kpi_sparkline = None
+    if data.get("kpi_sparkline_grid"):
+        ks = data["kpi_sparkline_grid"]
+        kpi_sparkline = KPISparklineGridData(
+            rows=[KPISparklineRow(**r) for r in ks["rows"]],
+        )
+
     return SeasonDashboardData(
         possession_funnel=PossessionFunnelData(**data["possession_funnel"]),
         kickout_trends=[KickoutTrendMatch(**k) for k in data["kickout_trends"]],
@@ -891,6 +1052,11 @@ async def get_season_dashboard(
             possession_pct=td["possession_pct"],
         ),
         kpi_cards=kpi,
+        score_timeline=score_timeline,
+        dead_ball_breakdown=dead_ball,
+        defensive_action_zones=def_zones,
+        kickout_landing_zones=kickout_zones,
+        kpi_sparkline_grid=kpi_sparkline,
     )
 
 

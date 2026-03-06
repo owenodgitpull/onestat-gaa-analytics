@@ -436,7 +436,7 @@ async def chat_stream_endpoint(
             session = result.scalar_one_or_none()
 
         if not session:
-            session = ChatSession()
+            session = ChatSession(club_id=user.club_id)
             db.add(session)
             await db.flush()
             session_id = str(session.id)

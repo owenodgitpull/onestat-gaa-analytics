@@ -51,9 +51,11 @@ class PossessionService:
         previous_event = result.scalar_one_or_none()
         
         # Create the new possession event
+        # .value ensures the enum string ("own"/"opponent") is stored, not "PossessionTeam.OWN"
+        team_value = event_data.team.value if hasattr(event_data.team, 'value') else event_data.team
         new_event = PossessionEvent(
             match_id=event_data.match_id,
-            team=event_data.team,
+            team=team_value,
             minute=event_data.minute,
             pitch_x=event_data.pitch_x,
             pitch_y=event_data.pitch_y,
@@ -72,7 +74,53 @@ class PossessionService:
         await db.refresh(new_event)
         
         return new_event
-    
+
+    @staticmethod
+    async def bulk_create_possession_events(
+        db: AsyncSession,
+        match_id,
+        team: str,
+        minute: int | None,
+        waypoints: list[dict],
+    ) -> int:
+        """
+        Bulk-insert possession waypoints from a drag path.
+
+        Processes sequentially to maintain duration-chaining with the
+        previous event.  Returns the count of created events.
+        """
+        # Get the most recent event for duration chaining
+        result = await db.execute(
+            select(PossessionEvent)
+            .where(PossessionEvent.match_id == match_id)
+            .order_by(PossessionEvent.created_at.desc())
+            .limit(1)
+        )
+        previous_event = result.scalar_one_or_none()
+
+        count = 0
+        for wp in waypoints:
+            new_event = PossessionEvent(
+                match_id=match_id,
+                team=team,
+                minute=minute,
+                pitch_x=wp["x"],
+                pitch_y=wp["y"],
+                duration_seconds=None,
+            )
+            db.add(new_event)
+            await db.flush()
+
+            if previous_event:
+                duration = (new_event.created_at - previous_event.created_at).total_seconds()
+                previous_event.duration_seconds = int(duration)
+
+            previous_event = new_event
+            count += 1
+
+        await db.commit()
+        return count
+
     @staticmethod
     async def get_possession_event(
         db: AsyncSession,

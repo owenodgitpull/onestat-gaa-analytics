@@ -5,17 +5,21 @@ import { GripVertical, EyeOff, PinOff } from 'lucide-react'
 interface SortableChartCardProps {
   id: string
   children: React.ReactNode
+  colSpan?: 1 | 2
   isAiPinned?: boolean
   onHide?: () => void
   onUnpin?: () => void
+  isFirst?: boolean
 }
 
 export default function SortableChartCard({
   id,
   children,
+  colSpan,
   isAiPinned,
   onHide,
   onUnpin,
+  isFirst,
 }: SortableChartCardProps) {
   const {
     attributes,
@@ -35,7 +39,7 @@ export default function SortableChartCard({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="relative group">
+    <div ref={setNodeRef} style={style} className={`relative group${colSpan === 2 ? ' md:col-span-2' : ''}`}>
       {/* Action buttons — visible on hover */}
       <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {isAiPinned && onUnpin && (
@@ -60,6 +64,7 @@ export default function SortableChartCard({
           ref={setActivatorNodeRef}
           {...attributes}
           {...listeners}
+          {...(isFirst ? { 'data-tour': 'chart-drag-handle' } : {})}
           className="p-1.5 rounded-lg bg-slate-800/90 hover:bg-white/20 text-white/60 hover:text-white transition-colors cursor-grab active:cursor-grabbing backdrop-blur-sm touch-none"
           title="Drag to reorder"
         >

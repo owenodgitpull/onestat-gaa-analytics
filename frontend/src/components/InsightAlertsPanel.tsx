@@ -6,9 +6,10 @@ import InsightAlertCard from './InsightAlertCard'
 
 interface InsightAlertsPanelProps {
   dashboard: 'season' | 'training'
+  onAlertClick?: () => void
 }
 
-export default function InsightAlertsPanel({ dashboard }: InsightAlertsPanelProps) {
+export default function InsightAlertsPanel({ dashboard, onAlertClick }: InsightAlertsPanelProps) {
   const [alerts, setAlerts] = useState<InsightAlert[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -47,7 +48,7 @@ export default function InsightAlertsPanel({ dashboard }: InsightAlertsPanelProp
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {alerts.map(alert => (
-          <InsightAlertCard key={alert.id} alert={alert} onDismiss={handleDismiss} />
+          <InsightAlertCard key={alert.id} alert={alert} onDismiss={handleDismiss} onClick={onAlertClick} />
         ))}
       </div>
     </div>

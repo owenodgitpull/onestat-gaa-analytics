@@ -14,11 +14,34 @@ from app.auth.dependencies import AuthenticatedUser, require_club
 from app.models.possession_event import PossessionTeam
 from app.schemas.possession_event import (
     PossessionEventCreate,
+    PossessionEventBulkCreate,
     PossessionEventResponse,
 )
 from app.services.possession_service import PossessionService
 
 router = APIRouter()
+
+
+@router.post("/bulk", status_code=status.HTTP_201_CREATED)
+async def bulk_create_possession_events(
+    data: PossessionEventBulkCreate,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Bulk-record possession waypoints from a drag path.
+
+    Accepts up to 50 waypoints in a single request.
+    Duration chaining is handled sequentially server-side.
+    """
+    count = await PossessionService.bulk_create_possession_events(
+        db,
+        match_id=data.match_id,
+        team=data.team.value if hasattr(data.team, 'value') else data.team,
+        minute=data.minute,
+        waypoints=data.waypoints,
+    )
+    return {"created": count}
 
 
 @router.post("/", response_model=PossessionEventResponse, status_code=status.HTTP_201_CREATED)

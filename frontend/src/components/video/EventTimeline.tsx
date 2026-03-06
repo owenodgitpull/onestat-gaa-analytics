@@ -12,6 +12,8 @@ interface EventTimelineProps {
   videoDurationMs: number
   currentTimeMs: number
   onSeek: (timestampMs: number) => void
+  firstHalfStartMs?: number | null
+  secondHalfStartMs?: number | null
 }
 
 const EVENT_COLORS: Record<string, string> = {
@@ -44,6 +46,8 @@ export default function EventTimeline({
   videoDurationMs,
   currentTimeMs,
   onSeek,
+  firstHalfStartMs,
+  secondHalfStartMs,
 }: EventTimelineProps) {
   const sortedEvents = useMemo(
     () => [...events].filter(e => e.video_timestamp_ms != null).sort((a, b) => a.video_timestamp_ms! - b.video_timestamp_ms!),
@@ -81,6 +85,26 @@ export default function EventTimeline({
           className="absolute top-0 h-full w-0.5 bg-emerald-400 z-20 transition-all duration-100"
           style={{ left: `${progressPercent}%` }}
         />
+
+        {/* Throw-in markers */}
+        {firstHalfStartMs != null && videoDurationMs > 0 && (
+          <div
+            className="absolute top-0 h-full w-0.5 bg-cyan-400/60 z-10"
+            style={{ left: `${(firstHalfStartMs / videoDurationMs) * 100}%` }}
+            title="1st half throw-in"
+          >
+            <span className="absolute -top-3.5 -translate-x-1/2 text-[8px] text-cyan-400 font-bold whitespace-nowrap">1H</span>
+          </div>
+        )}
+        {secondHalfStartMs != null && videoDurationMs > 0 && (
+          <div
+            className="absolute top-0 h-full w-0.5 bg-cyan-400/60 z-10"
+            style={{ left: `${(secondHalfStartMs / videoDurationMs) * 100}%` }}
+            title="2nd half throw-in"
+          >
+            <span className="absolute -top-3.5 -translate-x-1/2 text-[8px] text-cyan-400 font-bold whitespace-nowrap">2H</span>
+          </div>
+        )}
 
         {/* Event dots */}
         {sortedEvents.map((event) => {

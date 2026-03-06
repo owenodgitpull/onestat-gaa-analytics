@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -19,6 +19,7 @@ import type { CsvImportResult } from '../services/api'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useClub } from '../contexts/ClubContext'
 import NewFixtureModal from '../components/NewFixtureModal'
+import ImportFixturesModal from '../components/ImportFixturesModal'
 import type { Match } from '../types'
 
 // Counties with a supported scraper
@@ -31,9 +32,9 @@ export default function Fixtures() {
   const createMatch = useCreateMatch()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [importResult, setImportResult] = useState<CsvImportResult | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const hasScraper = club?.county ? SUPPORTED_SCRAPER_COUNTIES.includes(club.county) : false
 
@@ -52,27 +53,11 @@ export default function Fixtures() {
     },
   })
 
-  const csvMutation = useMutation({
-    mutationFn: (file: File) => api.fixtures.importFile(file),
-    onSuccess: (result) => {
-      setImportResult(result)
-      setImportError(null)
-      queryClient.invalidateQueries({ queryKey: ['fixtures'] })
-      queryClient.invalidateQueries({ queryKey: ['matches'] })
-    },
-    onError: (err: Error) => {
-      setImportError(err.message)
-      setImportResult(null)
-    },
-  })
-
-  const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      csvMutation.mutate(file)
-    }
-    // Reset so the same file can be re-uploaded
-    e.target.value = ''
+  const handleImported = (result: CsvImportResult) => {
+    setImportResult(result)
+    setImportError(null)
+    queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
   }
 
   const handleCreateFixture = async (data: {
@@ -147,20 +132,12 @@ export default function Fixtures() {
             </button>
           )}
           <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={csvMutation.isPending}
+            onClick={() => setIsImportModalOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all bg-white/[0.06] border border-white/10 text-white/70 hover:bg-white/[0.10] hover:text-white"
           >
-            <Upload size={16} className={csvMutation.isPending ? 'animate-pulse' : ''} />
-            <span className="hidden sm:inline">{csvMutation.isPending ? 'Importing...' : 'Import'}</span>
+            <Upload size={16} />
+            <span className="hidden sm:inline">Import</span>
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx"
-            className="hidden"
-            onChange={handleCsvUpload}
-          />
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all"
@@ -276,7 +253,7 @@ export default function Fixtures() {
       {/* Import format hint */}
       <div className="glass-card px-4 py-3 text-xs text-white/40">
         <strong className="text-white/60">Import:</strong>{' '}
-        Upload the county board <strong className="text-white/50">.xlsx</strong> file directly — Dungloe fixtures are auto-detected.{' '}
+        Upload the county board <strong className="text-white/50">.xlsx</strong> file directly — your club's fixtures are auto-detected using your club name and aliases.{' '}
         Or use a <strong className="text-white/50">.csv</strong> with columns: Opponent, Date, Time, Venue (H/A/N), Competition.
       </div>
 
@@ -332,6 +309,13 @@ export default function Fixtures() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreate={handleCreateFixture}
+      />
+
+      {/* Import Fixtures Modal */}
+      <ImportFixturesModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImported={handleImported}
       />
     </div>
   )

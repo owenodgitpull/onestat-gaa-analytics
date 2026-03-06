@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useClubName } from '@/contexts/ClubContext'
 import {
   BarChart,
   Bar,
@@ -18,6 +19,7 @@ const OWN_COLORS = ['#10b981', '#06b6d4', '#10b981', '#34d399']
 const OPP_COLORS = ['#f97316', '#fb923c', '#ef4444', '#f87171']
 
 export default function PossessionFunnel({ data }: PossessionFunnelProps) {
+  const clubName = useClubName()
   const [showOpponent, setShowOpponent] = useState(false)
 
   const totals = showOpponent ? data.opponent_totals : data.season_totals
@@ -95,7 +97,7 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
                   : 'text-white/60 hover:text-white'
               }`}
             >
-              Us
+              {clubName}
             </button>
             <button
               onClick={() => setShowOpponent(true)}

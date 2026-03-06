@@ -1,0 +1,136 @@
+/* ── Tour theme: dark glassmorphism ─────────────────────────────────── */
+
+/* Popover container */
+.driver-popover {
+  background: rgba(15, 23, 42, 0.97) !important;
+  backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 16px !important;
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+  max-width: 360px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Top gradient edge — matches glass-card ::after */
+.driver-popover::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #00E676, #00B0FF);
+  border-radius: 16px 16px 0 0;
+  z-index: 1;
+}
+
+/* Arrow */
+.driver-popover .driver-popover-arrow {
+  border-color: rgba(15, 23, 42, 0.97) !important;
+}
+.driver-popover-arrow-side-left { border-right-color: rgba(15, 23, 42, 0.97) !important; }
+.driver-popover-arrow-side-right { border-left-color: rgba(15, 23, 42, 0.97) !important; }
+.driver-popover-arrow-side-top { border-bottom-color: rgba(15, 23, 42, 0.97) !important; }
+.driver-popover-arrow-side-bottom { border-top-color: rgba(15, 23, 42, 0.97) !important; }
+
+/* Title */
+.driver-popover .driver-popover-title {
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  color: #fff !important;
+  padding: 16px 20px 0 !important;
+  margin: 0 !important;
+}
+
+/* Description */
+.driver-popover .driver-popover-description {
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  color: rgba(255, 255, 255, 0.65) !important;
+  padding: 8px 20px 16px !important;
+  margin: 0 !important;
+}
+
+/* Footer (buttons row) */
+.driver-popover .driver-popover-footer {
+  padding: 0 16px 14px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+}
+
+/* Progress text */
+.driver-popover .driver-popover-progress-text {
+  font-size: 11px !important;
+  color: rgba(255, 255, 255, 0.3) !important;
+  font-weight: 500 !important;
+}
+
+/* All navigation buttons base */
+.driver-popover .driver-popover-navigation-btns {
+  display: flex !important;
+  gap: 6px !important;
+}
+
+.driver-popover .driver-popover-navigation-btns button {
+  border: none !important;
+  border-radius: 10px !important;
+  padding: 8px 18px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  text-shadow: none !important;
+}
+
+/* Next / Done button — emerald→blue gradient */
+.driver-popover .driver-popover-next-btn {
+  background: linear-gradient(135deg, #00E676, #00B0FF) !important;
+  color: #0a1a10 !important;
+  box-shadow: 0 4px 15px -3px rgba(0, 230, 118, 0.35) !important;
+}
+.driver-popover .driver-popover-next-btn:hover {
+  box-shadow: 0 6px 20px -3px rgba(0, 230, 118, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+/* Back button — ghost */
+.driver-popover .driver-popover-prev-btn {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+.driver-popover .driver-popover-prev-btn:hover {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #fff !important;
+}
+
+/* Close X button */
+.driver-popover .driver-popover-close-btn {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 18px !important;
+  width: 28px !important;
+  height: 28px !important;
+  top: 10px !important;
+  right: 10px !important;
+}
+.driver-popover .driver-popover-close-btn:hover {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Highlighted element ring */
+.driver-active-element {
+  outline: 2px solid #00E676 !important;
+  outline-offset: 4px !important;
+  border-radius: 8px !important;
+}
+
+/* Overlay color */
+.driver-overlay {
+  background: rgba(0, 0, 0, 0.7) !important;
+}

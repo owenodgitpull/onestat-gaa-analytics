@@ -143,6 +143,29 @@ export const playersAPI = {
   comparePlayers: async (playerAId: string, playerBId: string): Promise<PlayerComparisonData> => {
     return fetchAPI<PlayerComparisonData>(`/players/compare/${playerAId}/${playerBId}`);
   },
+
+  /**
+   * Preview a roster file (CSV/XLSX) before importing
+   */
+  previewImport: async (file: File, nameColumn?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const params = nameColumn ? `?name_column=${encodeURIComponent(nameColumn)}` : '';
+    const url = `${API_BASE_URL}/players/import/preview${params}`;
+    const res = await fetch(url, { method: 'POST', credentials: 'include', body: formData });
+    if (!res.ok) throw new Error('Failed to parse roster file');
+    return res.json();
+  },
+
+  /**
+   * Confirm roster import with upsert (match by name, update existing, create new)
+   */
+  confirmImport: async (players: Array<{ name: string; position?: string; jersey_number?: number; date_of_birth?: string }>) => {
+    return fetchAPI<{ created: number; updated: number; unchanged: number; details: Array<{ name: string; action: string }> }>('/players/import/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ players }),
+    });
+  },
 };
 
 // ============================================================================
@@ -407,6 +430,21 @@ export const possessionAPI = {
   },
 
   /**
+   * Bulk-record possession waypoints from a drag path (single request)
+   */
+  bulkCreate: async (data: {
+    match_id: string;
+    team: 'own' | 'opponent';
+    minute: number;
+    waypoints: Array<{ x: number; y: number }>;
+  }): Promise<{ created: number }> => {
+    return fetchAPI<{ created: number }>('/possession-events/bulk', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
    * Get all possession events for a match
    */
   getByMatch: async (matchId: string): Promise<PossessionEvent[]> => {
@@ -658,6 +696,147 @@ export interface KPICards {
   cards: KPICardItem[];
 }
 
+// Score Timeline types
+export interface ScoreTimelineEvent {
+  minute: number;
+  team: string;
+  event_type: string;
+  value: number;
+  cumulative_diff: number;
+  is_from_play: boolean;
+}
+
+export interface ScoreTimelineMatch {
+  opponent: string;
+  date: string;
+  events: ScoreTimelineEvent[];
+}
+
+export interface ScoreTimelineSummary {
+  avg_ht_lead: number;
+  longest_drought_mins: number;
+  scores_final_10: number;
+  best_period: string;
+}
+
+export interface ScoreTimelineData {
+  per_match: Record<string, ScoreTimelineMatch>;
+  summary: ScoreTimelineSummary;
+}
+
+// Dead Ball Breakdown types
+export interface FromPlayBreakdown {
+  goals: number;
+  points: number;
+  two_ptrs: number;
+}
+
+export interface DeadBallCategory {
+  scored: number;
+  missed: number;
+}
+
+export interface MatchDeadBallBreakdown {
+  from_play: FromPlayBreakdown;
+  frees: DeadBallCategory;
+  forty_fives: DeadBallCategory;
+  penalties: DeadBallCategory;
+}
+
+export interface DeadBallMatchData {
+  opponent: string;
+  date: string;
+  own: MatchDeadBallBreakdown;
+  opp: MatchDeadBallBreakdown;
+}
+
+export interface DeadBallBreakdownData {
+  per_match: Record<string, DeadBallMatchData>;
+  season_totals: { own: MatchDeadBallBreakdown; opponent: MatchDeadBallBreakdown };
+  from_play_pct: number;
+}
+
+// Defensive Action Zones types
+export interface DefensiveEvent {
+  match_id: string;
+  minute: number | null;
+  player_name: string | null;
+  action_type: string;
+  pitch_x: number | null;
+  pitch_y: number | null;
+}
+
+export interface DefensiveZoneStats {
+  interceptions: number;
+  blocks: number;
+  turnovers_won: number;
+  total: number;
+}
+
+export interface DefensiveActionZonesData {
+  events: DefensiveEvent[];
+  zones: Record<string, DefensiveZoneStats>;
+  totals: { interceptions: number; blocks: number; turnovers_won: number };
+}
+
+// Kickout Landing Zones types
+export interface KickoutLandingEvent {
+  match_id: string;
+  minute: number | null;
+  event_type: string;
+  is_own_kickout: boolean;
+  won: boolean;
+  pitch_x: number | null;
+  pitch_y: number | null;
+}
+
+export interface KickoutZoneStats {
+  total: number;
+  won: number;
+  lost: number;
+  win_pct: number;
+}
+
+export interface KickoutLandingSummary {
+  total: number;
+  short_pct: number;
+  mid_pct: number;
+  long_pct: number;
+  best_zone: string;
+  worst_zone: string;
+}
+
+export interface KickoutLandingZonesData {
+  zones: Record<string, KickoutZoneStats>;
+  events: KickoutLandingEvent[];
+  own_events: KickoutLandingEvent[];
+  opp_events: KickoutLandingEvent[];
+  summary: KickoutLandingSummary;
+}
+
+// KPI Sparkline Grid types
+export interface KPISparklineValue {
+  match_id: string;
+  value: number;
+}
+
+export interface KPISparklineRow {
+  id: string;
+  name: string;
+  category: string;
+  values: KPISparklineValue[];
+  season_avg: number;
+  last_match: number;
+  trend: 'up' | 'down' | 'stable';
+  min: number;
+  max: number;
+}
+
+export interface KPISparklineGridData {
+  rows: KPISparklineRow[];
+}
+
+
 export interface SeasonDashboardData {
   possession_funnel: PossessionFunnelData;
   kickout_trends: KickoutTrendMatch[];
@@ -666,6 +845,11 @@ export interface SeasonDashboardData {
   workhorse_radar: WorkhorseRadarData;
   territory_distribution: TerritoryDistributionData;
   kpi_cards?: KPICards;
+  score_timeline?: ScoreTimelineData;
+  dead_ball_breakdown?: DeadBallBreakdownData;
+  defensive_action_zones?: DefensiveActionZonesData;
+  kickout_landing_zones?: KickoutLandingZonesData;
+  kpi_sparkline_grid?: KPISparklineGridData;
 }
 
 // Training Analytics types
@@ -1839,6 +2023,7 @@ const onboardingAPI = {
 export interface CsvImportResult {
   created: number
   skipped: number
+  cleared?: number
   errors: string[]
   message: string
 }
@@ -1855,14 +2040,28 @@ export const fixturesAPI = {
   getOpponentForm: (name: string) =>
     fetchAPI<FormResult[]>(`/fixtures/opponent/${encodeURIComponent(name)}/form`),
 
-  importFile: async (file: File): Promise<CsvImportResult> => {
+  importFile: async (file: File, mode: 'add' | 'replace' = 'add', selectedTeam?: string): Promise<CsvImportResult> => {
     const formData = new FormData()
     formData.append('file', file)
-    const url = `${API_BASE_URL}/fixtures/import`
+    const params = new URLSearchParams({ mode })
+    if (selectedTeam) params.set('selected_team', selectedTeam)
+    const url = `${API_BASE_URL}/fixtures/import?${params}`
     const res = await fetch(url, { method: 'POST', credentials: 'include', body: formData })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       throw new Error(err.detail || 'Failed to import fixtures')
+    }
+    return res.json()
+  },
+
+  previewTeams: async (file: File): Promise<{ teams: string[] }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const url = `${API_BASE_URL}/fixtures/preview-teams`
+    const res = await fetch(url, { method: 'POST', credentials: 'include', body: formData })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || 'Failed to preview teams')
     }
     return res.json()
   },

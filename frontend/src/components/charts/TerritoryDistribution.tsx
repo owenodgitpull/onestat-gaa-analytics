@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useClubName } from '@/contexts/ClubContext'
 import type { TerritoryDistributionData } from '@/services/api'
 
 interface TerritoryDistributionProps {
@@ -6,6 +7,7 @@ interface TerritoryDistributionProps {
 }
 
 export default function TerritoryDistribution({ data }: TerritoryDistributionProps) {
+  const clubName = useClubName()
   const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
   const [timeScope, setTimeScope] = useState<'season' | 'last_match'>('season')
   const [activeDot, setActiveDot] = useState<number | null>(null)
@@ -168,7 +170,7 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
                   : 'text-white/60 hover:text-white'
               }`}
             >
-              Us
+              {clubName}
             </button>
             <button
               onClick={() => setSelectedTeam('opponent')}

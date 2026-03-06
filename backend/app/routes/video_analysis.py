@@ -273,6 +273,40 @@ async def set_halftime(
     return _session_to_response(session, download_url=download_url)
 
 
+@router.post("/session/{session_id}/set-half-starts", response_model=VideoSessionResponse)
+async def set_half_starts(
+    session_id: UUID,
+    body: dict,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the throw-in timestamps for 1st and/or 2nd half."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    if "first_half_start_ms" in body and body["first_half_start_ms"] is not None:
+        session.first_half_start_ms = int(body["first_half_start_ms"])
+    if "second_half_start_ms" in body and body["second_half_start_ms"] is not None:
+        session.second_half_start_ms = int(body["second_half_start_ms"])
+
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    logger.info(f"Half starts set: session={session_id}, 1H={session.first_half_start_ms}ms, 2H={session.second_half_start_ms}ms")
+    return _session_to_response(session, download_url=download_url)
+
+
 @router.post("/session/{session_id}/auto-analyze")
 async def auto_analyze_video(
     session_id: UUID,

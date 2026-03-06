@@ -4,7 +4,7 @@ Pydantic schemas for Club data validation and serialization.
 
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 
 
@@ -29,6 +29,7 @@ class ClubUpdate(BaseModel):
     primary_colour: Optional[str] = Field(None, max_length=7)
     secondary_colour: Optional[str] = Field(None, max_length=7)
     logo_url: Optional[str] = Field(None, max_length=500)
+    team_aliases: Optional[List[str]] = Field(None, description="Alternative team names (e.g. Irish name)")
 
 
 class ClubResponse(BaseModel):
@@ -42,6 +43,7 @@ class ClubResponse(BaseModel):
     primary_colour: Optional[str]
     secondary_colour: Optional[str]
     logo_url: Optional[str]
+    team_aliases: Optional[List[str]]
     is_active: bool
     onboarding_completed: bool
     created_at: datetime

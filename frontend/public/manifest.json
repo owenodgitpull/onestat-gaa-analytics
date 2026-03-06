@@ -5,17 +5,17 @@
   "start_url": "/player",
   "display": "standalone",
   "background_color": "#0a0a19",
-  "theme_color": "#6366f1",
+  "theme_color": "#0a0a19",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/oneStatLogoTransparent.png",
-      "sizes": "192x192",
+      "src": "/onestat_icon.png",
+      "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "/oneStatLogoTransparent.png",
-      "sizes": "512x512",
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
       "type": "image/png"
     }
   ]

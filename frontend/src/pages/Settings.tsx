@@ -26,6 +26,7 @@ export default function Settings() {
         {TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
+            data-tour={`settings-tab-${id}`}
             onClick={() => setActiveTab(id)}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex-1 justify-center ${
               activeTab === id

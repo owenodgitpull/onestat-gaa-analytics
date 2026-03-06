@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -28,7 +28,10 @@ import {
   X,
   LayoutGrid,
   ChevronRight,
+  Sparkles,
 } from 'lucide-react'
+import KPILibraryModal from '@/components/dashboard/KPILibraryModal'
+import { KPI_REGISTRY, DEFAULT_VISIBLE_KPIS } from '@/config/kpiRegistry'
 import SquadHealthView from '@/components/SquadHealthView'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import InsightAlertsPanel from '@/components/InsightAlertsPanel'
@@ -39,46 +42,23 @@ import { useDashboardLayout } from '@/hooks/useDashboardLayout'
 import type { ChartRenderProps } from '@/config/chartRegistry'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem } from '@/services/api'
 import type { Match } from '@/types'
+import { useTour } from '@/hooks/useTour'
+import { dashboardSteps } from '@/config/tourSteps'
 
-// KPI card explanations — what the metric means + how it's calculated
-const KPI_EXPLANATIONS: Record<string, { what: string; formula: string }> = {
-  productivity: {
-    what: "How efficiently we turn possessions into scores — higher means we make the most of every attack",
-    formula: "(Total points scored ÷ Total possessions) × 10. Above 3.0 is strong, below 2.0 needs work.",
-  },
-  turnover_diff: {
-    what: "Turnovers won minus lost — positive means we're winning more ball than giving it away",
-    formula: "Turnovers won − Turnovers lost. A positive number means we're coming out on top in the battle for possession.",
-  },
-  kickout_retention: {
-    what: "How often we retain our own goalkeeper's kickouts — crucial for building attacks from restarts",
-    formula: "(Own kickouts retained ÷ Total own kickouts) × 100. Target: above 60%.",
-  },
-  shot_efficiency: {
-    what: "Percentage of shots that result in scores — shows how clinical we are in front of the posts",
-    formula: "(Scores ÷ Total shots) × 100. Includes points, goals, and 2-pointers.",
-  },
-  fouls_per_game: {
-    what: "Average fouls committed per match — fewer means less frees conceded to opposition",
-    formula: "",
-  },
-  avg_scored: {
-    what: "Average total points scored per match (goals×3 + points)",
-    formula: "",
-  },
-  avg_conceded: {
-    what: "Average total points conceded per match — lower means a tighter defence",
-    formula: "",
-  },
+// Build explanations lookup from registry
+const KPI_EXPLANATIONS: Record<string, { what: string; formula: string }> = {}
+for (const entry of KPI_REGISTRY) {
+  Object.assign(KPI_EXPLANATIONS, entry.explanations)
 }
 
-// Card pairings: [front, back] for flip cards, [single] for standalone
-const KPI_PAIRINGS: string[][] = [
-  ['productivity', 'shot_efficiency'],
-  ['turnover_diff', 'fouls_per_game'],
-  ['kickout_retention', 'avg_conceded'],
-  ['avg_scored'],
-]
+const KPI_STORAGE_KEY = 'gaa-visible-kpis'
+function loadVisibleKpis(): string[] {
+  try {
+    const stored = localStorage.getItem(KPI_STORAGE_KEY)
+    if (stored) return JSON.parse(stored)
+  } catch { /* ignore */ }
+  return DEFAULT_VISIBLE_KPIS
+}
 
 export default function AnalyticsDashboard() {
   const navigate = useNavigate()
@@ -93,9 +73,26 @@ export default function AnalyticsDashboard() {
   const [dismissedChartIds, setDismissedChartIds] = useState<string[]>([])
   const [suggestions, setSuggestions] = useState<OutlierSuggestion[]>([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
-  const [viewMode, setViewMode] = useState<'season' | 'health'>('season')
+  const [viewMode, setViewMode] = useState<'season' | 'health' | 'ai'>('season')
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
+  const [visibleKpis, setVisibleKpis] = useState<string[]>(loadVisibleKpis)
+  const [kpiLibraryOpen, setKpiLibraryOpen] = useState(false)
+  const { startTour: startDashboardTour } = useTour('dashboard', dashboardSteps)
+  const tourTriggered = useRef(false)
+
+  const toggleKpi = useCallback((kpiId: string) => {
+    setVisibleKpis(prev => {
+      const next = prev.includes(kpiId) ? prev.filter(k => k !== kpiId) : [...prev, kpiId]
+      localStorage.setItem(KPI_STORAGE_KEY, JSON.stringify(next))
+      return next
+    })
+  }, [])
+
+  // Build pairings from registry filtered by visible KPIs
+  const kpiPairings = visibleKpis
+    .map(id => KPI_REGISTRY.find(r => r.id === id))
+    .filter(Boolean) as typeof KPI_REGISTRY
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [nextMatch, setNextMatch] = useState<Match | null>(null)
   const [liveMatch, setLiveMatch] = useState<Match | null>(null)
@@ -215,6 +212,14 @@ export default function AnalyticsDashboard() {
     api.matches.getNextScheduled().then(m => setNextMatch(m))
   }, [])
 
+  // Trigger tour on first visit after data loads
+  useEffect(() => {
+    if (!loading && dashboardData && !tourTriggered.current) {
+      tourTriggered.current = true
+      startDashboardTour()
+    }
+  }, [loading, dashboardData, startDashboardTour])
+
   // Defer AI calls so static charts render first
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -259,7 +264,7 @@ export default function AnalyticsDashboard() {
     )
   }
 
-  const { season_summary, top_scorers, match_trends } = dashboardData
+  const { season_summary, top_scorers } = dashboardData
 
   // Check if GPS data exists in season dashboard
   const hasGpsData = !!(seasonDashboard && (
@@ -278,8 +283,6 @@ export default function AnalyticsDashboard() {
   // Section renderers
   const renderSection = (sectionId: string) => {
     switch (sectionId) {
-      case 'insight-alerts':
-        return <InsightAlertsPanel dashboard="season" />
       case 'my-charts':
         return (
           <MyChartsSection
@@ -292,23 +295,6 @@ export default function AnalyticsDashboard() {
             onHideChart={hideChart}
             onShowChart={showChart}
             onUnpinChart={handleUnpinChart}
-          />
-        )
-      case 'ai-insights':
-        return (
-          <AiInsightsSection
-            aiCharts={aiCharts}
-            pinnedChartIds={pinnedChartIds}
-            loadingAICharts={loadingAICharts}
-            replacingChartId={replacingChartId}
-            canPin={canPin}
-            onDismissChart={handleDismissChart}
-            onPinChart={handlePinChart}
-            onRegenerateAll={fetchAICharts}
-            isPinned={isPinned}
-            aiChartsSummary={aiChartsSummary}
-            suggestions={suggestions}
-            loadingSuggestions={loadingSuggestions}
           />
         )
       case 'top-scorers':
@@ -352,43 +338,6 @@ export default function AnalyticsDashboard() {
             )}
           </div>
         )
-      case 'recent-results':
-        return (
-          <div className="glass-card p-6">
-            <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
-              <Calendar size={20} className="text-white" />
-              <span>Recent Results</span>
-            </h3>
-            {match_trends.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {match_trends.slice(0, 6).map((match) => (
-                  <div key={match.match_id} className="p-4 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="font-semibold text-white">{match.opponent}</div>
-                      <div className={`px-2 py-1 rounded text-xs font-bold ${
-                        match.result === 'W' ? 'bg-emerald-500/20 text-emerald-400' :
-                        match.result === 'L' ? 'bg-red-500/20 text-red-400' :
-                        'bg-amber-500/20 text-amber-400'
-                      }`}>
-                        {match.result}
-                      </div>
-                    </div>
-                    <div className="text-lg font-bold text-white">
-                      {match.team_score} - {match.opponent_score}
-                    </div>
-                    <div className="text-xs text-white/40 mt-1">
-                      {new Date(match.match_date).toLocaleDateString()}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="h-24 flex items-center justify-center text-white/40">
-                No completed matches yet
-              </div>
-            )}
-          </div>
-        )
       default:
         return null
     }
@@ -398,7 +347,7 @@ export default function AnalyticsDashboard() {
     <div className="space-y-8">
       {/* View Mode Toggle */}
       <div className="flex items-center justify-between">
-        <div className="flex bg-white/10 rounded-xl p-1">
+        <div data-tour="view-mode-toggle" className="flex bg-white/10 rounded-xl p-1">
           <button
             onClick={() => setViewMode('season')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
@@ -422,6 +371,18 @@ export default function AnalyticsDashboard() {
           >
             <Heart size={18} />
             Squad Health
+          </button>
+          <button
+            onClick={() => setViewMode('ai')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all ${
+              viewMode === 'ai'
+                ? 'text-[#0a1a10]'
+                : 'text-white/60 hover:text-white'
+            }`}
+            style={viewMode === 'ai' ? { background: 'var(--gradient-primary)' } : {}}
+          >
+            <Sparkles size={18} />
+            AI Insights
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -471,17 +432,19 @@ export default function AnalyticsDashboard() {
               <span className="text-sm text-white/30">No fixture set</span>
             </div>
           )}
-          {viewMode === 'season' && (
+          {(viewMode === 'season' || viewMode === 'ai') && (
             <>
+              {viewMode === 'season' && (
+                <button
+                  onClick={resetLayout}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all"
+                  title="Reset layout"
+                >
+                  <LayoutGrid size={16} />
+                </button>
+              )}
               <button
-                onClick={resetLayout}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all"
-                title="Reset layout"
-              >
-                <LayoutGrid size={16} />
-              </button>
-              <button
-                onClick={fetchDashboard}
+                onClick={viewMode === 'ai' ? () => { fetchAICharts(); fetchSuggestions() } : fetchDashboard}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all"
                 title="Refresh data"
               >
@@ -492,9 +455,27 @@ export default function AnalyticsDashboard() {
         </div>
       </div>
 
+      {/* Insight Alerts — above all tabs */}
+      <InsightAlertsPanel dashboard="season" onAlertClick={() => setViewMode('ai')} />
+
       {/* Conditional View */}
       {viewMode === 'health' ? (
         <SquadHealthView />
+      ) : viewMode === 'ai' ? (
+        <AiInsightsSection
+          aiCharts={aiCharts}
+          pinnedChartIds={pinnedChartIds}
+          loadingAICharts={loadingAICharts}
+          replacingChartId={replacingChartId}
+          canPin={canPin}
+          onDismissChart={handleDismissChart}
+          onPinChart={handlePinChart}
+          onRegenerateAll={fetchAICharts}
+          isPinned={isPinned}
+          aiChartsSummary={aiChartsSummary}
+          suggestions={suggestions}
+          loadingSuggestions={loadingSuggestions}
+        />
       ) : (
         <>
       {/* 1. Season Overview — KPI Cards (always at top, not draggable) */}
@@ -504,21 +485,29 @@ export default function AnalyticsDashboard() {
             <TrendingUp size={24} className="text-white" />
             <span className="text-white">Season Overview</span>
           </h2>
+          <button
+            data-tour="kpi-library-btn"
+            onClick={() => setKpiLibraryOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 hover:text-white text-xs font-medium transition-colors"
+          >
+            <LayoutGrid size={14} />
+            KPI Library
+          </button>
         </div>
         {seasonDashboard?.kpi_cards ? (
           <>
             <p className="text-sm text-white/50 mb-4">
               {seasonDashboard.kpi_cards.metadata.matches_played} Matches | {seasonDashboard.kpi_cards.metadata.win_rate}% Win Rate ({seasonDashboard.kpi_cards.metadata.wins}W-{seasonDashboard.kpi_cards.metadata.losses}L-{seasonDashboard.kpi_cards.metadata.draws}D)
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {KPI_PAIRINGS.map((pairing, pairIdx) => {
+            <div data-tour="kpi-grid" className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {kpiPairings
+                .filter(entry => seasonDashboard.kpi_cards!.cards.some(c => c.key === entry.frontKey))
+                .map((entry, pairIdx) => {
                 const cards = seasonDashboard.kpi_cards!.cards
-                const frontCard = cards.find(c => c.key === pairing[0])
-                const backCard = pairing.length > 1 ? cards.find(c => c.key === pairing[1]) : null
+                const frontCard = cards.find(c => c.key === entry.frontKey)!
+                const backCard = entry.flipKey ? cards.find(c => c.key === entry.flipKey) : null
                 const isFlipped = flippedCards.has(pairIdx)
                 const isPair = !!backCard
-
-                if (!frontCard) return null
 
                 const renderFace = (card: KPICardItem, isFront: boolean) => {
                   const colorMap: Record<string, string> = {
@@ -696,6 +685,13 @@ export default function AnalyticsDashboard() {
 
         </>
       )}
+
+      <KPILibraryModal
+        isOpen={kpiLibraryOpen}
+        onClose={() => setKpiLibraryOpen(false)}
+        visibleKpis={visibleKpis}
+        onToggleKpi={toggleKpi}
+      />
     </div>
   )
 }

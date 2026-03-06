@@ -34,6 +34,9 @@ class PlayerFilePreview(BaseModel):
     valid_count: int
     warnings: List[str] = Field(default_factory=list)
     rows: List[PlayerPreviewRow]
+    headers: List[str] = Field(default_factory=list)
+    column_mapping: dict = Field(default_factory=dict)
+    needs_name_column: bool = False
 
 
 class PlayerConfirmRow(BaseModel):

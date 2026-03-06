@@ -14,12 +14,14 @@ import {
   Shield,
   Eye,
   Crosshair,
+  ArrowLeftRight,
 } from 'lucide-react'
 
 interface CategorizedActionButtonsProps {
   onActionSelect: (eventType: EventType) => void
   onFoulClick?: (team: 'own' | 'opponent') => void
   on45Click?: () => void
+  onDiscipline?: (eventType: EventType) => void
   disabled?: boolean
   activeCategory?: string | null
   onCategoryChange?: (category: string | null) => void
@@ -43,7 +45,7 @@ const categories = [
     buttons: [
       { eventType: EventType.GOAL, label: 'Goal', icon: Target },
       { eventType: EventType.POINT, label: 'Point', icon: TrendingUp },
-      { eventType: EventType.TWO_POINT, label: '2 Pointer', icon: TrendingUp },
+      { eventType: EventType.TWO_POINT, label: '2 PT', icon: TrendingUp },
       { eventType: EventType.WIDE, label: 'Wide', icon: XCircle },
       { eventType: EventType.SAVED, label: 'Saved', icon: CheckCircle },
       { eventType: EventType.BLOCK, label: 'Blocked', icon: Shield },
@@ -102,6 +104,7 @@ export default function CategorizedActionButtons({
   onActionSelect,
   onFoulClick,
   on45Click,
+  onDiscipline,
   disabled = false,
   activeCategory: externalActiveCategory,
   onCategoryChange,
@@ -111,13 +114,14 @@ export default function CategorizedActionButtons({
   pendingFoul = null,
   pending45 = false,
   pendingKickoutPosition = false,
-  isInPenaltyArea = false,
+  isInPenaltyArea: _isInPenaltyArea = false,
   onCancelFree,
   onCancel45,
   onCancelKickout
 }: CategorizedActionButtonsProps) {
   const [internalActiveCategory, setInternalActiveCategory] = useState('scoring')
   const [showFoulSelection, setShowFoulSelection] = useState(false)
+  const [showPenOptions, setShowPenOptions] = useState(false)
 
   // Use external control if provided (and not null), otherwise use internal state
   const activeCategory = externalActiveCategory === null ? 'scoring' : (externalActiveCategory ?? internalActiveCategory)
@@ -131,6 +135,11 @@ export default function CategorizedActionButtons({
       setInternalActiveCategory(externalActiveCategory)
     }
   }, [externalActiveCategory])
+
+  // Reset pen options when leaving scoring category
+  useEffect(() => {
+    if (activeCategory !== 'scoring') setShowPenOptions(false)
+  }, [activeCategory])
 
   const currentCategory = categories.find(cat => cat.id === activeCategory)
 
@@ -163,8 +172,7 @@ export default function CategorizedActionButtons({
       return [
         EventType.TURNOVER_WON,      // Can't win turnover if we have ball
         EventType.OPP_UNFORCED_ERROR, // Opponent can't error if we have ball
-        EventType.INTERCEPTION,       // Can't intercept if we have ball
-        EventType.BLOCK,              // Can't block if we have ball
+        // INTERCEPTION + BLOCK stay enabled — opponent can intercept/block our pass/shot
       ].includes(eventType)
     } else {
       // If opponent has possession, disable these own-team-focused events:
@@ -329,9 +337,6 @@ export default function CategorizedActionButtons({
     const headerText = isOwnFoul
       ? 'Opponent Free - Select Outcome'
       : 'Our Free - Select Outcome'
-    const tipText = isOwnFoul
-      ? 'Record what opponent did with the free kick'
-      : 'Move the ball to play a short free (menu will close)'
 
     return (
       <div className={`bg-slate-900 backdrop-blur-xl border-2 border-amber-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -373,22 +378,24 @@ export default function CategorizedActionButtons({
               </button>
             )
           })}
-        </div>
-
-        {/* Tip */}
-        <div className="px-3 py-2 bg-white/5 border-t border-white/10">
-          <p className="text-xs text-white/50 text-center">
-            {tipText}
-          </p>
+          {/* Short pass — just clears free kick state, play continues */}
+          <button
+            onClick={onCancelFree}
+            disabled={disabled}
+            className="btn-primary !py-1.5 !px-3 flex items-center space-x-1.5 text-xs bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500"
+          >
+            <ArrowLeftRight size={14} />
+            <span>Short Pass</span>
+          </button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+    <div data-tour="action-category-tabs" className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       {/* Action Buttons */}
-      <div className="p-2 flex flex-wrap gap-1 justify-center min-h-[48px]">
+      <div data-tour="scoring-buttons" className="p-2 flex flex-nowrap gap-1 justify-center min-h-[48px] overflow-x-auto">
         {currentCategory?.buttons.map((button) => {
           const Icon = button.icon
           const isContextDisabled = isButtonDisabled(button.eventType)
@@ -400,7 +407,7 @@ export default function CategorizedActionButtons({
               onClick={() => onActionSelect(button.eventType)}
               disabled={isDisabled}
               title={isContextDisabled ? 'Not applicable with current possession' : ''}
-              className={`btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs ${
+              className={`btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs flex-shrink-0 ${
                 isDisabled ? 'opacity-30 cursor-not-allowed' : ''
               }`}
             >
@@ -415,36 +422,38 @@ export default function CategorizedActionButtons({
           <button
             onClick={on45Click}
             disabled={disabled}
-            className="btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700"
+            className="btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs flex-shrink-0 bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700"
           >
             <Flag size={13} />
             <span>45</span>
           </button>
         )}
 
-        {/* Penalty buttons - inline with scoring, highlighted when in penalty area */}
-        {activeCategory === 'scoring' && (
+        {/* Penalty button - inline with scoring, expands to Goal/Miss options */}
+        {activeCategory === 'scoring' && !showPenOptions && (
+          <button
+            onClick={() => setShowPenOptions(true)}
+            disabled={disabled}
+            className="btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs flex-shrink-0"
+          >
+            <Crosshair size={13} />
+            <span>Pen</span>
+          </button>
+        )}
+        {activeCategory === 'scoring' && showPenOptions && (
           <>
             <button
-              onClick={() => onActionSelect(EventType.PENALTY_GOAL)}
+              onClick={() => { onActionSelect(EventType.PENALTY_GOAL); setShowPenOptions(false) }}
               disabled={disabled}
-              className={`btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs ${
-                isInPenaltyArea
-                  ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 ring-1 ring-red-400/50'
-                  : 'bg-gradient-to-r from-red-600/60 to-rose-600/60 hover:from-red-600 hover:to-rose-600'
-              }`}
+              className="btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs flex-shrink-0"
             >
               <Crosshair size={13} />
               <span>Pen Goal</span>
             </button>
             <button
-              onClick={() => onActionSelect(EventType.PENALTY_MISS)}
+              onClick={() => { onActionSelect(EventType.PENALTY_MISS); setShowPenOptions(false) }}
               disabled={disabled}
-              className={`btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs ${
-                isInPenaltyArea
-                  ? 'bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 ring-1 ring-orange-400/50'
-                  : 'bg-gradient-to-r from-orange-600/60 to-amber-600/60 hover:from-orange-600 hover:to-amber-600'
-              }`}
+              className="btn-primary !py-1.5 !px-2.5 flex items-center space-x-1 text-xs flex-shrink-0"
             >
               <Crosshair size={13} />
               <span>Pen Miss</span>
@@ -453,7 +462,7 @@ export default function CategorizedActionButtons({
         )}
       </div>
 
-      {/* Category Tabs */}
+      {/* Category Tabs + Discipline */}
       <div className="flex border-t border-white/10 bg-slate-900/80">
         {categories.map((category) => {
           const Icon = category.icon
@@ -463,6 +472,7 @@ export default function CategorizedActionButtons({
             <button
               key={category.id}
               onClick={() => setActiveCategory(category.id)}
+              {...(category.id === 'turnovers' ? { 'data-tour': 'turnovers-tab' } : {})}
               className={`flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 ${
                 isActive
                   ? 'bg-emerald-600 text-white'
@@ -477,6 +487,7 @@ export default function CategorizedActionButtons({
 
         {/* Foul - category level button */}
         <button
+          data-tour="fouls-tab"
           onClick={() => setShowFoulSelection(true)}
           disabled={disabled}
           className="flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 text-white/60 hover:text-white hover:bg-white/5"
@@ -484,6 +495,34 @@ export default function CategorizedActionButtons({
           <Hand size={16} />
           <span className="text-[10px] font-medium">Foul</span>
         </button>
+
+        {/* Discipline cards */}
+        <div data-tour="discipline-cards" className="flex items-center gap-0.5 px-1 border-l border-white/10">
+          <button
+            onClick={() => onDiscipline?.(EventType.YELLOW_CARD)}
+            disabled={disabled}
+            className="p-1.5 rounded-lg hover:bg-yellow-500/20 disabled:opacity-30 transition-all active:scale-90"
+            title="Yellow Card"
+          >
+            <div className="w-3.5 h-5 rounded-[2px] bg-yellow-400 border border-yellow-500/50" />
+          </button>
+          <button
+            onClick={() => onDiscipline?.(EventType.BLACK_CARD)}
+            disabled={disabled}
+            className="p-1.5 rounded-lg hover:bg-slate-500/20 disabled:opacity-30 transition-all active:scale-90"
+            title="Black Card (10 min sin bin)"
+          >
+            <div className="w-3.5 h-5 rounded-[2px] bg-slate-800 border border-slate-400/50" />
+          </button>
+          <button
+            onClick={() => onDiscipline?.(EventType.RED_CARD)}
+            disabled={disabled}
+            className="p-1.5 rounded-lg hover:bg-red-500/20 disabled:opacity-30 transition-all active:scale-90"
+            title="Red Card"
+          >
+            <div className="w-3.5 h-5 rounded-[2px] bg-red-500 border border-red-600/50" />
+          </button>
+        </div>
       </div>
     </div>
   )

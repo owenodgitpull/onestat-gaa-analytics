@@ -33,6 +33,7 @@ export default function SortableSection({ id, children }: SortableSectionProps) 
           ref={setActivatorNodeRef}
           {...attributes}
           {...listeners}
+          data-tour="section-drag-handle"
           className="p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/60 transition-colors cursor-grab active:cursor-grabbing touch-none"
           title="Drag to reorder section"
         >

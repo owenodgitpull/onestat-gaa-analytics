@@ -26,7 +26,7 @@ from app.schemas.onboarding import (
 logger = logging.getLogger(__name__)
 
 # Flexible column header matching (case-insensitive, stripped)
-NAME_HEADERS = {"name", "player_name", "full_name", "player", "player name", "full name"}
+NAME_HEADERS = {"name", "player_name", "full_name", "player", "player name", "full name", "english name", "irish name"}
 POSITION_HEADERS = {"position", "pos", "playing_position", "playing position"}
 JERSEY_HEADERS = {"jersey_number", "number", "jersey", "no", "#", "jersey number", "no."}
 DOB_HEADERS = {"date_of_birth", "dob", "birth_date", "birthday", "date of birth", "birth date"}
@@ -79,22 +79,23 @@ class OnboardingService:
         return club
 
     @staticmethod
-    def parse_player_file(file_content: bytes, filename: str) -> PlayerFilePreview:
+    def parse_player_file(file_content: bytes, filename: str, name_column: Optional[str] = None) -> PlayerFilePreview:
         """
         Parse a CSV or XLSX file into a player preview.
 
         Supports flexible column headers and normalizes positions.
         Returns warnings for invalid/ambiguous data.
+        If name_column is provided, use that header as the name field.
         """
         ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
         if ext in ("xlsx", "xls"):
-            return OnboardingService._parse_xlsx(file_content)
+            return OnboardingService._parse_xlsx(file_content, name_column=name_column)
         else:
-            return OnboardingService._parse_csv(file_content)
+            return OnboardingService._parse_csv(file_content, name_column=name_column)
 
     @staticmethod
-    def _parse_csv(content: bytes) -> PlayerFilePreview:
+    def _parse_csv(content: bytes, name_column: Optional[str] = None) -> PlayerFilePreview:
         """Parse CSV content into player preview rows."""
         text = content.decode("utf-8-sig")  # Handle BOM
         # Detect delimiter
@@ -111,19 +112,34 @@ class OnboardingService:
             return PlayerFilePreview(parsed_count=0, valid_count=0, warnings=["File is empty or has only headers"], rows=[])
 
         headers = [h.strip().lower() for h in rows_raw[0]]
+        original_headers = [h.strip() for h in rows_raw[0]]
         col_map = OnboardingService._map_columns(headers)
 
-        if "name" not in col_map:
+        # Apply user override for name column
+        if name_column:
+            nc = name_column.strip().lower()
+            for idx, h in enumerate(headers):
+                if h == nc:
+                    col_map["name"] = idx
+                    break
+
+        if "name" not in col_map and "_split_name" not in col_map:
             return PlayerFilePreview(
                 parsed_count=0, valid_count=0,
-                warnings=[f"Could not find a 'name' column. Headers found: {', '.join(headers)}"],
+                warnings=["Could not auto-detect name column. Please select which column contains player names."],
                 rows=[],
+                headers=original_headers,
+                column_mapping={k: v for k, v in col_map.items() if not k.startswith("_")},
+                needs_name_column=True,
             )
 
-        return OnboardingService._process_rows(rows_raw[1:], col_map)
+        result = OnboardingService._process_rows(rows_raw[1:], col_map)
+        result.headers = original_headers
+        result.column_mapping = {k: v for k, v in col_map.items() if not k.startswith("_")}
+        return result
 
     @staticmethod
-    def _parse_xlsx(content: bytes) -> PlayerFilePreview:
+    def _parse_xlsx(content: bytes, name_column: Optional[str] = None) -> PlayerFilePreview:
         """Parse XLSX content into player preview rows."""
         try:
             from openpyxl import load_workbook
@@ -149,30 +165,54 @@ class OnboardingService:
             return PlayerFilePreview(parsed_count=0, valid_count=0, warnings=["File is empty or has only headers"], rows=[])
 
         headers = [h.strip().lower() for h in rows_raw[0]]
+        original_headers = [h.strip() for h in rows_raw[0]]
         col_map = OnboardingService._map_columns(headers)
 
-        if "name" not in col_map:
+        # Apply user override for name column
+        if name_column:
+            nc = name_column.strip().lower()
+            for idx, h in enumerate(headers):
+                if h == nc:
+                    col_map["name"] = idx
+                    break
+
+        if "name" not in col_map and "_split_name" not in col_map:
             return PlayerFilePreview(
                 parsed_count=0, valid_count=0,
-                warnings=[f"Could not find a 'name' column. Headers found: {', '.join(headers)}"],
+                warnings=["Could not auto-detect name column. Please select which column contains player names."],
                 rows=[],
+                headers=original_headers,
+                column_mapping={k: v for k, v in col_map.items() if not k.startswith("_")},
+                needs_name_column=True,
             )
 
-        return OnboardingService._process_rows(rows_raw[1:], col_map)
+        result = OnboardingService._process_rows(rows_raw[1:], col_map)
+        result.headers = original_headers
+        result.column_mapping = {k: v for k, v in col_map.items() if not k.startswith("_")}
+        return result
 
     @staticmethod
     def _map_columns(headers: List[str]) -> dict:
         """Map header names to column indices."""
+        FIRST_NAME_HEADERS = {"first name", "first_name", "firstname", "forename"}
+        LAST_NAME_HEADERS = {"last name", "last_name", "lastname", "surname"}
         col_map = {}
         for idx, h in enumerate(headers):
             if h in NAME_HEADERS:
                 col_map["name"] = idx
+            elif h in FIRST_NAME_HEADERS:
+                col_map["first_name"] = idx
+            elif h in LAST_NAME_HEADERS:
+                col_map["last_name"] = idx
             elif h in POSITION_HEADERS:
                 col_map["position"] = idx
             elif h in JERSEY_HEADERS:
                 col_map["jersey"] = idx
             elif h in DOB_HEADERS:
                 col_map["dob"] = idx
+        # Synthesize "name" from first + last if no single name column
+        if "name" not in col_map and "first_name" in col_map:
+            col_map["_split_name"] = True
         return col_map
 
     @staticmethod
@@ -186,8 +226,13 @@ class OnboardingService:
             row_num = i + 2  # 1-indexed, +1 for header
             warnings = []
 
-            # Name (required)
-            name = row[col_map["name"]].strip() if col_map["name"] < len(row) else ""
+            # Name (required) — single column or first+last
+            if "_split_name" in col_map:
+                first = row[col_map["first_name"]].strip() if col_map["first_name"] < len(row) else ""
+                last = row[col_map.get("last_name", -1)].strip() if col_map.get("last_name", -1) < len(row) else ""
+                name = f"{first} {last}".strip()
+            else:
+                name = row[col_map["name"]].strip() if col_map["name"] < len(row) else ""
             if not name:
                 continue  # Skip blank rows
 
@@ -274,16 +319,18 @@ class OnboardingService:
                 except ValueError:
                     pass
 
-            player = Player(
+            kwargs: dict = dict(
                 id=uuid4(),
                 club_id=club_id,
                 name=p.name,
-                position=p.position,
                 jersey_number=p.jersey_number,
                 date_of_birth=dob,
                 status=PlayerStatus.ACTIVE,
                 active=True,
             )
+            if p.position:
+                kwargs["position"] = p.position
+            player = Player(**kwargs)
             db.add(player)
             created.append(player)
 
@@ -293,6 +340,90 @@ class OnboardingService:
 
         logger.info(f"Bulk created {len(created)} players for club {club_id}")
         return created
+
+    @staticmethod
+    async def bulk_upsert_players(
+        db: AsyncSession,
+        club_id: UUID,
+        players: List[PlayerConfirmRow],
+    ) -> dict:
+        """
+        Upsert players for a club.
+        - Match existing players by normalized name (case-insensitive, stripped).
+        - Update position/jersey/dob on existing players if the new file provides them.
+        - Create new players that don't exist yet.
+        - Never delete or deactivate existing players.
+        Returns: { created: int, updated: int, unchanged: int, details: [...] }
+        """
+        # Fetch all existing players for this club
+        result = await db.execute(
+            select(Player).where(Player.club_id == club_id)
+        )
+        existing = list(result.scalars().all())
+        existing_by_name: dict[str, Player] = {}
+        for p in existing:
+            existing_by_name[p.name.strip().lower()] = p
+
+        created, updated, unchanged = 0, 0, 0
+        details = []
+
+        for row in players:
+            norm_name = row.name.strip().lower()
+            dob = None
+            if row.date_of_birth:
+                try:
+                    dob = date.fromisoformat(row.date_of_birth)
+                except ValueError:
+                    pass
+
+            if norm_name in existing_by_name:
+                # Existing player — update fields if file provides new data
+                player = existing_by_name[norm_name]
+                changed = False
+                if row.position and player.position != row.position:
+                    player.position = row.position
+                    changed = True
+                if row.jersey_number is not None and player.jersey_number != row.jersey_number:
+                    player.jersey_number = row.jersey_number
+                    changed = True
+                if dob and player.date_of_birth != dob:
+                    player.date_of_birth = dob
+                    changed = True
+                # Reactivate if was soft-deleted
+                if not player.active:
+                    player.active = True
+                    player.status = PlayerStatus.ACTIVE
+                    changed = True
+
+                if changed:
+                    updated += 1
+                    details.append({"name": player.name, "action": "updated"})
+                else:
+                    unchanged += 1
+                    details.append({"name": player.name, "action": "unchanged"})
+            else:
+                # New player — only set position if provided (DB column is enum, can't cast None via VARCHAR)
+                kwargs: dict = dict(
+                    id=uuid4(),
+                    club_id=club_id,
+                    name=row.name.strip(),
+                    jersey_number=row.jersey_number,
+                    date_of_birth=dob,
+                    status=PlayerStatus.ACTIVE,
+                    active=True,
+                )
+                if row.position:
+                    kwargs["position"] = row.position
+                player = Player(**kwargs)
+                db.add(player)
+                created += 1
+                details.append({"name": player.name, "action": "created"})
+
+        await db.commit()
+        logger.info(
+            f"Roster upsert for club {club_id}: {created} created, {updated} updated, {unchanged} unchanged"
+        )
+        return {"created": created, "updated": updated, "unchanged": unchanged, "details": details}
 
     @staticmethod
     async def complete_onboarding(db: AsyncSession, club_id: UUID) -> Club:

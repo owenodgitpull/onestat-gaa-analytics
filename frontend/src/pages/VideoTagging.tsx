@@ -46,7 +46,10 @@ import SyncPreviewModal from '../components/video/SyncPreviewModal'
 import ConfirmationModal from '../components/ConfirmationModal'
 import HalftimeMarker from '../components/video/HalftimeMarker'
 import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video/PitchZoneSelector'
+import BlackCardTimer, { type BlackCardEntry } from '../components/BlackCardTimer'
 import { useClubName } from '../contexts/ClubContext'
+import { useTour } from '../hooks/useTour'
+import { videoTaggingSteps } from '../config/tourSteps'
 import { useVideoSession, useSetHalftime } from '../hooks/useVideoSessions'
 import {
   useVideoEvents,
@@ -118,6 +121,10 @@ export default function VideoTagging() {
   // Event log collapse
   const [eventLogExpanded, setEventLogExpanded] = useState(false)
 
+  // Guided tour
+  const { startTour: startVideoTour } = useTour('videoTagging', videoTaggingSteps)
+  const videoTourTriggered = useRef(false)
+
   // Report / sync state
   const [enrichmentReport, setEnrichmentReport] = useState<string | null>(null)
   const [isEnriching, setIsEnriching] = useState(false)
@@ -129,6 +136,12 @@ export default function VideoTagging() {
   // Halftime state
   const [halftimeSkipped, setHalftimeSkipped] = useState(false)
   const setHalftime = useSetHalftime()
+
+  // Black card sin bin timers
+  const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
+
+  // Second yellow → automatic red flash
+  const [secondYellowFlash, setSecondYellowFlash] = useState(false)
 
   // Auto-analyze state
   const [isAutoAnalyzing, setIsAutoAnalyzing] = useState(false)
@@ -163,6 +176,15 @@ export default function VideoTagging() {
   const { data: eventsData, refetch: refetchEvents } = useVideoEvents(sessionId || null)
   const events = eventsData?.events || []
 
+  // Track players on yellow cards (for second yellow → automatic red)
+  const yellowCardPlayerIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const ev of events) {
+      if (ev.event_type === 'YELLOW_CARD' && ev.player_id) ids.add(ev.player_id)
+    }
+    return ids
+  }, [events])
+
   const { data: players } = useQuery({
     queryKey: ['players'],
     queryFn: () => api.players.getAll(),
@@ -181,6 +203,68 @@ export default function VideoTagging() {
   const verifyEvent = useVerifyVideoEvent()
   const syncPreview = useSyncPreview()
   const syncConfirm = useSyncConfirm()
+
+  // --- Throw-in marker setup ---
+  const [setupStep, setSetupStep] = useState<'none' | '1st_half' | '2nd_half' | 'done'>('none')
+  const needsThrowInSetup = session && session.first_half_start_ms == null && setupStep !== 'done'
+
+  // Initialize setup step from session data
+  useEffect(() => {
+    if (!session) return
+    if (session.first_half_start_ms != null && session.second_half_start_ms != null) {
+      setSetupStep('done')
+    } else if (session.first_half_start_ms != null) {
+      setSetupStep('2nd_half')
+    } else if (setupStep === 'none') {
+      setSetupStep('1st_half')
+    }
+  }, [session?.first_half_start_ms, session?.second_half_start_ms])
+
+  // Trigger guided tour on first visit with valid session
+  useEffect(() => {
+    if (session && !sessionLoading && !videoTourTriggered.current) {
+      videoTourTriggered.current = true
+      startVideoTour()
+    }
+  }, [session, sessionLoading, startVideoTour])
+
+  const handleMarkThrowIn = useCallback(async () => {
+    if (!session || !sessionId) return
+    const ms = currentTimeMs
+    if (setupStep === '1st_half') {
+      await videoSessionsAPI.setHalfStarts(sessionId, ms, undefined)
+      await refetchSession()
+      setSetupStep('2nd_half')
+    } else if (setupStep === '2nd_half') {
+      await videoSessionsAPI.setHalfStarts(sessionId, undefined, ms)
+      await refetchSession()
+      setSetupStep('done')
+    }
+  }, [session, sessionId, currentTimeMs, setupStep, refetchSession])
+
+  const handleSkipSecondHalf = useCallback(async () => {
+    setSetupStep('done')
+  }, [])
+
+  /** Convert video timestamp to match minute/second/half, accounting for throw-in offsets */
+  const calcMatchTime = useCallback((videoMs: number): { minute: number; second: number; half: number } => {
+    if (!session) return { minute: 0, second: 0, half: 1 }
+
+    const h1Start = session.first_half_start_ms ?? 0
+    const h2Start = session.second_half_start_ms
+
+    // If we have a 2nd half marker and video is past it
+    if (h2Start != null && videoMs >= h2Start) {
+      const elapsed = Math.max(0, videoMs - h2Start)
+      const totalSec = Math.floor(elapsed / 1000)
+      return { minute: 35 + Math.floor(totalSec / 60), second: totalSec % 60, half: 2 }
+    }
+
+    // Otherwise first half (relative to 1st half throw-in)
+    const elapsed = Math.max(0, videoMs - h1Start)
+    const totalSec = Math.floor(elapsed / 1000)
+    return { minute: Math.floor(totalSec / 60), second: totalSec % 60, half: 1 }
+  }, [session?.first_half_start_ms, session?.second_half_start_ms])
 
   // Clean up polling + SSE on unmount
   useEffect(() => {
@@ -315,6 +399,23 @@ export default function VideoTagging() {
   finalizeEventRef.current = (pending: OverlayPendingEvent, data: VideoEventCreateData) => {
     if (!sessionId) return
 
+    // Second yellow card → automatic red card
+    if (data.event_type === 'YELLOW_CARD' && data.player_id && yellowCardPlayerIds.has(data.player_id)) {
+      data.event_type = 'RED_CARD'
+      setSecondYellowFlash(true)
+      setTimeout(() => setSecondYellowFlash(false), 2000)
+    }
+
+    // Black card → start 10-min countdown timer
+    if (data.event_type === 'BLACK_CARD') {
+      const player = playerList.find(p => p.id === data.player_id)
+      setBlackCardTimers(prev => [...prev, {
+        id: crypto.randomUUID(),
+        playerLabel: player ? player.name.split(' ').map(n => n[0]).join('. ') + '.' : (data.jersey_number ? `#${data.jersey_number}` : `${data.match_minute}'`),
+        startedAt: Date.now(),
+      }])
+    }
+
     createEvent.mutate({ sessionId, data })
 
     // Auto-flip possession (action.autoFlipTo is the source of truth)
@@ -435,6 +536,15 @@ export default function VideoTagging() {
     if (!sessionId) return
     createEvent.mutate({ sessionId, data })
     setAiDismissed(true)
+
+    // Start black card 10-min countdown
+    if (data.event_type === 'BLACK_CARD') {
+      setBlackCardTimers(prev => [...prev, {
+        id: crypto.randomUUID(),
+        playerLabel: data.jersey_number ? `#${data.jersey_number}` : `${data.match_minute}'`,
+        startedAt: Date.now(),
+      }])
+    }
   }, [sessionId, createEvent])
 
   const handleDeleteEvent = useCallback((eventId: string) => {
@@ -758,7 +868,7 @@ export default function VideoTagging() {
 
   /** Video player with minimap, fullscreen button overlay, and pitch overlay */
   const videoArea = (
-    <div className="flex-1 relative group/video">
+    <div data-tour="video-player" className="flex-1 relative group/video">
       <VideoPlayer
         ref={playerRef}
         src={session.download_url}
@@ -767,6 +877,51 @@ export default function VideoTagging() {
         onPlayStateChange={setIsPlaying}
         halftimeMs={session.halftime_timestamp_ms ?? undefined}
       />
+
+      {/* Throw-in marker setup guide */}
+      {needsThrowInSetup && setupStep !== 'none' && (
+        <div className="absolute inset-x-0 bottom-16 z-30 flex justify-center pointer-events-none">
+          <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-6 py-4 max-w-md shadow-2xl shadow-emerald-500/10">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 text-xs font-bold">
+                {setupStep === '1st_half' ? '1' : '2'}
+              </div>
+              <h3 className="text-sm font-bold text-white">
+                {setupStep === '1st_half' ? 'Mark 1st Half Throw-In' : 'Mark 2nd Half Throw-In'}
+              </h3>
+              <span className="text-[10px] text-white/30 ml-auto">Step {setupStep === '1st_half' ? '1' : '2'} of 2</span>
+            </div>
+            <p className="text-xs text-white/60 mb-3">
+              {setupStep === '1st_half'
+                ? 'Scrub the video to the exact moment the ball is thrown in to start the 1st half, then tap the button below.'
+                : 'Now scrub to the 2nd half throw-in moment.'}
+            </p>
+            <div className="text-center mb-3">
+              <span className="text-lg font-mono text-emerald-400">
+                {Math.floor(currentTimeMs / 60000)}:{String(Math.floor((currentTimeMs % 60000) / 1000)).padStart(2, '0')}
+              </span>
+              <span className="text-xs text-white/30 ml-2">video time</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleMarkThrowIn}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all animate-pulse hover:animate-none"
+                style={{ background: 'linear-gradient(135deg, #00e676, #00c853)', color: '#0a1a10' }}
+              >
+                {setupStep === '1st_half' ? 'Mark 1st Half Start' : 'Mark 2nd Half Start'}
+              </button>
+              {setupStep === '2nd_half' && (
+                <button
+                  onClick={handleSkipSecondHalf}
+                  className="px-4 py-2.5 rounded-xl bg-white/10 text-white/60 hover:text-white text-sm transition-colors"
+                >
+                  Skip
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen toggle — overlaid on video, top-left, visible on hover */}
       {overlayState === 'none' && (
@@ -802,6 +957,7 @@ export default function VideoTagging() {
 
   /** Quick Actions sidebar */
   const sidebar = (
+    <div data-tour="video-quick-actions">
     <VideoQuickActions
       possession={possession}
       onPossessionChange={setPossession}
@@ -816,7 +972,9 @@ export default function VideoTagging() {
       teamName={clubName}
       ballPitchX={ballPosition?.x}
       ballPitchY={ballPosition?.y}
+      calcMatchTime={calcMatchTime}
     />
+    </div>
   )
 
   /** Possession status bar */
@@ -887,6 +1045,13 @@ export default function VideoTagging() {
           </div>
         )}
 
+        {/* Black card sin bin timers */}
+        {blackCardTimers.length > 0 && (
+          <div className="absolute top-14 right-[192px] z-30">
+            <BlackCardTimer entries={blackCardTimers} onRemove={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))} />
+          </div>
+        )}
+
         {/* Player Selection Modal (step 3 of three-tap flow) */}
         <PlayerSelectionModal
           isOpen={overlayState === 'player'}
@@ -930,7 +1095,7 @@ export default function VideoTagging() {
         </div>
 
         {/* Centre: scoreboard */}
-        {scoreboard}
+        <div data-tour="video-scoreboard">{scoreboard}</div>
 
         {/* Right: action buttons */}
         {actionButtons}
@@ -1019,21 +1184,31 @@ export default function VideoTagging() {
           {videoArea}
           {sidebar}
         </div>
+        {/* Black card sin bin timers */}
+        {blackCardTimers.length > 0 && (
+          <div className="absolute top-2 right-[192px] z-30">
+            <BlackCardTimer entries={blackCardTimers} onRemove={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))} />
+          </div>
+        )}
       </div>
 
       {/* ── Tracking status bar ──────────────────────────────────────────── */}
       {statusBar}
 
       {/* ── Event Timeline ──────────────────────────────────────────────── */}
-      <EventTimeline
-        events={events}
-        videoDurationMs={videoDurationMs}
-        currentTimeMs={currentTimeMs}
-        onSeek={handleSeek}
-      />
+      <div data-tour="event-timeline">
+        <EventTimeline
+          events={events}
+          videoDurationMs={videoDurationMs}
+          currentTimeMs={currentTimeMs}
+          onSeek={handleSeek}
+          firstHalfStartMs={session.first_half_start_ms}
+          secondHalfStartMs={session.second_half_start_ms}
+        />
+      </div>
 
       {/* ── Event Log (collapsible) ─────────────────────────────────────── */}
-      <div className="glass-card p-0">
+      <div data-tour="video-event-log" className="glass-card p-0">
         <VideoEventLog
           events={events}
           onSeek={handleSeek}
@@ -1148,6 +1323,35 @@ export default function VideoTagging() {
         message={alertModal?.message || ''}
         variant={alertModal?.variant || 'danger'}
       />
+
+      {/* Second Yellow → Red Card dramatic overlay */}
+      {secondYellowFlash && (
+        <div className="fixed inset-0 z-[200] pointer-events-none flex items-center justify-center animate-[secondYellowFade_2s_ease-out_forwards]">
+          <div className="bg-black/80 backdrop-blur-xl rounded-2xl border-2 border-red-500/60 px-8 py-6 flex flex-col items-center gap-3 shadow-2xl shadow-red-500/30">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-11 rounded bg-yellow-400 border-2 border-yellow-500 animate-[cardToRed_0.6s_0.3s_ease-in-out_forwards]" />
+              <div className="w-8 h-11 rounded bg-yellow-400 border-2 border-yellow-500 animate-[cardToRed_0.6s_0.5s_ease-in-out_forwards]" />
+              <span className="text-3xl font-black mx-2">=</span>
+              <div className="w-8 h-11 rounded bg-red-500 border-2 border-red-600 animate-pulse" />
+            </div>
+            <span className="text-lg font-bold text-red-400 tracking-wide">AUTOMATIC RED CARD</span>
+            <span className="text-sm text-white/60">Second yellow card — player sent off</span>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes secondYellowFade {
+          0% { opacity: 0; }
+          10% { opacity: 1; }
+          75% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes cardToRed {
+          0% { background-color: #facc15; border-color: #eab308; }
+          100% { background-color: #ef4444; border-color: #dc2626; }
+        }
+      `}</style>
     </div>
   )
 }

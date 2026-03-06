@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Player, EventType, PossessionTeam } from '@/types'
+import { useClubName } from '@/contexts/ClubContext'
 
 interface MatchLineupEntry {
   id: string
@@ -43,6 +44,7 @@ export default function ManualEventEntryModal({
   currentMinute = 1,
   currentHalf = 1
 }: ManualEventEntryModalProps) {
+  const clubName = useClubName()
   const [eventType, setEventType] = useState<EventType>(EventType.POINT)
   const [playerId, setPlayerId] = useState<string>('')
   const [playerComingOn, setPlayerComingOn] = useState<string>('')
@@ -99,7 +101,7 @@ export default function ManualEventEntryModal({
   ].includes(eventType) || team === PossessionTeam.OWN
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-fade-in">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
@@ -130,7 +132,7 @@ export default function ManualEventEntryModal({
                     : 'glass-card text-white/70 hover:text-white'
                 }`}
               >
-                Us
+                {clubName}
               </button>
               <button
                 onClick={() => setTeam(PossessionTeam.OPPONENT)}
@@ -153,38 +155,38 @@ export default function ManualEventEntryModal({
               onChange={(e) => setEventType(e.target.value as EventType)}
               className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              <optgroup label="Scoring">
-                <option value={EventType.GOAL}>Goal</option>
-                <option value={EventType.POINT}>Point</option>
-                <option value={EventType.TWO_POINT}>2-Pointer</option>
-                <option value={EventType.POINT_FREE}>Point (Free)</option>
-                <option value={EventType.TWO_POINT_FREE}>2-Pointer (Free)</option>
-                <option value={EventType.WIDE}>Wide</option>
-                <option value={EventType.WIDE_FREE}>Wide (Free)</option>
-                <option value={EventType.SHORT}>Short</option>
-                <option value={EventType.SAVED}>Saved</option>
+              <optgroup label="Scoring" className="bg-slate-800 text-white">
+                <option value={EventType.GOAL} className="bg-slate-800 text-white">Goal</option>
+                <option value={EventType.POINT} className="bg-slate-800 text-white">Point</option>
+                <option value={EventType.TWO_POINT} className="bg-slate-800 text-white">2-Pointer</option>
+                <option value={EventType.POINT_FREE} className="bg-slate-800 text-white">Point (Free)</option>
+                <option value={EventType.TWO_POINT_FREE} className="bg-slate-800 text-white">2-Pointer (Free)</option>
+                <option value={EventType.WIDE} className="bg-slate-800 text-white">Wide</option>
+                <option value={EventType.WIDE_FREE} className="bg-slate-800 text-white">Wide (Free)</option>
+                <option value={EventType.SHORT} className="bg-slate-800 text-white">Short</option>
+                <option value={EventType.SAVED} className="bg-slate-800 text-white">Saved</option>
               </optgroup>
-              <optgroup label="Turnovers">
-                <option value={EventType.TURNOVER_WON}>Turnover Won</option>
-                <option value={EventType.TURNOVER_LOST}>Turnover Lost</option>
-                <option value={EventType.OUR_UNFORCED_ERROR}>Unforced Error</option>
+              <optgroup label="Turnovers" className="bg-slate-800 text-white">
+                <option value={EventType.TURNOVER_WON} className="bg-slate-800 text-white">Turnover Won</option>
+                <option value={EventType.TURNOVER_LOST} className="bg-slate-800 text-white">Turnover Lost</option>
+                <option value={EventType.OUR_UNFORCED_ERROR} className="bg-slate-800 text-white">Unforced Error</option>
               </optgroup>
-              <optgroup label="Fouls">
-                <option value={EventType.FOUL_WON}>Foul Won</option>
-                <option value={EventType.FOUL_COMMITTED}>Foul Committed</option>
-                <option value={EventType.FREE_WON}>Free Won</option>
-                <option value={EventType.FREE_CONCEDED}>Free Conceded</option>
+              <optgroup label="Fouls" className="bg-slate-800 text-white">
+                <option value={EventType.FOUL_WON} className="bg-slate-800 text-white">Foul Won</option>
+                <option value={EventType.FOUL_COMMITTED} className="bg-slate-800 text-white">Foul Committed</option>
+                <option value={EventType.FREE_WON} className="bg-slate-800 text-white">Free Won</option>
+                <option value={EventType.FREE_CONCEDED} className="bg-slate-800 text-white">Free Conceded</option>
               </optgroup>
-              <optgroup label="Cards">
-                <option value={EventType.YELLOW_CARD}>Yellow Card</option>
-                <option value={EventType.RED_CARD}>Red Card</option>
+              <optgroup label="Cards" className="bg-slate-800 text-white">
+                <option value={EventType.YELLOW_CARD} className="bg-slate-800 text-white">Yellow Card</option>
+                <option value={EventType.RED_CARD} className="bg-slate-800 text-white">Red Card</option>
               </optgroup>
-              <optgroup label="Defense">
-                <option value={EventType.BLOCK}>Block</option>
-                <option value={EventType.INTERCEPTION}>Interception</option>
+              <optgroup label="Defense" className="bg-slate-800 text-white">
+                <option value={EventType.BLOCK} className="bg-slate-800 text-white">Block</option>
+                <option value={EventType.INTERCEPTION} className="bg-slate-800 text-white">Interception</option>
               </optgroup>
-              <optgroup label="Substitutions">
-                <option value={EventType.SUBSTITUTION}>Substitution</option>
+              <optgroup label="Substitutions" className="bg-slate-800 text-white">
+                <option value={EventType.SUBSTITUTION} className="bg-slate-800 text-white">Substitution</option>
               </optgroup>
             </select>
           </div>
@@ -200,9 +202,9 @@ export default function ManualEventEntryModal({
                   onChange={(e) => setPlayerId(e.target.value)}
                   className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
-                  <option value="">Select player...</option>
+                  <option value="" className="bg-slate-800 text-white">Select player...</option>
                   {getPlayersOnField().map((player) => (
-                    <option key={player.id} value={player.id}>
+                    <option key={player.id} value={player.id} className="bg-slate-800 text-white">
                       {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
                     </option>
                   ))}
@@ -218,9 +220,9 @@ export default function ManualEventEntryModal({
                   disabled={!playerId}
                   className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="">Select player...</option>
+                  <option value="" className="bg-slate-800 text-white">Select player...</option>
                   {getPlayersOnBench().map((player) => (
-                    <option key={player.id} value={player.id}>
+                    <option key={player.id} value={player.id} className="bg-slate-800 text-white">
                       {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
                     </option>
                   ))}
@@ -235,9 +237,9 @@ export default function ManualEventEntryModal({
                 onChange={(e) => setPlayerId(e.target.value)}
                 className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value="">Select player...</option>
+                <option value="" className="bg-slate-800 text-white">Select player...</option>
                 {players.filter(p => p.active).map((player) => (
-                  <option key={player.id} value={player.id}>
+                  <option key={player.id} value={player.id} className="bg-slate-800 text-white">
                     {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
                   </option>
                 ))}
@@ -268,8 +270,8 @@ export default function ManualEventEntryModal({
                 onChange={(e) => setHalf(parseInt(e.target.value))}
                 className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
-                <option value={1}>1st Half</option>
-                <option value={2}>2nd Half</option>
+                <option value={1} className="bg-slate-800 text-white">1st Half</option>
+                <option value={2} className="bg-slate-800 text-white">2nd Half</option>
               </select>
             </div>
           </div>

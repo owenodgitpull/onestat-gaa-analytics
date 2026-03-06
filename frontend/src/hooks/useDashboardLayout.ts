@@ -5,6 +5,14 @@ const STORAGE_KEY = 'gaa-dashboard-layout'
 const OLD_PINNED_KEY = 'gaa-pinned-charts'
 const MAX_PINNED = 4
 
+const NEW_V3_CHART_IDS = [
+  'score-momentum',
+  'dead-ball-vs-play',
+  'defensive-zones',
+  'kickout-landing-zones',
+  'kpi-sparkline-grid',
+]
+
 export const DEFAULT_CHART_ORDER = [
   'possession-funnel',
   'kickout-trend',
@@ -14,18 +22,20 @@ export const DEFAULT_CHART_ORDER = [
   'shooting-efficiency',
   'red-zone-list',
   'workhorse-radar',
+  'score-momentum',
+  'dead-ball-vs-play',
+  'defensive-zones',
+  'kickout-landing-zones',
+  'kpi-sparkline-grid',
 ]
 
 export const DEFAULT_SECTION_ORDER = [
-  'insight-alerts',
   'my-charts',
-  'ai-insights',
   'top-scorers',
-  'recent-results',
 ]
 
 export interface DashboardLayout {
-  version: 2
+  version: number
   chartOrder: string[]
   hiddenCharts: string[]
   sectionOrder: string[]
@@ -34,7 +44,7 @@ export interface DashboardLayout {
 
 function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   return {
-    version: 2,
+    version: 4,
     chartOrder: [...DEFAULT_CHART_ORDER, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
     hiddenCharts: [],
     sectionOrder: [...DEFAULT_SECTION_ORDER],
@@ -47,7 +57,34 @@ function loadLayout(): DashboardLayout {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
+
+      // v2 → v3 migration: add new chart IDs to hiddenCharts (not visible by default)
       if (parsed.version === 2) {
+        parsed.version = 3
+        const existing = new Set([...parsed.chartOrder, ...parsed.hiddenCharts])
+        for (const id of NEW_V3_CHART_IDS) {
+          if (!existing.has(id)) {
+            parsed.hiddenCharts.push(id)
+          }
+        }
+        saveLayout(parsed)
+        return parsed
+      }
+
+      // v3 → v4 migration: remove sections that are no longer draggable
+      if (parsed.version === 3) {
+        parsed.version = 4
+        const removed = new Set(['recent-results', 'insight-alerts', 'ai-insights'])
+        parsed.sectionOrder = (parsed.sectionOrder || []).filter((s: string) => !removed.has(s))
+        // Ensure remaining defaults present
+        for (const s of DEFAULT_SECTION_ORDER) {
+          if (!parsed.sectionOrder.includes(s)) parsed.sectionOrder.push(s)
+        }
+        saveLayout(parsed)
+        return parsed
+      }
+
+      if (parsed.version === 4) {
         // Migrate: ensure any new default sections are added
         const savedSections: string[] = parsed.sectionOrder || []
         const missing = DEFAULT_SECTION_ORDER.filter(s => !savedSections.includes(s))

@@ -313,21 +313,26 @@ class MatchService:
         
         # Calculate possession percentages (time-based, not event-based)
         if possession_events:
+            def _is_own_team(p) -> bool:
+                """Normalize team comparison — handles both enum objects and raw strings."""
+                t = p.team.value if hasattr(p.team, 'value') else str(p.team)
+                return t == "own"
+
             # Sum up duration_seconds for each team
             total_duration = sum(p.duration_seconds or 0 for p in possession_events)
-            
+
             if total_duration > 0:
                 team_duration = sum(
                     p.duration_seconds or 0
                     for p in possession_events
-                    if p.team == PossessionTeam.OWN.value
+                    if _is_own_team(p)
                 )
                 stats["team_possession_percentage"] = round((team_duration / total_duration) * 100, 1)
                 stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
             else:
                 # Fallback: if no durations yet, use event count (initial possession)
                 total_events = len(possession_events)
-                team_events = sum(1 for p in possession_events if p.team == PossessionTeam.OWN.value)
+                team_events = sum(1 for p in possession_events if _is_own_team(p))
                 stats["team_possession_percentage"] = round((team_events / total_events) * 100, 1)
                 stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
         

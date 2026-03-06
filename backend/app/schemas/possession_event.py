@@ -24,6 +24,14 @@ class PossessionEventCreate(PossessionEventBase):
     match_id: UUID = Field(..., description="Match this possession belongs to")
 
 
+class PossessionEventBulkCreate(BaseModel):
+    """Schema for bulk-creating possession events (e.g., from a drag path)."""
+    match_id: UUID = Field(..., description="Match these possessions belong to")
+    team: PossessionTeam = Field(..., description="Which team has possession")
+    minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match")
+    waypoints: List[dict] = Field(..., description="List of {x, y} coordinates", min_length=1, max_length=50)
+
+
 class PossessionEventUpdate(BaseModel):
     """Schema for updating an existing possession event."""
     team: Optional[PossessionTeam] = None

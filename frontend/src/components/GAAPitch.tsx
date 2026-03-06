@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { BallPosition, PossessionTeam } from '@/types'
 
 interface PitchEvent {
@@ -25,7 +25,18 @@ interface GAAPitchProps {
   showZones?: boolean
   events?: PitchEvent[]
   containerClassName?: string
+  trail?: Array<{ x: number; y: number }>
+  onTrailUpdate?: (trail: Array<{ x: number; y: number }>) => void
+  /** Called on drag-end with all downsampled waypoints collected during the drag */
+  onDragPath?: (waypoints: Array<{ x: number; y: number }>) => void
+  /** Optional overlay rendered inside SVG via foreignObject — always relative to pitch graphic */
+  svgOverlay?: React.ReactNode
+  /** Show gradient border around the pitch edge inside the SVG */
+  gradientBorder?: boolean
 }
+
+// Minimum distance (in pitch %) between recorded drag waypoints
+const DRAG_SAMPLE_THRESHOLD = 3
 
 // Get color for event dot based on type and team
 const getEventColor = (event: PitchEvent): string => {
@@ -62,6 +73,10 @@ const getEventColor = (event: PitchEvent): string => {
   }
 }
 
+// Convert pitch percentage to SVG coordinates
+const toSvgX = (pctX: number) => (pctX / 100) * 1960 + 183
+const toSvgY = (pctY: number) => (pctY / 100) * 1167 + 123
+
 export default function GAAPitch({
   onBallMove,
   ballPosition,
@@ -69,14 +84,22 @@ export default function GAAPitch({
   showZones = false,
   events = [],
   containerClassName,
+  trail,
+  onTrailUpdate,
+  onDragPath,
+  svgOverlay,
+  gradientBorder = false,
 }: GAAPitchProps) {
   const [localBallPosition, setLocalBallPosition] = useState<BallPosition | null>(
     ballPosition || null
   )
+  const [dragPosition, setDragPosition] = useState<BallPosition | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<PitchEvent | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
+  const dragWaypointsRef = useRef<Array<{ x: number; y: number }>>([])
 
   // Close tooltip when tapping outside
   const handleContainerClick = (e: React.MouseEvent | React.TouchEvent) => {
@@ -92,40 +115,109 @@ export default function GAAPitch({
     }
   }, [ballPosition])
 
-  const processPitchInteraction = (clientX: number, clientY: number) => {
-    if (readonly) return
-
+  const clientToPercent = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current
-    if (!svg) return
+    if (!svg) return null
 
-    // Convert pixel click → SVG coordinates → pitch-area percentage
-    // Pitch area: x 183–2143 (1960 units), y 123–1290 (1167 units)
     const rect = svg.getBoundingClientRect()
     const svgX = ((clientX - rect.left) / rect.width) * 2332
     const svgY = ((clientY - rect.top) / rect.height) * 1446
     const x = ((svgX - 183) / 1960) * 100
     const y = ((svgY - 123) / 1167) * 100
 
-    const newPosition: BallPosition = {
+    return {
       x: Math.max(0, Math.min(100, x)),
       y: Math.max(0, Math.min(100, y)),
+    }
+  }, [])
+
+  // SVG pointerUp — handles tap-to-place (not drag)
+  const handlePitchPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (readonly || draggingRef.current) return
+
+    const pos = clientToPercent(e.clientX, e.clientY)
+    if (!pos) return
+
+    const newPosition: BallPosition = {
+      x: pos.x,
+      y: pos.y,
       team: localBallPosition?.team || PossessionTeam.OWN,
     }
 
     setLocalBallPosition(newPosition)
     onBallMove?.(newPosition)
+
+    // Add to trail
+    if (onTrailUpdate && trail) {
+      onTrailUpdate([...trail.slice(-49), { x: pos.x, y: pos.y }])
+    }
   }
 
-  const handlePitchClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    processPitchInteraction(e.clientX, e.clientY)
+  // Ball drag handlers
+  const handleBallPointerDown = (e: React.PointerEvent<SVGGElement>) => {
+    if (readonly) return
+    e.stopPropagation()
+    draggingRef.current = true
+    ;(e.target as Element).setPointerCapture(e.pointerId)
+    // Initialize drag position and waypoint collection
+    dragWaypointsRef.current = []
+    if (localBallPosition) {
+      setDragPosition({ ...localBallPosition })
+      dragWaypointsRef.current.push({ x: localBallPosition.x, y: localBallPosition.y })
+    }
   }
 
-  const handlePitchTouch = (e: React.TouchEvent<SVGSVGElement>) => {
-    if (e.touches.length > 0) return // Only handle touchEnd, not touchStart multi-touch
-    const touch = e.changedTouches[0]
-    if (!touch) return
-    e.preventDefault() // Prevent delayed click from firing duplicate
-    processPitchInteraction(touch.clientX, touch.clientY)
+  const handleBallPointerMove = (e: React.PointerEvent<SVGGElement>) => {
+    if (!draggingRef.current || readonly) return
+
+    const pos = clientToPercent(e.clientX, e.clientY)
+    if (!pos) return
+
+    const newDragPos: BallPosition = {
+      x: pos.x,
+      y: pos.y,
+      team: localBallPosition?.team || PossessionTeam.OWN,
+    }
+    setDragPosition(newDragPos)
+
+    // Downsample: only record waypoint if moved > threshold from last recorded point
+    const waypoints = dragWaypointsRef.current
+    const last = waypoints[waypoints.length - 1]
+    if (!last || Math.hypot(pos.x - last.x, pos.y - last.y) >= DRAG_SAMPLE_THRESHOLD) {
+      waypoints.push({ x: pos.x, y: pos.y })
+    }
+
+    // Append to trail during drag (visual only, no API call)
+    if (onTrailUpdate && trail) {
+      onTrailUpdate([...trail.slice(-49), { x: pos.x, y: pos.y }])
+    }
+  }
+
+  const handleBallPointerUp = (e: React.PointerEvent<SVGGElement>) => {
+    if (!draggingRef.current) return
+    e.stopPropagation()
+    ;(e.target as Element).releasePointerCapture(e.pointerId)
+    draggingRef.current = false
+
+    if (dragPosition) {
+      // Ensure final position is in waypoints
+      const waypoints = dragWaypointsRef.current
+      const last = waypoints[waypoints.length - 1]
+      if (!last || last.x !== dragPosition.x || last.y !== dragPosition.y) {
+        waypoints.push({ x: dragPosition.x, y: dragPosition.y })
+      }
+
+      // Flush collected waypoints (batch possession recording)
+      if (onDragPath && waypoints.length > 1) {
+        onDragPath(waypoints)
+      }
+      dragWaypointsRef.current = []
+
+      // Commit final position (fires the main onBallMove for the endpoint)
+      setLocalBallPosition(dragPosition)
+      onBallMove?.(dragPosition)
+      setDragPosition(null)
+    }
   }
 
   // Check if position is in 2-point zone (outside both 40m arcs)
@@ -133,6 +225,51 @@ export default function GAAPitch({
   const isInTwoPointZone = (x: number) => {
     return x >= 28 && x <= 72
   }
+
+  // The position to render — drag position takes priority during drag
+  const displayPosition = dragPosition || localBallPosition
+
+  // Trail rendering as SVG elements
+  const trailColor = displayPosition?.team === PossessionTeam.OWN ? '#059669' : '#ef4444'
+
+  const trailElements = useMemo(() => {
+    if (!trail || trail.length < 2) return null
+
+    // Build SVG path string
+    const pathPoints = trail.map(p => `${toSvgX(p.x)},${toSvgY(p.y)}`)
+    const pathD = `M ${pathPoints.join(' L ')}`
+
+    return (
+      <g style={{ pointerEvents: 'none' }}>
+        {/* Connecting line */}
+        <path
+          d={pathD}
+          fill="none"
+          stroke={trailColor}
+          strokeWidth={6}
+          strokeOpacity={0.35}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {/* Trail dots with progressive opacity */}
+        {trail.map((p, i) => {
+          const progress = trail.length > 1 ? i / (trail.length - 1) : 1
+          const opacity = 0.15 + progress * 0.55
+          const radius = 14 + progress * 14
+          return (
+            <circle
+              key={i}
+              cx={toSvgX(p.x)}
+              cy={toSvgY(p.y)}
+              r={radius}
+              fill={trailColor}
+              opacity={opacity}
+            />
+          )
+        })}
+      </g>
+    )
+  }, [trail, trailColor])
 
   return (
     <div
@@ -171,79 +308,26 @@ export default function GAAPitch({
         ref={svgRef}
         viewBox="0 0 2332 1446"
         className="w-full h-full cursor-pointer"
-        onClick={handlePitchClick}
-        onTouchEnd={handlePitchTouch}
+        style={{ touchAction: 'none' }}
+        onPointerUp={handlePitchPointerUp}
         xmlns="http://www.w3.org/2000/svg"
       >
         {/* Background */}
         <rect width="2332" height="1446" fill="#2d5016" />
-        
+
         {/* Use the EXACT pitch from the SVG file */}
-        <image 
-          href="/pitch-svg.svg" 
-          width="2332" 
+        <image
+          href="/pitch-svg.svg"
+          width="2332"
           height="1446"
           preserveAspectRatio="xMidYMid meet"
         />
 
-        {/* Ball position */}
-        {localBallPosition && (
-          <g className="animate-scale-in">
-            {/* Shadow */}
-            <ellipse
-              cx={(localBallPosition.x / 100) * 1960 + 183}
-              cy={(localBallPosition.y / 100) * 1167 + 131}
-              rx="20"
-              ry="10"
-              fill="rgba(0, 0, 0, 0.5)"
-            />
-
-            {/* GAA Football */}
-            <image
-              href="/gaelic_football.svg"
-              x={(localBallPosition.x / 100) * 1960 + 183 - 24}
-              y={(localBallPosition.y / 100) * 1167 + 123 - 24}
-              width="48"
-              height="48"
-              className="drop-shadow-lg"
-            />
-            {/* Team indicator ring */}
-            <circle
-              cx={(localBallPosition.x / 100) * 1960 + 183}
-              cy={(localBallPosition.y / 100) * 1167 + 123}
-              r="28"
-              fill="none"
-              stroke={
-                localBallPosition.team === PossessionTeam.OWN
-                  ? '#059669'
-                  : '#ef4444'
-              }
-              strokeWidth="4"
-              opacity="0.8"
-            />
-
-            {/* 2-Point Zone Indicator */}
-            {isInTwoPointZone(localBallPosition.x) && (
-              <text
-                x={(localBallPosition.x / 100) * 1960 + 183}
-                y={(localBallPosition.y / 100) * 1167 + 123 - 20}
-                textAnchor="middle"
-                fill="#fbbf24"
-                fontSize="24"
-                fontWeight="bold"
-                className="animate-fade-in"
-              >
-                2PT
-              </text>
-            )}
-          </g>
-        )}
-
         {/* Event dots (for match result view) */}
         {events.length > 0 && events.map((event, idx) => {
           if (event.pitch_x === null || event.pitch_y === null) return null
-          const x = (event.pitch_x / 100) * 1960 + 183
-          const y = (event.pitch_y / 100) * 1167 + 123
+          const x = toSvgX(event.pitch_x)
+          const y = toSvgY(event.pitch_y)
           const color = getEventColor(event)
 
           return (
@@ -292,6 +376,68 @@ export default function GAAPitch({
           )
         })}
 
+        {/* Trail (rendered after event dots, before ball) */}
+        {trailElements}
+
+        {/* Ball position */}
+        {displayPosition && (
+          <g
+            className={draggingRef.current ? '' : 'animate-scale-in'}
+            style={{ cursor: readonly ? 'default' : 'grab' }}
+            onPointerDown={handleBallPointerDown}
+            onPointerMove={handleBallPointerMove}
+            onPointerUp={handleBallPointerUp}
+          >
+            {/* Shadow */}
+            <ellipse
+              cx={toSvgX(displayPosition.x)}
+              cy={toSvgY(displayPosition.y) + 8}
+              rx="20"
+              ry="10"
+              fill="rgba(0, 0, 0, 0.5)"
+            />
+
+            {/* GAA Football */}
+            <image
+              href="/gaelic_football.svg"
+              x={toSvgX(displayPosition.x) - 24}
+              y={toSvgY(displayPosition.y) - 24}
+              width="48"
+              height="48"
+              className="drop-shadow-lg"
+            />
+            {/* Team indicator ring */}
+            <circle
+              cx={toSvgX(displayPosition.x)}
+              cy={toSvgY(displayPosition.y)}
+              r="28"
+              fill="none"
+              stroke={
+                displayPosition.team === PossessionTeam.OWN
+                  ? '#059669'
+                  : '#ef4444'
+              }
+              strokeWidth="4"
+              opacity="0.8"
+            />
+
+            {/* 2-Point Zone Indicator */}
+            {isInTwoPointZone(displayPosition.x) && (
+              <text
+                x={toSvgX(displayPosition.x)}
+                y={toSvgY(displayPosition.y) - 20}
+                textAnchor="middle"
+                fill="#fbbf24"
+                fontSize="24"
+                fontWeight="bold"
+                className="animate-fade-in"
+              >
+                2PT
+              </text>
+            )}
+          </g>
+        )}
+
         {/* Zone labels (if showZones) */}
         {showZones && (
           <g fill="white" fillOpacity="0.4" fontSize="22" fontWeight="700">
@@ -302,8 +448,33 @@ export default function GAAPitch({
             <text x="1962" y="710" textAnchor="middle">ATK</text>
           </g>
         )}
+
+        {/* Optional overlay — rendered inside SVG so it scales with the pitch */}
+        {svgOverlay && (
+          <foreignObject x="30" y="25" width="1000" height="120">
+            {svgOverlay}
+          </foreignObject>
+        )}
+
+        {/* Gradient border — drawn inside SVG at the pitch edge */}
+        {gradientBorder && (
+          <>
+            <defs>
+              <linearGradient id="pitchBorderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#00E676" />
+                <stop offset="100%" stopColor="#00B0FF" />
+              </linearGradient>
+            </defs>
+            <rect
+              x="1" y="1" width="2330" height="1444" rx="8"
+              fill="none"
+              stroke="url(#pitchBorderGradient)"
+              strokeWidth="4"
+              pointerEvents="none"
+            />
+          </>
+        )}
       </svg>
     </div>
   )
 }
-

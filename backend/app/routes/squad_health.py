@@ -10,14 +10,17 @@ Provides endpoints for:
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
+import hashlib
+import uuid as uuid_mod
 
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_club
-from app.models.player_health import PlayerHealthAlert, AlertSeverity
+from app.models.player_health import PlayerHealthAlert, PlayerWorkloadSnapshot, AlertSeverity
+from app.models.season_cache import SeasonCache
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
 import logging
@@ -27,13 +30,60 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _compute_squad_health_fingerprint(db: AsyncSession, club_id) -> str:
+    """Compute a SHA256 fingerprint based on active alerts and workload snapshots."""
+    parts = []
+
+    # Latest active alert created_at
+    latest_alert_q = select(func.max(PlayerHealthAlert.created_at)).where(
+        PlayerHealthAlert.is_active == True
+    )
+    latest_alert = (await db.execute(latest_alert_q)).scalar()
+    parts.append(f"latest_alert:{latest_alert}")
+
+    # Count of active alerts
+    alert_count_q = select(func.count(PlayerHealthAlert.id)).where(
+        PlayerHealthAlert.is_active == True
+    )
+    alert_count = (await db.execute(alert_count_q)).scalar() or 0
+    parts.append(f"alert_count:{alert_count}")
+
+    # Latest workload snapshot date
+    latest_snapshot = (await db.execute(
+        select(func.max(PlayerWorkloadSnapshot.snapshot_date))
+    )).scalar()
+    parts.append(f"latest_snapshot:{latest_snapshot}")
+
+    fingerprint_str = "|".join(parts)
+    return hashlib.sha256(fingerprint_str.encode()).hexdigest()
+
+
 @router.get("/ai-summary")
 async def get_squad_health_ai_summary(user: AuthenticatedUser = Depends(require_club), db: AsyncSession = Depends(get_db),):
     """
     Get a 1-2 sentence AI-generated summary of squad health status.
-    Uses Haiku for fast, cheap inference.
+    Uses Haiku for fast, cheap inference. Cached via SeasonCache fingerprint.
     """
     try:
+        club_id = user.club_id
+        fingerprint = await _compute_squad_health_fingerprint(db, club_id)
+
+        # Check cache
+        cache_q = select(SeasonCache).where(
+            SeasonCache.cache_type == "squad_health_summary",
+        )
+        if club_id:
+            cache_q = cache_q.where(SeasonCache.club_id == club_id)
+        cache_result = await db.execute(cache_q)
+        cache = cache_result.scalar_one_or_none()
+
+        if cache and cache.data_fingerprint == fingerprint and cache.cached_result:
+            logger.info(f"Squad health AI summary cache HIT (fingerprint={fingerprint[:12]}...)")
+            return cache.cached_result
+
+        # Cache miss — generate summary
+        logger.info(f"Squad health AI summary cache MISS (fingerprint={fingerprint[:12]}...) — calling Haiku")
+
         summary = await WorkloadAnalysisService.get_squad_health_summary(db)
 
         # Count players by status
@@ -67,10 +117,29 @@ async def get_squad_health_ai_summary(user: AuthenticatedUser = Depends(require_
             }]
         )
 
-        return {
+        result = {
             "summary": response.content[0].text,
             "generated_at": datetime.utcnow().isoformat(),
         }
+
+        # Upsert into cache
+        if cache:
+            cache.data_fingerprint = fingerprint
+            cache.cached_result = result
+            cache.cached_at = datetime.utcnow()
+        else:
+            new_cache = SeasonCache(
+                id=uuid_mod.uuid4(),
+                club_id=club_id,
+                cache_type="squad_health_summary",
+                data_fingerprint=fingerprint,
+                cached_result=result,
+                cached_at=datetime.utcnow(),
+            )
+            db.add(new_cache)
+        await db.commit()
+
+        return result
 
     except Exception as e:
         logger.error(f"Squad health AI summary failed: {e}")

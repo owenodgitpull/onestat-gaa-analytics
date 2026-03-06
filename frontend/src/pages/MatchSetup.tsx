@@ -207,7 +207,7 @@ export default function MatchSetup() {
             </div>
             <h3 className="text-xl font-bold text-white mb-2">Post-Match Entry</h3>
             <p className="text-white/50 text-sm">
-              Enter the score &amp; lineup, then upload video or GPS
+              Enter the score &amp; lineup, then upload video and GPS
             </p>
           </button>
         </div>

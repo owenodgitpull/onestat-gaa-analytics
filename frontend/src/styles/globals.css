@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+@import 'driver.js/dist/driver.css';
+@import './tour.css';
+
 :root {
   --gradient-primary: linear-gradient(135deg, #00E676, #00B0FF);
   --gradient-primary-text: linear-gradient(135deg, #00E676 0%, #00C853 40%, #00B0FF 100%);

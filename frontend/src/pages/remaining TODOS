@@ -1,5 +1,7 @@
 Still Needed for Production Multi-Tenancy
 
+* add kickout plays to video analysis event tagging
+* add possibility of retrospectively tagging kickout plays in manual recording
   Must-have (blocking launch):
   1. Backfill Dungloe data — existing matches, players, events, GPS, etc. all have club_id = NULL. Need a migration to stamp them with Dungloe's club UUID
   2. Remove remaining Dungloe hardcodes — we cleaned most but should do a final sweep (AI knowledge base, any "Dungloe" strings in prompts)

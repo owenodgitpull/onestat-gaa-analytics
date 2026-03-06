@@ -10,6 +10,7 @@ export interface Club {
   primary_colour: string | null;
   secondary_colour: string | null;
   logo_url: string | null;
+  team_aliases: string[] | null;
   is_active: boolean;
   onboarding_completed: boolean;
   created_at: string;
@@ -153,6 +154,7 @@ export enum EventType {
   OPP_KICKOUT_OPPOSITION_WON_BREAK = 'opp_kickout_opposition_won_break',
   // Cards & fouls
   YELLOW_CARD = 'yellow_card',
+  BLACK_CARD = 'black_card',
   RED_CARD = 'red_card',
   FOUL_COMMITTED = 'foul_committed',
   FOUL_WON = 'foul_won',

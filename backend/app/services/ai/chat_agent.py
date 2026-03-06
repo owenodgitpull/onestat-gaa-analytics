@@ -46,9 +46,12 @@ async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_m
     insight_alerts_text = ""
     try:
         from app.models.insight_alert import InsightAlert
+        alert_conditions = [InsightAlert.is_dismissed == False]
+        if club_id:
+            alert_conditions.append(InsightAlert.club_id == club_id)
         alert_query = (
             select(InsightAlert)
-            .where(InsightAlert.is_dismissed == False)
+            .where(*alert_conditions)
             .order_by(InsightAlert.created_at.desc())
             .limit(10)
         )
@@ -61,8 +64,8 @@ async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_m
         logger.warning(f"Insight alerts context failed: {e}")
 
     # Get fixture and weather context
-    fixture_context = await get_fixture_context(db)
-    weather_context = await get_weather_context(db)
+    fixture_context = await get_fixture_context(db, club_id=club_id)
+    weather_context = await get_weather_context(db, club_id=club_id)
 
     system_prompt = f"""You are a GAA analyst assistant for {club_name}.
 Answer questions about matches, players, tactics, and performance.
@@ -161,9 +164,12 @@ async def _build_chat_system_prompt(
     insight_alerts_text = ""
     try:
         from app.models.insight_alert import InsightAlert
+        alert_conditions = [InsightAlert.is_dismissed == False]
+        if club_id:
+            alert_conditions.append(InsightAlert.club_id == club_id)
         alert_query = (
             select(InsightAlert)
-            .where(InsightAlert.is_dismissed == False)
+            .where(*alert_conditions)
             .order_by(InsightAlert.created_at.desc())
             .limit(10)
         )
@@ -176,8 +182,8 @@ async def _build_chat_system_prompt(
         logger.warning(f"Insight alerts context failed: {e}")
 
     # Get fixture and weather context
-    fixture_context = await get_fixture_context(db)
-    weather_context = await get_weather_context(db)
+    fixture_context = await get_fixture_context(db, club_id=club_id)
+    weather_context = await get_weather_context(db, club_id=club_id)
 
     # Build summary section
     summary_section = ""

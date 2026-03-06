@@ -13,7 +13,8 @@ import {
   X,
   Zap,
   User,
-  Bot
+  Bot,
+  ChevronRight
 } from 'lucide-react'
 import { api, SquadHealthSummary, PlayerWorkload } from '@/services/api'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
@@ -215,9 +216,10 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
           </h3>
           <div className="space-y-3">
             {(showAllAlerts ? allAlerts : allAlerts.slice(0, 1)).map((alert) => (
-              <div
+              <Link
                 key={alert.id}
-                className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                to={`/players/${alert.player_id}`}
+                className="p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors cursor-pointer block active:scale-[0.98]"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
@@ -234,16 +236,20 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
                           <span>{alert.recommendation}</span>
                         </div>
                       )}
+                      <div className="text-xs text-cyan-400 mt-2">View player →</div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => dismissAlert(alert.id)}
-                    className="p-1 rounded hover:bg-white/10"
-                  >
-                    <X size={16} className="text-white/40" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismissAlert(alert.id) }}
+                      className="p-1 rounded hover:bg-white/10"
+                    >
+                      <X size={16} className="text-white/40" />
+                    </button>
+                    <ChevronRight size={16} className="text-white/30" />
+                  </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
           {allAlerts.length > 1 && (

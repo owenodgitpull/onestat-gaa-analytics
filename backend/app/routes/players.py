@@ -9,7 +9,7 @@ Handles CRUD operations for players:
 - Delete players (soft delete)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional
@@ -26,6 +26,7 @@ from app.schemas.player import (
     PlayerListResponse
 )
 from app.services.player_comparison_service import PlayerComparisonService
+from app.services.onboarding_service import OnboardingService
 
 # Create router with prefix and tags
 router = APIRouter()
@@ -282,4 +283,49 @@ async def delete_player(
     
     await db.commit()
     return None  # 204 No Content
+
+
+@router.post("/import/preview")
+async def preview_roster_import(
+    file: UploadFile = File(...),
+    name_column: Optional[str] = Query(None, description="Override: which header to use as the name column"),
+    user: AuthenticatedUser = Depends(require_club),
+):
+    """
+    Preview a roster CSV/XLSX file before importing.
+    Returns parsed player data with validation warnings.
+    If name column can't be auto-detected, returns needs_name_column=true with headers list.
+    Re-call with name_column=<header> to specify.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    ext = file.filename.rsplit(".", 1)[-1].lower()
+    if ext not in ("csv", "xlsx"):
+        raise HTTPException(status_code=400, detail="Only CSV and XLSX files are supported")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 5MB)")
+    preview = OnboardingService.parse_player_file(content, file.filename, name_column=name_column)
+    return preview
+
+
+@router.post("/import/confirm")
+async def confirm_roster_import(
+    request: dict,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Import roster with upsert logic:
+    - Matches existing players by name (case-insensitive)
+    - Updates position/jersey/DOB on existing players
+    - Creates new players
+    - Never deletes existing players or their linked data
+    """
+    from app.schemas.onboarding import PlayerConfirmRow
+    players = [PlayerConfirmRow(**p) for p in request.get("players", [])]
+    if not players:
+        raise HTTPException(status_code=400, detail="No players provided")
+    result = await OnboardingService.bulk_upsert_players(db, user.club_id, players)
+    return result
 

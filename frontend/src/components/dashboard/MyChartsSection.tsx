@@ -97,15 +97,17 @@ export default function MyChartsSection({
           </div>
           <span className="text-white">Core Stats</span>
         </h2>
-        {hiddenCharts.length > 0 && (
-          <button
-            onClick={() => setShowLibrary(true)}
-            className="btn-glass flex items-center gap-2 text-sm"
-          >
-            <Library size={14} />
-            Chart Library ({hiddenCharts.length})
-          </button>
-        )}
+        <button
+          data-tour="chart-library-btn"
+          onClick={() => setShowLibrary(true)}
+          className="btn-glass flex items-center gap-2 text-sm"
+        >
+          <Library size={14} />
+          Chart Library
+          {hiddenCharts.length > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-white/20">{hiddenCharts.length}</span>
+          )}
+        </button>
       </div>
 
       <DndContext
@@ -116,20 +118,29 @@ export default function MyChartsSection({
       >
         <SortableContext items={visibleCharts} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-            {visibleCharts.map(chartId => {
+            {visibleCharts.map((chartId, idx) => {
               const entry = registryMap.get(chartId)!
               const isAiPinned = chartId.startsWith('ai-')
               const aiChartId = isAiPinned ? chartId.replace('ai-', '') : undefined
+              const rendered = entry.render({ ...renderProps, onUnpin: onUnpinChart })
 
               return (
                 <SortableChartCard
                   key={chartId}
                   id={chartId}
+                  colSpan={entry.colSpan}
                   isAiPinned={isAiPinned}
+                  isFirst={idx === 0}
                   onHide={!isAiPinned ? () => onHideChart(chartId) : undefined}
                   onUnpin={isAiPinned && aiChartId ? () => onUnpinChart(aiChartId) : undefined}
                 >
-                  {entry.render({ ...renderProps, onUnpin: onUnpinChart })}
+                  {rendered ?? (
+                    <div className="glass-card p-6 flex items-center justify-center min-h-[200px]">
+                      <p className="text-white/40 text-sm">
+                        {entry.label} — loading data...
+                      </p>
+                    </div>
+                  )}
                 </SortableChartCard>
               )
             })}
@@ -149,7 +160,9 @@ export default function MyChartsSection({
         isOpen={showLibrary}
         onClose={() => setShowLibrary(false)}
         hiddenCharts={hiddenCharts}
+        chartOrder={chartOrder}
         onShowChart={onShowChart}
+        onHideChart={onHideChart}
       />
     </div>
   )
