@@ -92,16 +92,18 @@ class WorkloadAnalysisService:
     @staticmethod
     async def trigger_analysis_for_all_players(
         db: AsyncSession,
-        trigger_source: str = "scheduled"
+        trigger_source: str = "scheduled",
+        club_id: Optional[UUID] = None
     ) -> Dict[str, List[PlayerHealthAlert]]:
         """
         Analyze all active players' workload.
 
         Called after match completion or periodically.
         """
-        result = await db.execute(
-            select(Player).where(Player.status == 'active')
-        )
+        query = select(Player).where(Player.status == 'active')
+        if club_id:
+            query = query.where(Player.club_id == club_id)
+        result = await db.execute(query)
         players = result.scalars().all()
 
         all_alerts = {}
@@ -586,14 +588,25 @@ Be concise and actionable. Reference GAA-specific training practices when releva
             raise ValueError("Could not parse AI response")
 
     @staticmethod
-    async def get_squad_health_summary(db: AsyncSession) -> Dict[str, Any]:
+    async def get_squad_health_summary(db: AsyncSession, club_id: Optional[UUID] = None) -> Dict[str, Any]:
         """Get squad-wide health summary for dashboard."""
-        # Get all active alerts
-        result = await db.execute(
+        # Get club player IDs for scoping
+        club_player_ids = None
+        if club_id:
+            pid_result = await db.execute(
+                select(Player.id).where(Player.club_id == club_id)
+            )
+            club_player_ids = {row[0] for row in pid_result.all()}
+
+        # Get all active alerts (scoped to club)
+        alert_query = (
             select(PlayerHealthAlert)
             .where(PlayerHealthAlert.is_active == True)
             .order_by(desc(PlayerHealthAlert.severity), desc(PlayerHealthAlert.created_at))
         )
+        if club_player_ids is not None:
+            alert_query = alert_query.where(PlayerHealthAlert.player_id.in_(club_player_ids))
+        result = await db.execute(alert_query)
         alerts = result.scalars().all()
 
         # Group by severity
@@ -616,15 +629,18 @@ Be concise and actionable. Reference GAA-specific training practices when releva
                 "created_at": alert.created_at.isoformat()
             })
 
-        # Get latest workload snapshots for all players
+        # Get latest workload snapshots for club players (last 30 days to catch stale data)
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        week_ago = today - timedelta(days=7)
+        thirty_days_ago = today - timedelta(days=30)
 
-        result = await db.execute(
+        snapshot_query = (
             select(PlayerWorkloadSnapshot)
-            .where(PlayerWorkloadSnapshot.snapshot_date >= week_ago)
+            .where(PlayerWorkloadSnapshot.snapshot_date >= thirty_days_ago)
             .order_by(PlayerWorkloadSnapshot.player_id, desc(PlayerWorkloadSnapshot.snapshot_date))
         )
+        if club_player_ids is not None:
+            snapshot_query = snapshot_query.where(PlayerWorkloadSnapshot.player_id.in_(club_player_ids))
+        result = await db.execute(snapshot_query)
         snapshots = result.scalars().all()
 
         # Get latest snapshot per player

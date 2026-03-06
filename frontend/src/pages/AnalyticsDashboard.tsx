@@ -19,7 +19,7 @@ import {
 } from '@dnd-kit/sortable'
 import {
   TrendingUp,
-  Target,
+
   Calendar,
   RefreshCw,
   Heart,
@@ -80,6 +80,8 @@ export default function AnalyticsDashboard() {
   const [kpiLibraryOpen, setKpiLibraryOpen] = useState(false)
   const { startTour: startDashboardTour } = useTour('dashboard', dashboardSteps)
   const tourTriggered = useRef(false)
+  const autoRotatePaused = useRef(false)
+  const autoRotateTimer = useRef<ReturnType<typeof setTimeout>>()
 
   const toggleKpi = useCallback((kpiId: string) => {
     setVisibleKpis(prev => {
@@ -220,6 +222,45 @@ export default function AnalyticsDashboard() {
     }
   }, [loading, dashboardData, startDashboardTour])
 
+  // Auto-rotate KPI cards: flip one flippable card every 4s, pause on touch/click
+  const kpiPairingsRef = useRef(kpiPairings)
+  kpiPairingsRef.current = kpiPairings
+
+  useEffect(() => {
+    if (!seasonDashboard?.kpi_cards || viewMode !== 'season') return
+
+    let idx = 0
+
+    const scheduleNext = () => {
+      autoRotateTimer.current = setTimeout(() => {
+        if (autoRotatePaused.current) {
+          scheduleNext()
+          return
+        }
+        const flippable = kpiPairingsRef.current
+          .map((entry, i) => entry.flipKey ? i : -1)
+          .filter(i => i !== -1)
+        if (flippable.length === 0) { scheduleNext(); return }
+
+        const pairIdx = flippable[idx % flippable.length]
+        setFlippedCards(prev => {
+          const next = new Set(prev)
+          if (next.has(pairIdx)) next.delete(pairIdx)
+          else next.add(pairIdx)
+          return next
+        })
+        idx++
+        scheduleNext()
+      }, 4000)
+    }
+
+    autoRotateTimer.current = setTimeout(scheduleNext, 3000)
+
+    return () => {
+      if (autoRotateTimer.current) clearTimeout(autoRotateTimer.current)
+    }
+  }, [seasonDashboard?.kpi_cards, viewMode])
+
   // Defer AI calls so static charts render first
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -264,7 +305,7 @@ export default function AnalyticsDashboard() {
     )
   }
 
-  const { season_summary, top_scorers } = dashboardData
+  const { season_summary } = dashboardData
 
   // Check if GPS data exists in season dashboard
   const hasGpsData = !!(seasonDashboard && (
@@ -296,47 +337,6 @@ export default function AnalyticsDashboard() {
             onShowChart={showChart}
             onUnpinChart={handleUnpinChart}
           />
-        )
-      case 'top-scorers':
-        return (
-          <div className="glass-card p-6">
-            <h3 className="text-xl font-bold mb-4 flex items-center space-x-2 text-white">
-              <Target size={20} className="text-white" />
-              <span>Top Scorers</span>
-            </h3>
-            {top_scorers.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {top_scorers.slice(0, 6).map((player, i) => (
-                  <div key={player.player_id} className="flex items-center space-x-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                    <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold text-white ${
-                      i === 0 ? 'bg-gradient-to-br from-yellow-500 to-amber-600' :
-                      i === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500' :
-                      i === 2 ? 'bg-gradient-to-br from-orange-600 to-orange-700' :
-                      'bg-gradient-to-br from-emerald-600 to-cyan-600'
-                    }`}>
-                      #{i + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-white truncate">{player.player_name}</div>
-                      <div className="text-xs text-white/60">
-                        {player.goals}G - {player.points}P - {player.two_pointers}x2PT
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xl font-bold bg-gradient-to-r from-emerald-600 to-cyan-600 bg-clip-text text-transparent">
-                        {player.total_score}
-                      </div>
-                      <div className="text-xs text-white/60">{player.matches_played} games</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="h-48 flex items-center justify-center text-white/40">
-                No scoring data yet
-              </div>
-            )}
-          </div>
         )
       default:
         return null
@@ -600,6 +600,9 @@ export default function AnalyticsDashboard() {
                     style={{ perspective: '1000px', height: '120px' }}
                     onClick={() => {
                       if (isPair) {
+                        // Pause auto-rotate for 15s on manual interaction
+                        autoRotatePaused.current = true
+                        setTimeout(() => { autoRotatePaused.current = false }, 15000)
                         setFlippedCards(prev => {
                           const next = new Set(prev)
                           if (next.has(pairIdx)) next.delete(pairIdx)

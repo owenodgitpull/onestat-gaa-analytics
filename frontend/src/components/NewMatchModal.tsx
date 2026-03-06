@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Home, Bus, Globe, Circle, Calendar, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer } from 'lucide-react'
+import { X, Home, Bus, Globe, Circle, Calendar, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer, CalendarCheck, Link2 } from 'lucide-react'
+import { api } from '@/services/api'
+import type { Match } from '@/types'
 
 const WEATHER_OPTIONS = [
   { value: 'sunny', label: 'Sunny', icon: Sun },
@@ -22,6 +24,7 @@ interface NewMatchModalProps {
     matchDate: Date
     weather_condition?: string | null
     temperature_celsius?: number | null
+    fixtureId?: string
   }) => void
 }
 
@@ -35,8 +38,71 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
   const [weatherCondition, setWeatherCondition] = useState<string | null>(null)
   const [temperature, setTemperature] = useState('')
   const [errors, setErrors] = useState<{ opponent?: string; matchDate?: string }>({})
+  const [fixtures, setFixtures] = useState<Match[]>([])
+  const [linkedFixture, setLinkedFixture] = useState<Match | null>(null)
+
+  // Fetch upcoming fixtures when modal opens
+  useEffect(() => {
+    if (!isOpen) return
+    api.fixtures.getAll()
+      .then(data => {
+        const upcoming = (Array.isArray(data) ? data : []).filter(
+          f => f.status === 'scheduled'
+        )
+        setFixtures(upcoming)
+      })
+      .catch(() => {})
+  }, [isOpen])
+
+  // Find matching fixture based on opponent name or date
+  const suggestedFixture = useMemo(() => {
+    if (linkedFixture) return null // Already linked, don't suggest
+    if (!opponent.trim() && !matchDate) return null
+
+    const normalise = (s: string) => s.toLowerCase().trim()
+    const opponentNorm = normalise(opponent)
+
+    // Match by opponent name (fuzzy: includes match)
+    for (const f of fixtures) {
+      const fOpponent = normalise(f.opponent)
+      if (opponentNorm.length >= 3 && fOpponent.includes(opponentNorm)) {
+        return f
+      }
+      if (opponentNorm.length >= 3 && opponentNorm.includes(fOpponent)) {
+        return f
+      }
+    }
+
+    // Match by exact date
+    if (matchDate) {
+      const selected = matchDate // YYYY-MM-DD
+      for (const f of fixtures) {
+        const fixtureDate = f.match_date.split('T')[0]
+        if (fixtureDate === selected) {
+          return f
+        }
+      }
+    }
+
+    return null
+  }, [opponent, matchDate, fixtures, linkedFixture])
 
   if (!isOpen) return null
+
+  const applyFixture = (fixture: Match) => {
+    setOpponent(fixture.opponent)
+    setMatchDate(fixture.match_date.split('T')[0])
+    const venueMap: Record<string, 'home' | 'away' | 'neutral'> = {
+      home: 'home', away: 'away', neutral: 'neutral',
+    }
+    setVenue(venueMap[fixture.venue] || 'home')
+    setLinkedFixture(fixture)
+    setErrors({})
+  }
+
+  const unlinkFixture = () => {
+    setLinkedFixture(null)
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,25 +126,30 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
       matchDate: new Date(matchDate),
       weather_condition: weatherCondition,
       temperature_celsius: temperature ? parseFloat(temperature) : null,
+      fixtureId: linkedFixture?.id,
     })
 
-    // Reset form
+    resetForm()
+  }
+
+  const resetForm = () => {
     setOpponent('')
     setVenue('home')
     setMatchDate(new Date().toISOString().split('T')[0])
     setWeatherCondition(null)
     setTemperature('')
     setErrors({})
+    setLinkedFixture(null)
   }
 
   const handleClose = () => {
-    setOpponent('')
-    setVenue('home')
-    setMatchDate(new Date().toISOString().split('T')[0])
-    setWeatherCondition(null)
-    setTemperature('')
-    setErrors({})
+    resetForm()
     onClose()
+  }
+
+  const formatFixtureDate = (dateStr: string) => {
+    const d = new Date(dateStr)
+    return d.toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })
   }
 
   const modalContent = (
@@ -112,6 +183,43 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Fixture suggestion */}
+          {suggestedFixture && (
+            <button
+              type="button"
+              onClick={() => applyFixture(suggestedFixture)}
+              className="w-full p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors text-left flex items-center gap-3"
+            >
+              <CalendarCheck size={18} className="text-emerald-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-emerald-300">
+                  Fixture found: {suggestedFixture.opponent}
+                </div>
+                <div className="text-xs text-white/50">
+                  {formatFixtureDate(suggestedFixture.match_date)} &middot; {suggestedFixture.venue} &middot; Tap to use
+                </div>
+              </div>
+              <Link2 size={14} className="text-emerald-400/60 flex-shrink-0" />
+            </button>
+          )}
+
+          {/* Linked fixture indicator */}
+          {linkedFixture && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+              <Link2 size={14} className="text-emerald-400" />
+              <span className="text-xs text-emerald-300 flex-1">
+                Linked to fixture: {linkedFixture.opponent} ({formatFixtureDate(linkedFixture.match_date)})
+              </span>
+              <button
+                type="button"
+                onClick={unlinkFixture}
+                className="text-white/40 hover:text-white/70 transition-colors"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
+
           {/* Opponent Name */}
           <div>
             <label htmlFor="opponent" className="block text-sm font-medium text-white mb-2">
@@ -121,7 +229,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
               id="opponent"
               type="text"
               value={opponent}
-              onChange={(e) => setOpponent(e.target.value)}
+              onChange={(e) => { setOpponent(e.target.value); setLinkedFixture(null) }}
               placeholder="Enter opponent name (e.g., Glenties)"
               className={`w-full px-4 py-3 rounded-lg bg-white/5 border ${
                 errors.opponent ? 'border-red-500/50' : 'border-white/10'
@@ -264,7 +372,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
               className="flex-1 px-6 py-3 rounded-xl text-[#0a1a10] font-semibold transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 hover:brightness-110"
               style={{ background: 'var(--gradient-primary)' }}
             >
-              Create Match
+              {linkedFixture ? 'Start Match' : 'Create Match'}
             </button>
           </div>
         </form>

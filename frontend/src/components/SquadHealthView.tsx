@@ -8,10 +8,8 @@ import {
   Activity,
   TrendingUp,
   Heart,
-  RefreshCw,
   CheckCircle,
   X,
-  Zap,
   User,
   Bot,
   ChevronRight
@@ -29,7 +27,6 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
   const [healthData, setHealthData] = useState<SquadHealthSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [analyzing, setAnalyzing] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(null)
   const [showAllAlerts, setShowAllAlerts] = useState(false)
 
@@ -48,18 +45,6 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
       console.error(err)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const triggerAnalysis = async () => {
-    setAnalyzing(true)
-    try {
-      await api.squadHealth.analyzeSquad()
-      await fetchHealthData()
-    } catch (err) {
-      console.error('Analysis failed:', err)
-    } finally {
-      setAnalyzing(false)
     }
   }
 
@@ -153,18 +138,6 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
             </p>
           </div>
         </div>
-        <button
-          onClick={triggerAnalysis}
-          disabled={analyzing}
-          className="btn-glass flex items-center gap-2"
-        >
-          {analyzing ? (
-            <RefreshCw size={16} className="animate-spin" />
-          ) : (
-            <Zap size={16} />
-          )}
-          {analyzing ? 'Analyzing...' : 'Run Analysis'}
-        </button>
       </div>
 
       {/* AI Summary */}

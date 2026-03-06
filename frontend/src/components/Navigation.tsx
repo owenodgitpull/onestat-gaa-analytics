@@ -13,6 +13,8 @@ import {
   MessageSquare,
   History,
   Camera,
+  FileText,
+  Swords,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useAuth } from '../contexts/AuthContext'
@@ -50,7 +52,6 @@ export default function Navigation() {
     reader.readAsDataURL(file)
   }
 
-  // Get initials from name (first letter of first + last name)
   const getInitials = (name?: string) => {
     if (!name) return null
     const parts = name.trim().split(/\s+/)
@@ -58,14 +59,30 @@ export default function Navigation() {
     return parts[0][0]?.toUpperCase() || null
   }
 
-
+  // Top bar: which section is active?
   const isActive = (path: string) => {
     if (path === '/' && location.pathname === '/') return true
+    if (path === '/matches') {
+      return (
+        location.pathname.startsWith('/results') ||
+        location.pathname.startsWith('/fixtures') ||
+        location.pathname.startsWith('/match/') ||
+        location.pathname.startsWith('/match-prep/') ||
+        location.pathname.startsWith('/video/')
+      )
+    }
     if (path !== '/' && location.pathname.startsWith(path)) return true
     return false
   }
 
-  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date; weather_condition?: string | null; temperature_celsius?: number | null }) => {
+  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date; weather_condition?: string | null; temperature_celsius?: number | null; fixtureId?: string }) => {
+    // If linked to an existing fixture, go straight to setup
+    if (data.fixtureId) {
+      setIsNewMatchModalOpen(false)
+      navigate(`/match/${data.fixtureId}/setup`)
+      return
+    }
+
     setIsCreatingMatch(true)
     try {
       const match = await createMatch.mutateAsync({
@@ -86,45 +103,63 @@ export default function Navigation() {
     }
   }
 
-  // Get sidebar items based on current page
+  // ── Contextual sidebar items based on current page ───────────────────
   const getSidebarItems = () => {
-    if (location.pathname.startsWith('/fixtures')) {
+    // Matches section: Results, Fixtures
+    if (
+      location.pathname.startsWith('/results') ||
+      location.pathname.startsWith('/fixtures') ||
+      location.pathname.startsWith('/video/')
+    ) {
       return [
-        { icon: CalendarDays, label: 'Fixtures', path: '/fixtures', active: true },
-        { icon: Trophy, label: 'Results', path: '/results', active: false },
+        { icon: Trophy, label: 'Results', path: '/results', active: location.pathname.startsWith('/results') || location.pathname.startsWith('/video/') },
+        { icon: CalendarDays, label: 'Fixtures', path: '/fixtures', active: location.pathname.startsWith('/fixtures') },
         { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
       ]
     }
-    if (location.pathname === '/' || location.pathname.startsWith('/results')) {
+    // Dashboard
+    if (location.pathname === '/') {
       return [
-        { icon: BarChart3, label: 'Dashboard', path: '/', active: location.pathname === '/' },
-        { icon: Trophy, label: 'Results', path: '/results', active: location.pathname.startsWith('/results') },
+        { icon: BarChart3, label: 'Dashboard', path: '/', active: true },
+        { icon: Trophy, label: 'Results', path: '/results', active: false },
         { icon: CalendarDays, label: 'Fixtures', path: '/fixtures', active: false },
       ]
     }
+    // Players
     if (location.pathname.startsWith('/players')) {
       return [
         { icon: Users, label: 'Squad', path: '/players', active: location.pathname === '/players' },
-        { icon: BarChart3, label: 'Stats', path: '/players', active: false },
+        { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
       ]
     }
+    // Training
     if (location.pathname.startsWith('/training') || location.pathname.startsWith('/attendance')) {
       return [
         { icon: Dumbbell, label: 'Sessions', path: '/training', active: true },
         { icon: CalendarDays, label: 'Calendar', path: '/training', active: false },
       ]
     }
-    if (location.pathname.startsWith('/match/')) {
+    // Active match (recording/setup)
+    if (location.pathname.startsWith('/match/') || location.pathname.startsWith('/match-prep/')) {
       return [
-        { icon: Trophy, label: 'Match', path: location.pathname, active: true },
-        { icon: BarChart3, label: 'Stats', path: location.pathname, active: false },
+        { icon: Swords, label: 'Match', path: location.pathname, active: true },
+        { icon: Trophy, label: 'Results', path: '/results', active: false },
       ]
     }
+    // Reports
+    if (location.pathname.startsWith('/reports')) {
+      return [
+        { icon: FileText, label: 'Season Report', path: '/reports/season', active: location.pathname === '/reports/season' },
+        { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
+      ]
+    }
+    // Analyst
     if (location.pathname.startsWith('/analyst')) {
       return [
         { icon: History, label: 'Chat History', path: '#chat-history', active: false },
       ]
     }
+    // Settings
     if (location.pathname.startsWith('/settings')) {
       return [
         { icon: Settings, label: 'Settings', path: '/settings', active: true },
@@ -153,19 +188,19 @@ export default function Navigation() {
           {/* Main Navigation Links */}
           <div className="flex items-center space-x-1 h-full">
             {[
-              { to: '/', label: 'DASHBOARD' },
-              { to: '/results', label: 'RESULTS' },
-              { to: '/fixtures', label: 'FIXTURES', tour: 'nav-fixtures' },
-              { to: '/players', label: 'PLAYERS' },
-              { to: '/training', label: 'TRAINING' },
-              { to: '/analyst', label: 'ANALYST', tour: 'nav-analyst' },
-            ].map(({ to, label, tour }) => (
+              { to: '/', matchPath: '/', label: 'DASHBOARD' },
+              { to: '/results', matchPath: '/matches', label: 'MATCHES', tour: 'nav-matches' },
+              { to: '/players', matchPath: '/players', label: 'PLAYERS' },
+              { to: '/training', matchPath: '/training', label: 'TRAINING' },
+              { to: '/reports/season', matchPath: '/reports', label: 'REPORTS', tour: 'nav-reports' },
+              { to: '/analyst', matchPath: '/analyst', label: 'ANALYST', tour: 'nav-analyst' },
+            ].map(({ to, matchPath, label, tour }) => (
               <Link
                 key={to}
                 to={to}
                 data-tour={tour}
                 className={`px-4 text-sm font-medium transition-all h-14 flex items-center border-b-2 ${
-                  isActive(to)
+                  isActive(matchPath)
                     ? 'text-white border-emerald-400'
                     : 'text-white/70 border-transparent hover:text-white hover:border-white/20'
                 }`}
@@ -298,7 +333,7 @@ export default function Navigation() {
           <div className="w-6 h-px bg-white/10 my-2" />
 
           {/* Quick Add - context aware */}
-          {(location.pathname === '/' || location.pathname.startsWith('/results')) && (
+          {(location.pathname === '/' || location.pathname.startsWith('/results') || location.pathname.startsWith('/fixtures')) && (
             <button
               onClick={() => setIsNewMatchModalOpen(true)}
               className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"

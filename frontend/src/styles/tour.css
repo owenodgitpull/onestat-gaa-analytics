@@ -123,14 +123,18 @@
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-/* Highlighted element ring */
+/* Highlighted element — lift above overlay and brighten */
 .driver-active-element {
   outline: 2px solid #00E676 !important;
   outline-offset: 4px !important;
   border-radius: 8px !important;
+  z-index: 10001 !important;
+  position: relative !important;
 }
 
-/* Overlay color */
-.driver-overlay {
-  background: rgba(0, 0, 0, 0.7) !important;
+/* Stage (cutout window in overlay that reveals the element) */
+#driver-highlighted-element-stage {
+  background: transparent !important;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7) !important;
+  border-radius: 8px !important;
 }

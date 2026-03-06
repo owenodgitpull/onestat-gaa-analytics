@@ -20,6 +20,7 @@ import VideoTagging from './pages/VideoTagging'
 import VideoSessionList from './pages/VideoSessionList'
 import PlayerComparison from './pages/PlayerComparison'
 import Fixtures from './pages/Fixtures'
+import SeasonReport from './pages/SeasonReport'
 import FixturePreview from './pages/FixturePreview'
 import Onboarding from './pages/Onboarding'
 import Login from './pages/Login'
@@ -126,6 +127,7 @@ function App() {
                           <Route path="/players/:playerId" element={<PlayerView />} />
                           <Route path="/training" element={<Attendance />} />
                           <Route path="/attendance" element={<Attendance />} />
+                          <Route path="/reports/season" element={<SeasonReport />} />
                           <Route path="/analyst" element={<AIAnalystPage />} />
                           <Route path="/analyst/:sessionId" element={<AIAnalystPage />} />
                           <Route path="/settings" element={<Settings />} />

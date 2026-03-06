@@ -84,7 +84,7 @@ async def get_squad_health_ai_summary(user: AuthenticatedUser = Depends(require_
         # Cache miss — generate summary
         logger.info(f"Squad health AI summary cache MISS (fingerprint={fingerprint[:12]}...) — calling Haiku")
 
-        summary = await WorkloadAnalysisService.get_squad_health_summary(db)
+        summary = await WorkloadAnalysisService.get_squad_health_summary(db, club_id=club_id)
 
         # Count players by status
         status_counts = {}
@@ -156,7 +156,7 @@ async def get_squad_health_summary(user: AuthenticatedUser = Depends(require_clu
         - Player workload statuses
         - Overall squad health metrics
     """
-    summary = await WorkloadAnalysisService.get_squad_health_summary(db)
+    summary = await WorkloadAnalysisService.get_squad_health_summary(db, club_id=user.club_id)
     return summary
 
 
@@ -325,7 +325,7 @@ async def trigger_player_analysis(
 async def trigger_squad_analysis(user: AuthenticatedUser = Depends(require_club), db: AsyncSession = Depends(get_db),):
     """Manually trigger workload analysis for all players."""
     results = await WorkloadAnalysisService.trigger_analysis_for_all_players(
-        db, "manual_squad_trigger"
+        db, "manual_squad_trigger", club_id=user.club_id
     )
 
     total_alerts = sum(len(alerts) for alerts in results.values())

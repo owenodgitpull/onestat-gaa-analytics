@@ -46,8 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isAuthenticated = !!user;
 
-  // ── Helpers ────────────────────────────────────────────────────────
-
+  // Persist user info to sessionStorage (NOT tokens)
   const persistUser = useCallback((u: AuthUser, expiresIn: number) => {
     sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify({
       user: u,
@@ -55,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  // Set user with sessionStorage sync
   const setUser = useCallback((u: AuthUser) => {
     setUserState(u);
     const stored = sessionStorage.getItem(USER_STORAGE_KEY);
@@ -69,20 +69,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const clearLocal = useCallback(() => {
-    setUserState(null);
-    sessionStorage.removeItem(USER_STORAGE_KEY);
-    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
-  }, []);
-
-  // ── Token refresh scheduler ────────────────────────────────────────
-
+  // Schedule cookie refresh before expiry
   const scheduleRefresh = useCallback((expiresIn: number) => {
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
     }
-    // Refresh 60 seconds before expiry (minimum 10s)
-    const delay = Math.max((expiresIn - 60) * 1000, 10_000);
+    // Refresh 60 seconds before expiry
+    const delay = Math.max((expiresIn - 60) * 1000, 10000);
     refreshTimeoutRef.current = setTimeout(async () => {
       try {
         const resp = await fetch(`${API_BASE_URL}/auth/refresh`, {
@@ -100,17 +93,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(parsed));
           }
         } else {
-          // Refresh token rejected — session is dead
-          clearLocal();
+          // Refresh failed — force re-login
+          setUserState(null);
+          sessionStorage.removeItem(USER_STORAGE_KEY);
         }
       } catch {
-        // Network error — don't kill session, will retry on next page load
+        // Network error — will retry on next interaction
       }
     }, delay);
-  }, [clearLocal]);
+  }, []);
 
-  // ── Session restoration on mount ───────────────────────────────────
-
+  // On mount: restore from cached user + verify session via cookie
   useEffect(() => {
     let cancelled = false;
 
@@ -125,26 +118,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { user: storedUser, expires_at } = JSON.parse(stored);
 
           if (expires_at && Date.now() < expires_at) {
-            // Cookie should still be valid
-            setUserState(storedUser);
-            const remainingSecs = Math.floor((expires_at - Date.now()) / 1000);
-            scheduleRefresh(remainingSecs);
-          } else {
-            // Access token expired — try refresh
-            const resp = await fetch(`${API_BASE_URL}/auth/refresh`, {
-              method: 'POST',
-              credentials: 'include',
-            });
-            if (cancelled) return;
-
-            if (resp.ok) {
-              const data = await resp.json();
+            // Cookie should still be valid — schedule next refresh
+            if (!cancelled) {
               setUserState(storedUser);
-              scheduleRefresh(data.expires_in || 3600);
-              persistUser(storedUser, data.expires_in || 3600);
-            } else {
-              // Refresh failed — clear stale data
-              sessionStorage.removeItem(USER_STORAGE_KEY);
+              const remainingSecs = Math.floor((expires_at - Date.now()) / 1000);
+              scheduleRefresh(remainingSecs);
+            }
+          } else {
+            // Access token cookie probably expired — try refresh
+            try {
+              const resp = await fetch(`${API_BASE_URL}/auth/refresh`, {
+                method: 'POST',
+                credentials: 'include',
+              });
+              if (cancelled) return;
+              if (resp.ok) {
+                const data = await resp.json();
+                setUserState(storedUser);
+                scheduleRefresh(data.expires_in || 3600);
+                persistUser(storedUser, data.expires_in || 3600);
+              } else {
+                setUserState(null);
+                sessionStorage.removeItem(USER_STORAGE_KEY);
+              }
+            } catch {
+              if (!cancelled) {
+                setUserState(null);
+                sessionStorage.removeItem(USER_STORAGE_KEY);
+              }
             }
           }
         } catch {
@@ -157,7 +158,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             credentials: 'include',
           });
           if (cancelled) return;
-
           if (resp.ok) {
             const userData = await resp.json();
             const authUser: AuthUser = {
@@ -184,11 +184,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     restore();
-
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Login: redirect to Cognito hosted UI ───────────────────────────
 
   const login = useCallback(async (signUp?: boolean) => {
     const verifier = generateCodeVerifier();
@@ -203,17 +200,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       response_type: 'code',
       client_id: COGNITO_CLIENT_ID,
       redirect_uri: COGNITO_REDIRECT_URI,
-      scope: 'openid profile email',
+      scope: 'openid email',
       code_challenge: challenge,
       code_challenge_method: 'S256',
       state,
     });
 
+    // Cognito hosted UI: /signup goes directly to create account page
     const endpoint = signUp ? 'signup' : 'oauth2/authorize';
     window.location.href = `${COGNITO_DOMAIN}/${endpoint}?${params.toString()}`;
   }, []);
-
-  // ── Exchange auth code for tokens ──────────────────────────────────
 
   const exchangeCode = useCallback(async (code: string, inviteCode?: string) => {
     const verifier = sessionStorage.getItem('pkce_verifier');
@@ -260,29 +256,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     persistUser(authUser, data.expires_in || 3600);
   }, [scheduleRefresh, persistUser]);
 
-  // ── Logout: clear everything + end Cognito session ─────────────────
-
   const logout = useCallback(async () => {
-    clearLocal();
+    // Clear local state immediately
+    setUserState(null);
+    sessionStorage.removeItem(USER_STORAGE_KEY);
+    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
 
-    // Clear httpOnly cookies via backend
+    // MUST await backend logout so httpOnly cookies are cleared before redirect.
     try {
       await fetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
         credentials: 'include',
       });
     } catch {
-      // Continue even if backend unreachable
+      // Continue with redirect even if revoke fails
     }
 
-    // End Cognito hosted UI session so next login prompts for credentials.
-    // Cognito /logout redirects to logout_uri when done.
+    // Redirect to Cognito logout to end the hosted UI session,
+    // otherwise the next login auto-completes without prompting credentials.
     const logoutUrl = new URL(`${COGNITO_DOMAIN}/logout`);
     logoutUrl.searchParams.set('client_id', COGNITO_CLIENT_ID);
     logoutUrl.searchParams.set('response_type', 'code');
     logoutUrl.searchParams.set('logout_uri', window.location.origin + '/login');
     window.location.href = logoutUrl.toString();
-  }, [clearLocal]);
+  }, []);
 
   return (
     <AuthContext.Provider

@@ -31,7 +31,6 @@ export const DEFAULT_CHART_ORDER = [
 
 export const DEFAULT_SECTION_ORDER = [
   'my-charts',
-  'top-scorers',
 ]
 
 export interface DashboardLayout {
@@ -44,7 +43,7 @@ export interface DashboardLayout {
 
 function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   return {
-    version: 4,
+    version: 5,
     chartOrder: [...DEFAULT_CHART_ORDER, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
     hiddenCharts: [],
     sectionOrder: [...DEFAULT_SECTION_ORDER],
@@ -84,7 +83,18 @@ function loadLayout(): DashboardLayout {
         return parsed
       }
 
+      // v4 → v5 migration: remove top-scorers section (moved to player page)
       if (parsed.version === 4) {
+        parsed.version = 5
+        parsed.sectionOrder = (parsed.sectionOrder || []).filter((s: string) => s !== 'top-scorers')
+        for (const s of DEFAULT_SECTION_ORDER) {
+          if (!parsed.sectionOrder.includes(s)) parsed.sectionOrder.push(s)
+        }
+        saveLayout(parsed)
+        return parsed
+      }
+
+      if (parsed.version === 5) {
         // Migrate: ensure any new default sections are added
         const savedSections: string[] = parsed.sectionOrder || []
         const missing = DEFAULT_SECTION_ORDER.filter(s => !savedSections.includes(s))

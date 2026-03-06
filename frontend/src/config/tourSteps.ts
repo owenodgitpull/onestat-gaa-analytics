@@ -11,11 +11,19 @@ export const dashboardSteps: DriveStep[] = [
     },
   },
   {
-    element: '[data-tour="nav-fixtures"]',
+    element: '[data-tour="nav-matches"]',
     popover: {
-      title: 'Fixtures & Scheduling',
+      title: 'Matches',
       description:
-        'Manage upcoming fixtures here. You can import from a spreadsheet or add them manually.',
+        'View match results and manage upcoming fixtures. The sidebar shows Results and Fixtures when you\'re in this section.',
+    },
+  },
+  {
+    element: '[data-tour="nav-reports"]',
+    popover: {
+      title: 'Reports',
+      description:
+        'Generate a full Season Report showing every KPI and chart in one view. Great for committee meetings or reviewing your team\'s overall performance.',
     },
   },
   {
@@ -23,7 +31,7 @@ export const dashboardSteps: DriveStep[] = [
     popover: {
       title: 'View Modes',
       description:
-        'Switch between Season Stats, Squad Health (GPS/fitness), and AI Insights. Each view surfaces different data.',
+        'Switch between Season Stats, Squad Health, and AI Insights. Squad Health analysis runs automatically after every training session and match — no manual action needed.',
     },
   },
   {
