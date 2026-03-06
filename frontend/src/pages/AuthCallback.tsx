@@ -1,12 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+
+/** Wipe all auth-related session/local storage so a fresh login starts clean. */
+function clearAllAuthState() {
+  sessionStorage.removeItem('gaa_user');
+  sessionStorage.removeItem('pkce_verifier');
+  sessionStorage.removeItem('oauth_state');
+  sessionStorage.removeItem('invite_code');
+  sessionStorage.removeItem('gaa_auth'); // legacy
+}
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
   const { exchangeCode, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-  const [error, setError] = useState<string | null>(null);
   const exchangedRef = useRef(false);
 
   useEffect(() => {
@@ -17,14 +25,16 @@ export default function AuthCallback() {
     const state = searchParams.get('state');
 
     if (errorParam) {
-      setError(`Authentication failed: ${errorParam}`);
+      // Cognito returned an error — clean up and redirect to login
+      clearAllAuthState();
+      navigate('/login', { replace: true });
       return;
     }
 
     if (!code) {
-      // Don't error if we're already authenticated (navigating away)
       if (!isAuthenticated) {
-        setError('No authorization code received');
+        clearAllAuthState();
+        navigate('/login', { replace: true });
       }
       return;
     }
@@ -34,7 +44,9 @@ export default function AuthCallback() {
     sessionStorage.removeItem('oauth_state');
 
     if (!state || state !== storedState) {
-      setError('Invalid state parameter — possible CSRF attack. Please try logging in again.');
+      // Stale callback (e.g. refreshed page with old URL) — just restart login
+      clearAllAuthState();
+      navigate('/login', { replace: true });
       return;
     }
 
@@ -44,10 +56,13 @@ export default function AuthCallback() {
     const inviteCode = sessionStorage.getItem('invite_code');
     sessionStorage.removeItem('invite_code');
 
-    exchangeCode(code, inviteCode || undefined).catch((err) => {
-      setError(err.message || 'Token exchange failed');
+    exchangeCode(code, inviteCode || undefined).catch(() => {
+      // Token exchange failed (expired code, PKCE mismatch, etc.)
+      // Clean everything and send user to a fresh login
+      clearAllAuthState();
+      navigate('/login', { replace: true });
     });
-  }, [searchParams, exchangeCode, isAuthenticated]);
+  }, [searchParams, exchangeCode, isAuthenticated, navigate]);
 
   // Once authenticated, redirect based on whether user has a club
   useEffect(() => {
@@ -63,30 +78,6 @@ export default function AuthCallback() {
       }
     }
   }, [isAuthenticated, user, navigate]);
-
-  // Don't show error if we're already authenticated — navigation will handle it
-  if (error && !isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div
-          className="w-full max-w-md rounded-2xl p-8 text-center"
-          style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.05))',
-            border: '1px solid rgba(255,255,255,0.12)',
-          }}
-        >
-          <div className="text-red-400 text-lg font-semibold mb-2">Authentication Error</div>
-          <p className="text-white/60 mb-6">{error}</p>
-          <button
-            onClick={() => navigate('/login', { replace: true })}
-            className="px-6 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-500 transition-colors"
-          >
-            Back to Login
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center">

@@ -157,6 +157,8 @@ async def exchange_token(
 
     if resp.status_code != 200:
         logger.error(f"Cognito token exchange failed: {resp.status_code} {resp.text}")
+        # Clear any stale cookies so the client doesn't get stuck in a login loop
+        _clear_auth_cookies(response)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Token exchange failed: {resp.json().get('error', 'unknown')}",
