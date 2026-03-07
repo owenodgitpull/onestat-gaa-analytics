@@ -53,9 +53,8 @@ docker-compose.override.yml
 !/data/*_template.csv
 !/data/*_sample.*
 
-# Alembic
-/backend/alembic/versions/*.py
-!/backend/alembic/versions/.gitkeep
+# Alembic (track all migration files for deployment)
+/backend/alembic/versions/__pycache__/
 
 # Testing
 .coverage

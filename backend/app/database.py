@@ -22,20 +22,29 @@ load_dotenv(backend_dir / ".env")
 
 # Get database URL from environment
 # Format: postgresql+asyncpg://user:password@host:port/database
-DATABASE_URL = os.getenv(
+# Supabase gives postgresql:// — convert to asyncpg driver automatically
+_raw_url = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://owenodonnell@localhost:5432/dungloe_gaa"
 )
+if _raw_url.startswith("postgresql://"):
+    DATABASE_URL = _raw_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif _raw_url.startswith("postgres://"):
+    DATABASE_URL = _raw_url.replace("postgres://", "postgresql+asyncpg://", 1)
+else:
+    DATABASE_URL = _raw_url
 
 # Create async engine with connection pooling
 # pool_pre_ping: Verify connections before using (prevents stale connections)
 # echo: Log all SQL queries (useful for debugging, disable in production)
+_is_prod = os.getenv("ENVIRONMENT") == "production"
+
 engine = create_async_engine(
     DATABASE_URL,
-    echo=True if os.getenv("ENVIRONMENT") == "development" else False,
+    echo=not _is_prod,
     pool_pre_ping=True,
-    pool_size=10,  # Number of connections to maintain
-    max_overflow=20,  # Additional connections if pool exhausted
+    pool_size=5 if _is_prod else 10,  # Supabase free tier has limited connections
+    max_overflow=5 if _is_prod else 20,
 )
 
 # Create async session factory

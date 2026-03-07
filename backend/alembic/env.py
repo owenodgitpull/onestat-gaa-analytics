@@ -34,12 +34,16 @@ config = context.config
 # Get database URL from environment and convert to sync driver for migrations
 # App uses: postgresql+asyncpg://...
 # Alembic uses: postgresql://... (sync psycopg2)
-database_url = os.getenv(
+_raw_url = os.getenv(
     "DATABASE_URL",
     "postgresql+asyncpg://owenodonnell@localhost:5432/dungloe_gaa"
 )
-# Convert async URL to sync URL for Alembic
-sync_database_url = database_url.replace("postgresql+asyncpg://", "postgresql://")
+# Normalize to sync psycopg2 URL for Alembic (handles postgresql://, postgres://, postgresql+asyncpg://)
+sync_database_url = _raw_url
+for prefix in ("postgresql+asyncpg://", "postgres://"):
+    if sync_database_url.startswith(prefix):
+        sync_database_url = "postgresql://" + sync_database_url[len(prefix):]
+        break
 config.set_main_option("sqlalchemy.url", sync_database_url)
 
 # Interpret the config file for Python logging

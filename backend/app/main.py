@@ -53,11 +53,14 @@ async def lifespan(app: FastAPI):
     logger.info("🏉 Starting GAA Analytics API...")
     logger.info(f"Environment: {os.getenv('ENVIRONMENT', 'development')}")
     
-    # Initialize database tables (in dev - use Alembic in production)
-    logger.info("Creating database tables...")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("✅ Database tables created")
+    # Initialize database tables (dev only - use Alembic in production)
+    if os.getenv("ENVIRONMENT") != "production":
+        logger.info("Creating database tables (dev mode)...")
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Database tables created")
+    else:
+        logger.info("Production mode — skipping auto-create (use Alembic migrations)")
     
     logger.info("✅ Application startup complete")
     
