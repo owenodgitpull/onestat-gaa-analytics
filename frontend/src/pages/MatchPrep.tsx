@@ -363,13 +363,13 @@ export default function MatchPrep() {
       </div>
 
       {/* Use Last Lineup button */}
-      {lastMatchLineup && selectedCount === 0 && (
+      {lastMatchLineup && (
         <button
           onClick={handleUseLastLineup}
           className="glass-card px-5 py-3 flex items-center gap-2 hover:bg-white/10 transition-all"
         >
           <Copy size={18} className="text-blue-400" />
-          <span className="text-white font-semibold">Use Last Lineup</span>
+          <span className="text-white font-semibold">{selectedCount === 0 ? 'Use Last Lineup' : 'Replace with Last Lineup'}</span>
         </button>
       )}
 
