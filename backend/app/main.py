@@ -106,6 +106,7 @@ app.add_middleware(
         "http://localhost:3005",  # Vite fallback port
         "http://localhost:5173",  # Vite default port
         "https://dungloe-gaa-analytics.vercel.app",  # Production frontend
+        "https://app.onestat.ai",  # Production custom domain
         os.getenv("FRONTEND_URL", ""),  # From environment
     ],
     allow_credentials=True,  # Allow cookies (httpOnly auth cookies)
