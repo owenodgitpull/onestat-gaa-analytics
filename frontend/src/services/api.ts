@@ -106,7 +106,7 @@ export const playersAPI = {
    * Get all players
    */
   getAll: async (): Promise<Player[]> => {
-    const response = await fetchAPI<{ players: Player[]; total: number; page: number; page_size: number }>('/players/?limit=100&active_only=false');
+    const response = await fetchAPI<{ players: Player[]; total: number; page: number; page_size: number }>('/players/?page_size=100&active_only=false');
     return response.players; // Extract just the players array
   },
 
