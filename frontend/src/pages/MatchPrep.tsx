@@ -106,21 +106,6 @@ const getAcwrColor = (acwr: number | null) => {
   return 'text-red-400'
 }
 
-const getJerseyRing = (workload: PlayerWorkload | undefined) => {
-  if (!workload) return 'ring-white/30'
-  switch (workload.status) {
-    case 'optimal':
-      return 'ring-emerald-400'
-    case 'undertrained':
-      return 'ring-amber-400'
-    case 'elevated':
-      return 'ring-orange-400'
-    case 'high_risk':
-      return 'ring-red-400'
-    default:
-      return 'ring-white/30'
-  }
-}
 
 // ── Component ──────────────────────────────────────────────────────────────
 
