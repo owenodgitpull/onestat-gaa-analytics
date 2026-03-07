@@ -27,16 +27,8 @@ function toSvg(xPct: number, yPct: number) {
   }
 }
 
-// Crop viewBox: goal line → just past opposition 45m arc, trimmed vertically
-// Cuts the grass border above/below the pitch for a tighter zoom
-const HALF_VIEW = (() => {
-  const pad = 30 // small breathing room
-  const left = PITCH.left - pad
-  const top = PITCH.top - pad
-  const right = PITCH.left + PITCH.playW * 0.69 + pad // through midfield, cropping opp markings
-  const bottom = PITCH.top + PITCH.playH + pad
-  return `${left} ${top} ${right - left} ${bottom - top}`
-})()
+// Show full pitch width — no cropping, all 9 zones always visible on any device
+const HALF_VIEW = `0 0 ${PITCH.svgW} ${PITCH.svgH}`
 
 // 9 zones mapped to pitch coordinates (0-100 system)
 // Short = inside 20m (~14%), Mid = 20m to 45m (~14% to 31%), Long = 45m+ (~31% to 65%)
@@ -138,8 +130,8 @@ export default function KickoutLandingZones({ data }: Props) {
       </div>
 
       {/* Half-pitch using real GAA pitch SVG */}
-      <div className="relative rounded-xl overflow-hidden flex-1 min-h-0 max-h-[360px]">
-        <svg viewBox={HALF_VIEW} className="w-full h-full" preserveAspectRatio="xMinYMid meet">
+      <div className="relative rounded-xl overflow-hidden kickout-zones-pitch">
+        <svg viewBox={HALF_VIEW} className="w-full" preserveAspectRatio="xMidYMid meet">
           {/* Real pitch background — cropped to own half */}
           <rect width={PITCH.svgW} height={PITCH.svgH} fill="#2d5016" />
           <image href="/pitch-svg.svg" width={PITCH.svgW} height={PITCH.svgH} preserveAspectRatio="xMidYMid meet" />

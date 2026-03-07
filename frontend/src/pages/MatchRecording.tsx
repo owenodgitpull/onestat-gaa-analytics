@@ -391,7 +391,8 @@ export default function MatchRecording() {
     if (eventTypes) {
       events = events.filter((e: any) => eventTypes.includes(e.event_type))
     }
-    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null)
+    const CARD_TYPES = ['yellow_card', 'black_card', 'red_card']
+    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type))
   }, [matchEventsData, eventMapFilters, eventMapTeamFilter])
 
   // Helper function to check if position is in 2-point zone (outside 40m arc)
@@ -1905,6 +1906,7 @@ export default function MatchRecording() {
                 <div className="flex items-center gap-2">
                   <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
                   <button
+                    data-tour="weather-btn"
                     onClick={() => setIsWeatherPickerOpen(true)}
                     className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer"
                     title="Update weather"
@@ -2007,12 +2009,12 @@ export default function MatchRecording() {
                   )}
                   {getEndButtonText() && (
                     <button
-                      className={`px-4 py-2 rounded-xl bg-gradient-to-r text-white font-medium shadow-lg hover:shadow-xl transition-all text-sm ${
+                      className={`px-4 py-2 rounded-xl font-medium transition-all text-sm backdrop-blur-md ${
                         !isEndButtonEnabled()
-                          ? 'from-orange-600 to-amber-600 opacity-50 cursor-not-allowed'
+                          ? 'bg-white/10 text-white/40 border border-white/10 cursor-not-allowed'
                           : (fullTimeReached || (matchPhase === 'first_half' && minute >= 30))
-                            ? 'from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 animate-pulse ring-2 ring-red-400'
-                            : 'from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700'
+                            ? 'bg-white/15 text-white border border-amber-500/40 shadow-lg shadow-amber-500/10 ring-1 ring-amber-400/30'
+                            : 'bg-white/10 text-white/80 border border-white/15 hover:bg-white/15 hover:text-white hover:border-white/25'
                       }`}
                       onClick={matchPhase === 'first_half' ? endFirstHalf : endMatch}
                       disabled={!isEndButtonEnabled()}
@@ -2242,137 +2244,48 @@ export default function MatchRecording() {
                 refreshTrigger={insightRefresh}
               />
 
-              {/* Match Statistics Table */}
-              <div className="glass-card p-6">
+              {/* Match Statistics */}
+              <div className="glass-card p-5">
                 <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
-                  <Activity size={20} className="text-white" />
+                  <Activity size={20} className="text-emerald-400" />
                   <span>Match Statistics</span>
                 </h3>
 
-                <div className="overflow-hidden rounded-lg border border-white/10">
-                  {/* Table Header - Container-Header Highlight */}
-                  <div className="grid grid-cols-3 bg-blue-600/30 border border-blue-500/50">
-                    <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">{clubName}</div>
-                    <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Stat</div>
-                    <div className="py-2 px-3 text-center text-sm font-bold text-white">{matchDisplay.opponent}</div>
+                <div className="rounded-xl border border-white/[0.08] overflow-hidden" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)' }}>
+                  {/* Header row */}
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 bg-white/[0.06] border-b border-white/[0.08]">
+                    <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-wider">{clubName}</div>
+                    <div className="min-w-[90px]" />
+                    <div className="text-center text-xs font-bold text-white/50 uppercase tracking-wider">{matchDisplay.opponent}</div>
                   </div>
 
-                  {/* Possession */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.possession.team}%
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      POSSESSION
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {stats.possession.opponent}%
-                    </div>
-                  </div>
-
-                  {/* Shots */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.shots.team}
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      SHOTS
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {stats.shots.opponent}
-                    </div>
-                  </div>
-
-                  {/* Scores */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.scores.team}
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      SCORES
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {stats.scores.opponent}
-                    </div>
-                  </div>
-
-                  {/* Wides */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.wides.team}
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      WIDES
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {stats.wides.opponent}
-                    </div>
-                  </div>
-
-                  {/* Accuracy */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.accuracy}%
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      ACCURACY
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {stats.shots.opponent > 0 ? (stats.scores.opponent / stats.shots.opponent * 100).toFixed(1) : '0.0'}%
-                    </div>
-                  </div>
-
-                  {/* Conversion Rate */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.conversionRate}%
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      CONVERSION
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {(stats.scores.opponent + stats.wides.opponent) > 0 ? ((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1) : '0.0'}%
-                    </div>
-                  </div>
-
-                  {/* Turnovers */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.turnovers.won}
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      TURNOVERS WON
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {stats.turnovers.lost}
-                    </div>
-                  </div>
-
-                  {/* Kickouts */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {stats.kickouts.teamWon}/{stats.kickouts.teamTotal}
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      OWN KICKOUTS WON
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {stats.kickouts.opponentWon}/{stats.kickouts.opponentTotal}
-                    </div>
-                  </div>
-
-                  {/* Kickout Retention % */}
-                  <div className="grid grid-cols-3 border-t border-white/10">
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-                      {teamKickoutRetention}%
-                    </div>
-                    <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-sm font-semibold text-white border-r border-white/10 flex items-center justify-center">
-                      KICKOUT RETENTION
-                    </div>
-                    <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-                      {opponentKickoutRetention}%
-                    </div>
-                  </div>
+                  {[
+                    { label: 'Possession', left: `${stats.possession.team}%`, right: `${stats.possession.opponent}%`, leftVal: stats.possession.team, rightVal: stats.possession.opponent },
+                    { label: 'Shots', left: stats.shots.team, right: stats.shots.opponent, leftVal: stats.shots.team, rightVal: stats.shots.opponent },
+                    { label: 'Scores', left: stats.scores.team, right: stats.scores.opponent, leftVal: stats.scores.team, rightVal: stats.scores.opponent },
+                    { label: 'Wides', left: stats.wides.team, right: stats.wides.opponent, leftVal: stats.wides.opponent, rightVal: stats.wides.team },
+                    { label: 'Accuracy', left: `${stats.accuracy}%`, right: `${stats.shots.opponent > 0 ? (stats.scores.opponent / stats.shots.opponent * 100).toFixed(1) : '0.0'}%`, leftVal: parseFloat(stats.accuracy), rightVal: stats.shots.opponent > 0 ? stats.scores.opponent / stats.shots.opponent * 100 : 0 },
+                    { label: 'Conversion', left: `${stats.conversionRate}%`, right: `${(stats.scores.opponent + stats.wides.opponent) > 0 ? ((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1) : '0.0'}%`, leftVal: parseFloat(stats.conversionRate), rightVal: (stats.scores.opponent + stats.wides.opponent) > 0 ? (stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100 : 0 },
+                    { label: 'Turnovers Won', left: stats.turnovers.won, right: stats.turnovers.lost, leftVal: stats.turnovers.won, rightVal: stats.turnovers.lost },
+                    { label: 'Kickouts Won', left: `${stats.kickouts.teamWon}/${stats.kickouts.teamTotal}`, right: `${stats.kickouts.opponentWon}/${stats.kickouts.opponentTotal}`, leftVal: stats.kickouts.teamWon, rightVal: stats.kickouts.opponentWon },
+                    { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
+                  ].map((row, idx) => {
+                    const leftWins = row.leftVal > row.rightVal
+                    const rightWins = row.rightVal > row.leftVal
+                    return (
+                      <div key={row.label} className={`grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 transition-colors hover:bg-white/[0.05] ${idx % 2 === 0 ? 'bg-white/[0.02]' : ''} ${idx > 0 ? 'border-t border-white/[0.05]' : ''}`}>
+                        <div className={`text-center text-base font-bold ${leftWins ? 'text-emerald-400' : 'text-white/80'}`}>
+                          {row.left}
+                        </div>
+                        <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[90px]">
+                          {row.label}
+                        </div>
+                        <div className={`text-center text-base font-bold ${rightWins ? 'text-emerald-400' : 'text-white/80'}`}>
+                          {row.right}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
 

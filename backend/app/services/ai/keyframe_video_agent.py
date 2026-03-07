@@ -34,7 +34,7 @@ Infer events from visual changes between consecutive frames.
 === SPORT CONTEXT ===
 Sport: Gaelic Football (GAA)
 Teams: 15 players per side
-Scoring: Goal (ball in net) = 3 points | Point (over bar) = 1 point
+Scoring: Goal (ball in net) = 3 points | Point (over bar) = 1 point | 2-Pointer (over bar from outside 40m arc) = 2 points
 Score format: Goals-Points (e.g. 2-14 = 2 goals + 14 points = 20 total)
 Halves: Two halves, 30 or 35 minutes depending on grade
 
@@ -42,6 +42,7 @@ Halves: Two halves, 30 or 35 minutes depending on grade
 Umpires stand behind each goal. Their signals confirm scoring events:
   - GREEN FLAG raised = GOAL (ball in the net)
   - WHITE FLAG raised = POINT (ball over the bar)
+  - ORANGE FLAG raised = 2-POINTER (point from outside 40m arc, worth 2 points)
   - Umpire waves arms side-to-side = WIDE
   - No flag after a shot = NOT a score
 
@@ -53,6 +54,8 @@ When in doubt, log as WIDE or skip — do NOT assume a score.
 
 SCORING:
   POINT_SCORED    - Ball over bar (flag raised or certain)
+                    For 2-POINTERS (outside 40m arc / orange flag), use POINT_SCORED
+                    with scoring_context.is_two_pointer = true
   GOAL_SCORED     - Ball in net (green flag or certain)
   WIDE            - Shot goes wide
   SHORT           - Shot drops short / saved
@@ -80,10 +83,13 @@ Cards require the ref to physically hold up a coloured card to a specific player
 Only log YELLOW_CARD / RED_CARD / BLACK_CARD when you see the actual card object in hand.
 If you see a ref with an arm raised and no card visible, it is a FREE_KICK.
 
-=== POINT vs GOAL ===
+=== POINT vs GOAL vs 2-POINTER ===
 Ball dropping BEHIND the posts onto the net from above = POINT (went over the bar).
 A GOAL requires the ball to enter the net from the FRONT (under the crossbar).
-Look for GREEN FLAG (goal) vs WHITE FLAG (point). When in doubt, log as POINT.
+GREEN FLAG = goal | WHITE FLAG = point | ORANGE FLAG = 2-pointer (from outside 40m arc).
+For 2-pointers: log as POINT_SCORED with scoring_context.is_two_pointer = true.
+The 40m arc zones: DEF_LEFT/CENTRE/RIGHT, MID_LEFT/CENTRE/RIGHT, HF_LEFT/CENTRE/RIGHT.
+When in doubt, log as POINT.
 
 === PITCH ZONE GRID (for scoring events) ===
   DEF_LEFT  DEF_CENTRE  DEF_RIGHT  |  MID_LEFT  MID_CENTRE  MID_RIGHT
@@ -96,6 +102,7 @@ Zone from the SCORING team's perspective (attacking toward goal).
   foot: LEFT | RIGHT | FIST | UNKNOWN
   under_pressure: true | false
   distance_estimate: SHORT (<21m) | MEDIUM (21-35m) | LONG (35m+)
+  is_two_pointer: true | false (set true when from outside 40m arc or orange flag)
 
 === KICKOUT CONTEXT ===
   direction: LEFT | CENTRE | RIGHT

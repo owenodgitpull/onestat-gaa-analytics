@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X, Users, Copy } from 'lucide-react'
 import { Player } from '@/types'
+import { useClub } from '@/contexts/ClubContext'
 
 interface LineupPosition {
   id: string
@@ -10,6 +11,15 @@ interface LineupPosition {
 }
 
 // Standard GAA 15-player formation positions (goalkeeper + 6 backs + 2 mids + 6 forwards)
+const CAPTAIN_RE = /\s*\((?:c|vc)\)\s*$/i
+
+function displaySurname(name: string) {
+  const clean = name.replace(CAPTAIN_RE, '').trim()
+  const isCaptain = /\(c\)/i.test(name)
+  const surname = clean.split(' ').pop() || clean
+  return isCaptain ? `${surname} ©` : surname
+}
+
 const FORMATION_POSITIONS: LineupPosition[] = [
   // Goalkeeper
   { id: 'gk', x: 7, y: 50, label: 'GK' },
@@ -41,6 +51,12 @@ const SUBSTITUTE_POSITIONS: LineupPosition[] = [
   { id: 'sub-3', x: 0, y: 0, label: 'SUB' },
   { id: 'sub-4', x: 0, y: 0, label: 'SUB' },
   { id: 'sub-5', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-6', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-7', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-8', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-9', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-10', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-11', x: 0, y: 0, label: 'SUB' },
 ]
 
 export interface LineupEntry {
@@ -65,6 +81,9 @@ export default function StartingLineupModal({
 }: StartingLineupModalProps) {
   const [lineup, setLineup] = useState<Record<string, LineupEntry>>({})
   const [selectingPosition, setSelectingPosition] = useState<string | null>(null)
+  const { club } = useClub()
+  const jerseyBg = club?.primary_colour || '#10B981'
+  const jerseyText = club?.secondary_colour || '#FFFFFF'
 
   if (!isOpen) return null
 
@@ -191,11 +210,14 @@ export default function StartingLineupModal({
                     onClick={(e) => handlePositionClick(e, pos.id)}
                   >
                     {/* Jersey Icon */}
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
-                      assignedPlayer
-                        ? 'bg-red-600 text-white ring-2 ring-white shadow-lg'
-                        : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
-                    }`}>
+                    <div
+                      className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
+                        assignedPlayer
+                          ? 'ring-2 shadow-lg'
+                          : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
+                      }`}
+                      style={assignedPlayer ? { backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties : undefined}
+                    >
                       {displayLabel}
                     </div>
 
@@ -203,7 +225,7 @@ export default function StartingLineupModal({
                     {assignedPlayer && (
                       <div className="absolute top-full mt-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
                         <span className="text-white text-xs font-semibold bg-black/50 px-2 py-1 rounded">
-                          {assignedPlayer.name.split(' ').pop()}
+                          {displaySurname(assignedPlayer.name)}
                         </span>
                       </div>
                     )}
@@ -226,11 +248,14 @@ export default function StartingLineupModal({
                     onClick={(e) => handlePositionClick(e, pos.id)}
                   >
                     {/* Jersey Icon - Smaller for subs */}
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
-                      assignedPlayer
-                        ? 'bg-red-600 text-white ring-2 ring-white shadow-lg'
-                        : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
-                    }`}>
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                        assignedPlayer
+                          ? 'ring-2 shadow-lg'
+                          : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
+                      }`}
+                      style={assignedPlayer ? { backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties : undefined}
+                    >
                       {displayLabel}
                     </div>
 
@@ -238,7 +263,7 @@ export default function StartingLineupModal({
                     {assignedPlayer && (
                       <div className="mt-2">
                         <span className="text-white text-[10px] font-semibold bg-black/50 px-1.5 py-0.5 rounded">
-                          {assignedPlayer.name.split(' ').pop()}
+                          {displaySurname(assignedPlayer.name)}
                         </span>
                       </div>
                     )}
@@ -289,7 +314,7 @@ export default function StartingLineupModal({
             ) : (
               <>
                 <h3 className="text-xl font-bold text-white mb-4">
-                  Selected Players ({Object.keys(lineup).length}/20)
+                  Selected Players ({Object.keys(lineup).length}/26)
                 </h3>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {/* Starting lineup */}
@@ -381,7 +406,7 @@ export default function StartingLineupModal({
               disabled={Object.keys(lineup).length === 0}
               className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Confirm Lineup ({Object.keys(lineup).length}/20)
+              Confirm Lineup ({Object.keys(lineup).length}/26)
             </button>
           </div>
         )}

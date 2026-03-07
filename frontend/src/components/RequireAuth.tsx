@@ -23,6 +23,11 @@ export default function RequireAuth({ children, requiredRole }: RequireAuthProps
     return <Navigate to="/login" replace />;
   }
 
+  // Redirect to onboarding if club setup is incomplete
+  if (user && user.club_id && !user.onboarding_completed && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   // Role-based redirects
   if (user && requiredRole) {
     if (requiredRole === 'club_admin' && user.role === 'player') {

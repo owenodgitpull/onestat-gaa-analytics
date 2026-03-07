@@ -256,6 +256,12 @@ async def exchange_token(
         await db.refresh(user)
 
     user_response = UserResponse.model_validate(user)
+    if user.club_id:
+        club_result = await db.execute(select(Club.onboarding_completed).where(Club.id == user.club_id))
+        onboarding_done = club_result.scalar_one_or_none()
+        user_response.onboarding_completed = bool(onboarding_done)
+    else:
+        user_response.onboarding_completed = False
 
     return CookieAuthResponse(
         user=user_response,
@@ -332,7 +338,15 @@ async def get_me(
     db_user = result.scalar_one_or_none()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    return db_user
+
+    response = UserResponse.model_validate(db_user)
+    if db_user.club_id:
+        club_result = await db.execute(select(Club.onboarding_completed).where(Club.id == db_user.club_id))
+        onboarding_done = club_result.scalar_one_or_none()
+        response.onboarding_completed = bool(onboarding_done)
+    else:
+        response.onboarding_completed = False
+    return response
 
 
 @router.post("/logout")
@@ -376,10 +390,11 @@ async def setup_profile(
     """
     Set the user's club_id after onboarding.
 
-    Only allowed if the user has no club yet (first-time setup).
+    Only allowed if the user has no club yet, or if re-confirming the same club
+    (e.g. page refresh during onboarding).
     """
-    # Only allow if user doesn't already have a club
-    if user.club_id:
+    # Allow re-call with same club (onboarding resume), block switching clubs
+    if user.club_id and user.club_id != body.club_id:
         raise HTTPException(status_code=400, detail="Club already assigned. Contact admin to change.")
 
     # Verify club exists

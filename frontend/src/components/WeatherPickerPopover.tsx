@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer } from 'lucide-react'
 
@@ -15,13 +15,15 @@ const WEATHER_OPTIONS = [
 
 export function getWeatherIcon(condition: string | null | undefined) {
   if (!condition) return Cloud
-  const opt = WEATHER_OPTIONS.find(o => o.value === condition)
+  const normalised = condition.toLowerCase()
+  const opt = WEATHER_OPTIONS.find(o => o.value === normalised)
   return opt?.icon ?? Cloud
 }
 
 export function getWeatherLabel(condition: string | null | undefined) {
   if (!condition) return null
-  const opt = WEATHER_OPTIONS.find(o => o.value === condition)
+  const normalised = condition.toLowerCase()
+  const opt = WEATHER_OPTIONS.find(o => o.value === normalised)
   return opt?.label ?? condition
 }
 
@@ -42,6 +44,12 @@ export default function WeatherPickerPopover({
 }: WeatherPickerPopoverProps) {
   const [condition, setCondition] = useState<string | null>(currentCondition)
   const [temperature, setTemperature] = useState(currentTemperature !== null ? String(currentTemperature) : '')
+
+  // Sync internal state when props change (e.g. match data loads after initial render)
+  useEffect(() => {
+    setCondition(currentCondition)
+    setTemperature(currentTemperature !== null ? String(currentTemperature) : '')
+  }, [currentCondition, currentTemperature])
 
   if (!isOpen) return null
 

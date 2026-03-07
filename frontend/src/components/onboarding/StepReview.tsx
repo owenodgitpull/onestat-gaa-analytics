@@ -45,7 +45,7 @@ export default function StepReview({ clubData, playerCount, logoFile, onConfirm,
           {logoFile ? (
             <img
               src={URL.createObjectURL(logoFile)}
-              alt="Club logo"
+              alt="Team logo"
               className="w-16 h-16 rounded-full object-cover border-2 flex-shrink-0"
               style={{ borderColor: secondary }}
             />
@@ -60,7 +60,7 @@ export default function StepReview({ clubData, playerCount, logoFile, onConfirm,
             </div>
           )}
           <div>
-            <h3 className="text-xl font-bold text-white">{clubData.name || 'Unnamed Club'}</h3>
+            <h3 className="text-xl font-bold text-white">{clubData.name || 'Unnamed Team'}</h3>
             {clubData.short_name && (
               <p className="text-sm text-white/40">{clubData.short_name}</p>
             )}
@@ -105,7 +105,7 @@ export default function StepReview({ clubData, playerCount, logoFile, onConfirm,
               />
             </div>
             <div>
-              <p className="text-xs text-white/40 font-medium uppercase tracking-wider">Club Colours</p>
+              <p className="text-xs text-white/40 font-medium uppercase tracking-wider">Team Colours</p>
               <p className="text-sm text-white mt-0.5 font-mono">
                 {primary.toUpperCase()} / {secondary.toUpperCase()}
               </p>

@@ -10,9 +10,12 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.dependencies import AuthenticatedUser, get_current_user
 from app.database import get_db
+from app.models.user import User
 from app.schemas.club import ClubResponse
 from app.schemas.onboarding import (
     ClubOnboardingCreate,
@@ -31,11 +34,23 @@ router = APIRouter()
 async def create_club(
     data: ClubOnboardingCreate,
     db: AsyncSession = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Step 1+2: Create a new club with basic details and branding.
+    Links the authenticated user to the club immediately so state survives page refresh.
     """
     club = await OnboardingService.create_club(db, data)
+
+    # Link user to club immediately so onboarding state survives page refresh
+    if not user.club_id:
+        result = await db.execute(select(User).where(User.id == user.user_id))
+        db_user = result.scalar_one_or_none()
+        if db_user:
+            db_user.club_id = club.id
+            await db.commit()
+            logger.info(f"Linked user {user.email} to club {club.id} during onboarding")
+
     return club
 
 

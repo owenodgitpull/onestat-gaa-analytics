@@ -12,7 +12,7 @@ interface OnboardingProgressProps {
 }
 
 const STEPS = [
-  { number: 1, label: 'Club Details' },
+  { number: 1, label: 'Team Details' },
   { number: 2, label: 'Branding' },
   { number: 3, label: 'Players' },
   { number: 4, label: 'Review' },

@@ -56,8 +56,8 @@ export default function StepClubBranding({ data, onChange, onLogoChange }: StepC
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-white mb-1">Club Branding</h2>
-        <p className="text-white/50 text-sm">Set your club colours and upload a logo.</p>
+        <h2 className="text-2xl font-bold text-white mb-1">Team Branding</h2>
+        <p className="text-white/50 text-sm">Set your team colours and upload a logo.</p>
       </div>
 
       {/* Colour Pickers */}
@@ -161,7 +161,7 @@ export default function StepClubBranding({ data, onChange, onLogoChange }: StepC
               {logoPreview ? (
                 <img
                   src={logoPreview}
-                  alt="Club logo"
+                  alt="Team logo"
                   className="w-14 h-14 rounded-full object-cover"
                 />
               ) : (
@@ -169,7 +169,7 @@ export default function StepClubBranding({ data, onChange, onLogoChange }: StepC
                   className="text-lg font-bold"
                   style={{ color: secondary }}
                 >
-                  {data.short_name?.slice(0, 3).toUpperCase() || data.name?.slice(0, 3).toUpperCase() || 'CLB'}
+                  {data.short_name?.slice(0, 3).toUpperCase() || data.name?.slice(0, 3).toUpperCase() || 'GAA'}
                 </span>
               )}
             </div>
@@ -181,7 +181,7 @@ export default function StepClubBranding({ data, onChange, onLogoChange }: StepC
       {/* Logo Upload */}
       <div>
         <label className="block text-sm font-medium text-white/70 mb-1.5">
-          Club Logo
+          Team Logo
         </label>
         {logoPreview ? (
           <div className="glass-card p-4 flex items-center gap-4">
@@ -213,7 +213,7 @@ export default function StepClubBranding({ data, onChange, onLogoChange }: StepC
             </div>
             <div className="text-center">
               <p className="text-sm text-white/60 group-hover:text-white/80 transition-colors">
-                Click to upload club logo
+                Click to upload team logo
               </p>
               <p className="text-xs text-white/30 mt-1">PNG, JPG, SVG up to 2MB</p>
             </div>

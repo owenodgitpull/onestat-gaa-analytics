@@ -17,6 +17,7 @@ export interface AuthUser {
   role: string;
   player_id: string | null;
   is_active: boolean;
+  onboarding_completed: boolean;
 }
 
 interface AuthContextType {
@@ -168,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               role: userData.role,
               player_id: userData.player_id || null,
               is_active: userData.is_active,
+              onboarding_completed: userData.onboarding_completed ?? true,
             };
             setUserState(authUser);
             persistUser(authUser, 3600);
@@ -249,6 +251,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       role: data.user.role,
       player_id: data.user.player_id || null,
       is_active: data.user.is_active,
+      onboarding_completed: data.user.onboarding_completed ?? true,
     };
 
     setUserState(authUser);

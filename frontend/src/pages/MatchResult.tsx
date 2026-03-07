@@ -205,8 +205,9 @@ export default function MatchResult() {
       events = events.filter((e: any) => eventTypes.includes(e.event_type))
     }
 
-    // Only include events with valid coordinates
-    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null)
+    // Exclude cards (location not meaningful) and only include events with valid coordinates
+    const CARD_TYPES = ['yellow_card', 'black_card', 'red_card']
+    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type))
   }, [eventsData, activeFilters, teamFilter])
 
   if (matchLoading) {

@@ -34,7 +34,6 @@ async def list_fixtures(
     db: AsyncSession = Depends(get_db),
 ):
     """List upcoming fixtures (scheduled matches with future dates, ordered by date ASC)."""
-    now = datetime.utcnow()
     result = await db.execute(
         select(Match)
         .where(
@@ -42,7 +41,6 @@ async def list_fixtures(
                 Match.club_id == user.club_id,
                 Match.status == MatchStatus.SCHEDULED,
                 Match.is_deleted == False,
-                Match.match_date >= now,
             )
         )
         .order_by(Match.match_date.asc())
@@ -201,6 +199,19 @@ def _is_our_club(name: str, club_aliases: set[str]) -> bool:
 # XLSX parsing helpers
 # ---------------------------------------------------------------------------
 
+_FIXTURE_KEYWORDS = ["home", "away", "date", "time", "throw", "division", "competition", "comp", "round"]
+
+
+def _find_fixture_header_row(rows: list, max_scan: int = 10) -> int:
+    """Scan first rows to find the one containing fixture column headers."""
+    for i, row in enumerate(rows[:max_scan]):
+        header = [str(c).strip().lower() if c else "" for c in row]
+        matches = sum(1 for h in header if any(kw in h for kw in _FIXTURE_KEYWORDS))
+        if matches >= 2:
+            return i
+    return 0
+
+
 def _detect_xlsx_columns(header_row: list) -> dict:
     """
     Map header row to column indices. Shared between parse and preview.
@@ -250,11 +261,12 @@ def _extract_unique_teams(content: bytes) -> list[str]:
         if not rows:
             continue
 
-        col_map = _detect_xlsx_columns(rows[0])
+        header_idx = _find_fixture_header_row(rows)
+        col_map = _detect_xlsx_columns(rows[header_idx])
         if "home" not in col_map or "away" not in col_map:
             continue
 
-        for row in rows[1:]:
+        for row in rows[header_idx + 1:]:
             if not row or len(row) <= max(col_map.values()):
                 continue
             home_raw = str(row[col_map["home"]] or "").strip()
@@ -298,12 +310,13 @@ def _parse_xlsx_fixtures(content: bytes, club_aliases: set[str]) -> list[dict]:
         if not rows:
             continue
 
-        col_map = _detect_xlsx_columns(rows[0])
+        header_idx = _find_fixture_header_row(rows)
+        col_map = _detect_xlsx_columns(rows[header_idx])
 
         if "home" not in col_map or "away" not in col_map or "date" not in col_map:
             continue  # skip sheets we can't parse
 
-        for row in rows[1:]:
+        for row in rows[header_idx + 1:]:
             if not row or len(row) <= max(col_map.values()):
                 continue
 

@@ -1,10 +1,14 @@
 /**
  * Onboarding Wizard
- * 4-step wizard: Club Details -> Club Branding -> Player Upload -> Review
+ * 4-step wizard: Team Details -> Team Branding -> Player Upload -> Review
  * Creates the club via the onboarding API, uploads players, then completes setup.
+ *
+ * Persistence:
+ * - Steps 1-2 (pre-club-creation): form data saved to sessionStorage
+ * - Steps 3-4 (post-club-creation): club is in DB, resume via user.club_id
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import api, { fetchAPI } from '../services/api';
@@ -29,13 +33,16 @@ const INITIAL_CLUB_DATA: ClubData = {
   secondary_colour: '#ffffff',
 };
 
+const DRAFT_KEY = 'gaa_onboarding_draft';
+
 // ── Component ──────────────────────────────────────────────────────────────
 
 export default function Onboarding() {
   const navigate = useNavigate();
   const { user, setUser } = useAuth();
+  const resumedRef = useRef(false);
 
-  // Wizard state
+  // ── Compute initial state from draft or backend ──
   const [currentStep, setCurrentStep] = useState(1);
   const [clubId, setClubId] = useState<string | null>(null);
   const [clubData, setClubData] = useState<ClubData>({ ...INITIAL_CLUB_DATA });
@@ -48,6 +55,53 @@ export default function Onboarding() {
   // UI state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── On mount: restore state from sessionStorage draft OR backend ──
+  useEffect(() => {
+    if (resumedRef.current) return;
+    resumedRef.current = true;
+
+    // Case 1: User already has a club but onboarding not complete → resume at step 3
+    if (user?.club_id && !user.onboarding_completed) {
+      setClubId(user.club_id);
+      setCurrentStep(3);
+      sessionStorage.removeItem(DRAFT_KEY);
+
+      // Fetch club data so back-navigation and review show correct info
+      fetchAPI<any>('/club')
+        .then((club) => {
+          setClubData({
+            name: club.name || '',
+            short_name: club.short_name || '',
+            county: club.county || '',
+            province: club.province || '',
+            home_ground: club.home_ground || '',
+            primary_colour: club.primary_colour || '#1e40af',
+            secondary_colour: club.secondary_colour || '#ffffff',
+          });
+        })
+        .catch(() => { /* non-blocking */ });
+      return;
+    }
+
+    // Case 2: No club yet — restore draft from sessionStorage (steps 1-2 form data)
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft.data) setClubData(draft.data);
+        if (draft.step && draft.step <= 2) setCurrentStep(draft.step);
+      }
+    } catch { /* ignore corrupt draft */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Save draft to sessionStorage whenever form data changes (steps 1-2 only) ──
+  const isPreCreation = !clubId;
+  useEffect(() => {
+    if (isPreCreation) {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ step: currentStep, data: clubData }));
+    }
+  }, [currentStep, clubData, isPreCreation]);
 
   // ── Computed values ────────────────────────────────────────────────
 
@@ -103,6 +157,12 @@ export default function Onboarding() {
           secondary_colour: clubData.secondary_colour || undefined,
         });
         setClubId(result.id);
+        sessionStorage.removeItem(DRAFT_KEY); // Club is persisted on backend now
+
+        // Update auth context so club_id is set (backend links user on create)
+        if (user) {
+          setUser({ ...user, club_id: result.id, onboarding_completed: false });
+        }
 
         // Upload logo if selected
         if (logoFile) {
@@ -149,17 +209,20 @@ export default function Onboarding() {
       // Mark onboarding complete
       await api.onboarding.completeOnboarding(clubId);
 
-      // Link user to club
-      const updatedUser = await fetchAPI<any>('/auth/setup-profile', {
-        method: 'POST',
-        body: JSON.stringify({ club_id: clubId }),
-      });
-
-      // Update auth context so the app knows we have a club now
-      if (user && updatedUser) {
-        const updatedAuthUser = { ...user, club_id: clubId };
-        setUser(updatedAuthUser);
+      // Ensure user is linked to club (idempotent — may already be linked from create step)
+      if (user && !user.club_id) {
+        await fetchAPI<any>('/auth/setup-profile', {
+          method: 'POST',
+          body: JSON.stringify({ club_id: clubId }),
+        });
       }
+
+      // Update auth context so the app knows onboarding is done
+      if (user) {
+        setUser({ ...user, club_id: clubId, onboarding_completed: true });
+      }
+
+      sessionStorage.removeItem(DRAFT_KEY);
 
       // Redirect to dashboard
       navigate('/');

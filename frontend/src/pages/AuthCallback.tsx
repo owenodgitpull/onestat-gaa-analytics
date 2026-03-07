@@ -52,7 +52,7 @@ export default function AuthCallback() {
   // Once authenticated, redirect based on whether user has a club
   useEffect(() => {
     if (isAuthenticated && user) {
-      if (!user.club_id) {
+      if (!user.club_id || !user.onboarding_completed) {
         navigate('/onboarding', { replace: true });
       } else if (user.role === 'player' && !user.player_id) {
         navigate('/select-player', { replace: true });

@@ -112,6 +112,14 @@ export const matchRecordingSteps: DriveStep[] = [
     },
   },
   {
+    element: '[data-tour="weather-btn"]',
+    popover: {
+      title: 'Weather Conditions',
+      description:
+        'Tap to update the weather and temperature during the match. This data feeds into AI analysis — weather patterns can affect scoring, turnovers, and kickout strategy.',
+    },
+  },
+  {
     element: '[data-tour="action-category-tabs"]',
     popover: {
       title: 'Action Categories',

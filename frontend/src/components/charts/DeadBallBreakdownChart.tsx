@@ -121,9 +121,9 @@ export default function DeadBallBreakdownChart({ data }: Props) {
       </div>
 
       {/* Chart */}
-      <div className="flex-1 min-h-0" style={{ minHeight: 200 }}>
+      <div className="flex-1 min-h-0">
         {view === 'bar' ? (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={260}>
             <BarChart data={barData} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
               <XAxis
@@ -152,7 +152,7 @@ export default function DeadBallBreakdownChart({ data }: Props) {
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie
                 data={donutData}

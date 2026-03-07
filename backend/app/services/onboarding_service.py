@@ -29,7 +29,8 @@ logger = logging.getLogger(__name__)
 NAME_HEADERS = {"name", "player_name", "full_name", "player", "player name", "full name", "english name", "irish name"}
 POSITION_HEADERS = {"position", "pos", "playing_position", "playing position"}
 JERSEY_HEADERS = {"jersey_number", "number", "jersey", "no", "#", "jersey number", "no."}
-DOB_HEADERS = {"date_of_birth", "dob", "birth_date", "birthday", "date of birth", "birth date"}
+DOB_HEADERS = {"date_of_birth", "dob", "birth_date", "birthday", "date of birth", "birth date", "d.o.b", "d.o.b.", "d.o.b / year", "d.o.b/ year"}
+AGE_HEADERS = {"age", "player_age", "player age", "years", "age (approx)", "age(approx)", "approx age"}
 
 # Position normalization
 POSITION_ALIASES = {
@@ -111,8 +112,10 @@ class OnboardingService:
         if len(rows_raw) < 2:
             return PlayerFilePreview(parsed_count=0, valid_count=0, warnings=["File is empty or has only headers"], rows=[])
 
-        headers = [h.strip().lower() for h in rows_raw[0]]
-        original_headers = [h.strip() for h in rows_raw[0]]
+        # Auto-detect header row (may not be the first row)
+        header_idx = OnboardingService._find_header_row(rows_raw)
+        headers = [h.strip().lower() for h in rows_raw[header_idx]]
+        original_headers = [h.strip() for h in rows_raw[header_idx]]
         col_map = OnboardingService._map_columns(headers)
 
         # Apply user override for name column
@@ -133,7 +136,7 @@ class OnboardingService:
                 needs_name_column=True,
             )
 
-        result = OnboardingService._process_rows(rows_raw[1:], col_map)
+        result = OnboardingService._process_rows(rows_raw[header_idx + 1:], col_map)
         result.headers = original_headers
         result.column_mapping = {k: v for k, v in col_map.items() if not k.startswith("_")}
         return result
@@ -164,8 +167,10 @@ class OnboardingService:
         if len(rows_raw) < 2:
             return PlayerFilePreview(parsed_count=0, valid_count=0, warnings=["File is empty or has only headers"], rows=[])
 
-        headers = [h.strip().lower() for h in rows_raw[0]]
-        original_headers = [h.strip() for h in rows_raw[0]]
+        # Auto-detect header row (may not be the first row)
+        header_idx = OnboardingService._find_header_row(rows_raw)
+        headers = [h.strip().lower() for h in rows_raw[header_idx]]
+        original_headers = [h.strip() for h in rows_raw[header_idx]]
         col_map = OnboardingService._map_columns(headers)
 
         # Apply user override for name column
@@ -186,10 +191,27 @@ class OnboardingService:
                 needs_name_column=True,
             )
 
-        result = OnboardingService._process_rows(rows_raw[1:], col_map)
+        result = OnboardingService._process_rows(rows_raw[header_idx + 1:], col_map)
         result.headers = original_headers
         result.column_mapping = {k: v for k, v in col_map.items() if not k.startswith("_")}
         return result
+
+    @staticmethod
+    def _find_header_row(rows_raw: List[List[str]], max_scan: int = 10) -> int:
+        """
+        Scan the first few rows to find the actual header row.
+        Returns the 0-based index of the row containing recognizable column headers.
+        Falls back to 0 if no header row is found.
+        """
+        all_known = NAME_HEADERS | POSITION_HEADERS | JERSEY_HEADERS | DOB_HEADERS | AGE_HEADERS
+        all_known |= {"first name", "first_name", "firstname", "forename",
+                       "last name", "last_name", "lastname", "surname"}
+        for i, row in enumerate(rows_raw[:max_scan]):
+            normalized = [cell.strip().lower() for cell in row]
+            matches = sum(1 for cell in normalized if cell in all_known)
+            if matches >= 2:  # At least 2 recognized headers
+                return i
+        return 0
 
     @staticmethod
     def _map_columns(headers: List[str]) -> dict:
@@ -210,6 +232,8 @@ class OnboardingService:
                 col_map["jersey"] = idx
             elif h in DOB_HEADERS:
                 col_map["dob"] = idx
+            elif h in AGE_HEADERS:
+                col_map["age"] = idx
         # Synthesize "name" from first + last if no single name column
         if "name" not in col_map and "first_name" in col_map:
             col_map["_split_name"] = True
@@ -260,14 +284,29 @@ class OnboardingService:
                     except (ValueError, TypeError):
                         warnings.append(f"Invalid jersey number '{raw_jersey}'")
 
-            # DOB
+            # DOB (prefer explicit DOB over age)
             dob_str = None
             if "dob" in col_map and col_map["dob"] < len(row):
                 raw_dob = row[col_map["dob"]].strip()
-                if raw_dob:
+                if raw_dob and raw_dob not in ("—", "-", "–", "N/A", "n/a", "None", "none", ""):
+                    # Skip warning for clearly non-date values (e.g. ~2003)
                     dob_str = OnboardingService._parse_date(raw_dob)
-                    if dob_str is None:
+                    if dob_str is None and not raw_dob.startswith("~"):
                         warnings.append(f"Unparseable date '{raw_dob}'")
+
+            # Age → approximate DOB (Jan 1 of birth year) if no explicit DOB
+            if dob_str is None and "age" in col_map and col_map["age"] < len(row):
+                raw_age = row[col_map["age"]].strip()
+                if raw_age and raw_age not in ("—", "-", "–", "N/A", "n/a", "None", "none"):
+                    try:
+                        age_val = int(float(raw_age))
+                        if 10 <= age_val <= 60:
+                            birth_year = date.today().year - age_val
+                            dob_str = f"{birth_year}-01-01"
+                        else:
+                            warnings.append(f"Age {age_val} out of reasonable range (10-60)")
+                    except (ValueError, TypeError):
+                        pass  # Silently skip non-numeric age values
 
             preview_rows.append(PlayerPreviewRow(
                 row_number=row_num,

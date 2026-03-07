@@ -363,6 +363,81 @@
 }
 
 
+/* Season Report — charts render their own glass-card, remove h-full dependency */
+.season-report-charts > div > .glass-card {
+  height: auto !important;
+}
+
+/* Kickout Landing Zones — allow more vertical room in report/wide layouts */
+.season-report-charts .kickout-zones-pitch {
+  max-height: 520px;
+}
+
+/* ─── Print / Export ─── */
+@media print {
+  /* Force dark background and colors */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  body {
+    background: #060a14 !important;
+  }
+
+  /* Hide navigation, sidebar, background effects */
+  nav, aside, .app-background, .app-bg-orb, .app-bg-shimmer {
+    display: none !important;
+  }
+
+  /* Remove sidebar margin */
+  main {
+    margin-left: 0 !important;
+  }
+
+  /* Ensure glass cards have visible backgrounds */
+  .glass-card {
+    background: rgba(15, 23, 42, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .glass-card::before,
+  .glass-card::after {
+    display: none !important;
+  }
+
+  /* Force text colors */
+  .text-white { color: #ffffff !important; }
+  .text-white\/50, .text-white\/60, .text-white\/70 { color: rgba(255, 255, 255, 0.7) !important; }
+  .text-white\/40 { color: rgba(255, 255, 255, 0.5) !important; }
+  .text-emerald-400 { color: #34d399 !important; }
+  .text-red-400 { color: #f87171 !important; }
+  .text-amber-400 { color: #fbbf24 !important; }
+  .text-blue-400 { color: #60a5fa !important; }
+  .text-cyan-400 { color: #22d3ee !important; }
+  .text-purple-400 { color: #c084fc !important; }
+
+  /* Force backgrounds on stat cards */
+  .bg-white\/10 { background: rgba(255, 255, 255, 0.1) !important; }
+  .bg-gradient-to-br { background: rgba(255, 255, 255, 0.08) !important; }
+
+  /* Page setup */
+  @page {
+    size: A4 landscape;
+    margin: 1cm;
+  }
+
+  /* SVG and canvas elements should be visible */
+  svg, canvas {
+    max-width: 100% !important;
+  }
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

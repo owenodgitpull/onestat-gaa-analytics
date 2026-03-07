@@ -64,5 +64,15 @@ htmlcov/
 
 # Uploads
 /uploads/
+backend/uploads/
 /temp/
+
+# Windows artifacts
+nul
+backend/nul
+
+# Project docs / data resources (local only)
+*.docx
+paths_temp.json
+player data resources/
 

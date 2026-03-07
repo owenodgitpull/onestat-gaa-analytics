@@ -16,6 +16,7 @@ class UserResponse(BaseModel):
     role: str
     player_id: Optional[UUID] = None
     is_active: bool
+    onboarding_completed: bool = True
     last_login_at: Optional[datetime] = None
     created_at: datetime
 

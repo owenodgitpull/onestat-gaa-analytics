@@ -11,7 +11,7 @@ interface FilterCategory {
 }
 
 const filterCategories: FilterCategory[] = [
-  { id: 'all', label: 'All Events', eventTypes: null, color: 'primary' },
+  { id: 'all', label: 'All', eventTypes: null, color: 'primary' },
   {
     id: 'shots',
     label: 'Shots',
@@ -19,18 +19,18 @@ const filterCategories: FilterCategory[] = [
     color: 'amber'
   },
   { id: 'goals', label: 'Goals', eventTypes: ['goal'], color: 'emerald' },
-  { id: 'points', label: 'Points', eventTypes: ['point', 'point_free'], color: 'blue' },
-  { id: 'two_pointers', label: '2-Pointers', eventTypes: ['two_point', 'two_point_free'], color: 'teal' },
+  { id: 'points', label: 'Pts', eventTypes: ['point', 'point_free'], color: 'blue' },
+  { id: 'two_pointers', label: '2pt', eventTypes: ['two_point', 'two_point_free'], color: 'teal' },
   { id: 'wides', label: 'Wides', eventTypes: ['wide', 'wide_free', 'short'], color: 'red' },
   {
     id: 'turnovers',
-    label: 'Turnovers',
+    label: 'T/O',
     eventTypes: ['turnover_won', 'turnover_lost', 'our_unforced_error', 'opp_unforced_error'],
     color: 'orange'
   },
   {
     id: 'kickouts',
-    label: 'Kickouts',
+    label: 'K/O',
     eventTypes: [
       'kickout_won', 'kickout_lost', 'breaking_ball_won', 'breaking_ball_lost',
       'own_kickout_won', 'own_kickout_opposition_won',
@@ -39,6 +39,12 @@ const filterCategories: FilterCategory[] = [
       'opp_kickout_won_break', 'opp_kickout_opposition_won_break',
     ],
     color: 'cyan'
+  },
+  {
+    id: 'fouls',
+    label: 'Fouls',
+    eventTypes: ['foul_won', 'foul_committed'],
+    color: 'pink'
   },
 ]
 
@@ -52,6 +58,7 @@ const colorClasses: Record<string, { active: string; inactive: string }> = {
   red: { active: 'bg-red-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   orange: { active: 'bg-orange-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   cyan: { active: 'bg-cyan-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
+  pink: { active: 'bg-pink-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
 }
 
 interface EventFilterTogglesProps {
@@ -97,7 +104,7 @@ export default function EventFilterToggles({ activeFilters, onToggle }: EventFil
             <button
               key={cat.id}
               onClick={() => handleToggle(cat.id)}
-              className={`px-4 py-2 rounded-xl font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
                 isActive ? classes.active : classes.inactive
               }`}
             >

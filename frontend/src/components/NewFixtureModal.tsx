@@ -79,7 +79,7 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate }: NewFixtur
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white">Add Fixture</h2>
-              <p className="text-sm text-white/60">Schedule an upcoming match</p>
+              <p className="text-sm text-white/60">Schedule a match</p>
             </div>
           </div>
           <button onClick={handleClose} className="p-2 rounded-lg hover:bg-white/10 transition-colors">

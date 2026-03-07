@@ -79,7 +79,7 @@ export default function StepPlayerUpload({
 
     try {
       const result = await api.onboarding.previewPlayers(clubId, file);
-      onPreviewChange(result.players || result);
+      onPreviewChange(result.rows || []);
     } catch (err: any) {
       setUploadError(err.message || 'Failed to parse file.');
     } finally {
@@ -203,7 +203,7 @@ export default function StepPlayerUpload({
                 }
               </p>
               <p className="text-xs text-white/30 mt-1">
-                Expected columns: Name, Position, Jersey Number, Date of Birth
+                Expected columns: Name, Position, Jersey Number, DOB or Age
               </p>
             </div>
           </div>

@@ -14,6 +14,7 @@ import {
 import { api } from '@/services/api'
 import type { PlayerWorkload } from '@/services/api'
 import type { Match, Player } from '@/types'
+import { useClub } from '@/contexts/ClubContext'
 
 // ── Pitch position data (mirrored from StartingLineupModal) ──────────────
 
@@ -22,6 +23,15 @@ interface LineupPosition {
   x: number
   y: number
   label: string
+}
+
+const CAPTAIN_RE = /\s*\((?:c|vc)\)\s*$/i
+
+function displaySurname(name: string) {
+  const clean = name.replace(CAPTAIN_RE, '').trim()
+  const isCaptain = /\(c\)/i.test(name)
+  const surname = clean.split(' ').pop() || clean
+  return isCaptain ? `${surname} ©` : surname
 }
 
 const FORMATION_POSITIONS: LineupPosition[] = [
@@ -48,6 +58,12 @@ const SUBSTITUTE_POSITIONS: LineupPosition[] = [
   { id: 'sub-3', x: 0, y: 0, label: 'SUB' },
   { id: 'sub-4', x: 0, y: 0, label: 'SUB' },
   { id: 'sub-5', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-6', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-7', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-8', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-9', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-10', x: 0, y: 0, label: 'SUB' },
+  { id: 'sub-11', x: 0, y: 0, label: 'SUB' },
 ]
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -111,6 +127,9 @@ const getJerseyRing = (workload: PlayerWorkload | undefined) => {
 export default function MatchPrep() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
+  const { club } = useClub()
+  const jerseyBg = club?.primary_colour || '#10B981'
+  const jerseyText = club?.secondary_colour || '#FFFFFF'
 
   const [match, setMatch] = useState<Match | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -398,11 +417,14 @@ export default function MatchPrep() {
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     onClick={() => handlePositionClick(pos.id)}
                   >
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all ring-2 ${
-                      player
-                        ? `bg-red-600 text-white ${getJerseyRing(workload)} shadow-lg`
-                        : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
-                    }`}>
+                    <div
+                      className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all ring-2 ${
+                        player
+                          ? 'shadow-lg'
+                          : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
+                      }`}
+                      style={player ? { backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties : undefined}
+                    >
                       {player ? displayLabel : pos.label}
                     </div>
                     {player && (
@@ -411,7 +433,7 @@ export default function MatchPrep() {
                           {workload && (
                             <span className={`w-1.5 h-1.5 rounded-full inline-block ${getStatusDot(workload.status)}`} />
                           )}
-                          {player.name.split(' ').pop()}
+                          {displaySurname(player.name)}
                         </span>
                       </div>
                     )}
@@ -433,11 +455,14 @@ export default function MatchPrep() {
                     className="cursor-pointer flex flex-col items-center"
                     onClick={() => handlePositionClick(pos.id)}
                   >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all ring-2 ${
-                      player
-                        ? `bg-red-600 text-white ${getJerseyRing(workload)} shadow-lg`
-                        : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
-                    }`}>
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all ring-2 ${
+                        player
+                          ? 'shadow-lg'
+                          : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
+                      }`}
+                      style={player ? { backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties : undefined}
+                    >
                       {player ? (player.jersey_number ?? `S${index + 1}`) : `S${index + 1}`}
                     </div>
                     {player && (
@@ -446,7 +471,7 @@ export default function MatchPrep() {
                           {workload && (
                             <span className={`w-1.5 h-1.5 rounded-full inline-block ${getStatusDot(workload.status)}`} />
                           )}
-                          {player.name.split(' ').pop()}
+                          {displaySurname(player.name)}
                         </span>
                       </div>
                     )}
@@ -457,7 +482,7 @@ export default function MatchPrep() {
 
             {/* Count indicator */}
             <div className="text-center mt-3 text-sm text-white/50">
-              {startingCount}/15 starting + {selectedCount - startingCount}/5 subs
+              {startingCount}/15 starting + {selectedCount - startingCount}/11 subs
             </div>
           </div>
         </div>
@@ -533,7 +558,7 @@ export default function MatchPrep() {
             <>
               <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                 <Users size={18} />
-                Selected ({selectedCount}/20)
+                Selected ({selectedCount}/26)
               </h3>
 
               {/* Starting XV */}

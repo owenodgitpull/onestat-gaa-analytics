@@ -54,14 +54,14 @@ export default function StepClubDetails({ data, onChange }: StepClubDetailsProps
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-white mb-1">Club Details</h2>
-        <p className="text-white/50 text-sm">Tell us about your club to get started.</p>
+        <h2 className="text-2xl font-bold text-white mb-1">Team Details</h2>
+        <p className="text-white/50 text-sm">Tell us about your team to get started.</p>
       </div>
 
       {/* Club Name */}
       <div>
         <label className="block text-sm font-medium text-white/70 mb-1.5">
-          Club Name <span className="text-red-400">*</span>
+          Team Name <span className="text-red-400">*</span>
         </label>
         <input
           type="text"

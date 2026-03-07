@@ -223,8 +223,8 @@ of key match events — scores, wides, kickouts, cards, and game state.
 === SPORT CONTEXT ===
 Sport: Gaelic Football (GAA)
 Teams: 15 players per side
-Scoring: Goal (ball in net) = 3 points | Point (over bar) = 1 point
-Score format: Goals-Points (e.g. 2-14 = 2 goals + 14 points = 20 total)
+Scoring: Goal (ball in net) = 3 points | Point (over bar) = 1 point | 2-Pointer (over bar from outside 40m arc) = 2 points
+Score format: Goals-Points (e.g. 2-14 = 2 goals + 14 points = 20 total). 2-pointers count as 2 points.
 Halves: Two halves, 30 or 35 minutes depending on grade
 Ball: Round (size 5 O'Neills), can be kicked or hand-passed
 
@@ -232,20 +232,22 @@ Ball: Round (size 5 O'Neills), can be kicked or hand-passed
 In GAA, umpires stand behind each goal. Their signals confirm scoring events:
   - GREEN FLAG raised = GOAL (ball in the net)
   - WHITE FLAG raised = POINT (ball over the bar)
+  - ORANGE FLAG raised = 2-POINTER (point scored from outside 40m arc, worth 2 points)
   - Umpire waves arms side-to-side in a dismissive motion = WIDE
   - No umpire signal after a shot = NOT a score (play continues or ball went wide)
 
 IMPORTANT: If you can see the umpires, use their signals as ground truth.
 A shot toward goal is NOT a score unless you see a flag raised or have
-other strong visual evidence (e.g. scoreboard update, team celebration).
+other strong visual evidence (e.g. scoreboard update on tv HUD or in the ground, team celebration).
 When in doubt, log as WIDE or skip entirely — do NOT assume a score.
+For matches with TV HUD - use this as a guide for scores and time of events.
 
 === YOUR TASK ===
 Watch the ENTIRE video from start to finish. For every key event, record:
 
 1. TIMESTAMP: Match clock (MM:SS) if visible, or estimated from video position
 2. HALF: 1 or 2
-3. EVENT_TYPE: From the taxonomy below (16 types ONLY)
+3. EVENT_TYPE: From the taxonomy below (14 types ONLY)
 4. TEAM: team_a or team_b (see TEAM IDENTIFICATION in the user prompt)
 5. PITCH_ZONE: Location for scoring events
 6. CONTEXT: scoring_context for scores/wides, kickout_context for kickouts
@@ -255,6 +257,8 @@ Watch the ENTIRE video from start to finish. For every key event, record:
 
 SCORING:
   POINT_SCORED    - Ball over the bar (ONLY log if flag raised or certain)
+                    For 2-POINTERS (from outside 40m arc / orange flag raised),
+                    use POINT_SCORED with scoring_context.is_two_pointer = true
   GOAL_SCORED     - Ball in the net (ONLY log if green flag or certain)
   WIDE            - Shot goes wide (umpire waves arms, or ball clearly misses)
   SHORT           - Shot drops short or is saved by goalkeeper
@@ -284,10 +288,13 @@ A referee raising their arm to signal a free kick is NOT a card.
 Only log YELLOW_CARD, RED_CARD, or BLACK_CARD if you can clearly see the
 referee holding up an actual card object. If in doubt, do NOT log a card.
 
-=== POINT vs GOAL DISAMBIGUATION ===
+=== POINT vs GOAL vs 2-POINTER DISAMBIGUATION ===
 Ball going behind the posts viewed from above or behind = POINT (over the bar).
 Ball going INTO THE NET (below the crossbar) = GOAL.
 If you see a GREEN FLAG raised by the umpire = GOAL. WHITE FLAG = POINT.
+ORANGE FLAG = 2-POINTER (point from outside 40m arc, worth 2 points).
+For 2-pointers, log as POINT_SCORED with scoring_context.is_two_pointer = true.
+The 40m arc zones are: DEF_LEFT/CENTRE/RIGHT, MID_LEFT/CENTRE/RIGHT, HF_LEFT/CENTRE/RIGHT.
 When in doubt, default to POINT — goals are rare (typically 0-3 per team).
 
 === PITCH ZONE GRID (18 zones — for scoring events) ===
@@ -306,6 +313,7 @@ Zone is from the perspective of the SCORING team (attacking toward goal).
   foot: LEFT | RIGHT | FIST | UNKNOWN
   under_pressure: true | false
   distance_estimate: SHORT (<21m) | MEDIUM (21-35m) | LONG (35m+)
+  is_two_pointer: true | false (set true when scored from outside 40m arc or orange flag raised)
 
 === KICKOUT CONTEXT (for KICKOUT_SHORT, KICKOUT_LONG) ===
 ALWAYS include kickout_context when you log a kickout event.
@@ -321,8 +329,8 @@ LOW: Estimated/inferred, could be wrong
 === CRITICAL RULES — READ CAREFULLY ===
 1. Be CONSERVATIVE. Only log events you are genuinely confident occurred.
 2. Do NOT hallucinate. If you are unsure whether a score happened, do NOT
-   log POINT_SCORED or GOAL_SCORED. It is much better to miss a real score
-   than to log a false one. When in doubt, log WIDE or skip entirely.
+   log POINT_SCORED, GOAL_SCORED, or a 2-pointer. It is much better to miss
+   a real score than to log a false one. When in doubt, log WIDE or skip entirely.
 3. Do NOT log rapid-fire events (3+ events within 5 seconds). If you find
    yourself logging many events in quick succession, STOP and re-evaluate.
    Real GAA matches have ~1-3 key events per minute, not per second.

@@ -62,17 +62,31 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     },
   },
   {
-    id: 'kickout-conceded',
+    id: 'kickout-retention',
     frontKey: 'kickout_retention',
     frontLabel: 'Kickout Retention %',
-    flipKey: 'avg_conceded',
-    flipLabel: 'Avg Conceded',
+    flipKey: 'opp_kickout_win',
+    flipLabel: 'Opp Kickout Win %',
     theme: 'Restarts',
     explanations: {
       kickout_retention: {
         what: 'How often we retain our own goalkeeper\'s kickouts — crucial for building attacks from restarts',
         formula: '(Own kickouts retained ÷ Total own kickouts) × 100. Target: above 60%.',
       },
+      opp_kickout_win: {
+        what: 'Percentage of opposition kickouts your team wins. Winning opp kickouts is high-value — you\'re taking the ball in an advanced position with their defence disorganised.',
+        formula: '(Opposition kickouts won by your team ÷ Total opp kickouts) × 100. Above 40% is dominant, 30–40% is competitive, below 30% lets them restart easily.',
+      },
+    },
+  },
+  {
+    id: 'avg-conceded',
+    frontKey: 'avg_conceded',
+    frontLabel: 'Avg Conceded',
+    flipKey: null,
+    flipLabel: null,
+    theme: 'Defensive Solidity',
+    explanations: {
       avg_conceded: {
         what: 'Average total points conceded per match — lower means a tighter defence',
         formula: 'Total opponent points (goals×3 + points) ÷ Matches played.',
@@ -222,20 +236,6 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     },
   },
   {
-    id: 'opp-kickout',
-    frontKey: 'opp_kickout_win',
-    frontLabel: 'Opp Kickout Win %',
-    flipKey: null,
-    flipLabel: null,
-    theme: 'Restart Attack',
-    explanations: {
-      opp_kickout_win: {
-        what: 'Percentage of opposition kickouts your team wins. Winning opp kickouts is high-value — you\'re taking the ball in an advanced position with their defence disorganised.',
-        formula: '(Opposition kickouts won by your team ÷ Total opp kickouts) × 100. Above 40% is dominant, 30–40% is competitive, below 30% lets them restart easily.',
-      },
-    },
-  },
-  {
     id: 'discipline-cards',
     frontKey: 'card_rate',
     frontLabel: 'Card Rate Per Game',
@@ -259,6 +259,6 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
 export const DEFAULT_VISIBLE_KPIS = [
   'productivity-shot',
   'turnover-fouls',
-  'kickout-conceded',
+  'kickout-retention',
   'avg-scored',
 ]

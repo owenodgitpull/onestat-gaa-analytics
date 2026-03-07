@@ -32,7 +32,6 @@ const THEME_ICONS: Record<string, React.ReactNode> = {
   'Territory': <BarChart3 size={16} className="text-cyan-400" />,
   'Scoring Quality': <Target size={16} className="text-yellow-400" />,
   'Goal Threat': <Target size={16} className="text-rose-400" />,
-  'Restart Attack': <Trophy size={16} className="text-teal-400" />,
   'Discipline': <Shield size={16} className="text-pink-400" />,
 }
 
@@ -199,7 +198,7 @@ export default function SeasonReport() {
                   <h3 className="text-sm font-semibold text-white/60 uppercase tracking-wider">{theme}</h3>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {entriesWithCards.map(entry => {
                     const frontCard = kpiCards.find(c => c.key === entry.frontKey)
                     const flipCard = entry.flipKey ? kpiCards.find(c => c.key === entry.flipKey) : null
@@ -217,7 +216,7 @@ export default function SeasonReport() {
                                 {formatKPIValue(frontCard)}
                               </div>
                               {frontCard.insight && (
-                                <div className="text-xs text-white/40 mt-1.5 leading-relaxed line-clamp-2">
+                                <div className="text-xs text-white/40 mt-1.5 leading-relaxed">
                                   {frontCard.insight}
                                 </div>
                               )}
@@ -234,7 +233,7 @@ export default function SeasonReport() {
                                 {formatKPIValue(flipCard)}
                               </div>
                               {flipCard.insight && (
-                                <div className="text-xs text-white/40 mt-1.5 leading-relaxed line-clamp-2">
+                                <div className="text-xs text-white/40 mt-1.5 leading-relaxed">
                                   {flipCard.insight}
                                 </div>
                               )}
@@ -258,7 +257,7 @@ export default function SeasonReport() {
           Season Charts
         </h2>
 
-        <div className="space-y-6">
+        <div className="space-y-6 season-report-charts">
           {CANONICAL_CHARTS.map(chart => {
             // Skip GPS charts if no GPS data
             if (chart.requiresGps && seasonDashboard &&
@@ -271,13 +270,7 @@ export default function SeasonReport() {
             if (!rendered) return null
 
             return (
-              <div key={chart.id} className="glass-card p-5">
-                <div className="mb-3">
-                  <h3 className="text-base font-bold text-white">{chart.label}</h3>
-                  {chart.description && (
-                    <p className="text-xs text-white/40 mt-0.5">{chart.description}</p>
-                  )}
-                </div>
+              <div key={chart.id}>
                 {rendered}
               </div>
             )
