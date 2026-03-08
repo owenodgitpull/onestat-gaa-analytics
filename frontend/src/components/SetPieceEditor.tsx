@@ -72,8 +72,8 @@ interface SetPieceEditorProps {
   teamSecondaryColor?: string
 }
 
-const OPPONENT_COLOR = '#EF4444'
-const OPPONENT_BORDER = '#FFFFFF'
+const OPPONENT_COLOR = '#3B82F6'
+const OPPONENT_BORDER = '#1E3A5F'
 const ARROW_COLOR = '#FBBF24'
 
 let nextId = 1
@@ -123,25 +123,35 @@ function buildCurvedPath(points: { x: number; y: number }[]): { d: string; endAn
 }
 
 // Build straight polyline path (returns path + end tangent angle)
+// Shortens the final segment so the arrowhead doesn't overlap the line
 function buildStraightPath(points: { x: number; y: number }[]): { d: string; endAngle: number; endPt: { x: number; y: number } } {
   if (points.length < 2) return { d: '', endAngle: 0, endPt: { x: 0, y: 0 } }
   const svgPts = points.map(p => ({ x: toSvgX(p.x), y: toSvgY(p.y) }))
-  const d = `M ${svgPts.map(p => `${p.x},${p.y}`).join(' L ')}`
   const last = svgPts[svgPts.length - 1]
   const prev = svgPts[svgPts.length - 2]
   const angle = Math.atan2(last.y - prev.y, last.x - prev.x)
+  // Shorten the last segment by arrowhead size so arrow tip meets the line end
+  const shortenBy = 12
+  const shortened = {
+    x: last.x - Math.cos(angle) * shortenBy,
+    y: last.y - Math.sin(angle) * shortenBy,
+  }
+  const pathPts = [...svgPts.slice(0, -1), shortened]
+  const d = `M ${pathPts.map(p => `${p.x},${p.y}`).join(' L ')}`
   return { d, endAngle: angle, endPt: last }
 }
 
 // Build arrowhead polygon points at a given position and angle
-function arrowheadPoints(tip: { x: number; y: number }, angle: number, size: number = 18): string {
+function arrowheadPoints(tip: { x: number; y: number }, angle: number, size: number = 22): string {
+  // Pull the tip back slightly so the arrowhead sits at the end of the line
+  const halfAngle = 0.4 // radians, controls arrowhead width
   const left = {
-    x: tip.x - Math.cos(angle - 0.45) * size,
-    y: tip.y - Math.sin(angle - 0.45) * size,
+    x: tip.x - Math.cos(angle - halfAngle) * size,
+    y: tip.y - Math.sin(angle - halfAngle) * size,
   }
   const right = {
-    x: tip.x - Math.cos(angle + 0.45) * size,
-    y: tip.y - Math.sin(angle + 0.45) * size,
+    x: tip.x - Math.cos(angle + halfAngle) * size,
+    y: tip.y - Math.sin(angle + halfAngle) * size,
   }
   return `${tip.x},${tip.y} ${left.x},${left.y} ${right.x},${right.y}`
 }
@@ -920,18 +930,25 @@ export default function SetPieceEditor({
                   >
                     {/* Circle with team colors */}
                     <circle
-                      cx={cx} cy={cy} r="32"
+                      cx={cx} cy={cy} r="40"
                       fill={bgColor}
                       stroke={borderColor}
-                      strokeWidth="5"
+                      strokeWidth={p.isOpponent ? '4' : '5'}
                       opacity={isDragging ? 0.7 : 1}
                     />
+                    {/* Opponent cross-hatch pattern for distinction */}
+                    {p.isOpponent && (
+                      <>
+                        <line x1={cx - 14} y1={cy - 14} x2={cx + 14} y2={cy + 14} stroke="rgba(255,255,255,0.3)" strokeWidth="2" style={{ pointerEvents: 'none' }} />
+                        <line x1={cx + 14} y1={cy - 14} x2={cx - 14} y2={cy + 14} stroke="rgba(255,255,255,0.3)" strokeWidth="2" style={{ pointerEvents: 'none' }} />
+                      </>
+                    )}
                     {/* Jersey number */}
                     <text
-                      x={cx} y={cy + 8}
+                      x={cx} y={cy + 10}
                       textAnchor="middle"
                       fill={textColor}
-                      fontSize="26"
+                      fontSize="32"
                       fontWeight="bold"
                       fontFamily="sans-serif"
                       style={{ pointerEvents: 'none' }}
@@ -940,20 +957,20 @@ export default function SetPieceEditor({
                     </text>
                     {/* Player name label below */}
                     <rect
-                      x={cx - Math.min(p.playerName.length * 7 + 8, 100)}
-                      y={cy + 36}
-                      width={Math.min(p.playerName.length * 14 + 16, 200)}
-                      height="24"
-                      rx="4"
-                      fill="rgba(0,0,0,0.7)"
+                      x={cx - Math.min(p.playerName.length * 8 + 10, 120)}
+                      y={cy + 44}
+                      width={Math.min(p.playerName.length * 16 + 20, 240)}
+                      height="30"
+                      rx="6"
+                      fill="rgba(0,0,0,0.75)"
                       style={{ pointerEvents: 'none' }}
                     />
                     <text
-                      x={cx} y={cy + 53}
+                      x={cx} y={cy + 64}
                       textAnchor="middle"
                       fill="white"
-                      fontSize="16"
-                      fontWeight="500"
+                      fontSize="20"
+                      fontWeight="600"
                       fontFamily="sans-serif"
                       style={{ pointerEvents: 'none' }}
                     >
