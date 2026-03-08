@@ -130,6 +130,7 @@ export default function Navigation() {
     if (location.pathname.startsWith('/players')) {
       return [
         { icon: Users, label: 'Squad', path: '/players', active: location.pathname === '/players' },
+        { icon: Activity, label: 'Fitness', path: '/fitness', active: false },
         { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
       ]
     }
@@ -137,7 +138,8 @@ export default function Navigation() {
     if (location.pathname.startsWith('/training') || location.pathname.startsWith('/attendance')) {
       return [
         { icon: Dumbbell, label: 'Sessions', path: '/training', active: true },
-        { icon: CalendarDays, label: 'Calendar', path: '/training', active: false },
+        { icon: Activity, label: 'Fitness', path: '/fitness', active: false },
+        { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
       ]
     }
     // Fitness
@@ -201,7 +203,6 @@ export default function Navigation() {
               { to: '/results', matchPath: '/matches', label: 'MATCHES', tour: 'nav-matches' },
               { to: '/players', matchPath: '/players', label: 'PLAYERS' },
               { to: '/training', matchPath: '/training', label: 'TRAINING' },
-              { to: '/fitness', matchPath: '/fitness', label: 'FITNESS' },
               { to: '/reports/season', matchPath: '/reports', label: 'REPORTS', tour: 'nav-reports' },
               { to: '/analyst', matchPath: '/analyst', label: 'ANALYST', tour: 'nav-analyst' },
             ].map(({ to, matchPath, label, tour }) => (

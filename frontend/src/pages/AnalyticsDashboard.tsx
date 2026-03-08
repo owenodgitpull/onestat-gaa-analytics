@@ -29,8 +29,6 @@ import {
   LayoutGrid,
   ChevronRight,
   Sparkles,
-  Activity,
-  Upload,
 } from 'lucide-react'
 import KPILibraryModal from '@/components/dashboard/KPILibraryModal'
 import { KPI_REGISTRY, DEFAULT_VISIBLE_KPIS } from '@/config/kpiRegistry'
@@ -42,7 +40,7 @@ import MyChartsSection from '@/components/dashboard/MyChartsSection'
 import SortableSection from '@/components/dashboard/SortableSection'
 import { useDashboardLayout } from '@/hooks/useDashboardLayout'
 import type { ChartRenderProps } from '@/config/chartRegistry'
-import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem, SquadFitnessSummary } from '@/services/api'
+import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem } from '@/services/api'
 import type { Match } from '@/types'
 import { useTour } from '@/hooks/useTour'
 import { dashboardSteps } from '@/config/tourSteps'
@@ -100,7 +98,6 @@ export default function AnalyticsDashboard() {
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null)
   const [nextMatch, setNextMatch] = useState<Match | null>(null)
   const [liveMatch, setLiveMatch] = useState<Match | null>(null)
-  const [fitnessSummary, setFitnessSummary] = useState<SquadFitnessSummary | null>(null)
 
   const {
     layout,
@@ -215,7 +212,6 @@ export default function AnalyticsDashboard() {
     fetchDashboard()
     api.matches.getInProgress().then(m => setLiveMatch(m))
     api.matches.getNextScheduled().then(m => setNextMatch(m))
-    api.fitnessTests.getSquadSummary().then(s => setFitnessSummary(s)).catch(() => {})
   }, [])
 
   // Trigger tour on first visit after data loads
@@ -483,53 +479,6 @@ export default function AnalyticsDashboard() {
         />
       ) : (
         <>
-      {/* Squad Fitness Quick Card */}
-      <div
-        onClick={() => navigate('/fitness')}
-        className="glass-card p-4 cursor-pointer hover:bg-white/[0.08] transition-all group"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center">
-              <Activity size={20} className="text-emerald-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-white">Squad Fitness</h3>
-              {fitnessSummary && fitnessSummary.players_tested > 0 ? (
-                <p className="text-xs text-white/50">
-                  {fitnessSummary.players_tested}/{fitnessSummary.total_players} tested
-                  {fitnessSummary.last_test_date && ` · ${new Date(fitnessSummary.last_test_date).toLocaleDateString()}`}
-                  {fitnessSummary.concerns.length > 0 && (
-                    <span className="text-amber-400 ml-2">{fitnessSummary.concerns.length} concern{fitnessSummary.concerns.length !== 1 ? 's' : ''}</span>
-                  )}
-                </p>
-              ) : (
-                <p className="text-xs text-white/40">No fitness tests recorded yet</p>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {fitnessSummary && fitnessSummary.players_tested > 0 ? (
-              <div className="text-right">
-                <div className={`text-lg font-bold ${fitnessSummary.squad_fitness_score >= 70 ? 'text-emerald-400' : fitnessSummary.squad_fitness_score >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
-                  {fitnessSummary.squad_fitness_score.toFixed(0)}
-                </div>
-                <div className="text-[10px] text-white/30">Score</div>
-              </div>
-            ) : (
-              <button
-                onClick={e => { e.stopPropagation(); navigate('/fitness') }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 text-emerald-400 text-xs font-semibold hover:bg-emerald-600/30 transition-colors"
-              >
-                <Upload size={12} />
-                Upload
-              </button>
-            )}
-            <ChevronRight size={16} className="text-white/20 group-hover:text-white/50 transition-colors" />
-          </div>
-        </div>
-      </div>
-
       {/* 1. Season Overview — KPI Cards (always at top, not draggable) */}
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -561,7 +510,7 @@ export default function AnalyticsDashboard() {
                 const isFlipped = flippedCards.has(pairIdx)
                 const isPair = !!backCard
 
-                const renderFace = (card: KPICardItem, isFront: boolean) => {
+                const renderFace = (card: KPICardItem, _isFront: boolean) => {
                   const colorMap: Record<string, string> = {
                     green: 'text-emerald-400',
                     amber: 'text-amber-400',
@@ -580,15 +529,6 @@ export default function AnalyticsDashboard() {
                   return (
                     <div
                       className="glass-card p-5 absolute inset-0 flex flex-col justify-center"
-                      style={{
-                        backfaceVisibility: 'hidden',
-                        WebkitBackfaceVisibility: 'hidden',
-                        willChange: 'transform',
-                        ...(isFront
-                          ? { transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }
-                          : { transform: 'rotateY(180deg)', WebkitTransform: 'rotateY(180deg)' }
-                        ),
-                      }}
                     >
                       <button
                         className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors z-10"
@@ -654,7 +594,7 @@ export default function AnalyticsDashboard() {
                   <div
                     key={pairIdx}
                     className={isPair ? 'cursor-pointer' : ''}
-                    style={{ perspective: '1000px', WebkitPerspective: '1000px', height: '120px' }}
+                    style={{ position: 'relative', height: '120px' }}
                     onClick={() => {
                       if (isPair) {
                         // Pause auto-rotate for 15s on manual interaction
@@ -670,21 +610,26 @@ export default function AnalyticsDashboard() {
                       }
                     }}
                   >
-                    <div
-                      style={{
-                        transition: 'transform 0.6s ease-in-out, -webkit-transform 0.6s ease-in-out',
-                        transformStyle: 'preserve-3d',
-                        WebkitTransformStyle: 'preserve-3d',
-                        transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-                        WebkitTransform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-                        position: 'relative',
-                        width: '100%',
-                        height: '100%',
-                      }}
-                    >
+                    {/* Front face — crossfade instead of 3D flip for Safari compat */}
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      opacity: isFlipped ? 0 : 1,
+                      transition: 'opacity 0.4s ease-in-out',
+                      pointerEvents: isFlipped ? 'none' : 'auto',
+                    }}>
                       {renderFace(frontCard, true)}
-                      {backCard && renderFace(backCard, false)}
                     </div>
+                    {/* Back face */}
+                    {backCard && (
+                      <div style={{
+                        position: 'absolute', inset: 0,
+                        opacity: isFlipped ? 1 : 0,
+                        transition: 'opacity 0.4s ease-in-out',
+                        pointerEvents: isFlipped ? 'auto' : 'none',
+                      }}>
+                        {renderFace(backCard, false)}
+                      </div>
+                    )}
                   </div>
                 )
               })}

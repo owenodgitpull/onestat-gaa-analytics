@@ -75,7 +75,7 @@ async def create_fitness_test(
 ):
     """Create a single fitness test record."""
     # Verify player exists
-    player_query = select(Player).where(Player.id == data.player_id)
+    player_query = select(Player).where(Player.id == data.player_id).where(Player.club_id == user.club_id)
     result = await db.execute(player_query)
     player = result.scalar_one_or_none()
 
@@ -99,7 +99,7 @@ async def bulk_create_fitness_tests(
 ):
     """Bulk create fitness tests for a team testing day."""
     # Get all players for name lookup
-    players_query = select(Player)
+    players_query = select(Player).where(Player.club_id == user.club_id)
     players_result = await db.execute(players_query)
     players = {str(p.id): p.name for p in players_result.scalars().all()}
 
@@ -146,7 +146,7 @@ async def list_fitness_tests(
     """List fitness tests with optional filters."""
     query = select(FitnessTest, Player.name).join(
         Player, FitnessTest.player_id == Player.id
-    )
+    ).where(Player.club_id == user.club_id)
 
     if player_id:
         query = query.where(FitnessTest.player_id == player_id)
@@ -172,7 +172,7 @@ async def get_fitness_test(
     """Get a single fitness test by ID."""
     query = select(FitnessTest, Player.name).join(
         Player, FitnessTest.player_id == Player.id
-    ).where(FitnessTest.id == test_id)
+    ).where(FitnessTest.id == test_id).where(Player.club_id == user.club_id)
 
     result = await db.execute(query)
     record = result.first()
@@ -193,7 +193,7 @@ async def update_fitness_test(
     """Update a fitness test."""
     query = select(FitnessTest, Player.name).join(
         Player, FitnessTest.player_id == Player.id
-    ).where(FitnessTest.id == test_id)
+    ).where(FitnessTest.id == test_id).where(Player.club_id == user.club_id)
 
     result = await db.execute(query)
     record = result.first()
@@ -221,7 +221,9 @@ async def delete_fitness_test(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a fitness test."""
-    query = select(FitnessTest).where(FitnessTest.id == test_id)
+    query = select(FitnessTest).join(
+        Player, FitnessTest.player_id == Player.id
+    ).where(FitnessTest.id == test_id).where(Player.club_id == user.club_id)
     result = await db.execute(query)
     test = result.scalar_one_or_none()
 
@@ -246,7 +248,7 @@ async def get_player_fitness_history(
         Player, FitnessTest.player_id == Player.id
     ).where(
         FitnessTest.player_id == player_id
-    ).order_by(
+    ).where(Player.club_id == user.club_id).order_by(
         desc(FitnessTest.test_date)
     ).limit(limit)
 
@@ -267,7 +269,7 @@ async def get_player_latest_test(
         Player, FitnessTest.player_id == Player.id
     ).where(
         FitnessTest.player_id == player_id
-    ).order_by(
+    ).where(Player.club_id == user.club_id).order_by(
         desc(FitnessTest.test_date)
     ).limit(1)
 
@@ -288,7 +290,7 @@ async def get_player_test_comparison(
 ):
     """Compare a player's latest test to their previous test."""
     # Get player name
-    player_query = select(Player).where(Player.id == player_id)
+    player_query = select(Player).where(Player.id == player_id).where(Player.club_id == user.club_id)
     player_result = await db.execute(player_query)
     player = player_result.scalar_one_or_none()
 
@@ -377,10 +379,12 @@ async def get_squad_latest_tests(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the latest fitness test for each player."""
-    # Subquery to get the latest test date for each player
+    # Subquery to get the latest test date for each player (scoped to club)
     subquery = select(
         FitnessTest.player_id,
         func.max(FitnessTest.test_date).label('max_date')
+    ).join(Player, FitnessTest.player_id == Player.id).where(
+        Player.club_id == user.club_id
     ).group_by(FitnessTest.player_id).subquery()
 
     # Main query to get the tests
@@ -390,7 +394,7 @@ async def get_squad_latest_tests(
         subquery,
         (FitnessTest.player_id == subquery.c.player_id) &
         (FitnessTest.test_date == subquery.c.max_date)
-    ).order_by(Player.name)
+    ).where(Player.club_id == user.club_id).order_by(Player.name)
 
     result = await db.execute(query)
     records = result.all()
@@ -405,14 +409,16 @@ async def get_squad_fitness_summary(
 ):
     """Get aggregated squad fitness metrics and overview."""
     # Get total active players
-    players_query = select(func.count(Player.id)).where(Player.active == True)
+    players_query = select(func.count(Player.id)).where(Player.active == True).where(Player.club_id == user.club_id)
     players_result = await db.execute(players_query)
     total_players = players_result.scalar() or 0
 
-    # Get latest tests for each player
+    # Get latest tests for each player (scoped to club)
     subquery = select(
         FitnessTest.player_id,
         func.max(FitnessTest.test_date).label('max_date')
+    ).join(Player, FitnessTest.player_id == Player.id).where(
+        Player.club_id == user.club_id
     ).group_by(FitnessTest.player_id).subquery()
 
     query = select(FitnessTest, Player.name).join(
@@ -421,7 +427,7 @@ async def get_squad_fitness_summary(
         subquery,
         (FitnessTest.player_id == subquery.c.player_id) &
         (FitnessTest.test_date == subquery.c.max_date)
-    )
+    ).where(Player.club_id == user.club_id)
 
     result = await db.execute(query)
     records = result.all()
@@ -537,7 +543,7 @@ async def get_squad_fitness_cards(
 ):
     """Get fitness status cards for all active players."""
     # Get all active players
-    players_query = select(Player).where(Player.active == True).order_by(Player.name)
+    players_query = select(Player).where(Player.active == True).where(Player.club_id == user.club_id).order_by(Player.name)
     players_result = await db.execute(players_query)
     players = players_result.scalars().all()
 
@@ -631,7 +637,7 @@ async def analyze_fitness_test(
     # Get the test with player info
     query = select(FitnessTest, Player.name).join(
         Player, FitnessTest.player_id == Player.id
-    ).where(FitnessTest.id == test_id)
+    ).where(FitnessTest.id == test_id).where(Player.club_id == user.club_id)
 
     result = await db.execute(query)
     record = result.first()

@@ -14,7 +14,7 @@ import {
   Bot,
   ChevronRight
 } from 'lucide-react'
-import { api, SquadHealthSummary, PlayerWorkload } from '@/services/api'
+import { api, SquadHealthSummary, PlayerWorkload, SquadFitnessSummary } from '@/services/api'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { renderAnalysisText } from '@/utils/renderAnalysisText'
 import { Link } from 'react-router-dom'
@@ -29,6 +29,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [aiSummary, setAiSummary] = useState<string | null>(null)
   const [showAllAlerts, setShowAllAlerts] = useState(false)
+  const [fitnessSummary, setFitnessSummary] = useState<SquadFitnessSummary | null>(null)
 
   const fetchHealthData = async () => {
     setLoading(true)
@@ -40,6 +41,8 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
       ])
       setHealthData(data)
       setAiSummary(aiResult.summary)
+      // Fetch fitness summary independently
+      api.fitnessTests.getSquadSummary().then(s => setFitnessSummary(s)).catch(() => {})
     } catch (err) {
       setError('Failed to load squad health data')
       console.error(err)
@@ -139,6 +142,43 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Squad Fitness Card */}
+      <Link
+        to="/fitness"
+        className="glass-card p-4 flex items-center justify-between hover:bg-white/[0.08] transition-all group block"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center">
+            <Activity size={20} className="text-emerald-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-white">Squad Fitness Tests</h3>
+            {fitnessSummary && fitnessSummary.players_tested > 0 ? (
+              <p className="text-xs text-white/50">
+                {fitnessSummary.players_tested}/{fitnessSummary.total_players} tested
+                {fitnessSummary.last_test_date && ` · ${new Date(fitnessSummary.last_test_date).toLocaleDateString()}`}
+                {fitnessSummary.concerns.length > 0 && (
+                  <span className="text-amber-400 ml-2">{fitnessSummary.concerns.length} concern{fitnessSummary.concerns.length !== 1 ? 's' : ''}</span>
+                )}
+              </p>
+            ) : (
+              <p className="text-xs text-white/40">Upload fitness tests to track squad conditioning</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {fitnessSummary && fitnessSummary.players_tested > 0 && (
+            <div className="text-right">
+              <div className={`text-lg font-bold ${fitnessSummary.squad_fitness_score >= 70 ? 'text-emerald-400' : fitnessSummary.squad_fitness_score >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                {fitnessSummary.squad_fitness_score.toFixed(0)}
+              </div>
+              <div className="text-[10px] text-white/30">Score</div>
+            </div>
+          )}
+          <ChevronRight size={16} className="text-white/20 group-hover:text-white/50 transition-colors" />
+        </div>
+      </Link>
 
       {/* AI Summary */}
       {aiSummary && (

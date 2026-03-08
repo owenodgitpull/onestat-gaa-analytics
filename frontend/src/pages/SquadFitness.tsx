@@ -53,11 +53,11 @@ export default function SquadFitness() {
     setLoading(true)
     try {
       const [summaryData, cardsData] = await Promise.all([
-        api.fitnessTests.getSquadSummary(),
-        api.fitnessTests.getSquadCards(),
+        api.fitnessTests.getSquadSummary().catch(() => null),
+        api.fitnessTests.getSquadCards().catch(() => []),
       ])
-      setSummary(summaryData)
-      setCards(cardsData)
+      if (summaryData) setSummary(summaryData)
+      setCards(cardsData as PlayerFitnessCard[])
     } catch (err) {
       console.error('Failed to load fitness data:', err)
     } finally {
