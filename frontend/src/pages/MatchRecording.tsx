@@ -1989,13 +1989,17 @@ export default function MatchRecording() {
     if (y < 33) side = facingRight ? ', left side' : ', right side'
     else if (y > 67) side = facingRight ? ', right side' : ', left side'
 
+    // Use carrier player name if one is selected, otherwise team name
+    const carrierPlayer = activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId) : null
+    const displayName = isOwn && carrierPlayer ? carrierPlayer.playerName : (isOwn ? clubName : teamName)
+
     let text: string
     if (isOwn) {
-      if (attackingProgress >= 78) text = `${clubName} inside the 21m line${side}`
-      else if (attackingProgress >= 55) text = `${clubName} inside the 45m line${side}`
-      else if (attackingProgress >= 45) text = `${clubName} around midfield${side}`
-      else if (attackingProgress >= 22) text = `${clubName} in their own half${side}`
-      else text = `${clubName} deep in their own half${side}`
+      if (attackingProgress >= 78) text = `${displayName} inside the 21m line${side}`
+      else if (attackingProgress >= 55) text = `${displayName} inside the 45m line${side}`
+      else if (attackingProgress >= 45) text = `${displayName} around midfield${side}`
+      else if (attackingProgress >= 22) text = `${displayName} in their own half${side}`
+      else text = `${displayName} deep in their own half${side}`
     } else {
       if (attackingProgress <= 22) text = `${teamName} inside our 21m line${side}`
       else if (attackingProgress <= 45) text = `${teamName} inside our 45m line${side}`
@@ -2220,21 +2224,21 @@ export default function MatchRecording() {
                   carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
                   svgOverlay={
                     (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
                         <div style={{
                           display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '8px 18px', borderRadius: 12,
-                          background: 'rgba(0,0,0,0.7)',
+                          padding: '10px 20px', borderRadius: 14,
+                          background: 'rgba(0,0,0,0.75)',
                           border: `2px solid ${ballPosition.team === PossessionTeam.OWN ? 'rgba(16,185,129,0.5)' : 'rgba(249,115,22,0.4)'}`,
                         }}
                         data-tour="possession-indicator"
                         >
                           <div style={{
-                            width: 12, height: 12, borderRadius: '50%',
+                            width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
                             background: ballPosition.team === PossessionTeam.OWN ? '#34d399' : '#fb923c',
                           }} />
                           <span style={{
-                            fontSize: 26, fontWeight: 700, whiteSpace: 'nowrap',
+                            fontSize: 30, fontWeight: 700, whiteSpace: 'nowrap',
                             color: ballPosition.team === PossessionTeam.OWN ? '#6ee7b7' : '#fdba74',
                           }}>
                             {statusLabel.text}
@@ -2253,30 +2257,30 @@ export default function MatchRecording() {
                                 setBallPosition(prev => ({ ...prev, team: newTeam }))
                               }}
                               style={{
-                                padding: 10, borderRadius: 10,
-                                background: 'rgba(0,0,0,0.7)',
-                                border: '2px solid rgba(255,255,255,0.2)',
-                                color: 'rgba(255,255,255,0.6)',
+                                padding: 14, borderRadius: 12,
+                                background: 'rgba(0,0,0,0.75)',
+                                border: '2px solid rgba(255,255,255,0.25)',
+                                color: 'rgba(255,255,255,0.7)',
                                 cursor: 'pointer',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                               }}
                               title="Swap possession"
                             >
-                              <ArrowLeftRight size={22} />
+                              <ArrowLeftRight size={28} />
                             </button>
                             <button
                               onClick={() => setIsStopped(prev => !prev)}
                               style={{
-                                padding: 10, borderRadius: 10,
-                                background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.7)',
-                                border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.2)'}`,
-                                color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.6)',
+                                padding: 14, borderRadius: 12,
+                                background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.75)',
+                                border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.25)'}`,
+                                color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
                                 cursor: 'pointer',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                               }}
                               title={isStopped ? 'Resume play' : 'Stoppage'}
                             >
-                              {isStopped ? <Play size={22} /> : <Pause size={22} />}
+                              {isStopped ? <Play size={28} /> : <Pause size={28} />}
                             </button>
                           </>
                         )}

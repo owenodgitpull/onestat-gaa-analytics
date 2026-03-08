@@ -610,11 +610,12 @@ export default function AnalyticsDashboard() {
                       }
                     }}
                   >
-                    {/* Front face — crossfade instead of 3D flip for Safari compat */}
+                    {/* Front face — crossfade with slide for visible transition */}
                     <div style={{
                       position: 'absolute', inset: 0,
                       opacity: isFlipped ? 0 : 1,
-                      transition: 'opacity 0.4s ease-in-out',
+                      transform: isFlipped ? 'translateY(-8px) scale(0.97)' : 'translateY(0) scale(1)',
+                      transition: 'opacity 0.4s ease-in-out, transform 0.4s ease-in-out',
                       pointerEvents: isFlipped ? 'none' : 'auto',
                     }}>
                       {renderFace(frontCard, true)}
@@ -624,7 +625,8 @@ export default function AnalyticsDashboard() {
                       <div style={{
                         position: 'absolute', inset: 0,
                         opacity: isFlipped ? 1 : 0,
-                        transition: 'opacity 0.4s ease-in-out',
+                        transform: isFlipped ? 'translateY(0) scale(1)' : 'translateY(8px) scale(0.97)',
+                        transition: 'opacity 0.4s ease-in-out, transform 0.4s ease-in-out',
                         pointerEvents: isFlipped ? 'auto' : 'none',
                       }}>
                         {renderFace(backCard, false)}
