@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import GAAPitch from '@/components/GAAPitch'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
-import { Clock, Minimize2, ArrowLeftRight } from 'lucide-react'
+import { Clock, Minimize2, ArrowLeftRight, Pause, Play } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import { useClubName } from '@/contexts/ClubContext'
@@ -69,6 +69,8 @@ interface FullscreenPitchModeProps {
   activeCarrierId?: string | null
   onCarrierSelect?: (playerId: string, jerseyNumber: number | null) => void
   carrierJerseyNumber?: number | null
+  isStopped?: boolean
+  onToggleStoppage?: () => void
 }
 
 export default function FullscreenPitchMode({
@@ -119,6 +121,8 @@ export default function FullscreenPitchMode({
   activeCarrierId = null,
   onCarrierSelect,
   carrierJerseyNumber,
+  isStopped = false,
+  onToggleStoppage,
 }: FullscreenPitchModeProps) {
   const clubName = useClubName()
   const [toastVisible, setToastVisible] = useState(false)
@@ -299,6 +303,22 @@ export default function FullscreenPitchMode({
         </div>
       )}
 
+      {/* Stoppage banner */}
+      {isStopped && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 flex items-center justify-center gap-3">
+          <Pause size={14} className="text-amber-400" />
+          <span className="text-sm font-semibold text-amber-300">Stoppage — timer paused</span>
+          {onToggleStoppage && (
+            <button
+              onClick={onToggleStoppage}
+              className="px-4 py-1.5 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-sm font-semibold hover:bg-white/20 transition-all flex items-center gap-1.5"
+            >
+              <Play size={14} /> Resume
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Black card sin bin timers */}
       {blackCardTimers.length > 0 && (
         <div className="flex-shrink-0 flex items-center justify-center gap-2 px-4 py-1 bg-slate-900/50 border-b border-white/5">
@@ -343,20 +363,38 @@ export default function FullscreenPitchMode({
                   </span>
                 </div>
                 {onSwapPossession && !pendingFreeKick && !pending45 && !pendingKickoutPosition && !selectingFoulPlayer && (
-                  <button
-                    onClick={onSwapPossession}
-                    style={{
-                      padding: 10, borderRadius: 10,
-                      background: 'rgba(0,0,0,0.7)',
-                      border: '2px solid rgba(255,255,255,0.2)',
-                      color: 'rgba(255,255,255,0.6)',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                    title="Swap possession"
-                  >
-                    <ArrowLeftRight size={22} />
-                  </button>
+                  <>
+                    <button
+                      onClick={onSwapPossession}
+                      style={{
+                        padding: 10, borderRadius: 10,
+                        background: 'rgba(0,0,0,0.7)',
+                        border: '2px solid rgba(255,255,255,0.2)',
+                        color: 'rgba(255,255,255,0.6)',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                      title="Swap possession"
+                    >
+                      <ArrowLeftRight size={22} />
+                    </button>
+                    {onToggleStoppage && (
+                      <button
+                        onClick={onToggleStoppage}
+                        style={{
+                          padding: 10, borderRadius: 10,
+                          background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.7)',
+                          border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.2)'}`,
+                          color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.6)',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                        title={isStopped ? 'Resume play' : 'Stoppage'}
+                      >
+                        {isStopped ? <Play size={22} /> : <Pause size={22} />}
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             ) : undefined

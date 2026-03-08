@@ -39,7 +39,8 @@ import {
   Plus,
   Maximize,
   Target,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Pause
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -125,6 +126,7 @@ export default function MatchRecording() {
   const [weatherOverride, setWeatherOverride] = useState<{ condition: string | null; temp: number | null } | null>(null)
   const [isWeatherPickerOpen, setIsWeatherPickerOpen] = useState(false)
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
+  const [isStopped, setIsStopped] = useState(false)
 
   // Guided tour
   const { startTour: startMatchTour } = useTour('matchRecording', matchRecordingSteps)
@@ -353,8 +355,9 @@ export default function MatchRecording() {
 
   // Timer effect - uses DEV_SPEED_MULTIPLIER for faster testing
   // At 10x speed: 1 real second = 10 match seconds, so 3 real mins = 30 match mins
+  // Pauses during stoppages
   useEffect(() => {
-    if (matchPhase === 'first_half' || matchPhase === 'second_half') {
+    if ((matchPhase === 'first_half' || matchPhase === 'second_half') && !isStopped) {
       const intervalMs = Math.floor(1000 / DEV_SPEED_MULTIPLIER)
       const interval = setInterval(() => {
         setSeconds((prev) => {
@@ -374,7 +377,7 @@ export default function MatchRecording() {
       }, intervalMs)
       return () => clearInterval(interval)
     }
-  }, [matchPhase])
+  }, [matchPhase, isStopped])
 
   // Calculate real-time stats from backend - now using MatchStats directly
   // Backend calculates scores as (goals*3 + points), so we need to reverse-engineer for display
@@ -875,6 +878,12 @@ export default function MatchRecording() {
       return
     }
 
+    // Block ball movement during stoppage
+    if (isStopped) {
+      console.log('Ball movement blocked - stoppage in progress')
+      return
+    }
+
     // Only record if match is in progress (pitch stays active at half-time for late data capture)
     if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished') {
       return
@@ -917,7 +926,7 @@ export default function MatchRecording() {
 
   // Batch-record drag waypoints as possession events (single bulk request on drag-end)
   const handleDragPath = (waypoints: Array<{ x: number; y: number }>) => {
-    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished') return
+    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || isStopped) return
     const team = ballPosition.team === PossessionTeam.OWN ? 'own' : 'opponent'
     api.possession.bulkCreate({
       match_id: matchId,
@@ -1847,7 +1856,7 @@ export default function MatchRecording() {
   const endFirstHalf = async () => {
     if (!matchId) return
 
-    // Clear any pending kickout/free/foul state from last play of the half
+    // Clear any pending kickout/free/foul/stoppage state from last play of the half
     setAwaitingKickout(false)
     setPendingKickoutEvent(null)
     setPendingFreeKick(null)
@@ -1855,6 +1864,7 @@ export default function MatchRecording() {
     setSelectingFoulPlayer(false)
     setPendingFoul(null)
     setActiveKickoutTab('scoring')
+    setIsStopped(false)
 
     // Pause the timer
     setMatchPhase('half_time')
@@ -1932,6 +1942,9 @@ export default function MatchRecording() {
     }
 
     // Special states take priority
+    if (isStopped) {
+      return { text: 'Stoppage', subtext: 'Tap play to resume', bg: 'from-amber-600/20 to-yellow-600/20 border-amber-500/40', accent: 'text-amber-400' }
+    }
     if (selectingFoulPlayer) {
       return { text: 'Select Player Who Fouled', subtext: 'Tap the player who committed the foul', bg: 'from-red-600/20 to-rose-600/20 border-red-500/40', accent: 'text-red-400' }
     }
@@ -2027,8 +2040,12 @@ export default function MatchRecording() {
                 </div>
                 {matchPhase !== 'not_started' && (
                   <div className="flex items-center gap-2">
-                    <div className="inline-flex items-center space-x-3 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30 animate-pulse">
-                      <Clock size={20} className="text-emerald-400" />
+                    <div className={`inline-flex items-center space-x-3 px-4 py-2 rounded-xl ${
+                      isStopped
+                        ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40'
+                        : 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30 animate-pulse'
+                    }`}>
+                      {isStopped ? <Pause size={20} className="text-amber-400" /> : <Clock size={20} className="text-emerald-400" />}
                       <span className="font-mono text-2xl font-bold text-white">{formatTime()}</span>
                     </div>
                     {IS_DEV_SPEED && (
@@ -2200,28 +2217,44 @@ export default function MatchRecording() {
                           </span>
                         </div>
                         {!awaitingKickout && !pendingFreeKick && !pending45 && !selectingFoulPlayer && (
-                          <button
-                            onClick={async () => {
-                              // End carrier segment on possession swap
-                              if (activeCarrierId) {
-                                await playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y)
-                                setActiveCarrierId(null)
-                              }
-                              const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
-                              setBallPosition(prev => ({ ...prev, team: newTeam }))
-                            }}
-                            style={{
-                              padding: 10, borderRadius: 10,
-                              background: 'rgba(0,0,0,0.7)',
-                              border: '2px solid rgba(255,255,255,0.2)',
-                              color: 'rgba(255,255,255,0.6)',
-                              cursor: 'pointer',
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            }}
-                            title="Swap possession"
-                          >
-                            <ArrowLeftRight size={22} />
-                          </button>
+                          <>
+                            <button
+                              onClick={async () => {
+                                // End carrier segment on possession swap
+                                if (activeCarrierId) {
+                                  await playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y)
+                                  setActiveCarrierId(null)
+                                }
+                                const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
+                                setBallPosition(prev => ({ ...prev, team: newTeam }))
+                              }}
+                              style={{
+                                padding: 10, borderRadius: 10,
+                                background: 'rgba(0,0,0,0.7)',
+                                border: '2px solid rgba(255,255,255,0.2)',
+                                color: 'rgba(255,255,255,0.6)',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                              title="Swap possession"
+                            >
+                              <ArrowLeftRight size={22} />
+                            </button>
+                            <button
+                              onClick={() => setIsStopped(prev => !prev)}
+                              style={{
+                                padding: 10, borderRadius: 10,
+                                background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.7)',
+                                border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.2)'}`,
+                                color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.6)',
+                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                              title={isStopped ? 'Resume play' : 'Stoppage'}
+                            >
+                              {isStopped ? <Play size={22} /> : <Pause size={22} />}
+                            </button>
+                          </>
                         )}
                       </div>
                     ) : undefined
@@ -2654,6 +2687,8 @@ export default function MatchRecording() {
         fullTimeReached={fullTimeReached}
         blackCardTimers={blackCardTimers}
         onRemoveBlackCard={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))}
+        isStopped={isStopped}
+        onToggleStoppage={() => setIsStopped(prev => !prev)}
       />
 
       {/* Formation Snapshot Mode */}

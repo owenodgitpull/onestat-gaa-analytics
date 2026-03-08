@@ -417,13 +417,14 @@ export default function AnalyticsDashboard() {
           ) : nextMatch ? (
             <div
               onClick={() => navigate(`/match-prep/${nextMatch.id}`)}
-              className="bg-white/10 rounded-xl px-4 py-2 cursor-pointer hover:bg-white/15 border border-white/10 transition-all flex items-baseline gap-2"
+              className="bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 rounded-xl px-4 py-2 cursor-pointer hover:from-emerald-600/30 hover:to-cyan-600/30 border border-emerald-500/30 hover:border-emerald-500/50 transition-all flex items-center gap-2 group"
             >
-              <Calendar size={14} className="text-white/50 flex-shrink-0 relative top-[2px]" />
-              <span className="text-xs text-white/50 font-semibold uppercase tracking-wide">Next Match</span>
+              <Calendar size={14} className="text-emerald-400 flex-shrink-0" />
+              <span className="text-xs text-emerald-400/80 font-semibold uppercase tracking-wide">Next</span>
               <span className="text-sm font-bold text-white whitespace-nowrap">
                 {nextMatch.opponent} ({nextMatch.venue === 'home' ? 'H' : nextMatch.venue === 'away' ? 'A' : 'N'})
               </span>
+              <ChevronRight size={16} className="text-emerald-400/60 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all ml-auto" />
             </div>
           ) : (
             <div className="bg-white/10 rounded-xl px-4 py-2 border border-white/10 flex items-center gap-2">
