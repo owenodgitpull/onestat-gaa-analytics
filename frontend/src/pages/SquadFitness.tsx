@@ -21,9 +21,25 @@ import {
   ArrowDownRight,
 } from 'lucide-react'
 import { api, type SquadFitnessSummary, type PlayerFitnessCard, type FitnessTestCreate, type FitnessTest, type FitnessTestComparison } from '../services/api'
-import type { Player } from '../types'
 
-type MetricKey = 'weight_kg' | 'body_fat_percentage' | 'ktw_right_cm' | 'ktw_left_cm' | 'overhead_squat_score' | 'cmj_cm' | 'squat_jump_cm' | 'press_ups_60s' | 'pull_ups_60s' | 'sprint_0_10m_sec' | 'bronco_test_min'
+type MetricKey = 'weight_kg' | 'body_fat_percentage' | 'ktw_right_cm' | 'ktw_left_cm' | 'overhead_squat_score' | 'cmj_cm' | 'squat_jump_cm' | 'press_ups_60s' | 'pull_ups_60s' | 'sprint_0_10m_sec' | 'bronco_test_min' | 'eur' | 'mas_100_percent' | 'mas_120_percent'
+
+const METRIC_LABELS: Record<string, { label: string; shortLabel: string; unit: string }> = {
+  weight_kg: { label: 'Weight', shortLabel: 'Wt', unit: 'kg' },
+  body_fat_percentage: { label: 'Body Fat', shortLabel: 'BF%', unit: '%' },
+  ktw_right_cm: { label: 'KTW Right', shortLabel: 'KTW-R', unit: 'cm' },
+  ktw_left_cm: { label: 'KTW Left', shortLabel: 'KTW-L', unit: 'cm' },
+  overhead_squat_score: { label: 'OH Squat', shortLabel: 'OHS', unit: '/3' },
+  cmj_cm: { label: 'CMJ', shortLabel: 'CMJ', unit: 'cm' },
+  squat_jump_cm: { label: 'Squat Jump', shortLabel: 'SJ', unit: 'cm' },
+  press_ups_60s: { label: 'Press-ups', shortLabel: 'PU', unit: '' },
+  pull_ups_60s: { label: 'Pull-ups', shortLabel: 'Pull', unit: '' },
+  sprint_0_10m_sec: { label: '0-10m Sprint', shortLabel: '10m', unit: 's' },
+  bronco_test_min: { label: 'Bronco', shortLabel: 'Bronco', unit: 'min' },
+  eur: { label: 'EUR', shortLabel: 'EUR', unit: '' },
+  mas_100_percent: { label: 'MAS 100%', shortLabel: 'MAS', unit: 'm/s' },
+  mas_120_percent: { label: 'MAS 120%', shortLabel: 'MAS120', unit: 'm/s' },
+}
 
 const METRIC_COLUMNS: { key: MetricKey; label: string; shortLabel: string; unit: string; lowerIsBetter?: boolean }[] = [
   { key: 'weight_kg', label: 'Weight', shortLabel: 'Wt', unit: 'kg' },
@@ -39,32 +55,13 @@ const METRIC_COLUMNS: { key: MetricKey; label: string; shortLabel: string; unit:
   { key: 'body_fat_percentage', label: 'Body Fat', shortLabel: 'BF%', unit: '%', lowerIsBetter: true },
 ]
 
-// CSV column name aliases → our metric keys
-const CSV_ALIASES: Record<string, MetricKey> = {
-  'weight': 'weight_kg', 'weight_kg': 'weight_kg', 'weight (kg)': 'weight_kg', 'wt': 'weight_kg',
-  'cmj': 'cmj_cm', 'cmj_cm': 'cmj_cm', 'cmj (cm)': 'cmj_cm', 'counter movement jump': 'cmj_cm',
-  'squat jump': 'squat_jump_cm', 'squat_jump_cm': 'squat_jump_cm', 'sj': 'squat_jump_cm', 'squat jump (cm)': 'squat_jump_cm',
-  'sprint': 'sprint_0_10m_sec', 'sprint_0_10m_sec': 'sprint_0_10m_sec', '10m': 'sprint_0_10m_sec', '0-10m': 'sprint_0_10m_sec', '10m sprint': 'sprint_0_10m_sec', 'sprint (s)': 'sprint_0_10m_sec', '0-10m sprint': 'sprint_0_10m_sec',
-  'bronco': 'bronco_test_min', 'bronco_test_min': 'bronco_test_min', 'bronco test': 'bronco_test_min', 'bronco (min)': 'bronco_test_min',
-  'press ups': 'press_ups_60s', 'press_ups_60s': 'press_ups_60s', 'press-ups': 'press_ups_60s', 'pressups': 'press_ups_60s', 'push ups': 'press_ups_60s', 'press ups (60s)': 'press_ups_60s',
-  'pull ups': 'pull_ups_60s', 'pull_ups_60s': 'pull_ups_60s', 'pull-ups': 'pull_ups_60s', 'pullups': 'pull_ups_60s', 'pull ups (60s)': 'pull_ups_60s',
-  'ktw right': 'ktw_right_cm', 'ktw_right_cm': 'ktw_right_cm', 'ktw r': 'ktw_right_cm', 'ktw right (cm)': 'ktw_right_cm',
-  'ktw left': 'ktw_left_cm', 'ktw_left_cm': 'ktw_left_cm', 'ktw l': 'ktw_left_cm', 'ktw left (cm)': 'ktw_left_cm',
-  'overhead squat': 'overhead_squat_score', 'overhead_squat_score': 'overhead_squat_score', 'oh squat': 'overhead_squat_score', 'ohs': 'overhead_squat_score',
-  'body fat': 'body_fat_percentage', 'body_fat_percentage': 'body_fat_percentage', 'bf%': 'body_fat_percentage', 'body fat %': 'body_fat_percentage', 'body fat (%)': 'body_fat_percentage',
-}
-
-function parseCsvLine(line: string): string[] {
-  const result: string[] = []
-  let current = ''
-  let inQuotes = false
-  for (const ch of line) {
-    if (ch === '"') { inQuotes = !inQuotes; continue }
-    if (ch === ',' && !inQuotes) { result.push(current.trim()); current = ''; continue }
-    current += ch
-  }
-  result.push(current.trim())
-  return result
+type ImportSession = {
+  test_date: string
+  players: Array<{
+    name: string
+    matched_player: { id: string; name: string } | null
+    metrics: Record<string, number>
+  }>
 }
 
 export default function SquadFitness() {
@@ -74,14 +71,14 @@ export default function SquadFitness() {
   const [sessions, setSessions] = useState<Array<{ test_date: string; player_count: number }>>([])
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
-  const [players, setPlayers] = useState<Player[]>([])
   const [testDate, setTestDate] = useState(() => new Date().toISOString().split('T')[0])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [filterStatus, setFilterStatus] = useState<string>('all')
   const [analyzingId, setAnalyzingId] = useState<string | null>(null)
-  const [csvPreview, setCsvPreview] = useState<{ headers: string[]; mappedHeaders: (MetricKey | 'name' | null)[]; rows: string[][]; playerMatches: (Player | null)[] } | null>(null)
+  const [importPreview, setImportPreview] = useState<ImportSession[] | null>(null)
+  const [importing, setImporting] = useState(false)
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
   const [sessionTests, setSessionTests] = useState<FitnessTest[]>([])
   const [sessionLoading, setSessionLoading] = useState(false)
@@ -131,98 +128,87 @@ export default function SquadFitness() {
     loadComparisons()
   }, [cards, sessions.length])
 
-  const openUploadForm = async () => {
-    try {
-      const allPlayers = await api.players.getAll()
-      setPlayers(allPlayers.filter((p: Player) => p.active).sort((a: Player, b: Player) => a.name.localeCompare(b.name)))
-      setCsvPreview(null)
-      setSaveError(null)
-      setSaveSuccess(false)
-      setShowUpload(true)
-    } catch (err) {
-      console.error('Failed to load players:', err)
-    }
+  const openUploadForm = () => {
+    setImportPreview(null)
+    setImporting(false)
+    setSaveError(null)
+    setSaveSuccess(false)
+    setShowUpload(true)
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const text = event.target?.result as string
-      if (!text) return
-
-      const lines = text.split(/\r?\n/).filter(l => l.trim())
-      if (lines.length < 2) { setSaveError('CSV file must have a header row and at least one data row.'); return }
-
-      const headers = parseCsvLine(lines[0])
-      const rows = lines.slice(1).map(parseCsvLine)
-
-      // Map headers to our metric keys
-      const mappedHeaders = headers.map(h => {
-        const lower = h.toLowerCase().trim()
-        if (lower === 'name' || lower === 'player' || lower === 'player name') return 'name' as const
-        return CSV_ALIASES[lower] || null
-      })
-
-      const nameIdx = mappedHeaders.indexOf('name')
-      if (nameIdx === -1) {
-        setSaveError('CSV must have a "Name" or "Player" column.')
-        return
-      }
-
-      // Try to match each row's name to a player
-      const playerMatches = rows.map(row => {
-        const csvName = (row[nameIdx] || '').toLowerCase().trim()
-        if (!csvName) return null
-        // Exact match first, then partial
-        return players.find(p => p.name.toLowerCase() === csvName) ||
-          players.find(p => csvName.includes(p.name.toLowerCase().split(' ').pop()!) && csvName.includes(p.name.toLowerCase().split(' ')[0])) ||
-          null
-      })
-
-      setCsvPreview({ headers, mappedHeaders, rows, playerMatches })
-      setSaveError(null)
-    }
-    reader.readAsText(file)
-    // Reset input so same file can be re-selected
-    e.target.value = ''
+    e.target.value = '' // Reset so same file can be re-selected
+    await processFile(file)
   }
 
-  const handleSaveCsv = async () => {
-    if (!csvPreview) return
+  const processFile = async (file: File) => {
+    setImporting(true)
+    setSaveError(null)
+    setImportPreview(null)
+
+    try {
+      const result = await api.fitnessTests.importFile(file, testDate)
+      if (!result.test_sessions || result.test_sessions.length === 0) {
+        setSaveError('No fitness data found in this file.')
+        return
+      }
+      setImportPreview(result.test_sessions)
+    } catch (err: any) {
+      setSaveError(err.message || 'Failed to process file. Please try a different format.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    const file = e.dataTransfer.files[0]
+    if (file) processFile(file)
+  }
+
+  const handleSaveImport = async () => {
+    if (!importPreview) return
     setSaving(true)
     setSaveError(null)
 
-    const tests: FitnessTestCreate[] = []
-    for (let i = 0; i < csvPreview.rows.length; i++) {
-      const player = csvPreview.playerMatches[i]
-      if (!player) continue
-
-      const row = csvPreview.rows[i]
-      const test: FitnessTestCreate = { player_id: player.id, test_date: testDate }
-      let hasValue = false
-
-      csvPreview.mappedHeaders.forEach((key, colIdx) => {
-        if (!key || key === 'name') return
-        const val = row[colIdx]
-        if (val && val.trim()) {
-          const num = parseFloat(val)
-          if (!isNaN(num)) {
-            ;(test as unknown as Record<string, unknown>)[key] = num
-            hasValue = true
-          }
-        }
-      })
-
-      if (hasValue) tests.push(test)
-    }
-
-    if (tests.length === 0) { setSaveError('No valid data found. Check player name matching.'); setSaving(false); return }
+    let totalSaved = 0
 
     try {
-      await api.fitnessTests.bulkCreate(testDate, tests)
+      for (const session of importPreview) {
+        const tests: FitnessTestCreate[] = []
+
+        for (const player of session.players) {
+          if (!player.matched_player) continue
+          if (!player.metrics || Object.keys(player.metrics).length === 0) continue
+
+          const test: FitnessTestCreate = {
+            player_id: player.matched_player.id,
+            test_date: session.test_date,
+          }
+
+          for (const [key, val] of Object.entries(player.metrics)) {
+            if (typeof val === 'number') {
+              ;(test as unknown as Record<string, unknown>)[key] = val
+            }
+          }
+
+          tests.push(test)
+        }
+
+        if (tests.length > 0) {
+          await api.fitnessTests.bulkCreate(session.test_date, tests)
+          totalSaved += tests.length
+        }
+      }
+
+      if (totalSaved === 0) {
+        setSaveError('No matched players with data to save.')
+        setSaving(false)
+        return
+      }
+
       setSaveSuccess(true)
       await fetchData()
       setTimeout(() => { setShowUpload(false); setSaveSuccess(false) }, 1500)
@@ -321,7 +307,7 @@ export default function SquadFitness() {
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all"
             style={{ background: 'var(--gradient-primary)', color: '#0a1a10', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3)' }}>
             <Upload size={16} />
-            Upload CSV
+            Import Tests
           </button>
         </div>
       </div>
@@ -363,13 +349,13 @@ export default function SquadFitness() {
           <Activity size={48} className="mx-auto text-white/15 mb-4" />
           <h3 className="text-lg font-bold text-white mb-2">No Fitness Tests Yet</h3>
           <p className="text-white/50 text-sm mb-6 max-w-md mx-auto">
-            Upload a CSV with your squad fitness test results to see scores, trends, and AI analysis.
+            Import your squad fitness test results from any file to see scores, trends, and AI analysis.
           </p>
           <button onClick={openUploadForm}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold transition-all"
             style={{ background: 'var(--gradient-primary)', color: '#0a1a10', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3)' }}>
             <Upload size={16} />
-            Upload First Fitness Test
+            Import First Fitness Test
           </button>
         </div>
       )}
@@ -557,19 +543,19 @@ export default function SquadFitness() {
         </>
       )}
 
-      {/* Upload Modal — CSV file upload */}
+      {/* Upload Modal — Any file import */}
       {showUpload && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !saving && setShowUpload(false)} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !saving && !importing && setShowUpload(false)} />
           <div className="relative w-full max-w-3xl max-h-[90vh] bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 flex-shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                   <Dumbbell size={20} className="text-emerald-400" />
-                  Upload Fitness Tests
+                  Import Fitness Tests
                 </h2>
-                <p className="text-xs text-white/50 mt-0.5">Upload a CSV file with player names and test metrics.</p>
+                <p className="text-xs text-white/50 mt-0.5">Upload any file — AI will extract the fitness data.</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
@@ -585,96 +571,107 @@ export default function SquadFitness() {
 
             {/* Content */}
             <div className="flex-1 overflow-auto p-6">
-              {!csvPreview ? (
+              {importing ? (
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="w-12 h-12 border-3 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4" />
+                  <h3 className="text-lg font-bold text-white mb-2">Extracting fitness data...</h3>
+                  <p className="text-sm text-white/50">AI is reading your file and identifying player metrics</p>
+                </div>
+              ) : !importPreview ? (
                 /* Drop zone / file picker */
                 <div
                   onClick={() => fileInputRef.current?.click()}
+                  onDrop={handleDrop}
+                  onDragOver={e => e.preventDefault()}
                   className="border-2 border-dashed border-white/20 rounded-xl p-12 text-center cursor-pointer hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all"
                 >
                   <Upload size={48} className="mx-auto text-white/20 mb-4" />
-                  <h3 className="text-lg font-bold text-white mb-2">Drop CSV file here or click to browse</h3>
+                  <h3 className="text-lg font-bold text-white mb-2">Drop any file here or click to browse</h3>
                   <p className="text-sm text-white/50 mb-4">
-                    CSV should have a <span className="text-white/80 font-medium">Name</span> column and metric columns like CMJ, Bronco, Sprint, etc.
+                    Supports <span className="text-white/80 font-medium">Excel, Word, CSV, PDF</span> — any format with player fitness data
                   </p>
                   <div className="flex flex-wrap justify-center gap-2">
-                    {['Name', 'CMJ', 'Bronco', 'Sprint', 'Press Ups', 'Pull Ups', 'Weight', 'Body Fat'].map(h => (
-                      <span key={h} className="px-2 py-1 bg-white/5 rounded text-[10px] text-white/40 font-mono">{h}</span>
+                    {['.xlsx', '.docx', '.csv', '.pdf'].map(ext => (
+                      <span key={ext} className="px-2.5 py-1 bg-white/5 rounded-lg text-xs text-white/40 font-mono">{ext}</span>
                     ))}
                   </div>
-                  <input ref={fileInputRef} type="file" accept=".csv,.txt" className="hidden" onChange={handleFileUpload} />
+                  <input ref={fileInputRef} type="file" accept=".csv,.txt,.xlsx,.xls,.docx,.pdf" className="hidden" onChange={handleFileUpload} />
                 </div>
               ) : (
-                /* CSV Preview + player matching */
+                /* AI-extracted preview */
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-white">Preview — {csvPreview.rows.length} rows</h3>
-                    <button onClick={() => { setCsvPreview(null); setSaveError(null) }}
+                    <h3 className="text-sm font-bold text-white">
+                      Extracted {importPreview.reduce((a, s) => a + s.players.length, 0)} players
+                      {importPreview.length > 1 && ` across ${importPreview.length} test sessions`}
+                    </h3>
+                    <button onClick={() => { setImportPreview(null); setSaveError(null) }}
                       className="text-xs text-white/50 hover:text-white px-3 py-1 rounded bg-white/10 hover:bg-white/15 transition-all">
                       Choose different file
                     </button>
                   </div>
 
-                  {/* Mapped columns summary */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {csvPreview.mappedHeaders.map((key, i) => (
-                      <span key={i} className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                        key ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-white/30 line-through'
-                      }`}>
-                        {csvPreview.headers[i]} {key ? `→ ${key}` : '(skipped)'}
-                      </span>
-                    ))}
-                  </div>
+                  {importPreview.map((session, si) => {
+                    // Collect all metric keys used in this session
+                    const metricKeys = Array.from(new Set(
+                      session.players.flatMap(p => Object.keys(p.metrics))
+                    ))
+                    const matchedCount = session.players.filter(p => p.matched_player).length
 
-                  {/* Preview table */}
-                  <div className="overflow-x-auto border border-white/10 rounded-xl">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="bg-white/5">
-                          <th className="text-left text-white/50 text-xs font-semibold px-3 py-2">Match</th>
-                          <th className="text-left text-white/50 text-xs font-semibold px-3 py-2">CSV Name</th>
-                          {csvPreview.mappedHeaders.filter(h => h && h !== 'name').map((key, i) => (
-                            <th key={i} className="text-center text-white/50 text-xs font-semibold px-2 py-2">{key}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {csvPreview.rows.slice(0, 30).map((row, i) => {
-                          const nameIdx = csvPreview.mappedHeaders.indexOf('name')
-                          const matched = csvPreview.playerMatches[i]
-                          return (
-                            <tr key={i} className="border-t border-white/5">
-                              <td className="px-3 py-1.5">
-                                {matched ? (
-                                  <span className="text-emerald-400 text-xs flex items-center gap-1"><CheckCircle size={10} />{matched.name}</span>
-                                ) : (
-                                  <span className="text-red-400 text-xs flex items-center gap-1"><X size={10} />No match</span>
-                                )}
-                              </td>
-                              <td className="px-3 py-1.5 text-white/70">{row[nameIdx] || '-'}</td>
-                              {csvPreview.mappedHeaders.filter(h => h && h !== 'name').map((_, colDisplayIdx) => {
-                                // Find the actual column index
-                                let actualColIdx = -1
-                                let skipCount = 0
-                                for (let ci = 0; ci < csvPreview.mappedHeaders.length; ci++) {
-                                  const h = csvPreview.mappedHeaders[ci]
-                                  if (h && h !== 'name') {
-                                    if (skipCount === colDisplayIdx) { actualColIdx = ci; break }
-                                    skipCount++
-                                  }
-                                }
-                                return <td key={colDisplayIdx} className="px-2 py-1.5 text-center text-white/60">{row[actualColIdx] || '-'}</td>
-                              })}
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                    return (
+                      <div key={si} className="space-y-2">
+                        {importPreview.length > 1 && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Calendar size={14} className="text-emerald-400" />
+                            <span className="text-white font-medium">
+                              {new Date(session.test_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                            <span className="text-white/40">({session.players.length} players)</span>
+                          </div>
+                        )}
 
-                  <div className="text-xs text-white/40">
-                    {csvPreview.playerMatches.filter(Boolean).length} of {csvPreview.rows.length} players matched.
-                    {csvPreview.playerMatches.filter(p => !p).length > 0 && ' Unmatched rows will be skipped.'}
-                  </div>
+                        <div className="overflow-x-auto border border-white/10 rounded-xl">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-white/5">
+                                <th className="text-left text-white/50 text-xs font-semibold px-3 py-2">Match</th>
+                                <th className="text-left text-white/50 text-xs font-semibold px-3 py-2">File Name</th>
+                                {metricKeys.map(key => (
+                                  <th key={key} className="text-center text-white/50 text-xs font-semibold px-2 py-2 whitespace-nowrap">
+                                    {METRIC_LABELS[key]?.shortLabel || key}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {session.players.map((player, pi) => (
+                                <tr key={pi} className="border-t border-white/5">
+                                  <td className="px-3 py-1.5">
+                                    {player.matched_player ? (
+                                      <span className="text-emerald-400 text-xs flex items-center gap-1"><CheckCircle size={10} />{player.matched_player.name}</span>
+                                    ) : (
+                                      <span className="text-red-400 text-xs flex items-center gap-1"><X size={10} />No match</span>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-1.5 text-white/70">{player.name}</td>
+                                  {metricKeys.map(key => (
+                                    <td key={key} className="px-2 py-1.5 text-center text-white/60">
+                                      {player.metrics[key] != null ? player.metrics[key] : '-'}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="text-xs text-white/40">
+                          {matchedCount} of {session.players.length} players matched to squad.
+                          {session.players.length - matchedCount > 0 && ' Unmatched rows will be skipped.'}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -686,16 +683,17 @@ export default function SquadFitness() {
                 {saveSuccess && <p className="text-sm text-emerald-400 flex items-center gap-1"><CheckCircle size={14} /> Saved successfully!</p>}
               </div>
               <div className="flex items-center gap-3">
-                <button onClick={() => setShowUpload(false)} disabled={saving}
+                <button onClick={() => setShowUpload(false)} disabled={saving || importing}
                   className="px-4 py-2 rounded-lg bg-white/5 text-white/60 text-sm hover:bg-white/10 transition-colors">Cancel</button>
-                {csvPreview && (
-                  <button onClick={handleSaveCsv} disabled={saving || !csvPreview.playerMatches.some(Boolean)}
+                {importPreview && (
+                  <button onClick={handleSaveImport}
+                    disabled={saving || !importPreview.some(s => s.players.some(p => p.matched_player))}
                     className="flex items-center gap-2 px-6 py-2 rounded-lg text-sm font-bold disabled:opacity-50 transition-all"
                     style={{ background: 'var(--gradient-primary)', color: '#0a1a10' }}>
                     {saving ? (
                       <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> Saving...</>
                     ) : (
-                      <><CheckCircle size={16} /> Save {csvPreview.playerMatches.filter(Boolean).length} Tests</>
+                      <><CheckCircle size={16} /> Save {importPreview.reduce((a, s) => a + s.players.filter(p => p.matched_player).length, 0)} Tests</>
                     )}
                   </button>
                 )}

@@ -8,7 +8,7 @@ Handles:
 - AI analysis integration
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
@@ -63,6 +63,71 @@ def fitness_test_to_response(test: FitnessTest, player_name: str = None) -> Fitn
         ai_analysis=test.ai_analysis,
         injury_risk_score=test.injury_risk_score,
     )
+
+
+# ============ File Import Endpoint ============
+
+@router.post("/import-file")
+async def import_fitness_file(
+    file: UploadFile = File(...),
+    fallback_date: Optional[str] = Form(None),
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Import fitness test data from any file format (XLSX, DOCX, CSV, PDF).
+    Uses AI to extract structured fitness data from the file.
+    Returns preview data for user confirmation before saving.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    # Read file bytes
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:  # 10MB limit
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+
+    try:
+        from app.services.fitness_import_service import import_fitness_file as extract_data
+        result = await extract_data(file_bytes, file.filename, fallback_date)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"File import failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+    # Match player names to existing players
+    players_query = select(Player).where(Player.club_id == user.club_id)
+    players_result = await db.execute(players_query)
+    club_players = players_result.scalars().all()
+
+    # Build lookup helpers
+    name_exact = {p.name.lower(): {"id": str(p.id), "name": p.name} for p in club_players}
+
+    def match_player(name: str):
+        lower = name.lower().strip()
+        # Exact match
+        if lower in name_exact:
+            return name_exact[lower]
+        # Partial match: both first and last name parts found
+        for p in club_players:
+            p_parts = p.name.lower().split()
+            if len(p_parts) >= 2:
+                if p_parts[0] in lower and p_parts[-1] in lower:
+                    return {"id": str(p.id), "name": p.name}
+        # Last name match (if unique)
+        matches = [p for p in club_players if p.name.lower().split()[-1] == lower.split()[-1]]
+        if len(matches) == 1:
+            return {"id": str(matches[0].id), "name": matches[0].name}
+        return None
+
+    # Add player matching to each session
+    for session in result.get("test_sessions", []):
+        for player in session.get("players", []):
+            matched = match_player(player.get("name", ""))
+            player["matched_player"] = matched
+
+    return result
 
 
 # ============ CRUD Endpoints ============

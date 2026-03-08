@@ -1866,6 +1866,45 @@ const fitnessTestsAPI = {
   },
 
   /**
+   * Import fitness test data from any file format (XLSX, DOCX, CSV, PDF).
+   * Uses AI to extract structured data. Returns preview for confirmation.
+   */
+  importFile: async (file: File, fallbackDate?: string): Promise<{
+    test_sessions: Array<{
+      test_date: string;
+      players: Array<{
+        name: string;
+        matched_player: { id: string; name: string } | null;
+        metrics: Record<string, number>;
+      }>;
+    }>;
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (fallbackDate) formData.append('fallback_date', fallbackDate);
+
+    const url = `${API_BASE_URL}/fitness-tests/import-file`;
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+      // No Content-Type header — browser sets multipart boundary automatically
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        sessionStorage.removeItem('gaa_user');
+        window.location.href = '/login';
+        throw new Error('Session expired');
+      }
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Import failed: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  /**
    * Trigger AI analysis for a specific test
    */
   analyze: async (testId: string): Promise<FitnessTest> => {
