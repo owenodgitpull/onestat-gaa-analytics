@@ -868,7 +868,7 @@ export default function MatchPrep() {
               <select
                 value={newSetPieceCategory}
                 onChange={e => setNewSetPieceCategory(e.target.value as 'attacking' | 'defensive' | 'kickout')}
-                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
+                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white [&>option]:bg-slate-800 [&>option]:text-white"
               >
                 <option value="attacking">Attacking</option>
                 <option value="defensive">Defensive</option>
