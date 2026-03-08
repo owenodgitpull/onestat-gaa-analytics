@@ -15,6 +15,7 @@ import {
   Camera,
   FileText,
   Swords,
+  Activity,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useAuth } from '../contexts/AuthContext'
@@ -139,6 +140,14 @@ export default function Navigation() {
         { icon: CalendarDays, label: 'Calendar', path: '/training', active: false },
       ]
     }
+    // Fitness
+    if (location.pathname.startsWith('/fitness')) {
+      return [
+        { icon: Activity, label: 'Squad Fitness', path: '/fitness', active: true },
+        { icon: Users, label: 'Players', path: '/players', active: false },
+        { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
+      ]
+    }
     // Active match (recording/setup)
     if (location.pathname.startsWith('/match/') || location.pathname.startsWith('/match-prep/')) {
       return [
@@ -177,21 +186,22 @@ export default function Navigation() {
       <nav className="sticky top-0 z-50 backdrop-blur-2xl border-b border-white/[0.12]" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.06))', boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
         <div className="flex items-center h-14 px-4">
           {/* Logo */}
-          <Link to="/" className="flex items-center group mr-8">
+          <Link to="/" className="flex items-center group mr-3 lg:mr-8 flex-shrink-0">
             <img
               src="/oneStatLogoTransparent.png"
               alt="OneStat Analytics"
-              className="h-8"
+              className="h-7 lg:h-8"
             />
           </Link>
 
           {/* Main Navigation Links */}
-          <div className="flex items-center space-x-1 h-full">
+          <div className="flex items-center h-full overflow-x-auto scrollbar-hide flex-1 min-w-0">
             {[
               { to: '/', matchPath: '/', label: 'DASHBOARD' },
               { to: '/results', matchPath: '/matches', label: 'MATCHES', tour: 'nav-matches' },
               { to: '/players', matchPath: '/players', label: 'PLAYERS' },
               { to: '/training', matchPath: '/training', label: 'TRAINING' },
+              { to: '/fitness', matchPath: '/fitness', label: 'FITNESS' },
               { to: '/reports/season', matchPath: '/reports', label: 'REPORTS', tour: 'nav-reports' },
               { to: '/analyst', matchPath: '/analyst', label: 'ANALYST', tour: 'nav-analyst' },
             ].map(({ to, matchPath, label, tour }) => (
@@ -199,7 +209,7 @@ export default function Navigation() {
                 key={to}
                 to={to}
                 data-tour={tour}
-                className={`px-4 text-sm font-medium transition-all h-14 flex items-center border-b-2 ${
+                className={`px-2 lg:px-4 text-xs lg:text-sm font-medium transition-all h-14 flex items-center border-b-2 whitespace-nowrap flex-shrink-0 ${
                   isActive(matchPath)
                     ? 'text-white border-emerald-400'
                     : 'text-white/70 border-transparent hover:text-white hover:border-white/20'
@@ -211,7 +221,7 @@ export default function Navigation() {
           </div>
 
           {/* Right Side - New Match + Profile */}
-          <div className="flex items-center space-x-3 ml-auto">
+          <div className="flex items-center space-x-2 ml-auto flex-shrink-0">
             {/* New Match Button */}
             <button
               onClick={() => setIsNewMatchModalOpen(true)}

@@ -705,9 +705,17 @@ export default function PlayerView() {
                     <Heart size={20} />
                     Latest Fitness Test
                   </h3>
-                  <span className="text-sm text-white/60">
-                    {new Date(latestFitnessTest.test_date).toLocaleDateString()}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-white/60">
+                      {new Date(latestFitnessTest.test_date).toLocaleDateString()}
+                    </span>
+                    <Link
+                      to="/fitness"
+                      className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                    >
+                      + Add Test
+                    </Link>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <FitnessMetricCard label="CMJ" value={latestFitnessTest.cmj_cm} unit="cm" benchmark={{ good: 35, excellent: 45 }} comparison={fitnessComparison?.changes?.cmj_cm} />
@@ -833,7 +841,14 @@ export default function PlayerView() {
             <div className="glass-card p-8 text-center">
               <Heart size={48} className="mx-auto text-white/20 mb-4" />
               <p className="text-white/60">No fitness test data recorded yet</p>
-              <p className="text-sm text-white/40 mt-2">Fitness tests can be added through the team management section</p>
+              <p className="text-sm text-white/40 mt-2 mb-4">Upload fitness tests for your squad to see metrics, AI analysis, and injury risk.</p>
+              <Link
+                to="/fitness"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all"
+                style={{ background: 'var(--gradient-primary)', color: '#0a1a10', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3)' }}
+              >
+                Upload Fitness Tests
+              </Link>
             </div>
           )}
         </div>

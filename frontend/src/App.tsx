@@ -16,6 +16,7 @@ import Navigation from './components/Navigation'
 import PlayerNavigation from './components/PlayerNavigation'
 import AIAnalystPage from './pages/AIAnalystPage'
 import Settings from './pages/Settings'
+import SquadFitness from './pages/SquadFitness'
 import VideoTagging from './pages/VideoTagging'
 import VideoSessionList from './pages/VideoSessionList'
 import PlayerComparison from './pages/PlayerComparison'
@@ -130,6 +131,7 @@ function App() {
                           <Route path="/reports/season" element={<SeasonReport />} />
                           <Route path="/analyst" element={<AIAnalystPage />} />
                           <Route path="/analyst/:sessionId" element={<AIAnalystPage />} />
+                          <Route path="/fitness" element={<SquadFitness />} />
                           <Route path="/settings" element={<Settings />} />
                         </Routes>
                       </div>

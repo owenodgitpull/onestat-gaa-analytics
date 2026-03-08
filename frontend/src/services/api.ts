@@ -1730,17 +1730,25 @@ export interface FitnessTestComparison {
 }
 
 export interface SquadFitnessSummary {
-  squad_size: number;
-  tested_count: number;
-  avg_cmj?: number;
-  avg_bronco?: number;
-  avg_sprint?: number;
-  team_strengths: string[];
-  team_weaknesses: string[];
-  priority_areas: string[];
-  recommendations: string[];
-  high_risk_count: number;
-  mobility_concern_count: number;
+  total_players: number;
+  players_tested: number;
+  last_test_date: string | null;
+  averages: Record<string, number>;
+  top_performers: Record<string, { player: string; value: number }>;
+  concerns: Array<{ player: string; player_id: string; issues: string[] }>;
+  squad_fitness_score: number;
+}
+
+export interface PlayerFitnessCard {
+  player_id: string;
+  player_name: string;
+  jersey_number: number | null;
+  position: string | null;
+  latest_test_date: string | null;
+  fitness_score: number | null;
+  injury_risk: number | null;
+  key_metrics: Record<string, number>;
+  status: 'optimal' | 'needs_attention' | 'at_risk' | 'no_data';
 }
 
 const fitnessTestsAPI = {
@@ -1757,10 +1765,10 @@ const fitnessTestsAPI = {
   /**
    * Bulk create fitness tests (for team testing day)
    */
-  bulkCreate: async (tests: FitnessTestCreate[]): Promise<FitnessTest[]> => {
+  bulkCreate: async (testDate: string, tests: FitnessTestCreate[]): Promise<FitnessTest[]> => {
     return fetchAPI<FitnessTest[]>('/fitness-tests/bulk', {
       method: 'POST',
-      body: JSON.stringify({ tests }),
+      body: JSON.stringify({ test_date: testDate, tests }),
     });
   },
 
@@ -1841,6 +1849,13 @@ const fitnessTestsAPI = {
    */
   getSquadSummary: async (): Promise<SquadFitnessSummary> => {
     return fetchAPI<SquadFitnessSummary>('/fitness-tests/squad/summary');
+  },
+
+  /**
+   * Get fitness status cards for all active players
+   */
+  getSquadCards: async (): Promise<PlayerFitnessCard[]> => {
+    return fetchAPI<PlayerFitnessCard[]>('/fitness-tests/squad/cards');
   },
 
   /**

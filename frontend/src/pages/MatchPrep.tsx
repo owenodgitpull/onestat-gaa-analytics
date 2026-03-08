@@ -422,58 +422,60 @@ export default function MatchPrep() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate('/')}
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all"
-          >
-            <ArrowLeft size={20} />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-white">Match Prep</h1>
-            <div className="flex items-center gap-3 text-white/60 text-sm mt-0.5">
-              <span className="font-semibold text-white">{match.opponent}</span>
-              <span className="flex items-center gap-1">
-                <MapPin size={12} />
-                {venueLabel}
-              </span>
-              <span className="flex items-center gap-1">
-                <Calendar size={12} />
-                {matchDate}
-              </span>
-              {match.competition && (
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold">
-                  {match.competition}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => navigate('/')}
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all flex-shrink-0"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div className="min-w-0">
+              <h1 className="text-xl md:text-2xl font-bold text-white">Match Prep</h1>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-white/60 text-sm mt-0.5">
+                <span className="font-semibold text-white">{match.opponent}</span>
+                <span className="flex items-center gap-1">
+                  <MapPin size={12} className="flex-shrink-0" />
+                  {venueLabel}
                 </span>
-              )}
+                <span className="flex items-center gap-1 whitespace-nowrap">
+                  <Calendar size={12} className="flex-shrink-0" />
+                  {matchDate}
+                </span>
+                {match.competition && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold whitespace-nowrap text-center">
+                    {match.competition}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {saved && (
-            <span className="flex items-center gap-1 text-emerald-400 text-sm font-semibold">
-              <Check size={14} />
-              Saved
-            </span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving || selectedCount === 0}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Save size={16} />
-            Save Lineup
-          </button>
-          <button
-            onClick={handleSaveAndStart}
-            disabled={saving || startingCount < 15}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Play size={16} />
-            Save & Start
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {saved && (
+              <span className="flex items-center gap-1 text-emerald-400 text-sm font-semibold">
+                <Check size={14} />
+                Saved
+              </span>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving || selectedCount === 0}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              <Save size={14} />
+              Save
+            </button>
+            <button
+              onClick={handleSaveAndStart}
+              disabled={saving || startingCount < 15}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              <Play size={14} />
+              Save & Start
+            </button>
+          </div>
         </div>
       </div>
 
@@ -543,7 +545,7 @@ export default function MatchPrep() {
             </div>
 
             {/* Substitutes */}
-            <div className="flex justify-center gap-6 mt-4">
+            <div className="flex flex-wrap justify-center gap-3 md:gap-4 mt-4 px-2">
               {SUBSTITUTE_POSITIONS.map((pos, index) => {
                 const entry = lineup[pos.id]
                 const player = entry ? playerMap.get(entry.playerId) : null
