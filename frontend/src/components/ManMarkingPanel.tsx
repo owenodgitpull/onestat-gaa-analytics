@@ -63,7 +63,7 @@ export default function ManMarkingPanel({
           <select
             value={selectedPlayerId}
             onChange={e => setSelectedPlayerId(e.target.value)}
-            className="w-full bg-white/10 border border-white/15 rounded-lg px-3 py-2 text-sm text-white"
+            className="w-full bg-white/10 border border-white/15 rounded-lg px-3 py-2 text-sm text-white [&>option]:bg-slate-800 [&>option]:text-white"
           >
             <option value="">Select our player...</option>
             {activePlayers.map(p => (
