@@ -798,70 +798,70 @@ export default function VideoTagging() {
   // ── Shared sub-components ─────────────────────────────────────────────
 
   /** Scoreboard widget — used in both normal and fullscreen headers */
-  const scoreboard = (
+  const scoreboard = (compact = false) => (
     <div className="flex items-center rounded-2xl border border-white/[0.12] overflow-hidden backdrop-blur-xl shadow-lg shadow-black/20"
       style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 50%, rgba(255,255,255,0.06) 100%)' }}
     >
       {/* Team A */}
-      <div className={`flex items-center gap-2.5 px-5 py-2.5 transition-all ${
+      <div className={`flex items-center ${compact ? 'gap-1.5 px-2.5 py-1.5' : 'gap-2.5 px-5 py-2.5'} transition-all ${
         possession === 'team_a'
           ? 'bg-gradient-to-r from-emerald-500/20 to-emerald-500/5'
           : ''
       }`}>
-        <div className="w-3 h-3 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
-        <span className="text-xs font-semibold text-white/60 uppercase tracking-wide">{clubName}</span>
-        <span className="text-2xl font-black text-white tabular-nums min-w-[52px] text-center drop-shadow-sm">
+        <div className={`${compact ? 'w-2 h-2' : 'w-3 h-3'} rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 flex-shrink-0`} />
+        <span className={`${compact ? 'text-[10px]' : 'text-xs'} font-semibold text-white/60 uppercase tracking-wide whitespace-nowrap`}>{clubName}</span>
+        <span className={`${compact ? 'text-lg' : 'text-2xl'} font-black text-white tabular-nums ${compact ? 'min-w-[40px]' : 'min-w-[52px]'} text-center drop-shadow-sm`}>
           {currentScore.team_a_goals}-{String(currentScore.team_a_points).padStart(2, '0')}
         </span>
-        <span className="text-[11px] text-white/25 font-semibold tabular-nums">({teamATotal})</span>
+        <span className={`${compact ? 'text-[9px]' : 'text-[11px]'} text-white/25 font-semibold tabular-nums`}>({teamATotal})</span>
       </div>
-      <div className="px-2 text-[10px] text-white/20 font-bold">v</div>
+      <div className={`${compact ? 'px-1' : 'px-2'} text-[10px] text-white/20 font-bold`}>v</div>
       {/* Team B */}
-      <div className={`flex items-center gap-2.5 px-5 py-2.5 transition-all ${
+      <div className={`flex items-center ${compact ? 'gap-1.5 px-2.5 py-1.5' : 'gap-2.5 px-5 py-2.5'} transition-all ${
         possession === 'team_b'
           ? 'bg-gradient-to-l from-orange-500/20 to-orange-500/5'
           : ''
       }`}>
-        <span className="text-[11px] text-white/25 font-semibold tabular-nums">({teamBTotal})</span>
-        <span className="text-2xl font-black text-white tabular-nums min-w-[52px] text-center drop-shadow-sm">
+        <span className={`${compact ? 'text-[9px]' : 'text-[11px]'} text-white/25 font-semibold tabular-nums`}>({teamBTotal})</span>
+        <span className={`${compact ? 'text-lg' : 'text-2xl'} font-black text-white tabular-nums ${compact ? 'min-w-[40px]' : 'min-w-[52px]'} text-center drop-shadow-sm`}>
           {currentScore.team_b_goals}-{String(currentScore.team_b_points).padStart(2, '0')}
         </span>
-        <span className="text-xs font-semibold text-white/60 uppercase tracking-wide">{opponentName}</span>
-        <div className="w-3 h-3 rounded-full bg-orange-500 shadow-sm shadow-orange-500/50" />
+        <span className={`${compact ? 'text-[10px]' : 'text-xs'} font-semibold text-white/60 uppercase tracking-wide whitespace-nowrap`}>{opponentName}</span>
+        <div className={`${compact ? 'w-2 h-2' : 'w-3 h-3'} rounded-full bg-orange-500 shadow-sm shadow-orange-500/50 flex-shrink-0`} />
       </div>
     </div>
   )
 
   /** Action buttons row — Auto-Analyse, Report, Sync */
-  const actionButtons = (
-    <div className="flex gap-2">
+  const actionButtons = (compact = false) => (
+    <div className="flex gap-1.5 flex-shrink-0">
       <button
         onClick={handleAutoAnalyzeClick}
         disabled={!canAutoAnalyze}
-        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border border-purple-400/20 backdrop-blur-sm shadow-lg shadow-purple-500/10 hover:shadow-purple-500/25 hover:border-purple-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white"
+        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-purple-400/20 backdrop-blur-sm shadow-lg shadow-purple-500/10 hover:shadow-purple-500/25 hover:border-purple-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white whitespace-nowrap`}
         style={{ background: 'linear-gradient(135deg, rgba(147,51,234,0.5) 0%, rgba(124,58,237,0.4) 50%, rgba(139,92,246,0.3) 100%)' }}
         title={needsHalftime ? 'Mark half-time first' : 'Beta — accuracy is still being improved. Results may need significant manual correction.'}
       >
-        {isAutoAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-        {isAutoAnalyzing ? 'AI Analysing...' : 'Auto-Analyse (Beta)'}
+        {isAutoAnalyzing ? <Loader2 size={compact ? 12 : 14} className="animate-spin" /> : <Sparkles size={compact ? 12 : 14} />}
+        {isAutoAnalyzing ? 'Analysing...' : compact ? 'Auto-Analyse' : 'Auto-Analyse (Beta)'}
       </button>
       <button
         onClick={handleEnrich}
         disabled={isEnriching || events.length === 0}
-        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border border-violet-400/20 backdrop-blur-sm shadow-lg shadow-violet-500/10 hover:shadow-violet-500/25 hover:border-violet-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white"
+        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-violet-400/20 backdrop-blur-sm shadow-lg shadow-violet-500/10 hover:shadow-violet-500/25 hover:border-violet-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white whitespace-nowrap`}
         style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.45) 0%, rgba(109,40,217,0.35) 50%, rgba(139,92,246,0.25) 100%)' }}
       >
-        {isEnriching ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+        {isEnriching ? <Loader2 size={compact ? 12 : 14} className="animate-spin" /> : <FileText size={compact ? 12 : 14} />}
         Report
       </button>
       <button
         onClick={handleSyncClick}
         disabled={syncPreview.isPending || events.length === 0}
-        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all border border-emerald-400/20 backdrop-blur-sm shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/25 hover:border-emerald-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white"
+        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-emerald-400/20 backdrop-blur-sm shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/25 hover:border-emerald-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white whitespace-nowrap`}
         style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.45) 0%, rgba(5,150,105,0.35) 50%, rgba(52,211,153,0.25) 100%)' }}
       >
-        {syncPreview.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-        Save to Match
+        {syncPreview.isPending ? <Loader2 size={compact ? 12 : 14} className="animate-spin" /> : <Download size={compact ? 12 : 14} />}
+        {compact ? 'Save' : 'Save to Match'}
       </button>
     </div>
   )
@@ -986,7 +986,7 @@ export default function VideoTagging() {
           : 'bg-gradient-to-r from-orange-500/15 to-orange-500/5 border-orange-500/20'
       }`}
     >
-      <span className="text-sm text-white/80 font-medium">
+      <span className="text-sm text-white/80 font-medium whitespace-nowrap truncate">
         {getStatusLabel(ballPosition, possession, clubName, opponentName)}
       </span>
       <button
@@ -1016,24 +1016,24 @@ export default function VideoTagging() {
     return (
       <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col">
         {/* Compact top bar */}
-        <div className="flex items-center justify-between px-3 py-2 bg-slate-900/90 border-b border-white/10 flex-shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between px-2 py-1.5 bg-slate-900/90 border-b border-white/10 flex-shrink-0 gap-2">
+          <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
             <button
               onClick={() => setIsFullscreen(false)}
-              className="p-1.5 text-white/50 hover:text-white transition-colors"
+              className="p-1 text-white/50 hover:text-white transition-colors flex-shrink-0"
               title="Exit fullscreen (Esc)"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
-            <span className="text-sm font-semibold text-white truncate max-w-[200px]">{session.title}</span>
+            <span className="text-xs font-semibold text-white truncate max-w-[140px]">{session.title}</span>
           </div>
 
-          {scoreboard}
-          {actionButtons}
+          {scoreboard(true)}
+          {actionButtons(true)}
         </div>
 
         {/* Main area: video + sidebar */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden min-h-0">
           {videoArea}
           {sidebar}
         </div>
@@ -1095,10 +1095,10 @@ export default function VideoTagging() {
         </div>
 
         {/* Centre: scoreboard */}
-        <div data-tour="video-scoreboard">{scoreboard}</div>
+        <div data-tour="video-scoreboard">{scoreboard()}</div>
 
         {/* Right: action buttons */}
-        {actionButtons}
+        {actionButtons()}
       </div>
 
       {/* Auto-analyze processing banner */}

@@ -450,7 +450,7 @@ export default function VideoQuickActions({
                 key={action.id}
                 onClick={() => handleActionTap(action)}
                 disabled={isDisabled}
-                className={`w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96]
+                className={`w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] whitespace-nowrap
                   ${flashButton === action.id
                     ? 'bg-emerald-500/50 text-white border-emerald-400/40 shadow-md shadow-emerald-500/20'
                     : isDisabled

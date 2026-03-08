@@ -195,7 +195,7 @@ export default function BallMinimap({
     ? { left: position.x, top: position.y, right: 'auto', bottom: 'auto' }
     : {}
 
-  const positionClass = position ? '' : 'bottom-14 right-2'
+  const positionClass = position ? '' : 'top-10 right-2'
 
   return (
     <div
