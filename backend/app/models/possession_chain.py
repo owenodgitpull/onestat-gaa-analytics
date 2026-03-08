@@ -8,8 +8,8 @@ chain with outcome tracking.
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, DateTime, Float, ForeignKey, Integer
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, DateTime, Float, ForeignKey, Integer, BigInteger
+from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -19,15 +19,16 @@ class PossessionChain(Base):
     A sequence of events forming one possession.
 
     Tracks start/end zones, outcome, and basic stats (passes, solos, duration).
+    Can be derived from video events or auto-derived from ball carrier segments.
     """
     __tablename__ = "possession_chains"
 
     id: Column[uuid.UUID] = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    video_session_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("video_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    video_session_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("video_sessions.id", ondelete="CASCADE"), nullable=True, index=True)
     match_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True)
 
     # Possession details
-    team: Column[str] = Column(String(20), nullable=False)  # team_a / team_b
+    team: Column[str] = Column(String(20), nullable=False)  # team_a / team_b / own / opponent
     start_zone: Column[Optional[str]] = Column(String(20), nullable=True)
     end_zone: Column[Optional[str]] = Column(String(20), nullable=True)
     outcome: Column[Optional[str]] = Column(String(30), nullable=True)  # score/wide/turnover/free_won/etc
@@ -36,6 +37,30 @@ class PossessionChain(Base):
     duration_seconds: Column[Optional[float]] = Column(Float, nullable=True)
     pass_count: Column[Optional[int]] = Column(Integer, nullable=True, default=0)
     solo_count: Column[Optional[int]] = Column(Integer, nullable=True, default=0)
+
+    # Player sequence — derived from carrier segments
+    player_sequence: Column[Optional[list]] = Column(JSON, nullable=True)  # ordered list of player_ids
+    jersey_sequence: Column[Optional[list]] = Column(JSON, nullable=True)  # ordered list of jersey numbers
+
+    # Chain spatial data
+    start_x: Column[Optional[float]] = Column(Float, nullable=True)
+    start_y: Column[Optional[float]] = Column(Float, nullable=True)
+    end_x: Column[Optional[float]] = Column(Float, nullable=True)
+    end_y: Column[Optional[float]] = Column(Float, nullable=True)
+
+    # Chain timing
+    start_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    end_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+
+    # Terminal events
+    start_event: Column[Optional[str]] = Column(String(30), nullable=True)  # kickout / turnover_won / etc
+    end_event: Column[Optional[str]] = Column(String(30), nullable=True)  # score / wide / turnover_lost / etc
+
+    # Chain length (number of carriers)
+    chain_length: Column[Optional[int]] = Column(Integer, nullable=True)
+
+    # Source tracking
+    source: Column[Optional[str]] = Column(String(20), nullable=True, default="video")  # 'video' / 'live' / 'video_enrichment'
 
     # Timestamps
     created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)

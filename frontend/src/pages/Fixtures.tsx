@@ -13,7 +13,7 @@ import {
   isSameMonth,
   isToday,
 } from 'date-fns'
-import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw, Trophy, PlusCircle, Upload } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw, Trophy, PlusCircle, Upload, Dumbbell, AlertTriangle } from 'lucide-react'
 import { api } from '../services/api'
 import type { CsvImportResult } from '../services/api'
 import { useCreateMatch } from '../hooks/useMatches'
@@ -21,6 +21,25 @@ import { useClub } from '../contexts/ClubContext'
 import NewFixtureModal from '../components/NewFixtureModal'
 import ImportFixturesModal from '../components/ImportFixturesModal'
 import type { Match } from '../types'
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
+
+interface CalendarTrainingSession {
+  id: string
+  session_date: string
+  session_type: 'training' | 'match' | 'gym' | 'recovery'
+  start_time: string | null
+  location: string | null
+  attendance_count: number
+  present_count: number
+  has_gps_data: boolean
+}
+
+const SESSION_TYPE_CONFIG: Record<string, { label: string; color: string; bgColor: string; borderColor: string }> = {
+  training: { label: 'Training', color: 'text-emerald-300', bgColor: 'bg-emerald-500/15', borderColor: 'border-emerald-500/20' },
+  gym: { label: 'Gym', color: 'text-purple-300', bgColor: 'bg-purple-500/15', borderColor: 'border-purple-500/20' },
+  recovery: { label: 'Recovery', color: 'text-blue-300', bgColor: 'bg-blue-500/15', borderColor: 'border-blue-500/20' },
+}
 
 // Counties with a supported scraper
 const SUPPORTED_SCRAPER_COUNTIES = ['Donegal']
@@ -41,6 +60,17 @@ export default function Fixtures() {
   const { data: fixtures = [], isLoading } = useQuery({
     queryKey: ['fixtures'],
     queryFn: () => api.fixtures.getAll(),
+  })
+
+  const { data: trainingSessions = [] } = useQuery<CalendarTrainingSession[]>({
+    queryKey: ['calendar-training-sessions'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/attendance/sessions?limit=100`, { credentials: 'include' })
+      if (!res.ok) return []
+      const sessions: CalendarTrainingSession[] = await res.json()
+      // Exclude match-type sessions (those are already shown as fixtures)
+      return sessions.filter(s => s.session_type !== 'match')
+    },
   })
 
   const syncMutation = useMutation({
@@ -95,6 +125,14 @@ export default function Fixtures() {
     fixturesByDate.get(key)!.push(f)
   })
 
+  // Map training sessions to dates
+  const sessionsByDate = new Map<string, CalendarTrainingSession[]>()
+  trainingSessions.forEach((s) => {
+    const key = s.session_date // already yyyy-MM-dd
+    if (!sessionsByDate.has(key)) sessionsByDate.set(key, [])
+    sessionsByDate.get(key)!.push(s)
+  })
+
   const venueBadge = (venue: string) => {
     const v = venue?.toLowerCase()
     if (v === 'home') return <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">H</span>
@@ -111,8 +149,8 @@ export default function Fixtures() {
             <CalendarDays size={20} className="text-cyan-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Fixtures</h1>
-            <p className="text-sm text-white/50">Upcoming matches and schedule</p>
+            <h1 className="text-2xl font-bold text-white">Schedule</h1>
+            <p className="text-sm text-white/50">Fixtures, training & schedule</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -208,14 +246,16 @@ export default function Fixtures() {
           {calendarDays.map((day) => {
             const dateKey = format(day, 'yyyy-MM-dd')
             const dayFixtures = fixturesByDate.get(dateKey) || []
+            const daySessions = sessionsByDate.get(dateKey) || []
             const inMonth = isSameMonth(day, currentMonth)
             const today = isToday(day)
+            const hasEvents = dayFixtures.length > 0 || daySessions.length > 0
 
             return (
               <div
                 key={dateKey}
                 onClick={() => {
-                  if (dayFixtures.length === 1) {
+                  if (dayFixtures.length === 1 && daySessions.length === 0) {
                     navigate(`/fixtures/${dayFixtures[0].id}/preview`)
                   }
                 }}
@@ -223,7 +263,7 @@ export default function Fixtures() {
                   min-h-[72px] p-1.5 rounded-lg transition-all relative
                   ${inMonth ? 'bg-white/[0.03]' : 'bg-transparent opacity-40'}
                   ${today ? 'ring-1 ring-cyan-500/40' : ''}
-                  ${dayFixtures.length > 0 ? 'cursor-pointer hover:bg-white/[0.08]' : ''}
+                  ${hasEvents ? 'cursor-pointer hover:bg-white/[0.08]' : ''}
                 `}
               >
                 <span className={`text-xs font-medium ${today ? 'text-cyan-400' : inMonth ? 'text-white/60' : 'text-white/30'}`}>
@@ -244,9 +284,57 @@ export default function Fixtures() {
                     </div>
                   </div>
                 ))}
+                {daySessions.map((s) => {
+                  const config = SESSION_TYPE_CONFIG[s.session_type] || SESSION_TYPE_CONFIG.training
+                  const needsData = s.attendance_count === 0 && !s.has_gps_data
+                  return (
+                    <div
+                      key={s.id}
+                      className={`mt-0.5 px-1 py-0.5 rounded ${config.bgColor} border ${config.borderColor}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate('/attendance')
+                      }}
+                    >
+                      <div className="flex items-center gap-1">
+                        <Dumbbell size={8} className={`${config.color} flex-shrink-0`} />
+                        <span className={`text-[10px] truncate font-medium ${config.color}`}>
+                          {config.label}
+                        </span>
+                        {needsData && (
+                          <AlertTriangle size={8} className="text-amber-400 flex-shrink-0 ml-auto" />
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )
           })}
+        </div>
+      </div>
+
+      {/* Calendar legend */}
+      <div className="flex flex-wrap gap-4 text-[11px] text-white/50 px-1">
+        <div className="flex items-center gap-1.5">
+          <div className="w-2 h-2 rounded-full bg-cyan-400" />
+          <span>Match</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Dumbbell size={10} className="text-emerald-400" />
+          <span>Training</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Dumbbell size={10} className="text-purple-400" />
+          <span>Gym</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Dumbbell size={10} className="text-blue-400" />
+          <span>Recovery</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <AlertTriangle size={10} className="text-amber-400" />
+          <span>No data entered</span>
         </div>
       </div>
 

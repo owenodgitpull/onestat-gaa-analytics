@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Users,
@@ -10,11 +10,19 @@ import {
   Calendar,
   X,
   Check,
+  FileText,
+  Plus,
+  Pencil,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { api } from '@/services/api'
-import type { PlayerWorkload } from '@/services/api'
+import type { PlayerWorkload, SetPieceRoutine, ManMarkingAssignment } from '@/services/api'
 import type { Match, Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
+import OppositionBriefing from '@/components/OppositionBriefing'
+import ManMarkingPanel from '@/components/ManMarkingPanel'
+import SetPieceEditor from '@/components/SetPieceEditor'
 
 // ── Pitch position data (mirrored from StartingLineupModal) ──────────────
 
@@ -126,18 +134,48 @@ export default function MatchPrep() {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // Tactical notes state
+  const [tacticalNotes, setTacticalNotes] = useState('')
+  const [notesSaved, setNotesSaved] = useState(true)
+  const notesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Man marking state
+  const [markingAssignments, setMarkingAssignments] = useState<ManMarkingAssignment[]>([])
+
+  // Set-piece routines state
+  const [setPieces, setSetPieces] = useState<SetPieceRoutine[]>([])
+  const [editingSetPiece, setEditingSetPiece] = useState<SetPieceRoutine | null>(null)
+  const [showSetPieceEditor, setShowSetPieceEditor] = useState(false)
+  const [newSetPieceName, setNewSetPieceName] = useState('')
+  const [newSetPieceCategory, setNewSetPieceCategory] = useState<'attacking' | 'defensive' | 'kickout'>('attacking')
+
+  // Section collapse state
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    tactical: true,
+    briefing: false,
+    marking: false,
+    setpieces: false,
+  })
+
+  const toggleSection = (key: string) => {
+    setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
   // Load all data on mount
   useEffect(() => {
     if (!matchId) return
     const load = async () => {
       setLoading(true)
       try {
-        const [matchData, playerData, healthData, existingLineup, lastLineup] = await Promise.all([
+        const [matchData, playerData, healthData, existingLineup, lastLineup, notesData, markingsData, setPiecesData] = await Promise.all([
           api.matches.getById(matchId),
           api.players.getAll(),
           api.squadHealth.getSummary().catch(() => null),
           api.matchLineups.getLineup(matchId).catch(() => []),
           api.matchLineups.getLastLineup().catch(() => []),
+          api.matchPrep.getTacticalNotes(matchId).catch(() => ({ tactical_notes: '' })),
+          api.matchPrep.listMarkings(matchId).catch(() => []),
+          api.matchPrep.listSetPieces().catch(() => []),
         ])
         setMatch(matchData)
         setPlayers(playerData)
@@ -166,6 +204,11 @@ export default function MatchPrep() {
           })
           setLastMatchLineup(lastObj)
         }
+
+        // Load match prep data
+        setTacticalNotes(notesData.tactical_notes || '')
+        setMarkingAssignments(markingsData)
+        setSetPieces(setPiecesData)
       } catch (err) {
         console.error('Failed to load match prep data:', err)
       } finally {
@@ -276,6 +319,78 @@ export default function MatchPrep() {
     } catch (err) {
       console.error('Failed to save lineup:', err)
       setSaving(false)
+    }
+  }
+
+  // Auto-save tactical notes (debounced)
+  const handleTacticalNotesChange = (value: string) => {
+    setTacticalNotes(value)
+    setNotesSaved(false)
+    if (notesTimerRef.current) clearTimeout(notesTimerRef.current)
+    notesTimerRef.current = setTimeout(async () => {
+      if (matchId) {
+        try {
+          await api.matchPrep.saveTacticalNotes(matchId, value)
+          setNotesSaved(true)
+        } catch (err) {
+          console.error('Failed to save tactical notes:', err)
+        }
+      }
+    }, 1000)
+  }
+
+  // Man marking handlers
+  const handleAddMarking = async (playerId: string, opponentName: string, notes?: string) => {
+    if (!matchId) return
+    try {
+      const assignment = await api.matchPrep.createMarking(matchId, {
+        player_id: playerId,
+        opponent_player_name: opponentName,
+        notes,
+      })
+      setMarkingAssignments(prev => [...prev, assignment])
+    } catch (err) {
+      console.error('Failed to add marking:', err)
+    }
+  }
+
+  const handleDeleteMarking = async (assignmentId: string) => {
+    try {
+      await api.matchPrep.deleteMarking(assignmentId)
+      setMarkingAssignments(prev => prev.filter(a => a.id !== assignmentId))
+    } catch (err) {
+      console.error('Failed to delete marking:', err)
+    }
+  }
+
+  // Set-piece handlers
+  const handleSaveSetPiece = async (elements: Array<Record<string, unknown>>) => {
+    try {
+      if (editingSetPiece) {
+        const updated = await api.matchPrep.updateSetPiece(editingSetPiece.id, { elements })
+        setSetPieces(prev => prev.map(sp => sp.id === updated.id ? updated : sp))
+      } else {
+        const created = await api.matchPrep.createSetPiece({
+          name: newSetPieceName || 'Untitled Routine',
+          category: newSetPieceCategory,
+          elements,
+        })
+        setSetPieces(prev => [created, ...prev])
+      }
+      setShowSetPieceEditor(false)
+      setEditingSetPiece(null)
+      setNewSetPieceName('')
+    } catch (err) {
+      console.error('Failed to save set piece:', err)
+    }
+  }
+
+  const handleDeleteSetPiece = async (id: string) => {
+    try {
+      await api.matchPrep.deleteSetPiece(id)
+      setSetPieces(prev => prev.filter(sp => sp.id !== id))
+    } catch (err) {
+      console.error('Failed to delete set piece:', err)
     }
   }
 
@@ -639,6 +754,193 @@ export default function MatchPrep() {
           )}
         </div>
       </div>
+
+      {/* ── Match Prep Sections ────────────────────────────────── */}
+
+      {/* Tactical Notes */}
+      <div className="glass-card overflow-hidden">
+        <button
+          onClick={() => toggleSection('tactical')}
+          className="flex items-center justify-between w-full px-4 py-3 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <FileText size={16} className="text-cyan-400" />
+            <span className="text-sm font-bold text-white">Tactical Notes</span>
+            {!notesSaved && <span className="text-amber-400 text-[10px]">unsaved</span>}
+            {notesSaved && tacticalNotes && <Check size={12} className="text-emerald-400" />}
+          </div>
+          {expandedSections.tactical ? <ChevronUp size={16} className="text-white/40" /> : <ChevronDown size={16} className="text-white/40" />}
+        </button>
+        {expandedSections.tactical && (
+          <div className="px-4 pb-4">
+            <textarea
+              value={tacticalNotes}
+              onChange={e => handleTacticalNotesChange(e.target.value)}
+              placeholder="Pre-match tactical plan... e.g. 'Press high for first 15 minutes then drop', 'Target their full-back on the turn', 'Use two-pointer from the 45 on the left'..."
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/25 focus:outline-none focus:border-cyan-500/30 min-h-[120px] resize-y"
+              maxLength={5000}
+            />
+            <p className="text-white/20 text-[10px] mt-1">
+              These notes are surfaced to the Live Match Agent during the game for tactical context.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* AI Opposition Briefing */}
+      <div className="glass-card overflow-hidden">
+        <button
+          onClick={() => toggleSection('briefing')}
+          className="flex items-center justify-between w-full px-4 py-3 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-purple-400 text-sm">AI</span>
+            <span className="text-sm font-bold text-white">Opposition Briefing</span>
+          </div>
+          {expandedSections.briefing ? <ChevronUp size={16} className="text-white/40" /> : <ChevronDown size={16} className="text-white/40" />}
+        </button>
+        {expandedSections.briefing && (
+          <div className="px-4 pb-4">
+            <OppositionBriefing matchId={matchId!} opponent={match.opponent} />
+          </div>
+        )}
+      </div>
+
+      {/* Man Marking Assignments */}
+      <div className="glass-card overflow-hidden">
+        <button
+          onClick={() => toggleSection('marking')}
+          className="flex items-center justify-between w-full px-4 py-3 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-orange-400 text-sm font-bold">#</span>
+            <span className="text-sm font-bold text-white">Man Marking</span>
+            {markingAssignments.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 text-[10px] font-bold">
+                {markingAssignments.length}
+              </span>
+            )}
+          </div>
+          {expandedSections.marking ? <ChevronUp size={16} className="text-white/40" /> : <ChevronDown size={16} className="text-white/40" />}
+        </button>
+        {expandedSections.marking && (
+          <div className="px-4 pb-4">
+            <ManMarkingPanel
+              matchId={matchId!}
+              assignments={markingAssignments}
+              players={players}
+              onAdd={handleAddMarking}
+              onDelete={handleDeleteMarking}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Set-Piece Routines */}
+      <div className="glass-card overflow-hidden">
+        <button
+          onClick={() => toggleSection('setpieces')}
+          className="flex items-center justify-between w-full px-4 py-3 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Pencil size={14} className="text-amber-400" />
+            <span className="text-sm font-bold text-white">Set-Piece Routines</span>
+            {setPieces.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                {setPieces.length}
+              </span>
+            )}
+          </div>
+          {expandedSections.setpieces ? <ChevronUp size={16} className="text-white/40" /> : <ChevronDown size={16} className="text-white/40" />}
+        </button>
+        {expandedSections.setpieces && (
+          <div className="px-4 pb-4">
+            {/* Create new */}
+            <div className="flex items-center gap-2 mb-3">
+              <input
+                type="text"
+                value={newSetPieceName}
+                onChange={e => setNewSetPieceName(e.target.value)}
+                placeholder="Routine name..."
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-white/25"
+                maxLength={200}
+              />
+              <select
+                value={newSetPieceCategory}
+                onChange={e => setNewSetPieceCategory(e.target.value as 'attacking' | 'defensive' | 'kickout')}
+                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white"
+              >
+                <option value="attacking">Attacking</option>
+                <option value="defensive">Defensive</option>
+                <option value="kickout">Kickout</option>
+              </select>
+              <button
+                onClick={() => {
+                  setEditingSetPiece(null)
+                  setShowSetPieceEditor(true)
+                }}
+                disabled={!newSetPieceName.trim()}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-40"
+              >
+                <Plus size={14} /> Draw
+              </button>
+            </div>
+
+            {/* Existing routines */}
+            {setPieces.length === 0 ? (
+              <p className="text-white/30 text-xs py-2">No set-piece routines yet. Create one above to draw plays on the pitch.</p>
+            ) : (
+              <div className="space-y-2">
+                {setPieces.map(sp => {
+                  const catColor = sp.category === 'attacking' ? 'text-emerald-300 bg-emerald-500/20' :
+                    sp.category === 'defensive' ? 'text-blue-300 bg-blue-500/20' : 'text-purple-300 bg-purple-500/20'
+                  return (
+                    <div key={sp.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${catColor}`}>
+                          {sp.category.toUpperCase()}
+                        </span>
+                        <span className="text-white text-sm font-semibold">{sp.name}</span>
+                        <span className="text-white/20 text-xs">{sp.elements.length} elements</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setEditingSetPiece(sp)
+                            setShowSetPieceEditor(true)
+                          }}
+                          className="p-1.5 rounded-lg text-white/30 hover:text-white"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSetPiece(sp.id)}
+                          className="p-1.5 rounded-lg text-white/30 hover:text-red-400"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Set-Piece Editor Modal */}
+      {showSetPieceEditor && (
+        <SetPieceEditor
+          initialElements={editingSetPiece?.elements || []}
+          routineName={editingSetPiece?.name || newSetPieceName || 'Set Piece'}
+          onSave={handleSaveSetPiece}
+          onClose={() => {
+            setShowSetPieceEditor(false)
+            setEditingSetPiece(null)
+          }}
+        />
+      )}
     </div>
   )
 }

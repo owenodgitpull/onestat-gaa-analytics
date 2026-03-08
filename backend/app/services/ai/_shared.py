@@ -400,6 +400,66 @@ TOOLS = [
             },
             "required": ["title", "columns", "data"]
         }
+    },
+    {
+        "name": "get_ball_carrier_data",
+        "description": "Get ball carrier tracking data for a match: who carried the ball, how far, carry sequences forming possession chains. Returns carrier segments with player names, jersey numbers, path points, and auto-derived possession chains. If no carrier data exists for a match, returns empty — gracefully skip carrier-dependent analysis.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "The UUID of the match"
+                }
+            },
+            "required": ["match_id"]
+        }
+    },
+    {
+        "name": "get_formation_snapshots",
+        "description": "Get formation snapshots for a match: point-in-time player positions captured at key moments (after scores, before kickouts, stoppages). Each snapshot has a label (Defensive Shape, Kickout Setup, Attacking Press) and player positions. If no snapshots exist, returns empty — gracefully skip formation analysis.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "The UUID of the match"
+                }
+            },
+            "required": ["match_id"]
+        }
+    },
+    {
+        "name": "get_man_marking_history",
+        "description": "Get man marking assignment history. Shows which of our players have been assigned to mark opposition players across matches, and how the marked opponent scored. Useful for evaluating marker effectiveness (e.g. 'McCole held the top scorer to 0-3'). If no assignments exist, returns empty.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_name": {
+                    "type": "string",
+                    "description": "Optional: filter by our player's name. Omit for all markers."
+                },
+                "opponent_name": {
+                    "type": "string",
+                    "description": "Optional: filter by opponent player name."
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "web_search",
+        "description": "Search the web for GAA results, team form, player stats, news. Use this to research opposition teams, find recent county results, check league tables, etc. Returns relevant web snippets.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query (e.g. 'Kilcar GAA Donegal senior football results 2026')"
+                }
+            },
+            "required": ["query"]
+        }
     }
 ]
 
@@ -454,6 +514,14 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession) -> st
         return await _execute_generate_chart(db, tool_input.get("query", ""))
     elif tool_name == "create_data_table":
         return safe_json(tool_input)  # pass-through — frontend renders it
+    elif tool_name == "get_ball_carrier_data":
+        return await get_ball_carrier_data(db, **tool_input)
+    elif tool_name == "get_formation_snapshots":
+        return await get_formation_snapshots_tool(db, **tool_input)
+    elif tool_name == "get_man_marking_history":
+        return await get_man_marking_history(db, **tool_input)
+    elif tool_name == "web_search":
+        return await web_search_tool(tool_input.get("query", ""))
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -1832,5 +1900,223 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
             "low_attendance_players": low_attendance,
             "all_players": players,
             "period": f"Last {weeks} weeks",
+        })
+
+
+async def get_ball_carrier_data(db: AsyncSession, match_id: str) -> str:
+    """Get ball carrier segments and derived possession chains for a match."""
+    from app.models.ball_carrier_segment import BallCarrierSegment
+    from app.models.possession_chain import PossessionChain
+    import uuid as uuid_mod
+
+    try:
+        match_uuid = uuid_mod.UUID(match_id)
+    except (ValueError, AttributeError):
+        return safe_json({"error": f"'{match_id}' is not a valid match UUID"})
+
+    # Fetch carrier segments
+    seg_result = await db.execute(
+        select(BallCarrierSegment)
+        .where(BallCarrierSegment.match_id == match_uuid)
+        .order_by(BallCarrierSegment.sequence_number.asc())
+    )
+    segments = seg_result.scalars().all()
+
+    if not segments:
+        return safe_json({"message": "No ball carrier data available for this match", "segments": [], "chains": []})
+
+    # Build segment summaries
+    segment_data = []
+    carrier_stats: dict = {}
+    for seg in segments:
+        player_name = seg.player.name if seg.player else "Unknown"
+        path_len = len(seg.path_points) if seg.path_points else 0
+        segment_data.append({
+            "player_name": player_name,
+            "jersey_number": seg.jersey_number,
+            "team": seg.team,
+            "half": seg.half,
+            "minute": seg.minute,
+            "path_points_count": path_len,
+            "ended_by": seg.ended_by,
+        })
+
+        # Aggregate per-player stats
+        pid = str(seg.player_id)
+        if pid not in carrier_stats:
+            carrier_stats[pid] = {"name": player_name, "jersey": seg.jersey_number, "carries": 0, "total_points": 0}
+        carrier_stats[pid]["carries"] += 1
+        carrier_stats[pid]["total_points"] += path_len
+
+    # Fetch live-derived chains
+    chain_result = await db.execute(
+        select(PossessionChain)
+        .where(PossessionChain.match_id == match_uuid, PossessionChain.source == "live")
+        .order_by(PossessionChain.created_at.asc())
+    )
+    chains = chain_result.scalars().all()
+
+    chain_data = []
+    for c in chains:
+        chain_data.append({
+            "team": c.team,
+            "player_sequence": c.player_sequence,
+            "jersey_sequence": c.jersey_sequence,
+            "chain_length": c.chain_length,
+            "outcome": c.outcome,
+            "start_zone": c.start_zone,
+            "end_zone": c.end_zone,
+        })
+
+    return safe_json({
+        "total_segments": len(segments),
+        "total_chains": len(chains),
+        "carrier_stats": sorted(carrier_stats.values(), key=lambda x: x["carries"], reverse=True),
+        "segments": segment_data[:50],  # Cap for context window
+        "chains": chain_data[:30],
+    })
+
+
+async def get_formation_snapshots_tool(db: AsyncSession, match_id: str) -> str:
+    """Get formation snapshots for a match."""
+    from app.models.formation_snapshot import FormationSnapshot
+    import uuid as uuid_mod
+
+    try:
+        match_uuid = uuid_mod.UUID(match_id)
+    except (ValueError, AttributeError):
+        return safe_json({"error": f"'{match_id}' is not a valid match UUID"})
+
+    result = await db.execute(
+        select(FormationSnapshot)
+        .where(FormationSnapshot.match_id == match_uuid)
+        .order_by(FormationSnapshot.created_at.asc())
+    )
+    snapshots = result.scalars().all()
+
+    if not snapshots:
+        return safe_json({"message": "No formation snapshots available for this match", "snapshots": []})
+
+    snapshot_data = []
+    for s in snapshots:
+        positions = s.positions or []
+        snapshot_data.append({
+            "label": s.label,
+            "half": s.half,
+            "minute": s.minute,
+            "player_count": len(positions),
+            "positions": positions,
+        })
+
+    return safe_json({
+        "total_snapshots": len(snapshots),
+        "snapshots": snapshot_data,
+    })
+
+
+async def get_man_marking_history(
+    db: AsyncSession,
+    player_name: str = None,
+    opponent_name: str = None,
+) -> str:
+    """Get man marking assignment history with match context."""
+    from app.models.man_marking_assignment import ManMarkingAssignment
+    from app.models.match import Match
+    from app.models.player import Player
+
+    query = (
+        select(ManMarkingAssignment, Match, Player)
+        .join(Match, ManMarkingAssignment.match_id == Match.id)
+        .join(Player, ManMarkingAssignment.player_id == Player.id)
+        .order_by(Match.match_date.desc())
+    )
+
+    if player_name:
+        query = query.where(Player.name.ilike(f"%{player_name}%"))
+    if opponent_name:
+        query = query.where(ManMarkingAssignment.opponent_player_name.ilike(f"%{opponent_name}%"))
+
+    result = await db.execute(query.limit(50))
+    rows = result.all()
+
+    if not rows:
+        return safe_json({"message": "No man marking assignments found", "assignments": []})
+
+    assignments = []
+    for assignment, match, player in rows:
+        assignments.append({
+            "marker": player.name,
+            "marker_id": str(player.id),
+            "marked_opponent": assignment.opponent_player_name,
+            "match_opponent": match.opponent,
+            "match_date": match.match_date.strftime("%Y-%m-%d"),
+            "opponent_score": f"{match.opponent_goals}-{match.opponent_points:02d}",
+            "our_score": f"{match.team_goals}-{match.team_points:02d}",
+            "result": match.result,
+            "notes": assignment.notes,
+        })
+
+    return safe_json({
+        "total_assignments": len(assignments),
+        "assignments": assignments,
+    })
+
+
+async def web_search_tool(query: str) -> str:
+    """Search the web for GAA-related information using DuckDuckGo."""
+    import httpx
+
+    try:
+        # Use DuckDuckGo instant answer API (no API key needed)
+        async with httpx.AsyncClient(timeout=10.0) as http_client:
+            response = await http_client.get(
+                "https://api.duckduckgo.com/",
+                params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
+            )
+            data = response.json()
+
+        results = []
+
+        # Abstract (main answer)
+        if data.get("Abstract"):
+            results.append({
+                "source": data.get("AbstractSource", ""),
+                "text": data["Abstract"],
+                "url": data.get("AbstractURL", ""),
+            })
+
+        # Related topics
+        for topic in data.get("RelatedTopics", [])[:5]:
+            if isinstance(topic, dict) and topic.get("Text"):
+                results.append({
+                    "text": topic["Text"],
+                    "url": topic.get("FirstURL", ""),
+                })
+
+        if not results:
+            # Fallback: try a more direct search via DuckDuckGo lite
+            response2 = await http_client.get(
+                "https://lite.duckduckgo.com/lite/",
+                params={"q": query},
+                headers={"User-Agent": "OneStatGAA/1.0"},
+                follow_redirects=True,
+            )
+            return safe_json({
+                "query": query,
+                "note": "Web search returned limited results. Try rephrasing or use specific team/competition names.",
+                "results": [],
+            })
+
+        return safe_json({
+            "query": query,
+            "results": results,
+        })
+
+    except Exception as e:
+        logger.warning(f"Web search failed: {e}")
+        return safe_json({
+            "query": query,
+            "error": f"Web search temporarily unavailable: {str(e)}",
+            "results": [],
         })
 

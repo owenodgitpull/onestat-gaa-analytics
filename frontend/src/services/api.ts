@@ -2130,6 +2130,242 @@ export const clubMembersAPI = {
     }),
 };
 
+// ============================================================================
+// Player Movement API
+// ============================================================================
+
+export interface BallCarrierSegment {
+  id: string;
+  match_id: string;
+  player_id: string;
+  jersey_number: number | null;
+  team: string;
+  half: number;
+  minute: number | null;
+  path_points: Array<{ x: number; y: number }> | null;
+  start_x: number | null;
+  start_y: number | null;
+  end_x: number | null;
+  end_y: number | null;
+  start_time_ms: number | null;
+  end_time_ms: number | null;
+  ended_by: string | null;
+  source: string;
+  sequence_number: number;
+  created_at: string;
+  player_name: string | null;
+}
+
+export interface TacticalTagData {
+  id: string;
+  match_id: string;
+  tag_type: string;
+  label: string | null;
+  half: number;
+  minute: number | null;
+  pitch_x: number | null;
+  pitch_y: number | null;
+  source: string;
+  created_at: string;
+}
+
+export interface FormationSnapshotData {
+  id: string;
+  match_id: string;
+  half: number;
+  minute: number | null;
+  label: string | null;
+  positions: Array<{ player_id: string; jersey_number?: number; x: number; y: number }> | null;
+  source: string;
+  created_at: string;
+}
+
+export interface KickoutPlayData {
+  id: string;
+  club_id: string;
+  name: string;
+  description: string | null;
+  diagram: Record<string, unknown> | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+const playerMovementAPI = {
+  // Carrier segments
+  startCarrierSegment: (data: {
+    match_id: string;
+    player_id: string;
+    jersey_number?: number | null;
+    team: string;
+    half: number;
+    minute?: number | null;
+    start_x?: number | null;
+    start_y?: number | null;
+    source?: string;
+  }): Promise<BallCarrierSegment> =>
+    fetchAPI('/player-movement/carrier-segments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  endCarrierSegment: (segmentId: string, data: {
+    end_x?: number | null;
+    end_y?: number | null;
+    ended_by?: string | null;
+  }): Promise<BallCarrierSegment> =>
+    fetchAPI(`/player-movement/carrier-segments/${segmentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  appendPathPoints: (segmentId: string, points: Array<{ x: number; y: number }>): Promise<BallCarrierSegment> =>
+    fetchAPI(`/player-movement/carrier-segments/${segmentId}/path-points`, {
+      method: 'POST',
+      body: JSON.stringify({ points }),
+    }),
+
+  listCarrierSegments: (matchId: string): Promise<{ segments: BallCarrierSegment[]; total: number }> =>
+    fetchAPI(`/player-movement/carrier-segments/${matchId}`),
+
+  deleteCarrierSegment: (segmentId: string): Promise<void> =>
+    fetchAPI(`/player-movement/carrier-segments/${segmentId}`, { method: 'DELETE' }),
+
+  // Formation snapshots
+  createSnapshot: (data: {
+    match_id: string;
+    half: number;
+    minute?: number | null;
+    label?: string | null;
+    positions: Array<{ player_id: string; jersey_number?: number | null; x: number; y: number }>;
+    source?: string;
+  }): Promise<FormationSnapshotData> =>
+    fetchAPI('/player-movement/snapshots', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listSnapshots: (matchId: string): Promise<{ snapshots: FormationSnapshotData[]; total: number }> =>
+    fetchAPI(`/player-movement/snapshots/${matchId}`),
+
+  deleteSnapshot: (snapshotId: string): Promise<void> =>
+    fetchAPI(`/player-movement/snapshots/${snapshotId}`, { method: 'DELETE' }),
+
+  // Tactical tags
+  createTacticalTag: (data: {
+    match_id: string;
+    tag_type: string;
+    label?: string | null;
+    half: number;
+    minute?: number | null;
+    pitch_x?: number | null;
+    pitch_y?: number | null;
+    source?: string;
+  }): Promise<TacticalTagData> =>
+    fetchAPI('/player-movement/tactical-tags', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listTacticalTags: (matchId: string): Promise<{ tags: TacticalTagData[]; total: number }> =>
+    fetchAPI(`/player-movement/tactical-tags/${matchId}`),
+
+  deleteTacticalTag: (tagId: string): Promise<void> =>
+    fetchAPI(`/player-movement/tactical-tags/${tagId}`, { method: 'DELETE' }),
+
+  // Kickout plays
+  createKickoutPlay: (data: { name: string; description?: string | null; diagram?: Record<string, unknown> | null }): Promise<KickoutPlayData> =>
+    fetchAPI('/player-movement/kickout-plays', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listKickoutPlays: (): Promise<{ plays: KickoutPlayData[]; total: number }> =>
+    fetchAPI('/player-movement/kickout-plays'),
+
+  updateKickoutPlay: (playId: string, data: { name?: string; description?: string | null; is_active?: boolean }): Promise<KickoutPlayData> =>
+    fetchAPI(`/player-movement/kickout-plays/${playId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteKickoutPlay: (playId: string): Promise<void> =>
+    fetchAPI(`/player-movement/kickout-plays/${playId}`, { method: 'DELETE' }),
+
+  // Derive chains
+  deriveChains: (matchId: string): Promise<{ chains_derived: number; chain_ids: string[] }> =>
+    fetchAPI(`/player-movement/chains/${matchId}/derive`),
+};
+
+// ============ Match Prep API ============
+
+export interface SetPieceRoutine {
+  id: string;
+  name: string;
+  category: 'attacking' | 'defensive' | 'kickout';
+  description: string | null;
+  elements: Array<Record<string, unknown>>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ManMarkingAssignment {
+  id: string;
+  match_id: string;
+  player_id: string;
+  player_name: string | null;
+  opponent_player_name: string;
+  notes: string | null;
+  created_at: string;
+}
+
+const matchPrepAPI = {
+  // Tactical notes
+  saveTacticalNotes: (matchId: string, tacticalNotes: string): Promise<{ tactical_notes: string }> =>
+    fetchAPI(`/match-prep/matches/${matchId}/tactical-notes`, {
+      method: 'PUT',
+      body: JSON.stringify({ tactical_notes: tacticalNotes }),
+    }),
+
+  getTacticalNotes: (matchId: string): Promise<{ tactical_notes: string }> =>
+    fetchAPI(`/match-prep/matches/${matchId}/tactical-notes`),
+
+  // Set-piece routines
+  createSetPiece: (data: { name: string; category: string; description?: string; elements: Array<Record<string, unknown>> }): Promise<SetPieceRoutine> =>
+    fetchAPI('/match-prep/set-pieces', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listSetPieces: (category?: string): Promise<SetPieceRoutine[]> =>
+    fetchAPI(`/match-prep/set-pieces${category ? `?category=${category}` : ''}`),
+
+  getSetPiece: (id: string): Promise<SetPieceRoutine> =>
+    fetchAPI(`/match-prep/set-pieces/${id}`),
+
+  updateSetPiece: (id: string, data: { name?: string; category?: string; description?: string; elements?: Array<Record<string, unknown>> }): Promise<SetPieceRoutine> =>
+    fetchAPI(`/match-prep/set-pieces/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteSetPiece: (id: string): Promise<void> =>
+    fetchAPI(`/match-prep/set-pieces/${id}`, { method: 'DELETE' }),
+
+  // Man marking assignments
+  createMarking: (matchId: string, data: { player_id: string; opponent_player_name: string; notes?: string }): Promise<ManMarkingAssignment> =>
+    fetchAPI(`/match-prep/matches/${matchId}/marking`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  listMarkings: (matchId: string): Promise<ManMarkingAssignment[]> =>
+    fetchAPI(`/match-prep/matches/${matchId}/marking`),
+
+  deleteMarking: (assignmentId: string): Promise<void> =>
+    fetchAPI(`/match-prep/marking/${assignmentId}`, { method: 'DELETE' }),
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -2147,6 +2383,8 @@ export const api = {
   fixtures: fixturesAPI,
   knowledgeBase: knowledgeBaseAPI,
   clubMembers: clubMembersAPI,
+  playerMovement: playerMovementAPI,
+  matchPrep: matchPrepAPI,
 };
 
 export default api;

@@ -28,6 +28,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 
 import { api } from '../services/api'
 import { useClubName } from '../contexts/ClubContext'
 import GAAPitch from '../components/GAAPitch'
+import ManMarkingPanel from '../components/ManMarkingPanel'
 import EventFilterToggles, { getEventTypesForFilters } from '../components/EventFilterToggles'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
 import ScoringTimeline from '../components/charts/ScoringTimeline'
@@ -96,6 +97,13 @@ export default function MatchResult() {
 
   // Team filter state - which team's events to show on pitch
   const [teamFilter, setTeamFilter] = useState<'own' | 'opponent'>('own')
+
+  // Man marking
+  const { data: markingAssignments = [], refetch: refetchMarkings } = useQuery({
+    queryKey: ['marking-assignments', matchId],
+    queryFn: () => matchId ? api.matchPrep.listMarkings(matchId) : Promise.resolve([]),
+    enabled: !!matchId,
+  })
 
   // Handle GPS file upload
   const handleGpsUpload = async (file: File) => {
@@ -620,6 +628,33 @@ export default function MatchResult() {
               <div className="text-center text-white/40 py-8">No events recorded</div>
             )}
           </div>
+
+          {/* Man Marking (post-match recording) */}
+          <ManMarkingPanel
+            matchId={matchId!}
+            assignments={markingAssignments}
+            players={players || []}
+            onAdd={async (playerId, opponentName, notes) => {
+              try {
+                await api.matchPrep.createMarking(matchId!, {
+                  player_id: playerId,
+                  opponent_player_name: opponentName,
+                  notes,
+                })
+                refetchMarkings()
+              } catch (err) {
+                console.error('Failed to add marking:', err)
+              }
+            }}
+            onDelete={async (assignmentId) => {
+              try {
+                await api.matchPrep.deleteMarking(assignmentId)
+                refetchMarkings()
+              } catch (err) {
+                console.error('Failed to delete marking:', err)
+              }
+            }}
+          />
         </div>
       </div>
 

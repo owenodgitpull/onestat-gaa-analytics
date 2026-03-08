@@ -15,6 +15,10 @@ import ScoringTimeline from '@/components/charts/ScoringTimeline'
 import ShotOutcomeChart from '@/components/charts/ShotOutcomeChart'
 import PathsTakenChart from '@/components/charts/PathsTakenChart'
 import FullscreenPitchMode from '@/components/FullscreenPitchMode'
+import JerseyNumberStrip from '@/components/JerseyNumberStrip'
+import FormationSnapshotButton from '@/components/FormationSnapshotButton'
+import FormationSnapshotMode from '@/components/FormationSnapshotMode'
+import TacticalTagButton from '@/components/TacticalTagButton'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '@/components/WeatherPickerPopover'
 import { BallPosition, PossessionTeam, EventType, Player, MatchEvent } from '@/types'
@@ -23,6 +27,7 @@ import { useRecordEvent, useMatchEvents, useDeleteEvent } from '@/hooks/useMatch
 import { useRecordPossession } from '@/hooks/usePossession'
 import { usePlayers } from '@/hooks/usePlayers'
 import { api } from '@/services/api'
+import { usePlayerMovement } from '@/hooks/usePlayerMovement'
 import { useClubName } from '@/contexts/ClubContext'
 import { useTour } from '@/hooks/useTour'
 import { matchRecordingSteps } from '@/config/tourSteps'
@@ -104,10 +109,11 @@ export default function MatchRecording() {
   const [ballTrail, setBallTrail] = useState<Array<{ x: number; y: number }>>([])
   const prevTeamRef = useRef(ballPosition.team)
 
-  // Clear trail on possession change (team switch)
+  // Clear trail and carrier on possession change (team switch)
   useEffect(() => {
     if (ballPosition.team !== prevTeamRef.current) {
       setBallTrail([])
+      setActiveCarrierId(null)
       prevTeamRef.current = ballPosition.team
     }
   }, [ballPosition.team])
@@ -133,6 +139,88 @@ export default function MatchRecording() {
     const onFieldIds = new Set(matchLineup.filter(l => l.is_on_field).map(l => l.player_id))
     return players.filter(p => onFieldIds.has(p.id))
   }, [matchLineup, players])
+
+  // Player movement tracking (ball carrier)
+  const [activeCarrierId, setActiveCarrierId] = useState<string | null>(null)
+  const playerMovement = usePlayerMovement({
+    matchId: matchId,
+    half: currentHalf,
+    minute: minute,
+    team: ballPosition.team === PossessionTeam.OWN ? 'own' : 'opponent',
+  })
+
+  // Build jersey strip player list from lineup data
+  const jerseyStripPlayers = useMemo(() => {
+    if (!matchLineup.length) return []
+    return matchLineup.map((entry: any) => {
+      const player = players.find(p => p.id === entry.player_id)
+      return {
+        playerId: entry.player_id,
+        jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? null,
+        playerName: player?.name ?? entry.player_name ?? 'Unknown',
+        isOnField: entry.is_on_field,
+      }
+    })
+  }, [matchLineup, players])
+
+  const handleCarrierSelect = async (playerId: string, jerseyNumber: number | null) => {
+    if (activeCarrierId === playerId) {
+      // Deselect
+      await playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y)
+      setActiveCarrierId(null)
+    } else {
+      // Select new carrier
+      await playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y)
+      setActiveCarrierId(playerId)
+    }
+  }
+
+  // Formation snapshot state
+  const [isSnapshotMode, setIsSnapshotMode] = useState(false)
+  const [snapshotCount, setSnapshotCount] = useState(0)
+  const [shouldPulseSnapshot, setShouldPulseSnapshot] = useState(false)
+
+  // Tactical tag state
+  const [tacticalTagCount, setTacticalTagCount] = useState(0)
+
+  const handleFormationSave = async (positions: Array<{ playerId: string; jerseyNumber: number | null; x: number; y: number }>, label: string) => {
+    if (!matchId) return
+    try {
+      await api.playerMovement.createSnapshot({
+        match_id: matchId,
+        half: currentHalf,
+        minute,
+        label,
+        positions: positions.map(p => ({
+          player_id: p.playerId,
+          jersey_number: p.jerseyNumber,
+          x: p.x,
+          y: p.y,
+        })),
+      })
+      setSnapshotCount(prev => prev + 1)
+    } catch (err) {
+      console.error('Failed to save formation snapshot:', err)
+    }
+  }
+
+  const handleTacticalTag = async (tagType: string, label?: string) => {
+    if (!matchId) return
+    try {
+      await api.playerMovement.createTacticalTag({
+        match_id: matchId,
+        tag_type: tagType,
+        label,
+        half: currentHalf,
+        minute,
+        pitch_x: ballPosition.x,
+        pitch_y: ballPosition.y,
+      })
+      setTacticalTagCount(prev => prev + 1)
+    } catch (err) {
+      console.error('Failed to create tactical tag:', err)
+    }
+  }
 
   // Query client for manual refetching
   const queryClient = useQueryClient()
@@ -842,6 +930,13 @@ export default function MatchRecording() {
     }).catch(err => {
       console.error('Failed to record drag path:', err)
     })
+
+    // Append path points to active carrier segment
+    if (activeCarrierId) {
+      for (const wp of waypoints) {
+        playerMovement.appendPathPoint(wp.x, wp.y)
+      }
+    }
   }
 
   // Record a kickout event at the selected position
@@ -1383,6 +1478,12 @@ export default function MatchRecording() {
         notes: undefined
       })
 
+      // Auto-end carrier segment on terminal events
+      if (activeCarrierId) {
+        playerMovement.onTerminalEvent(String(eventType).toLowerCase(), position.x, position.y)
+        setActiveCarrierId(null)
+      }
+
       // Check if this was a scoring event - reset ball and auto-select kickout tab
       // Include free kick scores and 45 scored
       const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE, EventType.PENALTY_GOAL]
@@ -1412,6 +1513,10 @@ export default function MatchRecording() {
 
         // Lock ball until kickout is resolved
         setAwaitingKickout(true)
+
+        // Pulse snapshot button — good time to capture formation
+        setShouldPulseSnapshot(true)
+        setTimeout(() => setShouldPulseSnapshot(false), 5000)
 
         console.log('Ball moved to goalkeeper area for kickout after:', eventType)
       } else {
@@ -2071,6 +2176,7 @@ export default function MatchRecording() {
                   trail={ballTrail}
                   onTrailUpdate={setBallTrail}
                   onDragPath={handleDragPath}
+                  carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
                   svgOverlay={
                     (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -2095,7 +2201,12 @@ export default function MatchRecording() {
                         </div>
                         {!awaitingKickout && !pendingFreeKick && !pending45 && !selectingFoulPlayer && (
                           <button
-                            onClick={() => {
+                            onClick={async () => {
+                              // End carrier segment on possession swap
+                              if (activeCarrierId) {
+                                await playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y)
+                                setActiveCarrierId(null)
+                              }
                               const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
                               setBallPosition(prev => ({ ...prev, team: newTeam }))
                             }}
@@ -2117,19 +2228,42 @@ export default function MatchRecording() {
                   }
                 />
 
-                {/* Fullscreen button — top-right of pitch */}
+                {/* Pitch control buttons — top-right */}
                 {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                  <button
-                    data-tour="fullscreen-btn"
-                    onClick={() => setIsFullscreenPitch(true)}
-                    className="absolute top-8 right-8 z-10 p-2 rounded-lg bg-black/50 backdrop-blur-sm border border-white/15 text-white/70 hover:text-white hover:bg-black/70 transition-all"
-                    title="Fullscreen pitch mode"
-                  >
-                    <Maximize size={14} />
-                  </button>
+                  <div className="absolute top-8 right-8 z-10 flex items-center gap-1.5">
+                    <FormationSnapshotButton
+                      onClick={() => setIsSnapshotMode(true)}
+                      shouldPulse={shouldPulseSnapshot}
+                      snapshotCount={snapshotCount}
+                    />
+                    <TacticalTagButton
+                      onTag={handleTacticalTag}
+                      tagCount={tacticalTagCount}
+                    />
+                    <button
+                      data-tour="fullscreen-btn"
+                      onClick={() => setIsFullscreenPitch(true)}
+                      className="p-2.5 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
+                      title="Fullscreen pitch mode"
+                    >
+                      <Maximize size={18} />
+                    </button>
+                  </div>
                 )}
 
               </div>
+
+              {/* Jersey Number Strip for carrier tracking */}
+              {jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && (
+                <div className="max-w-2xl mx-auto -mt-2 mb-1">
+                  <JerseyNumberStrip
+                    players={jerseyStripPlayers}
+                    activeCarrierId={activeCarrierId}
+                    currentPossession={ballPosition.team}
+                    onCarrierSelect={handleCarrierSelect}
+                  />
+                </div>
+              )}
 
               {/* Categorized Action Buttons */}
               <div className="max-w-2xl mx-auto -mt-2">
@@ -2501,10 +2635,18 @@ export default function MatchRecording() {
         teamAttackingRight={teamAttackingRight}
         statusText={statusLabel.text}
         statusAccent={statusLabel.accent}
-        onSwapPossession={() => {
+        onSwapPossession={async () => {
+          if (activeCarrierId) {
+            await playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y)
+            setActiveCarrierId(null)
+          }
           const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
           setBallPosition(prev => ({ ...prev, team: newTeam }))
         }}
+        jerseyStripPlayers={jerseyStripPlayers}
+        activeCarrierId={activeCarrierId}
+        onCarrierSelect={handleCarrierSelect}
+        carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
         selectingFoulPlayer={selectingFoulPlayer}
         onStartSecondHalf={matchPhase === 'half_time' ? startHalf : undefined}
         onEndFirstHalf={endFirstHalf}
@@ -2512,6 +2654,18 @@ export default function MatchRecording() {
         fullTimeReached={fullTimeReached}
         blackCardTimers={blackCardTimers}
         onRemoveBlackCard={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))}
+      />
+
+      {/* Formation Snapshot Mode */}
+      <FormationSnapshotMode
+        isOpen={isSnapshotMode}
+        onClose={() => setIsSnapshotMode(false)}
+        onSave={handleFormationSave}
+        availablePlayers={jerseyStripPlayers.filter(p => p.isOnField).map(p => ({
+          playerId: p.playerId,
+          jerseyNumber: p.jerseyNumber,
+          playerName: p.playerName,
+        }))}
       />
 
       {/* Error Alert Modal */}

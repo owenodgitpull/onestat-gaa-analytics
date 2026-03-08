@@ -44,6 +44,7 @@ class TrainingSessionResponse(TrainingSessionBase):
     created_at: datetime
     attendance_count: int = Field(0, description="Number of attendance records")
     present_count: int = Field(0, description="Number of players present")
+    has_gps_data: bool = Field(False, description="Whether GPS data has been uploaded for this session")
 
     class Config:
         from_attributes = True

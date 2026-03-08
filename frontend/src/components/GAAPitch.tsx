@@ -33,6 +33,8 @@ interface GAAPitchProps {
   svgOverlay?: React.ReactNode
   /** Show gradient border around the pitch edge inside the SVG */
   gradientBorder?: boolean
+  /** Active ball carrier jersey number — renders badge on ball icon */
+  carrierJerseyNumber?: number | null
 }
 
 // Minimum distance (in pitch %) between recorded drag waypoints
@@ -89,6 +91,7 @@ export default function GAAPitch({
   onDragPath,
   svgOverlay,
   gradientBorder = false,
+  carrierJerseyNumber,
 }: GAAPitchProps) {
   const [localBallPosition, setLocalBallPosition] = useState<BallPosition | null>(
     ballPosition || null
@@ -434,6 +437,30 @@ export default function GAAPitch({
               >
                 2PT
               </text>
+            )}
+
+            {/* Carrier jersey number badge */}
+            {carrierJerseyNumber != null && (
+              <g>
+                <circle
+                  cx={toSvgX(displayPosition.x) + 22}
+                  cy={toSvgY(displayPosition.y) - 22}
+                  r="18"
+                  fill={displayPosition.team === PossessionTeam.OWN ? '#059669' : '#ef4444'}
+                  stroke="white"
+                  strokeWidth="2"
+                />
+                <text
+                  x={toSvgX(displayPosition.x) + 22}
+                  y={toSvgY(displayPosition.y) - 17}
+                  textAnchor="middle"
+                  fill="white"
+                  fontSize="18"
+                  fontWeight="bold"
+                >
+                  {carrierJerseyNumber}
+                </text>
+              </g>
             )}
           </g>
         )}

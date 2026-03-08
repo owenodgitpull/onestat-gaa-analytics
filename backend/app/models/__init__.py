@@ -40,6 +40,13 @@ from app.models.ball_position_sample import BallPositionSample
 from app.models.scraped_fixture import ScrapedFixture
 from app.models.season_cache import SeasonCache
 from app.models.knowledge_document import KnowledgeDocument
+from app.models.ball_carrier_segment import BallCarrierSegment
+from app.models.formation_snapshot import FormationSnapshot
+from app.models.movement_arrow import MovementArrow
+from app.models.kickout_play import KickoutPlay
+from app.models.tactical_tag import TacticalTag
+from app.models.set_piece_routine import SetPieceRoutine
+from app.models.man_marking_assignment import ManMarkingAssignment
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -99,5 +106,12 @@ __all__ = [
     "ScrapedFixture",
     "SeasonCache",
     "KnowledgeDocument",
+    "BallCarrierSegment",
+    "FormationSnapshot",
+    "MovementArrow",
+    "KickoutPlay",
+    "TacticalTag",
+    "SetPieceRoutine",
+    "ManMarkingAssignment",
 ]
 

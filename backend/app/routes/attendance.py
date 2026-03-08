@@ -21,6 +21,7 @@ from app.services.workload_analysis_service import WorkloadAnalysisService
 logger = logging.getLogger(__name__)
 from app.models.attendance import TrainingSession, Attendance, SessionType, AttendanceStatus
 from app.models.player import Player
+from app.models.training_performance import TrainingGPSData
 from app.schemas.attendance import (
     TrainingSessionCreate,
     TrainingSessionUpdate,
@@ -82,6 +83,14 @@ async def list_sessions(
     result = await db.execute(query)
     sessions = result.scalars().all()
 
+    # Check which sessions have GPS data
+    session_ids = [s.id for s in sessions]
+    gps_query = select(TrainingGPSData.session_id).where(
+        TrainingGPSData.session_id.in_(session_ids)
+    ).distinct()
+    gps_result = await db.execute(gps_query)
+    sessions_with_gps = {row[0] for row in gps_result.all()}
+
     response = []
     for s in sessions:
         present = sum(1 for a in s.attendance_records if a.status == AttendanceStatus.PRESENT)
@@ -95,7 +104,8 @@ async def list_sessions(
             notes=s.notes,
             created_at=s.created_at,
             attendance_count=len(s.attendance_records),
-            present_count=present
+            present_count=present,
+            has_gps_data=s.id in sessions_with_gps
         ))
 
     return response

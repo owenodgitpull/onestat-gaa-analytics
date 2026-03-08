@@ -100,6 +100,9 @@ class Match(Base):
     # Optional notes
     notes: Column[Optional[str]] = Column(String, nullable=True)
 
+    # Tactical notes for match prep (surfaced to Live Match Agent)
+    tactical_notes: Column[Optional[str]] = Column(Text, nullable=True)
+
     # Weather and pitch conditions (for pattern analysis)
     weather_condition: Column[Optional[WeatherCondition]] = Column(Enum(WeatherCondition), nullable=True)
     pitch_condition: Column[Optional[PitchCondition]] = Column(Enum(PitchCondition), nullable=True)

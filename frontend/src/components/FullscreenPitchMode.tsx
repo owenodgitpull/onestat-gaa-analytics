@@ -4,6 +4,7 @@ import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
+import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import { useClubName } from '@/contexts/ClubContext'
 
 interface FullscreenPitchModeProps {
@@ -64,6 +65,10 @@ interface FullscreenPitchModeProps {
   fullTimeReached?: boolean
   blackCardTimers?: BlackCardEntry[]
   onRemoveBlackCard?: (id: string) => void
+  jerseyStripPlayers?: Array<{ playerId: string; jerseyNumber: number | null; playerName: string; isOnField: boolean }>
+  activeCarrierId?: string | null
+  onCarrierSelect?: (playerId: string, jerseyNumber: number | null) => void
+  carrierJerseyNumber?: number | null
 }
 
 export default function FullscreenPitchMode({
@@ -110,6 +115,10 @@ export default function FullscreenPitchMode({
   fullTimeReached = false,
   blackCardTimers = [],
   onRemoveBlackCard,
+  jerseyStripPlayers = [],
+  activeCarrierId = null,
+  onCarrierSelect,
+  carrierJerseyNumber,
 }: FullscreenPitchModeProps) {
   const clubName = useClubName()
   const [toastVisible, setToastVisible] = useState(false)
@@ -309,6 +318,7 @@ export default function FullscreenPitchMode({
           trail={trail}
           onTrailUpdate={onTrailUpdate}
           onDragPath={onDragPath}
+          carrierJerseyNumber={carrierJerseyNumber}
           svgOverlay={
             (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -364,6 +374,19 @@ export default function FullscreenPitchMode({
           </div>
         </div>
       </div>
+
+      {/* Jersey Number Strip for carrier tracking */}
+      {jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2">
+          <JerseyNumberStrip
+            players={jerseyStripPlayers}
+            activeCarrierId={activeCarrierId}
+            currentPossession={currentPossession}
+            onCarrierSelect={onCarrierSelect}
+            disabled={actionsDisabled}
+          />
+        </div>
+      )}
 
       {/* Bottom — CategorizedActionButtons, same as normal mode */}
       <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-3 py-2">

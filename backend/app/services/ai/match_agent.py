@@ -26,7 +26,7 @@ from app.services.rag_service import RAGService
 logger = logging.getLogger(__name__)
 
 # Tools available to the live agent (fast, minimal subset)
-LIVE_TOOLS = ["get_match_events", "get_match_summary", "get_scoring_patterns", "get_stats_by_half"]
+LIVE_TOOLS = ["get_match_events", "get_match_summary", "get_scoring_patterns", "get_stats_by_half", "get_ball_carrier_data", "get_formation_snapshots"]
 
 MAX_LIVE_TURNS = 2
 
@@ -56,8 +56,10 @@ class MatchAgent:
         from uuid import UUID
         from app.models.match import Match
         match_uuid = UUID(match_id) if isinstance(match_id, str) else match_id
-        match_q = await db.execute(select(Match.club_id).where(Match.id == match_uuid))
-        club_id = match_q.scalar_one_or_none()
+        match_q = await db.execute(select(Match.club_id, Match.tactical_notes).where(Match.id == match_uuid))
+        match_row = match_q.one_or_none()
+        club_id = match_row[0] if match_row else None
+        tactical_notes = match_row[1] if match_row else None
         club_name, club_context = await get_club_context(db, club_id)
 
         # Get knowledge base context via RAG
@@ -71,6 +73,11 @@ class MatchAgent:
             logger.warning(f"RAG context retrieval failed: {e}")
             kb_context = ""
 
+        # Build tactical notes section
+        tactical_section = ""
+        if tactical_notes:
+            tactical_section = f"\n## Manager's Tactical Notes (PRE-MATCH PLAN — reference these when making suggestions)\n{tactical_notes}\n"
+
         system_prompt = f"""You are a GAA sideline analyst providing LIVE match insights for {club_name}.
 CRITICAL: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). Be punchy and actionable — this displays in a small sidebar widget. No bullet points, no headers, no lists.
 
@@ -79,7 +86,7 @@ CRITICAL: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). 
 
 ## Knowledge Base Context (GPS benchmarks, tactical patterns, rules)
 {kb_context}
-
+{tactical_section}
 Current match state:
 {summary}
 

@@ -19,6 +19,7 @@ class MatchBase(BaseModel):
     competition: Optional[str] = Field(None, max_length=200, description="Competition name")
     referee: Optional[str] = Field(None, max_length=200, description="Referee name")
     notes: Optional[str] = Field(None, max_length=1000, description="Optional match notes")
+    tactical_notes: Optional[str] = Field(None, max_length=5000, description="Tactical notes for match day reference")
 
     # Weather and pitch conditions (optional, for pattern analysis)
     weather_condition: Optional[WeatherCondition] = Field(None, description="Weather during match")
@@ -58,6 +59,7 @@ class MatchUpdate(BaseModel):
     competition: Optional[str] = Field(None, max_length=200)
     referee: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = Field(None, max_length=1000)
+    tactical_notes: Optional[str] = Field(None, max_length=5000)
 
     # Weather and pitch conditions
     weather_condition: Optional[WeatherCondition] = None
@@ -109,6 +111,9 @@ class MatchResponse(MatchBase):
     # Strip colours
     team_strip_colour: Optional[str] = Field(None, description="Team strip colour hex")
     opponent_strip_colour: Optional[str] = Field(None, description="Opponent strip colour hex")
+
+    # Tactical notes
+    tactical_notes: Optional[str] = Field(None, description="Tactical notes for match day reference")
 
     # AI analysis (generated when match completes)
     ai_analysis: Optional[str] = Field(None, description="AI-generated post-match analysis")

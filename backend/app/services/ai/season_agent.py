@@ -43,6 +43,9 @@ SEASON_TOOLS = [
     "get_match_summary",
     "get_stats_by_half",
     "search_players",
+    "get_ball_carrier_data",
+    "get_formation_snapshots",
+    "get_man_marking_history",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)
