@@ -45,6 +45,7 @@ interface TextLabel {
   x: number
   y: number
   text: string
+  rotation?: number // degrees
 }
 
 interface Phase {
@@ -80,21 +81,30 @@ function genId() {
   return `el-${nextId++}-${Date.now()}`
 }
 
-// Build a smooth cubic bezier path through control points
-function buildCurvedPath(points: { x: number; y: number }[]): string {
-  if (points.length < 2) return ''
+// Compute the control point for a 2-point quadratic curve
+function quadControlPoint(p0: { x: number; y: number }, p1: { x: number; y: number }) {
+  const mid = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 }
+  const dx = p1.x - p0.x
+  const dy = p1.y - p0.y
+  return { x: mid.x - dy * 0.3, y: mid.y + dx * 0.3 }
+}
+
+// Build a smooth cubic bezier path through control points (returns path + end tangent angle)
+function buildCurvedPath(points: { x: number; y: number }[]): { d: string; endAngle: number; endPt: { x: number; y: number } } {
+  if (points.length < 2) return { d: '', endAngle: 0, endPt: { x: 0, y: 0 } }
   const svgPts = points.map(p => ({ x: toSvgX(p.x), y: toSvgY(p.y) }))
+  const last = svgPts[svgPts.length - 1]
+
   if (svgPts.length === 2) {
-    // Simple quadratic curve with auto control point
-    const mid = { x: (svgPts[0].x + svgPts[1].x) / 2, y: (svgPts[0].y + svgPts[1].y) / 2 }
-    const dx = svgPts[1].x - svgPts[0].x
-    const dy = svgPts[1].y - svgPts[0].y
-    const cx = mid.x - dy * 0.3
-    const cy = mid.y + dx * 0.3
-    return `M ${svgPts[0].x},${svgPts[0].y} Q ${cx},${cy} ${svgPts[1].x},${svgPts[1].y}`
+    const cp = quadControlPoint(svgPts[0], svgPts[1])
+    const d = `M ${svgPts[0].x},${svgPts[0].y} Q ${cp.x},${cp.y} ${last.x},${last.y}`
+    // Tangent at end of quadratic: direction from control point to end point
+    const angle = Math.atan2(last.y - cp.y, last.x - cp.x)
+    return { d, endAngle: angle, endPt: last }
   }
-  // Multi-point: smooth cubic bezier through all points
+
   let d = `M ${svgPts[0].x},${svgPts[0].y}`
+  let lastCp2 = svgPts[0]
   for (let i = 0; i < svgPts.length - 1; i++) {
     const p0 = svgPts[Math.max(0, i - 1)]
     const p1 = svgPts[i]
@@ -105,15 +115,35 @@ function buildCurvedPath(points: { x: number; y: number }[]): string {
     const cp2x = p2.x - (p3.x - p1.x) / 6
     const cp2y = p2.y - (p3.y - p1.y) / 6
     d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`
+    lastCp2 = { x: cp2x, y: cp2y }
   }
-  return d
+  // Tangent at end of cubic: direction from last control point to end point
+  const angle = Math.atan2(last.y - lastCp2.y, last.x - lastCp2.x)
+  return { d, endAngle: angle, endPt: last }
 }
 
-// Build straight polyline path
-function buildStraightPath(points: { x: number; y: number }[]): string {
-  if (points.length < 2) return ''
+// Build straight polyline path (returns path + end tangent angle)
+function buildStraightPath(points: { x: number; y: number }[]): { d: string; endAngle: number; endPt: { x: number; y: number } } {
+  if (points.length < 2) return { d: '', endAngle: 0, endPt: { x: 0, y: 0 } }
   const svgPts = points.map(p => ({ x: toSvgX(p.x), y: toSvgY(p.y) }))
-  return `M ${svgPts.map(p => `${p.x},${p.y}`).join(' L ')}`
+  const d = `M ${svgPts.map(p => `${p.x},${p.y}`).join(' L ')}`
+  const last = svgPts[svgPts.length - 1]
+  const prev = svgPts[svgPts.length - 2]
+  const angle = Math.atan2(last.y - prev.y, last.x - prev.x)
+  return { d, endAngle: angle, endPt: last }
+}
+
+// Build arrowhead polygon points at a given position and angle
+function arrowheadPoints(tip: { x: number; y: number }, angle: number, size: number = 18): string {
+  const left = {
+    x: tip.x - Math.cos(angle - 0.45) * size,
+    y: tip.y - Math.sin(angle - 0.45) * size,
+  }
+  const right = {
+    x: tip.x - Math.cos(angle + 0.45) * size,
+    y: tip.y - Math.sin(angle + 0.45) * size,
+  }
+  return `${tip.x},${tip.y} ${left.x},${left.y} ${right.x},${right.y}`
 }
 
 export default function SetPieceEditor({
@@ -135,7 +165,7 @@ export default function SetPieceEditor({
   const [isOpponent, setIsOpponent] = useState(false)
   const [drawingArrow, setDrawingArrow] = useState<{ points: { x: number; y: number }[] } | null>(null)
   const [history, setHistory] = useState<Phase[][]>([])
-  const [draggingPlayer, setDraggingPlayer] = useState<string | null>(null)
+  const [dragging, setDragging] = useState<{ type: 'player' | 'arrow' | 'label'; id: string; startPt?: { x: number; y: number } } | null>(null)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>('')
   const [labelInput, setLabelInput] = useState('')
   const [placingLabel, setPlacingLabel] = useState(false)
@@ -197,6 +227,7 @@ export default function SetPieceEditor({
           x: el.x as number,
           y: el.y as number,
           text: el.text as string,
+          rotation: (el.rotation as number) || 0,
         })
       }
     }
@@ -234,7 +265,7 @@ export default function SetPieceEditor({
   }
 
   const handleSVGClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (draggingPlayer) return
+    if (dragging) return
     const pt = getSVGPoint(e)
 
     if (tool === 'player') {
@@ -322,32 +353,66 @@ export default function SetPieceEditor({
     }
   }, [drawingArrow, tool])
 
-  // Player drag handlers
-  const handlePlayerPointerDown = (e: React.PointerEvent, playerId: string) => {
+  // Unified drag handlers for players, arrows, labels
+  const handleElementPointerDown = (e: React.PointerEvent, elType: 'player' | 'arrow' | 'label', id: string) => {
     if (tool !== 'select') return
     e.stopPropagation()
     e.preventDefault()
     ;(e.target as Element).setPointerCapture(e.pointerId)
-    setDraggingPlayer(playerId)
+    const pt = getSVGPoint(e)
+    setDragging({ type: elType, id, startPt: pt })
   }
 
-  const handlePlayerPointerMove = (e: React.PointerEvent) => {
-    if (!draggingPlayer) return
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragging) return
     e.stopPropagation()
     const pt = getSVGPoint(e)
-    updatePhase(p => ({
-      ...p,
-      players: p.players.map(pl =>
-        pl.id === draggingPlayer ? { ...pl, x: pt.x, y: pt.y } : pl
-      ),
-    }))
+    const dx = pt.x - (dragging.startPt?.x ?? pt.x)
+    const dy = pt.y - (dragging.startPt?.y ?? pt.y)
+
+    if (dragging.type === 'player') {
+      updatePhase(p => ({
+        ...p,
+        players: p.players.map(pl =>
+          pl.id === dragging.id ? { ...pl, x: pt.x, y: pt.y } : pl
+        ),
+      }))
+    } else if (dragging.type === 'arrow') {
+      updatePhase(p => ({
+        ...p,
+        arrows: p.arrows.map(a =>
+          a.id === dragging.id
+            ? { ...a, points: a.points.map(ap => ({ x: ap.x + dx, y: ap.y + dy })) }
+            : a
+        ),
+      }))
+    } else if (dragging.type === 'label') {
+      updatePhase(p => ({
+        ...p,
+        labels: p.labels.map(l =>
+          l.id === dragging.id ? { ...l, x: pt.x, y: pt.y } : l
+        ),
+      }))
+    }
+    setDragging(prev => prev ? { ...prev, startPt: pt } : null)
   }
 
-  const handlePlayerPointerUp = (e: React.PointerEvent) => {
-    if (!draggingPlayer) return
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!dragging) return
     e.stopPropagation()
     ;(e.target as Element).releasePointerCapture(e.pointerId)
-    setDraggingPlayer(null)
+    setDragging(null)
+  }
+
+  // Rotate a label by 15 degrees on right-click or double-click in select mode
+  const rotateLabel = (id: string) => {
+    saveSnapshot()
+    updatePhase(p => ({
+      ...p,
+      labels: p.labels.map(l =>
+        l.id === id ? { ...l, rotation: ((l.rotation || 0) + 15) % 360 } : l
+      ),
+    }))
   }
 
   const removePlayer = (id: string) => {
@@ -400,7 +465,7 @@ export default function SetPieceEditor({
         elements.push({ type: 'arrow', points: a.points, color: a.color, dashed: a.dashed, curved: a.curved })
       }
       for (const l of phase.labels) {
-        elements.push({ type: 'label', x: l.x, y: l.y, text: l.text })
+        elements.push({ type: 'label', x: l.x, y: l.y, text: l.text, rotation: l.rotation || 0 })
       }
     } else {
       // Multi-phase: wrap each phase
@@ -417,7 +482,7 @@ export default function SetPieceEditor({
           items.push({ type: 'arrow', points: a.points, color: a.color, dashed: a.dashed, curved: a.curved })
         }
         for (const l of ph.labels) {
-          items.push({ type: 'label', x: l.x, y: l.y, text: l.text })
+          items.push({ type: 'label', x: l.x, y: l.y, text: l.text, rotation: l.rotation || 0 })
         }
         elements.push({ type: 'phase', items })
       }
@@ -425,69 +490,76 @@ export default function SetPieceEditor({
     onSave(elements)
   }
 
-  const exportPhase = async (phaseIdx: number): Promise<HTMLCanvasElement | null> => {
-    // Temporarily render the phase to a canvas
+  // Export uses a ref to queue phase switches and wait for render
+  const exportQueueRef = useRef<{ phases: number[]; savedPhase: number } | null>(null)
+
+  const captureCurrentSVG = (phaseIdx: number) => {
     const svg = svgRef.current
-    if (!svg) return null
+    if (!svg) return
 
     const canvas = document.createElement('canvas')
     canvas.width = 2332
     canvas.height = 1446
     const ctx = canvas.getContext('2d')
-    if (!ctx) return null
+    if (!ctx) return
 
     const svgData = new XMLSerializer().serializeToString(svg)
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(svgBlob)
 
-    return new Promise((resolve) => {
-      const img = new Image()
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, 2332, 1446)
-        URL.revokeObjectURL(url)
-        // Add phase label
-        if (phases.length > 1) {
-          ctx.fillStyle = 'rgba(0,0,0,0.7)'
-          ctx.fillRect(20, 20, 200, 50)
-          ctx.fillStyle = '#ffffff'
-          ctx.font = 'bold 28px sans-serif'
-          ctx.fillText(`Phase ${phaseIdx + 1} of ${phases.length}`, 35, 52)
-        }
-        resolve(canvas)
+    const img = new Image()
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, 2332, 1446)
+      URL.revokeObjectURL(url)
+      // Phase label overlay
+      if (phases.length > 1) {
+        ctx.fillStyle = 'rgba(0,0,0,0.7)'
+        ctx.fillRect(20, 20, 260, 50)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = 'bold 28px sans-serif'
+        ctx.fillText(`Phase ${phaseIdx + 1} of ${phases.length}`, 35, 52)
       }
-      img.onerror = () => {
-        URL.revokeObjectURL(url)
-        resolve(null)
-      }
-      img.src = url
-    })
-  }
-
-  const handleExport = async () => {
-    if (phases.length === 1) {
-      // Single phase export
-      const canvas = await exportPhase(0)
-      if (!canvas) return
       const link = document.createElement('a')
-      link.download = `${routineName.replace(/\s+/g, '_')}.png`
+      const suffix = phases.length > 1 ? `_phase${phaseIdx + 1}` : ''
+      link.download = `${routineName.replace(/\s+/g, '_')}${suffix}.png`
       link.href = canvas.toDataURL('image/png')
       link.click()
-    } else {
-      // Multi-phase: export current phase first, then all
-      const savedPhase = currentPhase
-      for (let i = 0; i < phases.length; i++) {
-        setCurrentPhase(i)
-        // Small delay to let React render
-        await new Promise(r => setTimeout(r, 100))
-        const canvas = await exportPhase(i)
-        if (canvas) {
-          const link = document.createElement('a')
-          link.download = `${routineName.replace(/\s+/g, '_')}_phase${i + 1}.png`
-          link.href = canvas.toDataURL('image/png')
-          link.click()
-        }
+
+      // Continue export queue
+      if (exportQueueRef.current && exportQueueRef.current.phases.length > 0) {
+        const next = exportQueueRef.current.phases.shift()!
+        setCurrentPhase(next)
+      } else if (exportQueueRef.current) {
+        // Done — restore original phase
+        setCurrentPhase(exportQueueRef.current.savedPhase)
+        exportQueueRef.current = null
       }
-      setCurrentPhase(savedPhase)
+    }
+    img.onerror = () => URL.revokeObjectURL(url)
+    img.src = url
+  }
+
+  // After phase switch, capture if export is in progress
+  useEffect(() => {
+    if (exportQueueRef.current) {
+      // Give React one more frame to render
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          captureCurrentSVG(currentPhase)
+        })
+      })
+    }
+  }, [currentPhase]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleExport = () => {
+    if (phases.length === 1) {
+      captureCurrentSVG(0)
+    } else {
+      // Queue all phases for export
+      const remaining = Array.from({ length: phases.length }, (_, i) => i).filter(i => i !== currentPhase)
+      exportQueueRef.current = { phases: remaining, savedPhase: currentPhase }
+      // Start by capturing current phase
+      captureCurrentSVG(currentPhase)
     }
   }
 
@@ -694,8 +766,8 @@ export default function SetPieceEditor({
               style={{ touchAction: 'none' }}
               onClick={handleSVGClick}
               onDoubleClick={handleDoubleClick}
-              onPointerMove={handlePlayerPointerMove}
-              onPointerUp={handlePlayerPointerUp}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
               xmlns="http://www.w3.org/2000/svg"
             >
               {/* Background */}
@@ -709,91 +781,122 @@ export default function SetPieceEditor({
                 preserveAspectRatio="xMidYMid meet"
               />
 
-              {/* Arrow markers */}
-              <defs>
-                <marker id="sp-arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                  <polygon points="0 0, 10 3.5, 0 7" fill={ARROW_COLOR} />
-                </marker>
-                <marker id="sp-arrowhead-dashed" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                  <polygon points="0 0, 10 3.5, 0 7" fill={ARROW_COLOR} opacity="0.7" />
-                </marker>
-              </defs>
-
-              {/* Arrows */}
+              {/* Arrows — custom arrowheads for correct orientation */}
               {phase.arrows.map(arrow => {
-                const pathD = arrow.curved
+                const result = arrow.curved
                   ? buildCurvedPath(arrow.points)
                   : buildStraightPath(arrow.points)
+                if (!result.d) return null
+                const isArrowDragging = dragging?.type === 'arrow' && dragging.id === arrow.id
                 return (
-                  <g key={arrow.id}>
-                    {/* Wider invisible hit area for easier clicking */}
+                  <g key={arrow.id} opacity={isArrowDragging ? 0.6 : 1}>
+                    {/* Wider invisible hit area */}
                     <path
-                      d={pathD}
+                      d={result.d}
                       fill="none"
                       stroke="transparent"
-                      strokeWidth="30"
-                      className="cursor-pointer"
-                      onClick={e => { e.stopPropagation(); removeArrow(arrow.id) }}
+                      strokeWidth="40"
+                      className={tool === 'select' ? 'cursor-grab' : 'cursor-pointer'}
+                      onPointerDown={e => handleElementPointerDown(e, 'arrow', arrow.id)}
+                      onClick={e => { if (tool !== 'select') { e.stopPropagation(); removeArrow(arrow.id) } }}
                     />
                     <path
-                      d={pathD}
+                      d={result.d}
                       fill="none"
                       stroke={arrow.color}
                       strokeWidth="6"
                       strokeDasharray={arrow.dashed ? '15 8' : undefined}
-                      markerEnd="url(#sp-arrowhead)"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      className="cursor-pointer"
-                      onClick={e => { e.stopPropagation(); removeArrow(arrow.id) }}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                    {/* Custom arrowhead polygon */}
+                    <polygon
+                      points={arrowheadPoints(result.endPt, result.endAngle, 20)}
+                      fill={arrow.color}
+                      style={{ pointerEvents: 'none' }}
                     />
                   </g>
                 )
               })}
 
               {/* Drawing arrow preview */}
-              {drawingArrow && drawingArrow.points.length > 0 && (
-                <path
-                  d={tool === 'curved_arrow'
-                    ? buildCurvedPath(drawingArrow.points)
-                    : buildStraightPath(drawingArrow.points)
-                  }
-                  fill="none"
-                  stroke={ARROW_COLOR}
-                  strokeWidth="5"
-                  opacity="0.5"
-                  strokeDasharray="15 8"
-                  strokeLinecap="round"
-                />
-              )}
+              {drawingArrow && drawingArrow.points.length > 0 && (() => {
+                const result = tool === 'curved_arrow'
+                  ? buildCurvedPath(drawingArrow.points)
+                  : buildStraightPath(drawingArrow.points)
+                return result.d ? (
+                  <g>
+                    <path
+                      d={result.d}
+                      fill="none"
+                      stroke={ARROW_COLOR}
+                      strokeWidth="5"
+                      opacity="0.5"
+                      strokeDasharray="15 8"
+                      strokeLinecap="round"
+                    />
+                    {drawingArrow.points.length >= 2 && (
+                      <polygon
+                        points={arrowheadPoints(result.endPt, result.endAngle, 16)}
+                        fill={ARROW_COLOR}
+                        opacity="0.5"
+                      />
+                    )}
+                  </g>
+                ) : null
+              })()}
 
               {/* Text labels */}
-              {phase.labels.map(label => (
-                <g key={label.id} className="cursor-pointer" onClick={e => { e.stopPropagation(); removeLabel(label.id) }}>
-                  {/* Background */}
-                  <rect
-                    x={toSvgX(label.x) - 8}
-                    y={toSvgY(label.y) - 20}
-                    width={label.text.length * 14 + 16}
-                    height="32"
-                    rx="6"
-                    fill="rgba(0,0,0,0.75)"
-                    stroke="rgba(255,255,255,0.3)"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    x={toSvgX(label.x)}
-                    y={toSvgY(label.y) + 4}
-                    fill="white"
-                    fontSize="22"
-                    fontWeight="600"
-                    fontFamily="sans-serif"
-                    style={{ pointerEvents: 'none' }}
+              {phase.labels.map(label => {
+                const lx = toSvgX(label.x)
+                const ly = toSvgY(label.y)
+                const rot = label.rotation || 0
+                const isLabelDragging = dragging?.type === 'label' && dragging.id === label.id
+                return (
+                  <g
+                    key={label.id}
+                    transform={rot ? `rotate(${rot} ${lx} ${ly})` : undefined}
+                    opacity={isLabelDragging ? 0.6 : 1}
+                    className={tool === 'select' ? 'cursor-grab' : 'cursor-pointer'}
+                    onPointerDown={e => handleElementPointerDown(e, 'label', label.id)}
+                    onClick={e => {
+                      if (tool !== 'select') {
+                        e.stopPropagation()
+                        removeLabel(label.id)
+                      }
+                    }}
+                    onDoubleClick={e => {
+                      if (tool === 'select') {
+                        e.stopPropagation()
+                        rotateLabel(label.id)
+                      }
+                    }}
                   >
-                    {label.text}
-                  </text>
-                </g>
-              ))}
+                    <rect
+                      x={lx - 8}
+                      y={ly - 20}
+                      width={label.text.length * 14 + 16}
+                      height="32"
+                      rx="6"
+                      fill="rgba(0,0,0,0.75)"
+                      stroke={isLabelDragging ? 'rgba(168,85,247,0.6)' : 'rgba(255,255,255,0.3)'}
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      x={lx}
+                      y={ly + 4}
+                      fill="white"
+                      fontSize="22"
+                      fontWeight="600"
+                      fontFamily="sans-serif"
+                      style={{ pointerEvents: 'none' }}
+                    >
+                      {label.text}
+                    </text>
+                  </g>
+                )
+              })}
 
               {/* Player dots */}
               {phase.players.map(p => {
@@ -802,12 +905,12 @@ export default function SetPieceEditor({
                 const bgColor = p.isOpponent ? OPPONENT_COLOR : teamPrimaryColor
                 const borderColor = p.isOpponent ? OPPONENT_BORDER : teamSecondaryColor
                 const textColor = p.isOpponent ? '#FFFFFF' : teamSecondaryColor
-                const isDragging = draggingPlayer === p.id
+                const isDragging = dragging?.type === 'player' && dragging.id === p.id
                 return (
                   <g
                     key={p.id}
                     className={tool === 'select' ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-pointer'}
-                    onPointerDown={e => tool === 'select' ? handlePlayerPointerDown(e, p.id) : undefined}
+                    onPointerDown={e => handleElementPointerDown(e, 'player', p.id)}
                     onClick={e => {
                       if (tool !== 'select') {
                         e.stopPropagation()
