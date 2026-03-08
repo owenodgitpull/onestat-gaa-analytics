@@ -48,7 +48,7 @@ export default function SetPieceEditor({
   initialElements = [],
   onSave,
   onClose,
-  routineName = 'Set Piece',
+  routineName = 'Tactical Routine',
 }: SetPieceEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [players, setPlayers] = useState<PlayerDot[]>([])

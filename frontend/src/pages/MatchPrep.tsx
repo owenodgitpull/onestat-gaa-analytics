@@ -836,7 +836,7 @@ export default function MatchPrep() {
         )}
       </div>
 
-      {/* Set-Piece Routines */}
+      {/* Tactical Routines */}
       <div className="glass-card overflow-hidden">
         <button
           onClick={() => toggleSection('setpieces')}
@@ -844,7 +844,7 @@ export default function MatchPrep() {
         >
           <div className="flex items-center gap-2">
             <Pencil size={14} className="text-amber-400" />
-            <span className="text-sm font-bold text-white">Set-Piece Routines</span>
+            <span className="text-sm font-bold text-white">Tactical Routines</span>
             {setPieces.length > 0 && (
               <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
                 {setPieces.length}
@@ -933,7 +933,7 @@ export default function MatchPrep() {
       {showSetPieceEditor && (
         <SetPieceEditor
           initialElements={editingSetPiece?.elements || []}
-          routineName={editingSetPiece?.name || newSetPieceName || 'Set Piece'}
+          routineName={editingSetPiece?.name || newSetPieceName || 'Tactical Routine'}
           onSave={handleSaveSetPiece}
           onClose={() => {
             setShowSetPieceEditor(false)
