@@ -1,9 +1,9 @@
 /**
- * JerseyNumberStrip — persistent horizontal strip of jersey number buttons
- * below the pitch for quick ball carrier assignment.
+ * JerseyNumberStrip — persistent horizontal strip of player buttons
+ * for quick ball carrier assignment.
  *
- * Uses matchLineup data to show players currently on the field.
- * Active carrier is highlighted with team color.
+ * Shows jersey number when available, otherwise position label (HB, FB, etc.)
+ * with player surname underneath.
  */
 
 import { useMemo } from 'react'
@@ -14,6 +14,7 @@ interface JerseyPlayer {
   jerseyNumber: number | null
   playerName: string
   isOnField: boolean
+  positionLabel?: string
 }
 
 interface JerseyNumberStripProps {
@@ -22,6 +23,11 @@ interface JerseyNumberStripProps {
   currentPossession: PossessionTeam
   onCarrierSelect: (playerId: string, jerseyNumber: number | null) => void
   disabled?: boolean
+}
+
+function surname(name: string) {
+  const parts = name.trim().split(' ')
+  return parts[parts.length - 1] || name
 }
 
 export default function JerseyNumberStrip({
@@ -47,31 +53,40 @@ export default function JerseyNumberStrip({
 
   const isOwn = currentPossession === PossessionTeam.OWN
   const activeColor = isOwn ? 'bg-emerald-500 border-emerald-400' : 'bg-orange-500 border-orange-400'
-  const activeTextColor = 'text-white'
   const inactiveColor = 'bg-white/10 border-white/20'
-  const inactiveTextColor = 'text-white/70'
 
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-hide">
-      <span className="text-[9px] text-white/40 font-medium uppercase tracking-wider whitespace-nowrap mr-1">
+    <div className="flex items-center justify-center gap-1 px-2 py-1 overflow-x-auto scrollbar-hide">
+      <span className="text-[9px] text-white/40 font-medium uppercase tracking-wider whitespace-nowrap mr-0.5 flex-shrink-0">
         Carrier
       </span>
       {sortedPlayers.map((player) => {
         const isActive = player.playerId === activeCarrierId
+        const hasJersey = player.jerseyNumber != null
+        const label = hasJersey ? String(player.jerseyNumber) : (player.positionLabel || '?')
+
         return (
           <button
             key={player.playerId}
             onClick={() => !disabled && onCarrierSelect(player.playerId, player.jerseyNumber)}
             disabled={disabled}
             className={`
-              flex-shrink-0 w-[42px] h-[42px] rounded-full flex items-center justify-center
-              font-bold text-sm border-2 transition-all duration-150
-              ${isActive ? `${activeColor} ${activeTextColor} scale-110 shadow-lg` : `${inactiveColor} ${inactiveTextColor}`}
+              flex-shrink-0 flex flex-col items-center justify-center
+              rounded-lg border transition-all duration-150
+              ${hasJersey ? 'w-[36px] h-[36px]' : 'w-[36px] h-[42px] px-0.5'}
+              ${isActive ? `${activeColor} text-white scale-110 shadow-lg` : `${inactiveColor} text-white/70`}
               ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-white/20 active:scale-95'}
             `}
             title={player.playerName}
           >
-            {player.jerseyNumber ?? '?'}
+            <span className={`font-bold leading-none ${hasJersey ? 'text-sm' : 'text-[10px]'}`}>
+              {label}
+            </span>
+            {!hasJersey && (
+              <span className="text-[7px] leading-none mt-0.5 text-white/50 truncate max-w-full">
+                {surname(player.playerName)}
+              </span>
+            )}
           </button>
         )
       })}

@@ -23,21 +23,21 @@ interface PitchPlayerSelectorProps {
 
 // Standard GAA formation: 1-3-3-2-3-3 (15 players)
 const FORMATION_POSITIONS = [
-  { id: 'gk', x: 7, y: 50 },
-  { id: 'fb-left', x: 20, y: 18 },
-  { id: 'fb-center', x: 20, y: 50 },
-  { id: 'fb-right', x: 20, y: 82 },
-  { id: 'hb-left', x: 35, y: 18 },
-  { id: 'hb-center', x: 35, y: 50 },
-  { id: 'hb-right', x: 35, y: 82 },
-  { id: 'mf-left', x: 50, y: 35 },
-  { id: 'mf-right', x: 50, y: 65 },
-  { id: 'hf-left', x: 65, y: 18 },
-  { id: 'hf-center', x: 65, y: 50 },
-  { id: 'hf-right', x: 65, y: 82 },
-  { id: 'ff-left', x: 80, y: 18 },
-  { id: 'ff-center', x: 80, y: 50 },
-  { id: 'ff-right', x: 80, y: 82 },
+  { id: 'gk', x: 7, y: 50, label: 'GK' },
+  { id: 'fb-left', x: 20, y: 18, label: 'CB' },
+  { id: 'fb-center', x: 20, y: 50, label: 'FB' },
+  { id: 'fb-right', x: 20, y: 82, label: 'CB' },
+  { id: 'hb-left', x: 35, y: 18, label: 'HB' },
+  { id: 'hb-center', x: 35, y: 50, label: 'CHB' },
+  { id: 'hb-right', x: 35, y: 82, label: 'HB' },
+  { id: 'mf-left', x: 50, y: 35, label: 'MF' },
+  { id: 'mf-right', x: 50, y: 65, label: 'MF' },
+  { id: 'hf-left', x: 65, y: 18, label: 'HF' },
+  { id: 'hf-center', x: 65, y: 50, label: 'CHF' },
+  { id: 'hf-right', x: 65, y: 82, label: 'HF' },
+  { id: 'ff-left', x: 80, y: 18, label: 'CF' },
+  { id: 'ff-center', x: 80, y: 50, label: 'FF' },
+  { id: 'ff-right', x: 80, y: 82, label: 'CF' },
 ]
 
 const EVENT_LABELS: Record<string, { title: string; color: string }> = {
@@ -94,7 +94,7 @@ export default function PitchPlayerSelector({
     const unmatched: typeof onField = []
 
     const result: Array<{
-      id: string; x: number; y: number; player: Player; jerseyNumber: number | null
+      id: string; x: number; y: number; label: string; player: Player; jerseyNumber: number | null
     }> = []
 
     for (const pos of FORMATION_POSITIONS) {
@@ -223,7 +223,7 @@ export default function PitchPlayerSelector({
             >
               {/* Jersey circle */}
               <div
-                className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-lg shadow-lg ring-2 transition-transform active:scale-90 ${
+                className={`w-14 h-14 rounded-full flex flex-col items-center justify-center shadow-lg ring-2 transition-transform active:scale-90 ${
                   isSelected ? 'ring-white scale-110' : 'ring-white/30 hover:ring-white/60 hover:scale-105'
                 }`}
                 style={{
@@ -234,7 +234,11 @@ export default function PitchPlayerSelector({
                     : `0 4px 12px rgba(0,0,0,0.4)`,
                 }}
               >
-                {item.jerseyNumber ?? '?'}
+                {item.jerseyNumber != null ? (
+                  <span className="font-bold text-lg">{item.jerseyNumber}</span>
+                ) : (
+                  <span className="font-bold text-xs leading-tight">{item.label}</span>
+                )}
               </div>
 
               {/* Player name */}

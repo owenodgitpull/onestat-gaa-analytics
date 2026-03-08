@@ -65,7 +65,7 @@ interface FullscreenPitchModeProps {
   fullTimeReached?: boolean
   blackCardTimers?: BlackCardEntry[]
   onRemoveBlackCard?: (id: string) => void
-  jerseyStripPlayers?: Array<{ playerId: string; jerseyNumber: number | null; playerName: string; isOnField: boolean }>
+  jerseyStripPlayers?: Array<{ playerId: string; jerseyNumber: number | null; playerName: string; isOnField: boolean; positionLabel?: string }>
   activeCarrierId?: string | null
   onCarrierSelect?: (playerId: string, jerseyNumber: number | null) => void
   carrierJerseyNumber?: number | null

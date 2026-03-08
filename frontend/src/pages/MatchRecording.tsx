@@ -153,6 +153,15 @@ export default function MatchRecording() {
     team: ballPosition.team === PossessionTeam.OWN ? 'own' : 'opponent',
   })
 
+  // Map position_id to short label for carrier strip fallback
+  const POSITION_LABELS: Record<string, string> = {
+    'gk': 'GK', 'fb-left': 'CB', 'fb-center': 'FB', 'fb-right': 'CB',
+    'hb-left': 'HB', 'hb-center': 'CHB', 'hb-right': 'HB',
+    'mf-left': 'MF', 'mf-right': 'MF',
+    'hf-left': 'HF', 'hf-center': 'CHF', 'hf-right': 'HF',
+    'ff-left': 'CF', 'ff-center': 'FF', 'ff-right': 'CF',
+  }
+
   // Build jersey strip player list from lineup data
   const jerseyStripPlayers = useMemo(() => {
     if (!matchLineup.length) return []
@@ -160,9 +169,10 @@ export default function MatchRecording() {
       const player = players.find(p => p.id === entry.player_id)
       return {
         playerId: entry.player_id,
-        jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? null,
+        jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? player?.jersey_number ?? null,
         playerName: player?.name ?? entry.player_name ?? 'Unknown',
         isOnField: entry.is_on_field,
+        positionLabel: POSITION_LABELS[entry.position_id] || entry.position_id || '',
       }
     })
   }, [matchLineup, players])
@@ -2185,6 +2195,18 @@ export default function MatchRecording() {
                 </div>
               )}
 
+              {/* Jersey Number Strip for carrier tracking — above pitch */}
+              {jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && (
+                <div className="max-w-2xl mx-auto mb-1">
+                  <JerseyNumberStrip
+                    players={jerseyStripPlayers}
+                    activeCarrierId={activeCarrierId}
+                    currentPossession={ballPosition.team}
+                    onCarrierSelect={handleCarrierSelect}
+                  />
+                </div>
+              )}
+
               {/* Pitch */}
               <div data-tour="pitch-container" className="glass-card p-6 relative mb-4">
                 <GAAPitch
@@ -2287,18 +2309,6 @@ export default function MatchRecording() {
                 )}
 
               </div>
-
-              {/* Jersey Number Strip for carrier tracking */}
-              {jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                <div className="max-w-2xl mx-auto -mt-2 mb-1">
-                  <JerseyNumberStrip
-                    players={jerseyStripPlayers}
-                    activeCarrierId={activeCarrierId}
-                    currentPossession={ballPosition.team}
-                    onCarrierSelect={handleCarrierSelect}
-                  />
-                </div>
-              )}
 
               {/* Categorized Action Buttons */}
               <div className="max-w-2xl mx-auto -mt-2">
