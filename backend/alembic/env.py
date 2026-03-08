@@ -44,7 +44,8 @@ for prefix in ("postgresql+asyncpg://", "postgres://"):
     if sync_database_url.startswith(prefix):
         sync_database_url = "postgresql://" + sync_database_url[len(prefix):]
         break
-config.set_main_option("sqlalchemy.url", sync_database_url)
+# Escape % for configparser interpolation
+config.set_main_option("sqlalchemy.url", sync_database_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging
 if config.config_file_name is not None:

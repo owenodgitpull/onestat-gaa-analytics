@@ -373,6 +373,30 @@ async def get_player_test_comparison(
 
 # ============ Squad Overview Endpoints ============
 
+@router.get("/squad/sessions")
+async def get_test_sessions(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get list of test sessions (distinct dates) with player count."""
+    query = (
+        select(
+            FitnessTest.test_date,
+            func.count(FitnessTest.id).label('player_count'),
+        )
+        .join(Player, FitnessTest.player_id == Player.id)
+        .where(Player.club_id == user.club_id)
+        .group_by(FitnessTest.test_date)
+        .order_by(desc(FitnessTest.test_date))
+    )
+    result = await db.execute(query)
+    rows = result.all()
+    return [
+        {"test_date": str(row.test_date), "player_count": row.player_count}
+        for row in rows
+    ]
+
+
 @router.get("/squad/latest", response_model=list[FitnessTestResponse])
 async def get_squad_latest_tests(
     user: AuthenticatedUser = Depends(require_club),

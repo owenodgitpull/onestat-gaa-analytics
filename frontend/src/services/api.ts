@@ -1838,6 +1838,13 @@ const fitnessTestsAPI = {
   },
 
   /**
+   * Get list of test sessions (dates) with player count
+   */
+  getTestSessions: async (): Promise<Array<{ test_date: string; player_count: number }>> => {
+    return fetchAPI<Array<{ test_date: string; player_count: number }>>('/fitness-tests/squad/sessions');
+  },
+
+  /**
    * Get latest test for each player (squad view)
    */
   getSquadLatest: async (): Promise<FitnessTest[]> => {
