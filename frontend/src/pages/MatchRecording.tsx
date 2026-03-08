@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
+import PitchPlayerSelector from '@/components/PitchPlayerSelector'
 import PossessionSelectionModal from '@/components/PossessionSelectionModal'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import ConfirmationModal from '@/components/ConfirmationModal'
@@ -28,7 +29,7 @@ import { useRecordPossession } from '@/hooks/usePossession'
 import { usePlayers } from '@/hooks/usePlayers'
 import { api } from '@/services/api'
 import { usePlayerMovement } from '@/hooks/usePlayerMovement'
-import { useClubName } from '@/contexts/ClubContext'
+import { useClubName, useClub } from '@/contexts/ClubContext'
 import { useTour } from '@/hooks/useTour'
 import { matchRecordingSteps } from '@/config/tourSteps'
 import {
@@ -61,6 +62,7 @@ export default function MatchRecording() {
   const matchId = matchIdParam || null
   const navigate = useNavigate()
   const clubName = useClubName()
+  const { club } = useClub()
 
   // Fetch data from backend
   const { data: match, isLoading: matchLoading } = useMatch(matchId)
@@ -2530,21 +2532,40 @@ export default function MatchRecording() {
         </>
       )}
 
-      {/* Player Selection Modal */}
+      {/* Player Selection — on-pitch overlay (lineup available) or fallback modal */}
       {(pendingEvent || selectingFoulPlayer) && (
-        <PlayerSelectionModal
-          isOpen={isPlayerModalOpen}
-          onClose={() => {
-            setIsPlayerModalOpen(false)
-            setPendingEvent(null)
-            setSelectingFoulPlayer(false)
-            setPendingFoul(null)
-          }}
-          onSelectPlayer={selectingFoulPlayer ? handleFoulPlayerSelected : handlePlayerSelected}
-          eventType={selectingFoulPlayer ? EventType.FOUL_COMMITTED : (pendingEvent?.eventType as any)}
-          team="own"
-          players={playersOnField}
-        />
+        matchLineup.length > 0 ? (
+          <PitchPlayerSelector
+            isOpen={isPlayerModalOpen}
+            onClose={() => {
+              setIsPlayerModalOpen(false)
+              setPendingEvent(null)
+              setSelectingFoulPlayer(false)
+              setPendingFoul(null)
+            }}
+            onSelectPlayer={selectingFoulPlayer ? handleFoulPlayerSelected : handlePlayerSelected}
+            eventType={selectingFoulPlayer ? EventType.FOUL_COMMITTED : (pendingEvent?.eventType as any)}
+            team="own"
+            players={playersOnField}
+            matchLineup={matchLineup}
+            teamPrimaryColor={club?.primary_colour || '#10B981'}
+            teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+          />
+        ) : (
+          <PlayerSelectionModal
+            isOpen={isPlayerModalOpen}
+            onClose={() => {
+              setIsPlayerModalOpen(false)
+              setPendingEvent(null)
+              setSelectingFoulPlayer(false)
+              setPendingFoul(null)
+            }}
+            onSelectPlayer={selectingFoulPlayer ? handleFoulPlayerSelected : handlePlayerSelected}
+            eventType={selectingFoulPlayer ? EventType.FOUL_COMMITTED : (pendingEvent?.eventType as any)}
+            team="own"
+            players={playersOnField}
+          />
+        )
       )}
 
       {/* Possession Selection Modal */}

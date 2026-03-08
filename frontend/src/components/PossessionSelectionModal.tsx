@@ -103,18 +103,18 @@ export default function PossessionSelectionModal({
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/90 backdrop-blur-md" />
 
-      {/* Modal */}
-      <div className="relative w-full max-w-lg bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden">
+      {/* Modal — max-h ensures it never overflows iPad viewport */}
+      <div className="relative w-full max-w-lg max-h-[90vh] bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-y-auto">
         {step === 'direction' ? (
           <>
             {/* Header - Attack Direction */}
-            <div className="p-6 border-b border-white/10 bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 text-center">
-              <h2 className="text-2xl font-bold text-white mb-2">Attack Direction</h2>
+            <div className="p-4 md:p-6 border-b border-white/10 bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 text-center">
+              <h2 className="text-xl md:text-2xl font-bold text-white mb-1">Attack Direction</h2>
               <p className="text-white/70 text-sm">Which way is {homeTeam} attacking this half?</p>
             </div>
 
             {/* Visual Pitch Preview */}
-            <div className="px-6 pt-4">
+            <div className="px-4 md:px-6 pt-3">
               <MiniPitch
                 direction={hoveredDirection || 'right'}
                 homeTeam={homeTeam}
@@ -122,24 +122,24 @@ export default function PossessionSelectionModal({
             </div>
 
             {/* Direction Selection */}
-            <div className="p-6 space-y-3">
+            <div className="p-4 md:p-6 space-y-3">
               {/* Left to Right */}
               <button
                 onClick={() => handleDirectionSelect('right')}
                 onMouseEnter={() => setHoveredDirection('right')}
                 onMouseLeave={() => setHoveredDirection(null)}
-                className="w-full p-4 rounded-xl bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-2 border-emerald-500/30 hover:border-emerald-500 hover:from-emerald-600/30 hover:to-cyan-600/30 transition-all group"
+                className="w-full p-3 md:p-4 rounded-xl bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-2 border-emerald-500/30 hover:border-emerald-500 hover:from-emerald-600/30 hover:to-cyan-600/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center shadow-lg">
-                      <ArrowRight size={24} className="text-white" />
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                      <ArrowRight size={22} className="text-white" />
                     </div>
                     <div className="text-left">
-                      <div className="text-lg font-bold text-white">Attacking LEFT TO RIGHT</div>
+                      <div className="text-base md:text-lg font-bold text-white">Attacking LEFT TO RIGHT</div>
                     </div>
                   </div>
-                  <ChevronRight size={20} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                  <ChevronRight size={20} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all flex-shrink-0" />
                 </div>
               </button>
 
@@ -155,18 +155,18 @@ export default function PossessionSelectionModal({
                 onClick={() => handleDirectionSelect('left')}
                 onMouseEnter={() => setHoveredDirection('left')}
                 onMouseLeave={() => setHoveredDirection(null)}
-                className="w-full p-4 rounded-xl bg-gradient-to-r from-blue-600/20 to-emerald-600/20 border-2 border-blue-500/30 hover:border-blue-500 hover:from-blue-600/30 hover:to-emerald-600/30 transition-all group"
+                className="w-full p-3 md:p-4 rounded-xl bg-gradient-to-r from-blue-600/20 to-emerald-600/20 border-2 border-blue-500/30 hover:border-blue-500 hover:from-blue-600/30 hover:to-emerald-600/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-emerald-600 flex items-center justify-center shadow-lg">
-                      <ArrowLeft size={24} className="text-white" />
+                    <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-blue-600 to-emerald-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                      <ArrowLeft size={22} className="text-white" />
                     </div>
                     <div className="text-left">
-                      <div className="text-lg font-bold text-white">Attacking RIGHT TO LEFT</div>
+                      <div className="text-base md:text-lg font-bold text-white">Attacking RIGHT TO LEFT</div>
                     </div>
                   </div>
-                  <ChevronRight size={20} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                  <ChevronRight size={20} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all flex-shrink-0" />
                 </div>
               </button>
             </div>
@@ -174,32 +174,32 @@ export default function PossessionSelectionModal({
         ) : (
           <>
             {/* Header - Possession */}
-            <div className="p-8 border-b border-white/10 bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 text-center">
-              <div className="inline-flex p-3 rounded-full bg-emerald-600/30 mb-4">
-                <Users size={32} className="text-emerald-300" />
+            <div className="p-5 md:p-6 border-b border-white/10 bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 text-center">
+              <div className="inline-flex p-2 rounded-full bg-emerald-600/30 mb-2">
+                <Users size={28} className="text-emerald-300" />
               </div>
-              <h2 className="text-3xl font-bold text-white mb-2">Who Has Possession?</h2>
-              <p className="text-white/70">Select which team won the throw-in</p>
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-1">Who Has Possession?</h2>
+              <p className="text-white/70 text-sm">Select which team won the throw-in</p>
             </div>
 
             {/* Team Selection */}
-            <div className="p-8 space-y-4">
+            <div className="p-4 md:p-6 space-y-3">
               {/* Home Team */}
               <button
                 onClick={() => handlePossessionSelect('home')}
-                className="w-full p-6 rounded-xl bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-2 border-emerald-500/30 hover:border-emerald-500 hover:from-emerald-600/30 hover:to-cyan-600/30 transition-all group"
+                className="w-full p-4 md:p-5 rounded-xl bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 border-2 border-emerald-500/30 hover:border-emerald-500 hover:from-emerald-600/30 hover:to-cyan-600/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
+                  <div className="flex items-center space-x-3 md:space-x-4">
+                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center text-xl md:text-2xl font-bold text-white shadow-lg flex-shrink-0">
                       {homeTeam[0]?.toUpperCase() || 'H'}
                     </div>
                     <div className="text-left">
-                      <div className="text-xl font-bold text-white">{homeTeam}</div>
+                      <div className="text-lg md:text-xl font-bold text-white">{homeTeam}</div>
                       <div className="text-sm text-emerald-300">Home Team</div>
                     </div>
                   </div>
-                  <ChevronRight size={24} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                  <ChevronRight size={22} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all flex-shrink-0" />
                 </div>
               </button>
 
@@ -213,19 +213,19 @@ export default function PossessionSelectionModal({
               {/* Away Team */}
               <button
                 onClick={() => handlePossessionSelect('away')}
-                className="w-full p-6 rounded-xl bg-gradient-to-r from-red-600/20 to-orange-600/20 border-2 border-red-500/30 hover:border-red-500 hover:from-red-600/30 hover:to-orange-600/30 transition-all group"
+                className="w-full p-4 md:p-5 rounded-xl bg-gradient-to-r from-red-600/20 to-orange-600/20 border-2 border-red-500/30 hover:border-red-500 hover:from-red-600/30 hover:to-orange-600/30 transition-all group"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-600 to-orange-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
+                  <div className="flex items-center space-x-3 md:space-x-4">
+                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-full bg-gradient-to-br from-red-600 to-orange-600 flex items-center justify-center text-xl md:text-2xl font-bold text-white shadow-lg flex-shrink-0">
                       {awayTeam[0]?.toUpperCase() || 'A'}
                     </div>
                     <div className="text-left">
-                      <div className="text-xl font-bold text-white">{awayTeam}</div>
+                      <div className="text-lg md:text-xl font-bold text-white">{awayTeam}</div>
                       <div className="text-sm text-red-300">Away Team</div>
                     </div>
                   </div>
-                  <ChevronRight size={24} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                  <ChevronRight size={22} className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all flex-shrink-0" />
                 </div>
               </button>
 
@@ -240,13 +240,13 @@ export default function PossessionSelectionModal({
               )}
             </div>
 
-            {/* Visual Pitch Reminder */}
-            <div className="px-6 pb-4">
+            {/* Visual Pitch Reminder — compact */}
+            <div className="px-4 md:px-6 pb-3 md:pb-4">
               <MiniPitch
                 direction={attackingRight ? 'right' : 'left'}
                 homeTeam={homeTeam}
               />
-              <div className="p-3 mt-2 rounded-lg bg-emerald-600/10 border border-emerald-500/30">
+              <div className="p-2 mt-1.5 rounded-lg bg-emerald-600/10 border border-emerald-500/30">
                 <p className="text-xs text-white/70 text-center">
                   {homeTeam} attacking {attackingRight ? 'left → right' : 'right → left'} this half
                 </p>
