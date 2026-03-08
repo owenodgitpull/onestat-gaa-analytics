@@ -929,7 +929,7 @@ export default function MatchPrep() {
         )}
       </div>
 
-      {/* Set-Piece Editor Modal */}
+      {/* Tactical Routine Editor Modal */}
       {showSetPieceEditor && (
         <SetPieceEditor
           initialElements={editingSetPiece?.elements || []}
@@ -939,6 +939,13 @@ export default function MatchPrep() {
             setShowSetPieceEditor(false)
             setEditingSetPiece(null)
           }}
+          availablePlayers={players.filter(p => p.active).map(p => ({
+            playerId: p.id,
+            playerName: p.name,
+            jerseyNumber: p.jersey_number ?? null,
+          }))}
+          teamPrimaryColor={jerseyBg}
+          teamSecondaryColor={jerseyText}
         />
       )}
     </div>
