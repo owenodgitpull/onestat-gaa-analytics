@@ -85,30 +85,51 @@ export default function PitchPlayerSelector({
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [animateOut, setAnimateOut] = useState(false)
 
-  // Map players to formation positions based on their lineup order
+  // Map players to formation positions using position_id from lineup
   const playerPositions = useMemo(() => {
-    // Get on-field lineup entries in order
-    const onField = matchLineup
-      .filter(e => e.is_on_field !== false)
-      .slice(0, 15)
+    // Build lookup: position_id → lineup entry (on-field only)
+    const onField = matchLineup.filter(e => e.is_on_field !== false)
+    const byPosition = new Map(onField.map(e => [e.position_id, e]))
+    // Also build an ordered fallback for lineups without position_id
+    const unmatched: typeof onField = []
 
-    return FORMATION_POSITIONS.map((pos, i) => {
-      const entry = onField[i]
-      if (!entry) return null
-      const player = players.find(p => p.id === entry.player_id)
-      if (!player) return null
-      return {
-        ...pos,
-        player,
-        jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? player.jersey_number,
+    const result: Array<{
+      id: string; x: number; y: number; player: Player; jerseyNumber: number | null
+    }> = []
+
+    for (const pos of FORMATION_POSITIONS) {
+      const entry = byPosition.get(pos.id)
+      if (entry) {
+        const player = players.find(p => p.id === entry.player_id)
+        if (player) {
+          result.push({
+            ...pos,
+            player,
+            jerseyNumber: (entry as any).match_jersey_number ?? (entry as any).player_jersey_number ?? player.jersey_number,
+          })
+          continue
+        }
       }
-    }).filter(Boolean) as Array<{
-      id: string
-      x: number
-      y: number
-      player: Player
-      jerseyNumber: number | null
-    }>
+      unmatched.push(undefined as any) // placeholder
+    }
+
+    // Fallback: if position_id matching found nothing, map by index order
+    if (result.length === 0 && onField.length > 0) {
+      for (let i = 0; i < Math.min(onField.length, FORMATION_POSITIONS.length); i++) {
+        const entry = onField[i]
+        const pos = FORMATION_POSITIONS[i]
+        const player = players.find(p => p.id === entry.player_id)
+        if (player) {
+          result.push({
+            ...pos,
+            player,
+            jerseyNumber: (entry as any).match_jersey_number ?? (entry as any).player_jersey_number ?? player.jersey_number,
+          })
+        }
+      }
+    }
+
+    return result
   }, [matchLineup, players])
 
   // Animate in when opening
@@ -133,12 +154,8 @@ export default function PitchPlayerSelector({
   const handleSelect = (player: Player) => {
     setSelectedPlayerId(player.id)
     setAnimateOut(true)
-    // Let the exit animation play then fire callback
-    setTimeout(() => {
-      onSelectPlayer(player)
-      setAnimateOut(false)
-      setSelectedPlayerId(null)
-    }, 300)
+    // Fire callback immediately — parent will close/unmount us
+    onSelectPlayer(player)
   }
 
   const surname = (name: string) => {
