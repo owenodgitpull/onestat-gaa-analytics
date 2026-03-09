@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.match import Match
 from app.models.match_lineup import MatchLineup
 from app.models.club import Club
@@ -77,7 +77,7 @@ def _session_to_response(session: VideoSession, download_url: str = None) -> Vid
 async def initiate_video_upload(
     match_id: UUID,
     body: VideoUploadInitiateRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -133,7 +133,7 @@ async def initiate_video_upload(
 async def complete_video_upload(
     session_id: UUID,
     body: VideoUploadCompleteRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Confirm that the client has finished uploading the video to R2."""
@@ -212,7 +212,7 @@ async def get_video_session(
 @router.delete("/session/{session_id}")
 async def delete_video_session(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a video session and its R2 object."""
@@ -241,7 +241,7 @@ async def delete_video_session(
 async def set_halftime(
     session_id: UUID,
     body: SetHalftimeRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Set the half-time timestamp for a full-match video session."""
@@ -277,7 +277,7 @@ async def set_halftime(
 async def set_half_starts(
     session_id: UUID,
     body: dict,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Set the throw-in timestamps for 1st and/or 2nd half."""
@@ -311,7 +311,7 @@ async def set_half_starts(
 async def auto_analyze_video(
     session_id: UUID,
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -553,7 +553,7 @@ async def _run_gemini_analysis(session_id: UUID, video_r2_key: str, half: int | 
 async def enrich_video_session(
     session_id: UUID,
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -592,7 +592,7 @@ async def enrich_video_session(
 async def save_ball_samples(
     session_id: UUID,
     payload: dict,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Bulk save ball position samples from the minimap tracker."""
@@ -670,7 +670,7 @@ async def get_ball_samples(
 async def keyframe_analyze_video(
     session_id: UUID,
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -768,7 +768,7 @@ async def analysis_progress_sse(
 async def improve_analysis(
     session_id: UUID,
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

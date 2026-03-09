@@ -11,7 +11,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.video_session import VideoSession
 from app.models.video_event import VideoEvent, TWO_POINTER_ZONES, SCORING_EVENT_TYPES
 from app.models.match_event import MatchEvent, Team
@@ -95,7 +95,7 @@ async def _get_session_for_club(
 async def create_video_event(
     session_id: UUID,
     body: VideoEventCreateRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new video event (human tag)."""
@@ -161,7 +161,7 @@ async def list_video_events(
 async def update_video_event(
     event_id: UUID,
     body: VideoEventUpdateRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a video event."""
@@ -201,7 +201,7 @@ async def update_video_event(
 @router.delete("/event/{event_id}")
 async def delete_video_event(
     event_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a video event."""
@@ -223,7 +223,7 @@ async def delete_video_event(
 async def bulk_create_video_events(
     session_id: UUID,
     body: VideoEventBulkCreateRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Bulk create video events (for Phase 2 AI-generated events)."""
@@ -273,7 +273,7 @@ async def bulk_create_video_events(
 @router.put("/event/{event_id}/verify", response_model=VideoEventResponse)
 async def verify_video_event(
     event_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Mark a video event as human-verified."""
@@ -362,7 +362,7 @@ def _compute_sync_plan(
 @router.post("/{session_id}/sync-preview", response_model=VideoSyncPreviewResponse)
 async def sync_preview(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -418,7 +418,7 @@ async def sync_preview(
 async def sync_confirm(
     session_id: UUID,
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -617,7 +617,7 @@ async def process_video_sync(
 @router.post("/{session_id}/sync-to-match", response_model=VideoEventSyncResponse)
 async def sync_events_to_match(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

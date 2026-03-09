@@ -105,9 +105,9 @@ function App() {
                 </RequireAuth>
               } />
 
-              {/* Admin app — top nav + sidebar */}
+              {/* Admin app — top nav + sidebar (club_admin only) */}
               <Route path="*" element={
-                <RequireAuth>
+                <RequireAuth requiredRole="club_admin">
                   <ClubProvider>
                     <Navigation />
                     <main className="md:ml-14 px-4 py-6">

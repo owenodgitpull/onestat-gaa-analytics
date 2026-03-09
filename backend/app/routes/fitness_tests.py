@@ -18,7 +18,7 @@ from datetime import date
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.fitness_test import FitnessTest
 from app.models.player import Player
 from app.schemas.fitness_test import (
@@ -71,7 +71,7 @@ def fitness_test_to_response(test: FitnessTest, player_name: str = None) -> Fitn
 async def import_fitness_file(
     file: UploadFile = File(...),
     fallback_date: Optional[str] = Form(None),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -135,7 +135,7 @@ async def import_fitness_file(
 @router.post("/", response_model=FitnessTestResponse, status_code=201)
 async def create_fitness_test(
     data: FitnessTestCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a single fitness test record."""
@@ -159,7 +159,7 @@ async def create_fitness_test(
 @router.post("/bulk", response_model=list[FitnessTestResponse], status_code=201)
 async def bulk_create_fitness_tests(
     data: FitnessTestBulkCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Bulk create fitness tests for a team testing day."""
@@ -252,7 +252,7 @@ async def get_fitness_test(
 async def update_fitness_test(
     test_id: UUID,
     data: FitnessTestUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a fitness test."""
@@ -282,7 +282,7 @@ async def update_fitness_test(
 @router.delete("/{test_id}", status_code=204)
 async def delete_fitness_test(
     test_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a fitness test."""
@@ -715,7 +715,7 @@ async def get_squad_fitness_cards(
 @router.post("/{test_id}/analyze", response_model=FitnessAnalysisResponse)
 async def analyze_fitness_test(
     test_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

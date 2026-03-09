@@ -20,7 +20,7 @@ import base64
 import os
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.training_performance import TrainingGPSData, WeightTrainingSession, WeightExercise, GPSUploadLog
 from app.services.workload_analysis_service import WorkloadAnalysisService
 from app.models.attendance import TrainingSession, Attendance, AttendanceStatus
@@ -50,7 +50,7 @@ async def upload_gps_data(
     background_tasks: BackgroundTasks,
     session_id: UUID = Form(..., description="Training session UUID"),
     file: UploadFile = File(..., description="STATSports PDF or CSV file"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -692,7 +692,7 @@ async def get_session_gps_data(
 @router.post("/gps/manual", response_model=list[TrainingGPSDataResponse], status_code=201)
 async def add_gps_data_manually(
     data: GPSDataBulkCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Manually add GPS data for multiple players."""
@@ -750,7 +750,7 @@ async def add_gps_data_manually(
 @router.post("/weights", response_model=WeightTrainingSessionResponse, status_code=201)
 async def create_weight_session(
     data: WeightTrainingSessionCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a weight training session with exercises."""

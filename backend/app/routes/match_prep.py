@@ -18,7 +18,7 @@ import json
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.match import Match
 from app.models.player import Player
 from app.models.set_piece_routine import SetPieceRoutine
@@ -41,7 +41,7 @@ router = APIRouter()
 async def save_tactical_notes(
     match_id: UUID,
     body: dict,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Save tactical notes for a match."""
@@ -76,7 +76,7 @@ async def get_tactical_notes(
 @router.post("/set-pieces", response_model=SetPieceRoutineResponse, status_code=201)
 async def create_set_piece(
     data: SetPieceRoutineCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     if data.category not in VALID_CATEGORIES:
@@ -129,7 +129,7 @@ async def get_set_piece(
 async def update_set_piece(
     routine_id: UUID,
     data: SetPieceRoutineUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -160,7 +160,7 @@ async def update_set_piece(
 @router.delete("/set-pieces/{routine_id}", status_code=204)
 async def delete_set_piece(
     routine_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -181,7 +181,7 @@ async def delete_set_piece(
 async def create_marking_assignment(
     match_id: UUID,
     data: ManMarkingAssignmentCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     # Verify match belongs to club
@@ -250,7 +250,7 @@ async def list_marking_assignments(
 @router.delete("/marking/{assignment_id}", status_code=204)
 async def delete_marking_assignment(
     assignment_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

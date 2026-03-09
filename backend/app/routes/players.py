@@ -16,7 +16,7 @@ from typing import Optional
 from uuid import UUID
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.player import Player, PlayerStatus, PlayerPosition
 from app.schemas.player import (
     PlayerCreate,
@@ -35,7 +35,7 @@ router = APIRouter()
 @router.post("/", response_model=PlayerResponse, status_code=201)
 async def create_player(
     player: PlayerCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -201,7 +201,7 @@ async def get_player(
 async def update_player(
     player_id: UUID,
     player_update: PlayerUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -244,7 +244,7 @@ async def update_player(
 async def delete_player(
     player_id: UUID,
     hard_delete: bool = Query(False, description="Permanently delete (default: soft delete)"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -289,7 +289,7 @@ async def delete_player(
 async def preview_roster_import(
     file: UploadFile = File(...),
     name_column: Optional[str] = Query(None, description="Override: which header to use as the name column"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
 ):
     """
     Preview a roster CSV/XLSX file before importing.
@@ -312,7 +312,7 @@ async def preview_roster_import(
 @router.post("/import/confirm")
 async def confirm_roster_import(
     request: dict,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

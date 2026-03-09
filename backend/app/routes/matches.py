@@ -12,7 +12,7 @@ from uuid import UUID
 import logging
 import json
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.match_lineup import MatchLineup
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
@@ -38,7 +38,7 @@ router = APIRouter()
 @router.post("/", response_model=MatchResponse, status_code=status.HTTP_201_CREATED)
 async def create_match(
     match_data: MatchCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -136,7 +136,7 @@ async def get_match(
 async def update_match(
     match_id: UUID,
     match_data: MatchUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -163,7 +163,7 @@ async def update_match(
 async def start_match(
     match_id: UUID,
     start_data: MatchStartRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -190,7 +190,7 @@ async def start_match(
 async def update_match_phase(
     match_id: UUID,
     phase_data: MatchPhaseUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -220,7 +220,7 @@ async def complete_match(
     match_id: UUID,
     complete_data: MatchCompleteRequest,
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -278,7 +278,7 @@ async def trigger_match_workload_analysis(player_ids: list):
 async def update_match_score(
     match_id: UUID,
     score_data: MatchScoreUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -344,7 +344,7 @@ async def get_match_stats(
 @router.delete("/{match_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_match(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

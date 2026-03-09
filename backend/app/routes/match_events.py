@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from uuid import UUID
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.match_event import EventType, Team
 from app.schemas.match_event import (
     MatchEventCreate,
@@ -27,7 +27,7 @@ router = APIRouter()
 @router.post("/", response_model=MatchEventResponse, status_code=status.HTTP_201_CREATED)
 async def create_event(
     event_data: MatchEventCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -54,7 +54,7 @@ async def create_event(
 @router.post("/quick-score", response_model=MatchEventResponse, status_code=status.HTTP_201_CREATED)
 async def quick_score(
     score_data: QuickScoreRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -91,7 +91,7 @@ async def quick_score(
 @router.post("/quick-event", response_model=MatchEventResponse, status_code=status.HTTP_201_CREATED)
 async def quick_event(
     event_data: QuickEventRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -188,7 +188,7 @@ async def get_event(
 async def update_event(
     event_id: UUID,
     event_data: MatchEventUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -216,7 +216,7 @@ async def update_event(
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_event(
     event_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.possession_event import PossessionTeam
 from app.schemas.possession_event import (
     PossessionEventCreate,
@@ -25,7 +25,7 @@ router = APIRouter()
 @router.post("/bulk", status_code=status.HTTP_201_CREATED)
 async def bulk_create_possession_events(
     data: PossessionEventBulkCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -47,7 +47,7 @@ async def bulk_create_possession_events(
 @router.post("/", response_model=PossessionEventResponse, status_code=status.HTTP_201_CREATED)
 async def create_possession_event(
     event_data: PossessionEventCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -129,7 +129,7 @@ async def list_possession_events(
 @router.post("/finalize/{match_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def finalize_match_possession(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

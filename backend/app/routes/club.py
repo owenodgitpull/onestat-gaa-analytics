@@ -12,7 +12,7 @@ from sqlalchemy import select
 from uuid import UUID
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.club import Club
 from app.schemas.club import ClubResponse, ClubUpdate
 
@@ -43,7 +43,7 @@ async def get_active_club(
 async def update_club(
     club_id: str,
     club_data: ClubUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update club details. Only the user's own club can be updated."""
@@ -69,7 +69,7 @@ async def update_club(
 @router.post("/logo", response_model=ClubResponse)
 async def upload_club_logo(
     file: UploadFile = File(...),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload or replace the club logo. Stores in R2 under club prefix."""

@@ -21,7 +21,7 @@ from app.models.knowledge_document import KnowledgeDocument
 from app.models.document_chunk import DocumentChunk, DocumentEmbeddingLog
 from app.services.storage_service import storage
 from app.services.rag_service import RAGService
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ async def list_documents(
 @router.post("/documents/upload", response_model=UploadResponse)
 async def initiate_upload(
     body: UploadRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -171,7 +171,7 @@ async def initiate_upload(
 async def confirm_upload(
     body: ConfirmRequest,
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -213,7 +213,7 @@ async def confirm_upload(
 @router.delete("/documents/{document_id}")
 async def delete_document(
     document_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a custom document (not defaults)."""

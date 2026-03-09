@@ -140,3 +140,18 @@ def require_club(user: AuthenticatedUser = Depends(get_current_user)) -> Authent
             detail="No club associated with your account. Complete onboarding first.",
         )
     return user
+
+
+def require_admin(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    """Dependency: require club_admin role + club_id."""
+    if not user.club_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No club associated with your account.",
+        )
+    if user.role != "club_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
+        )
+    return user

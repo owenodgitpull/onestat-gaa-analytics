@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.services.player_movement_service import PlayerMovementService
 
 from app.schemas.ball_carrier import (
@@ -49,7 +49,7 @@ router = APIRouter()
 @router.post("/carrier-segments", response_model=BallCarrierSegmentResponse, status_code=status.HTTP_201_CREATED)
 async def start_carrier_segment(
     body: BallCarrierSegmentCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     segment = await PlayerMovementService.start_carrier_segment(
@@ -74,7 +74,7 @@ async def start_carrier_segment(
 async def end_carrier_segment(
     segment_id: UUID,
     body: BallCarrierSegmentUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     segment = await PlayerMovementService.end_carrier_segment(
@@ -96,7 +96,7 @@ async def end_carrier_segment(
 async def append_path_points(
     segment_id: UUID,
     body: AppendPathPointsRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     segment = await PlayerMovementService.append_path_points(
@@ -131,7 +131,7 @@ async def list_carrier_segments(
 @router.delete("/carrier-segments/{segment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_carrier_segment(
     segment_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     deleted = await PlayerMovementService.delete_carrier_segment(db, segment_id)
@@ -145,7 +145,7 @@ async def delete_carrier_segment(
 @router.post("/snapshots", response_model=FormationSnapshotResponse, status_code=status.HTTP_201_CREATED)
 async def create_formation_snapshot(
     body: FormationSnapshotCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     positions = [p.model_dump() for p in body.positions]
@@ -180,7 +180,7 @@ async def list_formation_snapshots(
 @router.delete("/snapshots/{snapshot_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_formation_snapshot(
     snapshot_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     deleted = await PlayerMovementService.delete_formation_snapshot(db, snapshot_id)
@@ -194,7 +194,7 @@ async def delete_formation_snapshot(
 @router.post("/tactical-tags", response_model=TacticalTagResponse, status_code=status.HTTP_201_CREATED)
 async def create_tactical_tag(
     body: TacticalTagCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     tag = await PlayerMovementService.create_tactical_tag(
@@ -227,7 +227,7 @@ async def list_tactical_tags(
 @router.delete("/tactical-tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_tactical_tag(
     tag_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     deleted = await PlayerMovementService.delete_tactical_tag(db, tag_id)
@@ -241,7 +241,7 @@ async def delete_tactical_tag(
 @router.post("/kickout-plays", response_model=KickoutPlayResponse, status_code=status.HTTP_201_CREATED)
 async def create_kickout_play(
     body: KickoutPlayCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     play = await PlayerMovementService.create_kickout_play(
@@ -270,7 +270,7 @@ async def list_kickout_plays(
 async def update_kickout_play(
     play_id: UUID,
     body: KickoutPlayUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     play = await PlayerMovementService.update_kickout_play(
@@ -287,7 +287,7 @@ async def update_kickout_play(
 @router.delete("/kickout-plays/{play_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_kickout_play(
     play_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     deleted = await PlayerMovementService.delete_kickout_play(db, play_id, user.club_id)
@@ -301,7 +301,7 @@ async def delete_kickout_play(
 @router.post("/movement-arrows", response_model=MovementArrowResponse, status_code=status.HTTP_201_CREATED)
 async def create_movement_arrow(
     body: MovementArrowCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     data = body.model_dump()
@@ -326,7 +326,7 @@ async def list_movement_arrows(
 @router.delete("/movement-arrows/{arrow_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_movement_arrow(
     arrow_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     deleted = await PlayerMovementService.delete_movement_arrow(db, arrow_id)

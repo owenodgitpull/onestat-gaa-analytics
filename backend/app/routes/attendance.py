@@ -15,7 +15,7 @@ import asyncio
 import logging
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ router = APIRouter()
 @router.post("/sessions", response_model=TrainingSessionResponse, status_code=201)
 async def create_session(
     session: TrainingSessionCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new training session."""
@@ -173,7 +173,7 @@ async def get_session(
 async def update_session(
     session_id: UUID,
     update: TrainingSessionUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a training session."""
@@ -201,7 +201,7 @@ async def update_session(
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a training session (cascades to attendance records)."""
@@ -223,7 +223,7 @@ async def delete_session(
 async def add_attendance(
     session_id: UUID,
     attendance: AttendanceCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Add a single attendance record to a session."""
@@ -267,7 +267,7 @@ async def add_attendance(
 async def bulk_add_attendance(
     bulk: AttendanceBulkCreate,
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Add multiple attendance records for a session."""
@@ -341,7 +341,7 @@ async def trigger_workload_analysis_for_players(player_ids: list, trigger_source
 async def update_attendance(
     attendance_id: UUID,
     update: AttendanceUpdate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an attendance record."""
@@ -379,7 +379,7 @@ async def update_attendance(
 @router.delete("/attendance/{attendance_id}", status_code=204)
 async def delete_attendance(
     attendance_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an attendance record."""

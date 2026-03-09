@@ -17,7 +17,7 @@ import json
 import logging
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.models.match import Match, MatchStatus
 from app.models.match_gps import MatchGPSData
 from app.models.training_performance import GPSUploadLog
@@ -45,7 +45,7 @@ async def upload_match_gps(
     match_id: UUID,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="STATSports PDF or CSV file"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -506,7 +506,7 @@ async def get_match_gps_summary(
 async def add_match_gps_manually(
     match_id: UUID,
     data: MatchGPSBulkCreate,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Manually add GPS data for players in a match."""
@@ -573,7 +573,7 @@ async def add_match_gps_manually(
 @router.delete("/{match_id}/gps", status_code=204)
 async def delete_match_gps(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
