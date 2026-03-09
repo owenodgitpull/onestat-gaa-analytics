@@ -20,7 +20,7 @@ import base64
 import os
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.training_performance import TrainingGPSData, WeightTrainingSession, WeightExercise, GPSUploadLog
 from app.services.workload_analysis_service import WorkloadAnalysisService
 from app.models.attendance import TrainingSession, Attendance, AttendanceStatus
@@ -594,7 +594,7 @@ CSV:
 @router.get("/gps/upload/{upload_id}", response_model=GPSUploadStatus)
 async def get_upload_status(
     upload_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the status of a GPS upload."""
@@ -619,7 +619,7 @@ async def get_upload_status(
 
 @router.get("/ai-summary/latest")
 async def get_latest_training_ai_summary(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the latest AI-generated training session summary."""
@@ -644,7 +644,7 @@ async def get_latest_training_ai_summary(
 @router.get("/gps/session/{session_id}", response_model=list[TrainingGPSDataResponse])
 async def get_session_gps_data(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all GPS data for a training session."""
@@ -818,7 +818,7 @@ async def create_weight_session(
 @router.get("/weights/session/{session_id}", response_model=list[WeightTrainingSessionResponse])
 async def get_session_weight_data(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all weight training data for a session."""
@@ -874,7 +874,7 @@ async def get_session_weight_data(
 async def get_player_weight_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get weight training history for a player."""
@@ -931,7 +931,7 @@ async def get_player_weight_history(
 async def get_player_gps_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get GPS history for a player."""

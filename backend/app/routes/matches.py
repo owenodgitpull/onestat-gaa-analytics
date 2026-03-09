@@ -12,7 +12,7 @@ from uuid import UUID
 import logging
 import json
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.match_lineup import MatchLineup
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
@@ -67,7 +67,7 @@ async def list_matches(
     status: Optional[MatchStatus] = Query(None, description="Filter by match status"),
     venue: Optional[MatchVenue] = Query(None, description="Filter by venue"),
     sort: Optional[str] = Query(None, description="Sort order: 'asc' or 'desc' (default desc)"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -108,7 +108,7 @@ async def list_matches(
 @router.get("/{match_id}", response_model=MatchResponse)
 async def get_match(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -312,7 +312,7 @@ async def update_match_score(
 @router.get("/{match_id}/stats", response_model=MatchStatsResponse)
 async def get_match_stats(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -366,7 +366,7 @@ async def delete_match(
 async def get_match_pitch_paths(
     match_id: UUID,
     outcomes: Optional[str] = Query(None, description="Comma-separated outcome types, e.g. goal,point,wide"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

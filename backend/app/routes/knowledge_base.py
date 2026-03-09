@@ -21,7 +21,7 @@ from app.models.knowledge_document import KnowledgeDocument
 from app.models.document_chunk import DocumentChunk, DocumentEmbeddingLog
 from app.services.storage_service import storage
 from app.services.rag_service import RAGService
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class DocumentResponse(BaseModel):
 
 @router.get("/documents")
 async def list_documents(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """List club's documents + shared defaults."""

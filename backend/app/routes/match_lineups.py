@@ -12,7 +12,7 @@ import uuid
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.match_lineup import MatchLineup
 from app.models.match import Match
 from app.models.player import Player
@@ -122,7 +122,7 @@ async def set_match_lineup(
 @router.get("/matches/{match_id}/lineup", response_model=List[MatchLineupResponse])
 async def get_match_lineup(
     match_id: str,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -159,7 +159,7 @@ async def get_match_lineup(
 
 @router.get("/last-lineup", response_model=List[MatchLineupResponse])
 async def get_last_match_lineup(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

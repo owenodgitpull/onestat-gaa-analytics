@@ -17,7 +17,7 @@ import json
 import logging
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.match import Match, MatchStatus
 from app.models.match_gps import MatchGPSData
 from app.models.training_performance import GPSUploadLog
@@ -354,7 +354,7 @@ async def trigger_match_reanalysis_with_gps(db: AsyncSession, match_id: UUID):
 @router.get("/{match_id}/gps", response_model=list[MatchGPSDataResponse])
 async def get_match_gps(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all GPS data for a match."""
@@ -408,7 +408,7 @@ async def get_match_gps(
 async def get_match_gps_upload_status(
     match_id: UUID,
     upload_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the status of a match GPS upload."""
@@ -437,7 +437,7 @@ async def get_match_gps_upload_status(
 @router.get("/{match_id}/gps/summary", response_model=MatchGPSSummary)
 async def get_match_gps_summary(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a summary of GPS data for a match."""
@@ -609,7 +609,7 @@ async def delete_match_gps(
 async def get_player_match_gps_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get match GPS history for a player."""

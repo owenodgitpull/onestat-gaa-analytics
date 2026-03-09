@@ -17,7 +17,7 @@ from pathlib import Path
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class StatsResponse(BaseModel):
 
 @router.post("/sync", response_model=SyncResponse)
 async def sync_knowledge_base(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -98,7 +98,7 @@ async def sync_knowledge_base(
 @router.post("/search", response_model=SearchResponse)
 async def search_knowledge_base(
     request: SearchRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -129,7 +129,7 @@ async def search_knowledge_base(
 @router.post("/context", response_model=ContextResponse)
 async def get_context(
     request: ContextRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -161,7 +161,7 @@ async def get_context(
 
 @router.get("/stats", response_model=StatsResponse)
 async def get_rag_stats(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

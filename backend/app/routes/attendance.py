@@ -15,7 +15,7 @@ import asyncio
 import logging
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ async def list_sessions(
     end_date: Optional[date] = Query(None, description="Filter to date"),
     session_type: Optional[SessionType] = Query(None, description="Filter by type"),
     limit: int = Query(50, ge=1, le=100),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """List training sessions with optional filters."""
@@ -114,7 +114,7 @@ async def list_sessions(
 @router.get("/sessions/{session_id}", response_model=TrainingSessionDetail)
 async def get_session(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a training session with attendance records."""
@@ -401,7 +401,7 @@ async def delete_attendance(
 async def get_attendance_overview(
     start_date: Optional[date] = Query(None, description="Start date for report"),
     end_date: Optional[date] = Query(None, description="End date for report"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get attendance overview with player summaries."""

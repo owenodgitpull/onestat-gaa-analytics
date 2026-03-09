@@ -12,7 +12,7 @@ from sqlalchemy import select
 from uuid import UUID
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.club import Club
 from app.schemas.club import ClubResponse, ClubUpdate
 
@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.get("/", response_model=ClubResponse)
 async def get_active_club(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -111,7 +111,7 @@ async def upload_club_logo(
 
 @router.get("/logo/serve")
 async def serve_club_logo(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Redirect to a presigned R2 URL for the club logo."""

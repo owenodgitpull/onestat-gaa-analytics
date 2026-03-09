@@ -20,7 +20,7 @@ import logging
 from datetime import datetime
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.services.ai import (
     analyze_match,
     live_match_insight,
@@ -194,7 +194,7 @@ async def _generate_session_title(first_message: str) -> str:
 @router.get("/chat/sessions")
 async def list_chat_sessions(
     limit: int = 50,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """List all chat sessions, newest first."""
@@ -222,7 +222,7 @@ async def list_chat_sessions(
 @router.get("/chat/sessions/{session_id}")
 async def get_chat_session(
     session_id: str,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a full chat session with all messages."""
@@ -260,7 +260,7 @@ async def get_chat_session(
 
 @router.post("/chat/sessions")
 async def create_chat_session(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new empty chat session."""
@@ -280,7 +280,7 @@ async def create_chat_session(
 @router.delete("/chat/sessions/{session_id}")
 async def delete_chat_session(
     session_id: str,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a chat session and all its messages."""
@@ -300,7 +300,7 @@ async def delete_chat_session(
 async def rename_chat_session(
     session_id: str,
     body: SessionRenameRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Rename a chat session."""
@@ -324,7 +324,7 @@ async def rename_chat_session(
 @router.post("/analyze-match", response_model=AnalysisResponse)
 async def analyze_match_endpoint(
     request: MatchAnalysisRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -351,7 +351,7 @@ async def analyze_match_endpoint(
 @router.post("/live-insight", response_model=AnalysisResponse)
 async def live_insight_endpoint(
     request: LiveInsightRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -378,7 +378,7 @@ async def live_insight_endpoint(
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(
     request: ChatRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -406,7 +406,7 @@ async def chat_endpoint(
 @router.post("/chat/stream")
 async def chat_stream_endpoint(
     request: ChatRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -510,7 +510,7 @@ async def chat_stream_endpoint(
 async def post_match_report_endpoint(
     match_id: str,
     force_regenerate: bool = False,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -575,7 +575,7 @@ async def ai_health_check():
 
 @router.get("/chart-recommendations", response_model=ChartRecommendationsResponse)
 async def get_chart_recommendations_endpoint(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -603,7 +603,7 @@ async def get_chart_recommendations_endpoint(
 @router.post("/generate-chart", response_model=AgenticChartResponse)
 async def generate_chart_endpoint(
     request: AgenticChartRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -629,7 +629,7 @@ async def generate_chart_endpoint(
 @router.post("/dashboard-charts", response_model=DashboardChartsResponse)
 async def get_dashboard_charts_endpoint(
     request: DashboardChartsRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -659,7 +659,7 @@ async def get_dashboard_charts_endpoint(
 @router.post("/generate-replacement-chart", response_model=SingleChartResponse)
 async def generate_replacement_chart_endpoint(
     request: SingleChartRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -681,7 +681,7 @@ async def generate_replacement_chart_endpoint(
 
 @router.get("/outlier-suggestions", response_model=OutlierSuggestionsResponse)
 async def get_outlier_suggestions_endpoint(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -705,7 +705,7 @@ async def get_outlier_suggestions_endpoint(
 @router.post("/analyze-gps", response_model=GPSAnalysisResponse)
 async def analyze_gps_endpoint(
     request: GPSAnalysisRequest,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -789,7 +789,7 @@ async def get_insight_alerts(
     dashboard: Optional[str] = None,
     include_dismissed: bool = False,
     limit: int = 20,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -836,7 +836,7 @@ async def get_insight_alerts(
 @router.patch("/insight-alerts/{alert_id}/dismiss")
 async def dismiss_insight_alert(
     alert_id: str,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Dismiss an insight alert."""

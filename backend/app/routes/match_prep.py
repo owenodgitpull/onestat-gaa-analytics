@@ -18,7 +18,7 @@ import json
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.match import Match
 from app.models.player import Player
 from app.models.set_piece_routine import SetPieceRoutine
@@ -60,7 +60,7 @@ async def save_tactical_notes(
 @router.get("/matches/{match_id}/tactical-notes")
 async def get_tactical_notes(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get tactical notes for a match."""
@@ -97,7 +97,7 @@ async def create_set_piece(
 @router.get("/set-pieces", response_model=list[SetPieceRoutineResponse])
 async def list_set_pieces(
     category: Optional[str] = Query(None),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(SetPieceRoutine).where(SetPieceRoutine.club_id == user.club_id)
@@ -111,7 +111,7 @@ async def list_set_pieces(
 @router.get("/set-pieces/{routine_id}", response_model=SetPieceRoutineResponse)
 async def get_set_piece(
     routine_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -220,7 +220,7 @@ async def create_marking_assignment(
 @router.get("/matches/{match_id}/marking", response_model=list[ManMarkingAssignmentResponse])
 async def list_marking_assignments(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -271,7 +271,7 @@ async def delete_marking_assignment(
 @router.get("/matches/{match_id}/opposition-briefing")
 async def generate_opposition_briefing(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

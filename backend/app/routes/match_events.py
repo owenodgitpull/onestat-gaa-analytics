@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from uuid import UUID
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.match_event import EventType, Team
 from app.schemas.match_event import (
     MatchEventCreate,
@@ -129,7 +129,7 @@ async def list_match_events(
     limit: int = Query(100, ge=1, le=500),
     event_type: Optional[EventType] = Query(None, description="Filter by event type"),
     team: Optional[Team] = Query(None, description="Filter by team"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -163,7 +163,7 @@ async def list_match_events(
 @router.get("/{event_id}", response_model=MatchEventResponse)
 async def get_event(
     event_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific event by ID."""

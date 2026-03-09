@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.possession_event import PossessionTeam
 from app.schemas.possession_event import (
     PossessionEventCreate,
@@ -80,7 +80,7 @@ async def create_possession_event(
 @router.get("/{event_id}", response_model=PossessionEventResponse)
 async def get_possession_event(
     event_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single possession event by ID."""
@@ -103,7 +103,7 @@ async def list_possession_events(
     match_id: UUID = Query(..., description="Filter by match ID"),
     team: Optional[PossessionTeam] = Query(None, description="Filter by team"),
     limit: int = Query(1000, ge=1, le=10000, description="Max events to return"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

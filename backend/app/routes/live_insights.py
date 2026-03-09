@@ -16,7 +16,7 @@ from datetime import datetime
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.services.live_insights_service import LiveInsightsService
 from app.models.live_insight import InsightTrigger
 
@@ -63,7 +63,7 @@ class TriggerInsightResponse(BaseModel):
 async def get_match_insights(
     match_id: UUID,
     limit: int = 20,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -169,7 +169,7 @@ async def trigger_half_time_insight(
 @router.get("/{match_id}/latest", response_model=Optional[InsightResponse])
 async def get_latest_insight(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

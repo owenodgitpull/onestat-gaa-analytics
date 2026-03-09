@@ -11,7 +11,7 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.player import Player
@@ -454,7 +454,7 @@ def get_pitch_zone(x: float, y: float) -> str:
 
 @router.get("/dashboard", response_model=DashboardData)
 async def get_dashboard_data(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -672,7 +672,7 @@ async def get_dashboard_data(
 
 @router.get("/season-summary", response_model=SeasonSummary)
 async def get_season_summary(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get season summary statistics only."""
@@ -683,7 +683,7 @@ async def get_season_summary(
 @router.get("/top-scorers", response_model=List[TopScorer])
 async def get_top_scorers(
     limit: int = Query(10, ge=1, le=50),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get top scorers leaderboard."""
@@ -694,7 +694,7 @@ async def get_top_scorers(
 @router.get("/shot-locations", response_model=List[ShotLocation])
 async def get_shot_locations(
     team: Optional[str] = Query(None, description="Filter by team: own or opponent"),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all shot locations for heat map visualization."""
@@ -710,7 +710,7 @@ async def get_shot_locations(
 @router.get("/player/{player_id}/matches", response_model=List[PlayerMatchStats])
 async def get_player_match_stats(
     player_id: str,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -903,7 +903,7 @@ class PlayerShotEvent(BaseModel):
 @router.get("/player/{player_id}/shot-events", response_model=List[PlayerShotEvent])
 async def get_player_shot_events(
     player_id: str,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -975,7 +975,7 @@ async def get_player_shot_events(
 
 @router.get("/season-dashboard", response_model=SeasonDashboardData)
 async def get_season_dashboard(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1062,7 +1062,7 @@ async def get_season_dashboard(
 
 @router.get("/training-overview", response_model=TrainingOverviewData)
 async def get_training_overview(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """

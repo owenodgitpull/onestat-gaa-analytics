@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Qu
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.database import get_db, async_session_maker
 from app.models.club import Club
 from app.models.match import Match, MatchStatus, MatchVenue
@@ -30,7 +30,7 @@ def _format_gaa_score(goals: int, points: int) -> str:
 
 @router.get("/")
 async def list_fixtures(
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """List upcoming fixtures (scheduled matches with future dates, ordered by date ASC)."""
@@ -52,7 +52,7 @@ async def list_fixtures(
 @router.get("/{match_id}/preview")
 async def fixture_preview(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Fixture preview: match details + our recent form + opponent form + last meeting."""
@@ -121,7 +121,7 @@ async def _run_sync(club_id: UUID):
 @router.post("/sync")
 async def sync_fixtures(
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
 ):
     """Trigger scrape from donegalgaa.ie. Runs in background, returns immediately."""
     background_tasks.add_task(_run_sync, user.club_id)
@@ -384,7 +384,7 @@ def _parse_xlsx_fixtures(content: bytes, club_aliases: set[str]) -> list[dict]:
 @router.post("/preview-teams")
 async def preview_teams(
     file: UploadFile = File(...),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
 ):
     """Parse XLSX file and return all unique team names found (for alias selection)."""
     filename = (file.filename or "").lower()
@@ -410,7 +410,7 @@ async def import_fixtures(
     file: UploadFile = File(...),
     mode: str = Query("add", regex="^(add|replace)$"),
     selected_team: str | None = Query(None),
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -617,7 +617,7 @@ async def _import_csv(content: bytes, club_id: UUID, db: AsyncSession) -> dict:
 @router.get("/opponent/{name}/form")
 async def opponent_form(
     name: str,
-    user: AuthenticatedUser = Depends(require_club),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get an opponent's recent results from scraped data."""
