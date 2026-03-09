@@ -188,12 +188,22 @@ export default function Navigation() {
       <nav className="sticky top-0 z-50 backdrop-blur-2xl border-b border-white/[0.12]" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.06))', boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
         <div className="flex items-center h-14 px-4">
           {/* Logo */}
-          <Link to="/" className="flex items-center group mr-3 lg:mr-8 flex-shrink-0">
+          <Link to="/" className="flex items-center group mr-3 lg:mr-8 flex-shrink-0 gap-2.5">
             <img
               src="/oneStatLogoTransparent.png"
               alt="OneStat Analytics"
               className="h-7 lg:h-8"
             />
+            {club?.logo_url && (
+              <>
+                <div className="w-px h-5 bg-white/15" />
+                <img
+                  src={club.logo_url}
+                  alt={club.name}
+                  className="h-7 lg:h-8 rounded-md object-contain"
+                />
+              </>
+            )}
           </Link>
 
           {/* Main Navigation Links */}

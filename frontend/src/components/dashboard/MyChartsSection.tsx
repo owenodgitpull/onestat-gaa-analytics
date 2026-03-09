@@ -100,7 +100,7 @@ export default function MyChartsSection({
         <button
           data-tour="chart-library-btn"
           onClick={() => setShowLibrary(true)}
-          className="btn-glass flex items-center gap-2 text-sm"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 hover:text-white text-xs font-medium transition-colors"
         >
           <Library size={14} />
           Chart Library
