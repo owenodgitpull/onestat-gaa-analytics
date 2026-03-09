@@ -962,9 +962,9 @@ export default function SetPieceEditor({
                       width={label.text.length * 14 + 16}
                       height="32"
                       rx="6"
-                      fill="rgba(168,85,247,0.25)"
-                      stroke={isLabelDragging ? 'rgba(168,85,247,0.8)' : 'rgba(168,85,247,0.5)'}
-                      strokeWidth="1.5"
+                      fill="rgba(168,85,247,0.3)"
+                      stroke={isLabelDragging ? 'rgba(168,85,247,0.9)' : 'rgba(168,85,247,0.7)'}
+                      strokeWidth="2.5"
                     />
                     <text
                       x={lx}
