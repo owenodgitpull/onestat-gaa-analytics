@@ -3,6 +3,7 @@ import { Plus, Shield, Check, AlertTriangle } from 'lucide-react'
 import { useClub } from '../../contexts/ClubContext'
 import { organizationsAPI } from '../../services/api'
 import type { Organization } from '../../types'
+import AddTeamModal from './AddTeamModal'
 
 const TIER_LABELS: Record<string, string> = {
   free: 'Free',
@@ -22,10 +23,7 @@ export default function TeamManagementSettings() {
   const { club, clubs, switchClub, refetch } = useClub()
   const [org, setOrg] = useState<Organization | null>(null)
   const [loading, setLoading] = useState(true)
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [newTeamName, setNewTeamName] = useState('')
-  const [newTeamShortName, setNewTeamShortName] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -44,26 +42,11 @@ export default function TeamManagementSettings() {
     }
   }
 
-  const handleCreateTeam = async () => {
-    if (!newTeamName.trim()) return
-    setCreating(true)
-    setError(null)
-    try {
-      await organizationsAPI.createTeam({
-        name: newTeamName.trim(),
-        short_name: newTeamShortName.trim() || undefined,
-      })
-      setSuccess(`Team "${newTeamName.trim()}" created successfully`)
-      setNewTeamName('')
-      setNewTeamShortName('')
-      setShowAddForm(false)
-      await loadOrg()
-      refetch()
-    } catch (err: any) {
-      setError(err.message || 'Failed to create team')
-    } finally {
-      setCreating(false)
-    }
+  const handleTeamCreated = async (_club: any) => {
+    setShowAddModal(false)
+    setSuccess('Team created successfully')
+    await loadOrg()
+    refetch()
   }
 
   const handleSwitchToTeam = async (clubId: string) => {
@@ -156,50 +139,9 @@ export default function TeamManagementSettings() {
       </div>
 
       {/* Add Team */}
-      {showAddForm ? (
-        <div className="p-4 rounded-xl border border-white/10 bg-white/[0.03] space-y-4">
-          <h4 className="text-sm font-medium text-white">Add New Team</h4>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-white/50 mb-1">Team Name *</label>
-              <input
-                type="text"
-                value={newTeamName}
-                onChange={(e) => setNewTeamName(e.target.value)}
-                placeholder="e.g. Donegal Senior"
-                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-white/50 mb-1">Short Name</label>
-              <input
-                type="text"
-                value={newTeamShortName}
-                onChange={(e) => setNewTeamShortName(e.target.value)}
-                placeholder="e.g. Donegal"
-                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleCreateTeam}
-              disabled={!newTeamName.trim() || creating}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500 hover:bg-emerald-600 text-white disabled:opacity-50 transition-colors"
-            >
-              {creating ? 'Creating...' : 'Create Team'}
-            </button>
-            <button
-              onClick={() => { setShowAddForm(false); setError(null) }}
-              className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white hover:bg-white/5 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : canAddTeam ? (
+      {canAddTeam ? (
         <button
-          onClick={() => { setShowAddForm(true); setSuccess(null) }}
+          onClick={() => { setShowAddModal(true); setSuccess(null) }}
           className="flex items-center gap-2 px-4 py-3 rounded-xl border border-dashed border-white/10 hover:border-emerald-500/30 text-white/50 hover:text-emerald-400 transition-colors w-full justify-center"
         >
           <Plus size={16} />
@@ -211,6 +153,13 @@ export default function TeamManagementSettings() {
           Team limit reached on your {tierLabel} plan. Upgrade to add more teams.
         </div>
       )}
+
+      {/* Add Team Modal */}
+      <AddTeamModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onCreated={handleTeamCreated}
+      />
     </div>
   )
 }
