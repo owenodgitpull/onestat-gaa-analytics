@@ -61,32 +61,32 @@ async def upload_club_logo(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Step 2: Upload club logo image.
-
-    For Phase A/B, stores as a local path.
-    Phase C will use S3.
+    Step 2: Upload club logo image. Stores in R2 under club prefix.
     """
-    import os
-    import shutil
+    import logging
+    logger = logging.getLogger(__name__)
 
-    # Validate file type
     allowed_types = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
     if file.content_type not in allowed_types:
         raise HTTPException(400, f"Invalid file type: {file.content_type}. Allowed: {', '.join(allowed_types)}")
 
-    # Save to uploads directory
-    upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "logos")
-    os.makedirs(upload_dir, exist_ok=True)
-
+    file_bytes = await file.read()
     ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "png"
-    filename = f"{club_id}.{ext}"
-    filepath = os.path.join(upload_dir, filename)
 
-    with open(filepath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    from app.services.storage_service import storage
+    r2_key = storage.upload_bytes(
+        data=file_bytes,
+        folder="logos",
+        filename=f"club-logo.{ext}",
+        content_type=file.content_type,
+        club_id=str(club_id),
+    )
 
-    logo_url = f"/uploads/logos/{filename}"
-    club = await OnboardingService.update_club_logo(db, club_id, logo_url)
+    if not r2_key:
+        raise HTTPException(500, "Failed to upload logo to storage")
+
+    logger.info(f"Onboarding logo uploaded to R2: {r2_key}")
+    club = await OnboardingService.update_club_logo(db, club_id, r2_key)
     return club
 
 

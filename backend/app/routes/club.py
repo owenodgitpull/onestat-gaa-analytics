@@ -12,7 +12,7 @@ from sqlalchemy import select
 from uuid import UUID
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_club
 from app.models.club import Club
 from app.schemas.club import ClubResponse, ClubUpdate
 
@@ -21,7 +21,7 @@ router = APIRouter()
 
 @router.get("/", response_model=ClubResponse)
 async def get_active_club(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -111,7 +111,7 @@ async def upload_club_logo(
 
 @router.get("/logo/serve")
 async def serve_club_logo(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Redirect to a presigned R2 URL for the club logo."""
@@ -119,6 +119,10 @@ async def serve_club_logo(
     club = result.scalar_one_or_none()
     if not club or not club.logo_url:
         raise HTTPException(404, "No logo found")
+
+    # Legacy local paths (pre-R2) are not serveable — treat as no logo
+    if club.logo_url.startswith("/uploads/"):
+        raise HTTPException(404, "Logo needs to be re-uploaded via Settings > Team Profile")
 
     from app.services.storage_service import storage
     url = storage.get_download_url(club.logo_url, expires_in=86400, club_id=str(user.club_id))
