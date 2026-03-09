@@ -2427,6 +2427,38 @@ const matchPrepAPI = {
     fetchAPI(`/match-prep/marking/${assignmentId}`, { method: 'DELETE' }),
 };
 
+// ============================================================================
+// Organizations & Multi-Team API
+// ============================================================================
+
+import type { ClubMembership, Organization } from '../types';
+
+export const organizationsAPI = {
+  getMyClubs: () =>
+    fetchAPI<ClubMembership[]>('/my-clubs'),
+
+  switchClub: (clubId: string) =>
+    fetchAPI<{ club_id: string; role: string; player_id: string | null }>('/switch-club', {
+      method: 'POST',
+      body: JSON.stringify({ club_id: clubId }),
+    }),
+
+  getOrganization: () =>
+    fetchAPI<Organization>('/organization'),
+
+  createTeam: (data: { name: string; short_name?: string; county?: string; province?: string; primary_colour?: string; secondary_colour?: string }) =>
+    fetchAPI('/organization/teams', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deactivateTeam: (clubId: string) =>
+    fetchAPI(`/organization/teams/${clubId}`, {
+      method: 'DELETE',
+    }),
+};
+
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,

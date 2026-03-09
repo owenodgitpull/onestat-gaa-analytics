@@ -24,6 +24,7 @@ import { useState, useRef } from 'react'
 import NewMatchModal from './NewMatchModal'
 import AIAnalyst from './AIAnalyst'
 import ConfirmationModal from './ConfirmationModal'
+import TeamSwitcher from './TeamSwitcher'
 
 export default function Navigation() {
   const location = useLocation()
@@ -206,6 +207,9 @@ export default function Navigation() {
               </>
             )}
           </Link>
+
+          {/* Team Switcher — only renders if user has multiple teams */}
+          <TeamSwitcher />
 
           {/* Main Navigation Links */}
           <div className="flex items-center h-full overflow-x-auto scrollbar-hide flex-1 min-w-0">

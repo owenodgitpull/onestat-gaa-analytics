@@ -29,6 +29,7 @@ from app.database import get_db
 from app.models.club import Club
 from app.models.player import Player
 from app.models.user import User
+from app.models.user_club_membership import UserClubMembership
 from app.schemas.user import UserResponse, SetupProfileRequest
 from app.schemas.player_portal import SelectPlayerRequest
 
@@ -215,6 +216,19 @@ async def exchange_token(
             # Only overwrite name if token has a real name and DB name looks like a UUID
             if token_name and (not user.name or _looks_like_uuid(user.name)):
                 user.name = token_name
+            # Ensure membership row exists
+            if user.club_id:
+                existing_m = await db.execute(
+                    select(UserClubMembership).where(
+                        UserClubMembership.user_id == user.id,
+                        UserClubMembership.club_id == user.club_id,
+                    )
+                )
+                if not existing_m.scalar_one_or_none():
+                    db.add(UserClubMembership(
+                        user_id=user.id, club_id=user.club_id,
+                        role=user.role, player_id=user.player_id,
+                    ))
             await db.commit()
             await db.refresh(user)
             logger.info(f"Linked invited user to cognito_sub: {email}")
@@ -240,6 +254,13 @@ async def exchange_token(
                 club_id=invite_club_id,
             )
             db.add(user)
+            await db.flush()  # Get user.id before creating membership
+            # Create membership row if joining via invite
+            if invite_club_id:
+                db.add(UserClubMembership(
+                    user_id=user.id, club_id=invite_club_id,
+                    role="player",
+                ))
             await db.commit()
             await db.refresh(user)
             logger.info(f"Created new user on token exchange: {email} (invite_code={'yes' if invite_club_id else 'no'})")
@@ -417,6 +438,19 @@ async def setup_profile(
     if body.name:
         db_user.name = body.name
 
+    # Ensure membership row exists
+    existing_m = await db.execute(
+        select(UserClubMembership).where(
+            UserClubMembership.user_id == db_user.id,
+            UserClubMembership.club_id == body.club_id,
+        )
+    )
+    if not existing_m.scalar_one_or_none():
+        db.add(UserClubMembership(
+            user_id=db_user.id, club_id=body.club_id,
+            role=db_user.role,
+        ))
+
     await db.commit()
     await db.refresh(db_user)
     return db_user
@@ -583,6 +617,18 @@ async def select_player(
         raise HTTPException(status_code=404, detail="User not found")
 
     db_user.player_id = body.player_id
+
+    # Sync player_id to membership
+    mem_result = await db.execute(
+        select(UserClubMembership).where(
+            UserClubMembership.user_id == db_user.id,
+            UserClubMembership.club_id == db_user.club_id,
+        )
+    )
+    membership = mem_result.scalar_one_or_none()
+    if membership:
+        membership.player_id = body.player_id
+
     await db.commit()
     await db.refresh(db_user)
     return db_user

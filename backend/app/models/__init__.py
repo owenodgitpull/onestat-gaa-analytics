@@ -47,6 +47,8 @@ from app.models.kickout_play import KickoutPlay
 from app.models.tactical_tag import TacticalTag
 from app.models.set_piece_routine import SetPieceRoutine
 from app.models.man_marking_assignment import ManMarkingAssignment
+from app.models.organization import Organization, TIER_LIMITS
+from app.models.user_club_membership import UserClubMembership
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -113,5 +115,8 @@ __all__ = [
     "TacticalTag",
     "SetPieceRoutine",
     "ManMarkingAssignment",
+    "Organization",
+    "TIER_LIMITS",
+    "UserClubMembership",
 ]
 

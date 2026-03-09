@@ -17,6 +17,7 @@ import logging
 
 from app.database import get_db
 from app.models.user import User
+from app.models.user_club_membership import UserClubMembership
 from app.auth.dependencies import AuthenticatedUser, require_role
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,18 @@ async def change_role(
         raise HTTPException(status_code=404, detail="Member not found")
 
     member.role = body.role
+
+    # Sync role to membership
+    mem_result = await db.execute(
+        select(UserClubMembership).where(
+            UserClubMembership.user_id == member.id,
+            UserClubMembership.club_id == user.club_id,
+        )
+    )
+    mem = mem_result.scalar_one_or_none()
+    if mem:
+        mem.role = body.role
+
     await db.commit()
 
     logger.info(f"Role changed: {member.email} → {body.role} by {user.email}")
@@ -146,6 +159,18 @@ async def deactivate_member(
         raise HTTPException(status_code=404, detail="Member not found")
 
     member.is_active = False
+
+    # Deactivate membership (not the user globally — just this club)
+    mem_result = await db.execute(
+        select(UserClubMembership).where(
+            UserClubMembership.user_id == member.id,
+            UserClubMembership.club_id == user.club_id,
+        )
+    )
+    mem = mem_result.scalar_one_or_none()
+    if mem:
+        mem.is_active = False
+
     await db.commit()
 
     logger.info(f"User deactivated: {member.email} by {user.email}")
@@ -170,6 +195,18 @@ async def reactivate_member(
         raise HTTPException(status_code=404, detail="Member not found")
 
     member.is_active = True
+
+    # Reactivate membership
+    mem_result = await db.execute(
+        select(UserClubMembership).where(
+            UserClubMembership.user_id == member.id,
+            UserClubMembership.club_id == user.club_id,
+        )
+    )
+    mem = mem_result.scalar_one_or_none()
+    if mem:
+        mem.is_active = True
+
     await db.commit()
 
     logger.info(f"User reactivated: {member.email} by {user.email}")
@@ -241,6 +278,15 @@ async def invite_admin(
         cognito_sub=cognito_sub,
     )
     db.add(new_admin)
+    await db.flush()  # Get new_admin.id
+
+    # Create membership row
+    db.add(UserClubMembership(
+        user_id=new_admin.id,
+        club_id=user.club_id,
+        role="club_admin",
+    ))
+
     await db.commit()
     await db.refresh(new_admin)
 

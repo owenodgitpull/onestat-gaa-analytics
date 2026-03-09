@@ -1,5 +1,24 @@
 // Type definitions for the GAA Analytics app
 
+export interface ClubMembership {
+  club_id: string;
+  club_name: string;
+  club_short_name: string | null;
+  club_logo_url: string | null;
+  role: string;
+  is_active: boolean;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  subscription_tier: string;
+  max_teams: number;
+  current_team_count: number;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface Club {
   id: string;
   name: string;

@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, BookOpen, Users, Bell } from 'lucide-react'
+import { Settings as SettingsIcon, BookOpen, Users, Bell, Building2 } from 'lucide-react'
 import ClubProfileSettings from '../components/settings/ClubProfileSettings'
 import KnowledgeBaseSettings from '../components/settings/KnowledgeBaseSettings'
 import UserManagementSettings from '../components/settings/UserManagementSettings'
 import NotificationSettings from '../components/settings/NotificationSettings'
+import TeamManagementSettings from '../components/settings/TeamManagementSettings'
 
 const TABS = [
   { id: 'profile', label: 'Team Profile', icon: SettingsIcon },
+  { id: 'teams', label: 'Teams', icon: Building2 },
   { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -43,6 +45,7 @@ export default function Settings() {
       {/* Tab content */}
       <div className="rounded-2xl backdrop-blur-md p-6" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))', border: '1px solid rgba(255,255,255,0.10)', boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
         {activeTab === 'profile' && <ClubProfileSettings />}
+        {activeTab === 'teams' && <TeamManagementSettings />}
         {activeTab === 'knowledge' && <KnowledgeBaseSettings />}
         {activeTab === 'users' && <UserManagementSettings />}
         {activeTab === 'notifications' && <NotificationSettings />}

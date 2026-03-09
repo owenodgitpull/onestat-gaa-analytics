@@ -23,6 +23,7 @@ from app.schemas.onboarding import (
     PlayerBulkCreateRequest,
     PlayerBulkCreateResponse,
 )
+from app.models.user_club_membership import UserClubMembership
 from app.services.onboarding_service import OnboardingService
 
 logger = logging.getLogger(__name__)
@@ -48,8 +49,17 @@ async def create_club(
         db_user = result.scalar_one_or_none()
         if db_user:
             db_user.club_id = club.id
+            # Create organization and membership for the new club
+            from app.models.organization import Organization
+            org = Organization(name=club.name, owner_user_id=db_user.id)
+            db.add(org)
+            await db.flush()
+            club.organization_id = org.id
+            db.add(UserClubMembership(
+                user_id=db_user.id, club_id=club.id, role="club_admin",
+            ))
             await db.commit()
-            logger.info(f"Linked user {user.email} to club {club.id} during onboarding")
+            logger.info(f"Linked user {user.email} to club {club.id} during onboarding (org={org.id})")
 
     return club
 
