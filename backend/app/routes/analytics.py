@@ -1073,7 +1073,7 @@ async def get_training_overview(
     """
     from app.services.training_analytics_service import TrainingAnalyticsService
 
-    data = await TrainingAnalyticsService.get_all(db)
+    data = await TrainingAnalyticsService.get_all(db, club_id=user.club_id)
 
     return TrainingOverviewData(
         leaderboard=[LeaderboardPlayer(**p) for p in data["leaderboard"]],

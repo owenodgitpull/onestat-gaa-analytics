@@ -9,7 +9,7 @@ Handles:
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 from typing import Optional
 from uuid import UUID
@@ -625,7 +625,7 @@ async def get_latest_training_ai_summary(
     """Get the latest AI-generated training session summary."""
     result = await db.execute(
         select(TrainingSession)
-        .where(TrainingSession.ai_summary.isnot(None))
+        .where(and_(TrainingSession.ai_summary.isnot(None), TrainingSession.club_id == user.club_id))
         .order_by(TrainingSession.session_date.desc())
         .limit(1)
     )
@@ -648,6 +648,14 @@ async def get_session_gps_data(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all GPS data for a training session."""
+    # Verify session belongs to user's club
+    from app.models.attendance import TrainingSession
+    session_check = await db.execute(
+        select(TrainingSession.id).where(and_(TrainingSession.id == session_id, TrainingSession.club_id == user.club_id))
+    )
+    if not session_check.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Session not found")
+
     query = select(TrainingGPSData).where(TrainingGPSData.session_id == session_id)
     result = await db.execute(query)
     records = result.scalars().all()
@@ -878,6 +886,13 @@ async def get_player_weight_history(
     db: AsyncSession = Depends(get_db),
 ):
     """Get weight training history for a player."""
+    # Validate player belongs to user's club
+    player_query = select(Player).where(and_(Player.id == player_id, Player.club_id == user.club_id))
+    player_result = await db.execute(player_query)
+    player = player_result.scalar_one_or_none()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+
     query = (
         select(WeightTrainingSession)
         .options(selectinload(WeightTrainingSession.exercises))
@@ -887,11 +902,6 @@ async def get_player_weight_history(
     )
     result = await db.execute(query)
     sessions = result.scalars().all()
-
-    # Get player name
-    player_query = select(Player).where(Player.id == player_id)
-    player_result = await db.execute(player_query)
-    player = player_result.scalar_one_or_none()
     player_name = player.name if player else None
 
     return [
@@ -935,6 +945,14 @@ async def get_player_gps_history(
     db: AsyncSession = Depends(get_db),
 ):
     """Get GPS history for a player."""
+    # Validate player belongs to user's club
+    player_query = select(Player).where(and_(Player.id == player_id, Player.club_id == user.club_id))
+    player_result = await db.execute(player_query)
+    player = player_result.scalar_one_or_none()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+    player_name = player.name
+
     query = (
         select(TrainingGPSData)
         .where(TrainingGPSData.player_id == player_id)
@@ -943,12 +961,6 @@ async def get_player_gps_history(
     )
     result = await db.execute(query)
     records = result.scalars().all()
-
-    # Get player name
-    player_query = select(Player).where(Player.id == player_id)
-    player_result = await db.execute(player_query)
-    player = player_result.scalar_one_or_none()
-    player_name = player.name if player else None
 
     return [
         TrainingGPSDataResponse(

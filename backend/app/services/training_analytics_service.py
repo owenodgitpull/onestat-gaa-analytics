@@ -23,16 +23,16 @@ class TrainingAnalyticsService:
     """Static methods for training analytics data aggregation."""
 
     @staticmethod
-    async def get_all(db: AsyncSession) -> dict:
-        sessions = await TrainingAnalyticsService._get_sessions_with_gps(db)
+    async def get_all(db: AsyncSession, club_id=None) -> dict:
+        sessions = await TrainingAnalyticsService._get_sessions_with_gps(db, club_id)
 
         results = await asyncio.gather(
-            TrainingAnalyticsService._leaderboard(db),
+            TrainingAnalyticsService._leaderboard(db, club_id),
             TrainingAnalyticsService._peak_performance_trend(db, sessions),
-            TrainingAnalyticsService._readiness_table(db),
+            TrainingAnalyticsService._readiness_table(db, club_id),
             TrainingAnalyticsService._speed_zone_distribution(db, sessions),
             TrainingAnalyticsService._monotony_scatter(db, sessions),
-            TrainingAnalyticsService._overview_kpis(db),
+            TrainingAnalyticsService._overview_kpis(db, club_id),
         )
 
         leaderboard_data, peak_perf, readiness, speed_zones, monotony, overview = results
@@ -48,34 +48,34 @@ class TrainingAnalyticsService:
         }
 
     @staticmethod
-    async def _get_sessions_with_gps(db: AsyncSession):
+    async def _get_sessions_with_gps(db: AsyncSession, club_id=None):
         """Get all training sessions that have GPS data, ordered by date."""
+        filters = [TrainingSession.id.in_(select(TrainingGPSData.session_id).distinct())]
+        if club_id:
+            filters.append(TrainingSession.club_id == club_id)
         result = await db.execute(
             select(TrainingSession)
-            .where(
-                TrainingSession.id.in_(
-                    select(TrainingGPSData.session_id).distinct()
-                )
-            )
+            .where(and_(*filters))
             .order_by(TrainingSession.session_date.asc())
         )
         return list(result.scalars().all())
 
     @staticmethod
-    async def _leaderboard(db: AsyncSession) -> dict:
+    async def _leaderboard(db: AsyncSession, club_id=None) -> dict:
         """Aggregate GPS metrics across ALL sessions per player."""
-        result = await db.execute(
-            select(
-                TrainingGPSData.player_id,
-                func.avg(TrainingGPSData.total_distance_m).label("avg_total_distance_m"),
-                func.avg(TrainingGPSData.max_speed_ms).label("avg_max_speed_ms"),
-                func.avg(TrainingGPSData.high_speed_running_m).label("avg_high_speed_running_m"),
-                func.avg(TrainingGPSData.sprint_count).label("avg_sprint_count"),
-                func.avg(TrainingGPSData.dynamic_stress_load).label("avg_dynamic_stress_load"),
-                func.count(TrainingGPSData.id).label("sessions_count"),
-            )
-            .group_by(TrainingGPSData.player_id)
+        query = select(
+            TrainingGPSData.player_id,
+            func.avg(TrainingGPSData.total_distance_m).label("avg_total_distance_m"),
+            func.avg(TrainingGPSData.max_speed_ms).label("avg_max_speed_ms"),
+            func.avg(TrainingGPSData.high_speed_running_m).label("avg_high_speed_running_m"),
+            func.avg(TrainingGPSData.sprint_count).label("avg_sprint_count"),
+            func.avg(TrainingGPSData.dynamic_stress_load).label("avg_dynamic_stress_load"),
+            func.count(TrainingGPSData.id).label("sessions_count"),
         )
+        if club_id:
+            query = query.join(Player, TrainingGPSData.player_id == Player.id).where(Player.club_id == club_id)
+        query = query.group_by(TrainingGPSData.player_id)
+        result = await db.execute(query)
         rows = result.all()
 
         if not rows:
@@ -145,11 +145,14 @@ class TrainingAnalyticsService:
         return points
 
     @staticmethod
-    async def _readiness_table(db: AsyncSession) -> list:
+    async def _readiness_table(db: AsyncSession, club_id=None) -> list:
         """Calculate readiness score per active player."""
-        # Get active players
+        # Get active players (scoped to club)
+        filters = [Player.active == True]
+        if club_id:
+            filters.append(Player.club_id == club_id)
         players_result = await db.execute(
-            select(Player).where(Player.active == True)
+            select(Player).where(and_(*filters))
         )
         active_players = list(players_result.scalars().all())
 
@@ -321,12 +324,15 @@ class TrainingAnalyticsService:
         return points
 
     @staticmethod
-    async def _overview_kpis(db: AsyncSession) -> dict:
+    async def _overview_kpis(db: AsyncSession, club_id=None) -> dict:
         """Season overview KPI cards."""
         # Squad Availability: players with readiness >= 60% out of ALL active players
-        readiness = await TrainingAnalyticsService._readiness_table(db)
+        readiness = await TrainingAnalyticsService._readiness_table(db, club_id)
+        active_filters = [Player.active == True]
+        if club_id:
+            active_filters.append(Player.club_id == club_id)
         all_active_result = await db.execute(
-            select(func.count(Player.id)).where(Player.active == True)
+            select(func.count(Player.id)).where(and_(*active_filters))
         )
         total_active = all_active_result.scalar() or 0
         fit_players = sum(1 for r in readiness if r["readiness_score"] >= 60)
@@ -336,13 +342,16 @@ class TrainingAnalyticsService:
 
         # Top Speed of the Week
         seven_days_ago = datetime.utcnow().date() - timedelta(days=7)
+        speed_filters = [TrainingSession.session_date >= seven_days_ago]
+        if club_id:
+            speed_filters.append(TrainingSession.club_id == club_id)
         speed_result = await db.execute(
             select(
                 TrainingGPSData.player_id,
                 func.max(TrainingGPSData.max_speed_ms).label("top_speed"),
             )
             .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
-            .where(TrainingSession.session_date >= seven_days_ago)
+            .where(and_(*speed_filters))
             .group_by(TrainingGPSData.player_id)
             .order_by(desc("top_speed"))
             .limit(1)
@@ -359,13 +368,12 @@ class TrainingAnalyticsService:
 
         # HMLD Density: avg(hml_distance / duration) from latest session
         # Falls back to HSR-based estimate if HML data not available
+        latest_filters = [TrainingSession.id.in_(select(TrainingGPSData.session_id).distinct())]
+        if club_id:
+            latest_filters.append(TrainingSession.club_id == club_id)
         latest_session_result = await db.execute(
             select(TrainingSession)
-            .where(
-                TrainingSession.id.in_(
-                    select(TrainingGPSData.session_id).distinct()
-                )
-            )
+            .where(and_(*latest_filters))
             .order_by(TrainingSession.session_date.desc())
             .limit(1)
         )

@@ -121,7 +121,7 @@ async def get_session(
     query = (
         select(TrainingSession)
         .options(selectinload(TrainingSession.attendance_records))
-        .where(TrainingSession.id == session_id)
+        .where(and_(TrainingSession.id == session_id, TrainingSession.club_id == user.club_id))
     )
     result = await db.execute(query)
     session = result.scalar_one_or_none()
@@ -411,9 +411,10 @@ async def get_attendance_overview(
     if not start_date:
         start_date = end_date - timedelta(days=30)
 
-    # Get all sessions in range
+    # Get all sessions in range (scoped to club)
     sessions_query = select(TrainingSession).where(
         and_(
+            TrainingSession.club_id == user.club_id,
             TrainingSession.session_date >= start_date,
             TrainingSession.session_date <= end_date
         )
@@ -435,8 +436,8 @@ async def get_attendance_overview(
     attendance_result = await db.execute(attendance_query)
     attendance_records = attendance_result.scalars().all()
 
-    # Get all active players
-    players_query = select(Player).where(Player.active == True)
+    # Get all active players (scoped to club)
+    players_query = select(Player).where(and_(Player.active == True, Player.club_id == user.club_id))
     players_result = await db.execute(players_query)
     players = {p.id: p for p in players_result.scalars().all()}
 
