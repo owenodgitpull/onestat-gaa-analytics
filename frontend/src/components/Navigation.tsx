@@ -355,20 +355,6 @@ export default function Navigation() {
             )
           )}
 
-          {/* Divider */}
-          <div className="w-6 h-px bg-white/10 my-2" />
-
-          {/* Quick Add - context aware */}
-          {(location.pathname === '/' || location.pathname.startsWith('/results') || location.pathname.startsWith('/fixtures')) && (
-            <button
-              onClick={() => setIsNewMatchModalOpen(true)}
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white/40 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"
-              title="New Match"
-            >
-              <PlusCircle size={20} />
-            </button>
-          )}
-
           {/* Spacer to push AI chat to bottom */}
           <div className="flex-1" />
 

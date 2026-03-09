@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ArrowLeft, MapPin, Trophy, User, Swords } from 'lucide-react'
+import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList } from 'lucide-react'
 import { api } from '../services/api'
 import type { FormResult } from '../types'
 
@@ -80,6 +80,7 @@ export default function FixturePreview() {
 
   const { match, our_form, opponent_form, last_meeting } = data
   const matchDate = new Date(match.match_date)
+  const isPastScheduled = match.status === 'scheduled' && matchDate < new Date()
 
   const venueBadge = (venue: string) => {
     const v = venue?.toLowerCase()
@@ -127,6 +128,22 @@ export default function FixturePreview() {
           </div>
         </div>
       </div>
+
+      {/* Log Match Events — past fixture with no data */}
+      {isPastScheduled && (
+        <button
+          onClick={() => navigate(`/match/${match.id}/setup`)}
+          className="w-full py-4 rounded-xl font-semibold text-base transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2.5"
+          style={{
+            background: 'linear-gradient(135deg, rgba(0,230,118,0.25), rgba(0,176,255,0.2))',
+            border: '1px solid rgba(0,176,255,0.35)',
+            boxShadow: '0 4px 24px rgba(0,230,118,0.15)',
+          }}
+        >
+          <ClipboardList size={20} className="text-emerald-400" />
+          <span className="text-white">Log Match Events</span>
+        </button>
+      )}
 
       {/* Form Comparison */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

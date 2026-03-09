@@ -41,15 +41,19 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
   const [fixtures, setFixtures] = useState<Match[]>([])
   const [linkedFixture, setLinkedFixture] = useState<Match | null>(null)
 
-  // Fetch upcoming fixtures when modal opens
+  // Fetch linkable fixtures when modal opens (scheduled only, within last 60 days or future)
   useEffect(() => {
     if (!isOpen) return
     api.fixtures.getAll()
       .then(data => {
-        const upcoming = (Array.isArray(data) ? data : []).filter(
-          f => f.status === 'scheduled'
-        )
-        setFixtures(upcoming)
+        const cutoff = new Date()
+        cutoff.setDate(cutoff.getDate() - 60)
+        const linkable = (Array.isArray(data) ? data : []).filter(f => {
+          if (f.status !== 'scheduled') return false
+          const fDate = new Date(f.match_date)
+          return fDate >= cutoff
+        })
+        setFixtures(linkable)
       })
       .catch(() => {})
   }, [isOpen])
