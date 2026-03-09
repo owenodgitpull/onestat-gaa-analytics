@@ -6,7 +6,7 @@ import UserManagementSettings from '../components/settings/UserManagementSetting
 import NotificationSettings from '../components/settings/NotificationSettings'
 
 const TABS = [
-  { id: 'profile', label: 'Club Profile', icon: SettingsIcon },
+  { id: 'profile', label: 'Team Profile', icon: SettingsIcon },
   { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'notifications', label: 'Notifications', icon: Bell },

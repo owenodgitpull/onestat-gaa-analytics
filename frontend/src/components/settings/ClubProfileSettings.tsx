@@ -104,13 +104,13 @@ export default function ClubProfileSettings() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h2 className="text-lg font-semibold text-white">Club Profile</h2>
-        <p className="text-sm text-white/50 mt-1">Manage your club's identity and appearance</p>
+        <h2 className="text-lg font-semibold text-white">Team Profile</h2>
+        <p className="text-sm text-white/50 mt-1">Manage your team's identity and appearance</p>
       </div>
 
-      {/* Club Logo */}
+      {/* Team Logo */}
       <div>
-        <label className={labelClass}>Club Logo</label>
+        <label className={labelClass}>Team Logo</label>
         <div className="flex items-center gap-4">
           <div
             onClick={() => logoInputRef.current?.click()}
@@ -154,7 +154,7 @@ export default function ClubProfileSettings() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className={labelClass}>Club Name</label>
+          <label className={labelClass}>Team Name</label>
           <input className={inputClass} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
         </div>
         <div>
@@ -164,7 +164,7 @@ export default function ClubProfileSettings() {
         <div className="sm:col-span-2">
           <label className={labelClass}>Alternative Team Names</label>
           <input className={inputClass} value={form.team_aliases} onChange={e => setForm(f => ({ ...f, team_aliases: e.target.value }))} placeholder="e.g. An Clochán Liath, CLG An Clochán Liath" />
-          <p className="text-xs text-white/40 mt-1">Other names your club is known by, separated by commas (e.g. Irish name, abbreviations). Used to match your club in county board fixture files.</p>
+          <p className="text-xs text-white/40 mt-1">Other names your team is known by, separated by commas (e.g. Irish name, abbreviations). Used to match your team in fixture files.</p>
         </div>
         <div>
           <label className={labelClass}>County</label>
