@@ -23,6 +23,7 @@ import { useClub } from '@/contexts/ClubContext'
 import OppositionBriefing from '@/components/OppositionBriefing'
 import ManMarkingPanel from '@/components/ManMarkingPanel'
 import SetPieceEditor from '@/components/SetPieceEditor'
+import ConfirmationModal from '@/components/ConfirmationModal'
 
 // ── Pitch position data (mirrored from StartingLineupModal) ──────────────
 
@@ -148,6 +149,9 @@ export default function MatchPrep() {
   const [showSetPieceEditor, setShowSetPieceEditor] = useState(false)
   const [newSetPieceName, setNewSetPieceName] = useState('')
   const [newSetPieceCategory, setNewSetPieceCategory] = useState<'attacking' | 'defensive' | 'kickout'>('attacking')
+
+  // Delete confirmation state
+  const [deletingSetPieceId, setDeletingSetPieceId] = useState<string | null>(null)
 
   // Section collapse state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -916,7 +920,7 @@ export default function MatchPrep() {
                           <Pencil size={14} />
                         </button>
                         <button
-                          onClick={() => handleDeleteSetPiece(sp.id)}
+                          onClick={() => setDeletingSetPieceId(sp.id)}
                           className="p-1.5 rounded-lg text-white/30 hover:text-red-400"
                         >
                           <X size={14} />
@@ -950,6 +954,20 @@ export default function MatchPrep() {
           teamSecondaryColor={jerseyText}
         />
       )}
+
+      {/* Delete set piece confirmation */}
+      <ConfirmationModal
+        isOpen={!!deletingSetPieceId}
+        onClose={() => setDeletingSetPieceId(null)}
+        onConfirm={() => {
+          if (deletingSetPieceId) handleDeleteSetPiece(deletingSetPieceId)
+          setDeletingSetPieceId(null)
+        }}
+        title="Delete Routine"
+        message="Are you sure you want to delete this play routine? This action cannot be undone."
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   )
 }

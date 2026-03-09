@@ -12,7 +12,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import {
   Circle, ArrowRight, Trash2, Save, Download, X, Undo2,
-  Type, ChevronLeft, ChevronRight, Plus, CurlyBraces,
+  Type, ChevronLeft, ChevronRight, Plus, CurlyBraces, Play, Pause, Check,
+  MoreHorizontal,
 } from 'lucide-react'
 
 // ── SVG coordinate helpers (same as GAAPitch) ───────────────────────────────
@@ -54,7 +55,7 @@ interface Phase {
   labels: TextLabel[]
 }
 
-type ToolMode = 'player' | 'arrow' | 'curved_arrow' | 'label' | 'select'
+type ToolMode = 'player' | 'arrow' | 'curved_arrow' | 'dashed_arrow' | 'label' | 'select'
 
 interface AvailablePlayer {
   playerId: string
@@ -184,6 +185,10 @@ export default function SetPieceEditor({
   const [labelInput, setLabelInput] = useState('')
   const [placingLabel, setPlacingLabel] = useState(false)
   const [hasPlacedFirst, setHasPlacedFirst] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle')
+  const [isPlaying, setIsPlaying] = useState(false)
+  const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Current phase data
   const phase = phases[currentPhase]
@@ -254,10 +259,14 @@ export default function SetPieceEditor({
       arrows: [...p.arrows],
       labels: [...p.labels],
     }))])
+    setIsDirty(true)
+    setSaveStatus('idle')
   }, [phases])
 
   const updatePhase = useCallback((updater: (p: Phase) => Phase) => {
     setPhases(prev => prev.map((p, i) => i === currentPhase ? updater(p) : p))
+    setIsDirty(true)
+    setSaveStatus('idle')
   }, [currentPhase])
 
   const handleUndo = () => {
@@ -316,16 +325,15 @@ export default function SetPieceEditor({
         }))
       }
       setHasPlacedFirst(true)
-    } else if (tool === 'arrow' || tool === 'curved_arrow') {
+    } else if (tool === 'arrow' || tool === 'curved_arrow' || tool === 'dashed_arrow') {
       if (!drawingArrow) {
         setDrawingArrow({ points: [pt] })
       } else {
         const updated = { ...drawingArrow, points: [...drawingArrow.points, pt] }
-        // Straight arrows: auto-finish on 2nd click (2 points = start + end)
-        // Curved arrows: also auto-finish on 2nd click (curve computed from 2 points)
         if (updated.points.length >= 2) {
           saveSnapshot()
           const isCurved = tool === 'curved_arrow'
+          const isDashed = tool === 'dashed_arrow'
           updatePhase(p => ({
             ...p,
             arrows: [...p.arrows, {
@@ -333,6 +341,7 @@ export default function SetPieceEditor({
               points: updated.points,
               color: ARROW_COLOR,
               curved: isCurved,
+              dashed: isDashed,
             }],
           }))
           setDrawingArrow(null)
@@ -494,6 +503,9 @@ export default function SetPieceEditor({
       }
     }
     onSave(elements)
+    setIsDirty(false)
+    setSaveStatus('saved')
+    setTimeout(() => setSaveStatus('idle'), 2000)
   }
 
   // Export uses a ref to queue phase switches and wait for render
@@ -575,6 +587,43 @@ export default function SetPieceEditor({
     setDrawingArrow(null)
   }
 
+  // Autoplay through phases
+  const toggleAutoplay = useCallback(() => {
+    if (isPlaying) {
+      if (playIntervalRef.current) clearInterval(playIntervalRef.current)
+      playIntervalRef.current = null
+      setIsPlaying(false)
+    } else {
+      setIsPlaying(true)
+      setCurrentPhase(0)
+      playIntervalRef.current = setInterval(() => {
+        setCurrentPhase(prev => {
+          if (prev >= phases.length - 1) {
+            // Loop back to start
+            return 0
+          }
+          return prev + 1
+        })
+      }, 1500)
+    }
+  }, [isPlaying, phases.length])
+
+  // Cleanup autoplay on unmount
+  useEffect(() => {
+    return () => {
+      if (playIntervalRef.current) clearInterval(playIntervalRef.current)
+    }
+  }, [])
+
+  // Stop autoplay if phases change
+  useEffect(() => {
+    if (isPlaying && phases.length <= 1) {
+      if (playIntervalRef.current) clearInterval(playIntervalRef.current)
+      playIntervalRef.current = null
+      setIsPlaying(false)
+    }
+  }, [phases.length, isPlaying])
+
   // Players already placed (to avoid duplicates)
   const placedPlayerIds = new Set(phase.players.filter(p => p.playerId).map(p => p.playerId))
   const unplacedPlayers = availablePlayers.filter(p => !placedPlayerIds.has(p.playerId))
@@ -635,6 +684,14 @@ export default function SetPieceEditor({
               <CurlyBraces size={10} /> Curved
             </button>
             <button
+              onClick={() => { setTool('dashed_arrow'); setDrawingArrow(null); setPlacingLabel(false) }}
+              className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1 ${
+                tool === 'dashed_arrow' ? 'bg-amber-500/20 text-amber-300' : 'text-white/50 hover:text-white'
+              }`}
+            >
+              <MoreHorizontal size={10} /> Dashed
+            </button>
+            <button
               onClick={() => { setTool('label'); setDrawingArrow(null) }}
               className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1 ${
                 tool === 'label' ? 'bg-purple-500/20 text-purple-300' : 'text-white/50 hover:text-white'
@@ -686,7 +743,7 @@ export default function SetPieceEditor({
           )}
 
           {/* Arrow hint */}
-          {(tool === 'arrow' || tool === 'curved_arrow') && drawingArrow && (
+          {(tool === 'arrow' || tool === 'curved_arrow' || tool === 'dashed_arrow') && drawingArrow && (
             <span className="text-amber-300 text-xs">
               Click to place the arrow endpoint
             </span>
@@ -703,8 +760,19 @@ export default function SetPieceEditor({
           <button onClick={handleExport} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white text-xs font-medium">
             <Download size={14} /> Export
           </button>
-          <button onClick={handleSave} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold">
-            <Save size={14} /> Save
+          <button
+            onClick={handleSave}
+            disabled={!isDirty && saveStatus === 'saved'}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              saveStatus === 'saved'
+                ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                : isDirty
+                  ? 'bg-white/10 border border-cyan-500/30 text-white hover:bg-white/15'
+                  : 'bg-white/5 border border-white/10 text-white/40'
+            }`}
+          >
+            {saveStatus === 'saved' ? <Check size={14} /> : <Save size={14} />}
+            {saveStatus === 'saved' ? 'Saved' : 'Save'}
           </button>
         </div>
 
@@ -712,7 +780,7 @@ export default function SetPieceEditor({
         <div className="flex items-center justify-center gap-3 px-5 py-1.5 border-b border-white/10 bg-white/[0.02]">
           <button
             onClick={() => setCurrentPhase(prev => Math.max(0, prev - 1))}
-            disabled={currentPhase === 0}
+            disabled={currentPhase === 0 || isPlaying}
             className="p-1 text-white/40 hover:text-white disabled:opacity-20"
           >
             <ChevronLeft size={16} />
@@ -721,11 +789,11 @@ export default function SetPieceEditor({
             {phases.map((_, i) => (
               <button
                 key={i}
-                onClick={() => setCurrentPhase(i)}
+                onClick={() => !isPlaying && setCurrentPhase(i)}
                 className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
                   i === currentPhase
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-white/10 text-white/50 hover:bg-white/20'
+                    ? 'bg-white/15 border border-cyan-500/40 text-cyan-300 shadow-[0_0_8px_rgba(0,176,255,0.2)]'
+                    : 'bg-white/5 border border-white/10 text-white/40 hover:bg-white/10'
                 }`}
               >
                 {i + 1}
@@ -734,14 +802,28 @@ export default function SetPieceEditor({
           </div>
           <button
             onClick={() => setCurrentPhase(prev => Math.min(phases.length - 1, prev + 1))}
-            disabled={currentPhase === phases.length - 1}
+            disabled={currentPhase === phases.length - 1 || isPlaying}
             className="p-1 text-white/40 hover:text-white disabled:opacity-20"
           >
             <ChevronRight size={16} />
           </button>
+          {phases.length > 1 && (
+            <button
+              onClick={toggleAutoplay}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                isPlaying
+                  ? 'bg-cyan-500/15 border border-cyan-500/30 text-cyan-300'
+                  : 'bg-white/5 border border-white/10 text-white/50 hover:text-white'
+              }`}
+              title={isPlaying ? 'Stop autoplay' : 'Auto-play phases'}
+            >
+              {isPlaying ? <Pause size={12} /> : <Play size={12} />}
+              {isPlaying ? 'Stop' : 'Play'}
+            </button>
+          )}
           <button
             onClick={addPhase}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 text-white/50 hover:text-white text-xs"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-white/50 hover:text-white text-xs"
             title="Add new phase"
           >
             <Plus size={12} /> Phase
@@ -749,15 +831,13 @@ export default function SetPieceEditor({
           {phases.length > 1 && (
             <button
               onClick={deletePhase}
-              className="p-1 text-white/30 hover:text-red-400"
+              disabled={isPlaying}
+              className="p-1 text-white/30 hover:text-red-400 disabled:opacity-20"
               title="Delete this phase"
             >
               <Trash2 size={12} />
             </button>
           )}
-          <span className="text-white/30 text-[10px] ml-2">
-            Phase {currentPhase + 1} of {phases.length}
-          </span>
         </div>
 
         {/* Pitch Canvas */}
@@ -882,16 +962,16 @@ export default function SetPieceEditor({
                       width={label.text.length * 14 + 16}
                       height="32"
                       rx="6"
-                      fill="rgba(0,0,0,0.75)"
-                      stroke={isLabelDragging ? 'rgba(168,85,247,0.6)' : 'rgba(255,255,255,0.3)'}
+                      fill="rgba(168,85,247,0.25)"
+                      stroke={isLabelDragging ? 'rgba(168,85,247,0.8)' : 'rgba(168,85,247,0.5)'}
                       strokeWidth="1.5"
                     />
                     <text
                       x={lx}
                       y={ly + 4}
-                      fill="white"
+                      fill="#E9D5FF"
                       fontSize="22"
-                      fontWeight="600"
+                      fontWeight="700"
                       fontFamily="sans-serif"
                       style={{ pointerEvents: 'none' }}
                     >
@@ -973,18 +1053,30 @@ export default function SetPieceEditor({
                 )
               })}
 
-              {/* Phase label watermark */}
+              {/* Phase label — glassmorphism badge top-left */}
               {phases.length > 1 && (
-                <text
-                  x="60"
-                  y="80"
-                  fill="rgba(255,255,255,0.2)"
-                  fontSize="48"
-                  fontWeight="bold"
-                  fontFamily="sans-serif"
-                >
-                  Phase {currentPhase + 1}
-                </text>
+                <g>
+                  <rect
+                    x="30" y="25" width="220" height="55" rx="12"
+                    fill="rgba(0,0,0,0.45)"
+                    stroke="rgba(255,255,255,0.15)"
+                    strokeWidth="1"
+                  />
+                  <rect
+                    x="30" y="25" width="220" height="55" rx="12"
+                    fill="rgba(0,176,255,0.08)"
+                  />
+                  <text
+                    x="140" y="62"
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.85)"
+                    fontSize="28"
+                    fontWeight="bold"
+                    fontFamily="sans-serif"
+                  >
+                    Phase {currentPhase + 1} of {phases.length}
+                  </text>
+                </g>
               )}
             </svg>
           </div>
