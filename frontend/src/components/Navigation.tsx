@@ -30,7 +30,7 @@ export default function Navigation() {
   const navigate = useNavigate()
   const createMatch = useCreateMatch()
   const { user, logout } = useAuth()
-  const { club } = useClub()
+  const { club, logoUrl } = useClub()
   const [isCreatingMatch, setIsCreatingMatch] = useState(false)
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
@@ -194,12 +194,12 @@ export default function Navigation() {
               alt="OneStat Analytics"
               className="h-7 lg:h-8"
             />
-            {club?.logo_url && club.logo_url.trim() !== '' && (
+            {logoUrl && (
               <>
                 <div className="w-px h-5 bg-white/15" />
                 <img
-                  src={club.logo_url}
-                  alt={club.name}
+                  src={logoUrl}
+                  alt={club?.name || 'Club'}
                   className="h-7 lg:h-8 rounded-md object-contain"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).previousElementSibling?.remove() }}
                 />

@@ -7,6 +7,7 @@ interface ClubContextType {
   loading: boolean;
   error: string | null;
   refetch: () => void;
+  logoUrl: string | null;
 }
 
 const ClubContext = createContext<ClubContextType>({
@@ -14,6 +15,7 @@ const ClubContext = createContext<ClubContextType>({
   loading: true,
   error: null,
   refetch: () => {},
+  logoUrl: null,
 });
 
 export function ClubProvider({ children }: { children: React.ReactNode }) {
@@ -40,8 +42,11 @@ export function ClubProvider({ children }: { children: React.ReactNode }) {
     fetchClub();
   }, []);
 
+  // Logo URL: if club has a logo_url, use the serve endpoint (handles R2 presigned URLs)
+  const logoUrl = club?.logo_url ? `${API_BASE}/club/logo/serve` : null;
+
   return (
-    <ClubContext.Provider value={{ club, loading, error, refetch: fetchClub }}>
+    <ClubContext.Provider value={{ club, loading, error, refetch: fetchClub, logoUrl }}>
       {children}
     </ClubContext.Provider>
   );

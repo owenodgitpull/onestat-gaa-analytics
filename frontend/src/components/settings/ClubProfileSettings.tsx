@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
-import { Save, Loader2, Upload, Check, UserPlus, RefreshCw, Minus } from 'lucide-react'
+import { Save, Loader2, Upload, Check, UserPlus, RefreshCw, Minus, Camera } from 'lucide-react'
 import { useClub } from '../../contexts/ClubContext'
 import { fetchAPI, playersAPI } from '../../services/api'
+import { API_BASE } from '../../services/api'
 
 export default function ClubProfileSettings() {
-  const { club, refetch } = useClub()
+  const { club, refetch, logoUrl } = useClub()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
     name: '',
@@ -63,14 +67,89 @@ export default function ClubProfileSettings() {
     }
   }
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !club) return
+    setUploadingLogo(true)
+    setError(null)
+    try {
+      // Show local preview immediately
+      setLogoPreview(URL.createObjectURL(file))
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`${API_BASE}/club/logo`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || 'Failed to upload logo')
+      }
+      refetch()
+    } catch (err: any) {
+      setError(err.message || 'Failed to upload logo')
+      setLogoPreview(null)
+    } finally {
+      setUploadingLogo(false)
+      if (logoInputRef.current) logoInputRef.current.value = ''
+    }
+  }
+
   const inputClass = "w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors text-sm"
   const labelClass = "block text-sm font-medium text-white/70 mb-1.5"
+
+  const displayLogo = logoPreview || logoUrl
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <h2 className="text-lg font-semibold text-white">Club Profile</h2>
         <p className="text-sm text-white/50 mt-1">Manage your club's identity and appearance</p>
+      </div>
+
+      {/* Club Logo */}
+      <div>
+        <label className={labelClass}>Club Logo</label>
+        <div className="flex items-center gap-4">
+          <div
+            onClick={() => logoInputRef.current?.click()}
+            className="relative w-16 h-16 rounded-xl border-2 border-dashed border-white/20 hover:border-emerald-500/50 flex items-center justify-center cursor-pointer transition-colors overflow-hidden group"
+          >
+            {displayLogo ? (
+              <>
+                <img src={displayLogo} alt="Club logo" className="w-full h-full object-contain p-1" onError={() => setLogoPreview(null)} />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Camera size={16} className="text-white" />
+                </div>
+              </>
+            ) : (
+              <Camera size={20} className="text-white/30 group-hover:text-emerald-400 transition-colors" />
+            )}
+            {uploadingLogo && (
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                <Loader2 size={16} className="animate-spin text-white" />
+              </div>
+            )}
+          </div>
+          <div>
+            <button
+              onClick={() => logoInputRef.current?.click()}
+              disabled={uploadingLogo}
+              className="text-sm text-emerald-400 hover:text-emerald-300 font-medium transition-colors disabled:opacity-50"
+            >
+              {displayLogo ? 'Change logo' : 'Upload logo'}
+            </button>
+            <p className="text-xs text-white/40 mt-0.5">PNG, JPG, SVG, or WebP. Shown in the navbar.</p>
+          </div>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/svg+xml,image/webp"
+            onChange={handleLogoUpload}
+            className="hidden"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
