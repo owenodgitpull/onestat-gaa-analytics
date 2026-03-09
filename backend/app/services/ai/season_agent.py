@@ -117,7 +117,13 @@ class SeasonAgent:
 
         system_prompt = _build_season_system_prompt(task, kb_context, fixture_context, context, club_name, club_context_str)
         user_message = _build_season_user_message(task, context)
-        tools = get_tools_subset(tool_names or SEASON_TOOLS)
+        raw_tools = get_tools_subset(tool_names or SEASON_TOOLS)
+
+        # Enable Anthropic prompt caching on system prompt + tools
+        cached_system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
+        cached_tools = [dict(t) for t in raw_tools]
+        if cached_tools:
+            cached_tools[-1] = {**cached_tools[-1], "cache_control": {"type": "ephemeral"}}
 
         messages = [{"role": "user", "content": user_message}]
 
@@ -125,8 +131,8 @@ class SeasonAgent:
         response = client.messages.create(
             model=model,
             max_tokens=4000,
-            system=system_prompt,
-            tools=tools,
+            system=cached_system,
+            tools=cached_tools,
             messages=messages,
         )
 
@@ -161,8 +167,8 @@ class SeasonAgent:
             response = client.messages.create(
                 model=model,
                 max_tokens=4000,
-                system=system_prompt,
-                tools=tools,
+                system=cached_system,
+                tools=cached_tools,
                 messages=messages,
             )
 
@@ -431,11 +437,33 @@ class SeasonAgent:
         db: AsyncSession,
         excluded_chart_ids: list[str] = None,
         num_charts: int = 4,
+        club_id=None,
     ) -> dict:
         """Generate Recharts-compatible chart specs for the dashboard via agentic analysis."""
         from app.services.ai.chart_engine import _get_raw_data_for_charts
+        from app.models.season_cache import SeasonCache
+        from app.services.season_dashboard_service import _compute_data_fingerprint
 
         excluded_chart_ids = excluded_chart_ids or []
+
+        # Check cache (fingerprint-based, same pattern as KPI insights)
+        if club_id:
+            fingerprint = await _compute_data_fingerprint(db, club_id)
+            cache_q = select(SeasonCache).where(
+                SeasonCache.cache_type == "dashboard_charts",
+                SeasonCache.club_id == club_id,
+            )
+            cache_result = await db.execute(cache_q)
+            cache = cache_result.scalar_one_or_none()
+
+            if cache and cache.data_fingerprint == fingerprint and cache.cached_result:
+                logger.info(f"Dashboard charts cache HIT (fingerprint={fingerprint[:12]}...)")
+                return cache.cached_result
+            logger.info(f"Dashboard charts cache MISS (fingerprint={fingerprint[:12]}...) — calling Season Agent")
+        else:
+            cache = None
+            fingerprint = None
+
         raw_data = await _get_raw_data_for_charts(db)
 
         context = {
@@ -446,12 +474,32 @@ class SeasonAgent:
 
         try:
             result = await SeasonAgent.analyze_season(db, "dashboard_charts", context)
-            return {
+            output = {
                 "success": True,
                 "charts": result.get("charts", []),
                 "summary": result.get("summary", ""),
                 "generated_at": datetime.now().isoformat(),
             }
+
+            # Cache the result
+            if club_id and fingerprint and output.get("charts"):
+                import uuid as _uuid
+                if cache:
+                    cache.data_fingerprint = fingerprint
+                    cache.cached_result = output
+                    cache.cached_at = datetime.utcnow()
+                else:
+                    db.add(SeasonCache(
+                        id=_uuid.uuid4(),
+                        club_id=club_id,
+                        cache_type="dashboard_charts",
+                        data_fingerprint=fingerprint,
+                        cached_result=output,
+                        cached_at=datetime.utcnow(),
+                    ))
+                await db.commit()
+
+            return output
         except Exception as e:
             logger.error(f"Dashboard chart generation failed: {e}")
             return {
@@ -509,10 +557,32 @@ class SeasonAgent:
         db: AsyncSession,
         outliers: list[dict],
         max_suggestions: int = 3,
+        club_id=None,
     ) -> dict:
         """Generate chart specs for detected seasonal outliers."""
         if not outliers:
             return {"success": True, "suggestions": []}
+
+        from app.models.season_cache import SeasonCache
+        from app.services.season_dashboard_service import _compute_data_fingerprint
+
+        # Check cache
+        if club_id:
+            fingerprint = await _compute_data_fingerprint(db, club_id)
+            cache_q = select(SeasonCache).where(
+                SeasonCache.cache_type == "outlier_suggestions",
+                SeasonCache.club_id == club_id,
+            )
+            cache_result = await db.execute(cache_q)
+            cache = cache_result.scalar_one_or_none()
+
+            if cache and cache.data_fingerprint == fingerprint and cache.cached_result:
+                logger.info(f"Outlier suggestions cache HIT (fingerprint={fingerprint[:12]}...)")
+                return cache.cached_result
+            logger.info(f"Outlier suggestions cache MISS (fingerprint={fingerprint[:12]}...) — calling Season Agent")
+        else:
+            cache = None
+            fingerprint = None
 
         context = {
             "outliers": outliers[:max_suggestions],
@@ -526,11 +596,31 @@ class SeasonAgent:
                     s["outlier_category"] = outliers[i].get("category", "")
                     s["outlier_description"] = outliers[i].get("description", "")
 
-            return {
+            output = {
                 "success": True,
                 "suggestions": suggestions,
                 "generated_at": datetime.now().isoformat(),
             }
+
+            # Cache the result
+            if club_id and fingerprint and suggestions:
+                import uuid as _uuid
+                if cache:
+                    cache.data_fingerprint = fingerprint
+                    cache.cached_result = output
+                    cache.cached_at = datetime.utcnow()
+                else:
+                    db.add(SeasonCache(
+                        id=_uuid.uuid4(),
+                        club_id=club_id,
+                        cache_type="outlier_suggestions",
+                        data_fingerprint=fingerprint,
+                        cached_result=output,
+                        cached_at=datetime.utcnow(),
+                    ))
+                await db.commit()
+
+            return output
         except Exception as e:
             logger.error(f"Outlier suggestion generation failed: {e}")
             return {"success": False, "suggestions": [], "error": str(e)}

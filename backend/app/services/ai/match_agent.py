@@ -118,14 +118,20 @@ You have tools available to look up additional match data if needed. Only use th
             user_prompt = "What's the current tactical situation and one key adjustment we should make?"
             max_tokens = 150
 
-        live_tools = get_tools_subset(LIVE_TOOLS)
+        raw_live_tools = get_tools_subset(LIVE_TOOLS)
+        # Enable Anthropic prompt caching on system prompt + tools
+        cached_system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
+        cached_live_tools = [dict(t) for t in raw_live_tools]
+        if cached_live_tools:
+            cached_live_tools[-1] = {**cached_live_tools[-1], "cache_control": {"type": "ephemeral"}}
+
         messages = [{"role": "user", "content": user_prompt}]
 
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=max_tokens,
-            system=system_prompt,
-            tools=live_tools,
+            system=cached_system,
+            tools=cached_live_tools,
             messages=messages,
         )
 
@@ -160,8 +166,8 @@ You have tools available to look up additional match data if needed. Only use th
             response = client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=max_tokens,
-                system=system_prompt,
-                tools=live_tools,
+                system=cached_system,
+                tools=cached_live_tools,
                 messages=messages,
             )
 
@@ -236,13 +242,19 @@ INSTRUCTIONS:
 
         messages = [{"role": "user", "content": user_message}]
 
+        # Enable Anthropic prompt caching on system prompt + tools
+        cached_system = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
+        cached_tools = [dict(t) for t in TOOLS]
+        if cached_tools:
+            cached_tools[-1] = {**cached_tools[-1], "cache_control": {"type": "ephemeral"}}
+
         # Initial call with tools
         logger.info(f"Calling Claude with match_id={match_id}, user_message={user_message[:100]}...")
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
-            system=system_prompt,
-            tools=TOOLS,
+            system=cached_system,
+            tools=cached_tools,
             messages=messages,
         )
         logger.info(f"Response stop_reason: {response.stop_reason}")
@@ -277,8 +289,8 @@ INSTRUCTIONS:
             response = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=4096,
-                system=system_prompt,
-                tools=TOOLS,
+                system=cached_system,
+                tools=cached_tools,
                 messages=messages,
             )
 

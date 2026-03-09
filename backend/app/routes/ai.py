@@ -647,7 +647,8 @@ async def get_dashboard_charts_endpoint(
         result = await generate_dashboard_charts(
             db,
             excluded_chart_ids=request.excluded_chart_ids,
-            num_charts=request.num_charts
+            num_charts=request.num_charts,
+            club_id=user.club_id,
         )
         return DashboardChartsResponse(**result)
     except Exception as e:
@@ -694,7 +695,7 @@ async def get_outlier_suggestions_endpoint(
     try:
         from app.services.season_dashboard_service import SeasonDashboardService
         outliers = await SeasonDashboardService.detect_season_outliers(db)
-        result = await generate_outlier_suggestions(db, outliers)
+        result = await generate_outlier_suggestions(db, outliers, club_id=user.club_id)
         return OutlierSuggestionsResponse(**result)
     except Exception as e:
         logger.error(f"Outlier suggestions failed: {str(e)}", exc_info=True)
