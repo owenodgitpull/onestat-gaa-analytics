@@ -109,18 +109,7 @@ export default function FixturePreview() {
                 {format(matchDate, 'EEEE d MMMM yyyy')} at {format(matchDate, 'HH:mm')}
               </p>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              {venueBadge(match.venue)}
-              {isPastScheduled && (
-                <button
-                  onClick={() => navigate(`/match/${match.id}/setup`)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
-                >
-                  <ClipboardList size={13} />
-                  Log Events
-                </button>
-              )}
-            </div>
+            {venueBadge(match.venue)}
           </div>
 
           <div className="flex flex-wrap gap-3 text-xs text-white/50">
@@ -232,6 +221,24 @@ export default function FixturePreview() {
           )}
         </div>
       </div>
+
+      {/* Log Match Events — past fixture with no data */}
+      {isPastScheduled && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => navigate(`/match/${match.id}/setup`)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02] active:scale-[0.98]"
+            style={{
+              background: 'linear-gradient(135deg, rgba(0,230,118,0.2), rgba(0,176,255,0.15))',
+              border: '1px solid rgba(0,176,255,0.3)',
+              boxShadow: '0 4px 16px rgba(0,230,118,0.1)',
+            }}
+          >
+            <ClipboardList size={16} />
+            Log Match Events
+          </button>
+        </div>
+      )}
     </div>
   )
 }
