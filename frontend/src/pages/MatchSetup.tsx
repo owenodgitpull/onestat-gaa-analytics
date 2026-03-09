@@ -57,8 +57,24 @@ export default function MatchSetup() {
     }
   }, [club])
 
-  // Load last lineup for reuse
+  // Load existing lineup for this match (from match prep) + last match lineup for reuse
   useEffect(() => {
+    if (matchId) {
+      api.matchLineups.getLineup(matchId)
+        .then(entries => {
+          if (entries.length > 0) {
+            const obj: Record<string, LineupEntry> = {}
+            entries.forEach(e => {
+              obj[e.position_id] = {
+                playerId: e.player_id,
+                jerseyNumber: e.match_jersey_number ?? e.player_jersey_number,
+              }
+            })
+            setLineup(obj)
+          }
+        })
+        .catch(() => {})
+    }
     api.matchLineups.getLastLineup()
       .then(entries => {
         if (entries.length > 0) {
@@ -73,7 +89,7 @@ export default function MatchSetup() {
         }
       })
       .catch(() => {})
-  }, [])
+  }, [matchId])
 
   // Auto-redirect based on match status
   useEffect(() => {
@@ -270,7 +286,7 @@ export default function MatchSetup() {
           <div className="glass-card p-6">
             <h3 className="text-lg font-bold text-white mb-4">Strip Colours</h3>
             <div className="flex items-center gap-8 justify-center">
-              <ColourPicker label={clubName} colour={teamColour} onChange={setTeamColour} />
+              <ColourPicker label={clubName} colour={teamColour} borderColour={club?.secondary_colour} onChange={setTeamColour} />
               <span className="text-white/20 text-sm">vs</span>
               <ColourPicker label={match.opponent} colour={oppColour} onChange={setOppColour} />
             </div>
@@ -389,10 +405,12 @@ function ScoreInput({
 function ColourPicker({
   label,
   colour,
+  borderColour,
   onChange,
 }: {
   label: string
   colour: string
+  borderColour?: string | null
   onChange: (c: string) => void
 }) {
   return (
@@ -400,8 +418,8 @@ function ColourPicker({
       <span className="text-white/60 text-sm font-semibold truncate max-w-[100px]">{label}</span>
       <label className="relative cursor-pointer group">
         <div
-          className="w-12 h-12 rounded-full border-2 border-white/20 group-hover:border-white/40 transition-colors shadow-lg"
-          style={{ backgroundColor: colour }}
+          className="w-12 h-12 rounded-full border-[3px] group-hover:brightness-110 transition-all shadow-lg"
+          style={{ backgroundColor: colour, borderColor: borderColour || 'rgba(255,255,255,0.25)' }}
         />
         <input
           type="color"
