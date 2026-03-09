@@ -8,13 +8,33 @@
  * Creates club via /organization/teams, uploads logo, then optionally imports players.
  */
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, Component, type ReactNode } from 'react'
 import {
   X, ChevronRight, ChevronLeft, Check, Upload, Plus, Trash2,
   FileSpreadsheet, UserPlus, AlertTriangle, ImageUp,
 } from 'lucide-react'
 import { organizationsAPI, fetchAPI, API_BASE } from '../../services/api'
 import type { Club } from '../../types'
+
+class ModalErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null as string | null }
+  static getDerivedStateFromError(error: Error) {
+    return { error: error.message }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="bg-red-900/90 text-white p-6 rounded-xl max-w-md">
+            <h3 className="font-bold mb-2">Modal Error</h3>
+            <p className="text-sm text-red-200">{this.state.error}</p>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 interface AddTeamModalProps {
   isOpen: boolean
@@ -269,6 +289,7 @@ export default function AddTeamModal({ isOpen, onClose, onCreated }: AddTeamModa
   const allPlayerCount = uploadedPlayers.length + manualPlayers.length
 
   return (
+    <ModalErrorBoundary>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={resetAndClose} />
@@ -674,5 +695,6 @@ export default function AddTeamModal({ isOpen, onClose, onCreated }: AddTeamModa
         </div>
       </div>
     </div>
+    </ModalErrorBoundary>
   )
 }
