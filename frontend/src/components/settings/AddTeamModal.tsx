@@ -11,7 +11,7 @@
 import { useState, useRef, useCallback } from 'react'
 import {
   X, ChevronRight, ChevronLeft, Check, Upload, Plus, Trash2,
-  FileSpreadsheet, UserPlus, AlertTriangle, Image as ImageIcon,
+  FileSpreadsheet, UserPlus, AlertTriangle, ImageUp,
 } from 'lucide-react'
 import { organizationsAPI, fetchAPI, API_BASE } from '../../services/api'
 import type { Club } from '../../types'
@@ -464,7 +464,7 @@ export default function AddTeamModal({ isOpen, onClose, onCreated }: AddTeamModa
                     onClick={() => logoInputRef.current?.click()}
                     className="w-full p-6 rounded-xl border border-dashed border-white/10 hover:border-emerald-500/30 flex flex-col items-center gap-2 transition-colors group"
                   >
-                    <ImageIcon size={20} className="text-white/30 group-hover:text-emerald-400 transition-colors" />
+                    <ImageUp size={20} className="text-white/30 group-hover:text-emerald-400 transition-colors" />
                     <span className="text-xs text-white/40 group-hover:text-white/60">Click to upload logo</span>
                   </button>
                 )}
