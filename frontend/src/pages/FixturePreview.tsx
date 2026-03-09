@@ -109,7 +109,18 @@ export default function FixturePreview() {
                 {format(matchDate, 'EEEE d MMMM yyyy')} at {format(matchDate, 'HH:mm')}
               </p>
             </div>
-            {venueBadge(match.venue)}
+            <div className="flex flex-col items-end gap-2">
+              {venueBadge(match.venue)}
+              {isPastScheduled && (
+                <button
+                  onClick={() => navigate(`/match/${match.id}/setup`)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors"
+                >
+                  <ClipboardList size={13} />
+                  Log Events
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3 text-xs text-white/50">
@@ -128,22 +139,6 @@ export default function FixturePreview() {
           </div>
         </div>
       </div>
-
-      {/* Log Match Events — past fixture with no data */}
-      {isPastScheduled && (
-        <button
-          onClick={() => navigate(`/match/${match.id}/setup`)}
-          className="w-full py-4 rounded-xl font-semibold text-base transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2.5"
-          style={{
-            background: 'linear-gradient(135deg, rgba(0,230,118,0.25), rgba(0,176,255,0.2))',
-            border: '1px solid rgba(0,176,255,0.35)',
-            boxShadow: '0 4px 24px rgba(0,230,118,0.15)',
-          }}
-        >
-          <ClipboardList size={20} className="text-emerald-400" />
-          <span className="text-white">Log Match Events</span>
-        </button>
-      )}
 
       {/* Form Comparison */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
