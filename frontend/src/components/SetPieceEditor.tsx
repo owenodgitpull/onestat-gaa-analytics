@@ -143,8 +143,7 @@ function buildStraightPath(points: { x: number; y: number }[]): { d: string; end
 
 // Build arrowhead polygon points at a given position and angle
 function arrowheadPoints(tip: { x: number; y: number }, angle: number, size: number = 22): string {
-  // Pull the tip back slightly so the arrowhead sits at the end of the line
-  const halfAngle = 0.4 // radians, controls arrowhead width
+  const halfAngle = 0.45 // radians (~26°), gives a clean wide arrowhead
   const left = {
     x: tip.x - Math.cos(angle - halfAngle) * size,
     y: tip.y - Math.sin(angle - halfAngle) * size,
@@ -153,7 +152,12 @@ function arrowheadPoints(tip: { x: number; y: number }, angle: number, size: num
     x: tip.x - Math.cos(angle + halfAngle) * size,
     y: tip.y - Math.sin(angle + halfAngle) * size,
   }
-  return `${tip.x},${tip.y} ${left.x},${left.y} ${right.x},${right.y}`
+  // Filled kite shape: tip → left → indent → right
+  const indent = {
+    x: tip.x - Math.cos(angle) * size * 0.55,
+    y: tip.y - Math.sin(angle) * size * 0.55,
+  }
+  return `${tip.x},${tip.y} ${left.x},${left.y} ${indent.x},${indent.y} ${right.x},${right.y}`
 }
 
 export default function SetPieceEditor({
@@ -317,8 +321,25 @@ export default function SetPieceEditor({
         setDrawingArrow({ points: [pt] })
       } else {
         const updated = { ...drawingArrow, points: [...drawingArrow.points, pt] }
-        // Single click adds a point; we need at least 2 to finish
-        setDrawingArrow(updated)
+        // Straight arrows: auto-finish on 2nd click (2 points = start + end)
+        // Curved arrows: also auto-finish on 2nd click (curve computed from 2 points)
+        if (updated.points.length >= 2) {
+          saveSnapshot()
+          const isCurved = tool === 'curved_arrow'
+          updatePhase(p => ({
+            ...p,
+            arrows: [...p.arrows, {
+              id: genId(),
+              points: updated.points,
+              color: ARROW_COLOR,
+              curved: isCurved,
+            }],
+          }))
+          setDrawingArrow(null)
+          setHasPlacedFirst(true)
+        } else {
+          setDrawingArrow(updated)
+        }
       }
     } else if (tool === 'label' && placingLabel && labelInput.trim()) {
       saveSnapshot()
@@ -337,31 +358,6 @@ export default function SetPieceEditor({
     }
   }
 
-  const handleDoubleClick = () => {
-    if (drawingArrow && drawingArrow.points.length >= 2) {
-      saveSnapshot()
-      const isCurved = tool === 'curved_arrow'
-      updatePhase(p => ({
-        ...p,
-        arrows: [...p.arrows, {
-          id: genId(),
-          points: drawingArrow.points,
-          color: ARROW_COLOR,
-          curved: isCurved,
-        }],
-      }))
-      setDrawingArrow(null)
-      setHasPlacedFirst(true)
-    }
-  }
-
-  // Finish arrow with 2 points on second click
-  useEffect(() => {
-    if (drawingArrow && drawingArrow.points.length >= 2 && (tool === 'arrow' || tool === 'curved_arrow')) {
-      // Auto-finish after 2 points for simple arrows
-      // For multi-point: user double-clicks
-    }
-  }, [drawingArrow, tool])
 
   // Unified drag handlers for players, arrows, labels
   const handleElementPointerDown = (e: React.PointerEvent, elType: 'player' | 'arrow' | 'label', id: string) => {
@@ -692,9 +688,7 @@ export default function SetPieceEditor({
           {/* Arrow hint */}
           {(tool === 'arrow' || tool === 'curved_arrow') && drawingArrow && (
             <span className="text-amber-300 text-xs">
-              {drawingArrow.points.length < 2
-                ? 'Click to set end point'
-                : 'Double-click to finish, or click to add more points'}
+              Click to place the arrow endpoint
             </span>
           )}
 
@@ -775,7 +769,6 @@ export default function SetPieceEditor({
               className={`w-full h-full ${tool === 'select' ? 'cursor-grab' : 'cursor-crosshair'}`}
               style={{ touchAction: 'none' }}
               onClick={handleSVGClick}
-              onDoubleClick={handleDoubleClick}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               xmlns="http://www.w3.org/2000/svg"
@@ -1001,7 +994,7 @@ export default function SetPieceEditor({
         <div className={`px-5 py-2 border-t border-white/10 text-[11px] text-white/30 transition-opacity duration-500 ${
           hasPlacedFirst ? 'opacity-0 h-0 py-0 overflow-hidden' : 'opacity-100'
         }`}>
-          Select a player and click pitch to place. Use Move tool to drag players. Click arrows/labels to remove. Double-click to finish multi-point arrows. Export as PNG to share.
+          Select a player and click pitch to place. Use Move tool to drag players. Click arrows/labels to remove. Export as PNG to share.
         </div>
       </div>
     </div>
