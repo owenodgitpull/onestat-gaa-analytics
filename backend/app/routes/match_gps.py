@@ -9,7 +9,7 @@ Handles:
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -56,7 +56,7 @@ async def upload_match_gps(
     After processing, AI will re-analyze the match with GPS data included.
     """
     # Verify match exists and is completed
-    match_query = select(Match).where(Match.id == match_id)
+    match_query = select(Match).where(and_(Match.id == match_id, Match.club_id == user.club_id))
     result = await db.execute(match_query)
     match = result.scalar_one_or_none()
 
@@ -154,7 +154,7 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
                             logger.info(f"  Player {i}: {p.get('name', 'NO NAME')} - distance: {p.get('total_distance_m', 'N/A')}")
 
                 # Get players to match names
-                players_query = select(Player)
+                players_query = select(Player).where(Player.club_id == match.club_id)
                 players_result = await db.execute(players_query)
                 all_players = list(players_result.scalars().all())
                 logger.info(f"Database has {len(all_players)} players")
@@ -358,8 +358,8 @@ async def get_match_gps(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all GPS data for a match."""
-    # Verify match exists
-    match_query = select(Match).where(Match.id == match_id)
+    # Verify match exists and belongs to user's club
+    match_query = select(Match).where(and_(Match.id == match_id, Match.club_id == user.club_id))
     result = await db.execute(match_query)
     match = result.scalar_one_or_none()
 
@@ -441,8 +441,8 @@ async def get_match_gps_summary(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a summary of GPS data for a match."""
-    # Get match
-    match_query = select(Match).where(Match.id == match_id)
+    # Get match (scoped to club)
+    match_query = select(Match).where(and_(Match.id == match_id, Match.club_id == user.club_id))
     result = await db.execute(match_query)
     match = result.scalar_one_or_none()
 
@@ -510,8 +510,8 @@ async def add_match_gps_manually(
     db: AsyncSession = Depends(get_db),
 ):
     """Manually add GPS data for players in a match."""
-    # Verify match exists and is completed
-    match_query = select(Match).where(Match.id == match_id)
+    # Verify match exists, belongs to club, and is completed
+    match_query = select(Match).where(and_(Match.id == match_id, Match.club_id == user.club_id))
     result = await db.execute(match_query)
     match = result.scalar_one_or_none()
 
@@ -524,8 +524,8 @@ async def add_match_gps_manually(
             detail="GPS data can only be added for completed matches"
         )
 
-    # Get player names for response
-    players_query = select(Player)
+    # Get player names for response (scoped to club)
+    players_query = select(Player).where(Player.club_id == user.club_id)
     players_result = await db.execute(players_query)
     players = {str(p.id): p.name for p in players_result.scalars().all()}
 
@@ -582,8 +582,8 @@ async def delete_match_gps(
     Used when re-uploading GPS data or correcting mistakes.
     Also resets the match's gps_analysis_included flag.
     """
-    # Verify match exists
-    match_query = select(Match).where(Match.id == match_id)
+    # Verify match exists and belongs to club
+    match_query = select(Match).where(and_(Match.id == match_id, Match.club_id == user.club_id))
     result = await db.execute(match_query)
     match = result.scalar_one_or_none()
 

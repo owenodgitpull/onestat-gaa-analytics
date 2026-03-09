@@ -177,7 +177,7 @@ async def update_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a training session."""
-    query = select(TrainingSession).where(TrainingSession.id == session_id)
+    query = select(TrainingSession).where(and_(TrainingSession.id == session_id, TrainingSession.club_id == user.club_id))
     result = await db.execute(query)
     session = result.scalar_one_or_none()
 
@@ -205,7 +205,7 @@ async def delete_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a training session (cascades to attendance records)."""
-    query = select(TrainingSession).where(TrainingSession.id == session_id)
+    query = select(TrainingSession).where(and_(TrainingSession.id == session_id, TrainingSession.club_id == user.club_id))
     result = await db.execute(query)
     session = result.scalar_one_or_none()
 
@@ -345,7 +345,12 @@ async def update_attendance(
     db: AsyncSession = Depends(get_db),
 ):
     """Update an attendance record."""
-    query = select(Attendance).where(Attendance.id == attendance_id)
+    # Verify attendance belongs to a session in user's club
+    query = (
+        select(Attendance)
+        .join(TrainingSession, Attendance.session_id == TrainingSession.id)
+        .where(and_(Attendance.id == attendance_id, TrainingSession.club_id == user.club_id))
+    )
     result = await db.execute(query)
     attendance = result.scalar_one_or_none()
 

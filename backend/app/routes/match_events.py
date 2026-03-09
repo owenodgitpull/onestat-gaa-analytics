@@ -6,10 +6,12 @@ Handles recording match events during live tracking.
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
 from typing import List, Optional
 from uuid import UUID
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.models.match import Match
 from app.models.match_event import EventType, Team
 from app.schemas.match_event import (
     MatchEventCreate,
@@ -24,6 +26,13 @@ from app.services.match_event_service import MatchEventService
 router = APIRouter()
 
 
+async def _verify_match_club(db: AsyncSession, match_id: UUID, club_id: UUID):
+    """Verify match belongs to user's club."""
+    result = await db.execute(select(Match.id).where(and_(Match.id == match_id, Match.club_id == club_id)))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+
+
 @router.post("/", response_model=MatchEventResponse, status_code=status.HTTP_201_CREATED)
 async def create_event(
     event_data: MatchEventCreate,
@@ -32,12 +41,13 @@ async def create_event(
 ):
     """
     Create a new match event.
-    
+
     Automatically:
     - Detects 2-point zone for points (40m+)
     - Updates match scores
     - Updates player match stats
     """
+    await _verify_match_club(db, event_data.match_id, user.club_id)
     event = await MatchEventService.create_event(db, event_data)
     
     # Build response with computed fields
@@ -65,6 +75,7 @@ async def quick_score(
     
     Automatically detects if shot is from 2-point zone.
     """
+    await _verify_match_club(db, score_data.match_id, user.club_id)
     event_data = MatchEventCreate(
         match_id=score_data.match_id,
         event_type=score_data.event_type,
@@ -75,7 +86,7 @@ async def quick_score(
         pitch_y=score_data.pitch_y,
         minute=score_data.minute,
     )
-    
+
     event = await MatchEventService.create_event(db, event_data)
     
     response = MatchEventResponse.model_validate(event)
@@ -100,6 +111,7 @@ async def quick_event(
     Simplified endpoint for recording non-scoring events during live match.
     Use for: turnovers, kickouts, cards, blocks, etc.
     """
+    await _verify_match_club(db, event_data.match_id, user.club_id)
     full_event_data = MatchEventCreate(
         match_id=event_data.match_id,
         event_type=event_data.event_type,
@@ -134,9 +146,10 @@ async def list_match_events(
 ):
     """
     List all events for a specific match.
-    
+
     Returns events in chronological order with pagination and filtering.
     """
+    await _verify_match_club(db, match_id, user.club_id)
     events, total = await MatchEventService.list_events(
         db, match_id, skip, limit, event_type, team
     )

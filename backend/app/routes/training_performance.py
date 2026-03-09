@@ -59,8 +59,8 @@ async def upload_gps_data(
     Accepts PDF (uses Claude Vision to extract) or CSV files.
     Processing happens in the background.
     """
-    # Verify session exists
-    session_query = select(TrainingSession).where(TrainingSession.id == session_id)
+    # Verify session exists and belongs to user's club
+    session_query = select(TrainingSession).where(and_(TrainingSession.id == session_id, TrainingSession.club_id == user.club_id))
     result = await db.execute(session_query)
     session = result.scalar_one_or_none()
     if not session:
