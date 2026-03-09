@@ -21,7 +21,7 @@ export default function JoinClub() {
 
     (async () => {
       try {
-        const resp = await fetch(`${API_BASE_URL}/auth/invite-code/${code}/verify`);
+        const resp = await fetch(`${API_BASE_URL}/auth/invite-code/${code}/verify`, { credentials: 'include' });
         const data = await resp.json();
         setValid(data.valid);
         setClubName(data.club_name);

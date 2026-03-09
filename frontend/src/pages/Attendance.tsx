@@ -86,13 +86,13 @@ interface GPSPlayerData {
 
 // API functions
 const fetchSessions = async (): Promise<TrainingSession[]> => {
-  const res = await fetch(`${API_BASE}/attendance/sessions?limit=50`)
+  const res = await fetch(`${API_BASE}/attendance/sessions?limit=50`, { credentials: 'include' })
   if (!res.ok) throw new Error('Failed to fetch sessions')
   return res.json()
 }
 
 const fetchSessionDetail = async (id: string): Promise<SessionDetail> => {
-  const res = await fetch(`${API_BASE}/attendance/sessions/${id}`)
+  const res = await fetch(`${API_BASE}/attendance/sessions/${id}`, { credentials: 'include' })
   if (!res.ok) throw new Error('Failed to fetch session')
   return res.json()
 }
@@ -101,6 +101,7 @@ const createSession = async (data: Partial<TrainingSession>) => {
   const res = await fetch(`${API_BASE}/attendance/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(data)
   })
   if (!res.ok) throw new Error('Failed to create session')
@@ -109,7 +110,8 @@ const createSession = async (data: Partial<TrainingSession>) => {
 
 const deleteSession = async (id: string) => {
   const res = await fetch(`${API_BASE}/attendance/sessions/${id}`, {
-    method: 'DELETE'
+    method: 'DELETE',
+    credentials: 'include',
   })
   if (!res.ok) throw new Error('Failed to delete session')
 }
@@ -118,6 +120,7 @@ const bulkAddAttendance = async (data: { session_id: string; records: Array<{ pl
   const res = await fetch(`${API_BASE}/attendance/attendance/bulk`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify(data)
   })
   if (!res.ok) throw new Error('Failed to add attendance')
@@ -128,6 +131,7 @@ const updateAttendance = async ({ id, status }: { id: string; status: string }) 
   const res = await fetch(`${API_BASE}/attendance/attendance/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ status })
   })
   if (!res.ok) throw new Error('Failed to update attendance')
@@ -135,7 +139,7 @@ const updateAttendance = async ({ id, status }: { id: string; status: string }) 
 }
 
 const fetchSessionGPS = async (sessionId: string): Promise<GPSPlayerData[]> => {
-  const res = await fetch(`${API_BASE}/training/gps/session/${sessionId}`)
+  const res = await fetch(`${API_BASE}/training/gps/session/${sessionId}`, { credentials: 'include' })
   if (!res.ok) return []
   return res.json()
 }
@@ -736,9 +740,9 @@ export default function Attendance() {
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`${API_BASE}/training/ai-summary/latest`)
+    fetch(`${API_BASE}/training/ai-summary/latest`, { credentials: 'include' })
       .then(res => res.ok ? res.json() : null)
-      .then(data => { if (data?.summary) setAiSummary(data) })
+      .then(data => { if (data?.summary) setAiSummary(data); else setAiSummary(null) })
       .catch(() => {})
   }, [])
 
@@ -776,6 +780,7 @@ export default function Attendance() {
     try {
       await fetch(`${API_BASE}/training/gps/upload`, {
         method: 'POST',
+        credentials: 'include',
         body: formData
       })
     } catch (error) {

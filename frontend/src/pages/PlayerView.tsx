@@ -120,19 +120,19 @@ interface ShotEvent {
 
 // API functions
 const fetchPlayer = async (id: string): Promise<Player> => {
-  const res = await fetch(`${API_BASE}/players/${id}`)
+  const res = await fetch(`${API_BASE}/players/${id}`, { credentials: 'include' })
   if (!res.ok) throw new Error('Failed to fetch player')
   return res.json()
 }
 
 const fetchPlayerMatchStats = async (id: string): Promise<PlayerMatchStats[]> => {
-  const res = await fetch(`${API_BASE}/analytics/player/${id}/matches`)
+  const res = await fetch(`${API_BASE}/analytics/player/${id}/matches`, { credentials: 'include' })
   if (!res.ok) return []
   return res.json()
 }
 
 const fetchPlayerAttendance = async (id: string): Promise<PlayerAttendanceStats | null> => {
-  const res = await fetch(`${API_BASE}/attendance/overview`)
+  const res = await fetch(`${API_BASE}/attendance/overview`, { credentials: 'include' })
   if (!res.ok) return null
   const data = await res.json()
   const playerSummary = data.player_summaries?.find((p: any) => p.player_id === id)
@@ -140,13 +140,13 @@ const fetchPlayerAttendance = async (id: string): Promise<PlayerAttendanceStats 
 }
 
 const fetchPlayerGPSData = async (id: string): Promise<GPSDataPoint[]> => {
-  const res = await fetch(`${API_BASE}/training/gps/player/${id}?limit=20`)
+  const res = await fetch(`${API_BASE}/training/gps/player/${id}?limit=20`, { credentials: 'include' })
   if (!res.ok) return []
   return res.json()
 }
 
 const fetchPlayerShotEvents = async (id: string): Promise<ShotEvent[]> => {
-  const res = await fetch(`${API_BASE}/analytics/player/${id}/shot-events`)
+  const res = await fetch(`${API_BASE}/analytics/player/${id}/shot-events`, { credentials: 'include' })
   if (!res.ok) return []
   return res.json()
 }
