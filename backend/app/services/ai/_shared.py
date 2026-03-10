@@ -1401,9 +1401,19 @@ async def get_player_season_stats(db: AsyncSession, player_id: str) -> str:
 
 async def get_team_season_stats(db: AsyncSession) -> str:
     """Get aggregated team stats for the season."""
-    # Get all completed matches
+    # Get completed matches that have at least one event tagged
+    event_count = (
+        select(func.count(MatchEvent.id))
+        .where(MatchEvent.match_id == Match.id)
+        .correlate(Match)
+        .scalar_subquery()
+    )
     matches_result = await db.execute(
-        select(Match).where(Match.status == MatchStatus.COMPLETED)
+        select(Match).where(
+            Match.status == MatchStatus.COMPLETED,
+            Match.is_deleted == False,
+            event_count > 0,
+        )
     )
     matches = matches_result.scalars().all()
 
@@ -1478,10 +1488,21 @@ async def get_team_season_stats(db: AsyncSession) -> str:
 
 async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = None) -> str:
     """Get per-half stats (possession, scoring, turnovers) broken down by match."""
-    # Get matches
-    query = select(Match).where(Match.status == MatchStatus.COMPLETED).order_by(Match.match_date)
+    # Get matches (only those with events unless a specific match is requested)
     if match_id:
         query = select(Match).where(Match.id == match_id)
+    else:
+        ec = (
+            select(func.count(MatchEvent.id))
+            .where(MatchEvent.match_id == Match.id)
+            .correlate(Match)
+            .scalar_subquery()
+        )
+        query = select(Match).where(
+            Match.status == MatchStatus.COMPLETED,
+            Match.is_deleted == False,
+            ec > 0,
+        ).order_by(Match.match_date)
     matches = (await db.execute(query)).scalars().all()
     if not matches:
         return safe_json({"message": "No matches found"})

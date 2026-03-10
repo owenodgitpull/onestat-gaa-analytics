@@ -41,11 +41,22 @@ export interface DashboardLayout {
   pinnedAiCharts: AIChartSpec[]
 }
 
+// Charts visible by default for new teams — the most useful starting set
+const DEFAULT_VISIBLE_CHARTS = [
+  'possession-funnel',
+  'kickout-trend',
+  'turnover-leaderboard',
+  'territory-distribution',
+  'shot-map',
+  'kickout-landing-zones',
+]
+
 function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
+  const hiddenCharts = DEFAULT_CHART_ORDER.filter(id => !DEFAULT_VISIBLE_CHARTS.includes(id))
   return {
     version: 5,
-    chartOrder: [...DEFAULT_CHART_ORDER, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
-    hiddenCharts: [],
+    chartOrder: [...DEFAULT_VISIBLE_CHARTS, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
+    hiddenCharts,
     sectionOrder: [...DEFAULT_SECTION_ORDER],
     pinnedAiCharts,
   }

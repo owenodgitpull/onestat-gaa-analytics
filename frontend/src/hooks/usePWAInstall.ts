@@ -15,7 +15,12 @@ function isStandalone(): boolean {
 }
 
 function isIOS(): boolean {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  // iPadOS 13+ reports as macOS in user agent — detect via touch support
+  if ((navigator as any).standalone !== undefined) return true;
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream) return true;
+  // iPadOS 13+: navigator.platform is "MacIntel" but has touch
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) return true;
+  return false;
 }
 
 export function usePWAInstall() {

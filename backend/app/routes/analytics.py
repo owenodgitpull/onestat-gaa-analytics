@@ -462,13 +462,20 @@ async def get_dashboard_data(
 
     Returns season summary, top scorers, shot locations, and trends.
     """
-    # Get all completed matches
+    # Get completed matches that have at least one event tagged
+    event_count = (
+        select(func.count(MatchEvent.id))
+        .where(MatchEvent.match_id == Match.id)
+        .correlate(Match)
+        .scalar_subquery()
+    )
     matches_result = await db.execute(
         select(Match).where(
             and_(
                 Match.status == MatchStatus.COMPLETED,
                 Match.is_deleted == False,
                 Match.club_id == user.club_id,
+                event_count > 0,
             )
         ).order_by(Match.match_date.desc())
     )

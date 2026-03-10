@@ -78,7 +78,8 @@ export default function AnalyticsDashboard() {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
   const [visibleKpis, setVisibleKpis] = useState<string[]>(loadVisibleKpis)
   const [kpiLibraryOpen, setKpiLibraryOpen] = useState(false)
-  const { startTour: startDashboardTour } = useTour('dashboard', dashboardSteps)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const { startTour: startDashboardTour, isActive: tourActive } = useTour('dashboard', dashboardSteps)
   const tourTriggered = useRef(false)
   const autoRotatePaused = useRef(false)
   const autoRotateTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -437,8 +438,8 @@ export default function AnalyticsDashboard() {
             <>
               {viewMode === 'season' && (
                 <button
-                  onClick={resetLayout}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all"
+                  onClick={() => setShowResetConfirm(true)}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all touch-manipulation"
                   title="Reset layout"
                 >
                   <LayoutGrid size={16} />
@@ -637,6 +638,25 @@ export default function AnalyticsDashboard() {
               })}
             </div>
           </>
+        ) : tourActive ? (
+          <>
+            <p className="text-sm text-white/50 mb-4">
+              Sample data — record your first match to see real KPIs
+            </p>
+            <div data-tour="kpi-grid" className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { label: 'Shot Productivity', value: '64%', color: 'text-emerald-400' },
+                { label: 'Turnover Diff.', value: '+3', color: 'text-emerald-400' },
+                { label: 'Kickout Retention', value: '72%', color: 'text-amber-400' },
+                { label: 'Avg Scored', value: '1-14', color: 'text-white' },
+              ].map((sample) => (
+                <div key={sample.label} className="glass-card p-5 flex flex-col justify-center opacity-60" style={{ height: '120px' }}>
+                  <div className="text-white/60 text-xs font-semibold uppercase tracking-wide mb-1.5">{sample.label}</div>
+                  <div className={`text-3xl font-bold ${sample.color}`}>{sample.value}</div>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -701,6 +721,46 @@ export default function AnalyticsDashboard() {
         visibleKpis={visibleKpis}
         onToggleKpi={toggleKpi}
       />
+
+      {/* Reset Layout Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowResetConfirm(false)} />
+          <div className="relative w-full max-w-sm bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-white/10">
+              <h3 className="text-base font-bold text-white">Reset Dashboard Layout?</h3>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-sm text-white/70 leading-relaxed">
+                This will reset your chart order, visible charts, and KPI selection back to defaults. Any custom arrangement will be lost.
+              </p>
+              <p className="text-xs text-white/40">
+                Pinned AI charts will be kept.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 px-5 py-4 border-t border-white/10">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 text-white/70 text-sm font-semibold hover:bg-white/15 transition-colors touch-manipulation"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  resetLayout()
+                  setVisibleKpis(DEFAULT_VISIBLE_KPIS)
+                  localStorage.setItem(KPI_STORAGE_KEY, JSON.stringify(DEFAULT_VISIBLE_KPIS))
+                  setShowResetConfirm(false)
+                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-300 text-sm font-semibold hover:bg-red-500/30 transition-colors touch-manipulation"
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
