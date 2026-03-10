@@ -376,6 +376,8 @@ export default function MatchRecording() {
       matchTourTriggered.current = true
       if (searchParams.get('tutorial') === '1' || consumePendingTutorial()) {
         setTutorialActive(true)
+        // Start ball at half-back line for more realistic tutorial flow
+        setBallPosition({ x: 30, y: 50, team: PossessionTeam.OWN })
         // Remove query param without navigation
         if (searchParams.get('tutorial') === '1') {
           setSearchParams({}, { replace: true })
@@ -2484,6 +2486,7 @@ export default function MatchRecording() {
                     </div>
                     <div className="mb-1 text-xs text-white/40 text-center">
                       {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown
+                      <span className="ml-1 text-white/25">— tap event to see details</span>
                     </div>
                     <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
                   </div>

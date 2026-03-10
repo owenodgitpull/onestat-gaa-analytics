@@ -92,7 +92,7 @@ export const dashboardSteps: DriveStep[] = [
   },
 ]
 
-// ── Match Recording Tour (11 steps) ────────────────────────────────────────
+// ── Match Recording Tour (14 steps) ────────────────────────────────────────
 
 export const matchRecordingSteps: DriveStep[] = [
   {
@@ -100,7 +100,15 @@ export const matchRecordingSteps: DriveStep[] = [
     popover: {
       title: 'Interactive Pitch',
       description:
-        'Tap anywhere on the pitch to move the ball marker. The ball position determines which zone events are recorded in, and enables context-aware buttons (like 2-pointers inside the arc).',
+        'Tap anywhere on the pitch to move the ball marker. The ball tracks where play is happening — move it up the field as your team builds an attack, then log the event when it happens.',
+    },
+  },
+  {
+    element: '[data-tour="jersey-strip"]',
+    popover: {
+      title: 'Ball Carrier Tracking (Optional)',
+      description:
+        'Tap a jersey number to mark who\'s carrying the ball. This is completely optional — but if you do it, your AI analysis gets much richer: carry maps, passing networks, and player involvement stats all come from this data.',
     },
   },
   {
@@ -109,14 +117,6 @@ export const matchRecordingSteps: DriveStep[] = [
       title: 'Possession Tracker',
       description:
         'Shows which team has the ball. Tap the swap button to toggle possession manually. Possession changes automatically after scores, turnovers, and kickouts.',
-    },
-  },
-  {
-    element: '[data-tour="weather-btn"]',
-    popover: {
-      title: 'Weather Conditions',
-      description:
-        'Tap to update the weather and temperature during the match. This data feeds into AI analysis — weather patterns can affect scoring, turnovers, and kickout strategy.',
     },
   },
   {
@@ -130,9 +130,16 @@ export const matchRecordingSteps: DriveStep[] = [
   {
     element: '[data-tour="scoring-buttons"]',
     popover: {
-      title: 'Context-Aware Scoring',
+      title: 'Logging a Score',
       description:
-        'Scoring buttons adapt to the ball position. Inside the 2-point arc, the "2PT" button enables automatically. The regular "Point" button disables to prevent mistakes.',
+        'Move the ball to where the shot was taken, then tap the scoring button. If the ball is inside the 2-point arc, the "2PT" button enables automatically. Move the ball close to goal before logging — this tracks where shots are taken from.',
+    },
+  },
+  {
+    popover: {
+      title: 'After a Score → Kickout',
+      description:
+        'After every score or wide, the kickout tab opens automatically. Select the kickout type, then tap the pitch where the ball lands. This tracks kickout strategy and retention rates — one of the most important GAA metrics.',
     },
   },
   {
@@ -160,10 +167,11 @@ export const matchRecordingSteps: DriveStep[] = [
     },
   },
   {
+    element: '[data-tour="weather-btn"]',
     popover: {
-      title: 'Kickout Auto-Open',
+      title: 'Weather Conditions',
       description:
-        'After any score or wide, the kickout tab opens automatically so you can record the restart without extra taps. This saves time during fast-paced play.',
+        'Tap to set the weather and temperature. This feeds into AI analysis — it can spot patterns like lower scoring accuracy in wet conditions or kickout strategy changes on windy days.',
     },
   },
   {
@@ -171,7 +179,7 @@ export const matchRecordingSteps: DriveStep[] = [
     popover: {
       title: 'Fullscreen Mode',
       description:
-        'Opens a focused view with just the pitch and action buttons. Great for pitchside recording on mobile devices.',
+        'Opens a focused view with just the pitch and action buttons — ideal for pitchside recording on a phone or tablet. Includes stoppage and substitution buttons.',
     },
   },
   {
@@ -187,7 +195,15 @@ export const matchRecordingSteps: DriveStep[] = [
     popover: {
       title: 'Event Feed',
       description:
-        'See all recorded events in real-time. Swipe left on any event to undo it if you made a mistake.',
+        'See all recorded events in real-time, newest first. Swipe left on any event to undo it if you made a mistake. Tap an event dot on the pitch to see who was involved.',
+    },
+  },
+  {
+    element: '[data-tour="stoppage-btn"]',
+    popover: {
+      title: 'Stoppage & Half-Time',
+      description:
+        'Use the stoppage button to pause the timer during injuries or delays. At half-time, use the phase controls to end the first half and start the second.',
     },
   },
 ]
