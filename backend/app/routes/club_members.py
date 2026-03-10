@@ -229,13 +229,41 @@ async def invite_admin(
         raise HTTPException(status_code=400, detail="Invalid email address")
 
     # Check if email is already in use locally
-    existing = await db.execute(
+    existing_result = await db.execute(
         select(User).where(User.email == email)
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="A user with this email already exists")
+    existing_user = existing_result.scalar_one_or_none()
 
-    # Create user in Cognito — sends invite email automatically
+    if existing_user:
+        # User already exists — check if they already have membership in THIS club
+        existing_membership = await db.execute(
+            select(UserClubMembership).where(
+                UserClubMembership.user_id == existing_user.id,
+                UserClubMembership.club_id == user.club_id,
+            )
+        )
+        if existing_membership.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail="This user is already a member of this team"
+            )
+
+        # Add a new membership for the existing user — no Cognito action needed
+        db.add(UserClubMembership(
+            user_id=existing_user.id,
+            club_id=user.club_id,
+            role="club_admin",
+        ))
+        await db.commit()
+
+        logger.info(f"Existing user {email} added as admin to club {user.club_id} by {user.email}")
+        return {
+            "detail": "User already has an account — they've been added as an admin to this team. They can switch to it from the team switcher.",
+            "id": str(existing_user.id),
+            "email": existing_user.email,
+        }
+
+    # New user — create in Cognito (sends invite email automatically)
     cognito_sub = None
     try:
         import boto3
