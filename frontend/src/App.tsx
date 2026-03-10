@@ -98,7 +98,7 @@ function App() {
               <Route path="/player/*" element={
                 <RequireAuth>
                   <ClubProvider>
-                    <main className="px-4 py-5 pb-24 max-w-lg mx-auto">
+                    <main className="px-4 py-5 pb-24 max-w-lg mx-auto safe-area-top">
                       <Suspense fallback={<PlayerLoading />}>
                         <Routes>
                           <Route path="/" element={<PlayerDashboard />} />

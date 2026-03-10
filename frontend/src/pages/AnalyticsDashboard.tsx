@@ -80,7 +80,7 @@ export default function AnalyticsDashboard() {
   const [visibleKpis, setVisibleKpis] = useState<string[]>(loadVisibleKpis)
   const [kpiLibraryOpen, setKpiLibraryOpen] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
-  const { startTour: startDashboardTour, isActive: tourActive } = useTour('dashboard', dashboardSteps)
+  const { startTour: startDashboardTour, isTourCompleted: tourDone } = useTour('dashboard', dashboardSteps)
   const tourTriggered = useRef(false)
   const autoRotatePaused = useRef(false)
   const autoRotateTimer = useRef<ReturnType<typeof setTimeout>>()
@@ -657,7 +657,7 @@ export default function AnalyticsDashboard() {
               })}
             </div>
           </>
-        ) : tourActive ? (
+        ) : !tourDone ? (
           <>
             <p className="text-sm text-white/50 mb-4">
               Sample data — record your first match to see real KPIs
