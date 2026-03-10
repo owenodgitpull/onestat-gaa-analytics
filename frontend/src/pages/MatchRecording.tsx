@@ -2255,7 +2255,7 @@ export default function MatchRecording() {
                       onClick={() => setIsManualEntryOpen(true)}
                     >
                       <Plus size={14} />
-                      <span>Manual Entry</span>
+                      <span>Event</span>
                     </button>
                   )}
                   {getEndButtonText() && (
