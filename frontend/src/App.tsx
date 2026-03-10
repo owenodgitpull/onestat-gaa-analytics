@@ -21,6 +21,7 @@ import Onboarding from './pages/Onboarding'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 import JoinClub from './pages/JoinClub'
+import InvitationPage from './pages/InvitationPage'
 import SelectPlayer from './pages/SelectPlayer'
 
 // Player portal pages
@@ -79,6 +80,7 @@ function App() {
               <Route path="/login" element={<Login />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/join/:code" element={<JoinClub />} />
+              <Route path="/invitation/:token" element={<InvitationPage />} />
 
               {/* Onboarding — requires auth but no Navigation */}
               <Route path="/onboarding" element={

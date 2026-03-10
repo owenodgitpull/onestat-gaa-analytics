@@ -1,23 +1,36 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus } from 'lucide-react'
+import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock } from 'lucide-react'
 import { clubMembersAPI } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { useClub } from '../../contexts/ClubContext'
 import type { ClubMember } from '../../types'
 
+interface PendingInvitation {
+  id: string
+  invitee_email: string
+  role: string
+  status: string
+  token: string
+  expires_at: string
+  created_at: string
+  accepted_at: string | null
+}
+
 export default function UserManagementSettings() {
   const { user } = useAuth()
   const { club } = useClub()
   const [members, setMembers] = useState<ClubMember[]>([])
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // Invite admin state
+  // Invite state
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteName, setInviteName] = useState('')
+  const [inviteRole, setInviteRole] = useState('club_admin')
   const [inviting, setInviting] = useState(false)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
   const [inviteError, setInviteError] = useState<string | null>(null)
@@ -25,8 +38,12 @@ export default function UserManagementSettings() {
   const fetchMembers = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await clubMembersAPI.listMembers() as { members: ClubMember[] }
-      setMembers(data.members || [])
+      const [membersData, invitationsData] = await Promise.all([
+        clubMembersAPI.listMembers() as Promise<{ members: ClubMember[] }>,
+        clubMembersAPI.listInvitations() as Promise<{ invitations: PendingInvitation[] }>,
+      ])
+      setMembers(membersData.members || [])
+      setInvitations(invitationsData.invitations || [])
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -74,10 +91,11 @@ export default function UserManagementSettings() {
     setInviteSuccess(null)
 
     try {
-      await clubMembersAPI.inviteAdmin(inviteEmail.trim(), inviteName.trim())
-      setInviteSuccess(`Invite sent to ${inviteEmail.trim()}! They'll receive an email with a temporary password.`)
+      await clubMembersAPI.inviteAdmin(inviteEmail.trim(), inviteName.trim(), inviteRole)
+      setInviteSuccess(`Invitation sent to ${inviteEmail.trim()}! They'll receive an email with a link to accept.`)
       setInviteEmail('')
       setInviteName('')
+      setInviteRole('club_admin')
       setShowInviteForm(false)
       await fetchMembers()
     } catch (err: any) {
@@ -107,12 +125,12 @@ export default function UserManagementSettings() {
         <p className="text-sm text-white/50 mt-1">Manage who can access your club's analytics</p>
       </div>
 
-      {/* Invite Admin */}
+      {/* Invite User */}
       <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-medium text-white/70">Add Admin</h3>
-            <p className="text-xs text-white/40">Invite another manager, coach or backroom team member as an admin</p>
+            <h3 className="text-sm font-medium text-white/70">Invite User</h3>
+            <p className="text-xs text-white/40">Send an invitation email to join this team</p>
           </div>
           {!showInviteForm && (
             <button
@@ -121,15 +139,15 @@ export default function UserManagementSettings() {
               style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3)' }}
             >
               <UserPlus size={14} />
-              Invite Admin
+              Invite
             </button>
           )}
         </div>
 
         {showInviteForm && (
           <div className="space-y-3 pt-2 border-t border-white/[0.06]">
-            <p className="text-xs text-white/40">Enter their details below. They'll receive an email with a temporary password to get started.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <p className="text-xs text-white/40">They'll receive a branded email with a link to accept or decline the invitation.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs text-white/50 mb-1">Name</label>
                 <input
@@ -149,6 +167,17 @@ export default function UserManagementSettings() {
                   onChange={e => setInviteEmail(e.target.value)}
                 />
               </div>
+              <div>
+                <label className="block text-xs text-white/50 mb-1">Role</label>
+                <select
+                  className={inputClass}
+                  value={inviteRole}
+                  onChange={e => setInviteRole(e.target.value)}
+                >
+                  <option value="club_admin">Admin</option>
+                  <option value="player">Player</option>
+                </select>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -157,11 +186,11 @@ export default function UserManagementSettings() {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
                 style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)' }}
               >
-                {inviting ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
-                {inviting ? 'Sending...' : 'Send Invite'}
+                {inviting ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                {inviting ? 'Sending...' : 'Send Invitation'}
               </button>
               <button
-                onClick={() => { setShowInviteForm(false); setInviteEmail(''); setInviteName(''); setInviteError(null) }}
+                onClick={() => { setShowInviteForm(false); setInviteEmail(''); setInviteName(''); setInviteRole('club_admin'); setInviteError(null) }}
                 className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white hover:bg-white/5 transition-colors"
               >
                 Cancel
@@ -175,6 +204,33 @@ export default function UserManagementSettings() {
 
         {inviteSuccess && (
           <p className="text-sm text-emerald-400">{inviteSuccess}</p>
+        )}
+
+        {/* Pending invitations */}
+        {invitations.filter(i => i.status === 'pending').length > 0 && (
+          <div className="pt-3 border-t border-white/[0.06] space-y-2">
+            <h4 className="text-xs font-medium text-white/40 flex items-center gap-1.5">
+              <Clock size={12} /> Pending Invitations
+            </h4>
+            {invitations.filter(i => i.status === 'pending').map(inv => (
+              <div key={inv.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                <Mail size={14} className="text-amber-400/60 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white/70 truncate">{inv.invitee_email}</p>
+                  <p className="text-[10px] text-white/30">
+                    Sent {new Date(inv.created_at).toLocaleDateString()} · Expires {new Date(inv.expires_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                  inv.role === 'club_admin'
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                    : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                }`}>
+                  {inv.role === 'club_admin' ? 'Admin' : 'Player'}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

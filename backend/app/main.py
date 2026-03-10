@@ -28,7 +28,7 @@ from app.database import engine, Base, get_db
 from app.routes import players
 from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, fitness_tests, club, onboarding, player_portal, notifications
 from app.routes import auth as auth_routes
-from app.routes import video_analysis, video_events, fixtures, club_members, player_movement, match_prep, organizations
+from app.routes import video_analysis, video_events, fixtures, club_members, player_movement, match_prep, organizations, invitations
 
 # Configure logging
 logging.basicConfig(
@@ -237,6 +237,7 @@ app.include_router(club_members.router, prefix="/api/v1/club", tags=["Club Membe
 app.include_router(player_movement.router, prefix="/api/v1/player-movement", tags=["Player Movement"])
 app.include_router(match_prep.router, prefix="/api/v1/match-prep", tags=["Match Prep"])
 app.include_router(organizations.router, prefix="/api/v1", tags=["Organizations"])
+app.include_router(invitations.router, prefix="/api/v1/invitations", tags=["Invitations"])
 
 
 if __name__ == "__main__":

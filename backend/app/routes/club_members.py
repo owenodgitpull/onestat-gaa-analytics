@@ -5,57 +5,29 @@ Admin-only endpoints for managing club users:
 - List all members
 - Change role (admin ↔ player)
 - Deactivate / reactivate users
-- Invite new admins (via Cognito)
+- Invite users (creates invitation + sends branded email via SES)
 """
+
+import secrets
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from app.database import get_db
 from app.models.user import User
+from app.models.club import Club
 from app.models.user_club_membership import UserClubMembership
+from app.models.team_invitation import TeamInvitation
 from app.auth.dependencies import AuthenticatedUser, require_role
 
 logger = logging.getLogger(__name__)
 
-# Cache flag — set the Cognito invite email template once per process
-_invite_template_configured = False
-
-
-def _ensure_invite_template(cognito_client, settings):
-    """
-    Set the User Pool invite email template to include the app URL.
-    Only runs once per process lifetime.
-    """
-    global _invite_template_configured
-    if _invite_template_configured:
-        return
-
-    app_url = settings.app_url.rstrip("/")
-    try:
-        cognito_client.update_user_pool(
-            UserPoolId=settings.cognito_user_pool_id,
-            AdminCreateUserConfig={
-                "InviteMessageTemplate": {
-                    "EmailSubject": "You've been invited to GAA Analytics",
-                    "EmailMessage": (
-                        f"<p>Hi {{username}},</p>"
-                        f"<p>You've been invited as an admin to the GAA Analytics app.</p>"
-                        f"<p>Your temporary password is: <strong>{{####}}</strong></p>"
-                        f"<p>Log in here: <a href=\"{app_url}\">{app_url}</a></p>"
-                        f"<p>You'll be asked to set a new password on your first login.</p>"
-                    ),
-                },
-            },
-        )
-        _invite_template_configured = True
-        logger.info("Cognito invite email template configured with app URL")
-    except Exception as e:
-        logger.warning(f"Failed to set invite email template (non-fatal): {e}")
+INVITATION_EXPIRY_DAYS = 7
 
 router = APIRouter()
 
@@ -69,6 +41,7 @@ class RoleChangeRequest(BaseModel):
 class InviteAdminRequest(BaseModel):
     email: str
     name: str
+    role: str = "club_admin"  # "club_admin" or "player"
 
 
 @router.get("/members")
@@ -220,22 +193,26 @@ async def invite_admin(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Create a Cognito user (sends invite email with temp password) and
-    pre-create a local User record with club_admin role. When the invitee
-    logs in, the token exchange auto-links them to this club as admin.
+    Send a team invitation via branded email (SES).
+
+    For new users: also creates a Cognito account (temp password email).
+    For existing users: just sends the invitation email.
+
+    In both cases, membership is only created when the invitee accepts.
     """
     email = body.email.strip().lower()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email address")
 
-    # Check if email is already in use locally
+    role = body.role if body.role in ("club_admin", "player") else "club_admin"
+
+    # Check if already a member of this club
     existing_result = await db.execute(
         select(User).where(User.email == email)
     )
     existing_user = existing_result.scalar_one_or_none()
 
     if existing_user:
-        # User already exists — check if they already have membership in THIS club
         existing_membership = await db.execute(
             select(UserClubMembership).where(
                 UserClubMembership.user_id == existing_user.id,
@@ -243,84 +220,130 @@ async def invite_admin(
             )
         )
         if existing_membership.scalar_one_or_none():
-            raise HTTPException(
-                status_code=409,
-                detail="This user is already a member of this team"
-            )
+            raise HTTPException(status_code=409, detail="This user is already a member of this team")
 
-        # Add a new membership for the existing user — no Cognito action needed
-        db.add(UserClubMembership(
-            user_id=existing_user.id,
-            club_id=user.club_id,
-            role="club_admin",
+    # Check for existing pending invitation
+    existing_invite = await db.execute(
+        select(TeamInvitation).where(and_(
+            TeamInvitation.invitee_email == email,
+            TeamInvitation.club_id == user.club_id,
+            TeamInvitation.status == "pending",
+            TeamInvitation.expires_at > datetime.utcnow(),
         ))
-        await db.commit()
-
-        logger.info(f"Existing user {email} added as admin to club {user.club_id} by {user.email}")
-        return {
-            "detail": "User already has an account — they've been added as an admin to this team. They can switch to it from the team switcher.",
-            "id": str(existing_user.id),
-            "email": existing_user.email,
-        }
-
-    # New user — create in Cognito (sends invite email automatically)
-    cognito_sub = None
-    try:
-        import boto3
-        from app.config import get_settings
-        settings = get_settings()
-
-        cognito_client = boto3.client(
-            "cognito-idp",
-            region_name=settings.cognito_region,
-        )
-
-        # Ensure invite email template includes the app URL (once per process)
-        _ensure_invite_template(cognito_client, settings)
-
-        cognito_resp = cognito_client.admin_create_user(
-            UserPoolId=settings.cognito_user_pool_id,
-            Username=email,
-            UserAttributes=[
-                {"Name": "email", "Value": email},
-                {"Name": "email_verified", "Value": "true"},
-                {"Name": "name", "Value": body.name.strip() or email.split("@")[0]},
-            ],
-            DesiredDeliveryMediums=["EMAIL"],
-        )
-        cognito_sub = cognito_resp["User"]["Username"]
-        logger.info(f"Cognito user created for {email}, invite email sent")
-    except Exception as e:
-        error_msg = str(e)
-        if "UsernameExistsException" in error_msg:
-            raise HTTPException(status_code=409, detail="This email already has a Cognito account. They can log in directly.")
-        logger.error(f"Cognito AdminCreateUser failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to send invite email. Check AWS credentials.")
-
-    # Pre-create local user record
-    new_admin = User(
-        email=email,
-        name=body.name.strip() or email.split("@")[0],
-        club_id=user.club_id,
-        role="club_admin",
-        cognito_sub=cognito_sub,
     )
-    db.add(new_admin)
-    await db.flush()  # Get new_admin.id
+    if existing_invite.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="An invitation has already been sent to this email")
 
-    # Create membership row
-    db.add(UserClubMembership(
-        user_id=new_admin.id,
+    # For brand new users, create Cognito account so they can log in
+    if not existing_user:
+        try:
+            import boto3
+            from app.config import get_settings
+            settings = get_settings()
+
+            cognito_client = boto3.client(
+                "cognito-idp",
+                region_name=settings.cognito_region,
+            )
+            cognito_resp = cognito_client.admin_create_user(
+                UserPoolId=settings.cognito_user_pool_id,
+                Username=email,
+                UserAttributes=[
+                    {"Name": "email", "Value": email},
+                    {"Name": "email_verified", "Value": "true"},
+                    {"Name": "name", "Value": body.name.strip() or email.split("@")[0]},
+                ],
+                DesiredDeliveryMediums=["EMAIL"],
+            )
+            cognito_sub = cognito_resp["User"]["Username"]
+            logger.info(f"Cognito user created for {email}")
+
+            # Pre-create local user (no club_id yet — assigned on accept)
+            new_user = User(
+                email=email,
+                name=body.name.strip() or email.split("@")[0],
+                club_id=None,
+                role=role,
+                cognito_sub=cognito_sub,
+            )
+            db.add(new_user)
+            await db.flush()
+            logger.info(f"Pre-created user for {email}")
+        except Exception as e:
+            error_msg = str(e)
+            if "UsernameExistsException" in error_msg:
+                logger.info(f"Cognito account exists for {email}, proceeding with invitation")
+            else:
+                logger.error(f"Cognito AdminCreateUser failed: {e}")
+                raise HTTPException(status_code=500, detail="Failed to create user account. Check AWS credentials.")
+
+    # Create invitation
+    token = secrets.token_urlsafe(48)
+    invitation = TeamInvitation(
+        inviter_id=user.user_id,
+        invitee_email=email,
         club_id=user.club_id,
-        role="club_admin",
-    ))
-
+        role=role,
+        token=token,
+        expires_at=datetime.utcnow() + timedelta(days=INVITATION_EXPIRY_DAYS),
+    )
+    db.add(invitation)
     await db.commit()
-    await db.refresh(new_admin)
 
-    logger.info(f"Admin invited: {email} to club {user.club_id} by {user.email}")
+    # Get inviter name and club name for email
+    inviter_result = await db.execute(select(User).where(User.id == user.user_id))
+    inviter = inviter_result.scalar_one()
+    club_result = await db.execute(select(Club).where(Club.id == user.club_id))
+    club = club_result.scalar_one()
+
+    # Send branded invitation email via SES
+    try:
+        from app.services.invitation_email_service import send_invitation_email
+        send_invitation_email(
+            invitee_email=email,
+            inviter_name=inviter.name,
+            club_name=club.name,
+            token=token,
+            role=role,
+        )
+    except Exception as e:
+        logger.error(f"Failed to send invitation email to {email}: {e}")
+        # Don't fail the endpoint — invitation is created, email can be resent
+
+    logger.info(f"Invitation created: {email} to {club.name} as {role} by {user.email}")
     return {
-        "detail": "Invite sent! They'll receive an email with a temporary password.",
-        "id": str(new_admin.id),
-        "email": new_admin.email,
+        "detail": "Invitation sent! They'll receive an email with a link to accept.",
+        "email": email,
+        "token": token,
+    }
+
+
+@router.get("/members/invitations")
+async def list_club_invitations(
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all invitations for the current club (pending, accepted, declined)."""
+    result = await db.execute(
+        select(TeamInvitation)
+        .where(TeamInvitation.club_id == user.club_id)
+        .order_by(TeamInvitation.created_at.desc())
+    )
+    invitations = result.scalars().all()
+
+    now = datetime.utcnow()
+    return {
+        "invitations": [
+            {
+                "id": str(inv.id),
+                "invitee_email": inv.invitee_email,
+                "role": inv.role,
+                "status": "expired" if (inv.status == "pending" and now > inv.expires_at) else inv.status,
+                "token": inv.token,
+                "expires_at": inv.expires_at.isoformat(),
+                "created_at": inv.created_at.isoformat(),
+                "accepted_at": inv.accepted_at.isoformat() if inv.accepted_at else None,
+            }
+            for inv in invitations
+        ]
     }

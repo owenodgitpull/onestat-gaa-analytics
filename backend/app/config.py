@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     cognito_region: str = "us-east-1"
     cognito_domain: str = ""
 
+    # SES (invitation emails)
+    ses_region: str = "eu-west-1"
+    ses_sender_email: str = "noreply@onestat.ai"
+
     # App
     app_url: str = "http://localhost:3001"  # Frontend URL shown in invite emails
 

@@ -2183,12 +2183,15 @@ export const clubMembersAPI = {
       method: 'PATCH',
     }),
 
-  inviteAdmin: (email: string, name: string) =>
+  inviteAdmin: (email: string, name: string, role: string = 'club_admin') =>
     fetchAPI('/club/members/invite-admin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, name }),
+      body: JSON.stringify({ email, name, role }),
     }),
+
+  listInvitations: () =>
+    fetchAPI('/club/members/invitations'),
 };
 
 // ============================================================================

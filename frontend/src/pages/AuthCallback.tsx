@@ -53,6 +53,14 @@ export default function AuthCallback() {
   // Once authenticated, redirect based on whether user has a club
   useEffect(() => {
     if (isAuthenticated && user) {
+      // Check if user came from an invitation link
+      const invitationToken = sessionStorage.getItem('invitation_token');
+      if (invitationToken) {
+        sessionStorage.removeItem('invitation_token');
+        navigate(`/invitation/${invitationToken}`, { replace: true });
+        return;
+      }
+
       if (!user.club_id || !user.onboarding_completed) {
         navigate('/onboarding', { replace: true });
       } else if (user.role === 'player' && !user.player_id) {

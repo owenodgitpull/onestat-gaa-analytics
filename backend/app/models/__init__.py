@@ -49,6 +49,7 @@ from app.models.set_piece_routine import SetPieceRoutine
 from app.models.man_marking_assignment import ManMarkingAssignment
 from app.models.organization import Organization, TIER_LIMITS
 from app.models.user_club_membership import UserClubMembership
+from app.models.team_invitation import TeamInvitation
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -118,5 +119,6 @@ __all__ = [
     "Organization",
     "TIER_LIMITS",
     "UserClubMembership",
+    "TeamInvitation",
 ]
 
