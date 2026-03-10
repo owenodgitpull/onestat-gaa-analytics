@@ -26,6 +26,7 @@ import SelectPlayer from './pages/SelectPlayer'
 // Player portal pages
 import PlayerDashboard from './pages/player/PlayerDashboard'
 import { lazy, Suspense } from 'react'
+import InstallBanner from './components/InstallBanner'
 
 const LeaderboardPage = lazy(() => import('./pages/player/LeaderboardPage'))
 const MyStatsPage = lazy(() => import('./pages/player/MyStatsPage'))
@@ -71,6 +72,7 @@ function App() {
             <div className="app-bg-shimmer" />
           </div>
 
+          <InstallBanner />
           <div className="min-h-screen relative z-10">
             <Routes>
               {/* Public routes — no auth required */}

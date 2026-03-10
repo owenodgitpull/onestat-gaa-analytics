@@ -25,7 +25,7 @@ export default function ChartZoomModal({ children, title }: ChartZoomModalProps)
       <div className="relative">
         {children}
         <button
-          className="absolute top-2 right-2 p-2 rounded-lg bg-black/50 text-white/70 active:bg-white/20 z-10 touch-manipulation"
+          className="absolute bottom-2 right-2 p-2 rounded-lg bg-black/50 text-white/70 active:bg-white/20 z-10 touch-manipulation"
           title="Expand chart"
           onClick={() => setIsOpen(true)}
         >
