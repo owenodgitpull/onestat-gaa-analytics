@@ -15,6 +15,7 @@ import {
   getPendingItems,
   updateOutboxStatus,
   markLocalEventSynced,
+  deleteOutboxItem,
   type OutboxItem,
 } from './offlineDb'
 import { isOnline, subscribe as subscribeNetwork } from './networkStatus'
@@ -151,16 +152,15 @@ async function processItem(item: OutboxItem): Promise<boolean> {
       return true
     }
 
-    // 4xx — client error, don't retry (bad data, validation error)
+    // 4xx — client error, don't retry (bad data, validation error, not found)
     if (response.status >= 400 && response.status < 500) {
-      // Special case: 409 Conflict means duplicate (already synced) — treat as success
+      // 409 Conflict = duplicate (already synced) — treat as success
       if (response.status === 409) {
         await updateOutboxStatus(item.id, 'synced')
         return true
       }
-      const errText = await response.text().catch(() => `HTTP ${response.status}`)
-      await updateOutboxStatus(item.id, 'failed', errText)
-      syncState.lastSyncError = errText
+      // Unrecoverable — delete from outbox silently
+      await deleteOutboxItem(item.id)
       return true // Move on to next item
     }
 
@@ -200,9 +200,9 @@ async function runSyncLoop() {
       const item = pending[0]
       if (!item.id) break
 
-      // Check retry limit
+      // Auto-purge items that exceeded retry limit — don't leave them stuck
       if (item.retryCount >= MAX_RETRIES) {
-        await updateOutboxStatus(item.id, 'failed', 'Max retries exceeded')
+        await deleteOutboxItem(item.id)
         continue
       }
 
