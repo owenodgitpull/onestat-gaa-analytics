@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { prefetchDashboard } from '../services/prefetch';
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
@@ -59,6 +60,8 @@ export default function AuthCallback() {
       } else if (user.role === 'player') {
         navigate('/player', { replace: true });
       } else {
+        // Admin heading to dashboard — prefetch data while navigating
+        prefetchDashboard();
         navigate('/', { replace: true });
       }
     }

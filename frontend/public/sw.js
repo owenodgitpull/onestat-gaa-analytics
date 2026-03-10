@@ -1,6 +1,6 @@
 /* Service Worker for OneStat — Push Notifications + Offline Asset Caching */
 
-const CACHE_NAME = 'onestat-v1';
+const CACHE_NAME = 'onestat-v2';
 
 // ── Asset Caching (app shell loads offline) ──────────────────────────────
 

@@ -41,6 +41,7 @@ import SortableSection from '@/components/dashboard/SortableSection'
 import { useDashboardLayout } from '@/hooks/useDashboardLayout'
 import type { ChartRenderProps } from '@/config/chartRegistry'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem } from '@/services/api'
+import { consumeDashboard, consumeSeasonDashboard, consumeLiveMatch, consumeNextMatch } from '@/services/prefetch'
 import type { Match } from '@/types'
 import { useTour } from '@/hooks/useTour'
 import { dashboardSteps } from '@/config/tourSteps'
@@ -209,10 +210,28 @@ export default function AnalyticsDashboard() {
   }
 
   // Load static dashboard data + next/live match immediately
+  // Uses prefetched data if available (from auth callback), otherwise fetches fresh
   useEffect(() => {
-    fetchDashboard()
-    api.matches.getInProgress().then(m => setLiveMatch(m))
-    api.matches.getNextScheduled().then(m => setNextMatch(m))
+    const load = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const [data, seasonData] = await Promise.all([
+          consumeDashboard(),
+          consumeSeasonDashboard(),
+        ])
+        setDashboardData(data)
+        setSeasonDashboard(seasonData)
+      } catch (err) {
+        setError('Failed to load dashboard data')
+        console.error(err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+    consumeLiveMatch().then(m => setLiveMatch(m))
+    consumeNextMatch().then(m => setNextMatch(m))
   }, [])
 
   // Trigger tour on first visit after data loads
