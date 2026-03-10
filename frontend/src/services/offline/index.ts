@@ -7,7 +7,7 @@
 export { startNetworkMonitor, stopNetworkMonitor, startActiveMonitoring, stopActiveMonitoring, isOnline, getNetworkState, subscribe as subscribeNetwork } from './networkStatus'
 export { initSyncEngine, triggerSync, syncNow, getSyncState, subscribeSyncState } from './syncEngine'
 export { offlineMatch, offlineMatchEvents, offlinePossession, offlinePlayerMovement } from './offlineApi'
-export { getMatchState, saveMatchState, deleteMatchState, getQueueDepth, purgeSynced } from './offlineDb'
+export { getMatchState, saveMatchState, deleteMatchState, getQueueDepth, purgeSynced, clearOutbox } from './offlineDb'
 export type { MatchState } from './offlineDb'
 export type { SyncState } from './syncEngine'
 

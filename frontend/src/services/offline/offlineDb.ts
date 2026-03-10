@@ -192,6 +192,12 @@ export async function purgeSynced(matchId: string): Promise<void> {
   }
 }
 
+/** Clear all pending/failed items from the outbox */
+export async function clearOutbox(): Promise<void> {
+  const db = await getDb()
+  await db.clear('outbox')
+}
+
 /** Find an outbox item by clientEventId (for delete-before-sync) */
 export async function findByClientEventId(clientEventId: string): Promise<OutboxItem | undefined> {
   const db = await getDb()
