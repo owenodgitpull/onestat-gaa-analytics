@@ -33,6 +33,10 @@ import { useClubName, useClub } from '@/contexts/ClubContext'
 import { useTour } from '@/hooks/useTour'
 import { matchRecordingSteps } from '@/config/tourSteps'
 import MatchRecordingTutorial, { type TutorialMatchState, consumePendingTutorial } from '@/components/MatchRecordingTutorial'
+import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
+import ChartZoomModal from '@/components/ChartZoomModal'
+import { useMatchStateRestore } from '@/hooks/useMatchStateRestore'
+import { startActiveMonitoring, stopActiveMonitoring } from '@/services/offline'
 import {
   Clock,
   Activity,
@@ -158,6 +162,58 @@ export default function MatchRecording() {
     minute: minute,
     team: ballPosition.team === PossessionTeam.OWN ? 'own' : 'opponent',
   })
+
+  // ── Active network monitoring — health pings only during match recording ──
+  useEffect(() => {
+    startActiveMonitoring()
+    return () => stopActiveMonitoring()
+  }, [])
+
+  // ── Crash state restoration ────────────────────────────────────────────
+  const { restoreSavedState, wasRestored, dismissRestore, clearSavedState } = useMatchStateRestore(
+    matchId,
+    () => ({
+      ballX: ballPosition.x,
+      ballY: ballPosition.y,
+      possession: ballPosition.team === PossessionTeam.OWN ? 'own' : 'opponent',
+      matchPhase,
+      currentHalf,
+      minute,
+      seconds,
+      isStopped,
+      activeCarrierId,
+    }),
+  )
+
+  // Auto-dismiss restore toast after 4 seconds
+  useEffect(() => {
+    if (wasRestored) {
+      const t = setTimeout(dismissRestore, 4000)
+      return () => clearTimeout(t)
+    }
+  }, [wasRestored, dismissRestore])
+
+  // Attempt restore on mount (only if backend hasn't loaded match status yet)
+  const restoreAttempted = useRef(false)
+  useEffect(() => {
+    if (restoreAttempted.current || !matchId) return
+    restoreAttempted.current = true
+
+    restoreSavedState().then((saved) => {
+      if (!saved) return
+      setBallPosition({
+        x: saved.ballX,
+        y: saved.ballY,
+        team: saved.possession === 'own' ? PossessionTeam.OWN : PossessionTeam.OPPONENT,
+      })
+      setMatchPhase(saved.matchPhase as MatchPhase)
+      setCurrentHalf(saved.currentHalf as 1 | 2)
+      setMinute(saved.minute)
+      setSeconds(saved.seconds)
+      setIsStopped(saved.isStopped)
+      if (saved.activeCarrierId) setActiveCarrierId(saved.activeCarrierId)
+    })
+  }, [matchId, restoreSavedState])
 
   // Map position_id to short label for carrier strip fallback
   const POSITION_LABELS: Record<string, string> = {
@@ -1925,6 +1981,7 @@ export default function MatchRecording() {
     try {
       await completeMatch.mutateAsync(matchId)
       setMatchPhase('finished')
+      await clearSavedState()
       navigate('/')
     } catch (error) {
       console.error('Failed to end match:', error)
@@ -2062,6 +2119,16 @@ export default function MatchRecording() {
         </div>
       )}
 
+      {/* Restored from crash toast */}
+      {wasRestored && (
+        <div className="mb-4 px-4 py-3 bg-emerald-500/20 border border-emerald-500/40 rounded-lg flex items-center justify-between animate-fade-in">
+          <span className="text-emerald-300 text-sm font-medium">
+            Restored from previous session — {minute}:{seconds.toString().padStart(2, '0')} {currentHalf === 1 ? '1st Half' : '2nd Half'}
+          </span>
+          <button onClick={dismissRestore} className="text-emerald-300/60 hover:text-emerald-300 text-xs ml-4">Dismiss</button>
+        </div>
+      )}
+
       {/* Compact Match Header */}
       {match && (
         <>
@@ -2074,6 +2141,7 @@ export default function MatchRecording() {
                 </h1>
                 <div className="flex items-center gap-2">
                   <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
+                  <NetworkStatusIndicator compact />
                   <button
                     data-tour="weather-btn"
                     onClick={() => setIsWeatherPickerOpen(true)}
@@ -2425,31 +2493,39 @@ export default function MatchRecording() {
               {/* Paths Taken + Possession — full width, 2 side by side */}
               {matchId && matchEventsData?.events && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <PathsTakenChart
-                    matchId={matchId}
-                    pollInterval={15000}
-                  />
-                  <PossessionTerritoryChart
-                    stats={matchStats}
-                    events={matchEventsData.events}
-                    matchId={matchId}
-                    opponent={matchDisplay.opponent}
-                    pollInterval={15000}
-                  />
+                  <ChartZoomModal title="Paths Taken">
+                    <PathsTakenChart
+                      matchId={matchId}
+                      pollInterval={15000}
+                    />
+                  </ChartZoomModal>
+                  <ChartZoomModal title="Possession & Territory">
+                    <PossessionTerritoryChart
+                      stats={matchStats}
+                      events={matchEventsData.events}
+                      matchId={matchId}
+                      opponent={matchDisplay.opponent}
+                      pollInterval={15000}
+                    />
+                  </ChartZoomModal>
                 </div>
               )}
 
               {/* Scoring + Shot Outcome — full width, 2 side by side */}
               {matchId && matchEventsData?.events && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <ScoringTimeline
-                    events={matchEventsData.events}
-                    opponent={matchDisplay.opponent}
-                  />
-                  <ShotOutcomeChart
-                    events={matchEventsData.events}
-                    opponent={matchDisplay.opponent}
-                  />
+                  <ChartZoomModal title="Scoring Timeline">
+                    <ScoringTimeline
+                      events={matchEventsData.events}
+                      opponent={matchDisplay.opponent}
+                    />
+                  </ChartZoomModal>
+                  <ChartZoomModal title="Shot Outcomes">
+                    <ShotOutcomeChart
+                      events={matchEventsData.events}
+                      opponent={matchDisplay.opponent}
+                    />
+                  </ChartZoomModal>
                 </div>
               )}
             </div>

@@ -58,6 +58,7 @@ class MatchEventBase(BaseModel):
 class MatchEventCreate(MatchEventBase):
     """Schema for creating a new match event."""
     match_id: UUID = Field(..., description="Match this event belongs to")
+    client_event_id: Optional[str] = Field(None, max_length=64, description="Client-generated UUID for offline deduplication")
     
     @validator('assist_player_id')
     def validate_assist(cls, v, values):

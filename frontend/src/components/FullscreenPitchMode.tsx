@@ -5,6 +5,7 @@ import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight, Pause, Play } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
+import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
 import { useClubName } from '@/contexts/ClubContext'
 
 interface FullscreenPitchModeProps {
@@ -206,8 +207,8 @@ export default function FullscreenPitchMode({
     <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: 'linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0b1420 65%, #080c16 100%)' }}>
       {/* Top bar — glassmorphic scoreboard, 3-col grid for true centering */}
       <div className="flex-shrink-0 grid grid-cols-3 items-center px-3 py-2 backdrop-blur-xl bg-white/5 border-b border-white/10">
-        {/* Left — Exit */}
-        <div className="flex justify-start">
+        {/* Left — Exit + Network Status */}
+        <div className="flex justify-start items-center gap-2">
           <button
             onClick={onClose}
             className="p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white transition-all"
@@ -215,6 +216,7 @@ export default function FullscreenPitchMode({
           >
             <Minimize2 size={16} />
           </button>
+          <NetworkStatusIndicator compact />
         </div>
 
         {/* Center — Score + Timer */}

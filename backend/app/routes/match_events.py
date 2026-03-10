@@ -12,7 +12,7 @@ from uuid import UUID
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.models.match import Match
-from app.models.match_event import EventType, Team
+from app.models.match_event import MatchEvent, EventType, Team
 from app.schemas.match_event import (
     MatchEventCreate,
     MatchEventUpdate,
@@ -48,8 +48,24 @@ async def create_event(
     - Updates player match stats
     """
     await _verify_match_club(db, event_data.match_id, user.club_id)
+
+    # Idempotent deduplication — if client_event_id already exists, return existing record
+    if event_data.client_event_id:
+        result = await db.execute(
+            select(MatchEvent).where(MatchEvent.client_event_id == event_data.client_event_id)
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            response = MatchEventResponse.model_validate(existing)
+            response.is_score = existing.is_score
+            response.points_value = existing.points_value
+            response.is_in_two_point_zone = existing.is_in_two_point_zone
+            response.player_name = existing.player.name if existing.player else None
+            response.assist_player_name = existing.assist_player.name if existing.assist_player else None
+            return response
+
     event = await MatchEventService.create_event(db, event_data)
-    
+
     # Build response with computed fields
     response = MatchEventResponse.model_validate(event)
     response.is_score = event.is_score
@@ -57,7 +73,7 @@ async def create_event(
     response.is_in_two_point_zone = event.is_in_two_point_zone
     response.player_name = event.player.name if event.player else None
     response.assist_player_name = event.assist_player.name if event.assist_player else None
-    
+
     return response
 
 

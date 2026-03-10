@@ -37,6 +37,10 @@ const LeaderboardPage = lazy(() => import('./pages/player/LeaderboardPage'))
 const MyStatsPage = lazy(() => import('./pages/player/MyStatsPage'))
 const PlayerProfile = lazy(() => import('./pages/player/PlayerProfile'))
 
+// Initialize offline-first infrastructure (IndexedDB, network monitor, sync engine)
+import { initOffline } from './services/offline'
+initOffline()
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

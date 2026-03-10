@@ -57,6 +57,9 @@ class PossessionEvent(Base):
     # Calculated from time between this event and next event
     duration_seconds: Column[Optional[int]] = Column(Integer, nullable=True)
     
+    # Offline sync — client-generated UUID for idempotent deduplication
+    client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
+
     # Timestamp
     created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)
 

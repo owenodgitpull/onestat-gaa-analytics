@@ -49,6 +49,9 @@ class BallCarrierSegment(Base):
     source: Column[str] = Column(String(20), nullable=False, default="live")  # 'live' / 'video_enrichment'
     video_timestamp_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
 
+    # Offline sync — client-generated UUID for idempotent deduplication
+    client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
+
     # Sequence within the match for ordering
     sequence_number: Column[int] = Column(Integer, nullable=False, default=0)
 

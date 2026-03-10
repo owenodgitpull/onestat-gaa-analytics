@@ -30,6 +30,9 @@ class FormationSnapshot(Base):
     # Positions — JSON array of {player_id, jersey_number, x, y}
     positions: Column[Optional[list]] = Column(JSON, nullable=True, default=list)
 
+    # Offline sync — client-generated UUID for idempotent deduplication
+    client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
+
     # Source tracking
     source: Column[str] = Column(String(20), nullable=False, default="live")
     video_timestamp_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)

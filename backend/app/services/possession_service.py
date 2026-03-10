@@ -60,6 +60,7 @@ class PossessionService:
             pitch_x=event_data.pitch_x,
             pitch_y=event_data.pitch_y,
             duration_seconds=None,  # Will be set when next event is created
+            client_event_id=getattr(event_data, 'client_event_id', None),
         )
         
         db.add(new_event)

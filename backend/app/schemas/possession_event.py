@@ -22,6 +22,7 @@ class PossessionEventBase(BaseModel):
 class PossessionEventCreate(PossessionEventBase):
     """Schema for creating a new possession event."""
     match_id: UUID = Field(..., description="Match this possession belongs to")
+    client_event_id: Optional[str] = Field(None, max_length=64, description="Client-generated UUID for offline deduplication")
 
 
 class PossessionEventBulkCreate(BaseModel):

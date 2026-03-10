@@ -43,7 +43,8 @@ class MatchBase(BaseModel):
 
 class MatchCreate(MatchBase):
     """Schema for creating a new match."""
-    pass
+    id: Optional[UUID] = Field(None, description="Client-provided UUID (for offline-created matches)")
+    client_event_id: Optional[str] = Field(None, max_length=64, description="Client-generated UUID for offline deduplication")
 
 
 class MatchUpdate(BaseModel):

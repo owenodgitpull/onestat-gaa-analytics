@@ -3,10 +3,13 @@
  *
  * Tracks which player currently has the ball, manages segment lifecycle
  * (start/end/path-append), and provides the jersey number strip state.
+ *
+ * All API calls route through the offline-first layer — carrier segments
+ * are queued in IndexedDB and synced in background.
  */
 
 import { useRef, useCallback } from 'react'
-import { api, type BallCarrierSegment } from '@/services/api'
+import { offlinePlayerMovement } from '@/services/offline'
 
 interface UsePlayerMovementOptions {
   matchId: string | null
@@ -22,7 +25,7 @@ interface CarrierInfo {
 }
 
 export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMovementOptions) {
-  const activeSegmentRef = useRef<BallCarrierSegment | null>(null)
+  const activeSegmentRef = useRef<{ id: string; [key: string]: unknown } | null>(null)
   const activeCarrierRef = useRef<CarrierInfo | null>(null)
   const pathBufferRef = useRef<Array<{ x: number; y: number }>>([])
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -41,7 +44,7 @@ export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMove
     }
 
     try {
-      const segment = await api.playerMovement.startCarrierSegment({
+      const segment = await offlinePlayerMovement.startCarrierSegment({
         match_id: matchId,
         player_id: playerId,
         jersey_number: jerseyNumber,
@@ -72,7 +75,7 @@ export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMove
     // Flush any buffered path points first
     if (pathBufferRef.current.length > 0) {
       try {
-        await api.playerMovement.appendPathPoints(seg.id, pathBufferRef.current)
+        await offlinePlayerMovement.appendPathPoints(seg.id, pathBufferRef.current)
       } catch (err) {
         console.error('Failed to flush path points on end:', err)
       }
@@ -85,7 +88,7 @@ export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMove
     }
 
     try {
-      await api.playerMovement.endCarrierSegment(seg.id, {
+      await offlinePlayerMovement.endCarrierSegment(seg.id, {
         end_x: endX ?? undefined,
         end_y: endY ?? undefined,
         ended_by: endedBy,
@@ -110,7 +113,7 @@ export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMove
         const seg = activeSegmentRef.current
         const points = pathBufferRef.current
         if (seg && points.length > 0) {
-          api.playerMovement.appendPathPoints(seg.id, points).catch(err => {
+          offlinePlayerMovement.appendPathPoints(seg.id, points).catch(err => {
             console.error('Failed to append path points:', err)
           })
           pathBufferRef.current = []

@@ -5,11 +5,14 @@ tactical tags, kickout plays, movement arrows, and auto-derived possession chain
 
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin
 from app.services.player_movement_service import PlayerMovementService
+from app.models.ball_carrier_segment import BallCarrierSegment
+from app.models.formation_snapshot import FormationSnapshot
 
 from app.schemas.ball_carrier import (
     BallCarrierSegmentCreate,
@@ -52,6 +55,18 @@ async def start_carrier_segment(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    # Idempotent deduplication
+    if body.client_event_id:
+        result = await db.execute(
+            select(BallCarrierSegment).where(BallCarrierSegment.client_event_id == body.client_event_id)
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            resp = BallCarrierSegmentResponse.model_validate(existing)
+            if existing.player:
+                resp.player_name = existing.player.name
+            return resp
+
     segment = await PlayerMovementService.start_carrier_segment(
         db=db,
         match_id=body.match_id,
@@ -63,6 +78,7 @@ async def start_carrier_segment(
         start_x=body.start_x,
         start_y=body.start_y,
         source=body.source,
+        client_event_id=body.client_event_id,
     )
     resp = BallCarrierSegmentResponse.model_validate(segment)
     if segment.player:
@@ -148,6 +164,15 @@ async def create_formation_snapshot(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    # Idempotent deduplication
+    if body.client_event_id:
+        result = await db.execute(
+            select(FormationSnapshot).where(FormationSnapshot.client_event_id == body.client_event_id)
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            return FormationSnapshotResponse.model_validate(existing)
+
     positions = [p.model_dump() for p in body.positions]
     # Convert UUIDs to strings for JSON storage
     for p in positions:
@@ -162,6 +187,7 @@ async def create_formation_snapshot(
         positions=positions,
         source=body.source,
         video_timestamp_ms=body.video_timestamp_ms,
+        client_event_id=body.client_event_id,
     )
     return FormationSnapshotResponse.model_validate(snapshot)
 

@@ -21,6 +21,7 @@ class BallCarrierSegmentCreate(BaseModel):
     start_x: Optional[float] = None
     start_y: Optional[float] = None
     source: str = Field(default="live", max_length=20)
+    client_event_id: Optional[str] = Field(None, max_length=64)
 
 
 class BallCarrierSegmentUpdate(BaseModel):

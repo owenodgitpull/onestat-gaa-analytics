@@ -36,7 +36,7 @@ class MatchService:
         Returns:
             Created match
         """
-        match = Match(
+        match_kwargs: Dict[str, Any] = dict(
             opponent=match_data.opponent,
             match_date=match_data.match_date,
             venue=match_data.venue,
@@ -44,6 +44,10 @@ class MatchService:
             status=MatchStatus.SCHEDULED,
             club_id=club_id,
         )
+        # Support client-provided UUID for offline-created matches
+        if getattr(match_data, 'id', None):
+            match_kwargs['id'] = match_data.id
+        match = Match(**match_kwargs)
         
         db.add(match)
         await db.commit()

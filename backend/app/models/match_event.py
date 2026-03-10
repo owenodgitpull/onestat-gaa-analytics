@@ -126,7 +126,10 @@ class MatchEvent(Base):
     
     # Optional notes
     notes: Column[Optional[str]] = Column(String, nullable=True)
-    
+
+    # Offline sync — client-generated UUID for idempotent deduplication
+    client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
+
     # Timestamp
     created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)
 

@@ -23,6 +23,7 @@ class FormationSnapshotCreate(BaseModel):
     positions: List[SnapshotPosition] = Field(..., min_length=2)
     source: str = Field(default="live", max_length=20)
     video_timestamp_ms: Optional[int] = None
+    client_event_id: Optional[str] = Field(None, max_length=64)
 
 
 class FormationSnapshotResponse(BaseModel):

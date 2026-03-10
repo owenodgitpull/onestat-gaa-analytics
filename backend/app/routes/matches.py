@@ -17,7 +17,7 @@ from app.models.match_lineup import MatchLineup
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
 logger = logging.getLogger(__name__)
-from app.models.match import MatchStatus, MatchVenue
+from app.models.match import Match, MatchStatus, MatchVenue
 from app.schemas.match import (
     MatchCreate,
     MatchUpdate,
@@ -49,14 +49,25 @@ async def create_match(
     - **venue**: home/away/neutral
     - **notes**: Optional match notes
     """
+    # Idempotent deduplication — if client-provided ID already exists, return it
+    if match_data.id:
+        existing = await db.execute(select(Match).where(Match.id == match_data.id))
+        existing_match = existing.scalar_one_or_none()
+        if existing_match:
+            response = MatchResponse.model_validate(existing_match)
+            response.team_total_score = existing_match.team_total_score
+            response.opponent_total_score = existing_match.opponent_total_score
+            response.result = existing_match.result
+            return response
+
     match = await MatchService.create_match(db, match_data, club_id=user.club_id)
-    
+
     # Add computed properties
     response = MatchResponse.model_validate(match)
     response.team_total_score = match.team_total_score
     response.opponent_total_score = match.opponent_total_score
     response.result = match.result
-    
+
     return response
 
 

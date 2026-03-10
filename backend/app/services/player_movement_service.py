@@ -35,6 +35,7 @@ class PlayerMovementService:
         start_x: Optional[float],
         start_y: Optional[float],
         source: str = "live",
+        client_event_id: Optional[str] = None,
     ) -> BallCarrierSegment:
         # Get next sequence number
         result = await db.execute(
@@ -56,6 +57,7 @@ class PlayerMovementService:
             start_time_ms=int(time.time() * 1000),
             source=source,
             sequence_number=next_seq,
+            client_event_id=client_event_id,
         )
         db.add(segment)
         await db.commit()
@@ -147,6 +149,7 @@ class PlayerMovementService:
         positions: List[dict],
         source: str = "live",
         video_timestamp_ms: Optional[int] = None,
+        client_event_id: Optional[str] = None,
     ) -> FormationSnapshot:
         snapshot = FormationSnapshot(
             match_id=match_id,
@@ -157,6 +160,7 @@ class PlayerMovementService:
             timestamp_ms=int(time.time() * 1000),
             source=source,
             video_timestamp_ms=video_timestamp_ms,
+            client_event_id=client_event_id,
         )
         db.add(snapshot)
         await db.commit()

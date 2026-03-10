@@ -7,11 +7,12 @@ Handles ball movement and possession changes during matches.
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin
-from app.models.possession_event import PossessionTeam
+from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.schemas.possession_event import (
     PossessionEventCreate,
     PossessionEventBulkCreate,
@@ -67,13 +68,25 @@ async def create_possession_event(
     
     Result: Dungloe 71% (300s), Opponent 29% (120s)
     """
+    # Idempotent deduplication
+    if event_data.client_event_id:
+        result = await db.execute(
+            select(PossessionEvent).where(PossessionEvent.client_event_id == event_data.client_event_id)
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            response = PossessionEventResponse.model_validate(existing)
+            response.zone_name = existing.zone_name
+            response.is_in_two_point_zone = existing.is_in_two_point_zone
+            return response
+
     event = await PossessionService.create_possession_event(db, event_data)
-    
+
     # Build response
     response = PossessionEventResponse.model_validate(event)
     response.zone_name = event.zone_name
     response.is_in_two_point_zone = event.is_in_two_point_zone
-    
+
     return response
 
 
