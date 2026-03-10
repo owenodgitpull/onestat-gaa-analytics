@@ -234,50 +234,7 @@ async def invite_admin(
     if existing_invite.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="An invitation has already been sent to this email")
 
-    # For brand new users, create Cognito account so they can log in
-    if not existing_user:
-        try:
-            import boto3
-            from app.config import get_settings
-            settings = get_settings()
-
-            cognito_client = boto3.client(
-                "cognito-idp",
-                region_name=settings.cognito_region,
-            )
-            cognito_resp = cognito_client.admin_create_user(
-                UserPoolId=settings.cognito_user_pool_id,
-                Username=email,
-                UserAttributes=[
-                    {"Name": "email", "Value": email},
-                    {"Name": "email_verified", "Value": "true"},
-                    {"Name": "name", "Value": body.name.strip() or email.split("@")[0]},
-                ],
-                DesiredDeliveryMediums=["EMAIL"],
-            )
-            cognito_sub = cognito_resp["User"]["Username"]
-            logger.info(f"Cognito user created for {email}")
-
-            # Pre-create local user (no club_id yet — assigned on accept)
-            new_user = User(
-                email=email,
-                name=body.name.strip() or email.split("@")[0],
-                club_id=None,
-                role=role,
-                cognito_sub=cognito_sub,
-            )
-            db.add(new_user)
-            await db.flush()
-            logger.info(f"Pre-created user for {email}")
-        except Exception as e:
-            error_msg = str(e)
-            if "UsernameExistsException" in error_msg:
-                logger.info(f"Cognito account exists for {email}, proceeding with invitation")
-            else:
-                logger.error(f"Cognito AdminCreateUser failed: {e}")
-                raise HTTPException(status_code=500, detail="Failed to create user account. Check AWS credentials.")
-
-    # Create invitation
+    # Create invitation (no Cognito pre-creation — new users sign up via Hosted UI)
     token = secrets.token_urlsafe(48)
     invitation = TeamInvitation(
         inviter_id=user.user_id,
