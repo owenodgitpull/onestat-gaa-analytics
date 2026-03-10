@@ -38,18 +38,20 @@ export default function RequireAuth({ children, requiredRole }: RequireAuthProps
     }
   }
 
-  // Auto-redirect: players hitting admin routes → /player
+  // Auto-redirect: players hitting admin routes → /player portal
+  // /player and /player/* are player portal routes; /players/* are admin routes
   // Exempt /select-player (new players need to pick their name before entering portal)
-  if (user?.role === 'player' && !location.pathname.startsWith('/player') && location.pathname !== '/onboarding' && location.pathname !== '/select-player') {
-    // If player hasn't selected their player profile yet, redirect to selection
+  const isPlayerPortalRoute = location.pathname === '/player' || location.pathname.startsWith('/player/')
+  if (user?.role === 'player' && !isPlayerPortalRoute && location.pathname !== '/onboarding' && location.pathname !== '/select-player') {
     if (!user.player_id) {
       return <Navigate to="/select-player" replace />;
     }
     return <Navigate to="/player" replace />;
   }
 
-  // Auto-redirect: admins hitting player routes → dashboard
-  if (user?.role !== 'player' && location.pathname.startsWith('/player')) {
+  // Auto-redirect: admins hitting player portal routes → dashboard
+  // Only match /player and /player/* (NOT /players, /players/:id, etc.)
+  if (user?.role !== 'player' && isPlayerPortalRoute) {
     return <Navigate to="/" replace />;
   }
 

@@ -375,7 +375,7 @@ async def sync_preview(
         select(VideoEvent)
         .where(
             VideoEvent.video_session_id == session_id,
-            VideoEvent.is_verified == True,
+            VideoEvent.is_verified .is_(True),
         )
         .order_by(VideoEvent.match_minute.asc(), VideoEvent.match_second.asc())
     )
@@ -434,7 +434,7 @@ async def sync_confirm(
         select(VideoEvent)
         .where(
             VideoEvent.video_session_id == session_id,
-            VideoEvent.is_verified == True,
+            VideoEvent.is_verified .is_(True),
         )
         .order_by(VideoEvent.match_minute.asc(), VideoEvent.match_second.asc())
     )
@@ -631,7 +631,7 @@ async def sync_events_to_match(
         select(VideoEvent)
         .where(
             VideoEvent.video_session_id == session_id,
-            VideoEvent.is_verified == True,
+            VideoEvent.is_verified .is_(True),
         )
         .order_by(VideoEvent.match_minute.asc(), VideoEvent.match_second.asc())
     )

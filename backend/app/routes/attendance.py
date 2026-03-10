@@ -442,7 +442,7 @@ async def get_attendance_overview(
     attendance_records = attendance_result.scalars().all()
 
     # Get all active players (scoped to club)
-    players_query = select(Player).where(and_(Player.active == True, Player.club_id == user.club_id))
+    players_query = select(Player).where(and_(Player.active .is_(True), Player.club_id == user.club_id))
     players_result = await db.execute(players_query)
     players = {p.id: p for p in players_result.scalars().all()}
 

@@ -239,7 +239,7 @@ async def exchange_token(
                 club_result = await db.execute(
                     select(Club).where(
                         Club.invite_code == body.invite_code,
-                        Club.is_active == True,
+                        Club.is_active .is_(True),
                     )
                 )
                 invite_club = club_result.scalar_one_or_none()
@@ -420,7 +420,7 @@ async def setup_profile(
 
     # Verify club exists
     result = await db.execute(
-        select(Club).where(Club.id == body.club_id, Club.is_active == True)
+        select(Club).where(Club.id == body.club_id, Club.is_active .is_(True))
     )
     club = result.scalar_one_or_none()
     if not club:
@@ -512,7 +512,7 @@ async def verify_invite_code(
     result = await db.execute(
         select(Club).where(
             Club.invite_code == code.upper(),
-            Club.is_active == True,
+            Club.is_active .is_(True),
         )
     )
     club = result.scalar_one_or_none()
@@ -544,7 +544,7 @@ async def get_roster(
     result = await db.execute(
         select(Player).where(
             Player.club_id == user.club_id,
-            Player.active == True,
+            Player.active .is_(True),
         )
     )
     players = result.scalars().all()

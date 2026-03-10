@@ -36,14 +36,14 @@ async def _compute_squad_health_fingerprint(db: AsyncSession, club_id) -> str:
 
     # Latest active alert created_at
     latest_alert_q = select(func.max(PlayerHealthAlert.created_at)).where(
-        PlayerHealthAlert.is_active == True
+        PlayerHealthAlert.is_active .is_(True)
     )
     latest_alert = (await db.execute(latest_alert_q)).scalar()
     parts.append(f"latest_alert:{latest_alert}")
 
     # Count of active alerts
     alert_count_q = select(func.count(PlayerHealthAlert.id)).where(
-        PlayerHealthAlert.is_active == True
+        PlayerHealthAlert.is_active .is_(True)
     )
     alert_count = (await db.execute(alert_count_q)).scalar() or 0
     parts.append(f"alert_count:{alert_count}")
@@ -171,7 +171,7 @@ async def get_all_alerts(
     query = select(PlayerHealthAlert)
 
     if active_only:
-        query = query.where(PlayerHealthAlert.is_active == True)
+        query = query.where(PlayerHealthAlert.is_active .is_(True))
 
     if severity:
         try:
@@ -220,7 +220,7 @@ async def get_player_health(
         .where(
             and_(
                 PlayerHealthAlert.player_id == player_id,
-                PlayerHealthAlert.is_active == True
+                PlayerHealthAlert.is_active .is_(True)
             )
         )
         .order_by(PlayerHealthAlert.severity.desc())

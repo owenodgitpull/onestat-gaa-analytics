@@ -69,7 +69,7 @@ async def _get_club_completed_matches(
             and_(
                 Match.club_id == club_id,
                 Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False,
+                Match.is_deleted .is_(False),
             )
         ).order_by(Match.match_date.asc())
     )
@@ -819,7 +819,7 @@ async def get_roster(
     """Active players in the club (for H2H picker)."""
     result = await db.execute(
         select(Player).where(
-            and_(Player.club_id == user.club_id, Player.active == True)
+            and_(Player.club_id == user.club_id, Player.active .is_(True))
         ).order_by(Player.name)
     )
     players = result.scalars().all()

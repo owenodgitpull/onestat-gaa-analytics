@@ -123,7 +123,7 @@ async def initiate_upload(
     count_result = await db.execute(
         select(func.count(KnowledgeDocument.id)).where(
             KnowledgeDocument.club_id == user.club_id,
-            KnowledgeDocument.is_default == False,
+            KnowledgeDocument.is_default .is_(False),
         )
     )
     custom_count = count_result.scalar() or 0

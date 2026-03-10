@@ -498,7 +498,7 @@ async def get_squad_fitness_summary(
 ):
     """Get aggregated squad fitness metrics and overview."""
     # Get total active players
-    players_query = select(func.count(Player.id)).where(Player.active == True).where(Player.club_id == user.club_id)
+    players_query = select(func.count(Player.id)).where(Player.active .is_(True)).where(Player.club_id == user.club_id)
     players_result = await db.execute(players_query)
     total_players = players_result.scalar() or 0
 
@@ -632,7 +632,7 @@ async def get_squad_fitness_cards(
 ):
     """Get fitness status cards for all active players."""
     # Get all active players
-    players_query = select(Player).where(Player.active == True).where(Player.club_id == user.club_id).order_by(Player.name)
+    players_query = select(Player).where(Player.active .is_(True)).where(Player.club_id == user.club_id).order_by(Player.name)
     players_result = await db.execute(players_query)
     players = players_result.scalars().all()
 

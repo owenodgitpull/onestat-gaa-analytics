@@ -43,8 +43,8 @@ async def list_my_clubs(
         .join(Club, UserClubMembership.club_id == Club.id)
         .where(
             UserClubMembership.user_id == user.user_id,
-            UserClubMembership.is_active == True,
-            Club.is_active == True,
+            UserClubMembership.is_active .is_(True),
+            Club.is_active .is_(True),
         )
         .order_by(Club.name)
     )
@@ -78,7 +78,7 @@ async def switch_club(
         select(UserClubMembership).where(
             UserClubMembership.user_id == user.user_id,
             UserClubMembership.club_id == body.club_id,
-            UserClubMembership.is_active == True,
+            UserClubMembership.is_active .is_(True),
         )
     )
     membership = result.scalar_one_or_none()
@@ -90,7 +90,7 @@ async def switch_club(
 
     # Verify club is active
     club_result = await db.execute(
-        select(Club).where(Club.id == body.club_id, Club.is_active == True)
+        select(Club).where(Club.id == body.club_id, Club.is_active .is_(True))
     )
     if not club_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Team not found or inactive")
@@ -137,7 +137,7 @@ async def get_organization(
     count_result = await db.execute(
         select(func.count(Club.id)).where(
             Club.organization_id == org_id,
-            Club.is_active == True,
+            Club.is_active .is_(True),
         )
     )
     team_count = count_result.scalar() or 0
@@ -180,7 +180,7 @@ async def create_team(
     count_result = await db.execute(
         select(func.count(Club.id)).where(
             Club.organization_id == org_id,
-            Club.is_active == True,
+            Club.is_active .is_(True),
         )
     )
     current_count = count_result.scalar() or 0

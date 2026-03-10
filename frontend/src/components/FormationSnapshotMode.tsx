@@ -18,6 +18,7 @@ interface SnapshotPlayer {
   playerId: string
   jerseyNumber: number | null
   playerName: string
+  positionLabel?: string
 }
 
 interface PlacedPosition {
@@ -25,6 +26,7 @@ interface PlacedPosition {
   playerId: string | null
   jerseyNumber: number | null
   playerName: string | null
+  positionLabel: string | null
   x: number
   y: number
 }
@@ -86,6 +88,7 @@ export default function FormationSnapshotMode({
       playerId: null,
       jerseyNumber: null,
       playerName: null,
+      positionLabel: null,
       x: clampedX,
       y: clampedY,
     }])
@@ -104,11 +107,11 @@ export default function FormationSnapshotMode({
       if (p.id !== selectedMarkerId) {
         // If this player was already assigned elsewhere, unassign them
         if (p.playerId === player.playerId) {
-          return { ...p, playerId: null, jerseyNumber: null, playerName: null }
+          return { ...p, playerId: null, jerseyNumber: null, playerName: null, positionLabel: null }
         }
         return p
       }
-      return { ...p, playerId: player.playerId, jerseyNumber: player.jerseyNumber, playerName: player.playerName }
+      return { ...p, playerId: player.playerId, jerseyNumber: player.jerseyNumber, playerName: player.playerName, positionLabel: player.positionLabel ?? null }
     }))
     setSelectedMarkerId(null)
   }, [selectedMarkerId])
@@ -238,7 +241,7 @@ export default function FormationSnapshotMode({
                 setSelectedMarkerId(prev => prev === pos.id ? null : pos.id)
               }}
             >
-              {isAssigned ? (pos.jerseyNumber ?? '?') : '?'}
+              {isAssigned ? (pos.jerseyNumber ?? pos.positionLabel ?? '?') : '?'}
             </div>
           )
         })}

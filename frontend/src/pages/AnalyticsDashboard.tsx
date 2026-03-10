@@ -495,7 +495,15 @@ export default function AnalyticsDashboard() {
       {viewMode === 'health' ? (
         <SquadHealthView />
       ) : viewMode === 'ai' ? (
-        <AiInsightsSection
+        (seasonDashboard?.possession_funnel?.season_totals?.possessions ?? 0) === 0 ? (
+          <div className="glass-card p-10 text-center max-w-lg mx-auto">
+            <Sparkles size={36} className="text-cyan-400/60 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-white mb-2">AI Insights Coming Soon</h3>
+            <p className="text-white/50 text-sm">
+              Tag match events via live recording or video analysis to unlock AI-powered charts, trend analysis, and tactical recommendations.
+            </p>
+          </div>
+        ) : <AiInsightsSection
           aiCharts={aiCharts}
           pinnedChartIds={pinnedChartIds}
           loadingAICharts={loadingAICharts}

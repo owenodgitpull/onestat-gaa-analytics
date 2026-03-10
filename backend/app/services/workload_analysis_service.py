@@ -490,7 +490,7 @@ class WorkloadAnalysisService:
                 and_(
                     PlayerHealthAlert.player_id == player.id,
                     PlayerHealthAlert.alert_type == alert_type,
-                    PlayerHealthAlert.is_active == True,
+                    PlayerHealthAlert.is_active .is_(True),
                     PlayerHealthAlert.created_at >= datetime.utcnow() - timedelta(days=1)
                 )
             )
@@ -601,7 +601,7 @@ Be concise and actionable. Reference GAA-specific training practices when releva
         # Get all active alerts (scoped to club)
         alert_query = (
             select(PlayerHealthAlert)
-            .where(PlayerHealthAlert.is_active == True)
+            .where(PlayerHealthAlert.is_active .is_(True))
             .order_by(desc(PlayerHealthAlert.severity), desc(PlayerHealthAlert.created_at))
         )
         if club_player_ids is not None:

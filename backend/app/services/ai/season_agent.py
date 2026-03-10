@@ -296,7 +296,7 @@ class SeasonAgent:
         try:
             prev_query = (
                 select(InsightAlert)
-                .where(InsightAlert.is_dismissed == False)
+                .where(InsightAlert.is_dismissed .is_(False))
                 .order_by(InsightAlert.created_at.desc())
                 .limit(10)
             )

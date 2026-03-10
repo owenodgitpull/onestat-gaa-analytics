@@ -259,7 +259,7 @@ class NotificationService:
     async def mark_all_read(db: AsyncSession, user_id: UUID):
         result = await db.execute(
             select(Notification).where(
-                and_(Notification.user_id == user_id, Notification.is_read == False)
+                and_(Notification.user_id == user_id, Notification.is_read .is_(False))
             )
         )
         for n in result.scalars().all():

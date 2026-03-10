@@ -148,7 +148,7 @@ class TrainingAnalyticsService:
     async def _readiness_table(db: AsyncSession, club_id=None) -> list:
         """Calculate readiness score per active player."""
         # Get active players (scoped to club)
-        filters = [Player.active == True]
+        filters = [Player.active .is_(True)]
         if club_id:
             filters.append(Player.club_id == club_id)
         players_result = await db.execute(
@@ -328,7 +328,7 @@ class TrainingAnalyticsService:
         """Season overview KPI cards."""
         # Squad Availability: players with readiness >= 60% out of ALL active players
         readiness = await TrainingAnalyticsService._readiness_table(db, club_id)
-        active_filters = [Player.active == True]
+        active_filters = [Player.active .is_(True)]
         if club_id:
             active_filters.append(Player.club_id == club_id)
         all_active_result = await db.execute(

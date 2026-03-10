@@ -280,7 +280,7 @@ class PlayerMovementService:
     ) -> List[KickoutPlay]:
         conditions = [KickoutPlay.club_id == club_id]
         if active_only:
-            conditions.append(KickoutPlay.is_active == True)
+            conditions.append(KickoutPlay.is_active .is_(True))
         result = await db.execute(
             select(KickoutPlay)
             .where(and_(*conditions))

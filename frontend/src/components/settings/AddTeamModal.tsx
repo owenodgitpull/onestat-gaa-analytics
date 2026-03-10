@@ -86,6 +86,33 @@ export default function AddTeamModal({ isOpen, onClose, onCreated }: AddTeamModa
   const [error, setError] = useState<string | null>(null)
   const [createdClubId, setCreatedClubId] = useState<string | null>(null)
 
+  // File upload for roster — must be declared before early return (Rules of Hooks)
+  const handleFile = useCallback(async (file: File, clubId: string) => {
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    if (!['csv', 'xlsx', 'xls'].includes(ext || '')) {
+      setUploadError('Please upload a CSV or Excel file.')
+      return
+    }
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`${API_BASE}/onboarding/club/${clubId}/players/preview`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      if (!res.ok) throw new Error('Failed to parse file')
+      const result = await res.json()
+      setUploadedPlayers(result.rows || [])
+    } catch (err: any) {
+      setUploadError(err.message || 'Failed to parse file.')
+    } finally {
+      setUploading(false)
+    }
+  }, [])
+
   if (!isOpen) return null
 
   const handleCountyChange = (c: string) => {
@@ -117,33 +144,6 @@ export default function AddTeamModal({ isOpen, onClose, onCreated }: AddTeamModa
   const removePlayer = (idx: number) => {
     setManualPlayers(manualPlayers.filter((_, i) => i !== idx))
   }
-
-  // File upload for roster
-  const handleFile = useCallback(async (file: File, clubId: string) => {
-    const ext = file.name.split('.').pop()?.toLowerCase()
-    if (!['csv', 'xlsx', 'xls'].includes(ext || '')) {
-      setUploadError('Please upload a CSV or Excel file.')
-      return
-    }
-    setUploading(true)
-    setUploadError(null)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await fetch(`${API_BASE}/onboarding/club/${clubId}/players/preview`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      })
-      if (!res.ok) throw new Error('Failed to parse file')
-      const result = await res.json()
-      setUploadedPlayers(result.rows || [])
-    } catch (err: any) {
-      setUploadError(err.message || 'Failed to parse file.')
-    } finally {
-      setUploading(false)
-    }
-  }, [])
 
   const canProceed = () => {
     if (step === 1) return name.trim().length > 0

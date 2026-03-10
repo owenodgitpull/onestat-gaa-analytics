@@ -2867,6 +2867,7 @@ export default function MatchRecording() {
           playerId: p.playerId,
           jerseyNumber: p.jerseyNumber,
           playerName: p.playerName,
+          positionLabel: p.positionLabel,
         }))}
       />
 

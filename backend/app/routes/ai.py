@@ -805,7 +805,7 @@ async def get_insight_alerts(
     )
 
     if not include_dismissed:
-        query = query.where(InsightAlert.is_dismissed == False)
+        query = query.where(InsightAlert.is_dismissed .is_(False))
 
     if dashboard:
         query = query.where(

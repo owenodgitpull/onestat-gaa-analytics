@@ -40,7 +40,7 @@ async def list_fixtures(
             and_(
                 Match.club_id == user.club_id,
                 Match.status == MatchStatus.SCHEDULED,
-                Match.is_deleted == False,
+                Match.is_deleted .is_(False),
             )
         )
         .order_by(Match.match_date.asc())
@@ -61,7 +61,7 @@ async def fixture_preview(
             and_(
                 Match.id == match_id,
                 Match.club_id == user.club_id,
-                Match.is_deleted == False,
+                Match.is_deleted .is_(False),
             )
         )
     )
@@ -75,7 +75,7 @@ async def fixture_preview(
             and_(
                 Match.club_id == user.club_id,
                 Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False,
+                Match.is_deleted .is_(False),
             )
         )
         .order_by(Match.match_date.desc())
@@ -165,7 +165,7 @@ async def _check_duplicate(db: AsyncSession, club_id: UUID, opponent: str, match
                 Match.opponent == opponent,
                 Match.match_date >= day_start,
                 Match.match_date <= day_end,
-                Match.is_deleted == False,
+                Match.is_deleted .is_(False),
             )
         )
     )
@@ -449,7 +449,7 @@ async def import_fixtures(
             select(Match).where(and_(
                 Match.club_id == user.club_id,
                 Match.status == MatchStatus.SCHEDULED,
-                Match.is_deleted == False,
+                Match.is_deleted .is_(False),
             ))
         )
         for m in scheduled.scalars().all():

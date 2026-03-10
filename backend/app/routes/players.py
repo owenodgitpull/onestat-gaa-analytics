@@ -91,7 +91,7 @@ async def list_players(
 
     # Apply filters
     if active_only:
-        query = query.where(Player.active == True)
+        query = query.where(Player.active .is_(True))
     
     if status:
         query = query.where(Player.status == status)

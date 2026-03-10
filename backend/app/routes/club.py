@@ -28,7 +28,7 @@ async def get_active_club(
     Get the authenticated user's club.
     """
     result = await db.execute(
-        select(Club).where(Club.id == user.club_id, Club.is_active == True)
+        select(Club).where(Club.id == user.club_id, Club.is_active .is_(True))
     )
     club = result.scalar_one_or_none()
     if not club:
