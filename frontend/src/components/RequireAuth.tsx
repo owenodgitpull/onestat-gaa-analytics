@@ -48,5 +48,10 @@ export default function RequireAuth({ children, requiredRole }: RequireAuthProps
     return <Navigate to="/player" replace />;
   }
 
+  // Auto-redirect: admins hitting player routes → dashboard
+  if (user?.role !== 'player' && location.pathname.startsWith('/player')) {
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 }

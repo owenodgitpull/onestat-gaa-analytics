@@ -119,11 +119,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { user: storedUser, expires_at } = JSON.parse(stored);
 
           if (expires_at && Date.now() < expires_at) {
-            // Cookie should still be valid — schedule next refresh
+            // Cookie should still be valid — use cached user immediately for fast UI
             if (!cancelled) {
               setUserState(storedUser);
               const remainingSecs = Math.floor((expires_at - Date.now()) / 1000);
               scheduleRefresh(remainingSecs);
+
+              // Background verify: ensure cached role/player_id are still accurate
+              // (fixes iPad PWA showing stale role after resume)
+              fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' })
+                .then(r => r.ok ? r.json() : null)
+                .then(data => {
+                  if (cancelled || !data) return;
+                  const fresh: AuthUser = {
+                    id: data.id,
+                    email: data.email,
+                    name: data.name,
+                    club_id: data.club_id,
+                    role: data.role,
+                    player_id: data.player_id || null,
+                    is_active: data.is_active,
+                    onboarding_completed: data.onboarding_completed ?? true,
+                  };
+                  // Only update if something actually changed
+                  if (fresh.role !== storedUser.role ||
+                      fresh.player_id !== storedUser.player_id ||
+                      fresh.club_id !== storedUser.club_id) {
+                    setUserState(fresh);
+                    persistUser(fresh, remainingSecs);
+                  }
+                })
+                .catch(() => { /* network error — cached data is fine for now */ });
             }
           } else {
             // Access token cookie probably expired — try refresh
