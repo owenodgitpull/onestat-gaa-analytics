@@ -311,14 +311,14 @@ async def generate_opposition_briefing(
     from app.services.ai.chat_agent import chat_with_analyst_stream
 
     async def stream_briefing():
-        async for chunk in chat_with_analyst_stream(
+        async for sse_line in chat_with_analyst_stream(
             db=db,
             conversation_history=[],
             user_message=prompt,
             club_id=user.club_id,
         ):
-            yield f"data: {json.dumps({'text': chunk})}\n\n"
-        yield "data: [DONE]\n\n"
+            # chat_with_analyst_stream already yields full SSE lines
+            yield sse_line
 
     return StreamingResponse(
         stream_briefing(),
