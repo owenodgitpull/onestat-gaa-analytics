@@ -91,29 +91,7 @@ class Player(Base):
         lazy="selectin",
         cascade="all, delete-orphan"
     )
-    
-    # Commented out until we create these models
-    # match_performances = relationship(
-    #     "PlayerMatchPerformance",
-    #     back_populates="player",
-    #     lazy="selectin",
-    #     cascade="all, delete-orphan"
-    # )
-    
-    # gps_data = relationship(
-    #     "GPSData",
-    #     back_populates="player",
-    #     lazy="selectin",
-    #     cascade="all, delete-orphan"
-    # )
-    
-    # season_stats = relationship(
-    #     "PlayerSeasonStats",
-    #     back_populates="player",
-    #     lazy="selectin",
-    #     cascade="all, delete-orphan"
-    # )
-    
+
     def __repr__(self) -> str:
         """String representation for debugging."""
         return f"<Player(name='{self.name}', jersey={self.jersey_number}, position={self.position})>"

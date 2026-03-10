@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import GAAPitch from '@/components/GAAPitch'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
@@ -167,7 +167,7 @@ export default function FullscreenPitchMode({
   }, [latestEventDescription, isOpen])
 
   // Ticker items — mirrors all stats from the normal-mode match stats table
-  const tickerItems = useCallback(() => {
+  const tickerItems = useMemo(() => {
     if (!matchStats) return []
     return [
       { label: 'Possession', own: `${matchStats.possession.team}%`, opp: `${matchStats.possession.opponent}%` },
@@ -180,7 +180,7 @@ export default function FullscreenPitchMode({
       { label: 'Kickouts Won', own: matchStats.kickouts.team, opp: matchStats.kickouts.opponent },
       { label: 'K/O Retention', own: `${matchStats.kickoutRetention.team}%`, opp: `${matchStats.kickoutRetention.opponent}%` },
     ]
-  }, [matchStats])()
+  }, [matchStats])
 
   // Rotate ticker every 3s
   useEffect(() => {

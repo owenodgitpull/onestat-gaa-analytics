@@ -13,6 +13,7 @@ export type { SyncState } from './syncEngine'
 
 import { startNetworkMonitor } from './networkStatus'
 import { initSyncEngine, syncNow } from './syncEngine'
+import { getQueueDepth } from './offlineDb'
 
 let initialized = false
 
@@ -22,11 +23,15 @@ export function initOffline() {
   initialized = true
   startNetworkMonitor()
   initSyncEngine()
-  // Attempt to drain any leftover queue from previous session
-  setTimeout(syncNow, 2000)
+  // Attempt to drain any leftover queue from previous session (only if items pending)
+  setTimeout(async () => {
+    const depth = await getQueueDepth()
+    if (depth > 0) syncNow()
+  }, 2000)
 
-  // Listen for service worker background sync messages
-  if ('serviceWorker' in navigator) {
+  // Listen for service worker background sync messages (guarded against duplicate registration)
+  if ('serviceWorker' in navigator && !swListenerRegistered) {
+    swListenerRegistered = true
     navigator.serviceWorker.addEventListener('message', (event) => {
       if (event.data?.type === 'SYNC_OUTBOX') {
         syncNow()
@@ -34,3 +39,5 @@ export function initOffline() {
     })
   }
 }
+
+let swListenerRegistered = false

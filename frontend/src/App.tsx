@@ -11,18 +11,12 @@ import MatchResult from './pages/MatchResult'
 import Attendance from './pages/Attendance'
 import Players from './pages/Players'
 import PlayerView from './pages/PlayerView'
-import MatchPrep from './pages/MatchPrep'
 import Navigation from './components/Navigation'
 import PlayerNavigation from './components/PlayerNavigation'
-import AIAnalystPage from './pages/AIAnalystPage'
 import Settings from './pages/Settings'
-import SquadFitness from './pages/SquadFitness'
 import VideoTagging from './pages/VideoTagging'
 import VideoSessionList from './pages/VideoSessionList'
-import PlayerComparison from './pages/PlayerComparison'
 import Fixtures from './pages/Fixtures'
-import SeasonReport from './pages/SeasonReport'
-import FixturePreview from './pages/FixturePreview'
 import Onboarding from './pages/Onboarding'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
@@ -36,6 +30,14 @@ import { lazy, Suspense } from 'react'
 const LeaderboardPage = lazy(() => import('./pages/player/LeaderboardPage'))
 const MyStatsPage = lazy(() => import('./pages/player/MyStatsPage'))
 const PlayerProfile = lazy(() => import('./pages/player/PlayerProfile'))
+
+// Lazy-load heavy admin pages
+const AIAnalystPage = lazy(() => import('./pages/AIAnalystPage'))
+const SeasonReport = lazy(() => import('./pages/SeasonReport'))
+const SquadFitness = lazy(() => import('./pages/SquadFitness'))
+const MatchPrep = lazy(() => import('./pages/MatchPrep'))
+const FixturePreview = lazy(() => import('./pages/FixturePreview'))
+const PlayerComparison = lazy(() => import('./pages/PlayerComparison'))
 
 // Initialize offline-first infrastructure (IndexedDB, network monitor, sync engine)
 import { initOffline } from './services/offline'
@@ -116,6 +118,7 @@ function App() {
                     <Navigation />
                     <main className="md:ml-14 px-4 py-6">
                       <div className="max-w-7xl mx-auto">
+                        <Suspense fallback={<PlayerLoading />}>
                         <Routes>
                           <Route path="/" element={<AnalyticsDashboard />} />
                           <Route path="/match/:matchId/setup" element={<MatchSetup />} />
@@ -138,6 +141,7 @@ function App() {
                           <Route path="/fitness" element={<SquadFitness />} />
                           <Route path="/settings" element={<Settings />} />
                         </Routes>
+                        </Suspense>
                       </div>
                     </main>
                   </ClubProvider>
