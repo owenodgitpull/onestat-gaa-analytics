@@ -106,7 +106,11 @@ INSTRUCTIONS:
     # Process tool calls
     while response.stop_reason == "tool_use":
         tool_results = []
-        assistant_content = response.content
+        # Convert content blocks to plain dicts to avoid Pydantic re-serialization issues
+        assistant_content = [
+            block.model_dump() if hasattr(block, 'model_dump') else block
+            for block in response.content
+        ]
 
         for block in response.content:
             if block.type == "tool_use":
@@ -328,7 +332,11 @@ async def chat_with_analyst_stream(
 
         while response.stop_reason == "tool_use":
             tool_results = []
-            assistant_content = response.content
+            # Convert content blocks to plain dicts to avoid Pydantic re-serialization issues
+            assistant_content = [
+                block.model_dump() if hasattr(block, 'model_dump') else block
+                for block in response.content
+            ]
 
             for block in response.content:
                 if block.type == "tool_use":

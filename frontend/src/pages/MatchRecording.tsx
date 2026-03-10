@@ -110,6 +110,7 @@ export default function MatchRecording() {
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false)
+  const [manualEntryDefaultType, setManualEntryDefaultType] = useState<EventType | undefined>(undefined)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
   const [startingLineup, setStartingLineup] = useState<Record<string, LineupEntry>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
@@ -2724,13 +2725,14 @@ export default function MatchRecording() {
       {/* Manual Event Entry Modal */}
       <ManualEventEntryModal
         isOpen={isManualEntryOpen}
-        onClose={() => setIsManualEntryOpen(false)}
+        onClose={() => { setIsManualEntryOpen(false); setManualEntryDefaultType(undefined) }}
         onSubmit={handleManualEventSubmit}
         players={players}
         opponentName={matchDisplay.opponent}
         matchLineup={matchLineup}
         currentMinute={minute}
         currentHalf={currentHalf}
+        defaultEventType={manualEntryDefaultType}
       />
 
       {/* Starting Lineup Modal */}
@@ -2838,6 +2840,10 @@ export default function MatchRecording() {
         onRemoveBlackCard={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))}
         isStopped={isStopped}
         onToggleStoppage={() => setIsStopped(prev => !prev)}
+        onSubstitution={() => {
+          setManualEntryDefaultType(EventType.SUBSTITUTION)
+          setIsManualEntryOpen(true)
+        }}
         teamPrimaryColor={club?.primary_colour || '#10B981'}
         teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
       />

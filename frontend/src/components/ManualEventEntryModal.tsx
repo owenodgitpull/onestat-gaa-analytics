@@ -32,6 +32,7 @@ interface ManualEventEntryModalProps {
   matchLineup?: MatchLineupEntry[]
   currentMinute?: number
   currentHalf?: 1 | 2
+  defaultEventType?: EventType
 }
 
 export default function ManualEventEntryModal({
@@ -42,7 +43,8 @@ export default function ManualEventEntryModal({
   opponentName,
   matchLineup = [],
   currentMinute = 1,
-  currentHalf = 1
+  currentHalf = 1,
+  defaultEventType,
 }: ManualEventEntryModalProps) {
   const clubName = useClubName()
   const [eventType, setEventType] = useState<EventType>(EventType.POINT)
@@ -59,8 +61,9 @@ export default function ManualEventEntryModal({
       const perHalfMinute = currentHalf === 2 ? Math.max(1, currentMinute - 30) : Math.max(1, currentMinute)
       setMinute(perHalfMinute)
       setHalf(currentHalf)
+      if (defaultEventType) setEventType(defaultEventType)
     }
-  }, [isOpen, currentMinute, currentHalf])
+  }, [isOpen, currentMinute, currentHalf, defaultEventType])
 
   if (!isOpen) return null
 

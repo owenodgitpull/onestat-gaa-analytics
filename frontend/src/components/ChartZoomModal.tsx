@@ -1,9 +1,9 @@
 /**
  * ChartZoomModal — Tap any chart to view it enlarged in a modal overlay.
  *
- * Wraps a chart component: renders it inline at normal size with a subtle
- * expand icon, and on tap opens a full-screen overlay showing the chart
- * at maximum width.
+ * Wraps a chart component: renders it inline at normal size with a
+ * visible expand button (touch-friendly), and on tap opens a full-screen
+ * overlay showing the chart at maximum width.
  */
 
 import { useState, type ReactNode } from 'react'
@@ -21,15 +21,15 @@ export default function ChartZoomModal({ children, title }: ChartZoomModalProps)
 
   return (
     <>
-      {/* Inline chart with expand button */}
-      <div className="relative group cursor-pointer" onClick={() => setIsOpen(true)}>
+      {/* Inline chart with expand button — always visible for touch */}
+      <div className="relative">
         {children}
         <button
-          className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/40 text-white/50 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          className="absolute top-2 right-2 p-2 rounded-lg bg-black/50 text-white/70 active:bg-white/20 z-10 touch-manipulation"
           title="Expand chart"
-          onClick={(e) => { e.stopPropagation(); setIsOpen(true) }}
+          onClick={() => setIsOpen(true)}
         >
-          <Maximize2 size={14} />
+          <Maximize2 size={16} />
         </button>
       </div>
 
@@ -45,15 +45,15 @@ export default function ChartZoomModal({ children, title }: ChartZoomModalProps)
             {!title && <div />}
             <button
               onClick={() => setIsOpen(false)}
-              className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+              className="p-3 rounded-lg bg-white/10 active:bg-white/30 text-white transition-colors touch-manipulation"
             >
-              <X size={20} />
+              <X size={24} />
             </button>
           </div>
 
           {/* Enlarged chart */}
           <div
-            className="w-full max-w-4xl bg-gray-900/80 rounded-xl p-6 overflow-auto max-h-[80vh]"
+            className="w-full max-w-4xl bg-gray-900/80 rounded-xl p-4 sm:p-6 overflow-auto max-h-[80vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {children}

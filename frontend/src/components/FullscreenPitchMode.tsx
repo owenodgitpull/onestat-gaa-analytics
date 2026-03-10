@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import GAAPitch from '@/components/GAAPitch'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
-import { Clock, Minimize2, ArrowLeftRight, Pause, Play } from 'lucide-react'
+import { Clock, Minimize2, ArrowLeftRight, Pause, Play, ArrowUpDown } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
@@ -72,6 +72,7 @@ interface FullscreenPitchModeProps {
   carrierJerseyNumber?: number | null
   isStopped?: boolean
   onToggleStoppage?: () => void
+  onSubstitution?: () => void
   teamPrimaryColor?: string
   teamSecondaryColor?: string
 }
@@ -126,6 +127,7 @@ export default function FullscreenPitchMode({
   carrierJerseyNumber,
   isStopped = false,
   onToggleStoppage,
+  onSubstitution,
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
 }: FullscreenPitchModeProps) {
@@ -398,6 +400,22 @@ export default function FullscreenPitchMode({
                         title={isStopped ? 'Resume play' : 'Stoppage'}
                       >
                         {isStopped ? <Play size={30} /> : <Pause size={30} />}
+                      </button>
+                    )}
+                    {onSubstitution && (
+                      <button
+                        onClick={onSubstitution}
+                        style={{
+                          padding: 16, borderRadius: 14,
+                          background: 'rgba(0,0,0,0.75)',
+                          border: '2px solid rgba(255,255,255,0.25)',
+                          color: 'rgba(255,255,255,0.7)',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                        title="Substitution"
+                      >
+                        <ArrowUpDown size={30} />
                       </button>
                     )}
                   </>
