@@ -154,6 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         // No cached user — check if httpOnly cookie session exists
+        let restored = false;
         try {
           const resp = await fetch(`${API_BASE_URL}/auth/me`, {
             credentials: 'include',
@@ -174,9 +175,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUserState(authUser);
             persistUser(authUser, 3600);
             scheduleRefresh(3600);
+            restored = true;
           }
         } catch {
-          // No session — that's fine
+          // /auth/me failed — will try refresh below
+        }
+        // If /auth/me failed (expired access token), try refresh — the refresh
+        // token cookie may still be valid (e.g., iPad PWA resumed after background)
+        if (!restored && !cancelled) {
+          try {
+            const refreshResp = await fetch(`${API_BASE_URL}/auth/refresh`, {
+              method: 'POST',
+              credentials: 'include',
+            });
+            if (cancelled) return;
+            if (refreshResp.ok) {
+              const data = await refreshResp.json();
+              // Now fetch fresh user data with the new access token
+              const meResp = await fetch(`${API_BASE_URL}/auth/me`, {
+                credentials: 'include',
+              });
+              if (cancelled) return;
+              if (meResp.ok) {
+                const userData = await meResp.json();
+                const authUser: AuthUser = {
+                  id: userData.id,
+                  email: userData.email,
+                  name: userData.name,
+                  club_id: userData.club_id,
+                  role: userData.role,
+                  player_id: userData.player_id || null,
+                  is_active: userData.is_active,
+                  onboarding_completed: userData.onboarding_completed ?? true,
+                };
+                setUserState(authUser);
+                persistUser(authUser, data.expires_in || 3600);
+                scheduleRefresh(data.expires_in || 3600);
+              }
+            }
+          } catch {
+            // No valid session at all — user will need to log in
+          }
         }
       }
 

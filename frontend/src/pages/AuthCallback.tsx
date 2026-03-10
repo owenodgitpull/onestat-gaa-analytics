@@ -78,9 +78,15 @@ export default function AuthCallback() {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-white/60">Signing you in...</p>
+      <div className="text-center space-y-4">
+        <div className="relative w-12 h-12 mx-auto">
+          <div className="absolute inset-0 rounded-full border-2 border-emerald-500/20" />
+          <div className="absolute inset-0 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+        </div>
+        <div>
+          <p className="text-white/80 font-semibold text-lg">Signing you in</p>
+          <p className="text-white/40 text-sm mt-1">Setting up your session...</p>
+        </div>
       </div>
     </div>
   );
