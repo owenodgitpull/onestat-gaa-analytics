@@ -3,14 +3,14 @@
  *
  * Layer 1: navigator.onLine (coarse — can be wrong on captive portals)
  * Layer 2: online/offline window events (reactive)
- * Layer 3: Periodic health-check ping to /api/v1/health (ground truth)
+ * Layer 3: Periodic health-check ping (ground truth, active mode only)
  *
  * Two modes:
  *  - Passive: browser events only (default, used app-wide)
  *  - Active: adds periodic health-check pings (started by match recording)
  *
- * Emits status changes via a simple pub/sub so React hooks and the sync
- * engine can both subscribe without coupling.
+ * Requires 2 consecutive ping failures before reporting offline to avoid
+ * false positives from transient network blips.
  */
 
 type NetworkState = {
@@ -21,9 +21,11 @@ type NetworkState = {
 
 type Listener = (state: NetworkState) => void
 
-const HEALTH_URL = '/health'
+// Use root endpoint — no DB query, just a fast JSON response
+const PING_URL = '/'
 const ONLINE_POLL_MS = 30_000  // 30s when online
 const OFFLINE_POLL_MS = 5_000  // 5s when offline (detect recovery fast)
+const CONSECUTIVE_FAILURES_THRESHOLD = 2
 
 let state: NetworkState = {
   isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
@@ -34,6 +36,7 @@ const listeners = new Set<Listener>()
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let passiveStarted = false
 let activeMonitoring = false
+let consecutiveFailures = 0
 
 function emit() {
   listeners.forEach(fn => {
@@ -53,29 +56,39 @@ async function healthCheck() {
     const baseUrl = import.meta.env.VITE_API_URL || ''
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
-    const resp = await fetch(`${baseUrl}${HEALTH_URL}`, {
+    const resp = await fetch(`${baseUrl}${PING_URL}`, {
       method: 'HEAD',
       cache: 'no-store',
       signal: controller.signal,
-      // Don't send cookies — this is a lightweight ping
       credentials: 'omit',
     })
     clearTimeout(timeout)
-    setOnline(resp.ok)
+    if (resp.ok) {
+      consecutiveFailures = 0
+      setOnline(true)
+    } else {
+      consecutiveFailures++
+      if (consecutiveFailures >= CONSECUTIVE_FAILURES_THRESHOLD) {
+        setOnline(false)
+      }
+    }
   } catch {
-    // Network error, timeout, or aborted — we're offline
-    setOnline(false)
+    consecutiveFailures++
+    if (consecutiveFailures >= CONSECUTIVE_FAILURES_THRESHOLD) {
+      setOnline(false)
+    }
   }
   schedulePoll()
 }
 
 function schedulePoll() {
   if (pollTimer) clearTimeout(pollTimer)
-  if (!activeMonitoring) return // Don't schedule pings in passive mode
+  if (!activeMonitoring) return
   pollTimer = setTimeout(healthCheck, state.isOnline ? ONLINE_POLL_MS : OFFLINE_POLL_MS)
 }
 
 function handleOnline() {
+  consecutiveFailures = 0
   setOnline(true)
   if (activeMonitoring) healthCheck()
 }
@@ -105,21 +118,31 @@ export function stopNetworkMonitor() {
 
 /**
  * Enable active health-check pings. Call when entering match recording.
- * Performs an immediate health check and schedules periodic polling.
+ * Resets state to browser's online status, then verifies with a ping.
  */
 export function startActiveMonitoring() {
   if (activeMonitoring) return
   activeMonitoring = true
-  healthCheck() // Immediate check
+  consecutiveFailures = 0
+  // Trust the browser first — don't show red until pings actually fail
+  if (navigator.onLine && !state.isOnline) {
+    setOnline(true)
+  }
+  healthCheck()
 }
 
 /**
  * Disable active health-check pings. Call when leaving match recording.
- * Falls back to passive mode (browser events only).
+ * Resets to browser's online status to avoid stale offline state.
  */
 export function stopActiveMonitoring() {
   activeMonitoring = false
+  consecutiveFailures = 0
   if (pollTimer) { clearTimeout(pollTimer); pollTimer = null }
+  // Reset to browser state so stale offline doesn't persist
+  if (navigator.onLine && !state.isOnline) {
+    setOnline(true)
+  }
 }
 
 export function getNetworkState(): NetworkState {
