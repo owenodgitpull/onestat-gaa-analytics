@@ -69,9 +69,10 @@ export default function FixturePreview() {
 
   if (error || !data) {
     return (
-      <div className="text-center py-20">
-        <p className="text-red-400">Failed to load fixture preview</p>
-        <button onClick={() => navigate('/fixtures')} className="text-cyan-400 text-sm mt-2 hover:underline">
+      <div className="glass-card p-8 text-center mx-auto max-w-md mt-12">
+        <p className="text-red-400 text-lg font-semibold mb-2">Failed to load fixture</p>
+        <p className="text-white/40 text-sm mb-4">The fixture preview could not be loaded. It may have been deleted or the data is unavailable.</p>
+        <button onClick={() => navigate('/fixtures')} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-cyan-400 text-sm font-medium transition-colors">
           Back to Fixtures
         </button>
       </div>
@@ -79,6 +80,13 @@ export default function FixturePreview() {
   }
 
   const { match, our_form, opponent_form, last_meeting } = data
+
+  // If match is already completed, redirect to the result page
+  if (match.status === 'completed') {
+    navigate(`/results/${match.id}`, { replace: true })
+    return null
+  }
+
   const matchDate = new Date(match.match_date)
   const isPastScheduled = match.status === 'scheduled' && matchDate < new Date()
 
