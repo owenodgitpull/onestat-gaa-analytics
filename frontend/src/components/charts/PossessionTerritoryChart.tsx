@@ -129,22 +129,14 @@ export default function PossessionTerritoryChart({
       </div>
 
       <div className="relative">
-        <svg viewBox="0 0 300 180" className="w-full h-auto">
-          <rect x="0" y="0" width="300" height="180" fill="#1a1a2e" rx="8" />
-          <rect x="10" y="10" width="280" height="160" fill="none" stroke="#334155" strokeWidth="2" rx="4" />
-          <line x1="103" y1="10" x2="103" y2="170" stroke="#334155" strokeWidth="1" strokeDasharray="4,4" />
-          <line x1="197" y1="10" x2="197" y2="170" stroke="#334155" strokeWidth="1" strokeDasharray="4,4" />
-          <rect x="10" y="55" width="25" height="70" fill="none" stroke="#334155" strokeWidth="1.5" />
-          <rect x="10" y="70" width="12" height="40" fill="none" stroke="#334155" strokeWidth="1" />
-          <rect x="265" y="55" width="25" height="70" fill="none" stroke="#334155" strokeWidth="1.5" />
-          <rect x="278" y="70" width="12" height="40" fill="none" stroke="#334155" strokeWidth="1" />
-          <line x1="150" y1="10" x2="150" y2="170" stroke="#334155" strokeWidth="1.5" />
-          <circle cx="150" cy="90" r="20" fill="none" stroke="#334155" strokeWidth="1.5" />
-          <line x1="60" y1="10" x2="60" y2="170" stroke="#334155" strokeWidth="1" strokeDasharray="2,4" />
-          <line x1="240" y1="10" x2="240" y2="170" stroke="#334155" strokeWidth="1" strokeDasharray="2,4" />
-          <rect x="10" y="10" width="93" height="160" fill={teamColor} fillOpacity="0.1" />
-          <rect x="103" y="10" width="94" height="160" fill={teamColor} fillOpacity="0.15" />
-          <rect x="197" y="10" width="93" height="160" fill={teamColor} fillOpacity="0.1" />
+        <svg viewBox="0 0 2332 1446" className="w-full h-auto rounded-lg overflow-hidden">
+          {/* GAA Pitch background */}
+          <rect width="2332" height="1446" fill="#2d5016" />
+          <image href="/pitch-svg.svg" width="2332" height="1446" preserveAspectRatio="xMidYMid meet" />
+          {/* Zone overlays — thirds of the pitch */}
+          <rect x="0" y="0" width="777" height="1446" fill={teamColor} fillOpacity="0.12" />
+          <rect x="777" y="0" width="778" height="1446" fill={teamColor} fillOpacity="0.18" />
+          <rect x="1555" y="0" width="777" height="1446" fill={teamColor} fillOpacity="0.12" />
         </svg>
 
         <div className="absolute inset-0 flex items-center justify-around px-6">
