@@ -118,7 +118,7 @@ function App() {
                 <RequireAuth requiredRole="club_admin">
                   <ClubProvider>
                     <Navigation />
-                    <main className="md:ml-14 px-4 py-6">
+                    <main className="md:ml-14 px-4 py-6 overflow-x-hidden">
                       <div className="max-w-7xl mx-auto">
                         <Suspense fallback={<PlayerLoading />}>
                         <Routes>

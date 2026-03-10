@@ -33,6 +33,21 @@ const SHOT_TYPE_CONFIG: Record<ShotType, { label: string; color: string; match: 
 }
 
 export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardProps) {
+  // Empty state
+  if (shotLocations.length === 0) {
+    return (
+      <div className="glass-card p-6 h-full flex flex-col">
+        <div className="flex items-center gap-2 mb-4">
+          <MapPin size={20} className="text-white" />
+          <h3 className="text-xl font-bold text-white">Shot Map</h3>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-white/40 text-sm">
+          No shot data recorded yet
+        </div>
+      </div>
+    )
+  }
+
   const [shotFilter, setShotFilter] = useState<'all' | 'own' | 'opponent'>('own')
   const [shotMatchRange, setShotMatchRange] = useState<'all' | '3' | '5'>('all')
   const [visibleTypes, setVisibleTypes] = useState<Set<ShotType>>(new Set(['goal', 'point', 'two_point', 'miss']))
@@ -150,8 +165,8 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
       </div>
 
       {/* Shot type toggles + match context */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex flex-wrap gap-1.5">
           {(Object.entries(SHOT_TYPE_CONFIG) as [ShotType, typeof SHOT_TYPE_CONFIG[ShotType]][]).map(([type, config]) => {
             const active = visibleTypes.has(type)
             return (
@@ -165,7 +180,7 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
                 }`}
               >
                 <span
-                  className="w-2.5 h-2.5 rounded-full transition-opacity"
+                  className="w-2.5 h-2.5 rounded-full shrink-0 transition-opacity"
                   style={{ backgroundColor: config.color, opacity: active ? 1 : 0.3 }}
                 />
                 {config.label}
@@ -174,7 +189,7 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
           })}
         </div>
         {matchCount > 0 && (
-          <span className="text-[10px] text-white/35">
+          <span className="text-[10px] text-white/35 hidden md:inline">
             Across {matchCount} {matchCount === 1 ? 'match' : 'matches'} — updates as season progresses
           </span>
         )}
