@@ -4,6 +4,7 @@ import { usePushNotifications } from '../../hooks/usePushNotifications'
 import { resetTour, resetAllTours } from '../../hooks/useTour'
 import { useTour } from '../../hooks/useTour'
 import { settingsSteps } from '../../config/tourSteps'
+import { requestMatchTutorial } from '../MatchRecordingTutorial'
 
 export default function NotificationSettings() {
   const navigate = useNavigate()
@@ -99,7 +100,7 @@ export default function NotificationSettings() {
             Dashboard Tour
           </button>
           <button
-            onClick={() => { resetTour('matchRecording'); navigate('/') }}
+            onClick={() => { requestMatchTutorial(); navigate('/fixtures') }}
             className="px-3 py-2 rounded-lg bg-white/[0.06] hover:bg-white/10 text-sm text-white/70 hover:text-white transition-colors text-left"
           >
             Match Recording Tour

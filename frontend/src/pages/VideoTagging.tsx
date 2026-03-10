@@ -206,7 +206,7 @@ export default function VideoTagging() {
 
   // --- Throw-in marker setup ---
   const [setupStep, setSetupStep] = useState<'none' | '1st_half' | '2nd_half' | 'done'>('none')
-  const needsThrowInSetup = session && session.first_half_start_ms == null && setupStep !== 'done'
+  const needsThrowInSetup = session && setupStep !== 'done' && setupStep !== 'none'
 
   // Initialize setup step from session data
   useEffect(() => {
@@ -878,9 +878,9 @@ export default function VideoTagging() {
         halftimeMs={session.halftime_timestamp_ms ?? undefined}
       />
 
-      {/* Throw-in marker setup guide */}
-      {needsThrowInSetup && setupStep !== 'none' && (
-        <div className="absolute inset-x-0 bottom-16 z-30 flex justify-center pointer-events-none">
+      {/* Throw-in marker setup guide — positioned above video controls */}
+      {needsThrowInSetup && (
+        <div className="absolute inset-x-0 top-4 z-30 flex justify-center pointer-events-none">
           <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-6 py-4 max-w-md shadow-2xl shadow-emerald-500/10">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 text-xs font-bold">

@@ -21,6 +21,7 @@ export default function FormationSnapshotButton({
 }: FormationSnapshotButtonProps) {
   return (
     <button
+      data-tour="snapshot-btn"
       onClick={onClick}
       disabled={disabled}
       className={`

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
@@ -32,6 +32,7 @@ import { usePlayerMovement } from '@/hooks/usePlayerMovement'
 import { useClubName, useClub } from '@/contexts/ClubContext'
 import { useTour } from '@/hooks/useTour'
 import { matchRecordingSteps } from '@/config/tourSteps'
+import MatchRecordingTutorial, { type TutorialMatchState, consumePendingTutorial } from '@/components/MatchRecordingTutorial'
 import {
   Clock,
   Activity,
@@ -130,9 +131,14 @@ export default function MatchRecording() {
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
   const [isStopped, setIsStopped] = useState(false)
 
-  // Guided tour
+  // Guided tour (basic driver.js)
   const { startTour: startMatchTour } = useTour('matchRecording', matchRecordingSteps)
   const matchTourTriggered = useRef(false)
+
+  // Interactive tutorial
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tutorialActive, setTutorialActive] = useState(false)
+  const [lastEventType, setLastEventType] = useState<string | null>(null)
 
   // Black card sin bin timers
   const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
@@ -307,13 +313,21 @@ export default function MatchRecording() {
     }
   }
 
-  // Trigger guided tour on first visit with valid match
+  // Trigger guided tour on first visit, or interactive tutorial via ?tutorial=1
   useEffect(() => {
     if (match && !matchLoading && !matchTourTriggered.current) {
       matchTourTriggered.current = true
-      startMatchTour()
+      if (searchParams.get('tutorial') === '1' || consumePendingTutorial()) {
+        setTutorialActive(true)
+        // Remove query param without navigation
+        if (searchParams.get('tutorial') === '1') {
+          setSearchParams({}, { replace: true })
+        }
+      } else {
+        startMatchTour()
+      }
     }
-  }, [match, matchLoading, startMatchTour])
+  }, [match, matchLoading, startMatchTour, searchParams, setSearchParams])
 
   // Load match lineup
   useEffect(() => {
@@ -1018,6 +1032,9 @@ export default function MatchRecording() {
         console.error('Failed to record kickout possession:', error)
       }
 
+      // Track for tutorial
+      setLastEventType(String(kickout.eventType).toLowerCase())
+
       // Clear pending kickout
       setPendingKickoutEvent(null)
       setAwaitingKickout(false)
@@ -1420,6 +1437,9 @@ export default function MatchRecording() {
         notes: undefined
       })
 
+      // Track for tutorial
+      setLastEventType(String(eventType).toLowerCase())
+
       // Free kick scores result in kickout
       const scoringFrees = [EventType.POINT_FREE, EventType.TWO_POINT_FREE]
       const isScore = scoringFrees.includes(eventType)
@@ -1498,6 +1518,9 @@ export default function MatchRecording() {
         is_home_team: isHomeTeam,
         notes: undefined
       })
+
+      // Track for tutorial
+      setLastEventType(String(eventType).toLowerCase())
 
       // Auto-end carrier segment on terminal events
       if (activeCarrierId) {
@@ -1763,6 +1786,7 @@ export default function MatchRecording() {
       notes: undefined
     }).then(() => {
       queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      setLastEventType(String(event.eventType).toLowerCase())
       console.log('Event recorded successfully!')
     }).catch((error) => {
       console.error('Failed to record event:', error)
@@ -2018,6 +2042,17 @@ export default function MatchRecording() {
 
   const statusLabel = getStatusLabel()
 
+  // Tutorial match state for interactive walkthrough
+  const tutorialMatchState = useMemo<TutorialMatchState>(() => ({
+    matchPhase,
+    ballPosition: { x: ballPosition.x, y: ballPosition.y },
+    lastEventType,
+    eventCount: allEvents.length,
+    isStopped,
+    activeCarrierId,
+    snapshotCount,
+  }), [matchPhase, ballPosition.x, ballPosition.y, lastEventType, allEvents.length, isStopped, activeCarrierId, snapshotCount])
+
   return (
     <div className="min-h-screen pb-8">
       {/* Loading State - Only on initial load, not refetches */}
@@ -2091,7 +2126,7 @@ export default function MatchRecording() {
               </div>
 
               {/* Right: Quick Stats & Actions */}
-              <div className="flex flex-col items-center md:items-end space-y-2">
+              <div data-tour="phase-controls" className="flex flex-col items-center md:items-end space-y-2">
                 <div className="flex items-center space-x-2">
                   <div className="text-right">
                     <div className="text-xs text-white/60">Possession</div>
@@ -2201,7 +2236,7 @@ export default function MatchRecording() {
 
               {/* Jersey Number Strip for carrier tracking — above pitch */}
               {jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                <div className="max-w-2xl mx-auto mb-1">
+                <div data-tour="jersey-strip" className="max-w-2xl mx-auto mb-1">
                   <JerseyNumberStrip
                     players={jerseyStripPlayers}
                     activeCarrierId={activeCarrierId}
@@ -2269,6 +2304,7 @@ export default function MatchRecording() {
                               <ArrowLeftRight size={28} />
                             </button>
                             <button
+                              data-tour="stoppage-btn"
                               onClick={() => setIsStopped(prev => !prev)}
                               style={{
                                 padding: 14, borderRadius: 12,
@@ -2745,6 +2781,13 @@ export default function MatchRecording() {
         title="Something Went Wrong"
         message={errorAlert || ''}
         variant="danger"
+      />
+
+      {/* Interactive Tutorial Overlay */}
+      <MatchRecordingTutorial
+        active={tutorialActive}
+        onComplete={() => setTutorialActive(false)}
+        matchState={tutorialMatchState}
       />
 
       {/* Second Yellow → Red Card dramatic overlay */}
