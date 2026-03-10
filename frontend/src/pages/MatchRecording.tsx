@@ -276,7 +276,7 @@ export default function MatchRecording() {
         minute,
         label,
         positions: positions.map(p => ({
-          player_id: p.playerId,
+          player_id: p.playerId.startsWith('unassigned-') ? null : p.playerId,
           jersey_number: p.jerseyNumber,
           x: p.x,
           y: p.y,

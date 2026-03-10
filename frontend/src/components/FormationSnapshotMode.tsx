@@ -1,12 +1,18 @@
 /**
- * FormationSnapshotMode — overlay for capturing player positions on the pitch.
+ * FormationSnapshotMode — fast tap-to-place formation capture.
  *
- * Tap a position on the pitch, then tap a jersey number to place that player.
- * Auto-closes after 5 seconds of inactivity. Minimum 2 players required to save.
+ * Flow:
+ *  1. Tap pitch → instantly places a "?" marker
+ *  2. Keep tapping to drop as many markers as needed (e.g. 6 taps in 3 seconds)
+ *  3. Tap any "?" marker on the pitch to select it → player strip highlights
+ *  4. Tap a jersey number to assign that player (or leave as "?")
+ *  5. Tap Save — unassigned markers are saved with null player_id
+ *
+ * Minimum 2 markers to save. No inactivity auto-close (was confusing).
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Check, RotateCcw } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { X, Check, RotateCcw, Trash2 } from 'lucide-react'
 
 interface SnapshotPlayer {
   playerId: string
@@ -15,8 +21,10 @@ interface SnapshotPlayer {
 }
 
 interface PlacedPosition {
-  playerId: string
+  id: string // temp client ID for tracking
+  playerId: string | null
   jerseyNumber: number | null
+  playerName: string | null
   x: number
   y: number
 }
@@ -24,11 +32,13 @@ interface PlacedPosition {
 interface FormationSnapshotModeProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (positions: PlacedPosition[], label: string) => void
+  onSave: (positions: Array<{ playerId: string; jerseyNumber: number | null; x: number; y: number }>, label: string) => void
   availablePlayers: SnapshotPlayer[]
 }
 
 const LABELS = ['Defensive Shape', 'Kickout Setup', 'Attacking Press', 'Custom']
+
+let nextId = 1
 
 export default function FormationSnapshotMode({
   isOpen,
@@ -37,59 +47,101 @@ export default function FormationSnapshotMode({
   availablePlayers,
 }: FormationSnapshotModeProps) {
   const [positions, setPositions] = useState<PlacedPosition[]>([])
-  const [pendingTap, setPendingTap] = useState<{ x: number; y: number } | null>(null)
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
   const [selectedLabel, setSelectedLabel] = useState('Defensive Shape')
-  const inactivityTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Reset inactivity timer on any interaction
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
-    inactivityTimer.current = setTimeout(() => {
-      onClose()
-    }, 8000) // 8s inactivity auto-close
-  }, [onClose])
 
   useEffect(() => {
     if (isOpen) {
       setPositions([])
-      setPendingTap(null)
+      setSelectedMarkerId(null)
       setSelectedLabel('Defensive Shape')
-      resetInactivityTimer()
+      nextId = 1
     }
-    return () => {
-      if (inactivityTimer.current) clearTimeout(inactivityTimer.current)
+  }, [isOpen])
+
+  const handlePitchTap = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    // Get coordinates from mouse or touch event
+    let clientX: number, clientY: number
+    if ('touches' in e) {
+      // Touch event — use changedTouches for touchend
+      const touch = e.changedTouches?.[0] || e.touches[0]
+      if (!touch) return
+      clientX = touch.clientX
+      clientY = touch.clientY
+    } else {
+      clientX = e.clientX
+      clientY = e.clientY
     }
-  }, [isOpen, resetInactivityTimer])
 
-  if (!isOpen) return null
-
-  const handlePitchTap = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
-    const x = ((e.clientX - rect.left) / rect.width) * 100
-    const y = ((e.clientY - rect.top) / rect.height) * 100
-    setPendingTap({ x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) })
-    resetInactivityTimer()
-  }
+    const x = ((clientX - rect.left) / rect.width) * 100
+    const y = ((clientY - rect.top) / rect.height) * 100
 
-  const handlePlayerSelect = (player: SnapshotPlayer) => {
-    if (!pendingTap) return
-    // Remove existing placement for this player
-    const filtered = positions.filter(p => p.playerId !== player.playerId)
-    setPositions([...filtered, { ...player, ...pendingTap }])
-    setPendingTap(null)
-    resetInactivityTimer()
-  }
+    const clampedX = Math.max(2, Math.min(98, x))
+    const clampedY = Math.max(2, Math.min(98, y))
+
+    const id = `marker-${nextId++}`
+    setPositions(prev => [...prev, {
+      id,
+      playerId: null,
+      jerseyNumber: null,
+      playerName: null,
+      x: clampedX,
+      y: clampedY,
+    }])
+    // Auto-select the newly placed marker so user can assign immediately
+    setSelectedMarkerId(id)
+  }, [])
+
+  const handleMarkerTap = useCallback((e: React.MouseEvent, markerId: string) => {
+    e.stopPropagation() // Don't place a new marker
+    setSelectedMarkerId(prev => prev === markerId ? null : markerId)
+  }, [])
+
+  const handlePlayerAssign = useCallback((player: SnapshotPlayer) => {
+    if (!selectedMarkerId) return
+    setPositions(prev => prev.map(p => {
+      if (p.id !== selectedMarkerId) {
+        // If this player was already assigned elsewhere, unassign them
+        if (p.playerId === player.playerId) {
+          return { ...p, playerId: null, jerseyNumber: null, playerName: null }
+        }
+        return p
+      }
+      return { ...p, playerId: player.playerId, jerseyNumber: player.jerseyNumber, playerName: player.playerName }
+    }))
+    setSelectedMarkerId(null)
+  }, [selectedMarkerId])
+
+  const handleDeleteMarker = useCallback(() => {
+    if (!selectedMarkerId) return
+    setPositions(prev => prev.filter(p => p.id !== selectedMarkerId))
+    setSelectedMarkerId(null)
+  }, [selectedMarkerId])
 
   const handleSave = () => {
     if (positions.length < 2) return
-    onSave(positions, selectedLabel)
+    // Map to the shape onSave expects — unassigned get empty playerId
+    onSave(
+      positions.map(p => ({
+        playerId: p.playerId || `unassigned-${p.id}`,
+        jerseyNumber: p.jerseyNumber,
+        x: p.x,
+        y: p.y,
+      })),
+      selectedLabel
+    )
     onClose()
   }
 
-  const placedPlayerIds = new Set(positions.map(p => p.playerId))
-  const unplacedPlayers = availablePlayers
-    .filter(p => !placedPlayerIds.has(p.playerId))
+  if (!isOpen) return null
+
+  const assignedPlayerIds = new Set(positions.filter(p => p.playerId).map(p => p.playerId))
+  const unassignedPlayers = availablePlayers
+    .filter(p => !assignedPlayerIds.has(p.playerId))
     .sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99))
+
+  const selectedMarker = positions.find(p => p.id === selectedMarkerId)
 
   return (
     <div className="fixed inset-0 z-[110] flex flex-col bg-black/80 backdrop-blur-sm">
@@ -97,22 +149,22 @@ export default function FormationSnapshotMode({
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 bg-purple-900/30 border-b border-purple-500/20">
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold text-purple-300">Formation Snapshot</span>
-          <span className="text-xs text-white/50">{positions.length} players placed</span>
+          <span className="text-xs text-white/50">{positions.length} placed</span>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setPositions([]); setPendingTap(null); resetInactivityTimer() }}
-            className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20"
-            title="Reset"
+            onClick={() => { setPositions([]); setSelectedMarkerId(null) }}
+            className="p-1.5 rounded-lg bg-white/10 text-white/60 active:bg-white/20 touch-manipulation"
+            title="Reset all"
           >
             <RotateCcw size={14} />
           </button>
           <button
             onClick={handleSave}
             disabled={positions.length < 2}
-            className={`px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1 ${
+            className={`px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1 touch-manipulation ${
               positions.length >= 2
-                ? 'bg-purple-500 text-white hover:bg-purple-600'
+                ? 'bg-purple-500 text-white active:bg-purple-600'
                 : 'bg-white/10 text-white/30 cursor-not-allowed'
             }`}
           >
@@ -120,7 +172,7 @@ export default function FormationSnapshotMode({
           </button>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20"
+            className="p-1.5 rounded-lg bg-white/10 text-white/60 active:bg-white/20 touch-manipulation"
           >
             <X size={14} />
           </button>
@@ -132,11 +184,11 @@ export default function FormationSnapshotMode({
         {LABELS.map(label => (
           <button
             key={label}
-            onClick={() => { setSelectedLabel(label); resetInactivityTimer() }}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+            onClick={() => setSelectedLabel(label)}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all touch-manipulation ${
               selectedLabel === label
                 ? 'bg-purple-500/30 text-purple-300 border border-purple-400/40'
-                : 'bg-white/10 text-white/50 border border-white/10 hover:bg-white/20'
+                : 'bg-white/10 text-white/50 border border-white/10'
             }`}
           >
             {label}
@@ -144,10 +196,15 @@ export default function FormationSnapshotMode({
         ))}
       </div>
 
-      {/* Pitch area — tap to place */}
+      {/* Pitch area — tap to place markers */}
       <div
-        className="flex-1 relative mx-4 my-3 rounded-xl overflow-hidden bg-green-900/50 border-2 border-purple-500/30 cursor-crosshair"
+        className="flex-1 relative mx-3 my-2 rounded-xl overflow-hidden bg-green-900/50 border-2 border-purple-500/30"
         onClick={handlePitchTap}
+        onTouchEnd={(e) => {
+          e.preventDefault()
+          handlePitchTap(e)
+        }}
+        style={{ touchAction: 'none' }}
       >
         {/* Pitch background */}
         <img
@@ -157,50 +214,87 @@ export default function FormationSnapshotMode({
           draggable={false}
         />
 
-        {/* Placed players */}
-        {positions.map((pos) => (
-          <div
-            key={pos.playerId}
-            className="absolute w-10 h-10 -ml-5 -mt-5 rounded-full bg-purple-500 border-2 border-white flex items-center justify-center text-white text-sm font-bold shadow-lg"
-            style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-          >
-            {pos.jerseyNumber ?? '?'}
-          </div>
-        ))}
+        {/* Placed markers */}
+        {positions.map((pos) => {
+          const isSelected = pos.id === selectedMarkerId
+          const isAssigned = pos.playerId !== null
+          return (
+            <div
+              key={pos.id}
+              className={`absolute rounded-full flex items-center justify-center font-bold shadow-lg transition-all touch-manipulation ${
+                isSelected
+                  ? 'w-12 h-12 -ml-6 -mt-6 ring-2 ring-yellow-400 ring-offset-1 ring-offset-transparent z-10'
+                  : 'w-10 h-10 -ml-5 -mt-5'
+              } ${
+                isAssigned
+                  ? 'bg-purple-500 border-2 border-white text-white text-sm'
+                  : 'bg-white/20 border-2 border-dashed border-white/60 text-white/80 text-lg'
+              }`}
+              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+              onClick={(e) => handleMarkerTap(e, pos.id)}
+              onTouchEnd={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                setSelectedMarkerId(prev => prev === pos.id ? null : pos.id)
+              }}
+            >
+              {isAssigned ? (pos.jerseyNumber ?? '?') : '?'}
+            </div>
+          )
+        })}
 
-        {/* Pending tap marker */}
-        {pendingTap && (
-          <div
-            className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full border-3 border-dashed border-yellow-400 animate-pulse"
-            style={{ left: `${pendingTap.x}%`, top: `${pendingTap.y}%` }}
-          />
-        )}
-
-        {/* Instruction overlay */}
-        <div className="absolute bottom-3 left-0 right-0 text-center">
+        {/* Instruction */}
+        <div className="absolute bottom-2 left-0 right-0 text-center pointer-events-none">
           <span className="text-xs text-white/60 bg-black/60 px-3 py-1 rounded-full">
-            {pendingTap ? 'Now tap a jersey number below' : 'Tap pitch to place a player'}
+            {positions.length === 0
+              ? 'Tap pitch to place players'
+              : selectedMarkerId
+                ? 'Assign a jersey below, or tap another spot'
+                : 'Keep tapping to add more, or tap a marker to assign'}
           </span>
         </div>
       </div>
 
-      {/* Player selection strip — shown when pending tap */}
-      {pendingTap && (
-        <div className="flex-shrink-0 px-4 py-2 bg-black/60 border-t border-white/10">
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
-            {unplacedPlayers.map(player => (
-              <button
-                key={player.playerId}
-                onClick={() => handlePlayerSelect(player)}
-                className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-500/30 border-2 border-purple-400/50 text-purple-200 font-bold text-sm hover:bg-purple-500/50 transition-all"
-                title={player.playerName}
-              >
-                {player.jerseyNumber ?? '?'}
-              </button>
-            ))}
+      {/* Player assignment strip — always visible */}
+      <div className="flex-shrink-0 px-3 py-2 bg-black/60 border-t border-white/10">
+        {selectedMarkerId && selectedMarker ? (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className="text-xs text-white/50">Assign:</span>
+              {selectedMarker.playerName && (
+                <span className="text-xs text-purple-300 font-medium">{selectedMarker.playerName}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-1">
+              {unassignedPlayers.map(player => (
+                <button
+                  key={player.playerId}
+                  onClick={() => handlePlayerAssign(player)}
+                  className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-500/30 border-2 border-purple-400/50 text-purple-200 font-bold text-sm active:bg-purple-500/60 transition-all touch-manipulation"
+                  title={player.playerName}
+                >
+                  {player.jerseyNumber ?? '?'}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={handleDeleteMarker}
+              className="flex-shrink-0 p-2 rounded-lg bg-red-500/20 text-red-400 active:bg-red-500/40 touch-manipulation"
+              title="Remove marker"
+            >
+              <Trash2 size={16} />
+            </button>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="text-center py-1">
+            <span className="text-xs text-white/40">
+              {positions.length === 0
+                ? 'Tap the pitch to start placing players'
+                : `${positions.filter(p => !p.playerId).length} unassigned — tap a marker to assign a player`}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
