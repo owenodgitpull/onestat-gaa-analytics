@@ -258,39 +258,45 @@ export default function FormationSnapshotMode({
       {/* Player assignment strip — always visible */}
       <div className="flex-shrink-0 px-3 py-2 bg-black/60 border-t border-white/10">
         {selectedMarkerId && selectedMarker ? (
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-xs text-white/50">Assign:</span>
-              {selectedMarker.playerName && (
-                <span className="text-xs text-purple-300 font-medium">{selectedMarker.playerName}</span>
-              )}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-white/50">
+                {selectedMarker.playerName
+                  ? `Selected: ${selectedMarker.playerName}`
+                  : 'Tap a player to assign'}
+              </span>
+              <button
+                onClick={handleDeleteMarker}
+                className="flex-shrink-0 px-2 py-1 rounded-lg bg-red-500/20 text-red-400 active:bg-red-500/40 touch-manipulation text-xs flex items-center gap-1"
+              >
+                <Trash2 size={12} /> Remove
+              </button>
             </div>
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide flex-1">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-1">
               {unassignedPlayers.map(player => (
                 <button
                   key={player.playerId}
                   onClick={() => handlePlayerAssign(player)}
-                  className="flex-shrink-0 w-10 h-10 rounded-full bg-purple-500/30 border-2 border-purple-400/50 text-purple-200 font-bold text-sm active:bg-purple-500/60 transition-all touch-manipulation"
-                  title={player.playerName}
+                  className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-500/20 border border-purple-400/40 active:bg-purple-500/40 transition-all touch-manipulation"
                 >
-                  {player.jerseyNumber ?? '?'}
+                  <span className="w-7 h-7 rounded-full bg-purple-500/40 border border-purple-300/50 flex items-center justify-center text-purple-200 font-bold text-xs">
+                    {player.jerseyNumber ?? '#'}
+                  </span>
+                  <span className="text-xs text-white/80 font-medium whitespace-nowrap max-w-[80px] truncate">
+                    {player.playerName}
+                  </span>
                 </button>
               ))}
             </div>
-            <button
-              onClick={handleDeleteMarker}
-              className="flex-shrink-0 p-2 rounded-lg bg-red-500/20 text-red-400 active:bg-red-500/40 touch-manipulation"
-              title="Remove marker"
-            >
-              <Trash2 size={16} />
-            </button>
           </div>
         ) : (
-          <div className="text-center py-1">
+          <div className="text-center py-1.5">
             <span className="text-xs text-white/40">
               {positions.length === 0
                 ? 'Tap the pitch to start placing players'
-                : `${positions.filter(p => !p.playerId).length} unassigned — tap a marker to assign a player`}
+                : positions.some(p => !p.playerId)
+                  ? `${positions.filter(p => !p.playerId).length} unassigned — tap a marker to assign`
+                  : `${positions.length} players placed — tap Save or add more`}
             </span>
           </div>
         )}
