@@ -27,6 +27,7 @@ import {
   Cell,
 } from 'recharts'
 import { X, RefreshCw, Lightbulb, Pin, PinOff } from 'lucide-react'
+import ChartZoomModal from '@/components/ChartZoomModal'
 import type { AIChartSpec } from '@/services/api'
 
 interface DynamicChartProps {
@@ -487,6 +488,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
   }
 
   return (
+    <ChartZoomModal title={title}>
     <div
       className="glass-card p-4 relative group"
       onMouseEnter={() => setIsHovered(true)}
@@ -562,5 +564,6 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
         </div>
       )}
     </div>
+    </ChartZoomModal>
   )
 }

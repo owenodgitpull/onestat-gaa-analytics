@@ -16,6 +16,7 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable'
 import { LayoutGrid, Library } from 'lucide-react'
+import ChartZoomModal from '@/components/ChartZoomModal'
 import SortableChartCard from './SortableChartCard'
 import ChartLibraryModal from './ChartLibraryModal'
 import { CANONICAL_CHARTS, makePinnedAiEntry, type ChartRenderProps, type ChartRegistryEntry } from '@/config/chartRegistry'
@@ -134,13 +135,15 @@ export default function MyChartsSection({
                   onHide={!isAiPinned ? () => onHideChart(chartId) : undefined}
                   onUnpin={isAiPinned && aiChartId ? () => onUnpinChart(aiChartId) : undefined}
                 >
-                  {rendered ?? (
-                    <div className="glass-card p-6 flex items-center justify-center min-h-[200px]">
-                      <p className="text-white/40 text-sm">
-                        {entry.label} — loading data...
-                      </p>
-                    </div>
-                  )}
+                  <ChartZoomModal title={entry.label}>
+                    {rendered ?? (
+                      <div className="glass-card p-6 flex items-center justify-center min-h-[200px]">
+                        <p className="text-white/40 text-sm">
+                          {entry.label} — loading data...
+                        </p>
+                      </div>
+                    )}
+                  </ChartZoomModal>
                 </SortableChartCard>
               )
             })}

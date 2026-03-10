@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { api } from '../services/api'
+import ChartZoomModal from '@/components/ChartZoomModal'
 import { useClubName } from '../contexts/ClubContext'
 import GAAPitch from '../components/GAAPitch'
 import ManMarkingPanel from '../components/ManMarkingPanel'
@@ -721,37 +722,45 @@ export default function MatchResult() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
             {/* Possession & Territory Chart */}
-            <PossessionTerritoryChart
-              stats={matchStats}
-              events={eventsData?.events || []}
-              matchId={matchId!}
-              opponent={match.opponent}
-              insight={postMatchReport?.insights?.possession}
-              insightLoading={reportLoading}
-            />
+            <ChartZoomModal title="Possession & Territory">
+              <PossessionTerritoryChart
+                stats={matchStats}
+                events={eventsData?.events || []}
+                matchId={matchId!}
+                opponent={match.opponent}
+                insight={postMatchReport?.insights?.possession}
+                insightLoading={reportLoading}
+              />
+            </ChartZoomModal>
 
             {/* Scoring Timeline */}
-            <ScoringTimeline
-              events={eventsData?.events || []}
-              opponent={match.opponent}
-              insight={postMatchReport?.insights?.scoring}
-              insightLoading={reportLoading}
-            />
+            <ChartZoomModal title="Scoring Timeline">
+              <ScoringTimeline
+                events={eventsData?.events || []}
+                opponent={match.opponent}
+                insight={postMatchReport?.insights?.scoring}
+                insightLoading={reportLoading}
+              />
+            </ChartZoomModal>
 
             {/* Shot Outcome Breakdown */}
-            <ShotOutcomeChart
-              events={eventsData?.events || []}
-              opponent={match.opponent}
-              insight={postMatchReport?.insights?.shooting}
-              insightLoading={reportLoading}
-            />
+            <ChartZoomModal title="Shot Outcomes">
+              <ShotOutcomeChart
+                events={eventsData?.events || []}
+                opponent={match.opponent}
+                insight={postMatchReport?.insights?.shooting}
+                insightLoading={reportLoading}
+              />
+            </ChartZoomModal>
           </div>
 
           {/* Paths Taken Chart */}
           <div className="mt-6">
-            <PathsTakenChart
-              matchId={matchId!}
-            />
+            <ChartZoomModal title="Paths Taken">
+              <PathsTakenChart
+                matchId={matchId!}
+              />
+            </ChartZoomModal>
           </div>
         </>
       ) : (
@@ -781,19 +790,21 @@ export default function MatchResult() {
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-            {/* Team 5-Minute Volume Chart */}
-            <TeamVolumeChart gpsData={gpsData} events={eventsData?.events || []} />
-
-            {/* Team Intensity Gauge */}
-            <TeamIntensityGauge gpsData={gpsData} />
+            <ChartZoomModal title="Team Volume (5-min)">
+              <TeamVolumeChart gpsData={gpsData} events={eventsData?.events || []} />
+            </ChartZoomModal>
+            <ChartZoomModal title="Team Intensity">
+              <TeamIntensityGauge gpsData={gpsData} />
+            </ChartZoomModal>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-            {/* Player Distance Chart */}
-            <PlayerDistanceChart gpsData={gpsData} />
-
-            {/* Player Workload Comparison */}
-            <PlayerWorkloadChart gpsData={gpsData} />
+            <ChartZoomModal title="Player Distance">
+              <PlayerDistanceChart gpsData={gpsData} />
+            </ChartZoomModal>
+            <ChartZoomModal title="Player Workload">
+              <PlayerWorkloadChart gpsData={gpsData} />
+            </ChartZoomModal>
           </div>
         </div>
       )}
