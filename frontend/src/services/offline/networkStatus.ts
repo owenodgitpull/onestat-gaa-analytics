@@ -21,7 +21,7 @@ type NetworkState = {
 
 type Listener = (state: NetworkState) => void
 
-const HEALTH_URL = '/api/v1/health'
+const HEALTH_URL = '/health'
 const ONLINE_POLL_MS = 30_000  // 30s when online
 const OFFLINE_POLL_MS = 5_000  // 5s when offline (detect recovery fast)
 

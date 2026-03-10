@@ -209,8 +209,15 @@ export default function MatchRecording() {
       })
       setMatchPhase(saved.matchPhase as MatchPhase)
       setCurrentHalf(saved.currentHalf as 1 | 2)
-      setMinute(saved.minute)
-      setSeconds(saved.seconds)
+
+      // Catch up timer for elapsed time since crash (match clock keeps ticking in real life)
+      const elapsedSinceSave = Math.floor((Date.now() - saved.lastSavedAt) / 1000)
+      const wasStopped = saved.isStopped
+      const catchUpSeconds = wasStopped ? 0 : elapsedSinceSave
+      const totalSeconds = saved.minute * 60 + saved.seconds + catchUpSeconds
+      setMinute(Math.floor(totalSeconds / 60))
+      setSeconds(totalSeconds % 60)
+
       setIsStopped(saved.isStopped)
       if (saved.activeCarrierId) setActiveCarrierId(saved.activeCarrierId)
     })
