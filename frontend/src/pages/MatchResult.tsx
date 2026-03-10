@@ -541,106 +541,64 @@ export default function MatchResult() {
         </div>
       )}
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Left: Pitch + Filter Toggles */}
-        <div className="md:col-span-2 space-y-4">
-          {/* Pitch with Events */}
-          <div className="glass-card p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-white flex items-center space-x-2">
-                <Target size={20} />
-                <span>Event Map</span>
-              </h2>
-              {/* Team Toggle */}
-              {hasEvents && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setTeamFilter('own')}
-                    className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                      teamFilter === 'own'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-white/10 text-white/60 hover:bg-white/20'
-                    }`}
-                  >
-                    {clubName}
-                  </button>
-                  <button
-                    onClick={() => setTeamFilter('opponent')}
-                    className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                      teamFilter === 'opponent'
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-white/10 text-white/60 hover:bg-white/20'
-                    }`}
-                  >
-                    {match.opponent}
-                  </button>
-                </div>
-              )}
-            </div>
+      {/* Event Map + Stats — stacked sections, no height-mismatched grid */}
+      <div className="space-y-4">
+        {/* Event Map — full width */}
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+              <Target size={20} />
+              <span>Event Map</span>
+            </h2>
             {hasEvents && (
-              <div className="mb-1 text-xs text-white/40 text-center">
-                {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown
-                <span className="ml-1 text-white/25">— tap event to see details</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setTeamFilter('own')}
+                  className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
+                    teamFilter === 'own'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  }`}
+                >
+                  {clubName}
+                </button>
+                <button
+                  onClick={() => setTeamFilter('opponent')}
+                  className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
+                    teamFilter === 'opponent'
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20'
+                  }`}
+                >
+                  {match.opponent}
+                </button>
               </div>
             )}
-            <div className="relative">
-              <GAAPitch readonly={true} events={filteredEvents} showZones={true} />
-              {!hasEvents && (
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-xl flex flex-col items-center justify-center">
-                  <Video size={32} className="text-purple-400 mb-3" />
-                  <p className="text-white/70 font-semibold text-sm">Events will appear once tagged</p>
-                  <p className="text-white/40 text-xs mt-1">Use video analysis to tag match events</p>
-                </div>
-              )}
-            </div>
           </div>
-
           {hasEvents && (
-            <>
-              {/* Filter Toggles */}
-              <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
-
-              {/* Legend */}
-              <div className="glass-card p-4">
-                <h3 className="text-sm font-semibold text-white/60 mb-3">Legend</h3>
-                <div className="flex flex-wrap gap-3 text-sm">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-4 h-4 rounded-full bg-emerald-500"></span>
-                    <span className="text-white/60">Goals ({clubName})</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-4 h-4 rounded-full bg-orange-500"></span>
-                    <span className="text-white/60">Goals (Opponent)</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-4 h-4 rounded-full bg-emerald-500"></span>
-                    <span className="text-white/60">Points</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-4 h-4 rounded-full bg-cyan-500"></span>
-                    <span className="text-white/60">2-Pointers</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-4 h-4 rounded-full bg-amber-500"></span>
-                    <span className="text-white/60">Wides</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-4 h-4 rounded-full bg-cyan-500"></span>
-                    <span className="text-white/60">Turnovers Won</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-4 h-4 rounded-full bg-pink-500"></span>
-                    <span className="text-white/60">Turnovers Lost</span>
-                  </div>
-                </div>
-              </div>
-            </>
+            <div className="mb-1 text-xs text-white/40 text-center">
+              {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown
+              <span className="ml-1 text-white/25">— tap event to see details</span>
+            </div>
           )}
+          <div className="relative">
+            <GAAPitch readonly={true} events={filteredEvents} showZones={true} />
+            {!hasEvents && (
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-xl flex flex-col items-center justify-center">
+                <Video size={32} className="text-purple-400 mb-3" />
+                <p className="text-white/70 font-semibold text-sm">Events will appear once tagged</p>
+                <p className="text-white/40 text-xs mt-1">Use video analysis to tag match events</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Right: Stats Table + Events List */}
-        <div className="space-y-4">
+        {hasEvents && (
+          <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
+        )}
+
+        {/* Stats + Events + Marking — 2-col on desktop */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Match Stats */}
           <div className="glass-card p-4">
             <h2 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
@@ -688,34 +646,34 @@ export default function MatchResult() {
               </div>
             )}
           </div>
-
-          {/* Man Marking (post-match recording) */}
-          <ManMarkingPanel
-            matchId={matchId!}
-            assignments={markingAssignments}
-            players={players || []}
-            onAdd={async (playerId, opponentName, notes) => {
-              try {
-                await api.matchPrep.createMarking(matchId!, {
-                  player_id: playerId,
-                  opponent_player_name: opponentName,
-                  notes,
-                })
-                refetchMarkings()
-              } catch (err) {
-                console.error('Failed to add marking:', err)
-              }
-            }}
-            onDelete={async (assignmentId) => {
-              try {
-                await api.matchPrep.deleteMarking(assignmentId)
-                refetchMarkings()
-              } catch (err) {
-                console.error('Failed to delete marking:', err)
-              }
-            }}
-          />
         </div>
+
+        {/* Man Marking (post-match) */}
+        <ManMarkingPanel
+          matchId={matchId!}
+          assignments={markingAssignments}
+          players={players || []}
+          onAdd={async (playerId, opponentName, notes) => {
+            try {
+              await api.matchPrep.createMarking(matchId!, {
+                player_id: playerId,
+                opponent_player_name: opponentName,
+                notes,
+              })
+              refetchMarkings()
+            } catch (err) {
+              console.error('Failed to add marking:', err)
+            }
+          }}
+          onDelete={async (assignmentId) => {
+            try {
+              await api.matchPrep.deleteMarking(assignmentId)
+              refetchMarkings()
+            } catch (err) {
+              console.error('Failed to delete marking:', err)
+            }
+          }}
+        />
       </div>
 
       {/* Analytics Charts Row */}

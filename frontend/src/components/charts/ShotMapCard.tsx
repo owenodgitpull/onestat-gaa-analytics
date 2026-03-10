@@ -33,21 +33,6 @@ const SHOT_TYPE_CONFIG: Record<ShotType, { label: string; color: string; match: 
 }
 
 export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardProps) {
-  // Empty state
-  if (shotLocations.length === 0) {
-    return (
-      <div className="glass-card p-6 h-full flex flex-col">
-        <div className="flex items-center gap-2 mb-4">
-          <MapPin size={20} className="text-white" />
-          <h3 className="text-xl font-bold text-white">Shot Map</h3>
-        </div>
-        <div className="flex-1 flex items-center justify-center text-white/40 text-sm">
-          No shot data recorded yet
-        </div>
-      </div>
-    )
-  }
-
   const [shotFilter, setShotFilter] = useState<'all' | 'own' | 'opponent'>('own')
   const [shotMatchRange, setShotMatchRange] = useState<'all' | '3' | '5'>('all')
   const [visibleTypes, setVisibleTypes] = useState<Set<ShotType>>(new Set(['goal', 'point', 'two_point', 'miss']))
@@ -93,12 +78,6 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
     [rangeFilteredShots, visibleTypes]
   )
 
-  // How many matches are represented in this view?
-  const matchCount = useMemo(() => {
-    const ids = new Set(rangeFilteredShots.map(s => s.match_id).filter(Boolean))
-    return ids.size
-  }, [rangeFilteredShots])
-
   // Stats from range-filtered (before type filter) for the stat bar
   const totalShots = rangeFilteredShots.length
   const scoredShots = rangeFilteredShots.filter(s => s.is_score)
@@ -115,72 +94,63 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
     return '#ef4444'
   }
 
+  // Empty state — after hooks
+  if (shotLocations.length === 0) {
+    return (
+      <div className="glass-card p-6 h-full flex flex-col">
+        <div className="flex items-center gap-2 mb-4">
+          <MapPin size={18} className="text-white" />
+          <h3 className="text-lg font-bold text-white">Shot Map</h3>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-white/40 text-sm">
+          No shot data recorded yet
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="glass-card p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-bold flex items-center space-x-2 text-white">
-          <MapPin size={20} className="text-white" />
-          <span>Shot Map</span>
+    <div className="glass-card p-4 sm:p-6 h-full flex flex-col">
+      {/* Header row: title + team filter */}
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-lg font-bold flex items-center gap-2 text-white shrink-0">
+          <MapPin size={18} className="text-white" />
+          Shot Map
         </h3>
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex gap-1">
-            {(['own', 'opponent', 'all'] as const).map(filter => (
-              <button
-                key={filter}
-                onClick={() => setShotFilter(filter)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  shotFilter === filter
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-white/10 text-white/60 hover:bg-white/20'
-                }`}
-              >
-                {filter === 'all' ? 'All' : filter === 'own' ? 'Team' : 'Opponent'}
-              </button>
-            ))}
-          </div>
-          {hasMatchIds && matchTrends.length > 3 && (
-            <div className="flex gap-1">
-              {([['all', 'All Matches'], ['5', 'Last 5'], ['3', 'Last 3']] as const).map(([val, label]) => {
-                const count = val === 'all' ? Infinity : parseInt(val)
-                const disabled = count >= matchTrends.length && val !== 'all'
-                return (
-                  <button
-                    key={val}
-                    onClick={() => !disabled && setShotMatchRange(val as 'all' | '3' | '5')}
-                    className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
-                      disabled
-                        ? 'text-white/20 cursor-default'
-                        : shotMatchRange === val
-                          ? 'bg-white/20 text-white'
-                          : 'text-white/40 hover:text-white/60'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                )
-              })}
-            </div>
-          )}
+        <div className="flex gap-1">
+          {(['own', 'opponent', 'all'] as const).map(filter => (
+            <button
+              key={filter}
+              onClick={() => setShotFilter(filter)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                shotFilter === filter
+                  ? 'bg-orange-600 text-white'
+                  : 'bg-white/10 text-white/60 hover:bg-white/20'
+              }`}
+            >
+              {filter === 'all' ? 'All' : filter === 'own' ? 'Team' : 'Opponent'}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Shot type toggles + match context */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="flex flex-wrap gap-1.5">
+      {/* Controls row: match range + shot type toggles */}
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex gap-1">
           {(Object.entries(SHOT_TYPE_CONFIG) as [ShotType, typeof SHOT_TYPE_CONFIG[ShotType]][]).map(([type, config]) => {
             const active = visibleTypes.has(type)
             return (
               <button
                 key={type}
                 onClick={() => toggleType(type)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all whitespace-nowrap ${
                   active
                     ? 'bg-white/15 text-white'
                     : 'bg-white/5 text-white/30'
                 }`}
               >
                 <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0 transition-opacity"
+                  className="w-2 h-2 rounded-full shrink-0 transition-opacity"
                   style={{ backgroundColor: config.color, opacity: active ? 1 : 0.3 }}
                 />
                 {config.label}
@@ -188,10 +158,28 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
             )
           })}
         </div>
-        {matchCount > 0 && (
-          <span className="text-[10px] text-white/35 hidden md:inline">
-            Across {matchCount} {matchCount === 1 ? 'match' : 'matches'} — updates as season progresses
-          </span>
+        {hasMatchIds && matchTrends.length > 3 && (
+          <div className="flex gap-1 shrink-0">
+            {([['all', 'All'], ['5', 'Last 5'], ['3', 'Last 3']] as const).map(([val, label]) => {
+              const count = val === 'all' ? Infinity : parseInt(val)
+              const disabled = count >= matchTrends.length && val !== 'all'
+              return (
+                <button
+                  key={val}
+                  onClick={() => !disabled && setShotMatchRange(val as 'all' | '3' | '5')}
+                  className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                    disabled
+                      ? 'text-white/20 cursor-default'
+                      : shotMatchRange === val
+                        ? 'bg-white/20 text-white'
+                        : 'text-white/40 hover:text-white/60'
+                  }`}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
         )}
       </div>
 

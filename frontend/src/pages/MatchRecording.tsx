@@ -584,12 +584,12 @@ export default function MatchRecording() {
   const isIn2PointZone = (x: number, y: number, team: PossessionTeam): boolean => {
     // GAA pitch: 40m arc from goal center (2-point line)
     // CALIBRATED from SVG pitch, converted to pitch-area coords:
-    // - At centerline (y=50), the arc is at pitch-area x=72.28
-    // - X_RADIUS = 100 - 72.28 = 27.72%
-    // - Y_RADIUS = 40m / 90m * 100 = 44.44% (40m arc on 90m wide pitch)
+    // Radii increased slightly to avoid false 2-pointer triggers at arc edges
+    // - X_RADIUS = ~29% (40m along 145m pitch = 27.6%, padded for visual accuracy)
+    // - Y_RADIUS = ~46% (40m on 90m wide pitch = 44.4%, padded for arc curvature at sides)
 
-    const X_RADIUS_PERCENT = 27.72
-    const Y_RADIUS_PERCENT = 44.44
+    const X_RADIUS_PERCENT = 29.0
+    const Y_RADIUS_PERCENT = 46.0
 
     // Determine which goal the team is attacking based on attack direction
     let attackingGoalX: number

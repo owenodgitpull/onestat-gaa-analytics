@@ -224,9 +224,15 @@ export default function GAAPitch({
   }
 
   // Check if position is in 2-point zone (outside both 40m arcs)
-  // In pitch-area coords: arcs at ~28% and ~72% from each goal
-  const isInTwoPointZone = (x: number) => {
-    return x >= 28 && x <= 72
+  // Uses elliptical geometry matching MatchRecording.tsx isIn2PointZone
+  const isInTwoPointZone = (x: number, y: number) => {
+    const X_R = 29.0
+    const Y_R = 46.0
+    const dy = y - 50
+    // Check distance from BOTH goals — 2-point zone is outside both arcs
+    const distFromRight = Math.sqrt(Math.pow((100 - x) / X_R, 2) + Math.pow(dy / Y_R, 2))
+    const distFromLeft = Math.sqrt(Math.pow(x / X_R, 2) + Math.pow(dy / Y_R, 2))
+    return distFromRight > 1.0 && distFromLeft > 1.0
   }
 
   // The position to render — drag position takes priority during drag
@@ -425,7 +431,7 @@ export default function GAAPitch({
             />
 
             {/* 2-Point Zone Indicator */}
-            {isInTwoPointZone(displayPosition.x) && (
+            {isInTwoPointZone(displayPosition.x, displayPosition.y) && (
               <text
                 x={toSvgX(displayPosition.x)}
                 y={toSvgY(displayPosition.y) - 20}
