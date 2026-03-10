@@ -105,14 +105,26 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
       const onPlay = () => { setPlaying(true); onPlayStateChange?.(true); triggerFlash('play') }
       const onPause = () => { setPlaying(false); onPlayStateChange?.(false); triggerFlash('pause') }
+      // Sync playing state if video paused externally (e.g. end of video, error)
+      const onEnded = () => { setPlaying(false); onPlayStateChange?.(false) }
 
       video.addEventListener('play', onPlay)
       video.addEventListener('pause', onPause)
+      video.addEventListener('ended', onEnded)
       return () => {
         video.removeEventListener('play', onPlay)
         video.removeEventListener('pause', onPause)
+        video.removeEventListener('ended', onEnded)
       }
     }, [onPlayStateChange, triggerFlash])
+
+    // Re-sync playing state after re-renders (e.g. parent refetch causing remount)
+    useEffect(() => {
+      const video = videoRef.current
+      if (video) {
+        setPlaying(!video.paused)
+      }
+    })
 
     // Keyboard shortcuts
     useEffect(() => {

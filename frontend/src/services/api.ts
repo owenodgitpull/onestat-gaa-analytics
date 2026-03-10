@@ -2236,7 +2236,8 @@ export interface FormationSnapshotData {
   half: number;
   minute: number | null;
   label: string | null;
-  positions: Array<{ player_id: string; jersey_number?: number; x: number; y: number }> | null;
+  positions: Array<{ player_id?: string | null; jersey_number?: number | null; x: number; y: number; team?: string; player_name?: string | null }> | null;
+  video_timestamp_ms: number | null;
   source: string;
   created_at: string;
 }
@@ -2298,8 +2299,9 @@ const playerMovementAPI = {
     half: number;
     minute?: number | null;
     label?: string | null;
-    positions: Array<{ player_id: string; jersey_number?: number | null; x: number; y: number }>;
+    positions: Array<{ player_id?: string | null; jersey_number?: number | null; x: number; y: number; team?: string; player_name?: string | null }>;
     source?: string;
+    video_timestamp_ms?: number | null;
   }): Promise<FormationSnapshotData> =>
     fetchAPI('/player-movement/snapshots', {
       method: 'POST',

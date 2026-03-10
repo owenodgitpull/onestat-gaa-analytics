@@ -403,7 +403,7 @@ TOOLS = [
     },
     {
         "name": "get_ball_carrier_data",
-        "description": "Get ball carrier tracking data for a match: who carried the ball, how far, carry sequences forming possession chains. Returns carrier segments with player names, jersey numbers, path points, and auto-derived possession chains. If no carrier data exists for a match, returns empty — gracefully skip carrier-dependent analysis.",
+        "description": "Get ball carrier tracking data for a match: who carried the ball, how far, carry sequences forming possession chains. Returns carrier segments with player names, jersey numbers, path points, and auto-derived possession chains. IMPORTANT: This data is manually logged by the analyst during the match — it represents LOGGED carries, not all carries. Not every carry is captured due to the fast pace of play. Frame insights as 'Shane O'Donnell carried a lot of ball in dangerous positions' rather than 'Shane O'Donnell had the most carries'. If no carrier data exists for a match, returns empty — gracefully skip carrier-dependent analysis.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -417,7 +417,7 @@ TOOLS = [
     },
     {
         "name": "get_formation_snapshots",
-        "description": "Get formation snapshots for a match: point-in-time player positions captured at key moments (after scores, before kickouts, stoppages). Each snapshot has a label (Defensive Shape, Kickout Setup, Attacking Press) and player positions. If no snapshots exist, returns empty — gracefully skip formation analysis.",
+        "description": "Get formation snapshots for a match: point-in-time player positions captured at key moments (after scores, before kickouts, stoppages). Each snapshot has a label (Defensive Shape, Kickout Setup, Attacking Press) and player positions. IMPORTANT: These are selective snapshots taken at notable moments — they show the team shape at specific instants, not continuous tracking. The number of snapshots varies by match. If no snapshots exist, returns empty — gracefully skip formation analysis.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -2000,13 +2000,20 @@ async def get_formation_snapshots_tool(db: AsyncSession, match_id: str) -> str:
     snapshot_data = []
     for s in snapshots:
         positions = s.positions or []
-        snapshot_data.append({
+        own_positions = [p for p in positions if p.get("team", "own") == "own"]
+        opp_positions = [p for p in positions if p.get("team") == "opponent"]
+        entry = {
             "label": s.label,
             "half": s.half,
             "minute": s.minute,
-            "player_count": len(positions),
-            "positions": positions,
-        })
+            "source": s.source,
+            "own_player_count": len(own_positions),
+            "own_positions": own_positions,
+        }
+        if opp_positions:
+            entry["opponent_player_count"] = len(opp_positions)
+            entry["opponent_positions"] = opp_positions
+        snapshot_data.append(entry)
 
     return safe_json({
         "total_snapshots": len(snapshots),

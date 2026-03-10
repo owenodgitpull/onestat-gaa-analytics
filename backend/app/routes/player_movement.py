@@ -151,7 +151,8 @@ async def create_formation_snapshot(
     positions = [p.model_dump() for p in body.positions]
     # Convert UUIDs to strings for JSON storage
     for p in positions:
-        p["player_id"] = str(p["player_id"])
+        if p.get("player_id"):
+            p["player_id"] = str(p["player_id"])
     snapshot = await PlayerMovementService.create_formation_snapshot(
         db=db,
         match_id=body.match_id,
@@ -160,6 +161,7 @@ async def create_formation_snapshot(
         label=body.label,
         positions=positions,
         source=body.source,
+        video_timestamp_ms=body.video_timestamp_ms,
     )
     return FormationSnapshotResponse.model_validate(snapshot)
 

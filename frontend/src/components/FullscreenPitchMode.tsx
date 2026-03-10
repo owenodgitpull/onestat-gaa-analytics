@@ -345,18 +345,18 @@ export default function FullscreenPitchMode({
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 10,
-                  padding: '8px 18px',
-                  borderRadius: 12,
-                  background: 'rgba(0,0,0,0.7)',
+                  gap: 12,
+                  padding: '10px 22px',
+                  borderRadius: 16,
+                  background: 'rgba(0,0,0,0.75)',
                   border: `2px solid ${currentPossession === PossessionTeam.OWN ? 'rgba(16,185,129,0.5)' : 'rgba(249,115,22,0.4)'}`,
                 }}>
                   <div style={{
-                    width: 12, height: 12, borderRadius: '50%',
+                    width: 14, height: 14, borderRadius: '50%',
                     background: currentPossession === PossessionTeam.OWN ? '#34d399' : '#fb923c',
                   }} />
                   <span style={{
-                    fontSize: 26, fontWeight: 700, whiteSpace: 'nowrap',
+                    fontSize: 32, fontWeight: 700, whiteSpace: 'nowrap',
                     color: currentPossession === PossessionTeam.OWN ? '#6ee7b7' : '#fdba74',
                   }}>
                     {statusText}
@@ -367,31 +367,31 @@ export default function FullscreenPitchMode({
                     <button
                       onClick={onSwapPossession}
                       style={{
-                        padding: 10, borderRadius: 10,
-                        background: 'rgba(0,0,0,0.7)',
-                        border: '2px solid rgba(255,255,255,0.2)',
-                        color: 'rgba(255,255,255,0.6)',
+                        padding: 16, borderRadius: 14,
+                        background: 'rgba(0,0,0,0.75)',
+                        border: '2px solid rgba(255,255,255,0.25)',
+                        color: 'rgba(255,255,255,0.7)',
                         cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                       title="Swap possession"
                     >
-                      <ArrowLeftRight size={22} />
+                      <ArrowLeftRight size={30} />
                     </button>
                     {onToggleStoppage && (
                       <button
                         onClick={onToggleStoppage}
                         style={{
-                          padding: 10, borderRadius: 10,
-                          background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.7)',
-                          border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.2)'}`,
-                          color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.6)',
+                          padding: 16, borderRadius: 14,
+                          background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.75)',
+                          border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.25)'}`,
+                          color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
                           cursor: 'pointer',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}
                         title={isStopped ? 'Resume play' : 'Stoppage'}
                       >
-                        {isStopped ? <Play size={22} /> : <Pause size={22} />}
+                        {isStopped ? <Play size={30} /> : <Pause size={30} />}
                       </button>
                     )}
                   </>

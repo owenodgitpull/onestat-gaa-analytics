@@ -56,8 +56,8 @@ export default function JerseyNumberStrip({
   const inactiveColor = 'bg-white/10 border-white/20'
 
   return (
-    <div className="flex items-center justify-center gap-1 px-2 py-1 overflow-x-auto scrollbar-hide">
-      <span className="text-[9px] text-white/40 font-medium uppercase tracking-wider whitespace-nowrap mr-0.5 flex-shrink-0">
+    <div className="flex items-center justify-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-hide">
+      <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider whitespace-nowrap mr-1 flex-shrink-0">
         Carrier
       </span>
       {sortedPlayers.map((player) => {
@@ -72,18 +72,22 @@ export default function JerseyNumberStrip({
             disabled={disabled}
             className={`
               flex-shrink-0 flex flex-col items-center justify-center
-              rounded-lg border transition-all duration-150
-              ${hasJersey ? 'w-[36px] h-[36px]' : 'w-[36px] h-[42px] px-0.5'}
-              ${isActive ? `${activeColor} text-white scale-110 shadow-lg` : `${inactiveColor} text-white/70`}
-              ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-white/20 active:scale-95'}
+              rounded-xl border-2 transition-all duration-150
+              ${hasJersey ? 'w-[48px] h-[48px]' : 'w-[48px] h-[52px] px-0.5'}
+              ${isActive ? `${activeColor} text-white scale-110 shadow-lg shadow-emerald-500/30` : `${inactiveColor} text-white/70`}
+              ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-white/20 active:scale-90'}
             `}
             title={player.playerName}
           >
-            <span className={`font-bold leading-none ${hasJersey ? 'text-sm' : 'text-[10px]'}`}>
+            <span className={`font-bold leading-none ${hasJersey ? 'text-base' : 'text-[11px]'}`}>
               {label}
             </span>
-            {!hasJersey && (
-              <span className="text-[7px] leading-none mt-0.5 text-white/50 truncate max-w-full">
+            {hasJersey ? (
+              <span className="text-[8px] leading-none mt-0.5 text-white/50 truncate max-w-full">
+                {surname(player.playerName)}
+              </span>
+            ) : (
+              <span className="text-[8px] leading-none mt-0.5 text-white/50 truncate max-w-full">
                 {surname(player.playerName)}
               </span>
             )}

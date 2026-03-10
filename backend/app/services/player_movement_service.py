@@ -146,6 +146,7 @@ class PlayerMovementService:
         label: Optional[str],
         positions: List[dict],
         source: str = "live",
+        video_timestamp_ms: Optional[int] = None,
     ) -> FormationSnapshot:
         snapshot = FormationSnapshot(
             match_id=match_id,
@@ -155,6 +156,7 @@ class PlayerMovementService:
             positions=positions,
             timestamp_ms=int(time.time() * 1000),
             source=source,
+            video_timestamp_ms=video_timestamp_ms,
         )
         db.add(snapshot)
         await db.commit()

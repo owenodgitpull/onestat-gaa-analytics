@@ -151,29 +151,38 @@ export default function PlayerSelectionModal({
           </button>
         </div>
 
-        {/* Jersey number quick-select */}
+        {/* Jersey number quick-select — primary selection method (no keyboard popup on iPad) */}
         {jerseyNumbers.length > 0 && (
-          <div className="px-6 pt-4 pb-2 border-b border-white/10">
-            <div className="flex items-center gap-2 mb-2">
+          <div className="px-6 pt-4 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2 mb-3">
               <Hash size={14} className="text-white/30" />
-              <span className="text-[11px] text-white/40 uppercase tracking-wider font-semibold">Quick select by number</span>
+              <span className="text-[11px] text-white/40 uppercase tracking-wider font-semibold">Tap jersey number</span>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {jerseyNumbers.map(num => (
-                <button
-                  key={num}
-                  onClick={() => { const p = byJersey.get(num); if (p) handleSelect(p) }}
-                  className="w-10 h-10 rounded-lg bg-white/5 border border-white/10 text-white/80 text-sm font-bold hover:bg-emerald-500/20 hover:border-emerald-500/40 active:scale-95 transition-all"
-                  title={byJersey.get(num)?.name}
-                >
-                  {num}
-                </button>
-              ))}
+            <div className="grid grid-cols-5 sm:grid-cols-8 gap-2">
+              {jerseyNumbers.map(num => {
+                const player = byJersey.get(num)
+                const surname = player?.name?.split(' ').pop() || ''
+                return (
+                  <button
+                    key={num}
+                    onClick={() => { if (player) handleSelect(player) }}
+                    className={`flex flex-col items-center justify-center rounded-xl border-2 transition-all active:scale-90 ${
+                      selectedPlayerId === player?.id
+                        ? 'border-emerald-500 bg-emerald-500/20'
+                        : 'border-white/15 bg-white/5 hover:bg-emerald-500/15 hover:border-emerald-500/30'
+                    }`}
+                    style={{ minHeight: 56 }}
+                  >
+                    <span className="text-lg font-black text-white">{num}</span>
+                    <span className="text-[9px] text-white/50 truncate max-w-full px-1 leading-tight">{surname}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
 
-        {/* Search */}
+        {/* Search — NOT auto-focused to prevent iPad keyboard popup */}
         <div className="px-6 py-3 border-b border-white/10">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={20} />
@@ -183,12 +192,11 @@ export default function PlayerSelectionModal({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="input-glass pl-12"
-              autoFocus
             />
           </div>
         </div>
 
-        {/* Player Grid */}
+        {/* Player Grid — secondary option for players without jersey numbers */}
         <div className="p-6 overflow-y-auto max-h-[400px]">
           <div className="grid grid-cols-2 gap-3">
             {filteredPlayers.map((player) => (

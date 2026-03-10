@@ -34,7 +34,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import EventTimeline from '../components/video/EventTimeline'
 import VideoQuickActions, { type Category, type OverlayPendingEvent } from '../components/video/VideoQuickActions'
@@ -47,6 +47,7 @@ import ConfirmationModal from '../components/ConfirmationModal'
 import HalftimeMarker from '../components/video/HalftimeMarker'
 import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video/PitchZoneSelector'
 import BlackCardTimer, { type BlackCardEntry } from '../components/BlackCardTimer'
+import VideoFormationSnapshot from '../components/video/VideoFormationSnapshot'
 import { useClubName } from '../contexts/ClubContext'
 import { useTour } from '../hooks/useTour'
 import { videoTaggingSteps } from '../config/tourSteps'
@@ -161,6 +162,10 @@ export default function VideoTagging() {
   // AI banner dismiss state
   const [aiDismissed, setAiDismissed] = useState(false)
 
+  // Formation snapshot overlay
+  const [isSnapshotOpen, setIsSnapshotOpen] = useState(false)
+  const [snapshotCount, setSnapshotCount] = useState(0)
+
   // Prereq check modal
   const [prereqModal, setPrereqModal] = useState<{
     missing: { lineup: boolean; colours: boolean }
@@ -173,6 +178,13 @@ export default function VideoTagging() {
 
   // Queries
   const { data: session, isLoading: sessionLoading, refetch: refetchSession } = useVideoSession(sessionId || null)
+
+  // Lock the download URL to the first value received — prevents video reload on refetch
+  // (presigned URLs regenerate on every API call, but the old one is still valid for hours)
+  const stableVideoUrl = useRef<string | null>(null)
+  if (session?.download_url && !stableVideoUrl.current) {
+    stableVideoUrl.current = session.download_url
+  }
   const { data: eventsData, refetch: refetchEvents } = useVideoEvents(sessionId || null)
   const events = eventsData?.events || []
 
@@ -193,6 +205,12 @@ export default function VideoTagging() {
   const { data: matchData } = useQuery({
     queryKey: ['match', session?.match_id],
     queryFn: () => api.matches.getById(session!.match_id),
+    enabled: !!session?.match_id,
+  })
+
+  const { data: matchLineup } = useQuery({
+    queryKey: ['matchLineup', session?.match_id],
+    queryFn: () => api.matchLineups.getLineup(session!.match_id),
     enabled: !!session?.match_id,
   })
 
@@ -774,7 +792,7 @@ export default function VideoTagging() {
   const needsHalftime = session.half === null
     && session.halftime_timestamp_ms == null
     && !halftimeSkipped
-  const canAutoAnalyze = session.download_url && !isAutoAnalyzing
+  const canAutoAnalyze = stableVideoUrl.current && !isAutoAnalyzing
     && !hasAiEvents
     && ['uploaded', 'draft_ready', 'error'].includes(session.status)
     && !needsHalftime
@@ -794,6 +812,46 @@ export default function VideoTagging() {
   const handleSkipHalftime = () => setHalftimeSkipped(true)
 
   const opponentName = matchData?.opponent || 'Opposition'
+
+  // Build own players list for formation snapshot from lineup data
+  const snapshotOwnPlayers = useMemo(() => {
+    if (!matchLineup) return []
+    return matchLineup.map((entry) => ({
+      playerId: entry.player_id,
+      jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? null,
+      playerName: entry.player_name || `#${entry.match_jersey_number ?? '?'}`,
+    }))
+  }, [matchLineup])
+
+  // Handle snapshot save — POST to API
+  const handleSnapshotSave = useCallback(async (
+    positions: Array<{ playerId?: string | null; jerseyNumber: number | null; playerName?: string | null; team: 'own' | 'opponent'; x: number; y: number }>,
+    label: string,
+  ) => {
+    if (!session?.match_id) return
+    const matchTime = calcMatchTime(currentTimeMs)
+    try {
+      await api.playerMovement.createSnapshot({
+        match_id: session.match_id,
+        half: matchTime.half,
+        minute: matchTime.minute,
+        label,
+        positions: positions.map((p) => ({
+          player_id: p.playerId ?? undefined,
+          jersey_number: p.jerseyNumber,
+          x: p.x,
+          y: p.y,
+          team: p.team,
+          player_name: p.playerName ?? undefined,
+        })),
+        source: 'video',
+        video_timestamp_ms: currentTimeMs,
+      })
+      setSnapshotCount((c) => c + 1)
+    } catch (err) {
+      console.error('Failed to save formation snapshot:', err)
+    }
+  }, [session?.match_id, currentTimeMs, calcMatchTime])
 
   // ── Shared sub-components ─────────────────────────────────────────────
 
@@ -855,6 +913,15 @@ export default function VideoTagging() {
         Report
       </button>
       <button
+        onClick={() => { playerRef.current?.pause(); setIsSnapshotOpen(true) }}
+        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-purple-400/20 backdrop-blur-sm shadow-lg shadow-purple-500/10 hover:shadow-purple-500/25 hover:border-purple-400/30 hover:scale-[1.02] active:scale-[0.98] text-white whitespace-nowrap`}
+        style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.45) 0%, rgba(147,51,234,0.35) 50%, rgba(192,132,252,0.25) 100%)' }}
+        title="Take formation snapshot"
+      >
+        <Camera size={compact ? 12 : 14} />
+        {snapshotCount > 0 ? `Snapshot (${snapshotCount})` : compact ? 'Snapshot' : 'Formation Snapshot'}
+      </button>
+      <button
         onClick={handleSyncClick}
         disabled={syncPreview.isPending || events.length === 0}
         className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-emerald-400/20 backdrop-blur-sm shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/25 hover:border-emerald-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white whitespace-nowrap`}
@@ -871,17 +938,17 @@ export default function VideoTagging() {
     <div data-tour="video-player" className="flex-1 relative group/video">
       <VideoPlayer
         ref={playerRef}
-        src={session.download_url}
+        src={stableVideoUrl.current}
         onTimeUpdate={handleTimeUpdate}
         onDurationChange={handleDurationChange}
         onPlayStateChange={setIsPlaying}
         halftimeMs={session.halftime_timestamp_ms ?? undefined}
       />
 
-      {/* Throw-in marker setup guide — positioned above video controls */}
+      {/* Throw-in marker setup guide — top-left, clear of play button and timeline */}
       {needsThrowInSetup && (
-        <div className="absolute inset-x-0 top-4 z-30 flex justify-center pointer-events-none">
-          <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-6 py-4 max-w-md shadow-2xl shadow-emerald-500/10">
+        <div className="absolute top-3 left-3 z-30 pointer-events-none">
+          <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-5 py-3.5 w-[340px] shadow-2xl shadow-emerald-500/10">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 text-xs font-bold">
                 {setupStep === '1st_half' ? '1' : '2'}
@@ -1070,6 +1137,15 @@ export default function VideoTagging() {
           message={alertModal?.message || ''}
           variant={alertModal?.variant || 'danger'}
         />
+
+        {/* Formation Snapshot Overlay */}
+        <VideoFormationSnapshot
+          isOpen={isSnapshotOpen}
+          onClose={() => setIsSnapshotOpen(false)}
+          onSave={handleSnapshotSave}
+          ownPlayers={snapshotOwnPlayers}
+          opponentName={opponentName}
+        />
       </div>
     )
   }
@@ -1255,6 +1331,15 @@ export default function VideoTagging() {
         onConfirm={handleSyncConfirm}
         syncStatus={syncStatusData}
         onViewResult={handleViewResult}
+      />
+
+      {/* Formation Snapshot Overlay */}
+      <VideoFormationSnapshot
+        isOpen={isSnapshotOpen}
+        onClose={() => setIsSnapshotOpen(false)}
+        onSave={handleSnapshotSave}
+        ownPlayers={snapshotOwnPlayers}
+        opponentName={opponentName}
       />
 
       {/* Prereq Check Modal */}

@@ -7,8 +7,10 @@ from typing import Optional, List
 
 
 class SnapshotPosition(BaseModel):
-    player_id: UUID
+    player_id: Optional[UUID] = None  # Nullable for opposition players (not in our DB)
     jersey_number: Optional[int] = None
+    player_name: Optional[str] = None  # For opposition players or display name
+    team: str = Field(default="own", pattern="^(own|opponent)$")
     x: float = Field(..., ge=0, le=100)
     y: float = Field(..., ge=0, le=100)
 
@@ -20,6 +22,7 @@ class FormationSnapshotCreate(BaseModel):
     label: Optional[str] = None
     positions: List[SnapshotPosition] = Field(..., min_length=2)
     source: str = Field(default="live", max_length=20)
+    video_timestamp_ms: Optional[int] = None
 
 
 class FormationSnapshotResponse(BaseModel):
@@ -30,6 +33,7 @@ class FormationSnapshotResponse(BaseModel):
     label: Optional[str] = None
     positions: Optional[List[dict]] = None
     source: str
+    video_timestamp_ms: Optional[int] = None
     created_at: datetime
 
     class Config:
