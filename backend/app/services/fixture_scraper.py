@@ -261,7 +261,7 @@ class FixtureScraperService:
                         and_(
                             Match.club_id == club_id,
                             Match.opponent == opponent,
-                            Match.is_deleted == False,
+                            Match.is_deleted.is_(False),
                         )
                     ).where(
                         # Same day match
@@ -336,7 +336,7 @@ class FixtureScraperService:
             .where(
                 and_(
                     ScrapedFixture.club_id == club_id,
-                    ScrapedFixture.is_result == True,
+                    ScrapedFixture.is_result.is_(True),
                     or_(
                         ScrapedFixture.home_team == normalized,
                         ScrapedFixture.away_team == normalized,
@@ -392,7 +392,7 @@ class FixtureScraperService:
             .where(
                 and_(
                     ScrapedFixture.club_id == club_id,
-                    ScrapedFixture.is_result == True,
+                    ScrapedFixture.is_result.is_(True),
                     or_(
                         and_(
                             ScrapedFixture.home_team.in_(list(DUNGLOE_NAMES)),

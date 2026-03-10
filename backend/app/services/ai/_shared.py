@@ -1051,7 +1051,7 @@ async def get_fixture_context(db: AsyncSession, club_id=None) -> str:
         # Next 3 upcoming fixtures
         conditions = [
             Match.status == MatchStatus.SCHEDULED,
-            Match.is_deleted == False,
+            Match.is_deleted.is_(False),
             Match.match_date >= now,
         ]
         if club_id:
@@ -1112,7 +1112,7 @@ async def get_weather_context(db: AsyncSession, limit: int = 5, club_id=None) ->
 
         conditions = [
             Match.status == MatchStatus.COMPLETED,
-            Match.is_deleted == False,
+            Match.is_deleted.is_(False),
             Match.weather_condition.isnot(None),
         ]
         if club_id:
@@ -1411,7 +1411,7 @@ async def get_team_season_stats(db: AsyncSession) -> str:
     matches_result = await db.execute(
         select(Match).where(
             Match.status == MatchStatus.COMPLETED,
-            Match.is_deleted == False,
+            Match.is_deleted.is_(False),
             event_count > 0,
         )
     )
@@ -1500,7 +1500,7 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
         )
         query = select(Match).where(
             Match.status == MatchStatus.COMPLETED,
-            Match.is_deleted == False,
+            Match.is_deleted.is_(False),
             ec > 0,
         ).order_by(Match.match_date)
     matches = (await db.execute(query)).scalars().all()

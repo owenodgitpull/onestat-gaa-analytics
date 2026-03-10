@@ -473,7 +473,7 @@ async def get_dashboard_data(
         select(Match).where(
             and_(
                 Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False,
+                Match.is_deleted.is_(False),
                 Match.club_id == user.club_id,
                 event_count > 0,
             )
@@ -737,7 +737,7 @@ async def get_player_match_stats(
         select(Match).where(
             and_(
                 Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False,
+                Match.is_deleted.is_(False),
                 Match.club_id == user.club_id,
             )
         ).order_by(Match.match_date.desc())
@@ -936,7 +936,7 @@ async def get_player_shot_events(
         select(Match).where(
             and_(
                 Match.status == MatchStatus.COMPLETED,
-                Match.is_deleted == False,
+                Match.is_deleted.is_(False),
                 Match.club_id == user.club_id,
             )
         )

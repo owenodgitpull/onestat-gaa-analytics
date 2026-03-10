@@ -579,8 +579,9 @@ export default function MatchResult() {
               )}
             </div>
             {hasEvents && (
-              <div className="mb-2 text-sm text-white/40 text-center">
-                {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown for {teamFilter === 'own' ? clubName : match.opponent}
+              <div className="mb-1 text-xs text-white/40 text-center">
+                {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown
+                <span className="ml-1 text-white/25">— tap event to see details</span>
               </div>
             )}
             <div className="relative">
@@ -720,8 +721,11 @@ export default function MatchResult() {
       {/* Analytics Charts Row */}
       {(eventsData?.events?.length ?? 0) > 0 ? (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-            {/* Possession & Territory Chart */}
+          {/* Paths Taken + Possession — 2 side by side */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+            <ChartZoomModal title="Paths Taken">
+              <PathsTakenChart matchId={matchId!} />
+            </ChartZoomModal>
             <ChartZoomModal title="Possession & Territory">
               <PossessionTerritoryChart
                 stats={matchStats}
@@ -732,8 +736,10 @@ export default function MatchResult() {
                 insightLoading={reportLoading}
               />
             </ChartZoomModal>
+          </div>
 
-            {/* Scoring Timeline */}
+          {/* Scoring + Shot Outcome — 2 side by side */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <ChartZoomModal title="Scoring Timeline">
               <ScoringTimeline
                 events={eventsData?.events || []}
@@ -742,23 +748,12 @@ export default function MatchResult() {
                 insightLoading={reportLoading}
               />
             </ChartZoomModal>
-
-            {/* Shot Outcome Breakdown */}
             <ChartZoomModal title="Shot Outcomes">
               <ShotOutcomeChart
                 events={eventsData?.events || []}
                 opponent={match.opponent}
                 insight={postMatchReport?.insights?.shooting}
                 insightLoading={reportLoading}
-              />
-            </ChartZoomModal>
-          </div>
-
-          {/* Paths Taken Chart */}
-          <div className="mt-6">
-            <ChartZoomModal title="Paths Taken">
-              <PathsTakenChart
-                matchId={matchId!}
               />
             </ChartZoomModal>
           </div>
@@ -851,9 +846,8 @@ export default function MatchResult() {
   )
 }
 
-// Stats Table Component - matches live match styling
+// Stats Table Component - matches live match glassmorphic styling
 function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; opponent: string; teamName?: string }) {
-  // Calculate kickout retention rates
   const totalTeamKickouts = stats.team_kickouts_won + stats.team_kickouts_lost
   const totalOpponentKickouts = stats.opponent_kickouts_won + stats.opponent_kickouts_lost
   const teamKickoutRetention = totalTeamKickouts > 0
@@ -862,56 +856,53 @@ function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; o
   const opponentKickoutRetention = totalOpponentKickouts > 0
     ? ((stats.opponent_kickouts_won / totalOpponentKickouts) * 100).toFixed(1)
     : '0.0'
-
-  // Calculate conversion rates
   const teamConversion = stats.team_total_shots > 0
     ? ((stats.team_scores / stats.team_total_shots) * 100).toFixed(1)
     : '0.0'
   const opponentConversion = stats.opponent_total_shots > 0
     ? ((stats.opponent_scores / stats.opponent_total_shots) * 100).toFixed(1)
     : '0.0'
-
-  // Round team possession and calculate opponent as remainder to ensure they add to 100
-  // When no possession data exists (both 0), show 0% for both instead of 0/100
   const teamPos = Math.round(stats.team_possession_percentage)
   const opponentPos = stats.team_possession_percentage === 0 && stats.opponent_possession_percentage === 0
     ? 0
     : 100 - teamPos
 
-  const statRows = [
-    { label: 'POSSESSION', team: `${teamPos}%`, opponent: `${opponentPos}%` },
-    { label: 'SHOTS', team: stats.team_total_shots, opponent: stats.opponent_total_shots },
-    { label: 'SCORES', team: stats.team_scores, opponent: stats.opponent_scores },
-    { label: 'WIDES', team: stats.team_wides, opponent: stats.opponent_wides },
-    { label: 'ACCURACY', team: `${Math.round(stats.team_accuracy)}%`, opponent: `${Math.round(stats.opponent_accuracy)}%` },
-    { label: 'CONVERSION', team: `${teamConversion}%`, opponent: `${opponentConversion}%` },
-    { label: 'TURNOVERS WON', team: stats.team_turnovers_won, opponent: stats.opponent_turnovers_won },
-    { label: 'OWN KICKOUTS WON', team: `${stats.team_kickouts_won}/${totalTeamKickouts}`, opponent: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}` },
-    { label: 'KICKOUT RETENTION', team: `${teamKickoutRetention}%`, opponent: `${opponentKickoutRetention}%` },
+  const rows = [
+    { label: 'Possession', left: `${teamPos}%`, right: `${opponentPos}%`, leftVal: teamPos, rightVal: opponentPos },
+    { label: 'Shots', left: stats.team_total_shots, right: stats.opponent_total_shots, leftVal: stats.team_total_shots, rightVal: stats.opponent_total_shots },
+    { label: 'Scores', left: stats.team_scores, right: stats.opponent_scores, leftVal: stats.team_scores, rightVal: stats.opponent_scores },
+    { label: 'Wides', left: stats.team_wides, right: stats.opponent_wides, leftVal: stats.opponent_wides, rightVal: stats.team_wides },
+    { label: 'Accuracy', left: `${Math.round(stats.team_accuracy)}%`, right: `${Math.round(stats.opponent_accuracy)}%`, leftVal: stats.team_accuracy, rightVal: stats.opponent_accuracy },
+    { label: 'Conversion', left: `${teamConversion}%`, right: `${opponentConversion}%`, leftVal: Number(teamConversion), rightVal: Number(opponentConversion) },
+    { label: 'Turnovers Won', left: stats.team_turnovers_won, right: stats.opponent_turnovers_won, leftVal: stats.team_turnovers_won, rightVal: stats.opponent_turnovers_won },
+    { label: 'Kickouts Won', left: `${stats.team_kickouts_won}/${totalTeamKickouts}`, right: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}`, leftVal: stats.team_kickouts_won, rightVal: stats.opponent_kickouts_won },
+    { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
   ]
 
   return (
-    <div className="overflow-hidden rounded-lg border border-white/10">
-      {/* Table Header */}
-      <div className="grid grid-cols-3 bg-blue-600/30 border border-blue-500/50">
-        <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">{teamName}</div>
-        <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Stat</div>
-        <div className="py-2 px-3 text-center text-sm font-bold text-white">{opponent}</div>
+    <div className="rounded-xl border border-white/[0.08] overflow-hidden" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)' }}>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 bg-white/[0.06] border-b border-white/[0.08]">
+        <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-wider">{teamName}</div>
+        <div className="min-w-[90px]" />
+        <div className="text-center text-xs font-bold text-white/50 uppercase tracking-wider">{opponent}</div>
       </div>
-
-      {statRows.map((row) => (
-        <div key={row.label} className="grid grid-cols-3 border-t border-white/10">
-          <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black border-r border-white/10 flex items-center justify-center">
-            {row.team}
+      {rows.map((row, idx) => {
+        const leftWins = row.leftVal > row.rightVal
+        const rightWins = row.rightVal > row.leftVal
+        return (
+          <div key={row.label} className={`grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 transition-colors hover:bg-white/[0.05] ${idx % 2 === 0 ? 'bg-white/[0.02]' : ''} ${idx > 0 ? 'border-t border-white/[0.05]' : ''}`}>
+            <div className={`text-center text-base font-bold ${leftWins ? 'text-emerald-400' : 'text-white/80'}`}>
+              {row.left}
+            </div>
+            <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[90px]">
+              {row.label}
+            </div>
+            <div className={`text-center text-base font-bold ${rightWins ? 'text-emerald-400' : 'text-white/80'}`}>
+              {row.right}
+            </div>
           </div>
-          <div className="py-2 px-3 text-center bg-gradient-to-r from-emerald-600 to-cyan-600 text-xs font-semibold text-white border-r border-white/10 flex items-center justify-center">
-            {row.label}
-          </div>
-          <div className="py-2 px-3 text-center bg-white text-lg font-bold text-black flex items-center justify-center">
-            {row.opponent}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

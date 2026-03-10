@@ -46,7 +46,7 @@ async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_m
     insight_alerts_text = ""
     try:
         from app.models.insight_alert import InsightAlert
-        alert_conditions = [InsightAlert.is_dismissed == False]
+        alert_conditions = [InsightAlert.is_dismissed.is_(False)]
         if club_id:
             alert_conditions.append(InsightAlert.club_id == club_id)
         alert_query = (
@@ -168,7 +168,7 @@ async def _build_chat_system_prompt(
     insight_alerts_text = ""
     try:
         from app.models.insight_alert import InsightAlert
-        alert_conditions = [InsightAlert.is_dismissed == False]
+        alert_conditions = [InsightAlert.is_dismissed.is_(False)]
         if club_id:
             alert_conditions.append(InsightAlert.club_id == club_id)
         alert_query = (

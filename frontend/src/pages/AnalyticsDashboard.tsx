@@ -82,6 +82,17 @@ export default function AnalyticsDashboard() {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const { startTour: startDashboardTour, isTourCompleted: tourDone } = useTour('dashboard', dashboardSteps)
   const tourTriggered = useRef(false)
+  const [flashingCards, setFlashingCards] = useState<Set<number>>(new Set())
+  const triggerFlash = useCallback((idx: number) => {
+    setFlashingCards(prev => new Set(prev).add(idx))
+    setTimeout(() => {
+      setFlashingCards(prev => {
+        const next = new Set(prev)
+        next.delete(idx)
+        return next
+      })
+    }, 700)
+  }, [])
   const autoRotatePaused = useRef(false)
   const autoRotateTimer = useRef<ReturnType<typeof setTimeout>>()
 
@@ -269,6 +280,7 @@ export default function AnalyticsDashboard() {
           else next.add(pairIdx)
           return next
         })
+        triggerFlash(pairIdx)
         idx++
         scheduleNext()
       }, 4000)
@@ -610,6 +622,8 @@ export default function AnalyticsDashboard() {
                   )
                 }
 
+                const isFlashing = flashingCards.has(pairIdx)
+
                 return (
                   <div
                     key={pairIdx}
@@ -617,7 +631,6 @@ export default function AnalyticsDashboard() {
                     style={{ position: 'relative', height: '120px' }}
                     onClick={() => {
                       if (isPair) {
-                        // Pause auto-rotate for 15s on manual interaction
                         autoRotatePaused.current = true
                         setTimeout(() => { autoRotatePaused.current = false }, 15000)
                         setFlippedCards(prev => {
@@ -626,10 +639,15 @@ export default function AnalyticsDashboard() {
                           else next.add(pairIdx)
                           return next
                         })
+                        triggerFlash(pairIdx)
                         setActiveTooltip(null)
                       }
                     }}
                   >
+                    {/* Flash ring on flip */}
+                    {isFlashing && (
+                      <div className="absolute inset-0 rounded-xl ring-2 ring-emerald-400/60 kpi-flash-ring pointer-events-none z-20" />
+                    )}
                     {/* Front face — crossfade with slide for visible transition */}
                     <div style={{
                       position: 'absolute', inset: 0,

@@ -80,7 +80,7 @@ class LeaderboardService:
                 and_(
                     Match.club_id == club_id,
                     Match.status == MatchStatus.COMPLETED,
-                    Match.is_deleted == False,
+                    Match.is_deleted.is_(False),
                 )
             ).order_by(Match.match_date.asc())
         )
@@ -91,7 +91,7 @@ class LeaderboardService:
         """Returns {player_id_str: Player} for all active club players."""
         result = await db.execute(
             select(Player).where(
-                and_(Player.club_id == club_id, Player.active == True)
+                and_(Player.club_id == club_id, Player.active.is_(True))
             )
         )
         return {str(p.id): p for p in result.scalars().all()}

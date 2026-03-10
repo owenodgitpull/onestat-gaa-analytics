@@ -91,7 +91,7 @@ class SeasonDashboardService:
         )
         conditions = [
             Match.status == MatchStatus.COMPLETED,
-            Match.is_deleted == False,
+            Match.is_deleted.is_(False),
             event_count > 0,
         ]
         if club_id:
@@ -2301,7 +2301,7 @@ async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
     # Count of completed matches
     match_count_q = select(func.count(Match.id)).where(
         Match.status == MatchStatus.COMPLETED,
-        Match.is_deleted == False,
+        Match.is_deleted.is_(False),
     )
     if club_id:
         match_count_q = match_count_q.where(Match.club_id == club_id)
@@ -2311,7 +2311,7 @@ async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
     # Latest match completed_at
     latest_match_q = select(func.max(Match.completed_at)).where(
         Match.status == MatchStatus.COMPLETED,
-        Match.is_deleted == False,
+        Match.is_deleted.is_(False),
     )
     if club_id:
         latest_match_q = latest_match_q.where(Match.club_id == club_id)

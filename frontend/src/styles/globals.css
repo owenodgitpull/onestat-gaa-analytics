@@ -30,6 +30,14 @@
 @layer utilities {
   .safe-area-top { padding-top: env(safe-area-inset-top, 0px); }
   .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+  @keyframes kpi-flash {
+    0% { opacity: 0; transform: scale(0.95); }
+    30% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.05); }
+  }
+  .kpi-flash-ring {
+    animation: kpi-flash 0.6s ease-out;
+  }
   .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

@@ -60,7 +60,7 @@ class MatchService:
         """Get a match by ID."""
         result = await db.execute(
             select(Match).where(
-                and_(Match.id == match_id, Match.is_deleted == False)
+                and_(Match.id == match_id, Match.is_deleted.is_(False))
             )
         )
         return result.scalar_one_or_none()
@@ -82,7 +82,7 @@ class MatchService:
             Tuple of (matches, total_count)
         """
         # Build base query
-        conditions = [Match.is_deleted == False]
+        conditions = [Match.is_deleted.is_(False)]
         if club_id:
             conditions.append(Match.club_id == club_id)
         

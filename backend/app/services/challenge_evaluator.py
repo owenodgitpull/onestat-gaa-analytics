@@ -45,7 +45,7 @@ class ChallengeEvaluator:
                 and_(
                     Match.club_id == club_id,
                     Match.status == MatchStatus.COMPLETED,
-                    Match.is_deleted == False,
+                    Match.is_deleted.is_(False),
                 )
             ).order_by(Match.match_date.asc())
         )
