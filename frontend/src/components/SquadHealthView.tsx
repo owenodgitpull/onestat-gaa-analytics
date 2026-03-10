@@ -65,7 +65,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
   }, [])
 
   if (loading) {
-    return <LoadingSkeleton />
+    return <LoadingSkeleton variant="generic" />
   }
 
   if (error || !healthData) {

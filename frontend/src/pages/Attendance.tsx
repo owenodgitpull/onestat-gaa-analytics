@@ -830,7 +830,7 @@ export default function Attendance() {
   const overviewKpis = trainingOverview?.overview_kpis
 
   if (isLoading) {
-    return <LoadingSkeleton />
+    return <LoadingSkeleton variant="list" />
   }
 
   // Parse squad availability for color coding

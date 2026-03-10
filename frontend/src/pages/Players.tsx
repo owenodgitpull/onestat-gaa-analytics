@@ -143,7 +143,7 @@ export default function Players() {
   }
 
   if (isLoading) {
-    return <LoadingSkeleton />
+    return <LoadingSkeleton variant="list" />
   }
 
   return (

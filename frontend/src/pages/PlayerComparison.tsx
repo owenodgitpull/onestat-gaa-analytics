@@ -206,7 +206,7 @@ export default function PlayerComparison() {
   }, [comparison])
 
   if (hasBothPlayers && isLoading) {
-    return <LoadingSkeleton />
+    return <LoadingSkeleton variant="generic" />
   }
 
   return (

@@ -221,7 +221,7 @@ export default function MatchResult() {
   }, [eventsData, activeFilters, teamFilter])
 
   if (matchLoading) {
-    return <LoadingSkeleton />
+    return <LoadingSkeleton variant="match" />
   }
 
   if (!match) {

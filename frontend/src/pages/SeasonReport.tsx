@@ -78,7 +78,7 @@ export default function SeasonReport() {
     fetchData()
   }, [])
 
-  if (loading) return <LoadingSkeleton />
+  if (loading) return <LoadingSkeleton variant="generic" />
 
   if (error || !dashboardData) {
     return (

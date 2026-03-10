@@ -22,7 +22,7 @@ export default function ChartZoomModal({ children, title }: ChartZoomModalProps)
   return (
     <>
       {/* Inline chart with expand button — always visible for touch */}
-      <div className="relative">
+      <div className="relative h-full">
         {children}
         <button
           className="absolute bottom-2 right-2 p-2 rounded-lg bg-black/50 text-white/70 active:bg-white/20 z-10 touch-manipulation"

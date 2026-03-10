@@ -152,7 +152,7 @@ export default function Results() {
   }
 
   if (isLoading) {
-    return <LoadingSkeleton />
+    return <LoadingSkeleton variant="list" />
   }
 
   if (error) {

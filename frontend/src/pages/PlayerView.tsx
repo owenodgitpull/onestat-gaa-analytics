@@ -453,7 +453,7 @@ export default function PlayerView() {
   })
 
   if (loadingPlayer) {
-    return <LoadingSkeleton />
+    return <LoadingSkeleton variant="generic" />
   }
 
   if (!player) {
