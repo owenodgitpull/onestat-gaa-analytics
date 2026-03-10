@@ -38,8 +38,8 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
         <span className="text-center text-white/60">TOT</span>
       </div>
 
-      {/* Table rows */}
-      <div className="space-y-0.5">
+      {/* Table rows — scrollable when many players */}
+      <div className="space-y-0.5 overflow-y-auto max-h-[360px] flex-1">
         {sorted.map((p, i) => {
           const total = p.interceptions + p.blocks + p.turnovers_won
           const barWidth = topTotal > 0 ? (total / topTotal) * 100 : 0
