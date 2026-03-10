@@ -235,7 +235,7 @@ export default function StartingLineupModal({
             </div>
 
             {/* Substitutes - Below the pitch */}
-            <div className="flex justify-center gap-6 px-4">
+            <div className="flex justify-center flex-wrap gap-x-3 gap-y-2 px-2">
               {SUBSTITUTE_POSITIONS.map((pos, index) => {
                 const entry = lineup[pos.id]
                 const assignedPlayer = entry ? getPlayerById(entry.playerId) : null

@@ -22,7 +22,8 @@ import {
   Loader2,
   X,
   Target,
-  Video
+  Video,
+  Info
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { api } from '../services/api'
@@ -235,6 +236,7 @@ export default function MatchResult() {
 
   const teamTotal = totalScore(match.team_goals, match.team_points)
   const oppTotal = totalScore(match.opponent_goals, match.opponent_points)
+  const hasEvents = (eventsData?.events?.length ?? 0) > 0
 
   return (
     <div className="min-h-screen pb-8">
@@ -289,7 +291,7 @@ export default function MatchResult() {
               <div className="text-4xl font-bold text-white">
                 {formatGAAScore(match.team_goals, match.team_points)}
               </div>
-              <div className="text-white/60 text-sm mt-1">Us</div>
+              <div className="text-white/60 text-sm mt-1">{clubName}</div>
               <div className="text-white/40 text-xs">({teamTotal} pts)</div>
             </div>
             <div className="text-2xl text-white/40 font-light">vs</div>
@@ -334,13 +336,40 @@ export default function MatchResult() {
                     <div className="text-xs text-white/40 font-semibold uppercase tracking-wide">
                       Man of the Match
                     </div>
-                    <div className="text-sm text-white/40">No data available</div>
+                    <div className="text-sm text-white/40">
+                      {hasEvents ? 'No data available' : 'Awaiting video analysis'}
+                    </div>
                   </div>
                 </div>
               </div>
             )}
           </div>
         </div>
+
+        {/* No events indicator */}
+        {!hasEvents && (
+          <div className="mt-4 pt-4 border-t border-white/10">
+            <Link
+              to={`/results/${matchId}/video`}
+              className="flex items-center justify-center gap-3 px-6 py-4 rounded-xl text-white font-semibold text-lg transition-all hover:scale-[1.01] active:scale-[0.99]"
+              style={{
+                background: 'linear-gradient(135deg, rgba(147,51,234,0.4), rgba(79,70,229,0.3))',
+                border: '1px solid rgba(147,51,234,0.5)',
+                boxShadow: '0 4px 20px rgba(147,51,234,0.2)',
+              }}
+            >
+              <Video size={22} />
+              Start Video Analysis
+            </Link>
+            <div className="flex items-center justify-center gap-2 mt-3 text-white/40 text-xs group relative">
+              <Info size={14} />
+              <span>No live events logged — stats and charts will populate from video analysis</span>
+              <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block w-72 p-3 rounded-xl bg-slate-800 border border-white/10 text-white/70 text-xs shadow-xl z-10">
+                This match was completed without live event recording. Use video analysis to tag events from footage — once tagged, all charts, stats, and AI insights will be generated from the video data.
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* GPS Data Section */}
         <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
@@ -413,13 +442,15 @@ export default function MatchResult() {
                 Upload GPS Data
               </button>
             )}
-            <Link
-              to={`/results/${matchId}/video`}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
-            >
-              <Video size={16} />
-              Video Analysis
-            </Link>
+            {hasEvents && (
+              <Link
+                to={`/results/${matchId}/video`}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
+              >
+                <Video size={16} />
+                Video Analysis
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -521,72 +552,89 @@ export default function MatchResult() {
                 <span>Event Map</span>
               </h2>
               {/* Team Toggle */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setTeamFilter('own')}
-                  className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                    teamFilter === 'own'
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-white/10 text-white/60 hover:bg-white/20'
-                  }`}
-                >
-                  Us
-                </button>
-                <button
-                  onClick={() => setTeamFilter('opponent')}
-                  className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-                    teamFilter === 'opponent'
-                      ? 'bg-orange-600 text-white'
-                      : 'bg-white/10 text-white/60 hover:bg-white/20'
-                  }`}
-                >
-                  {match.opponent}
-                </button>
-              </div>
+              {hasEvents && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setTeamFilter('own')}
+                    className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
+                      teamFilter === 'own'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-white/10 text-white/60 hover:bg-white/20'
+                    }`}
+                  >
+                    {clubName}
+                  </button>
+                  <button
+                    onClick={() => setTeamFilter('opponent')}
+                    className={`px-4 py-2 rounded-xl font-medium text-sm transition-all ${
+                      teamFilter === 'opponent'
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-white/10 text-white/60 hover:bg-white/20'
+                    }`}
+                  >
+                    {match.opponent}
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="mb-2 text-sm text-white/40 text-center">
-              {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown for {teamFilter === 'own' ? clubName : match.opponent}
-            </div>
-            <GAAPitch readonly={true} events={filteredEvents} showZones={true} />
-          </div>
-
-          {/* Filter Toggles */}
-          <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
-
-          {/* Legend */}
-          <div className="glass-card p-4">
-            <h3 className="text-sm font-semibold text-white/60 mb-3">Legend</h3>
-            <div className="flex flex-wrap gap-3 text-sm">
-              <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-emerald-500"></span>
-                <span className="text-white/60">Goals (Us)</span>
+            {hasEvents && (
+              <div className="mb-2 text-sm text-white/40 text-center">
+                {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown for {teamFilter === 'own' ? clubName : match.opponent}
               </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-orange-500"></span>
-                <span className="text-white/60">Goals (Opponent)</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-emerald-500"></span>
-                <span className="text-white/60">Points</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-cyan-500"></span>
-                <span className="text-white/60">2-Pointers</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-amber-500"></span>
-                <span className="text-white/60">Wides</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-cyan-500"></span>
-                <span className="text-white/60">Turnovers Won</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-4 h-4 rounded-full bg-pink-500"></span>
-                <span className="text-white/60">Turnovers Lost</span>
-              </div>
+            )}
+            <div className="relative">
+              <GAAPitch readonly={true} events={filteredEvents} showZones={true} />
+              {!hasEvents && (
+                <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-xl flex flex-col items-center justify-center">
+                  <Video size={32} className="text-purple-400 mb-3" />
+                  <p className="text-white/70 font-semibold text-sm">Events will appear once tagged</p>
+                  <p className="text-white/40 text-xs mt-1">Use video analysis to tag match events</p>
+                </div>
+              )}
             </div>
           </div>
+
+          {hasEvents && (
+            <>
+              {/* Filter Toggles */}
+              <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
+
+              {/* Legend */}
+              <div className="glass-card p-4">
+                <h3 className="text-sm font-semibold text-white/60 mb-3">Legend</h3>
+                <div className="flex flex-wrap gap-3 text-sm">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500"></span>
+                    <span className="text-white/60">Goals ({clubName})</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 h-4 rounded-full bg-orange-500"></span>
+                    <span className="text-white/60">Goals (Opponent)</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 h-4 rounded-full bg-emerald-500"></span>
+                    <span className="text-white/60">Points</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 h-4 rounded-full bg-cyan-500"></span>
+                    <span className="text-white/60">2-Pointers</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 h-4 rounded-full bg-amber-500"></span>
+                    <span className="text-white/60">Wides</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 h-4 rounded-full bg-cyan-500"></span>
+                    <span className="text-white/60">Turnovers Won</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-4 h-4 rounded-full bg-pink-500"></span>
+                    <span className="text-white/60">Turnovers Lost</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right: Stats Table + Events List */}
@@ -597,10 +645,18 @@ export default function MatchResult() {
               <Activity size={20} />
               <span>Match Statistics</span>
             </h2>
-            {matchStats ? (
-              <StatsTable stats={matchStats} opponent={match.opponent} />
+            {hasEvents ? (
+              matchStats ? (
+                <StatsTable stats={matchStats} opponent={match.opponent} teamName={clubName} />
+              ) : (
+                <div className="text-center text-white/40 py-8">Loading stats...</div>
+              )
             ) : (
-              <div className="text-center text-white/40 py-8">Loading stats...</div>
+              <div className="text-center py-8 space-y-2">
+                <Video size={24} className="text-purple-400/60 mx-auto" />
+                <p className="text-white/40 text-sm">Awaiting video analysis</p>
+                <p className="text-white/20 text-xs">Stats will populate once events are tagged from video</p>
+              </div>
             )}
           </div>
 
@@ -625,7 +681,9 @@ export default function MatchResult() {
                   ))}
               </div>
             ) : (
-              <div className="text-center text-white/40 py-8">No events recorded</div>
+              <div className="text-center text-white/40 py-8">
+                {hasEvents ? 'No events recorded' : 'Events will appear once tagged from video analysis'}
+              </div>
             )}
           </div>
 
@@ -783,7 +841,7 @@ export default function MatchResult() {
 }
 
 // Stats Table Component - matches live match styling
-function StatsTable({ stats, opponent }: { stats: MatchStats; opponent: string }) {
+function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; opponent: string; teamName?: string }) {
   // Calculate kickout retention rates
   const totalTeamKickouts = stats.team_kickouts_won + stats.team_kickouts_lost
   const totalOpponentKickouts = stats.opponent_kickouts_won + stats.opponent_kickouts_lost
@@ -825,7 +883,7 @@ function StatsTable({ stats, opponent }: { stats: MatchStats; opponent: string }
     <div className="overflow-hidden rounded-lg border border-white/10">
       {/* Table Header */}
       <div className="grid grid-cols-3 bg-blue-600/30 border border-blue-500/50">
-        <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Us</div>
+        <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">{teamName}</div>
         <div className="py-2 px-3 text-center text-sm font-bold text-white border-r border-blue-500/50">Stat</div>
         <div className="py-2 px-3 text-center text-sm font-bold text-white">{opponent}</div>
       </div>

@@ -1,9 +1,36 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react'
 import { Plus, Shield, Check, AlertTriangle } from 'lucide-react'
 import { useClub } from '../../contexts/ClubContext'
 import { organizationsAPI } from '../../services/api'
 import type { Organization } from '../../types'
 import AddTeamModal from './AddTeamModal'
+
+// Error boundary to catch and display render errors instead of blank screen
+class TeamErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('TeamManagement render error:', error, info.componentStack)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 rounded-xl bg-red-500/10 border border-red-500/20 text-center space-y-2">
+          <AlertTriangle size={24} className="text-red-400 mx-auto" />
+          <p className="text-red-400 font-semibold">Something went wrong</p>
+          <p className="text-red-400/70 text-xs font-mono break-all">{String(this.state.error?.message || this.state.error)}</p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            className="text-xs text-cyan-400 hover:underline mt-2"
+          >
+            Try Again
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 const TIER_LABELS: Record<string, string> = {
   free: 'Free',
@@ -70,6 +97,7 @@ export default function TeamManagementSettings() {
   const tierColor = TIER_COLORS[org?.subscription_tier || 'free'] || TIER_COLORS.free
 
   return (
+    <TeamErrorBoundary>
     <div className="space-y-6">
       {/* Org & Tier Info */}
       {org && (
@@ -161,5 +189,6 @@ export default function TeamManagementSettings() {
         onCreated={handleTeamCreated}
       />
     </div>
+    </TeamErrorBoundary>
   )
 }

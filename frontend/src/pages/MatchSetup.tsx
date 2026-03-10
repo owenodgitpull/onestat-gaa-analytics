@@ -17,6 +17,7 @@ import { usePlayers } from '../hooks/usePlayers'
 import { useClub } from '../contexts/ClubContext'
 import { api } from '../services/api'
 import StartingLineupModal, { type LineupEntry } from '../components/StartingLineupModal'
+import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '../components/WeatherPickerPopover'
 
 type Mode = 'choose' | 'post-match'
 
@@ -45,6 +46,11 @@ export default function MatchSetup() {
   const [showLineupModal, setShowLineupModal] = useState(false)
   const [lineup, setLineup] = useState<Record<string, LineupEntry> | null>(null)
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
+
+  // Weather
+  const [weatherCondition, setWeatherCondition] = useState<string | null>(null)
+  const [temperature, setTemperature] = useState<number | null>(null)
+  const [showWeatherPicker, setShowWeatherPicker] = useState(false)
 
   // Submission
   const [submitting, setSubmitting] = useState(false)
@@ -106,10 +112,12 @@ export default function MatchSetup() {
     setSubmitting(true)
     setError(null)
     try {
-      // 1. Save strip colours
+      // 1. Save strip colours + weather
       await api.matches.update(matchId, {
         team_strip_colour: teamColour,
         opponent_strip_colour: oppColour,
+        weather_condition: weatherCondition,
+        temperature_celsius: temperature,
       } as any)
 
       // 2. Save score (aggregate two-pointers into points: each 2-ptr = 2 points)
@@ -291,6 +299,41 @@ export default function MatchSetup() {
               <ColourPicker label={match.opponent} colour={oppColour} onChange={setOppColour} />
             </div>
           </div>
+
+          {/* Weather */}
+          <div className="glass-card p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white">Weather</h3>
+                <p className="text-white/40 text-sm mt-0.5">
+                  {weatherCondition ? (
+                    <span className="flex items-center gap-1.5">
+                      {(() => { const Icon = getWeatherIcon(weatherCondition); return <Icon size={14} /> })()}
+                      {getWeatherLabel(weatherCondition)}
+                      {temperature != null && ` · ${temperature}°C`}
+                    </span>
+                  ) : 'Optional — tap to set conditions'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowWeatherPicker(true)}
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-all"
+              >
+                {weatherCondition ? 'Change' : 'Set Weather'}
+              </button>
+            </div>
+          </div>
+          <WeatherPickerPopover
+            isOpen={showWeatherPicker}
+            onClose={() => setShowWeatherPicker(false)}
+            onSave={(condition: string | null, temp: number | null) => {
+              setWeatherCondition(condition)
+              setTemperature(temp)
+              setShowWeatherPicker(false)
+            }}
+            currentCondition={weatherCondition}
+            currentTemperature={temperature}
+          />
 
           {/* Lineup */}
           <div className="glass-card p-6">
