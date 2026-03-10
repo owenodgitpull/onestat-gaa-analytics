@@ -2,8 +2,9 @@
  * JerseyNumberStrip — persistent horizontal strip of player buttons
  * for quick ball carrier assignment.
  *
- * Shows jersey number when available, otherwise position label (HB, FB, etc.)
- * with player surname underneath.
+ * Shows jersey number with player surname underneath.
+ * All buttons use team primary colour with secondary (trim) border.
+ * Active carrier gets full opacity + glow; others are slightly dimmed.
  */
 
 import { useMemo } from 'react'
@@ -23,6 +24,8 @@ interface JerseyNumberStripProps {
   currentPossession: PossessionTeam
   onCarrierSelect: (playerId: string, jerseyNumber: number | null) => void
   disabled?: boolean
+  teamPrimaryColor?: string
+  teamSecondaryColor?: string
 }
 
 function surname(name: string) {
@@ -33,9 +36,10 @@ function surname(name: string) {
 export default function JerseyNumberStrip({
   players,
   activeCarrierId,
-  currentPossession,
   onCarrierSelect,
   disabled = false,
+  teamPrimaryColor = '#10B981',
+  teamSecondaryColor = '#FFFFFF',
 }: JerseyNumberStripProps) {
   // Sort by jersey number, then by name for those without numbers
   const sortedPlayers = useMemo(() => {
@@ -50,10 +54,6 @@ export default function JerseyNumberStrip({
   }, [players])
 
   if (sortedPlayers.length === 0) return null
-
-  const isOwn = currentPossession === PossessionTeam.OWN
-  const activeColor = isOwn ? 'bg-emerald-500 border-emerald-400' : 'bg-orange-500 border-orange-400'
-  const inactiveColor = 'bg-white/10 border-white/20'
 
   return (
     <div className="flex items-center justify-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-hide">
@@ -72,25 +72,28 @@ export default function JerseyNumberStrip({
             disabled={disabled}
             className={`
               flex-shrink-0 flex flex-col items-center justify-center
-              rounded-xl border-2 transition-all duration-150
-              ${hasJersey ? 'w-[48px] h-[48px]' : 'w-[48px] h-[52px] px-0.5'}
-              ${isActive ? `${activeColor} text-white scale-110 shadow-lg shadow-emerald-500/30` : `${inactiveColor} text-white/70`}
-              ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-white/20 active:scale-90'}
+              rounded-full transition-all duration-150
+              w-[48px] h-[48px]
+              ${isActive ? 'scale-110' : ''}
+              ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:scale-105 active:scale-90'}
             `}
+            style={{
+              backgroundColor: teamPrimaryColor,
+              border: `3px solid ${teamSecondaryColor}`,
+              boxShadow: isActive
+                ? `0 0 16px ${teamPrimaryColor}80, 0 0 4px ${teamSecondaryColor}60`
+                : `0 2px 6px rgba(0,0,0,0.3)`,
+              color: '#FFFFFF',
+              opacity: isActive ? 1 : 0.65,
+            }}
             title={player.playerName}
           >
             <span className={`font-bold leading-none ${hasJersey ? 'text-base' : 'text-[11px]'}`}>
               {label}
             </span>
-            {hasJersey ? (
-              <span className="text-[8px] leading-none mt-0.5 text-white/50 truncate max-w-full">
-                {surname(player.playerName)}
-              </span>
-            ) : (
-              <span className="text-[8px] leading-none mt-0.5 text-white/50 truncate max-w-full">
-                {surname(player.playerName)}
-              </span>
-            )}
+            <span className="text-[7px] leading-none mt-0.5 truncate max-w-full text-white/80">
+              {surname(player.playerName)}
+            </span>
           </button>
         )
       })}

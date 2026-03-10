@@ -2242,6 +2242,8 @@ export default function MatchRecording() {
                     activeCarrierId={activeCarrierId}
                     currentPossession={ballPosition.team}
                     onCarrierSelect={handleCarrierSelect}
+                    teamPrimaryColor={club?.primary_colour || '#10B981'}
+                    teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
                   />
                 </div>
               )}
@@ -2760,6 +2762,8 @@ export default function MatchRecording() {
         onRemoveBlackCard={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))}
         isStopped={isStopped}
         onToggleStoppage={() => setIsStopped(prev => !prev)}
+        teamPrimaryColor={club?.primary_colour || '#10B981'}
+        teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
       />
 
       {/* Formation Snapshot Mode */}

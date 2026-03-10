@@ -71,6 +71,8 @@ interface FullscreenPitchModeProps {
   carrierJerseyNumber?: number | null
   isStopped?: boolean
   onToggleStoppage?: () => void
+  teamPrimaryColor?: string
+  teamSecondaryColor?: string
 }
 
 export default function FullscreenPitchMode({
@@ -123,6 +125,8 @@ export default function FullscreenPitchMode({
   carrierJerseyNumber,
   isStopped = false,
   onToggleStoppage,
+  teamPrimaryColor = '#10B981',
+  teamSecondaryColor = '#FFFFFF',
 }: FullscreenPitchModeProps) {
   const clubName = useClubName()
   const [toastVisible, setToastVisible] = useState(false)
@@ -422,6 +426,8 @@ export default function FullscreenPitchMode({
             currentPossession={currentPossession}
             onCarrierSelect={onCarrierSelect}
             disabled={actionsDisabled}
+            teamPrimaryColor={teamPrimaryColor}
+            teamSecondaryColor={teamSecondaryColor}
           />
         </div>
       )}
