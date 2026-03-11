@@ -41,19 +41,18 @@ export default function ChatSessionSidebar({
     <>
       {/* Backdrop */}
       <div
-        className="fixed z-40"
+        className="fixed inset-0 z-40 bg-black/50"
         onClick={onClose}
-        style={{ top: 56, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.3)' }}
+        style={{ top: 56 }}
       />
 
-      {/* Panel */}
+      {/* Panel — full-width on mobile, offset on desktop */}
       <div
-        className="fixed z-50 flex flex-col"
+        className="fixed z-50 flex flex-col w-[280px] max-w-[85vw] md:w-[260px]"
         style={{
           top: 56,
-          left: 56,
+          left: 0,
           bottom: 0,
-          width: 260,
           background: '#0d0d1f',
           borderRight: '1px solid rgba(255,255,255,0.1)',
           boxShadow: '4px 0 24px rgba(0,0,0,0.5)',

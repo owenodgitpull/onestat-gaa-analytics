@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Bot, Loader2, BarChart3, MessageSquare, ArrowLeft } from 'lucide-react'
+import { Send, Bot, Loader2, BarChart3, MessageSquare, ArrowLeft, History } from 'lucide-react'
 import { api, ChatMessage, AIChartSpec, DataTable, ChatSessionSummary } from '@/services/api'
 import { renderAnalysisText } from '@/utils/renderAnalysisText'
 import DynamicChart from '@/components/DynamicChart'
@@ -289,7 +289,16 @@ export default function AIAnalystPage() {
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
         />
-        <div className="-mx-4 -mt-6 px-4 pt-2 min-h-[calc(100vh-3.5rem)]  flex items-center justify-center">
+        <div className="-mx-4 -mt-6 px-4 pt-2 min-h-[calc(100vh-3.5rem)]  flex items-center justify-center relative">
+          {/* Mobile history button */}
+          {sessions.length > 0 && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden absolute top-4 right-4 z-10 p-2.5 rounded-xl bg-white/10 border border-white/10 text-white/60 hover:text-white hover:bg-white/15 transition-all"
+            >
+              <History size={18} />
+            </button>
+          )}
           <div className="max-w-3xl w-full mx-auto">
             {/* Greeting */}
             <div className="text-center mb-8">
@@ -503,6 +512,22 @@ export default function AIAnalystPage() {
       />
 
       <div className="-mx-4 -mt-6 px-4 pt-2 h-[calc(100vh-3.5rem)] flex flex-col">
+        {/* Mobile history + new chat buttons */}
+        <div className="md:hidden flex items-center justify-between py-2 px-1">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-xl bg-white/10 border border-white/10 text-white/60 hover:text-white hover:bg-white/15 transition-all"
+          >
+            <History size={18} />
+          </button>
+          <button
+            onClick={handleNewChat}
+            className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 text-white/60 hover:text-white hover:bg-white/15 transition-all text-xs font-medium"
+          >
+            + New Chat
+          </button>
+        </div>
+
         {/* Desktop/Tablet: side-by-side */}
         <div className="hidden md:flex flex-1 gap-4 min-h-0">
           {/* Chat panel */}

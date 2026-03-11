@@ -481,27 +481,47 @@ async def chat_stream_endpoint(
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
             # Persist assistant message even on partial responses
-            if accumulated_text:
-                assistant_msg = ChatSessionMessage(
-                    session_id=session.id,
-                    role="assistant",
-                    content=accumulated_text,
-                    visualizations=collected_vizs if collected_vizs else None,
-                )
-                db.add(assistant_msg)
-                session.message_count = (session.message_count or 0) + 1
-                session.updated_at = datetime.utcnow()
+            try:
+                if accumulated_text:
+                    assistant_msg = ChatSessionMessage(
+                        session_id=session.id,
+                        role="assistant",
+                        content=accumulated_text,
+                        visualizations=collected_vizs if collected_vizs else None,
+                    )
+                    db.add(assistant_msg)
+                    session.message_count = (session.message_count or 0) + 1
+                    session.updated_at = datetime.utcnow()
 
-            # Auto-title on first exchange (message_count <= 2 means first user+assistant pair)
-            if session.message_count <= 2 and session.title == "New conversation":
+                # Auto-title on first exchange (message_count <= 2 means first user+assistant pair)
+                if session.message_count <= 2 and session.title == "New conversation":
+                    try:
+                        title = await _generate_session_title(request.message)
+                        session.title = title
+                        yield f"data: {json.dumps({'type': 'session_title', 'title': title})}\n\n"
+                    except Exception:
+                        pass
+
+                await db.commit()
+            except Exception as commit_err:
+                logger.error(f"Failed to persist assistant message (session {session_id}): {commit_err}", exc_info=True)
                 try:
-                    title = await _generate_session_title(request.message)
-                    session.title = title
-                    yield f"data: {json.dumps({'type': 'session_title', 'title': title})}\n\n"
-                except Exception:
-                    pass
-
-            await db.commit()
+                    await db.rollback()
+                    # Retry with fresh state
+                    if accumulated_text:
+                        assistant_msg = ChatSessionMessage(
+                            session_id=session.id,
+                            role="assistant",
+                            content=accumulated_text,
+                            visualizations=collected_vizs if collected_vizs else None,
+                        )
+                        db.add(assistant_msg)
+                        session.message_count = (session.message_count or 0) + 1
+                        session.updated_at = datetime.utcnow()
+                        await db.commit()
+                        logger.info(f"Retry persist succeeded for session {session_id}")
+                except Exception as retry_err:
+                    logger.error(f"Retry persist also failed (session {session_id}): {retry_err}")
 
     return StreamingResponse(
         persisted_stream(),
