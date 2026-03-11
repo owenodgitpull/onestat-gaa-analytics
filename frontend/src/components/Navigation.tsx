@@ -16,11 +16,13 @@ import {
   FileText,
   Swords,
   Activity,
+  Menu,
+  X,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useAuth } from '../contexts/AuthContext'
 import { useClub } from '../contexts/ClubContext'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import NewMatchModal from './NewMatchModal'
 import AIAnalyst from './AIAnalyst'
 import ConfirmationModal from './ConfirmationModal'
@@ -36,7 +38,12 @@ export default function Navigation() {
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showAIChat, setShowAIChat] = useState(false)
+  const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
+
+  // Close mobile menu on route change
+  useEffect(() => { setShowMobileMenu(false) }, [location.pathname])
+
   const [profilePic, setProfilePic] = useState<string | null>(() => {
     return localStorage.getItem('gaa_profile_pic')
   })
@@ -183,6 +190,15 @@ export default function Navigation() {
 
   const sidebarItems = getSidebarItems()
 
+  const NAV_LINKS = [
+    { to: '/', matchPath: '/', label: 'Dashboard', icon: BarChart3 },
+    { to: '/results', matchPath: '/matches', label: 'Matches', icon: Trophy, tour: 'nav-matches' },
+    { to: '/players', matchPath: '/players', label: 'Players', icon: Users },
+    { to: '/training', matchPath: '/training', label: 'Training', icon: Dumbbell },
+    { to: '/reports/season', matchPath: '/reports', label: 'Reports', icon: FileText, tour: 'nav-reports' },
+    { to: '/analyst', matchPath: '/analyst', label: 'Analyst', icon: MessageSquare, tour: 'nav-analyst' },
+  ]
+
   return (
     <>
       {/* Top Navigation Bar */}
@@ -216,16 +232,9 @@ export default function Navigation() {
             </>
           )}
 
-          {/* Main Navigation Links */}
-          <div className="flex items-center h-full overflow-x-auto scrollbar-hide flex-1 min-w-0">
-            {[
-              { to: '/', matchPath: '/', label: 'DASHBOARD' },
-              { to: '/results', matchPath: '/matches', label: 'MATCHES', tour: 'nav-matches' },
-              { to: '/players', matchPath: '/players', label: 'PLAYERS' },
-              { to: '/training', matchPath: '/training', label: 'TRAINING' },
-              { to: '/reports/season', matchPath: '/reports', label: 'REPORTS', tour: 'nav-reports' },
-              { to: '/analyst', matchPath: '/analyst', label: 'ANALYST', tour: 'nav-analyst' },
-            ].map(({ to, matchPath, label, tour }) => (
+          {/* Main Navigation Links — hidden on mobile, visible md+ */}
+          <div className="hidden md:flex items-center h-full overflow-x-auto scrollbar-hide flex-1 min-w-0">
+            {NAV_LINKS.map(({ to, matchPath, label, tour }) => (
               <Link
                 key={to}
                 to={to}
@@ -236,13 +245,22 @@ export default function Navigation() {
                     : 'text-white/70 border-transparent hover:text-white hover:border-white/20'
                 }`}
               >
-                {label}
+                {label.toUpperCase()}
               </Link>
             ))}
           </div>
 
-          {/* Right Side - New Match + Profile */}
+          {/* Right Side - Hamburger (mobile) + New Match + Profile */}
           <div className="flex items-center space-x-2 ml-auto flex-shrink-0">
+            {/* Hamburger toggle — mobile only */}
+            <button
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              className="md:hidden p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+              aria-label="Toggle menu"
+            >
+              {showMobileMenu ? <X size={20} className="text-white" /> : <Menu size={20} className="text-white" />}
+            </button>
+
             {/* New Match Button */}
             <button
               onClick={() => setIsNewMatchModalOpen(true)}
@@ -330,6 +348,53 @@ export default function Navigation() {
           </div>
         </div>
       </nav>
+
+      {/* Mobile Menu Dropdown */}
+      {showMobileMenu && (
+        <>
+          <div className="fixed inset-0 z-40 md:hidden" onClick={() => setShowMobileMenu(false)} />
+          <div
+            className="fixed top-14 left-0 right-0 z-50 md:hidden border-b border-white/10 safe-area-top"
+            style={{
+              background: 'linear-gradient(180deg, rgba(15,15,30,0.98) 0%, rgba(15,15,30,0.95) 100%)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+            }}
+          >
+            <div className="py-2 px-3">
+              {NAV_LINKS.map(({ to, matchPath, label, icon: Icon, tour }) => (
+                <Link
+                  key={to}
+                  to={to}
+                  data-tour={tour}
+                  onClick={() => setShowMobileMenu(false)}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    isActive(matchPath)
+                      ? 'text-emerald-400 bg-emerald-500/10'
+                      : 'text-white/70 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Icon size={18} />
+                  {label}
+                </Link>
+              ))}
+              <hr className="my-2 border-white/10" />
+              <Link
+                to="/settings"
+                onClick={() => setShowMobileMenu(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  isActive('/settings')
+                    ? 'text-emerald-400 bg-emerald-500/10'
+                    : 'text-white/70 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <Settings size={18} />
+                Settings
+              </Link>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Left Sidebar - Contextual Icons */}
       {sidebarItems.length > 0 && (
