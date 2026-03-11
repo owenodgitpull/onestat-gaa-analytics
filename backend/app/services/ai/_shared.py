@@ -463,7 +463,7 @@ TOOLS = [
     },
     {
         "name": "get_fitness_tests",
-        "description": "Get fitness test results for the squad or a specific player. Returns body metrics, mobility (Knee to Wall), power (CMJ, Squat Jump, EUR), strength (press-ups, pull-ups), speed (10m sprint), and conditioning (Bronco, MAS). Supports comparing across test sessions.",
+        "description": "Get fitness test results for the squad or a specific player. Returns body metrics, mobility (Knee to Wall), power (CMJ, Squat Jump, EUR), strength (press-ups, pull-ups), speed (10m sprint), and conditioning (Bronco, MAS). Use compare=true to get the 2 most recent test sessions side-by-side with deltas showing improvement/regression per player. Without compare, returns all sessions with full results.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -2365,9 +2365,18 @@ async def get_fitness_tests(db: AsyncSession, player_id: str = None, test_date: 
         sessions = []
         for d in test_dates[:5]:  # Last 5 sessions max
             session_tests = [t for t in tests if t.test_date == d]
+            # Summary with averages + individual results
+            avg_cmj = [float(t.cmj_cm) for t in session_tests if t.cmj_cm]
+            avg_bronco = [float(t.bronco_test_min) for t in session_tests if t.bronco_test_min]
+            avg_sprint = [float(t.sprint_0_10m_sec) for t in session_tests if t.sprint_0_10m_sec]
             sessions.append({
                 "date": str(d),
                 "player_count": len(session_tests),
+                "squad_averages": {
+                    "cmj_cm": round(sum(avg_cmj) / len(avg_cmj), 1) if avg_cmj else None,
+                    "bronco_test_min": round(sum(avg_bronco) / len(avg_bronco), 2) if avg_bronco else None,
+                    "sprint_0_10m_sec": round(sum(avg_sprint) / len(avg_sprint), 3) if avg_sprint else None,
+                },
                 "results": [
                     {**t.to_dict(), "player_name": players.get(str(t.player_id), "Unknown")}
                     for t in session_tests
@@ -2377,6 +2386,7 @@ async def get_fitness_tests(db: AsyncSession, player_id: str = None, test_date: 
         return safe_json({
             "mode": "list",
             "total_sessions": len(test_dates),
+            "session_dates": [str(d) for d in test_dates],
             "sessions": sessions,
         })
 
