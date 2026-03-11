@@ -125,6 +125,17 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
             logger.error(f"Upload log not found: {upload_id}")
             return
 
+        # Fetch match to get club_id (not available from outer scope in background task)
+        match_query = select(Match).where(Match.id == match_id)
+        match_result = await db.execute(match_query)
+        match = match_result.scalar_one_or_none()
+        if not match:
+            logger.error(f"Match not found: {match_id}")
+            upload_log.status = "failed"
+            upload_log.error_message = "Match not found"
+            await db.commit()
+            return
+
         try:
             upload_log.status = "processing"
             await db.commit()
@@ -274,10 +285,7 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
 
             # Trigger workload analysis for players with GPS data
             # Use the match date so the snapshot is created for the correct day
-            match_query = select(Match).where(Match.id == match_id)
-            match_result = await db.execute(match_query)
-            match_obj = match_result.scalar_one_or_none()
-            match_date = match_obj.match_date if match_obj else None
+            match_date = match.match_date
 
             if isinstance(extracted_data, dict) and "players" in extracted_data:
                 for player_data in extracted_data["players"]:
