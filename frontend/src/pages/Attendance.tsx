@@ -762,6 +762,7 @@ export default function Attendance() {
     queryKey: ['training-overview'],
     queryFn: () => api.analytics.getTrainingOverview(),
     staleTime: 60_000,
+    placeholderData: (prev) => prev,  // keep previous data while refetching
   })
 
   const createMutation = useMutation({
@@ -794,9 +795,11 @@ export default function Attendance() {
       if (gpsFile && session?.id) {
         await uploadGpsFile(session.id, gpsFile)
         // GPS processing is a background task — wait briefly then re-fetch
-        // so attendance counts are populated
+        // so attendance counts and overview KPIs are populated
         setTimeout(() => {
           queryClient.invalidateQueries({ queryKey: ['sessions'] })
+          queryClient.invalidateQueries({ queryKey: ['training-overview'] })
+          queryClient.invalidateQueries({ queryKey: ['session-gps'] })
         }, 3000)
       }
     } catch (error) {
