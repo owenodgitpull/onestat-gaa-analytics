@@ -175,6 +175,39 @@ class SeasonAgent:
                 messages=messages,
             )
 
+        # If we hit max_turns while AI still wants tools, force a final text response
+        if response.stop_reason == "tool_use":
+            logger.info(f"Season agent hit max_turns={max_turns} while still in tool_use for {task} — forcing final response")
+            # Process remaining tool calls so conversation is valid
+            tool_results = []
+            assistant_content = []
+            for block in response.content:
+                if block.type == "text":
+                    assistant_content.append({"type": "text", "text": block.text})
+                elif block.type == "tool_use":
+                    assistant_content.append({
+                        "type": "tool_use",
+                        "id": block.id,
+                        "name": block.name,
+                        "input": block.input,
+                    })
+                    tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": tool_result,
+                    })
+            messages.append({"role": "assistant", "content": assistant_content})
+            messages.append({"role": "user", "content": tool_results + [
+                {"type": "text", "text": "You've used all available tool calls. Now produce your final JSON response using the data you've gathered. Do NOT call any more tools."}
+            ]})
+            response = client.messages.create(
+                model=model,
+                max_tokens=token_limit,
+                system=cached_system,
+                messages=messages,  # No tools — forces text output
+            )
+
         # Extract final text
         final_text = ""
         for block in response.content:
