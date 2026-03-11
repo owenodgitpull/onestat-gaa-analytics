@@ -1,8 +1,7 @@
 import { useClub } from '../contexts/ClubContext';
 
 export default function PlayerHeader({ title }: { title: string }) {
-  const { club } = useClub();
-  const hasClubLogo = !!club?.logo_url;
+  const { club, logoUrl } = useClub();
 
   return (
     <div
@@ -15,9 +14,9 @@ export default function PlayerHeader({ title }: { title: string }) {
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          {hasClubLogo && (
+          {logoUrl && (
             <img
-              src={club.logo_url!}
+              src={logoUrl}
               alt=""
               className="h-9 w-9 rounded-lg object-contain"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -33,7 +32,7 @@ export default function PlayerHeader({ title }: { title: string }) {
         <img
           src="/oneStatLogoTransparent.png"
           alt="OneStat"
-          className="h-7 object-contain opacity-60"
+          className="h-7 object-contain opacity-90"
         />
       </div>
     </div>

@@ -32,7 +32,7 @@ const TOOLTIP_STYLE = {
 export default function MyStatsPage() {
   const [activeTab, setActiveTab] = useState('scoring');
   const [showH2H, setShowH2H] = useState(false);
-  const { club } = useClub();
+  const { club, logoUrl } = useClub();
 
   return (
     <div className="space-y-5 pb-4">
@@ -47,9 +47,9 @@ export default function MyStatsPage() {
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            {club?.logo_url && (
+            {logoUrl && (
               <img
-                src={club.logo_url}
+                src={logoUrl}
                 alt=""
                 className="h-9 w-9 rounded-lg object-contain"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -73,7 +73,7 @@ export default function MyStatsPage() {
             <img
               src="/oneStatLogoTransparent.png"
               alt="OneStat"
-              className="h-7 object-contain opacity-60"
+              className="h-7 object-contain opacity-90"
             />
           </div>
         </div>
