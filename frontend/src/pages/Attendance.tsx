@@ -819,10 +819,14 @@ export default function Attendance() {
   const { data: latestGPS } = useQuery({
     queryKey: ['session-gps', latestSessionId],
     queryFn: () => fetchSessionGPS(latestSessionId!),
-    enabled: !!latestSessionId
+    enabled: !!latestSessionId,
   })
 
-  const latestGPSStats = useMemo(() => {
+  // Keep a stable reference to the last non-empty GPS stats
+  // Prevents KPI cards from disappearing when a new session is created but GPS hasn't processed yet
+  const [stableGPSStats, setStableGPSStats] = useState<typeof latestGPSStatsRaw>(null)
+
+  const latestGPSStatsRaw = useMemo(() => {
     if (!latestGPS || latestGPS.length === 0) return null
     const n = latestGPS.length
     return {
@@ -834,6 +838,13 @@ export default function Attendance() {
       avgDSL: Math.round(latestGPS.reduce((s, p) => s + (p.dynamic_stress_load || 0), 0) / n),
     }
   }, [latestGPS])
+
+  // Only update stable stats when we have real data (prevents flash on new session)
+  useEffect(() => {
+    if (latestGPSStatsRaw) setStableGPSStats(latestGPSStatsRaw)
+  }, [latestGPSStatsRaw])
+
+  const latestGPSStats = latestGPSStatsRaw || stableGPSStats
 
   const overviewKpis = trainingOverview?.overview_kpis
 
