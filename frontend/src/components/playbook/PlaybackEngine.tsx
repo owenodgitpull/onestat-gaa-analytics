@@ -51,14 +51,25 @@ export default function PlaybackEngine({
 
   const {
     currentPhaseIdx, playbackState, interpolatedPlayers,
-    prevArrowFadeOut, arrowDrawProgress, labelOpacity,
+    arrowDrawProgress, labelOpacity,
     advanceOnePhase,
   } = engine
 
   // Current phase data (for arrows and labels)
   const currentPhase = phases[currentPhaseIdx] || phases[0]
-  const prevPhaseIdx = Math.max(0, currentPhaseIdx - 1)
-  const prevPhase = currentPhaseIdx > 0 ? phases[prevPhaseIdx] : null
+
+  // Accumulated arrows/labels from all completed phases (phases before currentPhaseIdx)
+  // These stay visible (dimmed) to build up the tactical picture
+  const accumulatedArrows = phases
+    .slice(0, currentPhaseIdx)
+    .flatMap((phase, phaseIdx) =>
+      phase.arrows.map(a => ({ ...a, _phaseIdx: phaseIdx }))
+    )
+  const accumulatedLabels = phases
+    .slice(0, currentPhaseIdx)
+    .flatMap((phase, phaseIdx) =>
+      phase.labels.map(l => ({ ...l, _phaseIdx: phaseIdx }))
+    )
 
   // ── Audio sync ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -128,7 +139,6 @@ export default function PlaybackEngine({
   }, [playbackState, isFullscreen, currentPhaseIdx, engine, advanceOnePhase, onClose])
 
   // Determine which arrows to show based on transition state
-  const showPrevArrows = prevPhase && prevArrowFadeOut < 1
   const showCurrentArrows = arrowDrawProgress > 0
 
   return (
@@ -159,25 +169,25 @@ export default function PlaybackEngine({
               preserveAspectRatio="xMidYMid meet"
             />
 
-            {/* Previous phase arrows (fading out) */}
-            {showPrevArrows && prevPhase!.arrows.map(arrow => {
+            {/* Accumulated arrows from all completed phases (dimmed, persistent) */}
+            {accumulatedArrows.map(arrow => {
               const result = arrow.curved
                 ? buildCurvedPath(arrow.points)
                 : buildStraightPath(arrow.points)
               if (!result.d) return null
               return (
-                <g key={`prev-${arrow.id}`} opacity={1 - prevArrowFadeOut}>
+                <g key={`acc-${arrow._phaseIdx}-${arrow.id}`} opacity={0.35}>
                   <path
                     d={result.d}
                     fill="none"
                     stroke={arrow.color}
-                    strokeWidth="6"
+                    strokeWidth="5"
                     strokeDasharray={arrow.dashed ? '15 8' : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                   />
                   <polygon
-                    points={arrowheadPoints(result.endPt, result.endAngle, 20)}
+                    points={arrowheadPoints(result.endPt, result.endAngle, 18)}
                     fill={arrow.color}
                   />
                 </g>
@@ -203,27 +213,27 @@ export default function PlaybackEngine({
               )
             })}
 
-            {/* Previous phase labels (fading out with arrows) */}
-            {showPrevArrows && prevPhase!.labels.map(label => {
+            {/* Accumulated labels from completed phases (dimmed, persistent) */}
+            {accumulatedLabels.map(label => {
               const lx = toSvgX(label.x)
               const ly = toSvgY(label.y)
               const rot = label.rotation || 0
               return (
                 <g
-                  key={`prev-lbl-${label.id}`}
+                  key={`acc-lbl-${label._phaseIdx}-${label.id}`}
                   transform={rot ? `rotate(${rot} ${lx} ${ly})` : undefined}
-                  opacity={1 - prevArrowFadeOut}
+                  opacity={0.35}
                 >
                   <rect
                     x={lx - 8} y={ly - 20}
                     width={label.text.length * 14 + 16} height="32" rx="6"
-                    fill="rgba(168,85,247,0.3)"
-                    stroke="rgba(168,85,247,0.7)"
-                    strokeWidth="2.5"
+                    fill="rgba(168,85,247,0.15)"
+                    stroke="rgba(168,85,247,0.4)"
+                    strokeWidth="2"
                   />
                   <text
                     x={lx} y={ly + 4}
-                    fill="#E9D5FF" fontSize="22" fontWeight="700" fontFamily="sans-serif"
+                    fill="rgba(233,213,255,0.5)" fontSize="22" fontWeight="700" fontFamily="sans-serif"
                   >
                     {label.text}
                   </text>
