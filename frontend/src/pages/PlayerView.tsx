@@ -720,7 +720,7 @@ export default function PlayerView() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <FitnessMetricCard label="CMJ" value={latestFitnessTest.cmj_cm} unit="cm" benchmark={{ good: 35, excellent: 45 }} comparison={fitnessComparison?.changes?.cmj_cm} />
                   <FitnessMetricCard label="Squat Jump" value={latestFitnessTest.squat_jump_cm} unit="cm" comparison={fitnessComparison?.changes?.squat_jump_cm} />
-                  <FitnessMetricCard label="EUR" value={latestFitnessTest.eur_calculated} unit="" benchmark={{ good: 1.0, excellent: 1.15 }} comparison={fitnessComparison?.changes?.eur_calculated} />
+                  <FitnessMetricCard label="EUR" value={latestFitnessTest.eur_calculated} unit="" benchmark={{ good: 1.0, excellent: 1.15 }} comparison={fitnessComparison?.changes?.eur} />
                   <FitnessMetricCard label="0-10m Sprint" value={latestFitnessTest.sprint_0_10m_sec} unit="s" benchmark={{ good: 1.85, excellent: 1.7 }} lowerIsBetter comparison={fitnessComparison?.changes?.sprint_0_10m_sec} />
                   <FitnessMetricCard label="Bronco Test" value={latestFitnessTest.bronco_test_min} unit="min" benchmark={{ good: 5.5, excellent: 4.5 }} lowerIsBetter comparison={fitnessComparison?.changes?.bronco_test_min} />
                   <FitnessMetricCard label="Press-ups (60s)" value={latestFitnessTest.press_ups_60s} unit="" benchmark={{ good: 30, excellent: 40 }} comparison={fitnessComparison?.changes?.press_ups_60s} />

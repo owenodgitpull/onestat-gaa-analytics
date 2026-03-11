@@ -15,7 +15,7 @@ import {
   Type, ChevronLeft, ChevronRight, Plus, CurlyBraces, Play, Pause, Check,
   MoreHorizontal, Film, Send,
 } from 'lucide-react'
-import { PlaybackEngine } from '@/components/playbook'
+import { PlaybackEngine, VoiceoverRecorder } from '@/components/playbook'
 
 // ── SVG coordinate helpers (same as GAAPitch) ───────────────────────────────
 const toSvgX = (pctX: number) => (pctX / 100) * 1960 + 183
@@ -181,6 +181,7 @@ export default function SetPieceEditor({
 }: SetPieceEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [showPlayback, setShowPlayback] = useState(false)
+  const [showVoiceoverRecorder, setShowVoiceoverRecorder] = useState(false)
 
   // Phase system
   const [phases, setPhases] = useState<Phase[]>([{ players: [], arrows: [], labels: [] }])
@@ -192,6 +193,8 @@ export default function SetPieceEditor({
   const [history, setHistory] = useState<Phase[][]>([])
   const [dragging, setDragging] = useState<{ type: 'player' | 'arrow' | 'label'; id: string; startPt?: { x: number; y: number } } | null>(null)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>('')
+  const [playerSearch, setPlayerSearch] = useState('')
+  const [playerDropdownOpen, setPlayerDropdownOpen] = useState(false)
   const [labelInput, setLabelInput] = useState('')
   const [placingLabel, setPlacingLabel] = useState(false)
   const [hasPlacedFirst, setHasPlacedFirst] = useState(false)
@@ -634,6 +637,17 @@ export default function SetPieceEditor({
     }
   }, [phases.length, isPlaying])
 
+  // Close player dropdown on outside click
+  useEffect(() => {
+    if (!playerDropdownOpen) return
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-player-dropdown]')) setPlayerDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [playerDropdownOpen])
+
   // Players already placed (to avoid duplicates)
   const placedPlayerIds = new Set(phase.players.filter(p => p.playerId).map(p => p.playerId))
   const unplacedPlayers = availablePlayers.filter(p => !placedPlayerIds.has(p.playerId))
@@ -713,18 +727,50 @@ export default function SetPieceEditor({
 
           {/* Player selector (when placing our players) */}
           {tool === 'player' && !isOpponent && availablePlayers.length > 0 && (
-            <select
-              value={selectedPlayerId}
-              onChange={e => setSelectedPlayerId(e.target.value)}
-              className="bg-white/10 border border-white/15 rounded-md px-2 py-1 text-xs text-white max-w-[160px] [&>option]:bg-slate-800 [&>option]:text-white"
-            >
-              <option value="">Select player...</option>
-              {unplacedPlayers.map(p => (
-                <option key={p.playerId} value={p.playerId}>
-                  {p.jerseyNumber ? `#${p.jerseyNumber} ` : ''}{p.playerName}
-                </option>
-              ))}
-            </select>
+            <div className="relative" data-player-dropdown>
+              <input
+                type="text"
+                value={playerSearch || (selectedPlayerId ? (availablePlayers.find(p => p.playerId === selectedPlayerId)?.playerName || '') : '')}
+                onChange={e => { setPlayerSearch(e.target.value); setPlayerDropdownOpen(true); setSelectedPlayerId('') }}
+                onFocus={() => setPlayerDropdownOpen(true)}
+                placeholder="Search player..."
+                className="bg-white/10 border border-white/15 rounded-md px-2 py-1 text-xs text-white placeholder-white/30 w-[180px]"
+              />
+              {playerDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 z-[100] w-[220px] max-h-48 overflow-y-auto rounded-lg bg-slate-800 border border-white/20 shadow-xl">
+                  {unplacedPlayers
+                    .filter(p => {
+                      if (!playerSearch) return true
+                      const q = playerSearch.toLowerCase()
+                      return p.playerName.toLowerCase().includes(q) || (p.jerseyNumber?.toString() || '').includes(q)
+                    })
+                    .map(p => (
+                      <button
+                        key={p.playerId}
+                        onClick={() => {
+                          setSelectedPlayerId(p.playerId)
+                          setPlayerSearch('')
+                          setPlayerDropdownOpen(false)
+                        }}
+                        className="w-full px-3 py-2 text-left text-xs text-white hover:bg-white/10 flex items-center gap-2"
+                      >
+                        {p.jerseyNumber != null && (
+                          <span className="text-emerald-400 font-mono font-bold w-6">#{p.jerseyNumber}</span>
+                        )}
+                        <span>{p.playerName}</span>
+                      </button>
+                    ))
+                  }
+                  {unplacedPlayers.filter(p => {
+                    if (!playerSearch) return true
+                    const q = playerSearch.toLowerCase()
+                    return p.playerName.toLowerCase().includes(q) || (p.jerseyNumber?.toString() || '').includes(q)
+                  }).length === 0 && (
+                    <div className="px-3 py-2 text-xs text-white/40">No players found</div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Label input */}
@@ -1118,15 +1164,35 @@ export default function SetPieceEditor({
 
       {/* Animation Playback Modal */}
       {showPlayback && phases.length > 1 && (
-        <PlaybackEngine
-          phases={phases}
-          routineName={routineName}
-          voiceoverUrl={voiceoverUrl}
-          teamPrimaryColor={teamPrimaryColor}
-          teamSecondaryColor={teamSecondaryColor}
-          onClose={() => setShowPlayback(false)}
-          showVoiceoverButton={!!onSaveVoiceover}
-        />
+        <>
+          <PlaybackEngine
+            phases={phases}
+            routineName={routineName}
+            voiceoverUrl={voiceoverUrl}
+            teamPrimaryColor={teamPrimaryColor}
+            teamSecondaryColor={teamSecondaryColor}
+            onClose={() => setShowPlayback(false)}
+            showVoiceoverButton={!!onSaveVoiceover}
+            onRecordVoiceover={() => setShowVoiceoverRecorder(true)}
+          />
+          {showVoiceoverRecorder && onSaveVoiceover && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+              <div className="relative z-10 w-full max-w-md">
+                <VoiceoverRecorder
+                  onSave={async (blob) => {
+                    await onSaveVoiceover(blob)
+                    setShowVoiceoverRecorder(false)
+                  }}
+                  onCancel={() => setShowVoiceoverRecorder(false)}
+                  onStartAnimation={() => {}}
+                  onStopAnimation={() => {}}
+                  isAnimating={false}
+                />
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

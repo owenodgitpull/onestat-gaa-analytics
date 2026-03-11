@@ -97,20 +97,33 @@ def extract_text_from_xlsx(file_bytes: bytes) -> str:
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
-    """Extract text content from a DOCX file."""
+    """Extract text content from a DOCX file, preserving document order.
+
+    Iterates body elements in order so paragraphs and tables stay interleaved
+    (critical for individual-report formats where player name precedes their data table).
+    """
     from docx import Document
+    from docx.table import Table as DocxTable
+    from docx.text.paragraph import Paragraph
+    from docx.oxml.ns import qn
+
     doc = Document(io.BytesIO(file_bytes))
-
     lines = []
-    for para in doc.paragraphs:
-        if para.text.strip():
-            lines.append(para.text)
+    table_idx = 0
 
-    for i, table in enumerate(doc.tables):
-        lines.append(f"\n=== Table {i + 1} ===")
-        for row in table.rows:
-            cells = [cell.text.strip() for cell in row.cells]
-            lines.append(" | ".join(cells))
+    for element in doc.element.body:
+        tag = element.tag
+        if tag == qn("w:p"):
+            para = Paragraph(element, doc)
+            if para.text.strip():
+                lines.append(para.text)
+        elif tag == qn("w:tbl"):
+            table_idx += 1
+            table = DocxTable(element, doc)
+            lines.append(f"\n=== Table {table_idx} ===")
+            for row in table.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                lines.append(" | ".join(cells))
 
     return "\n".join(lines)
 

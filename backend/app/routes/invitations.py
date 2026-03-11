@@ -116,12 +116,11 @@ async def accept_invitation(
         role=invitation.role,
     ))
 
-    # If user has no active club, set this as their active club
+    # Switch active club to the one just accepted
     user_result = await db.execute(select(User).where(User.id == user.user_id))
     db_user = user_result.scalar_one()
-    if not db_user.club_id:
-        db_user.club_id = invitation.club_id
-        db_user.role = invitation.role
+    db_user.club_id = invitation.club_id
+    db_user.role = invitation.role
 
     # Mark invitation accepted
     invitation.status = "accepted"

@@ -101,22 +101,39 @@ async def import_fitness_file(
     players_result = await db.execute(players_query)
     club_players = players_result.scalars().all()
 
+    # Normalize apostrophes/quotes for matching
+    def normalize_name(n: str) -> str:
+        import unicodedata
+        # Replace all unicode apostrophe variants with ASCII apostrophe
+        for ch in ('\u2019', '\u2018', '\u201B', '\u02BC', '\u02BB', '\u0060'):
+            n = n.replace(ch, "'")
+        # Also strip apostrophes entirely for comparison
+        return n.lower().strip()
+
+    def strip_apostrophes(n: str) -> str:
+        return normalize_name(n).replace("'", "").replace(" ", " ")
+
     # Build lookup helpers
-    name_exact = {p.name.lower(): {"id": str(p.id), "name": p.name} for p in club_players}
+    name_exact = {normalize_name(p.name): {"id": str(p.id), "name": p.name} for p in club_players}
+    name_stripped = {strip_apostrophes(p.name): {"id": str(p.id), "name": p.name} for p in club_players}
 
     def match_player(name: str):
-        lower = name.lower().strip()
-        # Exact match
-        if lower in name_exact:
-            return name_exact[lower]
+        normed = normalize_name(name)
+        stripped = strip_apostrophes(name)
+        # Exact match (normalized)
+        if normed in name_exact:
+            return name_exact[normed]
+        # Stripped apostrophe match (O'Donnell vs ODonnell)
+        if stripped in name_stripped:
+            return name_stripped[stripped]
         # Partial match: both first and last name parts found
         for p in club_players:
-            p_parts = p.name.lower().split()
+            p_parts = normalize_name(p.name).split()
             if len(p_parts) >= 2:
-                if p_parts[0] in lower and p_parts[-1] in lower:
+                if p_parts[0] in normed and p_parts[-1] in normed:
                     return {"id": str(p.id), "name": p.name}
         # Last name match (if unique)
-        matches = [p for p in club_players if p.name.lower().split()[-1] == lower.split()[-1]]
+        matches = [p for p in club_players if normalize_name(p.name).split()[-1] == normed.split()[-1]]
         if len(matches) == 1:
             return {"id": str(matches[0].id), "name": matches[0].name}
         return None
@@ -392,6 +409,9 @@ async def get_player_test_comparison(
         ('pull_ups_60s', False),
         ('sprint_0_10m_sec', True),  # Lower is better
         ('bronco_test_min', True),  # Lower is better
+        ('eur', False),  # Higher EUR = better power utilization
+        ('mas_100_percent', False),  # Higher is better
+        ('mas_120_percent', False),  # Higher is better
     ]
 
     for metric, lower_is_better in metrics:

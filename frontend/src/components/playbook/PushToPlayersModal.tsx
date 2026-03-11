@@ -40,6 +40,7 @@ export default function PushToPlayersModal({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState('')
   const [isPushing, setIsPushing] = useState(false)
+  const [pushSuccess, setPushSuccess] = useState<number | null>(null)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   const activePlayers = useMemo(() => players.filter(p => p.active), [players])
@@ -101,8 +102,10 @@ export default function PushToPlayersModal({
     if (selectedIds.size === 0) return
     setIsPushing(true)
     try {
+      const count = selectedIds.size
       await onPush(routineId, Array.from(selectedIds), message || undefined)
-      onClose()
+      setPushSuccess(count)
+      setTimeout(() => onClose(), 2000)
     } catch {
       // Error handled by parent
     } finally {
@@ -214,6 +217,21 @@ export default function PushToPlayersModal({
             {isPushing ? 'Sending...' : `Push to ${selectedIds.size} Player${selectedIds.size !== 1 ? 's' : ''}`}
           </button>
         </div>
+
+        {/* Success overlay */}
+        {pushSuccess !== null && (
+          <div className="absolute inset-0 rounded-2xl bg-slate-900/95 flex flex-col items-center justify-center gap-4 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
+              <Check size={32} className="text-emerald-400" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-white">Sent!</h3>
+              <p className="text-sm text-white/60 mt-1">
+                Pushed to {pushSuccess} player{pushSuccess !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

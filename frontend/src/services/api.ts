@@ -138,6 +138,18 @@ export const playersAPI = {
   },
 
   /**
+   * Delete a player (hard delete by default)
+   */
+  delete: async (id: string, hardDelete = true): Promise<void> => {
+    const url = `${API_BASE_URL}/players/${id}?hard_delete=${hardDelete}`;
+    const response = await fetch(url, { method: 'DELETE', credentials: 'include' });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `Delete failed: ${response.status}`);
+    }
+  },
+
+  /**
    * Compare two players side-by-side (manager view)
    */
   comparePlayers: async (playerAId: string, playerBId: string): Promise<PlayerComparisonData> => {
@@ -1777,10 +1789,11 @@ const fitnessTestsAPI = {
   /**
    * List all fitness tests with optional filters
    */
-  list: async (playerId?: string, dateFrom?: string): Promise<FitnessTest[]> => {
+  list: async (playerId?: string, dateFrom?: string, dateTo?: string): Promise<FitnessTest[]> => {
     const params = new URLSearchParams();
     if (playerId) params.append('player_id', playerId);
     if (dateFrom) params.append('date_from', dateFrom);
+    if (dateTo) params.append('date_to', dateTo);
     return fetchAPI<FitnessTest[]>(`/fitness-tests/?${params}`);
   },
 

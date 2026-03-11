@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import { api, type SquadFitnessSummary, type PlayerFitnessCard, type FitnessTestCreate, type FitnessTest, type FitnessTestComparison } from '../services/api'
 
-type MetricKey = 'weight_kg' | 'body_fat_percentage' | 'ktw_right_cm' | 'ktw_left_cm' | 'overhead_squat_score' | 'cmj_cm' | 'squat_jump_cm' | 'press_ups_60s' | 'pull_ups_60s' | 'sprint_0_10m_sec' | 'bronco_test_min' | 'eur' | 'mas_100_percent' | 'mas_120_percent'
+type MetricKey = 'weight_kg' | 'body_fat_percentage' | 'ktw_right_cm' | 'ktw_left_cm' | 'overhead_squat_score' | 'cmj_cm' | 'squat_jump_cm' | 'press_ups_60s' | 'pull_ups_60s' | 'sprint_0_10m_sec' | 'bronco_test_min' | 'eur_calculated' | 'mas_100_percent' | 'mas_120_percent'
 
 const METRIC_LABELS: Record<string, { label: string; shortLabel: string; unit: string }> = {
   weight_kg: { label: 'Weight', shortLabel: 'Wt', unit: 'kg' },
@@ -36,7 +36,7 @@ const METRIC_LABELS: Record<string, { label: string; shortLabel: string; unit: s
   pull_ups_60s: { label: 'Pull-ups', shortLabel: 'Pull', unit: '' },
   sprint_0_10m_sec: { label: '0-10m Sprint', shortLabel: '10m', unit: 's' },
   bronco_test_min: { label: 'Bronco', shortLabel: 'Bronco', unit: 'min' },
-  eur: { label: 'EUR', shortLabel: 'EUR', unit: '' },
+  eur_calculated: { label: 'EUR', shortLabel: 'EUR', unit: '' },
   mas_100_percent: { label: 'MAS 100%', shortLabel: 'MAS', unit: 'm/s' },
   mas_120_percent: { label: 'MAS 120%', shortLabel: 'MAS120', unit: 'm/s' },
 }
@@ -53,6 +53,9 @@ const METRIC_COLUMNS: { key: MetricKey; label: string; shortLabel: string; unit:
   { key: 'ktw_left_cm', label: 'KTW Left', shortLabel: 'KTW-L', unit: 'cm' },
   { key: 'overhead_squat_score', label: 'OH Squat', shortLabel: 'OHS', unit: '/3' },
   { key: 'body_fat_percentage', label: 'Body Fat', shortLabel: 'BF%', unit: '%', lowerIsBetter: true },
+  { key: 'eur_calculated', label: 'EUR', shortLabel: 'EUR', unit: '' },
+  { key: 'mas_100_percent', label: 'MAS 100%', shortLabel: 'MAS', unit: 'm/s' },
+  { key: 'mas_120_percent', label: 'MAS 120%', shortLabel: 'MAS120', unit: 'm/s' },
 ]
 
 type ImportSession = {
@@ -81,6 +84,7 @@ export default function SquadFitness() {
   const [importing, setImporting] = useState(false)
   const [expandedSession, setExpandedSession] = useState<string | null>(null)
   const [sessionTests, setSessionTests] = useState<FitnessTest[]>([])
+  const [previousSessionTests, setPreviousSessionTests] = useState<FitnessTest[]>([])
   const [sessionLoading, setSessionLoading] = useState(false)
   // Comparison state
   const [comparisons, setComparisons] = useState<Record<string, FitnessTestComparison>>({})
@@ -225,10 +229,19 @@ export default function SquadFitness() {
     setExpandedSession(dateStr)
     setSessionLoading(true)
     try {
-      const tests = await api.fitnessTests.list(undefined, dateStr)
-      // Filter to just this date
-      setSessionTests(tests.filter(t => t.test_date === dateStr))
-    } catch { setSessionTests([]) }
+      const tests = await api.fitnessTests.list(undefined, dateStr, dateStr)
+      setSessionTests(tests)
+
+      // Find previous session for comparison
+      const sessionIdx = sessions.findIndex(s => s.test_date === dateStr)
+      if (sessionIdx >= 0 && sessionIdx < sessions.length - 1) {
+        const prevDate = sessions[sessionIdx + 1].test_date
+        const prevTests = await api.fitnessTests.list(undefined, prevDate, prevDate)
+        setPreviousSessionTests(prevTests)
+      } else {
+        setPreviousSessionTests([])
+      }
+    } catch { setSessionTests([]); setPreviousSessionTests([]) }
     finally { setSessionLoading(false) }
   }
 
@@ -405,34 +418,71 @@ export default function SquadFitness() {
                   <div className="border-t border-white/10 px-4 py-3">
                     {sessionLoading ? (
                       <div className="text-center py-4 text-white/40 text-sm">Loading...</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-left">
-                              <th className="text-white/50 text-xs font-semibold uppercase py-1.5 pr-4 sticky left-0 bg-transparent">Player</th>
-                              {METRIC_COLUMNS.filter(c => sessionTests.some(t => (t as any)[c.key] != null)).map(col => (
-                                <th key={col.key} className="text-white/50 text-xs font-semibold uppercase py-1.5 px-2 text-center whitespace-nowrap">
-                                  {col.shortLabel}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sessionTests.sort((a, b) => (a.player_name || '').localeCompare(b.player_name || '')).map(test => (
-                              <tr key={test.id} className="border-t border-white/5 hover:bg-white/5">
-                                <td className="py-1.5 pr-4 text-white font-medium whitespace-nowrap">{test.player_name}</td>
-                                {METRIC_COLUMNS.filter(c => sessionTests.some(t => (t as any)[c.key] != null)).map(col => (
-                                  <td key={col.key} className="py-1.5 px-2 text-center text-white/70">
-                                    {(test as any)[col.key] != null ? (test as any)[col.key] : '-'}
-                                  </td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
+                    ) : (() => {
+                      // Build lookup from player_id → previous session test
+                      const prevLookup: Record<string, FitnessTest> = {}
+                      for (const pt of previousSessionTests) {
+                        if (pt.player_id) prevLookup[pt.player_id] = pt
+                      }
+                      const hasPrev = previousSessionTests.length > 0
+                      const visibleCols = METRIC_COLUMNS.filter(c => sessionTests.some(t => (t as any)[c.key] != null))
+
+                      return (
+                        <>
+                          {hasPrev && (
+                            <div className="flex items-center gap-2 mb-2 text-xs text-white/40">
+                              <TrendingUp size={12} className="text-emerald-400" />
+                              Showing changes vs previous session
+                            </div>
+                          )}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-left">
+                                  <th className="text-white/50 text-xs font-semibold uppercase py-1.5 pr-4 sticky left-0 bg-transparent">Player</th>
+                                  {visibleCols.map(col => (
+                                    <th key={col.key} className="text-white/50 text-xs font-semibold uppercase py-1.5 px-2 text-center whitespace-nowrap">
+                                      {col.shortLabel}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {sessionTests.sort((a, b) => (a.player_name || '').localeCompare(b.player_name || '')).map(test => {
+                                  const prev = test.player_id ? prevLookup[test.player_id] : null
+                                  return (
+                                    <tr key={test.id} className="border-t border-white/5 hover:bg-white/5">
+                                      <td className="py-1.5 pr-4 text-white font-medium whitespace-nowrap">{test.player_name}</td>
+                                      {visibleCols.map(col => {
+                                        const val = (test as any)[col.key]
+                                        const prevVal = prev ? (prev as any)[col.key] : null
+                                        let delta: number | null = null
+                                        let improved: boolean | null = null
+                                        if (val != null && prevVal != null && prevVal !== 0) {
+                                          delta = ((val - prevVal) / Math.abs(prevVal)) * 100
+                                          improved = col.lowerIsBetter ? val < prevVal : val > prevVal
+                                        }
+                                        return (
+                                          <td key={col.key} className="py-1.5 px-2 text-center whitespace-nowrap">
+                                            <span className="text-white/70">{val != null ? val : '-'}</span>
+                                            {delta != null && (
+                                              <span className={`ml-1 inline-flex items-center text-[10px] font-medium ${improved ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                {improved ? <TrendingUp size={9} /> : <TrendingDown size={9} />}
+                                                {Math.abs(delta).toFixed(1)}%
+                                              </span>
+                                            )}
+                                          </td>
+                                        )
+                                      })}
+                                    </tr>
+                                  )
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
                 )}
               </div>

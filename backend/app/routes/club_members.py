@@ -49,27 +49,28 @@ async def list_members(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all users in the same club."""
+    """List all users who are members of this club (via membership table)."""
     result = await db.execute(
-        select(User)
-        .where(User.club_id == user.club_id)
+        select(User, UserClubMembership)
+        .join(UserClubMembership, UserClubMembership.user_id == User.id)
+        .where(UserClubMembership.club_id == user.club_id)
         .order_by(User.name)
     )
-    members = result.scalars().all()
+    rows = result.all()
 
     return {
         "members": [
             {
-                "id": str(m.id),
-                "name": m.name,
-                "email": m.email,
-                "role": m.role,
-                "is_active": m.is_active,
-                "player_id": str(m.player_id) if m.player_id else None,
-                "last_login_at": m.last_login_at.isoformat() if m.last_login_at else None,
-                "created_at": m.created_at.isoformat() if m.created_at else None,
+                "id": str(u.id),
+                "name": u.name,
+                "email": u.email,
+                "role": mem.role,
+                "is_active": mem.is_active,
+                "player_id": str(mem.player_id) if mem.player_id else None,
+                "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
             }
-            for m in members
+            for u, mem in rows
         ]
     }
 
@@ -88,29 +89,28 @@ async def change_role(
     if body.role not in ("club_admin", "player"):
         raise HTTPException(status_code=400, detail="Role must be 'club_admin' or 'player'")
 
-    result = await db.execute(
-        select(User).where(User.id == member_id, User.club_id == user.club_id)
-    )
-    member = result.scalar_one_or_none()
-    if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
-
-    member.role = body.role
-
-    # Sync role to membership
+    # Find member via membership
     mem_result = await db.execute(
         select(UserClubMembership).where(
-            UserClubMembership.user_id == member.id,
+            UserClubMembership.user_id == member_id,
             UserClubMembership.club_id == user.club_id,
         )
     )
     mem = mem_result.scalar_one_or_none()
-    if mem:
-        mem.role = body.role
+    if not mem:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    mem.role = body.role
+
+    # Also sync to User if this is their active club
+    result = await db.execute(select(User).where(User.id == member_id))
+    member = result.scalar_one_or_none()
+    if member and member.club_id == user.club_id:
+        member.role = body.role
 
     await db.commit()
 
-    logger.info(f"Role changed: {member.email} → {body.role} by {user.email}")
+    logger.info(f"Role changed: {member.email if member else member_id} → {body.role} by {user.email}")
     return {"detail": f"Role changed to {body.role}", "role": body.role}
 
 
@@ -124,29 +124,28 @@ async def deactivate_member(
     if member_id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot deactivate yourself")
 
-    result = await db.execute(
-        select(User).where(User.id == member_id, User.club_id == user.club_id)
-    )
-    member = result.scalar_one_or_none()
-    if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
-
-    member.is_active = False
-
-    # Deactivate membership (not the user globally — just this club)
+    # Find membership for this club
     mem_result = await db.execute(
         select(UserClubMembership).where(
-            UserClubMembership.user_id == member.id,
+            UserClubMembership.user_id == member_id,
             UserClubMembership.club_id == user.club_id,
         )
     )
     mem = mem_result.scalar_one_or_none()
-    if mem:
-        mem.is_active = False
+    if not mem:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    mem.is_active = False
+
+    # Also deactivate User if this is their active club
+    result = await db.execute(select(User).where(User.id == member_id))
+    member = result.scalar_one_or_none()
+    if member and member.club_id == user.club_id:
+        member.is_active = False
 
     await db.commit()
 
-    logger.info(f"User deactivated: {member.email} by {user.email}")
+    logger.info(f"User deactivated: {member.email if member else member_id} by {user.email}")
     return {"detail": "User deactivated"}
 
 
@@ -160,29 +159,28 @@ async def reactivate_member(
     if member_id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot reactivate yourself")
 
-    result = await db.execute(
-        select(User).where(User.id == member_id, User.club_id == user.club_id)
-    )
-    member = result.scalar_one_or_none()
-    if not member:
-        raise HTTPException(status_code=404, detail="Member not found")
-
-    member.is_active = True
-
-    # Reactivate membership
+    # Find membership for this club
     mem_result = await db.execute(
         select(UserClubMembership).where(
-            UserClubMembership.user_id == member.id,
+            UserClubMembership.user_id == member_id,
             UserClubMembership.club_id == user.club_id,
         )
     )
     mem = mem_result.scalar_one_or_none()
-    if mem:
-        mem.is_active = True
+    if not mem:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    mem.is_active = True
+
+    # Also reactivate User if this is their active club
+    result = await db.execute(select(User).where(User.id == member_id))
+    member = result.scalar_one_or_none()
+    if member and member.club_id == user.club_id:
+        member.is_active = True
 
     await db.commit()
 
-    logger.info(f"User reactivated: {member.email} by {user.email}")
+    logger.info(f"User reactivated: {member.email if member else member_id} by {user.email}")
     return {"detail": "User reactivated"}
 
 

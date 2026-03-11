@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Users, Copy } from 'lucide-react'
+import { X, Users, Copy, Search } from 'lucide-react'
 import { Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
 
@@ -81,6 +81,7 @@ export default function StartingLineupModal({
 }: StartingLineupModalProps) {
   const [lineup, setLineup] = useState<Record<string, LineupEntry>>({})
   const [selectingPosition, setSelectingPosition] = useState<string | null>(null)
+  const [playerSearchQuery, setPlayerSearchQuery] = useState('')
   const { club } = useClub()
   const jerseyBg = club?.primary_colour || '#10B981'
   const jerseyText = club?.secondary_colour || '#FFFFFF'
@@ -98,6 +99,7 @@ export default function StartingLineupModal({
     } else {
       // Otherwise, open player selection
       setSelectingPosition(positionId)
+      setPlayerSearchQuery('')
     }
   }
 
@@ -282,27 +284,45 @@ export default function StartingLineupModal({
                     || SUBSTITUTE_POSITIONS.find(p => p.id === selectingPosition)?.label
                     || selectingPosition}
                 </h3>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={16} />
+                  <input
+                    type="text"
+                    value={playerSearchQuery}
+                    onChange={(e) => setPlayerSearchQuery(e.target.value)}
+                    placeholder="Search by name or number..."
+                    className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    autoFocus
+                  />
+                </div>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
-                  {getAvailablePlayers().length > 0 ? (
-                    getAvailablePlayers().map((player) => (
-                      <button
-                        key={player.id}
-                        onClick={() => handlePlayerSelect(player.id)}
-                        className="w-full glass-card-hover p-4 text-left"
-                      >
-                        <p className="text-white font-semibold">
-                          {player.jersey_number != null && (
-                            <span className="text-emerald-400 mr-2">#{player.jersey_number}</span>
-                          )}
-                          {player.name}
-                        </p>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="glass-card p-6 text-center">
-                      <p className="text-white/60">No players available</p>
-                    </div>
-                  )}
+                  {(() => {
+                    const available = getAvailablePlayers().filter(p => {
+                      if (!playerSearchQuery) return true
+                      const q = playerSearchQuery.toLowerCase()
+                      return p.name.toLowerCase().includes(q) || (p.jersey_number?.toString() || '').includes(q)
+                    })
+                    return available.length > 0 ? (
+                      available.map((player) => (
+                        <button
+                          key={player.id}
+                          onClick={() => handlePlayerSelect(player.id)}
+                          className="w-full glass-card-hover p-4 text-left"
+                        >
+                          <p className="text-white font-semibold">
+                            {player.jersey_number != null && (
+                              <span className="text-emerald-400 mr-2">#{player.jersey_number}</span>
+                            )}
+                            {player.name}
+                          </p>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="glass-card p-6 text-center">
+                        <p className="text-white/60">{playerSearchQuery ? 'No matching players' : 'No players available'}</p>
+                      </div>
+                    )
+                  })()}
                 </div>
                 <button
                   onClick={() => setSelectingPosition(null)}

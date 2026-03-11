@@ -2453,6 +2453,7 @@ export default function MatchRecording() {
                   pendingFoul={pendingFoul}
                   pending45={!!pending45}
                   pendingKickoutPosition={!!pendingKickoutEvent}
+                  awaitingKickout={awaitingKickout}
                   onCancelFree={handleCancelFree}
                   onCancel45={handleCancel45}
                   onCancelKickout={handleCancelKickout}

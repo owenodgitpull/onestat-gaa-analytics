@@ -14,7 +14,7 @@ from datetime import datetime
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_club
 from app.models.set_piece_routine import SetPieceRoutine
 from app.models.playbook_push import PlaybookPush, PlaybookPushRecipient
 from app.models.player import Player
@@ -241,7 +241,7 @@ async def revoke_push(
 
 @router.get("/player/playbooks")
 async def get_player_playbooks(
-    user: AuthenticatedUser = Depends(require_admin),  # TODO: allow player role
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Get playbook pushes for the current player (player portal)."""
@@ -297,7 +297,7 @@ async def get_player_playbooks(
 @router.post("/player/playbooks/{push_id}/viewed")
 async def mark_playbook_viewed(
     push_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),  # TODO: allow player role
+    user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Mark a playbook push as viewed by the player."""

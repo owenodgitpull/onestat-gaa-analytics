@@ -5,7 +5,7 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Users,
   Search,
@@ -18,11 +18,17 @@ import {
   Check,
   RefreshCw,
   GitCompareArrows,
-  X
+  X,
+  Pencil,
+  Trash2,
+  MoreVertical,
+  Calendar
 } from 'lucide-react'
 import { api, TopScorer, fetchAPI } from '@/services/api'
 import { usePlayers } from '@/hooks/usePlayers'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
+
+const POSITIONS = ['goalkeeper', 'defender', 'midfielder', 'forward'] as const
 
 // Position categories for filtering
 const positionCategories = [
@@ -49,7 +55,13 @@ export default function Players() {
   const [generatingCode, setGeneratingCode] = useState(false)
   const [compareMode, setCompareMode] = useState(false)
   const [selectedForCompare, setSelectedForCompare] = useState<string[]>([])
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [editingPositionId, setEditingPositionId] = useState<string | null>(null)
+  const [editingDobId, setEditingDobId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
 
+  const queryClient = useQueryClient()
   const { data: players, isLoading } = usePlayers()
 
   const { data: topScorers } = useQuery({
@@ -98,6 +110,14 @@ export default function Players() {
     players?.forEach(p => map.set(p.id, p.name))
     return map
   }, [players])
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!menuOpenId) return
+    const handler = () => setMenuOpenId(null)
+    document.addEventListener('click', handler)
+    return () => document.removeEventListener('click', handler)
+  }, [menuOpenId])
 
   const inviteLink = inviteCode ? `${window.location.origin}/join/${inviteCode}` : null
 
@@ -149,6 +169,53 @@ export default function Players() {
     })
   }
 
+  const handlePositionChange = async (playerId: string, position: string) => {
+    try {
+      await api.players.update(playerId, { position } as Partial<import('@/types').Player>)
+      queryClient.invalidateQueries({ queryKey: ['players'] })
+    } catch {
+      // silently fail
+    }
+    setEditingPositionId(null)
+    setMenuOpenId(null)
+  }
+
+  const handleDobSave = async (playerId: string) => {
+    const input = document.getElementById(`dob-input-${playerId}`) as HTMLInputElement | null
+    if (!input?.value) { setEditingDobId(null); return }
+    try {
+      await api.players.update(playerId, { date_of_birth: input.value } as Partial<import('@/types').Player>)
+      await queryClient.invalidateQueries({ queryKey: ['players'] })
+    } catch {
+      // silently fail
+    }
+    setEditingDobId(null)
+  }
+
+  const getAge = (dob: string | null): number | null => {
+    if (!dob) return null
+    const birth = new Date(dob)
+    const today = new Date()
+    let age = today.getFullYear() - birth.getFullYear()
+    const m = today.getMonth() - birth.getMonth()
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--
+    return age
+  }
+
+  const handleDeleteConfirmed = async () => {
+    if (!deleteConfirm) return
+    setDeleting(deleteConfirm.id)
+    try {
+      await api.players.delete(deleteConfirm.id, true)
+      await queryClient.invalidateQueries({ queryKey: ['players'] })
+    } catch {
+      // silently fail
+    }
+    setDeleting(null)
+    setDeleteConfirm(null)
+    setMenuOpenId(null)
+  }
+
   if (isLoading) {
     return <LoadingSkeleton variant="list" />
   }
@@ -198,8 +265,16 @@ export default function Players() {
             placeholder="Search by name or number..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full pl-12 pr-10 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Filter size={20} className="text-white/40" />
@@ -323,9 +398,75 @@ export default function Players() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-white">{player.name}</h3>
-                  <p className="text-sm text-white/60 capitalize">
-                    {(player.position || 'unknown').replace(/_/g, ' ')}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    {editingPositionId === player.id ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+                        <select
+                          id={`pos-select-${player.id}`}
+                          className="mt-0.5 px-2 py-1 rounded bg-white/10 border border-white/20 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          defaultValue={player.position || ''}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="" className="bg-slate-800">Select position</option>
+                          {POSITIONS.map(pos => (
+                            <option key={pos} value={pos} className="bg-slate-800 capitalize">{pos.charAt(0).toUpperCase() + pos.slice(1)}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault()
+                            const sel = document.getElementById(`pos-select-${player.id}`) as HTMLSelectElement | null
+                            if (sel?.value) handlePositionChange(player.id, sel.value)
+                            else setEditingPositionId(null)
+                          }}
+                          className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs font-medium hover:bg-emerald-500/30"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={(e) => { e.preventDefault(); setEditingPositionId(null) }}
+                          className="px-2 py-1 rounded bg-white/10 text-white/60 text-xs hover:bg-white/20"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-white/60 capitalize">
+                        {(player.position || 'unknown').replace(/_/g, ' ')}
+                      </p>
+                    )}
+                    {editingDobId === player.id ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+                        <input
+                          id={`dob-input-${player.id}`}
+                          type="date"
+                          className="px-2 py-1 rounded bg-white/10 border border-white/20 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 [color-scheme:dark]"
+                          defaultValue={player.date_of_birth || ''}
+                          autoFocus
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleDobSave(player.id) }}
+                        />
+                        <button
+                          onClick={(e) => { e.preventDefault(); handleDobSave(player.id) }}
+                          className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs font-medium hover:bg-emerald-500/30"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={(e) => { e.preventDefault(); setEditingDobId(null) }}
+                          className="px-2 py-1 rounded bg-white/10 text-white/60 text-xs hover:bg-white/20"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-white/40">
+                        {getAge(player.date_of_birth) !== null
+                          ? `Age ${getAge(player.date_of_birth)}`
+                          : ''}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -359,6 +500,57 @@ export default function Players() {
                   {player.active ? 'Active' : 'Inactive'}
                 </div>
                 {!compareMode && (
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setMenuOpenId(menuOpenId === player.id ? null : player.id)
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/40 hover:text-white"
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+                    {menuOpenId === player.id && (
+                      <div
+                        className="absolute right-0 top-full mt-1 z-[100] w-44 rounded-xl bg-slate-800 border border-white/20 shadow-xl overflow-hidden"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                      >
+                        <button
+                          onClick={() => {
+                            setEditingPositionId(player.id)
+                            setMenuOpenId(null)
+                          }}
+                          className="w-full px-4 py-2.5 text-sm text-left text-white hover:bg-white/10 flex items-center gap-2"
+                        >
+                          <Pencil size={14} />
+                          Edit Position
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingDobId(player.id)
+                            setMenuOpenId(null)
+                          }}
+                          className="w-full px-4 py-2.5 text-sm text-left text-white hover:bg-white/10 flex items-center gap-2"
+                        >
+                          <Calendar size={14} />
+                          Edit DOB
+                        </button>
+                        <button
+                          onClick={() => {
+                            setDeleteConfirm({ id: player.id, name: player.name })
+                            setMenuOpenId(null)
+                          }}
+                          className="w-full px-4 py-2.5 text-sm text-left text-red-400 hover:bg-red-500/10 flex items-center gap-2"
+                        >
+                          <Trash2 size={14} />
+                          Delete Player
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {!compareMode && (
                   <ChevronRight size={20} className="text-white/40 group-hover:text-white transition-colors" />
                 )}
               </div>
@@ -383,7 +575,7 @@ export default function Players() {
             <Link
               key={player.id}
               to={`/players/${player.id}`}
-              className="glass-card p-4 hover:bg-white/10 transition-all cursor-pointer group block"
+              className={`glass-card p-4 hover:bg-white/10 transition-all cursor-pointer group block ${menuOpenId === player.id ? 'relative z-[90]' : 'relative'}`}
             >
               {cardContent}
             </Link>
@@ -402,6 +594,39 @@ export default function Players() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative glass-card p-6 max-w-sm w-full border border-white/20 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-red-500/20 flex items-center justify-center">
+                <Trash2 size={20} className="text-red-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white">Delete Player</h3>
+            </div>
+            <p className="text-white/70 text-sm mb-6">
+              Are you sure you want to permanently delete <span className="text-white font-medium">{deleteConfirm.name}</span> from the squad? This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/10 text-white hover:bg-white/20 transition-colors border border-white/20"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirmed}
+                disabled={deleting === deleteConfirm.id}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors border border-red-500/30 disabled:opacity-50"
+              >
+                {deleting === deleteConfirm.id ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Floating Compare Bar */}
       {compareMode && selectedForCompare.length > 0 && (

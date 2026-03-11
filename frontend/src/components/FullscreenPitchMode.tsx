@@ -107,6 +107,7 @@ export default function FullscreenPitchMode({
   pendingFoul,
   pending45,
   pendingKickoutPosition,
+  awaitingKickout,
   onCancelFree,
   onCancel45,
   onCancelKickout,
@@ -470,6 +471,7 @@ export default function FullscreenPitchMode({
             pendingFoul={pendingFoul}
             pending45={pending45}
             pendingKickoutPosition={pendingKickoutPosition}
+            awaitingKickout={awaitingKickout}
             onCancelFree={onCancelFree}
             onCancel45={onCancel45}
             onCancelKickout={onCancelKickout}

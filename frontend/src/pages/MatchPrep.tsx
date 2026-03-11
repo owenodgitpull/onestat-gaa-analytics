@@ -155,6 +155,8 @@ export default function MatchPrep() {
   const [deletingSetPieceId, setDeletingSetPieceId] = useState<string | null>(null)
   // Push to players state
   const [pushingRoutine, setPushingRoutine] = useState<SetPieceRoutine | null>(null)
+  // Voiceover state
+  const [voiceoverUrl, setVoiceoverUrl] = useState<string | null>(null)
 
   // Section collapse state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -390,6 +392,35 @@ export default function MatchPrep() {
     } catch (err) {
       console.error('Failed to save set piece:', err)
     }
+  }
+
+  // Fetch voiceover URL when opening editor for existing routine
+  const openSetPieceEditor = async (routine: SetPieceRoutine | null) => {
+    setEditingSetPiece(routine)
+    setVoiceoverUrl(null)
+    setShowSetPieceEditor(true)
+    if (routine?.id && routine.has_voiceover) {
+      try {
+        const { voiceover_url } = await api.matchPrep.getVoiceoverUrl(routine.id)
+        setVoiceoverUrl(voiceover_url)
+      } catch { /* ignore */ }
+    }
+  }
+
+  const handleSaveVoiceover = async (blob: Blob) => {
+    const routineId = editingSetPiece?.id
+    if (!routineId) return
+    // Get presigned upload URL
+    const { upload_url, key } = await api.matchPrep.getVoiceoverUploadUrl(routineId)
+    // Upload directly to R2
+    await fetch(upload_url, { method: 'PUT', body: blob, headers: { 'Content-Type': 'audio/webm' } })
+    // Confirm upload
+    await api.matchPrep.confirmVoiceoverUpload(routineId, key)
+    // Fetch new download URL
+    const { voiceover_url } = await api.matchPrep.getVoiceoverUrl(routineId)
+    setVoiceoverUrl(voiceover_url)
+    // Update local state
+    setSetPieces(prev => prev.map(sp => sp.id === routineId ? { ...sp, has_voiceover: true } : sp))
   }
 
   const handleDeleteSetPiece = async (id: string) => {
@@ -884,10 +915,7 @@ export default function MatchPrep() {
                 <option value="kickout">Kickout</option>
               </select>
               <button
-                onClick={() => {
-                  setEditingSetPiece(null)
-                  setShowSetPieceEditor(true)
-                }}
+                onClick={() => openSetPieceEditor(null)}
                 disabled={!newSetPieceName.trim()}
                 className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold disabled:opacity-40"
               >
@@ -914,10 +942,7 @@ export default function MatchPrep() {
                       </div>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => {
-                            setEditingSetPiece(sp)
-                            setShowSetPieceEditor(true)
-                          }}
+                          onClick={() => openSetPieceEditor(sp)}
                           className="p-1.5 rounded-lg text-white/30 hover:text-white"
                         >
                           <Pencil size={14} />
@@ -959,6 +984,8 @@ export default function MatchPrep() {
           onPushToPlayers={editingSetPiece ? () => {
             setPushingRoutine(editingSetPiece)
           } : undefined}
+          voiceoverUrl={voiceoverUrl}
+          onSaveVoiceover={editingSetPiece?.id ? handleSaveVoiceover : undefined}
         />
       )}
 

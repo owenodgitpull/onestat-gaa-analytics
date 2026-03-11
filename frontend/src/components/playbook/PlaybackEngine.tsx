@@ -145,10 +145,10 @@ export default function PlaybackEngine({
 
       {/* Pitch area */}
       <div
-        className="flex-1 flex items-center justify-center p-4 cursor-pointer"
+        className="flex-1 min-h-0 flex items-center justify-center p-4 cursor-pointer overflow-hidden"
         onClick={handlePitchClick}
       >
-        <div className="relative w-full max-w-5xl" style={{ aspectRatio: '2332/1446' }}>
+        <div className="relative w-full max-w-5xl max-h-full" style={{ aspectRatio: '2332/1446' }}>
           <svg viewBox={PITCH_VIEWBOX} className="w-full h-full rounded-xl overflow-hidden">
             {/* Background */}
             <rect width="2332" height="1446" fill="#2d5016" />

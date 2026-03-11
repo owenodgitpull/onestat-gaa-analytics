@@ -42,5 +42,5 @@ class PlaybookPushRecipient(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
-    push = relationship("PlaybookPush", back_populates="recipients")
+    push = relationship("PlaybookPush", back_populates="recipients", lazy="selectin")
     player = relationship("Player", lazy="selectin")

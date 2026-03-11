@@ -132,11 +132,17 @@ export default function PlaybooksPage() {
               onClick={() => handleOpenPlay(play)}
               className="w-full glass-card p-4 text-left hover:bg-white/5 transition-all group"
             >
-              <div className="flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                {/* Play button — prominent */}
+                <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 group-hover:bg-cyan-500/30 flex flex-col items-center justify-center transition-all">
+                  <Play size={22} className="text-cyan-400 fill-cyan-400" />
+                  <span className="text-[8px] font-bold text-cyan-400/80 uppercase mt-0.5">Play</span>
+                </div>
+
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     {!play.viewed_at && (
-                      <span className="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0 animate-pulse" />
                     )}
                     <h3 className="text-sm font-semibold text-white truncate">{play.routine_name}</h3>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${
@@ -147,13 +153,13 @@ export default function PlaybooksPage() {
                   </div>
 
                   {play.coach_message && (
-                    <div className="flex items-start gap-1.5 mt-1.5">
+                    <div className="flex items-start gap-1.5 mt-1">
                       <MessageSquare size={12} className="text-white/30 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-white/50 leading-relaxed">{play.coach_message}</p>
+                      <p className="text-xs text-white/50 leading-relaxed line-clamp-2">{play.coach_message}</p>
                     </div>
                   )}
 
-                  <div className="flex items-center gap-3 mt-2 text-[11px] text-white/30">
+                  <div className="flex items-center gap-3 mt-1.5 text-[11px] text-white/30">
                     <span className="flex items-center gap-1">
                       <Clock size={10} /> {formatDate(play.pushed_at)}
                     </span>
@@ -163,10 +169,6 @@ export default function PlaybooksPage() {
                       </span>
                     )}
                   </div>
-                </div>
-
-                <div className="flex-shrink-0 ml-3 p-2.5 rounded-xl bg-white/5 group-hover:bg-cyan-500/20 transition-all">
-                  <Play size={18} className="text-white/40 group-hover:text-cyan-300" />
                 </div>
               </div>
             </button>

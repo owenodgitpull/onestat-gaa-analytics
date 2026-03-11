@@ -31,6 +31,7 @@ interface CategorizedActionButtonsProps {
   pendingFoul?: 'own' | 'opponent' | null  // Track which team fouled
   pending45?: boolean
   pendingKickoutPosition?: boolean  // Waiting for user to click pitch for kickout position
+  awaitingKickout?: boolean  // Score just happened, kickout expected next
   isInPenaltyArea?: boolean  // Ball is near opponent's goal (inside 13m line)
   onCancelFree?: () => void
   onCancel45?: () => void
@@ -114,6 +115,7 @@ export default function CategorizedActionButtons({
   pendingFoul = null,
   pending45 = false,
   pendingKickoutPosition = false,
+  awaitingKickout = false,
   isInPenaltyArea: _isInPenaltyArea = false,
   onCancelFree,
   onCancel45,
@@ -467,6 +469,8 @@ export default function CategorizedActionButtons({
         {categories.map((category) => {
           const Icon = category.icon
           const isActive = activeCategory === category.id
+          const isKickoutTab = category.id === 'our_kickouts' || category.id === 'opp_kickouts'
+          const shouldPulse = isKickoutTab && awaitingKickout && !isActive
 
           return (
             <button
@@ -476,7 +480,9 @@ export default function CategorizedActionButtons({
               className={`flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 ${
                 isActive
                   ? 'bg-emerald-600 text-white'
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
+                  : shouldPulse
+                    ? 'bg-amber-500/20 text-amber-300 animate-pulse border-t-2 border-amber-400'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
               }`}
             >
               <Icon size={16} />
