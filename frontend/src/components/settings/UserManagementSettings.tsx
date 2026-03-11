@@ -116,7 +116,7 @@ export default function UserManagementSettings() {
 
   const isSelf = (id: string) => id === user?.id
 
-  const inputClass = "w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors text-sm"
+  const inputClass = "w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors text-sm [&>option]:bg-slate-800 [&>option]:text-white"
 
   return (
     <div className="space-y-6">

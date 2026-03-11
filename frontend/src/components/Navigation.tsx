@@ -31,7 +31,7 @@ export default function Navigation() {
   const navigate = useNavigate()
   const createMatch = useCreateMatch()
   const { user, logout } = useAuth()
-  const { club, logoUrl } = useClub()
+  const { club, clubs, logoUrl } = useClub()
   const [isCreatingMatch, setIsCreatingMatch] = useState(false)
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
@@ -195,7 +195,7 @@ export default function Navigation() {
               alt="OneStat Analytics"
               className="h-7 lg:h-8"
             />
-            {logoUrl && (
+            {logoUrl && clubs.length <= 1 && (
               <>
                 <div className="w-px h-5 bg-white/15" />
                 <img
@@ -208,8 +208,13 @@ export default function Navigation() {
             )}
           </Link>
 
-          {/* Team Switcher — only renders if user has multiple teams */}
-          <TeamSwitcher />
+          {/* Team Switcher — shows club logo + caret when multiple teams */}
+          {clubs.length > 1 && (
+            <>
+              <div className="w-px h-5 bg-white/15 mx-1" />
+              <TeamSwitcher />
+            </>
+          )}
 
           {/* Main Navigation Links */}
           <div className="flex items-center h-full overflow-x-auto scrollbar-hide flex-1 min-w-0">

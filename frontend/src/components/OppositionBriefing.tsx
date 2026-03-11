@@ -4,8 +4,8 @@
  * Streams an opposition briefing from the Chat Agent with web search access.
  */
 
-import { useState, useRef } from 'react'
-import { Bot, Loader2, X, Copy, Check } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Bot, Loader2, X, Copy, Check, RefreshCw } from 'lucide-react'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
@@ -18,9 +18,33 @@ interface OppositionBriefingProps {
 export default function OppositionBriefing({ matchId, opponent }: OppositionBriefingProps) {
   const [briefing, setBriefing] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [loadingSaved, setLoadingSaved] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+
+  // Load saved briefing on mount
+  useEffect(() => {
+    const loadSaved = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/match-prep/matches/${matchId}/opposition-briefing/saved`,
+          { credentials: 'include' }
+        )
+        if (res.ok) {
+          const data = await res.json()
+          if (data.opposition_briefing) {
+            setBriefing(data.opposition_briefing)
+          }
+        }
+      } catch {
+        // Silently fail — user can generate fresh
+      } finally {
+        setLoadingSaved(false)
+      }
+    }
+    loadSaved()
+  }, [matchId])
 
   const generateBriefing = async () => {
     setLoading(true)
@@ -99,6 +123,17 @@ export default function OppositionBriefing({ matchId, opponent }: OppositionBrie
     setError(null)
   }
 
+  if (loadingSaved) {
+    return (
+      <div className="glass-card p-4 flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+          <Loader2 size={20} className="text-purple-400 animate-spin" />
+        </div>
+        <span className="text-white/50 text-sm">Loading briefing...</span>
+      </div>
+    )
+  }
+
   if (!briefing && !loading) {
     return (
       <button
@@ -127,6 +162,11 @@ export default function OppositionBriefing({ matchId, opponent }: OppositionBrie
           {loading && <Loader2 size={14} className="text-purple-400 animate-spin" />}
         </div>
         <div className="flex items-center gap-1">
+          {briefing && !loading && (
+            <button onClick={generateBriefing} className="p-1.5 rounded-lg text-white/40 hover:text-white" title="Regenerate briefing">
+              <RefreshCw size={14} />
+            </button>
+          )}
           {briefing && (
             <button onClick={handleCopy} className="p-1.5 rounded-lg text-white/40 hover:text-white" title="Copy briefing">
               {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}

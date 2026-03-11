@@ -27,8 +27,8 @@ export default function SortableSection({ id, children }: SortableSectionProps) 
 
   return (
     <div ref={setNodeRef} style={style} className="relative group/section">
-      {/* Section drag handle */}
-      <div className="absolute -left-8 top-2 opacity-0 group-hover/section:opacity-100 transition-opacity">
+      {/* Section drag handle — overlaps left edge on hover */}
+      <div className="absolute -left-6 top-2 opacity-0 group-hover/section:opacity-100 transition-opacity z-10">
         <button
           ref={setActivatorNodeRef}
           {...attributes}

@@ -4,7 +4,7 @@ import { useClub } from '../contexts/ClubContext'
 import { API_BASE } from '../services/api'
 
 export default function TeamSwitcher() {
-  const { club, clubs, switchClub } = useClub()
+  const { club, clubs, logoUrl, switchClub } = useClub()
   const [isOpen, setIsOpen] = useState(false)
   const [switching, setSwitching] = useState(false)
 
@@ -25,16 +25,24 @@ export default function TeamSwitcher() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative flex items-center">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors text-white/80 hover:text-white"
+        className="flex items-center gap-1 rounded-lg hover:bg-white/5 transition-colors p-1"
       >
-        <Shield size={14} className="text-emerald-400" />
-        <span className="text-xs font-medium max-w-[100px] truncate hidden sm:inline">
-          {club?.short_name || club?.name || 'Team'}
-        </span>
-        <ChevronDown size={12} className="text-white/40" />
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={club?.name || 'Team'}
+            className="h-7 lg:h-8 rounded-md object-contain"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+          />
+        ) : (
+          <div className="h-7 w-7 lg:h-8 lg:w-8 rounded-md bg-white/10 flex items-center justify-center">
+            <Shield size={14} className="text-white/40" />
+          </div>
+        )}
+        <ChevronDown size={14} className="text-white/60" />
       </button>
 
       {isOpen && (
@@ -57,7 +65,7 @@ export default function TeamSwitcher() {
               >
                 {m.club_logo_url ? (
                   <img
-                    src={`${API_BASE}/club/logo/serve`}
+                    src={`${API_BASE}/club/logo/serve?club_id=${m.club_id}`}
                     alt=""
                     className="w-6 h-6 rounded object-contain flex-shrink-0"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}

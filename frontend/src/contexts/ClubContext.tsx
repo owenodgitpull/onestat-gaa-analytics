@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import type { Club, ClubMembership } from '../types';
 import { API_BASE, organizationsAPI } from '../services/api';
 import { useAuth } from './AuthContext';
-import { useQueryClient } from '@tanstack/react-query';
+
 
 interface ClubContextType {
   club: Club | null;
@@ -30,7 +30,6 @@ export function ClubProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user, setUser } = useAuth();
-  const queryClient = useQueryClient();
 
   const fetchClub = async () => {
     try {
@@ -63,26 +62,20 @@ export function ClubProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const switchClub = useCallback(async (clubId: string) => {
-    try {
-      const result = await organizationsAPI.switchClub(clubId);
-      // Update auth context with new club/role/player
-      if (user) {
-        setUser({
-          ...user,
-          club_id: result.club_id,
-          role: result.role,
-          player_id: result.player_id,
-        });
-      }
-      // Clear all cached data from previous club
-      queryClient.clear();
-      // Refetch club data and memberships for new club
-      await fetchClub();
-      await fetchClubs();
-    } catch (err: any) {
-      throw err;
+    const result = await organizationsAPI.switchClub(clubId);
+    // Update auth context with new club/role/player
+    if (user) {
+      setUser({
+        ...user,
+        club_id: result.club_id,
+        role: result.role,
+        player_id: result.player_id,
+      });
     }
-  }, [user, setUser, queryClient]);
+    // Full page reload ensures all contexts, cached data, and queries
+    // are cleanly reset for the new club
+    window.location.href = '/';
+  }, [user, setUser]);
 
   // Logo URL: if club has a logo_url, use the serve endpoint (handles R2 presigned URLs)
   const logoUrl = club?.logo_url ? `${API_BASE}/club/logo/serve` : null;

@@ -268,6 +268,22 @@ async def delete_marking_assignment(
 
 # ============ Opposition Briefing (AI-generated) ============
 
+@router.get("/matches/{match_id}/opposition-briefing/saved")
+async def get_saved_opposition_briefing(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the saved opposition briefing for a match, if any."""
+    result = await db.execute(
+        select(Match.opposition_briefing).where(
+            Match.id == match_id, Match.club_id == user.club_id
+        )
+    )
+    briefing = result.scalar_one_or_none()
+    return {"opposition_briefing": briefing or ""}
+
+
 @router.get("/matches/{match_id}/opposition-briefing")
 async def generate_opposition_briefing(
     match_id: UUID,
@@ -277,6 +293,7 @@ async def generate_opposition_briefing(
     """
     Generate an AI opposition briefing via streaming SSE.
     Uses the Chat Agent with web search capability to research the opponent.
+    Saves the full briefing to the Match after streaming completes.
     """
     # Get match details
     result = await db.execute(
@@ -310,15 +327,45 @@ async def generate_opposition_briefing(
 
     from app.services.ai.chat_agent import chat_with_analyst_stream
 
+    # We need a separate DB session for saving after stream completes,
+    # since the request session may close during streaming
+    match_id_val = match.id
+
     async def stream_briefing():
+        full_text = ""
         async for sse_line in chat_with_analyst_stream(
             db=db,
             conversation_history=[],
             user_message=prompt,
             club_id=user.club_id,
         ):
-            # chat_with_analyst_stream already yields full SSE lines
+            # Accumulate text content for persistence
+            if sse_line.startswith("data: ") and "[DONE]" not in sse_line:
+                try:
+                    payload = json.loads(sse_line[6:].strip())
+                    if payload.get("type") == "text" and payload.get("content"):
+                        full_text += payload["content"]
+                    elif payload.get("text"):
+                        full_text += payload["text"]
+                except (json.JSONDecodeError, KeyError):
+                    pass
             yield sse_line
+
+        # Save completed briefing to DB
+        if full_text.strip():
+            try:
+                from app.database import AsyncSessionLocal as async_session_factory
+                async with async_session_factory() as save_db:
+                    save_result = await save_db.execute(
+                        select(Match).where(Match.id == match_id_val)
+                    )
+                    save_match = save_result.scalar_one_or_none()
+                    if save_match:
+                        save_match.opposition_briefing = full_text.strip()
+                        await save_db.commit()
+                        logger.info(f"Saved opposition briefing for match {match_id_val}")
+            except Exception as e:
+                logger.error(f"Failed to save opposition briefing: {e}")
 
     return StreamingResponse(
         stream_briefing(),

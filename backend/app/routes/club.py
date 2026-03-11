@@ -111,11 +111,32 @@ async def upload_club_logo(
 
 @router.get("/logo/serve")
 async def serve_club_logo(
+    club_id: UUID = None,
     user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
-    """Redirect to a presigned R2 URL for the club logo."""
-    result = await db.execute(select(Club).where(Club.id == user.club_id))
+    """
+    Redirect to a presigned R2 URL for a club logo.
+    If club_id is provided, serves that club's logo (must be a member).
+    Otherwise serves the user's active club logo.
+    """
+    from app.models.user_club_membership import UserClubMembership
+
+    target_club_id = club_id or user.club_id
+
+    # If requesting a different club's logo, verify membership
+    if club_id and club_id != user.club_id:
+        mem_result = await db.execute(
+            select(UserClubMembership).where(
+                UserClubMembership.user_id == user.user_id,
+                UserClubMembership.club_id == club_id,
+                UserClubMembership.is_active .is_(True),
+            )
+        )
+        if not mem_result.scalar_one_or_none():
+            raise HTTPException(403, "Not a member of this team")
+
+    result = await db.execute(select(Club).where(Club.id == target_club_id))
     club = result.scalar_one_or_none()
     if not club or not club.logo_url:
         raise HTTPException(404, "No logo found")
@@ -125,7 +146,7 @@ async def serve_club_logo(
         raise HTTPException(404, "Logo needs to be re-uploaded via Settings > Team Profile")
 
     from app.services.storage_service import storage
-    url = storage.get_download_url(club.logo_url, expires_in=86400, club_id=str(user.club_id))
+    url = storage.get_download_url(club.logo_url, expires_in=86400, club_id=str(target_club_id))
     if not url:
         raise HTTPException(500, "Failed to generate logo URL")
 

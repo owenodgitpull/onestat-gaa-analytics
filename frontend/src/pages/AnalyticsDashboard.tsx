@@ -737,7 +737,7 @@ export default function AnalyticsDashboard() {
         onDragEnd={handleSectionDragEnd}
       >
         <SortableContext items={layout.sectionOrder} strategy={verticalListSortingStrategy}>
-          <div className="space-y-8 pl-8">
+          <div className="space-y-8">
             {layout.sectionOrder.map(sectionId => (
               <SortableSection key={sectionId} id={sectionId}>
                 {renderSection(sectionId)}
