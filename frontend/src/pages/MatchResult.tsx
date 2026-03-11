@@ -541,71 +541,120 @@ export default function MatchResult() {
         </div>
       )}
 
-      {/* Event Map + Stats — side by side on desktop, stacked on mobile */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr,1fr] gap-4">
-        {/* Left: Event Map + Filters */}
-        <div className="space-y-3">
-          <div className="glass-card p-4">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-bold text-white flex items-center space-x-2">
-                <Target size={16} />
-                <span>Event Map</span>
-              </h2>
+      {/* Main content — 2-col layout matching live recording page */}
+      <div className="flex flex-col md:flex-row gap-6">
+        {/* Left column — event map, filters, charts */}
+        <div className="flex-[2] min-w-0 space-y-6">
+          {/* Event Map */}
+          <div className="space-y-3">
+            <div className="glass-card p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-sm font-bold text-white flex items-center space-x-2">
+                  <Target size={16} />
+                  <span>Event Map</span>
+                </h2>
+                {hasEvents && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setTeamFilter('own')}
+                      className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                        teamFilter === 'own'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-white/10 text-white/60 hover:bg-white/20'
+                      }`}
+                    >
+                      {clubName}
+                    </button>
+                    <button
+                      onClick={() => setTeamFilter('opponent')}
+                      className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                        teamFilter === 'opponent'
+                          ? 'bg-orange-600 text-white'
+                          : 'bg-white/10 text-white/60 hover:bg-white/20'
+                      }`}
+                    >
+                      {match.opponent}
+                    </button>
+                  </div>
+                )}
+              </div>
               {hasEvents && (
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setTeamFilter('own')}
-                    className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
-                      teamFilter === 'own'
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-white/10 text-white/60 hover:bg-white/20'
-                    }`}
-                  >
-                    {clubName}
-                  </button>
-                  <button
-                    onClick={() => setTeamFilter('opponent')}
-                    className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
-                      teamFilter === 'opponent'
-                        ? 'bg-orange-600 text-white'
-                        : 'bg-white/10 text-white/60 hover:bg-white/20'
-                    }`}
-                  >
-                    {match.opponent}
-                  </button>
+                <div className="mb-1 text-xs text-white/40 text-center">
+                  {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown
+                  <span className="ml-1 text-white/25">— tap event to see details</span>
                 </div>
               )}
+              <div className="relative">
+                <GAAPitch readonly={true} events={filteredEvents} showZones={true} />
+                {!hasEvents && (
+                  <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-xl flex flex-col items-center justify-center">
+                    <Video size={32} className="text-purple-400 mb-3" />
+                    <p className="text-white/70 font-semibold text-sm">Events will appear once tagged</p>
+                    <p className="text-white/40 text-xs mt-1">Use video analysis to tag match events</p>
+                  </div>
+                )}
+              </div>
             </div>
             {hasEvents && (
-              <div className="mb-1 text-xs text-white/40 text-center">
-                {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} shown
-                <span className="ml-1 text-white/25">— tap event to see details</span>
-              </div>
+              <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
             )}
-            <div className="relative">
-              <GAAPitch readonly={true} events={filteredEvents} showZones={true} />
-              {!hasEvents && (
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] rounded-xl flex flex-col items-center justify-center">
-                  <Video size={32} className="text-purple-400 mb-3" />
-                  <p className="text-white/70 font-semibold text-sm">Events will appear once tagged</p>
-                  <p className="text-white/40 text-xs mt-1">Use video analysis to tag match events</p>
-                </div>
-              )}
-            </div>
           </div>
-          {hasEvents && (
-            <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
+
+          {/* Charts */}
+          {(eventsData?.events?.length ?? 0) > 0 ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <ChartZoomModal title="Paths Taken">
+                  <PathsTakenChart matchId={matchId!} />
+                </ChartZoomModal>
+                <ChartZoomModal title="Possession & Territory">
+                  <PossessionTerritoryChart
+                    stats={matchStats}
+                    events={eventsData?.events || []}
+                    matchId={matchId!}
+                    opponent={match.opponent}
+                    insight={postMatchReport?.insights?.possession}
+                    insightLoading={reportLoading}
+                  />
+                </ChartZoomModal>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <ChartZoomModal title="Scoring Timeline">
+                  <ScoringTimeline
+                    events={eventsData?.events || []}
+                    opponent={match.opponent}
+                    insight={postMatchReport?.insights?.scoring}
+                    insightLoading={reportLoading}
+                  />
+                </ChartZoomModal>
+                <ChartZoomModal title="Shot Outcomes">
+                  <ShotOutcomeChart
+                    events={eventsData?.events || []}
+                    opponent={match.opponent}
+                    insight={postMatchReport?.insights?.shooting}
+                    insightLoading={reportLoading}
+                  />
+                </ChartZoomModal>
+              </div>
+            </>
+          ) : (
+            <div className="glass-card p-8 text-center">
+              <Activity size={32} className="text-white/20 mx-auto mb-3" />
+              <p className="text-white/40 text-sm">Awaiting match events</p>
+              <p className="text-white/20 text-xs mt-1">Charts and analysis will appear once events are recorded</p>
+            </div>
           )}
         </div>
 
-        {/* Right: Match Stats + Events List */}
-        <div className="space-y-4">
-          {/* Match Stats */}
-          <div className="glass-card p-4">
-            <h2 className="text-sm font-bold text-white mb-3 flex items-center space-x-2">
-              <Activity size={16} />
+        {/* Right column — stats sidebar */}
+        <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden">
+          {/* Match Statistics */}
+          <div className="glass-card p-5">
+            <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
+              <Activity size={20} className="text-emerald-400" />
               <span>Match Statistics</span>
-            </h2>
+            </h3>
             {hasEvents ? (
               matchStats ? (
                 <StatsTable stats={matchStats} opponent={match.opponent} teamName={clubName} />
@@ -621,14 +670,14 @@ export default function MatchResult() {
             )}
           </div>
 
-          {/* Events List */}
-          <div className="glass-card p-4">
-            <h2 className="text-sm font-bold text-white mb-3 flex items-center space-x-2">
-              <Clock size={16} />
+          {/* Match Events */}
+          <div className="glass-card p-5 flex-1 flex flex-col min-h-0">
+            <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white flex-shrink-0">
+              <Clock size={20} />
               <span>Match Events</span>
-            </h2>
+            </h3>
             {eventsData?.events && eventsData.events.length > 0 ? (
-              <div className="space-y-2 max-h-[500px] overflow-y-auto">
+              <div className="space-y-2 flex-1 overflow-y-auto max-h-[500px]">
                 {eventsData.events
                   .slice()
                   .reverse()
@@ -647,85 +696,35 @@ export default function MatchResult() {
               </div>
             )}
           </div>
+
+          {/* Man Marking */}
+          <ManMarkingPanel
+            matchId={matchId!}
+            assignments={markingAssignments}
+            players={players || []}
+            onAdd={async (playerId, opponentName, notes) => {
+              try {
+                await api.matchPrep.createMarking(matchId!, {
+                  player_id: playerId,
+                  opponent_player_name: opponentName,
+                  notes,
+                })
+                refetchMarkings()
+              } catch (err) {
+                console.error('Failed to add marking:', err)
+              }
+            }}
+            onDelete={async (assignmentId) => {
+              try {
+                await api.matchPrep.deleteMarking(assignmentId)
+                refetchMarkings()
+              } catch (err) {
+                console.error('Failed to delete marking:', err)
+              }
+            }}
+          />
         </div>
       </div>
-
-      {/* Man Marking (post-match) */}
-      <div className="mt-4">
-        <ManMarkingPanel
-          matchId={matchId!}
-          assignments={markingAssignments}
-          players={players || []}
-          onAdd={async (playerId, opponentName, notes) => {
-            try {
-              await api.matchPrep.createMarking(matchId!, {
-                player_id: playerId,
-                opponent_player_name: opponentName,
-                notes,
-              })
-              refetchMarkings()
-            } catch (err) {
-              console.error('Failed to add marking:', err)
-            }
-          }}
-          onDelete={async (assignmentId) => {
-            try {
-              await api.matchPrep.deleteMarking(assignmentId)
-              refetchMarkings()
-            } catch (err) {
-              console.error('Failed to delete marking:', err)
-            }
-          }}
-        />
-      </div>
-
-      {/* Analytics Charts Row */}
-      {(eventsData?.events?.length ?? 0) > 0 ? (
-        <>
-          {/* Paths Taken + Possession — 2 side by side */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-            <ChartZoomModal title="Paths Taken">
-              <PathsTakenChart matchId={matchId!} />
-            </ChartZoomModal>
-            <ChartZoomModal title="Possession & Territory">
-              <PossessionTerritoryChart
-                stats={matchStats}
-                events={eventsData?.events || []}
-                matchId={matchId!}
-                opponent={match.opponent}
-                insight={postMatchReport?.insights?.possession}
-                insightLoading={reportLoading}
-              />
-            </ChartZoomModal>
-          </div>
-
-          {/* Scoring + Shot Outcome — 2 side by side */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-            <ChartZoomModal title="Scoring Timeline">
-              <ScoringTimeline
-                events={eventsData?.events || []}
-                opponent={match.opponent}
-                insight={postMatchReport?.insights?.scoring}
-                insightLoading={reportLoading}
-              />
-            </ChartZoomModal>
-            <ChartZoomModal title="Shot Outcomes">
-              <ShotOutcomeChart
-                events={eventsData?.events || []}
-                opponent={match.opponent}
-                insight={postMatchReport?.insights?.shooting}
-                insightLoading={reportLoading}
-              />
-            </ChartZoomModal>
-          </div>
-        </>
-      ) : (
-        <div className="glass-card p-8 mt-6 text-center">
-          <Activity size={32} className="text-white/20 mx-auto mb-3" />
-          <p className="text-white/40 text-sm">Awaiting match events</p>
-          <p className="text-white/20 text-xs mt-1">Charts and analysis will appear once events are recorded</p>
-        </div>
-      )}
 
       {/* GPS Performance Section - Only shows when GPS data exists */}
       {gpsData && gpsData.length > 0 && (
