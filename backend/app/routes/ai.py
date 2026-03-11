@@ -442,7 +442,7 @@ async def chat_stream_endpoint(
             session_id = str(session.id)
             yield f"data: {json.dumps({'type': 'session_created', 'session_id': session_id})}\n\n"
 
-        # Persist user message
+        # Persist user message immediately (committed so it survives disconnects)
         user_msg = ChatSessionMessage(
             session_id=session.id,
             role="user",
@@ -451,49 +451,56 @@ async def chat_stream_endpoint(
         db.add(user_msg)
         session.message_count = (session.message_count or 0) + 1
         session.updated_at = datetime.utcnow()
-        await db.flush()
+        await db.commit()
 
         # Collect assistant response
         accumulated_text = ""
         collected_vizs = []
 
-        async for event_line in chat_with_analyst_stream(
-            db, history, request.message, session_id=session_id, club_id=user.club_id
-        ):
-            # Parse and collect viz/text from the event
-            yield event_line
+        try:
+            async for event_line in chat_with_analyst_stream(
+                db, history, request.message, session_id=session_id, club_id=user.club_id
+            ):
+                # Parse and collect viz/text from the event
+                yield event_line
 
-            if event_line.startswith("data: "):
+                if event_line.startswith("data: "):
+                    try:
+                        payload = json.loads(event_line[6:].strip())
+                        if payload.get("type") == "text":
+                            accumulated_text += payload.get("content", "")
+                        elif payload.get("type") == "chart" and payload.get("chart"):
+                            collected_vizs.append({"kind": "chart", "data": payload["chart"]})
+                        elif payload.get("type") == "table" and payload.get("table"):
+                            collected_vizs.append({"kind": "table", "data": payload["table"]})
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+        except Exception as e:
+            logger.error(f"Chat stream error (session {session_id}): {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            # Persist assistant message even on partial responses
+            if accumulated_text:
+                assistant_msg = ChatSessionMessage(
+                    session_id=session.id,
+                    role="assistant",
+                    content=accumulated_text,
+                    visualizations=collected_vizs if collected_vizs else None,
+                )
+                db.add(assistant_msg)
+                session.message_count = (session.message_count or 0) + 1
+                session.updated_at = datetime.utcnow()
+
+            # Auto-title on first exchange (message_count <= 2 means first user+assistant pair)
+            if session.message_count <= 2 and session.title == "New conversation":
                 try:
-                    payload = json.loads(event_line[6:].strip())
-                    if payload.get("type") == "text":
-                        accumulated_text += payload.get("content", "")
-                    elif payload.get("type") == "chart" and payload.get("chart"):
-                        collected_vizs.append({"kind": "chart", "data": payload["chart"]})
-                    elif payload.get("type") == "table" and payload.get("table"):
-                        collected_vizs.append({"kind": "table", "data": payload["table"]})
-                except (json.JSONDecodeError, TypeError):
+                    title = await _generate_session_title(request.message)
+                    session.title = title
+                    yield f"data: {json.dumps({'type': 'session_title', 'title': title})}\n\n"
+                except Exception:
                     pass
 
-        # Persist assistant message
-        if accumulated_text:
-            assistant_msg = ChatSessionMessage(
-                session_id=session.id,
-                role="assistant",
-                content=accumulated_text,
-                visualizations=collected_vizs if collected_vizs else None,
-            )
-            db.add(assistant_msg)
-            session.message_count = (session.message_count or 0) + 1
-            session.updated_at = datetime.utcnow()
-
-        # Auto-title on first exchange (message_count <= 2 means first user+assistant pair)
-        if session.message_count <= 2 and session.title == "New conversation":
-            title = await _generate_session_title(request.message)
-            session.title = title
-            yield f"data: {json.dumps({'type': 'session_title', 'title': title})}\n\n"
-
-        await db.commit()
+            await db.commit()
 
     return StreamingResponse(
         persisted_stream(),

@@ -40,8 +40,8 @@ async def _execute_chart_codegen(db: AsyncSession, chart_request: str, club_id=N
     Internal utility — called by the `generate_chart` tool via _shared.py.
     """
     # Gather available data context
-    season_stats = await get_team_season_stats(db)
-    data_summary = await _get_data_summary(db)
+    season_stats = await get_team_season_stats(db, club_id=club_id)
+    data_summary = await _get_data_summary(db, club_id=club_id)
     club_name, _ = await get_club_context(db, club_id)
 
     system_prompt = f"""You are an expert data visualization engineer for {club_name}.
@@ -122,7 +122,7 @@ a variable called `chart_output` with the final JSON dict.
 """
 
     # Get the raw data to pass to the code
-    raw_data = await _get_raw_data_for_charts(db)
+    raw_data = await _get_raw_data_for_charts(db, club_id=club_id)
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",
@@ -230,12 +230,19 @@ def _execute_chart_code(code: str, data: dict) -> dict:
 # DATA HELPERS
 # =============================================================================
 
-async def _get_data_summary(db: AsyncSession) -> dict:
+async def _get_data_summary(db: AsyncSession, club_id=None) -> dict:
     """Get summary of available data for chart generation."""
-    matches_result = await db.execute(select(Match))
+    match_query = select(Match).where(Match.is_deleted.is_(False))
+    if club_id:
+        match_query = match_query.where(Match.club_id == club_id)
+    matches_result = await db.execute(match_query)
     matches = matches_result.scalars().all()
 
-    events_result = await db.execute(select(MatchEvent))
+    match_ids = [m.id for m in matches]
+    if match_ids:
+        events_result = await db.execute(select(MatchEvent).where(MatchEvent.match_id.in_(match_ids)))
+    else:
+        events_result = await db.execute(select(MatchEvent).where(False))
     events = events_result.scalars().all()
 
     return {
@@ -247,17 +254,25 @@ async def _get_data_summary(db: AsyncSession) -> dict:
     }
 
 
-async def _get_raw_data_for_charts(db: AsyncSession) -> dict:
+async def _get_raw_data_for_charts(db: AsyncSession, club_id=None) -> dict:
     """Get raw data for LLM code to transform into charts."""
-    matches_result = await db.execute(
-        select(Match).where(Match.status == MatchStatus.COMPLETED).order_by(Match.match_date)
-    )
+    match_query = select(Match).where(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)).order_by(Match.match_date)
+    if club_id:
+        match_query = match_query.where(Match.club_id == club_id)
+    matches_result = await db.execute(match_query)
     matches = matches_result.scalars().all()
 
-    events_result = await db.execute(select(MatchEvent))
+    match_ids = [m.id for m in matches]
+    if match_ids:
+        events_result = await db.execute(select(MatchEvent).where(MatchEvent.match_id.in_(match_ids)))
+    else:
+        events_result = await db.execute(select(MatchEvent).where(False))
     events = events_result.scalars().all()
 
-    players_result = await db.execute(select(Player))
+    player_query = select(Player)
+    if club_id:
+        player_query = player_query.where(Player.club_id == club_id)
+    players_result = await db.execute(player_query)
     players = players_result.scalars().all()
     player_map = {str(p.id): {"name": p.name, "position": p.position, "jersey": p.jersey_number} for p in players}
 

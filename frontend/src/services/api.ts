@@ -1099,6 +1099,7 @@ export interface AIChartSpec {
   id: string;
   type: 'line' | 'bar' | 'pie' | 'scatter' | 'area' | 'composed' | 'pitch';
   title: string;
+  trend?: 'improving' | 'declining' | 'stable';
   insight: string;
   data: Record<string, unknown>[];
   config: ChartConfig;

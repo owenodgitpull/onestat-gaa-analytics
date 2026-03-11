@@ -26,7 +26,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts'
-import { X, RefreshCw, Lightbulb, Pin, PinOff } from 'lucide-react'
+import { X, RefreshCw, Lightbulb, Pin, PinOff, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import type { AIChartSpec } from '@/services/api'
 
@@ -494,9 +494,26 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Header with title and action buttons */}
+      {/* Header with title, trend badge, and action buttons */}
       <div className="flex items-start justify-between mb-3">
-        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-white truncate">{title}</h3>
+          {chart.trend === 'improving' && (
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-semibold flex-shrink-0">
+              <TrendingUp size={10} /> Up
+            </span>
+          )}
+          {chart.trend === 'declining' && (
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 text-[10px] font-semibold flex-shrink-0">
+              <TrendingDown size={10} /> Down
+            </span>
+          )}
+          {chart.trend === 'stable' && (
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white/10 text-white/50 text-[10px] font-semibold flex-shrink-0">
+              <Minus size={10} /> Stable
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           {/* Pin / Unpin button */}
           {isPinned && onUnpin ? (

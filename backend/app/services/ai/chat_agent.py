@@ -114,7 +114,7 @@ INSTRUCTIONS:
 
         for block in response.content:
             if block.type == "tool_use":
-                tool_result = await execute_tool(block.name, block.input, db)
+                tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -218,6 +218,7 @@ INSTRUCTIONS:
 - You have weather data from past matches — use this to identify performance patterns in different conditions (e.g., wet weather scoring, windy day kickout strategy).
 - Format your responses with markdown: use **bold** for key stats, headers (##) for sections, and bullet points for lists.
 - For PATHS, MOVEMENT, SPATIAL patterns, shot LOCATIONS, attacking MOVES, anything on the PITCH → use get_pitch_paths tool. It's instant (no extra AI call) and traces the full possession chain from kickout/turnover to score.
+- Do NOT generate a chart for every question. Most questions should be answered with TEXT + data from tools. Only generate a chart when the user explicitly asks for a visual/chart/graph, or when a visual genuinely adds value (e.g. trends over time, comparisons across matches, distributions). Simple factual questions, tactical advice, or summaries do NOT need charts.
 - For statistical charts (trends, comparisons, distributions, bar/line/pie) → use generate_chart tool.
 - Only use create_data_table when the user specifically asks for a ranking, leaderboard, or table format.
 - You can combine text + charts + tables in a single response.
@@ -341,7 +342,7 @@ async def chat_with_analyst_stream(
             for block in response.content:
                 if block.type == "tool_use":
                     yield f"data: {json.dumps({'type': 'thinking', 'tool': block.name})}\n\n"
-                    tool_result = await execute_tool(block.name, block.input, db)
+                    tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,

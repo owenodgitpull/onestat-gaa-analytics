@@ -75,3 +75,4 @@ backend/nul
 paths_temp.json
 player data resources/
 
+.vercel

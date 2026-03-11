@@ -152,7 +152,7 @@ You have tools available to look up additional match data if needed. Only use th
                         "name": block.name,
                         "input": block.input,
                     })
-                    tool_result = await execute_tool(block.name, block.input, db)
+                    tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
                     logger.info(f"Live tool {block.name} returned {len(tool_result)} chars")
                     tool_results.append({
                         "type": "tool_result",
@@ -275,7 +275,7 @@ INSTRUCTIONS:
                         "name": block.name,
                         "input": block.input,
                     })
-                    tool_result = await execute_tool(block.name, block.input, db)
+                    tool_result = await execute_tool(block.name, block.input, db, club_id=_cid)
                     logger.info(f"Tool {block.name} returned {len(tool_result)} chars")
                     tool_results.append({
                         "type": "tool_result",

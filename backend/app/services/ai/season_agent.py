@@ -153,7 +153,7 @@ class SeasonAgent:
                         "name": block.name,
                         "input": block.input,
                     })
-                    tool_result = await execute_tool(block.name, block.input, db)
+                    tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
                     logger.info(f"Season tool {block.name} returned {len(tool_result)} chars (turn {turns}, task={task})")
                     tool_results.append({
                         "type": "tool_result",
@@ -1029,25 +1029,40 @@ Generate actual Recharts-compatible chart specifications.
 ### Turnovers: Won {turnovers_won}, Lost {turnovers_lost}, Net {turnovers_won - turnovers_lost}
 
 ## Chart Design — Think Like a GAA Manager
-Find PATTERNS not visible from the scoreboard:
-1. Temporal Patterns — scoring by 5-minute windows
-2. Efficiency Metrics — conversion by zone
-3. Phase Analysis — 1st half vs 2nd half
-4. Kickout Patterns — own vs opposition
-5. Turnover Geography — where do they happen
-6. Player Comparisons
-7. Match Momentum — cumulative score difference
+These charts appear in the "AI Insights" tab — they must show things the manager CANNOT see from the standard Season Stats view (which already has possession funnel, kickout outcomes, scoring by zone, shot map, score timeline, etc).
+
+Focus on these HIGH-VALUE insight categories:
+
+### MANDATORY: At least 1 player-specific chart (use get_player_season_stats, get_ball_carrier_data, search_players tools)
+- Player form trajectory: who's scoring/assisting more in recent matches vs earlier?
+- Ball carrier involvement: which players appear most in productive possession chains?
+- Workload distribution: who's doing the heavy lifting? Any over-reliance risks?
+- Positional scoring: are forwards contributing from play or only frees?
+
+### MANDATORY: At least 1 trend-over-time chart showing improvement OR decline
+- Second half performance trend: are we fading or improving across the season?
+- Scoring rate by match: are we getting better or worse?
+- Turnover net by match: trending toward tighter or sloppier?
+- Kickout win rate progression: improving with coaching changes?
+
+### Other high-value patterns (pick from these):
+- Scoring from play vs frees by match — dependency on free-taker
+- Minutes 25-35 vs 55-65 scoring comparison — pre-half-time vs pre-full-time pressure
+- Turnovers conceded leading to opposition scores vs harmless turnovers
+- Bench impact: scoring/events after substitutions
+- Match-by-match opponent quality adjustment (close games vs blowouts)
 {excluded_str}
 
 ## Response Format
-Return a JSON object:
+Return a JSON object. Each chart MUST include a "trend" field ("improving", "declining", or "stable"):
 {{
     "charts": [
         {{
             "id": "unique_chart_id",
             "type": "line|bar|pie|scatter|area|composed",
             "title": "Chart Title",
-            "insight": "One sentence insight with specific numbers",
+            "trend": "improving|declining|stable",
+            "insight": "One sentence insight with specific numbers. State whether this is good or concerning.",
             "data": [...],
             "config": {{
                 "xKey": "name",
@@ -1058,16 +1073,17 @@ Return a JSON object:
             }}
         }}
     ],
-    "summary": "Brief explanation"
+    "summary": "Brief explanation of what a manager should pay attention to"
 }}
 
 IMPORTANT:
-- Use ACTUAL data, not made-up numbers
+- Use ACTUAL data from tools, not made-up numbers — call tools to get player stats, carrier data, half-by-half stats
 - ONLY use colors: #10b981, #06b6d4, #f59e0b, #F97316, #14b8a6. Never red.
-- Use GAA terminology
-- Use tools to gather additional data if needed for charts
+- Use GAA terminology (goals, points, marks, kickouts, half-forward line, etc.)
+- Each insight must name specific players or specific matches — no vague statements
 - For pie charts: every data item MUST have a "name" field
 - Goals = COUNT of goals (NOT multiplied by 3)
+- Do NOT duplicate what the standard Season Stats view shows (possession funnel, kickout chart, shot map, score timeline)
 """
 
     elif task == "chart_recommendations":

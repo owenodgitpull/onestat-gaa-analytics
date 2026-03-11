@@ -479,54 +479,54 @@ def get_tools_subset(tool_names: list[str]) -> list[dict]:
 # TOOL EXECUTION
 # =============================================================================
 
-async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession) -> str:
+async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None) -> str:
     """Execute a tool and return the result as a string."""
 
     if tool_name == "get_match_events":
-        return await get_match_events(db, **tool_input)
+        return await get_match_events(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_summary":
-        return await get_match_summary(db, **tool_input)
+        return await get_match_summary(db, **tool_input, club_id=club_id)
     elif tool_name == "search_players":
-        return await search_players(db, **tool_input)
+        return await search_players(db, **tool_input, club_id=club_id)
     elif tool_name == "get_player_season_stats":
-        return await get_player_season_stats(db, **tool_input)
+        return await get_player_season_stats(db, **tool_input, club_id=club_id)
     elif tool_name == "get_team_season_stats":
-        return await get_team_season_stats(db)
+        return await get_team_season_stats(db, club_id=club_id)
     elif tool_name == "get_stats_by_half":
-        return await get_stats_by_half(db, tool_input.get("match_id"), tool_input.get("half"))
+        return await get_stats_by_half(db, tool_input.get("match_id"), tool_input.get("half"), club_id=club_id)
     elif tool_name == "get_scoring_patterns":
-        return await get_scoring_patterns(db, tool_input.get("match_id"))
+        return await get_scoring_patterns(db, tool_input.get("match_id"), club_id=club_id)
     elif tool_name == "get_turnover_analysis":
-        return await get_turnover_analysis(db, tool_input.get("match_id"))
+        return await get_turnover_analysis(db, tool_input.get("match_id"), club_id=club_id)
     elif tool_name == "get_player_gps_stats":
-        return await get_player_gps_stats(db, **tool_input)
+        return await get_player_gps_stats(db, **tool_input, club_id=club_id)
     elif tool_name == "get_team_gps_summary":
-        return await get_team_gps_summary(db, **tool_input)
+        return await get_team_gps_summary(db, **tool_input, club_id=club_id)
     elif tool_name == "get_attendance_data":
-        return await get_attendance_data(db, **tool_input)
+        return await get_attendance_data(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_gps":
-        return await get_match_gps(db, **tool_input)
+        return await get_match_gps(db, **tool_input, club_id=club_id)
     elif tool_name == "get_training_session_gps":
-        return await get_training_session_gps(db, **tool_input)
+        return await get_training_session_gps(db, **tool_input, club_id=club_id)
     elif tool_name == "get_pitch_paths":
-        return await get_pitch_paths(db, **tool_input)
+        return await get_pitch_paths(db, **tool_input, club_id=club_id)
     elif tool_name == "generate_chart":
-        return await _execute_generate_chart(db, tool_input.get("query", ""))
+        return await _execute_generate_chart(db, tool_input.get("query", ""), club_id=club_id)
     elif tool_name == "create_data_table":
         return safe_json(tool_input)  # pass-through — frontend renders it
     elif tool_name == "get_ball_carrier_data":
-        return await get_ball_carrier_data(db, **tool_input)
+        return await get_ball_carrier_data(db, **tool_input, club_id=club_id)
     elif tool_name == "get_formation_snapshots":
-        return await get_formation_snapshots_tool(db, **tool_input)
+        return await get_formation_snapshots_tool(db, **tool_input, club_id=club_id)
     elif tool_name == "get_man_marking_history":
-        return await get_man_marking_history(db, **tool_input)
+        return await get_man_marking_history(db, **tool_input, club_id=club_id)
     elif tool_name == "web_search":
         return await web_search_tool(tool_input.get("query", ""))
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
 
-async def get_match_gps(db: AsyncSession, match_id: str) -> str:
+async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
     """Get GPS/physical performance data for a specific match with player details."""
     from app.models.match_gps import MatchGPSData
     from app.models.match_event import MatchEvent, EventType
@@ -536,6 +536,12 @@ async def get_match_gps(db: AsyncSession, match_id: str) -> str:
         match_uuid = uuid_mod.UUID(match_id)
     except (ValueError, AttributeError):
         return safe_json({"error": f"'{match_id}' is not a valid match UUID"})
+
+    # Validate match belongs to club
+    if club_id:
+        match_check = await db.execute(select(Match.id).where(Match.id == match_uuid, Match.club_id == club_id))
+        if not match_check.scalar_one_or_none():
+            return safe_json({"error": "Match not found"})
 
     # Fetch GPS data with player names and positions
     gps_query = (
@@ -627,7 +633,7 @@ async def get_match_gps(db: AsyncSession, match_id: str) -> str:
     })
 
 
-async def get_training_session_gps(db: AsyncSession, session_id: str) -> str:
+async def get_training_session_gps(db: AsyncSession, session_id: str, club_id=None) -> str:
     """Get GPS data for a specific training session with per-player stats and recent averages."""
     from app.models.training_performance import TrainingGPSData
     from app.models.attendance import TrainingSession
@@ -639,9 +645,10 @@ async def get_training_session_gps(db: AsyncSession, session_id: str) -> str:
         return safe_json({"error": f"'{session_id}' is not a valid session UUID"})
 
     # Get session info
-    sess_result = await db.execute(
-        select(TrainingSession).where(TrainingSession.id == sid)
-    )
+    sess_query = select(TrainingSession).where(TrainingSession.id == sid)
+    if club_id:
+        sess_query = sess_query.where(TrainingSession.club_id == club_id)
+    sess_result = await db.execute(sess_query)
     session = sess_result.scalar_one_or_none()
     if not session:
         return safe_json({"error": "Training session not found"})
@@ -685,12 +692,15 @@ async def get_training_session_gps(db: AsyncSession, session_id: str) -> str:
     from datetime import timedelta
     recent_avg = {}
     try:
+        recent_conditions = [
+            TrainingSession.id != sid,
+            TrainingSession.session_date < session.session_date,
+        ]
+        if club_id:
+            recent_conditions.append(TrainingSession.club_id == club_id)
         recent_sessions_q = (
             select(TrainingSession.id)
-            .where(
-                TrainingSession.id != sid,
-                TrainingSession.session_date < session.session_date,
-            )
+            .where(*recent_conditions)
             .order_by(TrainingSession.session_date.desc())
             .limit(4)
         )
@@ -729,7 +739,7 @@ async def get_training_session_gps(db: AsyncSession, session_id: str) -> str:
     })
 
 
-async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list = None) -> str:
+async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list = None, club_id=None) -> str:
     """
     Build pitch path visualizations directly from events — no LLM call needed.
     Traces full possession chains backwards from each outcome event to the start
@@ -762,8 +772,11 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
 
     # Resolve match_id
     if match_id and match_id.lower() in ("recent", "latest", "last"):
+        recent_conditions = [Match.status == MatchStatus.COMPLETED]
+        if club_id:
+            recent_conditions.append(Match.club_id == club_id)
         result = await db.execute(
-            select(Match).where(Match.status == MatchStatus.COMPLETED)
+            select(Match).where(*recent_conditions)
             .order_by(Match.match_date.desc()).limit(1)
         )
         match = result.scalar_one_or_none()
@@ -776,6 +789,11 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             uuid_check.UUID(match_id)
         except ValueError:
             return safe_json({"success": False, "error": f"'{match_id}' is not a valid match UUID"})
+        # Validate match belongs to club
+        if club_id:
+            match_check = await db.execute(select(Match.id).where(Match.id == match_id, Match.club_id == club_id))
+            if not match_check.scalar_one_or_none():
+                return safe_json({"success": False, "error": "Match not found"})
 
     # Fetch events
     query = select(MatchEvent).order_by(MatchEvent.minute, MatchEvent.created_at)
@@ -783,8 +801,11 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         query = query.where(MatchEvent.match_id == match_id)
     else:
         # Only completed matches
+        completed_conditions = [Match.status == MatchStatus.COMPLETED]
+        if club_id:
+            completed_conditions.append(Match.club_id == club_id)
         completed_ids = await db.execute(
-            select(Match.id).where(Match.status == MatchStatus.COMPLETED)
+            select(Match.id).where(*completed_conditions)
         )
         ids = [row[0] for row in completed_ids.fetchall()]
         if not ids:
@@ -944,11 +965,11 @@ def _normalize_agentic_chart(raw_chart: dict) -> dict:
     return normalized
 
 
-async def _execute_generate_chart(db: AsyncSession, query: str) -> str:
+async def _execute_generate_chart(db: AsyncSession, query: str, club_id=None) -> str:
     """Generate a chart via the chart engine code-gen and normalize it."""
     try:
         from app.services.ai.chart_engine import _execute_chart_codegen
-        result = await _execute_chart_codegen(db, query)
+        result = await _execute_chart_codegen(db, query, club_id=club_id)
         if result.get("success") and result.get("chart"):
             normalized = _normalize_agentic_chart(result["chart"])
             return safe_json({"success": True, "chart": normalized})
@@ -960,17 +981,25 @@ async def _execute_generate_chart(db: AsyncSession, query: str) -> str:
 
 
 async def get_match_events(db: AsyncSession, match_id: str, event_types: list = None,
-                           team: str = None, half: int = None) -> str:
+                           team: str = None, half: int = None, club_id=None) -> str:
     """Get events from a match with optional filters."""
     # Validate UUID — AI sometimes passes "recent" or other non-UUID strings
     import uuid as uuid_mod
     try:
         uuid_mod.UUID(match_id)
+        # Validate match belongs to club
+        if club_id:
+            match_check = await db.execute(select(Match.id).where(Match.id == match_id, Match.club_id == club_id))
+            if not match_check.scalar_one_or_none():
+                return safe_json({"error": "Match not found"})
     except (ValueError, AttributeError):
         # Try to resolve descriptive strings to an actual match
         if match_id.lower() in ("recent", "latest", "last"):
+            recent_conditions = [Match.status == MatchStatus.COMPLETED]
+            if club_id:
+                recent_conditions.append(Match.club_id == club_id)
             result = await db.execute(
-                select(Match).where(Match.status == MatchStatus.COMPLETED)
+                select(Match).where(*recent_conditions)
                 .order_by(Match.match_date.desc()).limit(1)
             )
             match = result.scalar_one_or_none()
@@ -1148,7 +1177,7 @@ async def get_weather_context(db: AsyncSession, limit: int = 5, club_id=None) ->
         return ""
 
 
-async def get_match_summary(db: AsyncSession, match_id) -> str:
+async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     """Get summary statistics for a match."""
     # Validate UUID — AI sometimes passes "recent" or other non-UUID strings
     import uuid as uuid_mod
@@ -1156,8 +1185,11 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
         uuid_mod.UUID(str(match_id))
     except (ValueError, AttributeError):
         if str(match_id).lower() in ("recent", "latest", "last"):
+            recent_conditions = [Match.status == MatchStatus.COMPLETED]
+            if club_id:
+                recent_conditions.append(Match.club_id == club_id)
             result = await db.execute(
-                select(Match).where(Match.status == MatchStatus.COMPLETED)
+                select(Match).where(*recent_conditions)
                 .order_by(Match.match_date.desc()).limit(1)
             )
             m = result.scalar_one_or_none()
@@ -1169,7 +1201,10 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
             return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use get_team_season_stats for season-wide data, or provide a specific match UUID."})
 
     # Get match details
-    match_result = await db.execute(select(Match).where(Match.id == match_id))
+    match_conditions = [Match.id == match_id]
+    if club_id:
+        match_conditions.append(Match.club_id == club_id)
+    match_result = await db.execute(select(Match).where(*match_conditions))
     match = match_result.scalar_one_or_none()
 
     if not match:
@@ -1305,10 +1340,13 @@ async def get_match_summary(db: AsyncSession, match_id) -> str:
     })
 
 
-async def search_players(db: AsyncSession, name: str) -> str:
+async def search_players(db: AsyncSession, name: str, club_id=None) -> str:
     """Search for players by name (case-insensitive partial match)."""
+    search_conditions = [Player.name.ilike(f"%{name}%")]
+    if club_id:
+        search_conditions.append(Player.club_id == club_id)
     result = await db.execute(
-        select(Player).where(Player.name.ilike(f"%{name}%"))
+        select(Player).where(*search_conditions)
     )
     players = result.scalars().all()
 
@@ -1329,7 +1367,7 @@ async def search_players(db: AsyncSession, name: str) -> str:
     })
 
 
-async def get_player_season_stats(db: AsyncSession, player_id: str) -> str:
+async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None) -> str:
     """Get aggregated stats for a player across the season."""
     # Validate UUID format — if not a UUID, tell the AI to search by name first
     import uuid as uuid_mod
@@ -1337,8 +1375,11 @@ async def get_player_season_stats(db: AsyncSession, player_id: str) -> str:
         uuid_mod.UUID(player_id)
     except (ValueError, AttributeError):
         # AI passed a name/slug instead of UUID — do the lookup automatically
+        name_conditions = [Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%")]
+        if club_id:
+            name_conditions.append(Player.club_id == club_id)
         result = await db.execute(
-            select(Player).where(Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%"))
+            select(Player).where(*name_conditions)
         )
         matches = result.scalars().all()
         if len(matches) == 1:
@@ -1352,15 +1393,22 @@ async def get_player_season_stats(db: AsyncSession, player_id: str) -> str:
             return safe_json({"error": f"No player found matching '{player_id}'. Use search_players to find the correct player."})
 
     # Get player
-    player_result = await db.execute(select(Player).where(Player.id == player_id))
+    player_conditions = [Player.id == player_id]
+    if club_id:
+        player_conditions.append(Player.club_id == club_id)
+    player_result = await db.execute(select(Player).where(*player_conditions))
     player = player_result.scalar_one_or_none()
 
     if not player:
         return safe_json({"error": "Player not found"})
 
-    # Get all their events
+    # Get all their events (scoped to club matches if club_id provided)
+    event_conditions = [MatchEvent.player_id == player_id]
+    if club_id:
+        club_match_ids = select(Match.id).where(Match.club_id == club_id)
+        event_conditions.append(MatchEvent.match_id.in_(club_match_ids))
     events_result = await db.execute(
-        select(MatchEvent).where(MatchEvent.player_id == player_id)
+        select(MatchEvent).where(*event_conditions)
     )
     events = events_result.scalars().all()
 
@@ -1399,7 +1447,7 @@ async def get_player_season_stats(db: AsyncSession, player_id: str) -> str:
     })
 
 
-async def get_team_season_stats(db: AsyncSession) -> str:
+async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
     """Get aggregated team stats for the season."""
     # Get completed matches that have at least one event tagged
     event_count = (
@@ -1408,12 +1456,15 @@ async def get_team_season_stats(db: AsyncSession) -> str:
         .correlate(Match)
         .scalar_subquery()
     )
+    query_filters = [
+        Match.status == MatchStatus.COMPLETED,
+        Match.is_deleted.is_(False),
+        event_count > 0,
+    ]
+    if club_id:
+        query_filters.append(Match.club_id == club_id)
     matches_result = await db.execute(
-        select(Match).where(
-            Match.status == MatchStatus.COMPLETED,
-            Match.is_deleted.is_(False),
-            event_count > 0,
-        )
+        select(Match).where(*query_filters)
     )
     matches = matches_result.scalars().all()
 
@@ -1486,11 +1537,14 @@ async def get_team_season_stats(db: AsyncSession) -> str:
     })
 
 
-async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = None) -> str:
+async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = None, club_id=None) -> str:
     """Get per-half stats (possession, scoring, turnovers) broken down by match."""
     # Get matches (only those with events unless a specific match is requested)
     if match_id:
-        query = select(Match).where(Match.id == match_id)
+        match_conditions = [Match.id == match_id]
+        if club_id:
+            match_conditions.append(Match.club_id == club_id)
+        query = select(Match).where(*match_conditions)
     else:
         ec = (
             select(func.count(MatchEvent.id))
@@ -1498,11 +1552,14 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
             .correlate(Match)
             .scalar_subquery()
         )
-        query = select(Match).where(
+        all_conditions = [
             Match.status == MatchStatus.COMPLETED,
             Match.is_deleted.is_(False),
             ec > 0,
-        ).order_by(Match.match_date)
+        ]
+        if club_id:
+            all_conditions.append(Match.club_id == club_id)
+        query = select(Match).where(*all_conditions).order_by(Match.match_date)
     matches = (await db.execute(query)).scalars().all()
     if not matches:
         return safe_json({"message": "No matches found"})
@@ -1569,7 +1626,7 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
     return safe_json({"stats_by_half": results, "matches_count": len(matches)})
 
 
-async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
+async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=None) -> str:
     """Analyze scoring patterns by zone."""
     scoring_event_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SHORT]
     query = select(MatchEvent).where(
@@ -1579,6 +1636,10 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
 
     if match_id:
         query = query.where(MatchEvent.match_id == match_id)
+        if club_id:
+            query = query.where(MatchEvent.match_id.in_(select(Match.id).where(Match.club_id == club_id)))
+    elif club_id:
+        query = query.where(MatchEvent.match_id.in_(select(Match.id).where(Match.club_id == club_id)))
 
     result = await db.execute(query)
     events = result.scalars().all()
@@ -1619,7 +1680,7 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None) -> str:
     })
 
 
-async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
+async def get_turnover_analysis(db: AsyncSession, match_id: str = None, club_id=None) -> str:
     """Analyze turnover patterns."""
     turnover_types = [EventType.TURNOVER_WON, EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR]
     query = select(MatchEvent).where(
@@ -1628,6 +1689,10 @@ async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
 
     if match_id:
         query = query.where(MatchEvent.match_id == match_id)
+        if club_id:
+            query = query.where(MatchEvent.match_id.in_(select(Match.id).where(Match.club_id == club_id)))
+    elif club_id:
+        query = query.where(MatchEvent.match_id.in_(select(Match.id).where(Match.club_id == club_id)))
 
     result = await db.execute(query)
     events = result.scalars().all()
@@ -1667,7 +1732,7 @@ async def get_turnover_analysis(db: AsyncSession, match_id: str = None) -> str:
     })
 
 
-async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = "both", limit: int = 10) -> str:
+async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = "both", limit: int = 10, club_id=None) -> str:
     """Get GPS data for a specific player across matches and/or training."""
     from app.models.match_gps import MatchGPSData
     from app.models.training_performance import TrainingGPSData
@@ -1678,8 +1743,11 @@ async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = 
     try:
         uuid_mod.UUID(player_id)
     except (ValueError, AttributeError):
+        name_conditions = [Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%")]
+        if club_id:
+            name_conditions.append(Player.club_id == club_id)
         result = await db.execute(
-            select(Player).where(Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%"))
+            select(Player).where(*name_conditions)
         )
         matches = result.scalars().all()
         if len(matches) == 1:
@@ -1695,10 +1763,13 @@ async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = 
     data = {}
 
     if context in ("match", "both"):
+        match_gps_conditions = [MatchGPSData.player_id == player_id]
+        if club_id:
+            match_gps_conditions.append(Match.club_id == club_id)
         q = (
             select(MatchGPSData, Match.opponent, Match.match_date)
             .join(Match, MatchGPSData.match_id == Match.id)
-            .where(MatchGPSData.player_id == player_id)
+            .where(*match_gps_conditions)
             .order_by(Match.match_date.desc())
             .limit(limit)
         )
@@ -1719,10 +1790,13 @@ async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = 
         ]
 
     if context in ("training", "both"):
+        training_gps_conditions = [TrainingGPSData.player_id == player_id]
+        if club_id:
+            training_gps_conditions.append(TrainingSession.club_id == club_id)
         q = (
             select(TrainingGPSData, TrainingSession.session_date)
             .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
-            .where(TrainingGPSData.player_id == player_id)
+            .where(*training_gps_conditions)
             .order_by(TrainingSession.session_date.desc())
             .limit(limit)
         )
@@ -1746,7 +1820,7 @@ async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = 
     return safe_json(data)
 
 
-async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: int = 8) -> str:
+async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: int = 8, club_id=None) -> str:
     """Get team-wide GPS averages across recent sessions."""
     from app.models.match_gps import MatchGPSData
     from app.models.training_performance import TrainingGPSData
@@ -1757,6 +1831,9 @@ async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: i
     data = {}
 
     if context in ("match", "both"):
+        match_gps_conditions = [Match.match_date >= cutoff]
+        if club_id:
+            match_gps_conditions.append(Match.club_id == club_id)
         q = (
             select(
                 func.count(MatchGPSData.id).label("records"),
@@ -1767,7 +1844,7 @@ async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: i
                 func.avg(MatchGPSData.dynamic_stress_load).label("avg_load"),
             )
             .join(Match, MatchGPSData.match_id == Match.id)
-            .where(Match.match_date >= cutoff)
+            .where(*match_gps_conditions)
         )
         result = await db.execute(q)
         row = result.one()
@@ -1783,6 +1860,9 @@ async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: i
             }
 
     if context in ("training", "both"):
+        training_gps_conditions = [TrainingSession.session_date >= cutoff]
+        if club_id:
+            training_gps_conditions.append(TrainingSession.club_id == club_id)
         q = (
             select(
                 func.count(TrainingGPSData.id).label("records"),
@@ -1793,7 +1873,7 @@ async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: i
                 func.avg(TrainingGPSData.dynamic_stress_load).label("avg_load"),
             )
             .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
-            .where(TrainingSession.session_date >= cutoff)
+            .where(*training_gps_conditions)
         )
         result = await db.execute(q)
         row = result.one()
@@ -1814,7 +1894,7 @@ async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: i
     return safe_json(data)
 
 
-async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: int = 8) -> str:
+async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: int = 8, club_id=None) -> str:
     """Get training attendance data — team-wide or per-player."""
     from app.models.attendance import Attendance, AttendanceStatus, TrainingSession
     from datetime import timedelta
@@ -1827,8 +1907,11 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
         try:
             uuid_mod.UUID(player_id)
         except (ValueError, AttributeError):
+            name_conditions = [Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%")]
+            if club_id:
+                name_conditions.append(Player.club_id == club_id)
             result = await db.execute(
-                select(Player).where(Player.name.ilike(f"%{player_id.replace('-', ' ').replace('_', ' ')}%"))
+                select(Player).where(*name_conditions)
             )
             matches = result.scalars().all()
             if len(matches) == 1:
@@ -1842,11 +1925,16 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
                 return safe_json({"error": f"No player found matching '{player_id}'."})
 
         # Player-specific attendance
+        att_conditions = [
+            Attendance.player_id == player_id,
+            TrainingSession.session_date >= cutoff,
+        ]
+        if club_id:
+            att_conditions.append(TrainingSession.club_id == club_id)
         q = (
             select(Attendance, TrainingSession.session_date, TrainingSession.session_type)
             .join(TrainingSession, Attendance.session_id == TrainingSession.id)
-            .where(Attendance.player_id == player_id)
-            .where(TrainingSession.session_date >= cutoff)
+            .where(*att_conditions)
             .order_by(TrainingSession.session_date.desc())
         )
         result = await db.execute(q)
@@ -1877,6 +1965,10 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
 
     else:
         # Team-wide attendance rates
+        team_att_conditions = [TrainingSession.session_date >= cutoff]
+        if club_id:
+            team_att_conditions.append(TrainingSession.club_id == club_id)
+            team_att_conditions.append(Player.club_id == club_id)
         q = (
             select(
                 Player.id,
@@ -1888,7 +1980,7 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
             )
             .join(Attendance, Attendance.player_id == Player.id)
             .join(TrainingSession, Attendance.session_id == TrainingSession.id)
-            .where(TrainingSession.session_date >= cutoff)
+            .where(*team_att_conditions)
             .group_by(Player.id, Player.name)
             .order_by(Player.name)
         )
@@ -1924,7 +2016,7 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
         })
 
 
-async def get_ball_carrier_data(db: AsyncSession, match_id: str) -> str:
+async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -> str:
     """Get ball carrier segments and derived possession chains for a match."""
     from app.models.ball_carrier_segment import BallCarrierSegment
     from app.models.possession_chain import PossessionChain
@@ -1934,6 +2026,12 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str) -> str:
         match_uuid = uuid_mod.UUID(match_id)
     except (ValueError, AttributeError):
         return safe_json({"error": f"'{match_id}' is not a valid match UUID"})
+
+    # Validate match belongs to club
+    if club_id:
+        match_check = await db.execute(select(Match.id).where(Match.id == match_uuid, Match.club_id == club_id))
+        if not match_check.scalar_one_or_none():
+            return safe_json({"error": "Match not found"})
 
     # Fetch carrier segments
     seg_result = await db.execute(
@@ -1998,7 +2096,7 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str) -> str:
     })
 
 
-async def get_formation_snapshots_tool(db: AsyncSession, match_id: str) -> str:
+async def get_formation_snapshots_tool(db: AsyncSession, match_id: str, club_id=None) -> str:
     """Get formation snapshots for a match."""
     from app.models.formation_snapshot import FormationSnapshot
     import uuid as uuid_mod
@@ -2007,6 +2105,12 @@ async def get_formation_snapshots_tool(db: AsyncSession, match_id: str) -> str:
         match_uuid = uuid_mod.UUID(match_id)
     except (ValueError, AttributeError):
         return safe_json({"error": f"'{match_id}' is not a valid match UUID"})
+
+    # Validate match belongs to club
+    if club_id:
+        match_check = await db.execute(select(Match.id).where(Match.id == match_uuid, Match.club_id == club_id))
+        if not match_check.scalar_one_or_none():
+            return safe_json({"error": "Match not found"})
 
     result = await db.execute(
         select(FormationSnapshot)
@@ -2046,6 +2150,7 @@ async def get_man_marking_history(
     db: AsyncSession,
     player_name: str = None,
     opponent_name: str = None,
+    club_id=None,
 ) -> str:
     """Get man marking assignment history with match context."""
     from app.models.man_marking_assignment import ManMarkingAssignment
@@ -2059,6 +2164,8 @@ async def get_man_marking_history(
         .order_by(Match.match_date.desc())
     )
 
+    if club_id:
+        query = query.where(Match.club_id == club_id)
     if player_name:
         query = query.where(Player.name.ilike(f"%{player_name}%"))
     if opponent_name:
