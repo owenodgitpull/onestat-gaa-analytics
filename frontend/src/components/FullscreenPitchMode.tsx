@@ -3,18 +3,6 @@ import GAAPitch from '@/components/GAAPitch'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight, Pause, Play, ArrowUpDown } from 'lucide-react'
-
-function useIsLandscape() {
-  const [isLandscape, setIsLandscape] = useState(false)
-  useEffect(() => {
-    const mql = window.matchMedia('(orientation: landscape) and (max-height: 600px)')
-    setIsLandscape(mql.matches)
-    const handler = (e: MediaQueryListEvent) => setIsLandscape(e.matches)
-    mql.addEventListener('change', handler)
-    return () => mql.removeEventListener('change', handler)
-  }, [])
-  return isLandscape
-}
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
@@ -145,11 +133,20 @@ export default function FullscreenPitchMode({
   teamSecondaryColor = '#FFFFFF',
 }: FullscreenPitchModeProps) {
   const clubName = useClubName()
-  const isLandscape = useIsLandscape()
   const [toastVisible, setToastVisible] = useState(false)
   const [toastText, setToastText] = useState('')
   const [tickerIndex, setTickerIndex] = useState(0)
   const prevOverflowRef = useRef('')
+  const [isPhoneLandscape, setIsPhoneLandscape] = useState(false)
+
+  // Detect phone landscape: landscape orientation + short viewport height (phone, not tablet/desktop)
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape) and (max-height: 500px)')
+    setIsPhoneLandscape(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsPhoneLandscape(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
 
   // Escape key to close
   useEffect(() => {
@@ -219,301 +216,158 @@ export default function FullscreenPitchMode({
   const actionsDisabled = matchPhase === 'not_started' || matchPhase === 'finished'
   const currentTicker = tickerItems[tickerIndex]
 
-  // Shared elements
-  const scoreboardContent = (
-    <div className={`flex items-center justify-center ${isLandscape ? 'gap-2' : 'gap-4'}`}>
-      <div className="text-right">
-        <span className={`${isLandscape ? 'text-base' : 'text-xl'} font-black text-white tracking-tight`}>
-          {teamGoals}-{String(teamPoints).padStart(2, '0')}
-        </span>
-        <div className="text-[9px] text-white/50">{clubName}</div>
-      </div>
-      <div className="flex flex-col items-center">
-        <div className="flex items-center gap-1 bg-white/10 rounded-lg px-2.5 py-0.5 border border-white/15">
-          <Clock size={11} className="text-emerald-400" />
-          <span className="font-mono text-sm font-bold text-white">{formatTime}</span>
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: 'linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0b1420 65%, #080c16 100%)' }}>
+      {/* Top bar — hidden in phone landscape (overlaid on pitch instead) */}
+      {!isPhoneLandscape && (
+        <div className="flex-shrink-0 grid grid-cols-3 items-center px-3 py-2 backdrop-blur-xl bg-white/5 border-b border-white/10">
+          {/* Left — Exit + Network Status */}
+          <div className="flex justify-start items-center gap-2">
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white transition-all"
+              title="Exit fullscreen (Esc)"
+            >
+              <Minimize2 size={16} />
+            </button>
+            <NetworkStatusIndicator compact />
+          </div>
+
+          {/* Center — Score + Timer */}
+          <div className="flex items-center justify-center gap-4">
+            <div className="text-right">
+              <span className="text-xl font-black text-white tracking-tight">
+                {teamGoals}-{String(teamPoints).padStart(2, '0')}
+              </span>
+              <div className="text-[9px] text-white/50">{clubName}</div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-1 bg-white/10 rounded-lg px-2.5 py-0.5 border border-white/15">
+                <Clock size={11} className="text-emerald-400" />
+                <span className="font-mono text-sm font-bold text-white">{formatTime}</span>
+              </div>
+              <span className="text-[8px] font-semibold text-emerald-400/80 mt-0.5">{phaseLabel}</span>
+            </div>
+            <div className="text-left">
+              <span className="text-xl font-black text-white/70 tracking-tight">
+                {opponentGoals}-{String(opponentPoints).padStart(2, '0')}
+              </span>
+              <div className="text-[9px] text-white/50">{opponent}</div>
+            </div>
+          </div>
+
+          {/* Right — Rotating stat ticker */}
+          <div className="flex justify-end">
+            <div className="min-w-[100px] text-center">
+              {currentTicker ? (
+                <div key={tickerIndex} className="animate-[fadeSlideIn_0.4s_ease-out]">
+                  <div className="text-[8px] font-medium text-white/40 uppercase tracking-wider">{currentTicker.label}</div>
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span className="text-sm font-bold text-white">{currentTicker.own}</span>
+                    <span className="text-white/30 text-[9px]">-</span>
+                    <span className="text-sm font-bold text-white/60">{currentTicker.opp}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[9px] text-white/30">--</div>
+              )}
+            </div>
+          </div>
         </div>
-        <span className="text-[8px] font-semibold text-emerald-400/80 mt-0.5">{phaseLabel}</span>
-      </div>
-      <div className="text-left">
-        <span className={`${isLandscape ? 'text-base' : 'text-xl'} font-black text-white/70 tracking-tight`}>
-          {opponentGoals}-{String(opponentPoints).padStart(2, '0')}
-        </span>
-        <div className="text-[9px] text-white/50">{opponent}</div>
-      </div>
-    </div>
-  )
-
-  const pitchOverlay = (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
-    <div style={{ display: 'flex', alignItems: 'center', gap: isLandscape ? 6 : 12 }}>
-      <div style={{
-        display: 'flex', alignItems: 'center',
-        gap: isLandscape ? 6 : 12,
-        padding: isLandscape ? '6px 14px' : '10px 22px',
-        borderRadius: 16,
-        background: 'rgba(0,0,0,0.75)',
-        border: `2px solid ${currentPossession === PossessionTeam.OWN ? 'rgba(16,185,129,0.5)' : 'rgba(249,115,22,0.4)'}`,
-      }}>
-        <div style={{
-          width: isLandscape ? 10 : 14, height: isLandscape ? 10 : 14, borderRadius: '50%',
-          background: currentPossession === PossessionTeam.OWN ? '#34d399' : '#fb923c',
-        }} />
-        <span style={{
-          fontSize: isLandscape ? 20 : 32, fontWeight: 700, whiteSpace: 'nowrap',
-          color: currentPossession === PossessionTeam.OWN ? '#6ee7b7' : '#fdba74',
-        }}>
-          {statusText}
-        </span>
-      </div>
-      {onSwapPossession && !pendingFreeKick && !pending45 && !pendingKickoutPosition && !selectingFoulPlayer && (
-        <>
-          <button onClick={onSwapPossession} style={{
-            padding: isLandscape ? 8 : 16, borderRadius: 14,
-            background: 'rgba(0,0,0,0.75)', border: '2px solid rgba(255,255,255,0.25)',
-            color: 'rgba(255,255,255,0.7)', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }} title="Swap possession">
-            <ArrowLeftRight size={isLandscape ? 20 : 30} />
-          </button>
-          {onToggleStoppage && (
-            <button onClick={onToggleStoppage} style={{
-              padding: isLandscape ? 8 : 16, borderRadius: 14,
-              background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.75)',
-              border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.25)'}`,
-              color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }} title={isStopped ? 'Resume play' : 'Stoppage'}>
-              {isStopped ? <Play size={isLandscape ? 20 : 30} /> : <Pause size={isLandscape ? 20 : 30} />}
-            </button>
-          )}
-          {onSubstitution && (
-            <button onClick={onSubstitution} style={{
-              padding: isLandscape ? 8 : 16, borderRadius: 14,
-              background: 'rgba(0,0,0,0.75)', border: '2px solid rgba(255,255,255,0.25)',
-              color: 'rgba(255,255,255,0.7)', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }} title="Substitution">
-              <ArrowUpDown size={isLandscape ? 20 : 30} />
-            </button>
-          )}
-        </>
       )}
-    </div>
-  ) : undefined
 
-  const bannerContent = (
-    <>
-      {matchPhase === 'half_time' && (
-        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-b border-emerald-500/20 px-3 py-1.5 flex items-center justify-center gap-3">
-          <Clock size={12} className="text-emerald-400" />
-          <span className="text-xs font-medium text-white/90">Half Time</span>
+      {/* Half Time banner — hidden in phone landscape */}
+      {!isPhoneLandscape && matchPhase === 'half_time' && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-b border-emerald-500/20 px-4 py-2.5 flex items-center justify-center gap-4">
+          <Clock size={14} className="text-emerald-400" />
+          <span className="text-sm font-medium text-white/90">Half Time</span>
           {onStartSecondHalf && (
-            <button onClick={onStartSecondHalf} className="px-3 py-1 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-xs font-semibold hover:bg-white/20 transition-all">
-              Start 2nd Half
+            <button
+              onClick={onStartSecondHalf}
+              className="px-4 py-1.5 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-sm font-semibold hover:bg-white/20 transition-all"
+            >
+              Start Second Half
             </button>
           )}
         </div>
       )}
-      {matchPhase === 'first_half' && minute >= 30 && (
-        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-b border-amber-500/20 px-3 py-1.5 flex items-center justify-center gap-3">
-          <Clock size={12} className="text-amber-400" />
-          <span className="text-xs font-medium text-white/90">Injury time</span>
+
+      {/* Injury time — hidden in phone landscape */}
+      {!isPhoneLandscape && matchPhase === 'first_half' && minute >= 30 && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-b border-amber-500/20 px-4 py-2.5 flex items-center justify-center gap-4">
+          <Clock size={14} className="text-amber-400" />
+          <span className="text-sm font-medium text-white/90">Injury time</span>
           {onEndFirstHalf && (
-            <button onClick={onEndFirstHalf} className="px-3 py-1 rounded-xl backdrop-blur-xl bg-white/10 border border-amber-500/40 text-amber-300 text-xs font-semibold hover:bg-white/20 transition-all">
-              End 1st Half
+            <button
+              onClick={onEndFirstHalf}
+              className="px-4 py-1.5 rounded-xl backdrop-blur-xl bg-white/10 border border-amber-500/40 text-amber-300 text-sm font-semibold hover:bg-white/20 transition-all"
+            >
+              End First Half (HT)
             </button>
           )}
         </div>
       )}
-      {matchPhase === 'second_half' && fullTimeReached && (
-        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-b border-emerald-500/20 px-3 py-1.5 flex items-center justify-center gap-3">
-          <Clock size={12} className="text-emerald-400" />
-          <span className="text-xs font-medium text-white/90">Full time</span>
+
+      {/* Full time reached — hidden in phone landscape */}
+      {!isPhoneLandscape && matchPhase === 'second_half' && fullTimeReached && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-b border-emerald-500/20 px-4 py-2.5 flex items-center justify-center gap-4">
+          <Clock size={14} className="text-emerald-400" />
+          <span className="text-sm font-medium text-white/90">Full time</span>
           {onEndMatch && (
-            <button onClick={onEndMatch} className="px-3 py-1 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-xs font-semibold hover:bg-white/20 transition-all">
-              End Match
+            <button
+              onClick={onEndMatch}
+              className="px-4 py-1.5 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-sm font-semibold hover:bg-white/20 transition-all"
+            >
+              End Match (FT)
             </button>
           )}
         </div>
       )}
-      {isStopped && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
-        <div className="flex-shrink-0 backdrop-blur-xl bg-amber-500/10 border-b border-amber-500/30 px-3 py-1.5 flex items-center justify-center gap-2">
-          <Pause size={12} className="text-amber-400" />
-          <span className="text-xs font-semibold text-amber-300">Stoppage</span>
+
+      {/* Stoppage banner — hidden in phone landscape */}
+      {!isPhoneLandscape && isStopped && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 flex items-center justify-center gap-3">
+          <Pause size={14} className="text-amber-400" />
+          <span className="text-sm font-semibold text-amber-300">Stoppage — timer paused</span>
           {onToggleStoppage && (
-            <button onClick={onToggleStoppage} className="px-3 py-1 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-xs font-semibold hover:bg-white/20 transition-all flex items-center gap-1">
-              <Play size={12} /> Resume
+            <button
+              onClick={onToggleStoppage}
+              className="px-4 py-1.5 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-sm font-semibold hover:bg-white/20 transition-all flex items-center gap-1.5"
+            >
+              <Play size={14} /> Resume
             </button>
           )}
         </div>
       )}
-      {blackCardTimers.length > 0 && (
-        <div className="flex-shrink-0 flex items-center justify-center gap-2 px-3 py-1 bg-slate-900/50 border-b border-white/5">
+
+      {/* Black card sin bin timers — hidden in phone landscape */}
+      {!isPhoneLandscape && blackCardTimers.length > 0 && (
+        <div className="flex-shrink-0 flex items-center justify-center gap-2 px-4 py-1 bg-slate-900/50 border-b border-white/5">
           <BlackCardTimer entries={blackCardTimers} onRemove={(id) => onRemoveBlackCard?.(id)} />
         </div>
       )}
-    </>
-  )
 
-  const actionButtonsContent = (
-    <CategorizedActionButtons
-      onActionSelect={onActionSelect}
-      onFoulClick={onFoulClick}
-      on45Click={on45Click}
-      onDiscipline={onDiscipline}
-      disabled={actionsDisabled}
-      activeCategory={activeCategory}
-      onCategoryChange={onCategoryChange}
-      currentPossession={currentPossession}
-      isIn2PointZone={isIn2PointZone}
-      isInPenaltyArea={isInPenaltyArea}
-      pendingFreeKick={pendingFreeKick}
-      pendingFoul={pendingFoul}
-      pending45={pending45}
-      pendingKickoutPosition={pendingKickoutPosition}
-      awaitingKickout={awaitingKickout}
-      onCancelFree={onCancelFree}
-      onCancel45={onCancel45}
-      onCancelKickout={onCancelKickout}
-    />
-  )
-
-  const eventToast = (
-    <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 z-20 transition-all duration-500 ${
-      toastVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
-    }`}>
-      <div className="backdrop-blur-xl bg-white/10 border border-white/20 text-white text-sm px-4 py-2 rounded-2xl shadow-xl max-w-md text-center">
-        {toastText}
-      </div>
-    </div>
-  )
-
-  // ── LANDSCAPE LAYOUT: pitch left, sidebar right ──
-  if (isLandscape) {
-    return (
-      <div className="fixed inset-0 z-[100] flex flex-row" style={{ background: 'linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0b1420 65%, #080c16 100%)' }}>
-        {/* Left — Pitch (fills most of screen) */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Scoreboard overlay */}
-          <div className="absolute top-0 left-0 right-[280px] z-10 flex items-center justify-between px-2 py-1 backdrop-blur-xl bg-black/40">
-            <div className="flex items-center gap-2">
-              <button onClick={onClose} className="p-1.5 rounded-lg bg-white/10 border border-white/15 hover:bg-white/20 text-white transition-all" title="Exit fullscreen (Esc)">
-                <Minimize2 size={14} />
-              </button>
-              <NetworkStatusIndicator compact />
-            </div>
-            {scoreboardContent}
-            <div className="min-w-[80px] text-center">
-              {currentTicker ? (
-                <div key={tickerIndex} className="animate-[fadeSlideIn_0.4s_ease-out]">
-                  <div className="text-[7px] font-medium text-white/40 uppercase tracking-wider">{currentTicker.label}</div>
-                  <div className="flex items-center justify-center gap-1">
-                    <span className="text-xs font-bold text-white">{currentTicker.own}</span>
-                    <span className="text-white/30 text-[8px]">-</span>
-                    <span className="text-xs font-bold text-white/60">{currentTicker.opp}</span>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Pitch — fills full height */}
-          <div className="flex-1 relative overflow-hidden">
-            <GAAPitch
-              ballPosition={ballPosition}
-              onBallMove={onBallMove}
-              showZones={true}
-              readonly={readonly}
-              containerClassName="w-full h-full"
-              gradientBorder
-              trail={trail}
-              onTrailUpdate={onTrailUpdate}
-              onDragPath={onDragPath}
-              carrierJerseyNumber={carrierJerseyNumber}
-              svgOverlay={pitchOverlay}
-            />
-            {eventToast}
-          </div>
-        </div>
-
-        {/* Right sidebar — controls */}
-        <div className="w-[280px] flex-shrink-0 flex flex-col border-l border-white/10 bg-slate-900/90 backdrop-blur-xl overflow-hidden">
-          {bannerContent}
-
-          {/* Jersey Strip (compact horizontal scroll) */}
-          {jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
-            <div className="flex-shrink-0 border-b border-white/10 px-1 py-1 overflow-x-auto">
-              <JerseyNumberStrip
-                players={jerseyStripPlayers}
-                activeCarrierId={activeCarrierId}
-                currentPossession={currentPossession}
-                onCarrierSelect={onCarrierSelect}
-                disabled={actionsDisabled}
-                teamPrimaryColor={teamPrimaryColor}
-                teamSecondaryColor={teamSecondaryColor}
-              />
-            </div>
-          )}
-
-          {/* Action buttons — scrollable */}
-          <div className="flex-1 overflow-y-auto px-2 py-1">
-            {actionButtonsContent}
-          </div>
-        </div>
-
-        <style>{`
-          @keyframes fadeSlideIn {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-        `}</style>
-      </div>
-    )
-  }
-
-  // ── PORTRAIT LAYOUT: original vertical stack ──
-  return (
-    <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: 'linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0b1420 65%, #080c16 100%)' }}>
-      {/* Top bar — glassmorphic scoreboard, 3-col grid for true centering */}
-      <div className="flex-shrink-0 grid grid-cols-3 items-center px-3 py-2 backdrop-blur-xl bg-white/5 border-b border-white/10">
-        {/* Left — Exit + Network Status */}
-        <div className="flex justify-start items-center gap-2">
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white transition-all"
-            title="Exit fullscreen (Esc)"
-          >
-            <Minimize2 size={16} />
-          </button>
-          <NetworkStatusIndicator compact />
-        </div>
-
-        {/* Center — Score + Timer */}
-        {scoreboardContent}
-
-        {/* Right — Rotating stat ticker */}
-        <div className="flex justify-end">
-          <div className="min-w-[100px] text-center">
-            {currentTicker ? (
-              <div key={tickerIndex} className="animate-[fadeSlideIn_0.4s_ease-out]">
-                <div className="text-[8px] font-medium text-white/40 uppercase tracking-wider">{currentTicker.label}</div>
-                <div className="flex items-center justify-center gap-1.5">
-                  <span className="text-sm font-bold text-white">{currentTicker.own}</span>
-                  <span className="text-white/30 text-[9px]">-</span>
-                  <span className="text-sm font-bold text-white/60">{currentTicker.opp}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="text-[9px] text-white/30">--</div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {bannerContent}
-
-      {/* Pitch — fills all remaining space */}
+      {/* Pitch — fills all remaining space (in landscape, controls overlay on pitch) */}
       <div className="flex-1 relative overflow-hidden min-h-0">
+        {/* Phone landscape: floating scoreboard overlay on pitch */}
+        {isPhoneLandscape && (
+          <div className="absolute top-1 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 backdrop-blur-xl bg-black/60 border border-white/15 rounded-xl px-3 py-1">
+            <button
+              onClick={onClose}
+              className="p-1 rounded-lg bg-white/10 text-white"
+              title="Exit fullscreen (Esc)"
+            >
+              <Minimize2 size={12} />
+            </button>
+            <span className="text-sm font-black text-white">{teamGoals}-{String(teamPoints).padStart(2, '0')}</span>
+            <div className="flex items-center gap-1 bg-white/10 rounded px-1.5 py-0.5">
+              <Clock size={9} className="text-emerald-400" />
+              <span className="font-mono text-xs font-bold text-white">{formatTime}</span>
+            </div>
+            <span className="text-sm font-black text-white/70">{opponentGoals}-{String(opponentPoints).padStart(2, '0')}</span>
+            <NetworkStatusIndicator compact />
+          </div>
+        )}
         <GAAPitch
           ballPosition={ballPosition}
           onBallMove={onBallMove}
@@ -525,13 +379,141 @@ export default function FullscreenPitchMode({
           onTrailUpdate={onTrailUpdate}
           onDragPath={onDragPath}
           carrierJerseyNumber={carrierJerseyNumber}
-          svgOverlay={pitchOverlay}
+          svgOverlay={
+            (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 22px',
+                  borderRadius: 16,
+                  background: 'rgba(0,0,0,0.75)',
+                  border: `2px solid ${currentPossession === PossessionTeam.OWN ? 'rgba(16,185,129,0.5)' : 'rgba(249,115,22,0.4)'}`,
+                }}>
+                  <div style={{
+                    width: 14, height: 14, borderRadius: '50%',
+                    background: currentPossession === PossessionTeam.OWN ? '#34d399' : '#fb923c',
+                  }} />
+                  <span style={{
+                    fontSize: 32, fontWeight: 700, whiteSpace: 'nowrap',
+                    color: currentPossession === PossessionTeam.OWN ? '#6ee7b7' : '#fdba74',
+                  }}>
+                    {statusText}
+                  </span>
+                </div>
+                {onSwapPossession && !pendingFreeKick && !pending45 && !pendingKickoutPosition && !selectingFoulPlayer && (
+                  <>
+                    <button
+                      onClick={onSwapPossession}
+                      style={{
+                        padding: 16, borderRadius: 14,
+                        background: 'rgba(0,0,0,0.75)',
+                        border: '2px solid rgba(255,255,255,0.25)',
+                        color: 'rgba(255,255,255,0.7)',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                      title="Swap possession"
+                    >
+                      <ArrowLeftRight size={30} />
+                    </button>
+                    {onToggleStoppage && (
+                      <button
+                        onClick={onToggleStoppage}
+                        style={{
+                          padding: 16, borderRadius: 14,
+                          background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.75)',
+                          border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.25)'}`,
+                          color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                        title={isStopped ? 'Resume play' : 'Stoppage'}
+                      >
+                        {isStopped ? <Play size={30} /> : <Pause size={30} />}
+                      </button>
+                    )}
+                    {onSubstitution && (
+                      <button
+                        onClick={onSubstitution}
+                        style={{
+                          padding: 16, borderRadius: 14,
+                          background: 'rgba(0,0,0,0.75)',
+                          border: '2px solid rgba(255,255,255,0.25)',
+                          color: 'rgba(255,255,255,0.7)',
+                          cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}
+                        title="Substitution"
+                      >
+                        <ArrowUpDown size={30} />
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : undefined
+          }
         />
-        {eventToast}
+
+        {/* Event Toast */}
+        <div
+          className={`absolute ${isPhoneLandscape ? 'bottom-28' : 'bottom-20'} left-1/2 -translate-x-1/2 z-20 transition-all duration-500 ${
+            toastVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+          }`}
+        >
+          <div className="backdrop-blur-xl bg-white/10 border border-white/20 text-white text-sm px-4 py-2 rounded-2xl shadow-xl max-w-md text-center">
+            {toastText}
+          </div>
+        </div>
+
+        {/* In phone landscape: controls overlay at bottom of pitch area */}
+        {isPhoneLandscape && (
+          <div className="absolute bottom-0 left-0 right-0 z-20">
+            {/* Jersey Number Strip */}
+            {jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
+              <div className="backdrop-blur-xl bg-black/50 border-t border-white/10 px-2">
+                <JerseyNumberStrip
+                  players={jerseyStripPlayers}
+                  activeCarrierId={activeCarrierId}
+                  currentPossession={currentPossession}
+                  onCarrierSelect={onCarrierSelect}
+                  disabled={actionsDisabled}
+                  teamPrimaryColor={teamPrimaryColor}
+                  teamSecondaryColor={teamSecondaryColor}
+                />
+              </div>
+            )}
+            {/* Action Buttons */}
+            <div className="backdrop-blur-xl bg-black/50 border-t border-white/10 px-2 py-0.5">
+              <CategorizedActionButtons
+                onActionSelect={onActionSelect}
+                onFoulClick={onFoulClick}
+                on45Click={on45Click}
+                onDiscipline={onDiscipline}
+                disabled={actionsDisabled}
+                activeCategory={activeCategory}
+                onCategoryChange={onCategoryChange}
+                currentPossession={currentPossession}
+                isIn2PointZone={isIn2PointZone}
+                isInPenaltyArea={isInPenaltyArea}
+                pendingFreeKick={pendingFreeKick}
+                pendingFoul={pendingFoul}
+                pending45={pending45}
+                pendingKickoutPosition={pendingKickoutPosition}
+                awaitingKickout={awaitingKickout}
+                onCancelFree={onCancelFree}
+                onCancel45={onCancel45}
+                onCancelKickout={onCancelKickout}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Jersey Number Strip for carrier tracking */}
-      {jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
+      {/* Jersey Number Strip for carrier tracking — portrait only */}
+      {!isPhoneLandscape && jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
         <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2">
           <JerseyNumberStrip
             players={jerseyStripPlayers}
@@ -545,12 +527,33 @@ export default function FullscreenPitchMode({
         </div>
       )}
 
-      {/* Bottom — CategorizedActionButtons, same as normal mode */}
-      <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-3 py-2">
-        <div className="max-w-2xl mx-auto">
-          {actionButtonsContent}
+      {/* Bottom — CategorizedActionButtons — portrait only */}
+      {!isPhoneLandscape && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-3 py-2">
+          <div className="max-w-2xl mx-auto">
+            <CategorizedActionButtons
+              onActionSelect={onActionSelect}
+              onFoulClick={onFoulClick}
+              on45Click={on45Click}
+              onDiscipline={onDiscipline}
+              disabled={actionsDisabled}
+              activeCategory={activeCategory}
+              onCategoryChange={onCategoryChange}
+              currentPossession={currentPossession}
+              isIn2PointZone={isIn2PointZone}
+              isInPenaltyArea={isInPenaltyArea}
+              pendingFreeKick={pendingFreeKick}
+              pendingFoul={pendingFoul}
+              pending45={pending45}
+              pendingKickoutPosition={pendingKickoutPosition}
+              awaitingKickout={awaitingKickout}
+              onCancelFree={onCancelFree}
+              onCancel45={onCancel45}
+              onCancelKickout={onCancelKickout}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <style>{`
         @keyframes fadeSlideIn {
