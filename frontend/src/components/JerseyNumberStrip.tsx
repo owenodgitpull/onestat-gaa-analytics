@@ -26,7 +26,6 @@ interface JerseyNumberStripProps {
   disabled?: boolean
   teamPrimaryColor?: string
   teamSecondaryColor?: string
-  compact?: boolean
 }
 
 function surname(name: string) {
@@ -41,7 +40,6 @@ export default function JerseyNumberStrip({
   disabled = false,
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
-  compact = false,
 }: JerseyNumberStripProps) {
   // Sort by jersey number, then by name for those without numbers
   const sortedPlayers = useMemo(() => {
@@ -57,16 +55,11 @@ export default function JerseyNumberStrip({
 
   if (sortedPlayers.length === 0) return null
 
-  const btnSize = compact ? 'w-[36px] h-[36px]' : 'w-[48px] h-[48px]'
-  const borderWidth = compact ? '2px' : '3px'
-
   return (
-    <div className={`flex items-center justify-center gap-1 px-2 ${compact ? 'py-0.5' : 'py-1.5 gap-1.5'} overflow-x-auto scrollbar-hide`}>
-      {!compact && (
-        <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider whitespace-nowrap mr-1 flex-shrink-0">
-          Carrier
-        </span>
-      )}
+    <div className="flex items-center justify-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-hide">
+      <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider whitespace-nowrap mr-1 flex-shrink-0">
+        Carrier
+      </span>
       {sortedPlayers.map((player) => {
         const isActive = player.playerId === activeCarrierId
         const hasJersey = player.jerseyNumber != null
@@ -80,13 +73,13 @@ export default function JerseyNumberStrip({
             className={`
               flex-shrink-0 flex flex-col items-center justify-center
               rounded-full transition-all duration-150
-              ${btnSize}
+              w-[48px] h-[48px]
               ${isActive ? 'scale-110' : ''}
               ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:scale-105 active:scale-90'}
             `}
             style={{
               backgroundColor: teamPrimaryColor,
-              border: `${borderWidth} solid ${teamSecondaryColor}`,
+              border: `3px solid ${teamSecondaryColor}`,
               boxShadow: isActive
                 ? `0 0 16px ${teamPrimaryColor}80, 0 0 4px ${teamSecondaryColor}60`
                 : `0 2px 6px rgba(0,0,0,0.3)`,
@@ -95,14 +88,12 @@ export default function JerseyNumberStrip({
             }}
             title={player.playerName}
           >
-            <span className={`font-bold leading-none ${compact ? 'text-xs' : hasJersey ? 'text-base' : 'text-[11px]'}`}>
+            <span className={`font-bold leading-none ${hasJersey ? 'text-base' : 'text-[11px]'}`}>
               {label}
             </span>
-            {!compact && (
-              <span className="text-[7px] leading-none mt-0.5 truncate max-w-full text-white/80">
-                {surname(player.playerName)}
-              </span>
-            )}
+            <span className="text-[7px] leading-none mt-0.5 truncate max-w-full text-white/80">
+              {surname(player.playerName)}
+            </span>
           </button>
         )
       })}

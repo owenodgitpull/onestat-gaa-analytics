@@ -469,9 +469,9 @@ export default function FullscreenPitchMode({
         </div>
       </div>
 
-      {/* Jersey Number Strip for carrier tracking */}
-      {jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
-        <div className={`flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2 ${isPhoneLandscape ? 'py-0' : ''}`}>
+      {/* Jersey Number Strip — hidden in phone landscape to maximize pitch space */}
+      {!isPhoneLandscape && jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2">
           <JerseyNumberStrip
             players={jerseyStripPlayers}
             activeCarrierId={activeCarrierId}
@@ -480,14 +480,13 @@ export default function FullscreenPitchMode({
             disabled={actionsDisabled}
             teamPrimaryColor={teamPrimaryColor}
             teamSecondaryColor={teamSecondaryColor}
-            compact={isPhoneLandscape}
           />
         </div>
       )}
 
-      {/* Bottom — CategorizedActionButtons */}
-      <div className={`flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 ${isPhoneLandscape ? 'px-2 py-0' : 'px-3 py-2'}`}>
-        <div className={isPhoneLandscape ? '' : 'max-w-2xl mx-auto'}>
+      {/* Bottom — CategorizedActionButtons (same layout in both orientations) */}
+      <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-3 py-2">
+        <div className="max-w-2xl mx-auto">
           <CategorizedActionButtons
             onActionSelect={onActionSelect}
             onFoulClick={onFoulClick}
@@ -507,7 +506,6 @@ export default function FullscreenPitchMode({
             onCancelFree={onCancelFree}
             onCancel45={onCancel45}
             onCancelKickout={onCancelKickout}
-            compact={isPhoneLandscape}
           />
         </div>
       </div>

@@ -36,7 +36,6 @@ interface CategorizedActionButtonsProps {
   onCancelFree?: () => void
   onCancel45?: () => void
   onCancelKickout?: () => void
-  compact?: boolean  // Phone landscape: single-row layout
 }
 
 const categories = [
@@ -120,8 +119,7 @@ export default function CategorizedActionButtons({
   isInPenaltyArea: _isInPenaltyArea = false,
   onCancelFree,
   onCancel45,
-  onCancelKickout,
-  compact = false
+  onCancelKickout
 }: CategorizedActionButtonsProps) {
   const [internalActiveCategory, setInternalActiveCategory] = useState('scoring')
   const [showFoulSelection, setShowFoulSelection] = useState(false)
@@ -391,112 +389,6 @@ export default function CategorizedActionButtons({
             <ArrowLeftRight size={14} />
             <span>Short Pass</span>
           </button>
-        </div>
-      </div>
-    )
-  }
-
-  // Compact mode: single-row layout for phone landscape
-  if (compact) {
-    return (
-      <div data-tour="action-category-tabs" className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-lg shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
-        <div className="flex items-stretch">
-          {/* Category tabs — left side, narrow */}
-          <div className="flex flex-col border-r border-white/10 bg-slate-900/80">
-            {categories.map((category) => {
-              const Icon = category.icon
-              const isActive = activeCategory === category.id
-              const isKickoutTab = category.id === 'our_kickouts' || category.id === 'opp_kickouts'
-              const shouldPulse = isKickoutTab && awaitingKickout && !isActive
-
-              return (
-                <button
-                  key={category.id}
-                  onClick={() => setActiveCategory(category.id)}
-                  className={`px-2 py-1 flex items-center gap-1 transition-all duration-200 text-[9px] font-medium whitespace-nowrap ${
-                    isActive
-                      ? 'bg-emerald-600 text-white'
-                      : shouldPulse
-                        ? 'bg-amber-500/20 text-amber-300 animate-pulse'
-                        : 'text-white/60 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <Icon size={11} />
-                  <span>{category.label}</span>
-                </button>
-              )
-            })}
-            <button
-              onClick={() => setShowFoulSelection(true)}
-              disabled={disabled}
-              className="px-2 py-1 flex items-center gap-1 transition-all text-[9px] font-medium text-white/60 hover:text-white hover:bg-white/5"
-            >
-              <Hand size={11} />
-              <span>Foul</span>
-            </button>
-          </div>
-
-          {/* Action buttons — center, scrollable */}
-          <div className="flex-1 flex flex-wrap gap-1 p-1.5 items-center justify-center overflow-x-auto">
-            {currentCategory?.buttons.map((button) => {
-              const Icon = button.icon
-              const isContextDisabled = isButtonDisabled(button.eventType)
-              const isDisabled = disabled || isContextDisabled
-              return (
-                <button
-                  key={button.eventType}
-                  onClick={() => onActionSelect(button.eventType)}
-                  disabled={isDisabled}
-                  className={`btn-primary !py-1 !px-2 flex items-center space-x-1 text-[10px] flex-shrink-0 ${
-                    isDisabled ? 'opacity-30 cursor-not-allowed' : ''
-                  }`}
-                >
-                  <Icon size={11} />
-                  <span>{button.label}</span>
-                </button>
-              )
-            })}
-            {activeCategory === 'scoring' && currentPossession === PossessionTeam.OWN && on45Click && (
-              <button onClick={on45Click} disabled={disabled}
-                className="btn-primary !py-1 !px-2 flex items-center space-x-1 text-[10px] flex-shrink-0 bg-gradient-to-r from-blue-600 to-emerald-600">
-                <Flag size={11} /><span>45</span>
-              </button>
-            )}
-            {activeCategory === 'scoring' && !showPenOptions && (
-              <button onClick={() => setShowPenOptions(true)} disabled={disabled}
-                className="btn-primary !py-1 !px-2 flex items-center space-x-1 text-[10px] flex-shrink-0">
-                <Crosshair size={11} /><span>Pen</span>
-              </button>
-            )}
-            {activeCategory === 'scoring' && showPenOptions && (
-              <>
-                <button onClick={() => { onActionSelect(EventType.PENALTY_GOAL); setShowPenOptions(false) }} disabled={disabled}
-                  className="btn-primary !py-1 !px-2 flex items-center space-x-1 text-[10px] flex-shrink-0">
-                  <Crosshair size={11} /><span>Pen Goal</span>
-                </button>
-                <button onClick={() => { onActionSelect(EventType.PENALTY_MISS); setShowPenOptions(false) }} disabled={disabled}
-                  className="btn-primary !py-1 !px-2 flex items-center space-x-1 text-[10px] flex-shrink-0">
-                  <Crosshair size={11} /><span>Pen Miss</span>
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Discipline cards — right side */}
-          <div className="flex flex-col items-center justify-center gap-0.5 px-1 border-l border-white/10">
-            <button onClick={() => onDiscipline?.(EventType.YELLOW_CARD)} disabled={disabled}
-              className="p-1 rounded hover:bg-yellow-500/20 disabled:opacity-30 transition-all active:scale-90" title="Yellow Card">
-              <div className="w-3 h-4 rounded-[2px] bg-yellow-400 border border-yellow-500/50" />
-            </button>
-            <button onClick={() => onDiscipline?.(EventType.BLACK_CARD)} disabled={disabled}
-              className="p-1 rounded hover:bg-slate-500/20 disabled:opacity-30 transition-all active:scale-90" title="Black Card">
-              <div className="w-3 h-4 rounded-[2px] bg-slate-800 border border-slate-400/50" />
-            </button>
-            <button onClick={() => onDiscipline?.(EventType.RED_CARD)} disabled={disabled}
-              className="p-1 rounded hover:bg-red-500/20 disabled:opacity-30 transition-all active:scale-90" title="Red Card">
-              <div className="w-3 h-4 rounded-[2px] bg-red-500 border border-red-600/50" />
-            </button>
-          </div>
         </div>
       </div>
     )
