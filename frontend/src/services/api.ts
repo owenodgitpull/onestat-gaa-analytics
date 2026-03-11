@@ -2194,6 +2194,12 @@ export const clubMembersAPI = {
 
   listInvitations: () =>
     fetchAPI('/club/members/invitations'),
+
+  getInviteCode: () =>
+    fetchAPI<{ invite_code: string }>('/auth/invite-code'),
+
+  regenerateInviteCode: () =>
+    fetchAPI<{ invite_code: string }>('/auth/invite-code/generate', { method: 'POST' }),
 };
 
 // ============================================================================

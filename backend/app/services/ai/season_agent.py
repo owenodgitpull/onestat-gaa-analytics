@@ -127,10 +127,13 @@ class SeasonAgent:
 
         messages = [{"role": "user", "content": user_message}]
 
+        # Use higher token limit for chart tasks (large JSON output)
+        token_limit = 8000 if task in ("dashboard_charts", "chart_recommendations", "outlier_suggestions") else 4000
+
         # Initial call
         response = client.messages.create(
             model=model,
-            max_tokens=4000,
+            max_tokens=token_limit,
             system=cached_system,
             tools=cached_tools,
             messages=messages,
@@ -166,7 +169,7 @@ class SeasonAgent:
 
             response = client.messages.create(
                 model=model,
-                max_tokens=4000,
+                max_tokens=token_limit,
                 system=cached_system,
                 tools=cached_tools,
                 messages=messages,
@@ -177,6 +180,8 @@ class SeasonAgent:
         for block in response.content:
             if hasattr(block, "text"):
                 final_text += block.text
+
+        logger.info(f"Season agent final response for {task}: stop_reason={response.stop_reason}, text_len={len(final_text)}, turns={turns}")
 
         # Parse structured output based on task
         return _parse_season_response(task, final_text)
@@ -474,7 +479,7 @@ class SeasonAgent:
         }
 
         try:
-            result = await SeasonAgent.analyze_season(db, "dashboard_charts", context)
+            result = await SeasonAgent.analyze_season(db, "dashboard_charts", context, club_id=club_id)
             charts = result.get("charts", [])
             logger.info(f"Dashboard charts AI returned {len(charts)} charts, keys in result: {list(result.keys())}")
             if not charts:
@@ -1307,12 +1312,32 @@ def _parse_season_response(task: str, response_text: str) -> dict:
     elif task in ("dashboard_charts", "chart_recommendations", "outlier_suggestions"):
         # Extract JSON object
         try:
+            # Strip markdown code fences if present
+            raw = response_text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+                if raw.endswith("```"):
+                    raw = raw[:-3]
+                raw = raw.strip()
+
+            # Try direct parse first
+            try:
+                parsed = json.loads(raw)
+                logger.info(f"Parse {task}: direct parse succeeded, keys={list(parsed.keys()) if isinstance(parsed, dict) else 'not-dict'}")
+                return parsed
+            except json.JSONDecodeError:
+                pass
+
+            # Fallback: regex extract
             json_match = re.search(r'\{[\s\S]*\}', response_text)
             if json_match:
-                return json.loads(json_match.group())
+                parsed = json.loads(json_match.group())
+                logger.info(f"Parse {task}: regex parse succeeded, keys={list(parsed.keys()) if isinstance(parsed, dict) else 'not-dict'}")
+                return parsed
+            logger.warning(f"Parse {task}: no JSON found in response. First 500 chars: {response_text[:500]}")
             return {}
         except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"Season response parse failed for {task}: {e}")
+            logger.warning(f"Season response parse failed for {task}: {e}. First 500 chars: {response_text[:500]}")
             return {}
 
     elif task == "player_challenges":

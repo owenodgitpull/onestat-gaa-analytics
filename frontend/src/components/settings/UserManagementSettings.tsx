@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock } from 'lucide-react'
+import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock, RefreshCw } from 'lucide-react'
 import { clubMembersAPI } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
-import { useClub } from '../../contexts/ClubContext'
+// ClubContext no longer needed — invite code fetched from API
 import type { ClubMember } from '../../types'
 
 interface PendingInvitation {
@@ -18,13 +18,14 @@ interface PendingInvitation {
 
 export default function UserManagementSettings() {
   const { user } = useAuth()
-  const { club } = useClub()
   const [members, setMembers] = useState<ClubMember[]>([])
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [inviteCode, setInviteCode] = useState<string | null>(null)
+  const [regeneratingCode, setRegeneratingCode] = useState(false)
 
   // Invite state
   const [showInviteForm, setShowInviteForm] = useState(false)
@@ -38,12 +39,14 @@ export default function UserManagementSettings() {
   const fetchMembers = useCallback(async () => {
     try {
       setLoading(true)
-      const [membersData, invitationsData] = await Promise.all([
+      const [membersData, invitationsData, codeData] = await Promise.all([
         clubMembersAPI.listMembers() as Promise<{ members: ClubMember[] }>,
         clubMembersAPI.listInvitations() as Promise<{ invitations: PendingInvitation[] }>,
+        clubMembersAPI.getInviteCode().catch(() => ({ invite_code: null })),
       ])
       setMembers(membersData.members || [])
       setInvitations(invitationsData.invitations || [])
+      if (codeData.invite_code) setInviteCode(codeData.invite_code)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -52,6 +55,18 @@ export default function UserManagementSettings() {
   }, [])
 
   useEffect(() => { fetchMembers() }, [fetchMembers])
+
+  const handleRegenerateCode = async () => {
+    setRegeneratingCode(true)
+    try {
+      const result = await clubMembersAPI.regenerateInviteCode()
+      setInviteCode(result.invite_code)
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setRegeneratingCode(false)
+    }
+  }
 
   const handleRoleChange = async (memberId: string, newRole: string) => {
     if (!confirm(`Change this user's role to ${newRole === 'club_admin' ? 'Admin' : 'Player'}?`)) return
@@ -105,7 +120,7 @@ export default function UserManagementSettings() {
     }
   }
 
-  const inviteUrl = club?.id ? `${window.location.origin}/join/${club.id}` : ''
+  const inviteUrl = inviteCode ? `${window.location.origin}/join/${inviteCode}` : ''
 
   const copyInviteLink = () => {
     if (!inviteUrl) return
@@ -236,18 +251,39 @@ export default function UserManagementSettings() {
 
       {/* Player Invite link */}
       <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-2">
-        <h3 className="text-sm font-medium text-white/70">Player Invite Link</h3>
-        <p className="text-xs text-white/40">Share this link with players to let them join your club</p>
-        <div className="flex items-center gap-2">
-          <input readOnly value={inviteUrl} className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white/60 text-sm" />
-          <button
-            onClick={copyInviteLink}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium text-white/70">Player Invite Link</h3>
+            <p className="text-xs text-white/40">Share this link with players to let them join your club</p>
+          </div>
+          {inviteCode && (
+            <button
+              onClick={handleRegenerateCode}
+              disabled={regeneratingCode}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors"
+              title="Generate a new code (invalidates the old link)"
+            >
+              <RefreshCw size={12} className={regeneratingCode ? 'animate-spin' : ''} />
+              New Code
+            </button>
+          )}
         </div>
+        {inviteUrl ? (
+          <div className="flex items-center gap-2">
+            <input readOnly value={inviteUrl} className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white/60 text-sm" />
+            <button
+              onClick={copyInviteLink}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-white/30 text-sm py-2">
+            <Loader2 size={14} className="animate-spin" /> Loading invite link...
+          </div>
+        )}
       </div>
 
       {/* Members list */}

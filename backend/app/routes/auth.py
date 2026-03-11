@@ -500,6 +500,35 @@ async def generate_invite_code(
     return {"invite_code": code}
 
 
+@router.get("/invite-code")
+async def get_invite_code(
+    user: AuthenticatedUser = Depends(require_role("club_admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the current invite code for the admin's club, generating one if none exists."""
+    if not user.club_id:
+        raise HTTPException(status_code=403, detail="No club associated")
+
+    result = await db.execute(select(Club).where(Club.id == user.club_id))
+    club = result.scalar_one_or_none()
+    if not club:
+        raise HTTPException(status_code=404, detail="Club not found")
+
+    if not club.invite_code:
+        # Auto-generate on first access
+        for _ in range(5):
+            code = _generate_invite_code()
+            existing = await db.execute(select(Club).where(Club.invite_code == code))
+            if not existing.scalar_one_or_none():
+                break
+        else:
+            raise HTTPException(status_code=500, detail="Could not generate unique code")
+        club.invite_code = code
+        await db.commit()
+
+    return {"invite_code": club.invite_code}
+
+
 @router.get("/invite-code/{code}/verify")
 async def verify_invite_code(
     code: str,
