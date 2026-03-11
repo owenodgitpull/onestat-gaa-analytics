@@ -21,6 +21,7 @@ from app.models.player import Player
 from app.models.player_challenge import PlayerChallenge
 from app.models.attendance import Attendance, AttendanceStatus, TrainingSession
 from app.models.player_health import PlayerWorkloadSnapshot
+from app.models.season_cache import SeasonCache
 from app.services.leaderboard_service import (
     LeaderboardService,
     SCORING_EVENTS,
@@ -626,16 +627,71 @@ async def get_my_workload(
 # AI Personal Insights
 # ------------------------------------------------------------------
 
+PLAYER_AI_CACHE_TTL = timedelta(hours=24)
+
+
+async def _get_player_ai_cache(
+    db: AsyncSession, player_id: UUID, cache_type: str
+) -> dict | None:
+    """Return cached AI result if fresh (< 24h), else None."""
+    result = await db.execute(
+        select(SeasonCache).where(
+            and_(
+                SeasonCache.club_id == player_id,  # reuse club_id col for player_id
+                SeasonCache.cache_type == cache_type,
+            )
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row and row.cached_at and (datetime.utcnow() - row.cached_at) < PLAYER_AI_CACHE_TTL:
+        return row.cached_result
+    return None
+
+
+async def _set_player_ai_cache(
+    db: AsyncSession, player_id: UUID, cache_type: str, data: dict
+) -> None:
+    """Upsert cached AI result for a player."""
+    result = await db.execute(
+        select(SeasonCache).where(
+            and_(
+                SeasonCache.club_id == player_id,
+                SeasonCache.cache_type == cache_type,
+            )
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row:
+        row.cached_result = data
+        row.cached_at = datetime.utcnow()
+        row.data_fingerprint = "player_ai"
+    else:
+        db.add(SeasonCache(
+            club_id=player_id,
+            cache_type=cache_type,
+            data_fingerprint="player_ai",
+            cached_result=data,
+            cached_at=datetime.utcnow(),
+        ))
+    await db.commit()
+
+
 @router.get("/my-stats/ai-insights")
 async def get_my_ai_insights(
     user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
-    """AI-powered personal insights for the player."""
+    """AI-powered personal insights for the player (cached 24h)."""
     player = await _get_player_for_user(db, user)
+
+    cached = await _get_player_ai_cache(db, player.id, "player_insights")
+    if cached:
+        return cached
 
     from app.services.ai import generate_player_insights
     result = await generate_player_insights(db, player.id, user.club_id)
+    if result and result.get("insights"):
+        await _set_player_ai_cache(db, player.id, "player_insights", result)
     return result
 
 
@@ -738,11 +794,17 @@ async def get_my_season_story(
     user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
-    """AI-generated season narrative for the player."""
+    """AI-generated season narrative for the player (cached 24h)."""
     player = await _get_player_for_user(db, user)
+
+    cached = await _get_player_ai_cache(db, player.id, "player_season_story")
+    if cached:
+        return cached
 
     from app.services.ai import generate_season_story
     result = await generate_season_story(db, player.id, user.club_id)
+    if result:
+        await _set_player_ai_cache(db, player.id, "player_season_story", result)
     return result
 
 
