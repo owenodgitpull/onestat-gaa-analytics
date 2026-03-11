@@ -603,7 +603,7 @@ export default function MatchResult() {
           {/* Charts */}
           {(eventsData?.events?.length ?? 0) > 0 ? (
             <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
                 <ChartZoomModal title="Paths Taken">
                   <PathsTakenChart matchId={matchId!} />
                 </ChartZoomModal>
@@ -619,7 +619,7 @@ export default function MatchResult() {
                 </ChartZoomModal>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
                 <ChartZoomModal title="Scoring Timeline">
                   <ScoringTimeline
                     events={eventsData?.events || []}
@@ -744,7 +744,7 @@ export default function MatchResult() {
             <GPSInsightsPanel insights={gpsAnalysis.insights} isLoading={gpsAnalysisLoading} />
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Team Volume (5-min)">
               <TeamVolumeChart gpsData={gpsData} events={eventsData?.events || []} />
             </ChartZoomModal>
@@ -753,7 +753,7 @@ export default function MatchResult() {
             </ChartZoomModal>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Player Distance">
               <PlayerDistanceChart gpsData={gpsData} />
             </ChartZoomModal>
