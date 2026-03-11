@@ -3,7 +3,7 @@ import type { AIChartSpec } from '@/services/api'
 
 const STORAGE_KEY = 'gaa-dashboard-layout'
 const OLD_PINNED_KEY = 'gaa-pinned-charts'
-const MAX_PINNED = 4
+const MAX_PINNED = 8
 
 const NEW_V3_CHART_IDS = [
   'score-momentum',

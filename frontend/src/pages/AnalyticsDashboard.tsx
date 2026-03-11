@@ -176,10 +176,12 @@ export default function AnalyticsDashboard() {
     setLoadingAICharts(true)
     try {
       const result = await api.ai.getDashboardCharts(dismissedChartIds, 4, forceRefresh)
-      if (result.success && result.charts) {
+      if (result.success && result.charts && result.charts.length > 0) {
         setAiCharts(result.charts)
         setAiChartsSummary(result.summary || '')
         if (forceRefresh) setRegenCount(incrementRegenCount())
+      } else if (forceRefresh) {
+        console.warn('AI charts regeneration returned empty result:', result)
       }
     } catch (err) {
       console.error('Failed to load AI charts:', err)
@@ -201,6 +203,25 @@ export default function AnalyticsDashboard() {
       setLoadingSuggestions(false)
     }
   }, [])
+
+  const [loadingMore, setLoadingMore] = useState(false)
+  const loadMoreCharts = useCallback(async () => {
+    if (regenLimitReached) return
+    setLoadingMore(true)
+    try {
+      const existingIds = aiCharts.map(c => c.id)
+      const allExcluded = [...dismissedChartIds, ...existingIds]
+      const result = await api.ai.getDashboardCharts(allExcluded, 2, true)
+      if (result.success && result.charts && result.charts.length > 0) {
+        setAiCharts(prev => [...prev, ...result.charts])
+        setRegenCount(incrementRegenCount())
+      }
+    } catch (err) {
+      console.error('Failed to load more charts:', err)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [aiCharts, dismissedChartIds, regenLimitReached])
 
   const handlePinChart = useCallback((chart: AIChartSpec) => {
     pinChart(chart)
@@ -536,6 +557,8 @@ export default function AnalyticsDashboard() {
           onDismissChart={handleDismissChart}
           onPinChart={handlePinChart}
           onRegenerateAll={() => fetchAICharts(true)}
+          onLoadMore={loadMoreCharts}
+          loadingMore={loadingMore}
           regenLimitReached={regenLimitReached}
           isPinned={isPinned}
           aiChartsSummary={aiChartsSummary}

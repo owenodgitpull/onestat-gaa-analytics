@@ -475,9 +475,13 @@ class SeasonAgent:
 
         try:
             result = await SeasonAgent.analyze_season(db, "dashboard_charts", context)
+            charts = result.get("charts", [])
+            logger.info(f"Dashboard charts AI returned {len(charts)} charts, keys in result: {list(result.keys())}")
+            if not charts:
+                logger.warning(f"Dashboard charts AI returned empty charts. Full result keys: {list(result.keys())}, result snippet: {str(result)[:500]}")
             output = {
                 "success": True,
-                "charts": result.get("charts", []),
+                "charts": charts,
                 "summary": result.get("summary", ""),
                 "generated_at": datetime.now().isoformat(),
             }

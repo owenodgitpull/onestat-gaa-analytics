@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Sparkles, RefreshCw, TrendingUp, Eye, X } from 'lucide-react'
+import { Sparkles, RefreshCw, TrendingUp, Eye, X, Plus } from 'lucide-react'
 import DynamicChart from '@/components/DynamicChart'
 import type { AIChartSpec, OutlierSuggestion } from '@/services/api'
 
@@ -12,6 +12,8 @@ interface AiInsightsSectionProps {
   onDismissChart: (chartId: string) => void
   onPinChart: (chart: AIChartSpec) => void
   onRegenerateAll: () => void
+  onLoadMore?: () => void
+  loadingMore?: boolean
   regenLimitReached?: boolean
   isPinned: (chartId: string) => boolean
   aiChartsSummary?: string
@@ -35,6 +37,8 @@ export default function AiInsightsSection({
   onDismissChart,
   onPinChart,
   onRegenerateAll,
+  onLoadMore,
+  loadingMore = false,
   regenLimitReached = false,
   isPinned,
   aiChartsSummary,
@@ -179,6 +183,23 @@ export default function AiInsightsSection({
           <p className="text-white/60 mb-4">No AI charts available. Click "Regenerate All" to generate insights.</p>
           <button onClick={onRegenerateAll} className="btn-primary">
             Generate Charts
+          </button>
+        </div>
+      )}
+
+      {/* Load More button */}
+      {dynamicCharts.length > 0 && onLoadMore && !regenLimitReached && (
+        <div className="flex justify-center mt-4">
+          <button
+            onClick={onLoadMore}
+            disabled={loadingMore}
+            className="btn-glass flex items-center gap-2 text-sm"
+          >
+            {loadingMore ? (
+              <><RefreshCw size={14} className="animate-spin" /> Generating more...</>
+            ) : (
+              <><Plus size={14} /> Load More Charts</>
+            )}
           </button>
         </div>
       )}
