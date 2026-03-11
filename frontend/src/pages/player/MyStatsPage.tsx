@@ -566,20 +566,34 @@ function ShotMapCard({ shots, scoreShots, missShots }: {
           ))}
         </svg>
         {/* Tooltip overlay */}
-        {selectedShot && selectedShot.pitch_x != null && selectedShot.pitch_y != null && (
-          <div
-            className="absolute pointer-events-none px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-white whitespace-nowrap"
-            style={{
-              background: 'rgba(0,0,0,0.9)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              left: `${Math.min(85, Math.max(15, selectedShot.pitch_x))}%`,
-              top: `${Math.max(5, selectedShot.pitch_y - 10)}%`,
-              transform: 'translateX(-50%)',
-            }}
-          >
-            <span className="font-semibold">{SHOT_TYPE_LABELS[selectedShot.event_type] || selectedShot.event_type}</span>
-            {' · '}vs {selectedShot.opponent}
-            {selectedShot.minute != null && <span className="text-white/60"> · {selectedShot.minute}&apos;</span>}
+        {selectedShot && selectedShot.pitch_x != null && selectedShot.pitch_y != null && (() => {
+          // Position tooltip below the shot if near top edge, above otherwise
+          const shotY = selectedShot.pitch_y;
+          const showBelow = shotY < 20;
+          return (
+            <div
+              className="absolute pointer-events-none px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-white whitespace-nowrap z-10"
+              style={{
+                background: 'rgba(0,0,0,0.92)',
+                border: '1px solid rgba(255,255,255,0.2)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                left: `${Math.min(82, Math.max(18, selectedShot.pitch_x))}%`,
+                top: showBelow
+                  ? `${Math.min(90, shotY + 8)}%`
+                  : `${Math.max(2, shotY - 10)}%`,
+                transform: 'translateX(-50%)',
+              }}
+            >
+              <span className="font-semibold">{SHOT_TYPE_LABELS[selectedShot.event_type] || selectedShot.event_type}</span>
+              {' · '}vs {selectedShot.opponent}
+              {selectedShot.minute != null && <span className="text-white/60"> · {selectedShot.minute}&apos;</span>}
+            </div>
+          );
+        })()}
+        {/* Tap hint */}
+        {!selectedShot && filteredShots.length > 0 && (
+          <div className="absolute bottom-2 left-0 right-0 text-center">
+            <span className="text-[10px] text-white/30 bg-black/40 px-2 py-0.5 rounded">Tap a shot to see details</span>
           </div>
         )}
       </div>
