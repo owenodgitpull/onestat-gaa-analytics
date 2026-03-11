@@ -14,6 +14,7 @@ import {
   Crosshair, Activity, Shield, CalendarCheck, Sparkles, Flame,
   Trophy, X, Search, ArrowLeftRight, Target, BookOpen, Check, ChevronDown,
 } from 'lucide-react';
+import ChartZoomModal from '../../components/ChartZoomModal';
 
 const TABS = [
   { key: 'scoring', label: 'Scoring', icon: Crosshair },
@@ -49,7 +50,7 @@ export default function MyStatsPage() {
           <img
             src={club?.logo_url || '/oneStatLogoTransparent.png'}
             alt=""
-            className="h-28 w-28 rounded-lg object-contain"
+            className="h-10 w-10 rounded-lg object-contain"
             onError={(e) => { (e.target as HTMLImageElement).src = '/oneStatLogoTransparent.png'; }}
           />
         </div>
@@ -460,55 +461,99 @@ function MatchDetailStat({ label, value, color, bold }: {
   );
 }
 
-// ---- Shot Map with Tooltips ----
+// ---- Shot Type Labels ----
+const SHOT_TYPE_LABELS: Record<string, string> = {
+  goal: 'Goal',
+  point: 'Point',
+  two_point: '2-Pointer',
+  point_free: 'Free',
+  two_point_free: '2pt Free',
+  forty_five: '45',
+  penalty_goal: 'Penalty',
+  wide: 'Wide',
+  short: 'Short',
+  saved: 'Saved',
+  wide_free: 'Wide Free',
+  forty_five_missed: '45 Missed',
+  penalty_miss: 'Pen Miss',
+};
+
+const SHOT_FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'goals', label: 'Goals', types: ['goal', 'penalty_goal'] },
+  { key: 'points', label: 'Points', types: ['point', 'point_free', 'forty_five'] },
+  { key: '2pts', label: '2-Ptrs', types: ['two_point', 'two_point_free'] },
+  { key: 'wides', label: 'Wides', types: ['wide', 'wide_free', 'forty_five_missed'] },
+  { key: 'scored', label: 'Scored', types: ['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five', 'penalty_goal'] },
+  { key: 'missed', label: 'Missed', types: ['wide', 'short', 'saved', 'wide_free', 'forty_five_missed', 'penalty_miss'] },
+];
+
+// ---- Shot Map with Tooltips + Filters ----
 function ShotMapCard({ shots, scoreShots, missShots }: {
   shots: ShotEvent[];
   scoreShots: ShotEvent[];
   missShots: ShotEvent[];
 }) {
   const [selectedShot, setSelectedShot] = useState<ShotEvent | null>(null);
+  const [activeFilter, setActiveFilter] = useState('all');
 
   const toSvgX = (pct: number) => (pct / 100) * 1960 + 183;
   const toSvgY = (pct: number) => (pct / 100) * 1167 + 123;
 
+  // Apply filter
+  const filterDef = SHOT_FILTERS.find(f => f.key === activeFilter);
+  const filteredShots = activeFilter === 'all'
+    ? shots
+    : shots.filter(s => filterDef?.types?.includes(s.event_type));
+  const filteredScore = filteredShots.filter(s => scoreShots.includes(s));
+  const filteredMiss = filteredShots.filter(s => missShots.includes(s));
+
+  const shotColor = (s: ShotEvent) => {
+    if (['goal', 'penalty_goal'].includes(s.event_type)) return '#fbbf24'; // gold for goals
+    if (scoreShots.includes(s)) return '#10b981'; // green for scores
+    return '#ef4444'; // red for misses
+  };
+
   return (
-    <ChartCard title="Shot Map" subtitle={`${shots.length} shots total`}>
+    <ChartCard title="Shot Map" subtitle={`${filteredShots.length} shot${filteredShots.length !== 1 ? 's' : ''} shown`}>
+      {/* Filter pills */}
+      <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+        {SHOT_FILTERS.map(f => (
+          <button
+            key={f.key}
+            onClick={() => { setActiveFilter(f.key); setSelectedShot(null); }}
+            className={`px-2.5 py-1 rounded-full text-[10px] font-medium whitespace-nowrap transition-colors ${
+              activeFilter === f.key
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                : 'bg-white/5 text-white/40 border border-white/10 hover:text-white/60'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <div
         className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-xl overflow-hidden"
         style={{ aspectRatio: '16/10' }}
         onPointerDown={(e) => {
-          // Tap outside a circle dismisses
           if ((e.target as HTMLElement).tagName !== 'circle') setSelectedShot(null);
         }}
       >
         <svg viewBox="0 0 2332 1446" className="w-full h-full">
           <rect width="2332" height="1446" fill="#2d5016" />
           <image href="/pitch-svg.svg" width="2332" height="1446" preserveAspectRatio="xMidYMid meet" />
-          {scoreShots.map((s, i) => s.pitch_x != null && s.pitch_y != null && (
+          {[...filteredMiss, ...filteredScore].map((s, i) => s.pitch_x != null && s.pitch_y != null && (
             <circle
-              key={`s-${i}`}
+              key={`shot-${i}`}
               cx={toSvgX(s.pitch_x)}
               cy={toSvgY(s.pitch_y)}
-              r="18"
-              fill="#10b981"
-              stroke={selectedShot === s ? '#fff' : 'white'}
-              strokeWidth={selectedShot === s ? 5 : 3}
-              opacity="0.85"
-              style={{ cursor: 'pointer' }}
-              onPointerDown={(e) => { e.stopPropagation(); setSelectedShot(s); }}
-            />
-          ))}
-          {missShots.map((s, i) => s.pitch_x != null && s.pitch_y != null && (
-            <circle
-              key={`m-${i}`}
-              cx={toSvgX(s.pitch_x)}
-              cy={toSvgY(s.pitch_y)}
-              r="18"
-              fill="#ef4444"
-              stroke={selectedShot === s ? '#fff' : 'white'}
-              strokeWidth={selectedShot === s ? 5 : 3}
-              opacity="0.65"
-              style={{ cursor: 'pointer' }}
+              r="20"
+              fill={shotColor(s)}
+              stroke={selectedShot === s ? '#fff' : 'rgba(255,255,255,0.6)'}
+              strokeWidth={selectedShot === s ? 5 : 2}
+              opacity={selectedShot && selectedShot !== s ? 0.3 : 0.85}
+              style={{ cursor: 'pointer', transition: 'opacity 0.2s' }}
               onPointerDown={(e) => { e.stopPropagation(); setSelectedShot(s); }}
             />
           ))}
@@ -516,21 +561,25 @@ function ShotMapCard({ shots, scoreShots, missShots }: {
         {/* Tooltip overlay */}
         {selectedShot && selectedShot.pitch_x != null && selectedShot.pitch_y != null && (
           <div
-            className="absolute pointer-events-none px-2 py-1 rounded-md text-[10px] font-medium text-white whitespace-nowrap"
+            className="absolute pointer-events-none px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-white whitespace-nowrap"
             style={{
-              background: 'rgba(0,0,0,0.85)',
-              left: `${selectedShot.pitch_x}%`,
-              top: `${Math.max(5, selectedShot.pitch_y - 8)}%`,
+              background: 'rgba(0,0,0,0.9)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              left: `${Math.min(85, Math.max(15, selectedShot.pitch_x))}%`,
+              top: `${Math.max(5, selectedShot.pitch_y - 10)}%`,
               transform: 'translateX(-50%)',
             }}
           >
-            vs {selectedShot.opponent}{selectedShot.minute != null ? ` · ${selectedShot.minute}'` : ''}
+            <span className="font-semibold">{SHOT_TYPE_LABELS[selectedShot.event_type] || selectedShot.event_type}</span>
+            {' · '}vs {selectedShot.opponent}
+            {selectedShot.minute != null && <span className="text-white/60"> · {selectedShot.minute}&apos;</span>}
           </div>
         )}
       </div>
       <div className="flex gap-4 mt-2 justify-center text-xs text-white/50">
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400" /> Score ({scoreShots.length})</span>
-        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400" /> Miss ({missShots.length})</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Goal</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Score ({filteredScore.length})</span>
+        <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400" /> Miss ({filteredMiss.length})</span>
       </div>
     </ChartCard>
   );
@@ -1232,19 +1281,21 @@ function H2HBar({ label, myVal, theirVal, unit }: {
 
 function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div
-      className="rounded-xl p-4"
-      style={{
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))',
-        border: '1px solid rgba(255,255,255,0.08)',
-      }}
-    >
-      <div className="mb-3">
-        <h3 className="text-sm font-semibold text-white">{title}</h3>
-        {subtitle && <p className="text-[11px] text-white/40 mt-0.5">{subtitle}</p>}
+    <ChartZoomModal title={title}>
+      <div
+        className="rounded-xl p-4"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))',
+          border: '1px solid rgba(255,255,255,0.08)',
+        }}
+      >
+        <div className="mb-3">
+          <h3 className="text-sm font-semibold text-white">{title}</h3>
+          {subtitle && <p className="text-[11px] text-white/40 mt-0.5">{subtitle}</p>}
+        </div>
+        {children}
       </div>
-      {children}
-    </div>
+    </ChartZoomModal>
   );
 }
 

@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Play, Volume2, MessageSquare, Clock } from 'lucide-react'
+import PlayerHeader from '../../components/PlayerHeader'
 import { api } from '@/services/api'
 import { PlaybackEngine } from '@/components/playbook'
 import type { Phase } from '@/components/playbook/types'
@@ -115,8 +116,8 @@ export default function PlaybooksPage() {
   }
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
-      <h1 className="text-xl font-bold text-white mb-4">From the Manager</h1>
+    <div className="space-y-5 pb-4">
+      <PlayerHeader title="Playbooks" />
 
       {playbooks.length === 0 ? (
         <div className="glass-card p-8 text-center">

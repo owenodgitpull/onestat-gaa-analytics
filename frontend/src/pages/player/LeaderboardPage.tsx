@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { playerPortalAPI, type LeaderboardEntry } from '../../services/playerPortalApi';
 import { useAuth } from '../../contexts/AuthContext';
-import { Trophy, Target, Shield, TrendingUp, Zap, Footprints, Clock, Star } from 'lucide-react';
+import { Trophy, Target, Shield, TrendingUp, Zap, Footprints, Clock, Star, Info } from 'lucide-react';
+import PlayerHeader from '../../components/PlayerHeader';
 
 const CATEGORIES = [
-  { key: 'top_scorer', icon: Trophy, label: 'Top Scorer', color: '#f59e0b' },
-  { key: 'clinical_rating', icon: Target, label: 'Clinical', color: '#10b981' },
-  { key: 'the_wall', icon: Shield, label: 'The Wall', color: '#ef4444' },
-  { key: 'workhorse', icon: TrendingUp, label: 'Workhorse', color: '#3b82f6' },
-  { key: 'speed_demon', icon: Zap, label: 'Speed', color: '#06b6d4' },
-  { key: 'sprint_king', icon: Footprints, label: 'Sprints', color: '#10b981' },
-  { key: 'iron_man', icon: Clock, label: 'Iron Man', color: '#14b8a6' },
-  { key: 'motm_points', icon: Star, label: 'MOTM', color: '#eab308' },
+  { key: 'top_scorer', icon: Trophy, label: 'Top Scorer', color: '#f59e0b', description: 'Total points scored across all matches (goals=3, points=1, 2-ptrs=2)' },
+  { key: 'clinical_rating', icon: Target, label: 'Clinical', color: '#10b981', description: 'Shooting accuracy % — minimum 10 shots to qualify' },
+  { key: 'the_wall', icon: Shield, label: 'The Wall', color: '#ef4444', description: 'Defensive actions: blocks, interceptions, and turnovers won' },
+  { key: 'workhorse', icon: TrendingUp, label: 'Workhorse', color: '#3b82f6', description: 'Average distance covered per match from GPS data' },
+  { key: 'speed_demon', icon: Zap, label: 'Speed', color: '#06b6d4', description: 'Highest top speed recorded across matches and training (GPS)' },
+  { key: 'sprint_king', icon: Footprints, label: 'Sprints', color: '#10b981', description: 'Average sprint count per match from GPS data' },
+  { key: 'iron_man', icon: Clock, label: 'Iron Man', color: '#14b8a6', description: 'Training attendance rate — shows who consistently turns up' },
+  { key: 'motm_points', icon: Star, label: 'MOTM', color: '#eab308', description: 'Man of the Match weighted points: goals (+10), points (+3), turnovers won (+2), turnovers lost (−1)' },
 ];
 
 const MEDAL_GRADIENTS = [
@@ -21,9 +23,14 @@ const MEDAL_GRADIENTS = [
   'linear-gradient(135deg, #d97706, #b45309)', // Bronze
 ];
 
+const GPS_CATEGORIES = ['workhorse', 'speed_demon', 'sprint_king'];
+
 export default function LeaderboardPage() {
   const { user } = useAuth();
-  const [activeCategory, setActiveCategory] = useState('top_scorer');
+  const [searchParams] = useSearchParams();
+  const initialCategory = searchParams.get('category') || 'top_scorer';
+  const [activeCategory, setActiveCategory] = useState(initialCategory);
+  const [showInfo, setShowInfo] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['player-leaderboards'],
@@ -65,7 +72,7 @@ export default function LeaderboardPage() {
 
   return (
     <div className="space-y-5 pb-4">
-      <h1 className="text-lg font-bold text-white">Leaderboards</h1>
+      <PlayerHeader title="Leaderboards" />
 
       {/* Category Tabs — horizontal scroll */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x scrollbar-hide">
@@ -75,7 +82,7 @@ export default function LeaderboardPage() {
           return (
             <button
               key={cat.key}
-              onClick={() => setActiveCategory(cat.key)}
+              onClick={() => { setActiveCategory(cat.key); setShowInfo(false); }}
               className={`flex-shrink-0 snap-start rounded-xl px-3 py-2 flex items-center gap-2 transition-all ${
                 active
                   ? 'bg-white/10 border border-white/20 shadow-lg'
@@ -96,10 +103,47 @@ export default function LeaderboardPage() {
         })}
       </div>
 
+      {/* Category Description */}
+      <div className="flex items-center gap-2 px-1">
+        <button
+          onClick={() => setShowInfo(!showInfo)}
+          className="p-1 rounded-lg hover:bg-white/10 transition-colors"
+        >
+          <Info size={14} className="text-white/30" />
+        </button>
+        <span className="text-xs text-white/40 font-medium">{activeMeta.label}</span>
+        {activeBoard && (
+          <span className="text-[10px] text-white/25 ml-auto">{activeBoard.total_players} players ranked</span>
+        )}
+      </div>
+      {showInfo && (
+        <div
+          className="rounded-lg px-3 py-2 text-xs text-white/60 -mt-3"
+          style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+        >
+          {activeMeta.description}
+        </div>
+      )}
+
       {isLoading || fullLoading ? (
         <div className="space-y-3 animate-pulse">
           <div className="h-40 rounded-2xl bg-white/5" />
           {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-14 rounded-xl bg-white/5" />)}
+        </div>
+      ) : fullRanking.length === 0 ? (
+        /* Empty state */
+        <div className="text-center py-12">
+          <activeMeta.icon size={40} className="mx-auto mb-3" style={{ color: `${activeMeta.color}40` }} />
+          <p className="text-white/50 text-sm font-medium mb-1">No data yet</p>
+          <p className="text-white/30 text-xs max-w-[260px] mx-auto">
+            {GPS_CATEGORIES.includes(activeCategory)
+              ? 'GPS data needs to be uploaded for this leaderboard. Ask your manager to upload match GPS files.'
+              : activeCategory === 'clinical_rating'
+              ? 'Players need at least 10 shots to qualify for the Clinical rating.'
+              : activeCategory === 'iron_man'
+              ? 'Training attendance needs to be recorded for this leaderboard.'
+              : 'Match data will populate this leaderboard once results are recorded.'}
+          </p>
         </div>
       ) : (
         <>
@@ -179,6 +223,13 @@ export default function LeaderboardPage() {
               );
             })}
           </div>
+
+          {/* Qualification note for clinical */}
+          {activeCategory === 'clinical_rating' && fullRanking.length > 0 && fullRanking.length < 5 && (
+            <p className="text-[11px] text-white/25 text-center mt-2">
+              Minimum 10 shots required to qualify
+            </p>
+          )}
         </>
       )}
     </div>

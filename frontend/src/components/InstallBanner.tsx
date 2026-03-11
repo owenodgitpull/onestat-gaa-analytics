@@ -1,15 +1,20 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Download, X, Share, PlusSquare } from 'lucide-react'
 import { usePWAInstall } from '@/hooks/usePWAInstall'
 
 export default function InstallBanner() {
   const { showNativePrompt, showIOSPrompt, install, dismiss } = usePWAInstall()
   const [iosExpanded, setIosExpanded] = useState(false)
+  const location = useLocation()
 
   if (!showNativePrompt && !showIOSPrompt) return null
 
+  // On player portal pages, push banner above the bottom tab bar
+  const isPlayerPortal = location.pathname.startsWith('/player')
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-[999] safe-area-bottom">
+    <div className={`fixed left-0 right-0 z-[999] safe-area-bottom ${isPlayerPortal ? 'bottom-[72px]' : 'bottom-0'}`}>
       <div className="mx-3 mb-3 rounded-2xl bg-gradient-to-r from-emerald-600/95 to-cyan-600/95 backdrop-blur-xl shadow-2xl border border-white/20 overflow-hidden">
         {/* Main banner row */}
         <div className="flex items-center gap-3 px-4 py-3">

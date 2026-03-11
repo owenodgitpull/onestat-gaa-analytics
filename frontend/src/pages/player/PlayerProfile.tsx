@@ -2,6 +2,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { playerPortalAPI } from '../../services/playerPortalApi';
 import { LogOut, Bell, BellOff, User } from 'lucide-react';
+import PlayerHeader from '../../components/PlayerHeader';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 
@@ -33,7 +34,7 @@ export default function PlayerProfile() {
 
   return (
     <div className="space-y-5 pb-4">
-      <h1 className="text-lg font-bold text-white">Profile</h1>
+      <PlayerHeader title="Profile" />
 
       {/* Player Card */}
       <div

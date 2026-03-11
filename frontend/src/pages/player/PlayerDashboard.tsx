@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { playerPortalAPI, type PlayerDashboard as DashboardData } from '../../services/playerPortalApi';
 import { Link } from 'react-router-dom';
-import { Trophy, Target, Crosshair, Zap, TrendingUp, ChevronRight, Bell, X, Download, Share } from 'lucide-react';
+import { Trophy, Target, Crosshair, Zap, TrendingUp, ChevronRight, Bell, X, Download, Share, Info } from 'lucide-react';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
+import PlayerHeader from '../../components/PlayerHeader';
 
 const CATEGORY_ICONS: Record<string, typeof Trophy> = {
   top_scorer: Trophy,
@@ -88,6 +89,8 @@ export default function PlayerDashboard() {
 
   return (
     <div className="space-y-5 pb-4">
+      <PlayerHeader title="Dashboard" />
+
       {/* Push Notification Prompt */}
       {showPushPrompt && (
         <div
@@ -225,8 +228,8 @@ export default function PlayerDashboard() {
 
       {/* Quick Stats Grid */}
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Total Score" value={stats.total_score} sub={`${stats.total_points_value} pts`} />
-        <StatCard label="Accuracy" value={stats.accuracy_pct != null ? `${stats.accuracy_pct}%` : '—'} sub="shooting %" />
+        <StatCard label="Total Score" value={stats.total_score} sub={`${stats.total_points_value} pts`} tooltip="Goals (3pts) + Points (1pt) + 2-Ptrs (2pts)" />
+        <StatCard label="Accuracy" value={stats.accuracy_pct != null ? `${stats.accuracy_pct}%` : '—'} sub="shooting %" tooltip="Percentage of shots that scored (goals, points, 2-ptrs)" />
         <StatCard label="Matches" value={String(stats.matches_played)} sub="this season" />
         <StatCard
           label="MOTM Pts"
@@ -234,6 +237,7 @@ export default function PlayerDashboard() {
             leaderboard_positions.find((p) => p.category === 'motm_points')?.value?.toString() || '—'
           }
           sub={`rank #${leaderboard_positions.find((p) => p.category === 'motm_points')?.rank || '—'}`}
+          tooltip="Weighted performance score: goals +10, points +3, turnovers won +2, turnovers lost −1"
         />
       </div>
 
@@ -294,7 +298,7 @@ export default function PlayerDashboard() {
               return (
                 <Link
                   key={pos.category}
-                  to="/player/leaderboards"
+                  to={`/player/leaderboards?category=${pos.category}`}
                   className={`min-w-[130px] rounded-xl p-3.5 snap-start flex-shrink-0 bg-gradient-to-br border transition-transform active:scale-95 ${colorClass}`}
                 >
                   <Icon size={18} className="text-white/60 mb-2" />
@@ -332,16 +336,27 @@ export default function PlayerDashboard() {
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string; sub: string }) {
+function StatCard({ label, value, sub, tooltip }: { label: string; value: string; sub: string; tooltip?: string }) {
+  const [showTip, setShowTip] = useState(false);
   return (
     <div
-      className="rounded-xl p-3.5"
+      className="rounded-xl p-3.5 relative"
       style={{
         background: 'linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04))',
         border: '1px solid rgba(255,255,255,0.10)',
       }}
     >
-      <div className="text-[11px] text-white/50 font-medium uppercase tracking-wider">{label}</div>
+      <div className="flex items-center gap-1">
+        <div className="text-[11px] text-white/50 font-medium uppercase tracking-wider">{label}</div>
+        {tooltip && (
+          <button onClick={() => setShowTip(!showTip)} className="p-0.5 -mt-px">
+            <Info size={11} className="text-white/25" />
+          </button>
+        )}
+      </div>
+      {showTip && tooltip && (
+        <div className="text-[10px] text-white/50 mt-0.5 leading-tight">{tooltip}</div>
+      )}
       <div className="text-2xl font-bold text-white mt-1">{value}</div>
       <div className="text-xs text-white/40">{sub}</div>
     </div>
