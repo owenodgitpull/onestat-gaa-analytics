@@ -360,6 +360,22 @@ export default function AIAnalystPage() {
   // --- Active State ---
   const chatPanel = (
     <div className="flex flex-col h-full">
+      {/* Mobile-only: history + new chat bar */}
+      <div className="md:hidden flex items-center justify-between px-3 py-2 border-b border-white/10 flex-shrink-0">
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 text-white/60 hover:text-white text-xs font-medium transition-all"
+        >
+          <History size={14} />
+          History
+        </button>
+        <button
+          onClick={handleNewChat}
+          className="px-2.5 py-1.5 rounded-lg bg-white/10 text-white/60 hover:text-white text-xs font-medium transition-all"
+        >
+          + New Chat
+        </button>
+      </div>
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, i) => (
@@ -512,22 +528,6 @@ export default function AIAnalystPage() {
       />
 
       <div className="-mx-4 -mt-6 px-4 pt-2 h-[calc(100vh-3.5rem)] flex flex-col">
-        {/* Mobile history + new chat buttons */}
-        <div className="md:hidden flex items-center justify-between py-2 px-1">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-xl bg-white/10 border border-white/10 text-white/60 hover:text-white hover:bg-white/15 transition-all"
-          >
-            <History size={18} />
-          </button>
-          <button
-            onClick={handleNewChat}
-            className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/10 text-white/60 hover:text-white hover:bg-white/15 transition-all text-xs font-medium"
-          >
-            + New Chat
-          </button>
-        </div>
-
         {/* Desktop/Tablet: side-by-side */}
         <div className="hidden md:flex flex-1 gap-4 min-h-0">
           {/* Chat panel */}
