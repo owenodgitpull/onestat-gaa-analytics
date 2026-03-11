@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { playerPortalAPI, type PlayerDashboard as DashboardData } from '../../services/playerPortalApi';
 import { Link } from 'react-router-dom';
-import { Trophy, Target, Crosshair, Zap, TrendingUp, ChevronRight, Bell, X, Download, Share, Info } from 'lucide-react';
+import { Trophy, Target, Crosshair, Zap, TrendingUp, ChevronRight, Bell, X, Info } from 'lucide-react';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
-import { usePWAInstall } from '../../hooks/usePWAInstall';
 import PlayerHeader from '../../components/PlayerHeader';
 
 const CATEGORY_ICONS: Record<string, typeof Trophy> = {
@@ -50,9 +49,6 @@ export default function PlayerDashboard() {
     setPushDismissed(true);
     try { localStorage.setItem(PUSH_PROMPT_DISMISSED_KEY, '1'); } catch { /* noop */ }
   };
-
-  // PWA install prompt
-  const { showNativePrompt, showIOSPrompt, install, dismiss: dismissInstall } = usePWAInstall();
 
   const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ['player-dashboard'],
@@ -125,76 +121,6 @@ export default function PlayerDashboard() {
           >
             <X size={16} />
           </button>
-        </div>
-      )}
-
-      {/* PWA Install Prompt — Android/Chrome */}
-      {showNativePrompt && (
-        <div
-          className="rounded-xl p-4 flex items-center gap-3"
-          style={{
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(0,176,255,0.10))',
-            border: '1px solid rgba(99,102,241,0.30)',
-          }}
-        >
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
-            <Download size={20} className="text-indigo-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white">Install OneStat</p>
-            <p className="text-xs text-white/50 mt-0.5">Add to your home screen for the full app experience.</p>
-          </div>
-          <button
-            onClick={install}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition-all hover:-translate-y-px"
-            style={{
-              background: 'linear-gradient(135deg, #818cf8, #00B0FF)',
-              color: '#0a0a19',
-              boxShadow: '0 4px 12px -2px rgba(99,102,241,0.3)',
-            }}
-          >
-            Install
-          </button>
-          <button
-            onClick={dismissInstall}
-            className="p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/60 transition-colors flex-shrink-0"
-            title="Dismiss"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
-
-      {/* PWA Install Prompt — iOS Safari */}
-      {showIOSPrompt && (
-        <div
-          className="rounded-xl p-4"
-          style={{
-            background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(0,176,255,0.10))',
-            border: '1px solid rgba(99,102,241,0.30)',
-          }}
-        >
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
-              <Download size={20} className="text-indigo-400" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white">Install OneStat</p>
-              <p className="text-xs text-white/50 mt-0.5">Add to your home screen for the full app experience.</p>
-            </div>
-            <button
-              onClick={dismissInstall}
-              className="p-1 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/60 transition-colors flex-shrink-0"
-              title="Dismiss"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-xs text-white/60">
-            <span>Tap</span>
-            <Share size={14} className="text-cyan-400" />
-            <span>then <strong className="text-white/80">"Add to Home Screen"</strong></span>
-          </div>
         </div>
       )}
 

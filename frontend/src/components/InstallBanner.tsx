@@ -8,10 +8,11 @@ export default function InstallBanner() {
   const [iosExpanded, setIosExpanded] = useState(false)
   const location = useLocation()
 
-  if (!showNativePrompt && !showIOSPrompt) return null
-
-  // On player portal pages, push banner above the bottom tab bar
+  // Only show install banner on player portal — the main app is desktop-first
   const isPlayerPortal = location.pathname.startsWith('/player')
+
+  if (!isPlayerPortal) return null
+  if (!showNativePrompt && !showIOSPrompt) return null
 
   return (
     <div className={`fixed left-0 right-0 z-[999] safe-area-bottom ${isPlayerPortal ? 'bottom-[72px]' : 'bottom-0'}`}>

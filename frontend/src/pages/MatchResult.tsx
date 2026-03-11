@@ -541,9 +541,9 @@ export default function MatchResult() {
         </div>
       )}
 
-      {/* Event Map + Stats — stacked sections */}
-      <div className="space-y-4">
-        {/* Event Map — matches live recording layout */}
+      {/* Event Map + Stats — side by side on desktop, stacked on mobile */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr,1fr] gap-4">
+        {/* Left: Event Map + Filters */}
         <div className="space-y-3">
           <div className="glass-card p-4">
             <div className="flex items-center justify-between mb-2">
@@ -598,12 +598,12 @@ export default function MatchResult() {
           )}
         </div>
 
-        {/* Stats + Events + Marking — 2-col on desktop */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Right: Match Stats + Events List */}
+        <div className="space-y-4">
           {/* Match Stats */}
           <div className="glass-card p-4">
-            <h2 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
-              <Activity size={20} />
+            <h2 className="text-sm font-bold text-white mb-3 flex items-center space-x-2">
+              <Activity size={16} />
               <span>Match Statistics</span>
             </h2>
             {hasEvents ? (
@@ -623,8 +623,8 @@ export default function MatchResult() {
 
           {/* Events List */}
           <div className="glass-card p-4">
-            <h2 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
-              <Clock size={20} />
+            <h2 className="text-sm font-bold text-white mb-3 flex items-center space-x-2">
+              <Clock size={16} />
               <span>Match Events</span>
             </h2>
             {eventsData?.events && eventsData.events.length > 0 ? (
@@ -648,8 +648,10 @@ export default function MatchResult() {
             )}
           </div>
         </div>
+      </div>
 
-        {/* Man Marking (post-match) */}
+      {/* Man Marking (post-match) */}
+      <div className="mt-4">
         <ManMarkingPanel
           matchId={matchId!}
           assignments={markingAssignments}

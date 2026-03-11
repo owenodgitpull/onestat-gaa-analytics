@@ -47,11 +47,18 @@ export default function MyStatsPage() {
             <ArrowLeftRight size={12} />
             Compare
           </button>
+          {club?.logo_url && (
+            <img
+              src={club.logo_url}
+              alt=""
+              className="h-8 w-8 rounded-lg object-contain"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
           <img
-            src={club?.logo_url || '/oneStatLogoTransparent.png'}
-            alt=""
-            className="h-10 w-10 rounded-lg object-contain"
-            onError={(e) => { (e.target as HTMLImageElement).src = '/oneStatLogoTransparent.png'; }}
+            src="/oneStatLogoTransparent.png"
+            alt="OneStat"
+            className="h-8 object-contain"
           />
         </div>
       </div>
