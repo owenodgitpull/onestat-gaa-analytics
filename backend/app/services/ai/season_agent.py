@@ -438,6 +438,7 @@ class SeasonAgent:
         excluded_chart_ids: list[str] = None,
         num_charts: int = 4,
         club_id=None,
+        force_refresh: bool = False,
     ) -> dict:
         """Generate Recharts-compatible chart specs for the dashboard via agentic analysis."""
         from app.services.ai.chart_engine import _get_raw_data_for_charts
@@ -456,10 +457,10 @@ class SeasonAgent:
             cache_result = await db.execute(cache_q)
             cache = cache_result.scalar_one_or_none()
 
-            if cache and cache.data_fingerprint == fingerprint and cache.cached_result:
+            if not force_refresh and cache and cache.data_fingerprint == fingerprint and cache.cached_result:
                 logger.info(f"Dashboard charts cache HIT (fingerprint={fingerprint[:12]}...)")
                 return cache.cached_result
-            logger.info(f"Dashboard charts cache MISS (fingerprint={fingerprint[:12]}...) — calling Season Agent")
+            logger.info(f"Dashboard charts cache {'FORCE REFRESH' if force_refresh else 'MISS'} (fingerprint={fingerprint[:12]}...) — calling Season Agent")
         else:
             cache = None
             fingerprint = None

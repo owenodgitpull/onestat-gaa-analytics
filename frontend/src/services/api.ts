@@ -1379,11 +1379,12 @@ const aiAPI = {
    */
   getDashboardCharts: async (
     excludedChartIds: string[] = [],
-    numCharts: number = 4
+    numCharts: number = 4,
+    forceRefresh: boolean = false
   ): Promise<DashboardChartsResponse> => {
     return fetchAPI<DashboardChartsResponse>('/ai/dashboard-charts', {
       method: 'POST',
-      body: JSON.stringify({ excluded_chart_ids: excludedChartIds, num_charts: numCharts }),
+      body: JSON.stringify({ excluded_chart_ids: excludedChartIds, num_charts: numCharts, force_refresh: forceRefresh }),
     });
   },
 

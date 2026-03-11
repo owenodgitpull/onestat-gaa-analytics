@@ -61,6 +61,25 @@ function loadVisibleKpis(): string[] {
   return DEFAULT_VISIBLE_KPIS
 }
 
+const AI_REGEN_KEY = 'gaa-ai-regen'
+const AI_REGEN_DAILY_LIMIT = 5
+function getRegenCount(): { count: number; date: string } {
+  try {
+    const stored = localStorage.getItem(AI_REGEN_KEY)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      if (parsed.date === new Date().toISOString().slice(0, 10)) return parsed
+    }
+  } catch { /* ignore */ }
+  return { count: 0, date: new Date().toISOString().slice(0, 10) }
+}
+function incrementRegenCount(): number {
+  const current = getRegenCount()
+  const updated = { count: current.count + 1, date: current.date }
+  localStorage.setItem(AI_REGEN_KEY, JSON.stringify(updated))
+  return updated.count
+}
+
 export default function AnalyticsDashboard() {
   const navigate = useNavigate()
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
@@ -80,6 +99,8 @@ export default function AnalyticsDashboard() {
   const [visibleKpis, setVisibleKpis] = useState<string[]>(loadVisibleKpis)
   const [kpiLibraryOpen, setKpiLibraryOpen] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [regenCount, setRegenCount] = useState(() => getRegenCount().count)
+  const regenLimitReached = regenCount >= AI_REGEN_DAILY_LIMIT
   const { startTour: startDashboardTour, isTourCompleted: tourDone } = useTour('dashboard', dashboardSteps)
   const tourTriggered = useRef(false)
   const [flashingCards, setFlashingCards] = useState<Set<number>>(new Set())
@@ -150,20 +171,22 @@ export default function AnalyticsDashboard() {
     }
   }
 
-  const fetchAICharts = useCallback(async () => {
+  const fetchAICharts = useCallback(async (forceRefresh = false) => {
+    if (forceRefresh && regenLimitReached) return
     setLoadingAICharts(true)
     try {
-      const result = await api.ai.getDashboardCharts(dismissedChartIds, 4)
+      const result = await api.ai.getDashboardCharts(dismissedChartIds, 4, forceRefresh)
       if (result.success && result.charts) {
         setAiCharts(result.charts)
         setAiChartsSummary(result.summary || '')
+        if (forceRefresh) setRegenCount(incrementRegenCount())
       }
     } catch (err) {
       console.error('Failed to load AI charts:', err)
     } finally {
       setLoadingAICharts(false)
     }
-  }, [dismissedChartIds])
+  }, [dismissedChartIds, regenLimitReached])
 
   const fetchSuggestions = useCallback(async () => {
     setLoadingSuggestions(true)
@@ -477,9 +500,10 @@ export default function AnalyticsDashboard() {
                 </button>
               )}
               <button
-                onClick={viewMode === 'ai' ? () => { fetchAICharts(); fetchSuggestions() } : fetchDashboard}
-                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all"
-                title="Refresh data"
+                onClick={viewMode === 'ai' ? () => { fetchAICharts(true); fetchSuggestions() } : fetchDashboard}
+                disabled={viewMode === 'ai' && regenLimitReached}
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-all disabled:opacity-30 disabled:pointer-events-none"
+                title={viewMode === 'ai' && regenLimitReached ? 'Daily regeneration limit reached' : 'Refresh data'}
               >
                 <RefreshCw size={16} />
               </button>
@@ -511,7 +535,8 @@ export default function AnalyticsDashboard() {
           canPin={canPin}
           onDismissChart={handleDismissChart}
           onPinChart={handlePinChart}
-          onRegenerateAll={fetchAICharts}
+          onRegenerateAll={() => fetchAICharts(true)}
+          regenLimitReached={regenLimitReached}
           isPinned={isPinned}
           aiChartsSummary={aiChartsSummary}
           suggestions={suggestions}

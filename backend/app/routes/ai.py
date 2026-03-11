@@ -117,6 +117,7 @@ class AgenticChartResponse(BaseModel):
 class DashboardChartsRequest(BaseModel):
     excluded_chart_ids: List[str] = []
     num_charts: int = 4
+    force_refresh: bool = False
 
 
 class ChartSpec(BaseModel):
@@ -656,6 +657,7 @@ async def get_dashboard_charts_endpoint(
             excluded_chart_ids=request.excluded_chart_ids,
             num_charts=request.num_charts,
             club_id=user.club_id,
+            force_refresh=request.force_refresh,
         )
         return DashboardChartsResponse(**result)
     except Exception as e:

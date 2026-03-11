@@ -12,6 +12,7 @@ interface AiInsightsSectionProps {
   onDismissChart: (chartId: string) => void
   onPinChart: (chart: AIChartSpec) => void
   onRegenerateAll: () => void
+  regenLimitReached?: boolean
   isPinned: (chartId: string) => boolean
   aiChartsSummary?: string
   suggestions?: OutlierSuggestion[]
@@ -34,6 +35,7 @@ export default function AiInsightsSection({
   onDismissChart,
   onPinChart,
   onRegenerateAll,
+  regenLimitReached = false,
   isPinned,
   aiChartsSummary,
   suggestions = [],
@@ -63,14 +65,20 @@ export default function AiInsightsSection({
           <span className="text-white">AI Insights</span>
           <span className="text-xs bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full">Dynamic</span>
         </h2>
-        <button
-          onClick={onRegenerateAll}
-          disabled={loadingAICharts}
-          className="btn-glass flex items-center gap-2 text-sm"
-        >
-          <RefreshCw size={14} className={loadingAICharts ? 'animate-spin' : ''} />
-          Regenerate All
-        </button>
+        {regenLimitReached ? (
+          <span className="text-white/40 text-xs max-w-[260px] text-right leading-tight">
+            You've used all 5 regenerations for today. Charts refresh automatically when new match data is recorded, or check back tomorrow.
+          </span>
+        ) : (
+          <button
+            onClick={onRegenerateAll}
+            disabled={loadingAICharts}
+            className="btn-glass flex items-center gap-2 text-sm"
+          >
+            <RefreshCw size={14} className={loadingAICharts ? 'animate-spin' : ''} />
+            Regenerate All
+          </button>
+        )}
       </div>
 
       {/* AI Suggested Charts (Seasonal Outliers) */}
