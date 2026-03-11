@@ -3,7 +3,7 @@
  * Shows all players with search, filter, and quick stats
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -100,6 +100,13 @@ export default function Players() {
   }, [players])
 
   const inviteLink = inviteCode ? `${window.location.origin}/join/${inviteCode}` : null
+
+  // Fetch existing invite code on mount
+  useEffect(() => {
+    fetchAPI<{ invite_code: string }>('/auth/invite-code')
+      .then(data => { if (data.invite_code) setInviteCode(data.invite_code) })
+      .catch(() => {})
+  }, [])
 
   const generateInviteCode = async () => {
     setGeneratingCode(true)
