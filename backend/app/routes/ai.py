@@ -751,7 +751,7 @@ async def analyze_gps_endpoint(
                 pos_result = await db.execute(
                     select(Player.id, Player.position).where(Player.id.in_(valid_uuids))
                 )
-                pos_lookup = {str(row.id): row.position.value if row.position else None for row in pos_result.all()}
+                pos_lookup = {str(row.id): row.position if row.position else None for row in pos_result.all()}
 
                 # Look up substitution events if match_info has match_id
                 sub_lookup = {}

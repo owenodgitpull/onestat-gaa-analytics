@@ -301,7 +301,14 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
                             logger.error(f"Workload analysis failed for {gps_player_name}: {e}")
 
             # Trigger AI re-analysis of the match with GPS data
-            await trigger_match_reanalysis_with_gps(db, match_id)
+            try:
+                await trigger_match_reanalysis_with_gps(db, match_id)
+            except Exception as e:
+                logger.error(f"Match re-analysis failed: {e}")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
             # Generate cross-cutting insight alerts
             try:
@@ -313,11 +320,23 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
                     logger.info(f"Generated {len(alerts)} insight alerts from match GPS upload")
             except Exception as e:
                 logger.error(f"Insight alert generation failed: {e}")
+                try:
+                    await db.rollback()
+                except Exception:
+                    pass
 
-            # Only mark as "completed" AFTER AI re-analysis finishes,
-            # so the frontend won't re-fetch until the new report is ready
-            upload_log.status = "completed"
-            await db.commit()
+            # Mark as "completed" — GPS data is saved even if AI steps failed
+            try:
+                upload_log.status = "completed"
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                query = select(GPSUploadLog).where(GPSUploadLog.id == upload_id)
+                result = await db.execute(query)
+                upload_log = result.scalar_one_or_none()
+                if upload_log:
+                    upload_log.status = "completed"
+                    await db.commit()
 
             # Notify players that GPS data is available
             try:
@@ -328,9 +347,18 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
 
         except Exception as e:
             logger.error(f"Match GPS upload processing failed: {e}")
-            upload_log.status = "failed"
-            upload_log.error_message = str(e)
-            await db.commit()
+            try:
+                await db.rollback()
+                # Re-fetch upload_log after rollback
+                query = select(GPSUploadLog).where(GPSUploadLog.id == upload_id)
+                result = await db.execute(query)
+                upload_log = result.scalar_one_or_none()
+                if upload_log:
+                    upload_log.status = "failed"
+                    upload_log.error_message = str(e)[:500]
+                    await db.commit()
+            except Exception as inner_e:
+                logger.error(f"Failed to update upload status after error: {inner_e}")
 
 
 async def trigger_match_reanalysis_with_gps(db: AsyncSession, match_id: UUID):
