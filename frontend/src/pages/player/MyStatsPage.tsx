@@ -36,30 +36,46 @@ export default function MyStatsPage() {
 
   return (
     <div className="space-y-5 pb-4">
-      {/* Header with logo + Compare */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold text-white">My Stats</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowH2H(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/5 border border-white/10 transition-all"
-          >
-            <ArrowLeftRight size={12} />
-            Compare
-          </button>
-          {club?.logo_url && (
+      {/* Sticky header */}
+      <div
+        className="sticky top-0 z-40 -mx-4 px-4 pt-3 pb-3 mb-1"
+        style={{
+          background: 'linear-gradient(180deg, rgba(10,10,25,0.98) 0%, rgba(10,10,25,0.92) 80%, rgba(10,10,25,0) 100%)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+        }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            {club?.logo_url && (
+              <img
+                src={club.logo_url}
+                alt=""
+                className="h-9 w-9 rounded-lg object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            )}
+            <div>
+              <h1 className="text-lg font-bold text-white leading-tight">My Stats</h1>
+              {club?.name && (
+                <p className="text-[11px] text-white/35 font-medium leading-tight">{club.name}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowH2H(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-white/60 hover:text-white hover:bg-white/5 border border-white/10 transition-all"
+            >
+              <ArrowLeftRight size={12} />
+              Compare
+            </button>
             <img
-              src={club.logo_url}
-              alt=""
-              className="h-8 w-8 rounded-lg object-contain"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              src="/oneStatLogoTransparent.png"
+              alt="OneStat"
+              className="h-7 object-contain opacity-60"
             />
-          )}
-          <img
-            src="/oneStatLogoTransparent.png"
-            alt="OneStat"
-            className="h-8 object-contain"
-          />
+          </div>
         </div>
       </div>
 

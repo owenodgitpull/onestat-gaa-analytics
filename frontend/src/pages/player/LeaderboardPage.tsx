@@ -14,7 +14,7 @@ const CATEGORIES = [
   { key: 'speed_demon', icon: Zap, label: 'Speed', color: '#06b6d4', description: 'Highest top speed recorded across matches and training (GPS)' },
   { key: 'sprint_king', icon: Footprints, label: 'Sprints', color: '#10b981', description: 'Average sprint count per match from GPS data' },
   { key: 'iron_man', icon: Clock, label: 'Iron Man', color: '#14b8a6', description: 'Training attendance rate — shows who consistently turns up' },
-  { key: 'motm_points', icon: Star, label: 'MOTM', color: '#eab308', description: 'Man of the Match weighted points: goals (+10), points (+3), turnovers won (+2), turnovers lost (−1)' },
+  { key: 'motm_points', icon: Star, label: 'MOTM', color: '#eab308', description: 'Man of the Match weighted points: goals (+10), 2-ptrs (+5), points (+3), blocks (+2), interceptions (+2), turnovers won (+2), kickouts won (+2), turnovers lost (−1)' },
 ];
 
 const MEDAL_GRADIENTS = [

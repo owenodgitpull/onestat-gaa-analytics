@@ -21,6 +21,8 @@ export interface PlayerScore {
     turnoversWon: number
     turnoversLost: number
     kickoutsWon: number
+    blocks: number
+    interceptions: number
   }
 }
 
@@ -30,6 +32,8 @@ export interface PlayerScore {
  * - Goal: 10 points
  * - 2-Pointer: 5 points
  * - Point: 3 points
+ * - Block: 2 points
+ * - Interception: 2 points
  * - Turnover Won: 2 points
  * - Kickout Won: 2 points
  * - Turnover Lost: -1 point
@@ -62,6 +66,8 @@ export function calculateManOfMatch(
           turnoversWon: 0,
           turnoversLost: 0,
           kickoutsWon: 0,
+          blocks: 0,
+          interceptions: 0,
         },
       }
     }
@@ -85,6 +91,14 @@ export function calculateManOfMatch(
       case 'turnover_won':
         playerScores[pid].score += 2
         playerScores[pid].breakdown.turnoversWon++
+        break
+      case 'block':
+        playerScores[pid].score += 2
+        playerScores[pid].breakdown.blocks++
+        break
+      case 'interception':
+        playerScores[pid].score += 2
+        playerScores[pid].breakdown.interceptions++
         break
       case 'turnover_lost':
       case 'our_unforced_error':

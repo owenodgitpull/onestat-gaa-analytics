@@ -163,7 +163,7 @@ export default function PlayerDashboard() {
             leaderboard_positions.find((p) => p.category === 'motm_points')?.value?.toString() || '—'
           }
           sub={`rank #${leaderboard_positions.find((p) => p.category === 'motm_points')?.rank || '—'}`}
-          tooltip="Weighted performance score: goals +10, points +3, turnovers won +2, turnovers lost −1"
+          tooltip="Weighted performance score: goals +10, 2-ptrs +5, points +3, blocks +2, interceptions +2, turnovers won +2, kickouts won +2, turnovers lost −1"
         />
       </div>
 

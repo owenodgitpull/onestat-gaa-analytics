@@ -36,6 +36,8 @@ MOTM_WEIGHTS = {
     EventType.OPP_KICKOUT_WON: 2,
     EventType.OWN_KICKOUT_WON_BREAK: 2,
     EventType.OPP_KICKOUT_WON_BREAK: 2,
+    EventType.BLOCK: 2,
+    EventType.INTERCEPTION: 2,
     EventType.TURNOVER_LOST: -1,
     EventType.UNFORCED_ERROR: -1,
 }
