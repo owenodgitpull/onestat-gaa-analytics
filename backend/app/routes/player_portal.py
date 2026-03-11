@@ -737,7 +737,9 @@ async def get_my_challenges(
                 current_value=0.0,
                 evaluation_window=cd["evaluation_window"],
                 created_at=now,
-                expires_at=now + timedelta(days=7),
+                # evaluation_window is in matches/sessions (~1 per week)
+                # Allow 8 days per match window (7 + buffer), minimum 14 days
+                expires_at=now + timedelta(days=max(cd.get("evaluation_window", 3) * 8, 14)),
             )
             db.add(c)
             active_challenges.append(c)
