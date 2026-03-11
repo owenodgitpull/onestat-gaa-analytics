@@ -32,6 +32,7 @@ import InstallBanner from './components/InstallBanner'
 const LeaderboardPage = lazy(() => import('./pages/player/LeaderboardPage'))
 const MyStatsPage = lazy(() => import('./pages/player/MyStatsPage'))
 const PlayerProfile = lazy(() => import('./pages/player/PlayerProfile'))
+const PlaybooksPage = lazy(() => import('./pages/player/PlaybooksPage'))
 
 // Lazy-load heavy admin pages
 const AIAnalystPage = lazy(() => import('./pages/AIAnalystPage'))
@@ -106,6 +107,7 @@ function App() {
                           <Route path="/" element={<PlayerDashboard />} />
                           <Route path="/leaderboards" element={<LeaderboardPage />} />
                           <Route path="/stats" element={<MyStatsPage />} />
+                          <Route path="/playbooks" element={<PlaybooksPage />} />
                           <Route path="/profile" element={<PlayerProfile />} />
                         </Routes>
                       </Suspense>

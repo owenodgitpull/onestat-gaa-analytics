@@ -28,5 +28,14 @@ class SetPieceRoutine(Base):
     # Arrow: { "type": "arrow", "points": [{"x": 45, "y": 60}, {"x": 55, "y": 40}], "color": "#10B981" }
     elements = Column(JSON, nullable=False, default=list)
 
+    # Animation playback settings (overrides defaults)
+    animation_settings = Column(JSON, nullable=True)
+    # R2 key for voiceover audio recording
+    voiceover_key = Column(String(500), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    @property
+    def has_voiceover(self) -> bool:
+        return bool(self.voiceover_key)

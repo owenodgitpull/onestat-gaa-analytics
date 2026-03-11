@@ -13,8 +13,9 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import {
   Circle, ArrowRight, Trash2, Save, Download, X, Undo2,
   Type, ChevronLeft, ChevronRight, Plus, CurlyBraces, Play, Pause, Check,
-  MoreHorizontal,
+  MoreHorizontal, Film, Send,
 } from 'lucide-react'
+import { PlaybackEngine } from '@/components/playbook'
 
 // ── SVG coordinate helpers (same as GAAPitch) ───────────────────────────────
 const toSvgX = (pctX: number) => (pctX / 100) * 1960 + 183
@@ -68,9 +69,13 @@ interface SetPieceEditorProps {
   onSave: (elements: Array<Record<string, unknown>>) => void
   onClose: () => void
   routineName?: string
+  routineId?: string
   availablePlayers?: AvailablePlayer[]
   teamPrimaryColor?: string
   teamSecondaryColor?: string
+  onPushToPlayers?: () => void
+  voiceoverUrl?: string | null
+  onSaveVoiceover?: (blob: Blob) => Promise<void>
 }
 
 const OPPONENT_COLOR = '#3B82F6'
@@ -166,11 +171,16 @@ export default function SetPieceEditor({
   onSave,
   onClose,
   routineName = 'Tactical Routine',
+  routineId: _routineId,
   availablePlayers = [],
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
+  onPushToPlayers,
+  voiceoverUrl = null,
+  onSaveVoiceover,
 }: SetPieceEditorProps) {
   const svgRef = useRef<SVGSVGElement>(null)
+  const [showPlayback, setShowPlayback] = useState(false)
 
   // Phase system
   const [phases, setPhases] = useState<Phase[]>([{ players: [], arrows: [], labels: [] }])
@@ -757,6 +767,22 @@ export default function SetPieceEditor({
           <button onClick={clearAll} className="p-1.5 rounded-lg text-white/40 hover:text-red-400" title="Clear phase">
             <Trash2 size={16} />
           </button>
+          {phases.length > 1 && (
+            <button
+              onClick={() => setShowPlayback(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/25 text-xs font-medium"
+            >
+              <Film size={14} /> Animate
+            </button>
+          )}
+          {onPushToPlayers && (
+            <button
+              onClick={onPushToPlayers}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 text-xs font-medium"
+            >
+              <Send size={14} /> Push
+            </button>
+          )}
           <button onClick={handleExport} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white text-xs font-medium">
             <Download size={14} /> Export
           </button>
@@ -1089,6 +1115,19 @@ export default function SetPieceEditor({
           Select a player and click pitch to place. Use Move tool to drag players. Click arrows/labels to remove. Export as PNG to share.
         </div>
       </div>
+
+      {/* Animation Playback Modal */}
+      {showPlayback && phases.length > 1 && (
+        <PlaybackEngine
+          phases={phases}
+          routineName={routineName}
+          voiceoverUrl={voiceoverUrl}
+          teamPrimaryColor={teamPrimaryColor}
+          teamSecondaryColor={teamSecondaryColor}
+          onClose={() => setShowPlayback(false)}
+          showVoiceoverButton={!!onSaveVoiceover}
+        />
+      )}
     </div>
   )
 }

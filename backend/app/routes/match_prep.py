@@ -151,6 +151,8 @@ async def update_set_piece(
         routine.description = data.description
     if data.elements is not None:
         routine.elements = data.elements
+    if data.animation_settings is not None:
+        routine.animation_settings = data.animation_settings
 
     await db.commit()
     await db.refresh(routine)
@@ -372,3 +374,112 @@ async def generate_opposition_briefing(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ============ Voiceover Recording ============
+
+@router.post("/set-pieces/{routine_id}/voiceover-upload-url")
+async def get_voiceover_upload_url(
+    routine_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a presigned URL for uploading voiceover audio to R2."""
+    result = await db.execute(
+        select(SetPieceRoutine).where(
+            SetPieceRoutine.id == routine_id, SetPieceRoutine.club_id == user.club_id
+        )
+    )
+    routine = result.scalar_one_or_none()
+    if not routine:
+        raise HTTPException(status_code=404, detail="Routine not found")
+
+    from app.services.storage_service import storage
+    upload_info = storage.generate_presigned_upload_url(
+        folder="voiceovers",
+        filename=f"{routine_id}.webm",
+        content_type="audio/webm",
+        expires_in=600,
+        club_id=str(user.club_id),
+    )
+    if not upload_info:
+        raise HTTPException(status_code=500, detail="Failed to generate upload URL")
+
+    return {"upload_url": upload_info["upload_url"], "key": upload_info["key"]}
+
+
+@router.put("/set-pieces/{routine_id}/voiceover-confirm")
+async def confirm_voiceover_upload(
+    routine_id: UUID,
+    body: dict,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Confirm voiceover upload — saves the R2 key to the routine."""
+    result = await db.execute(
+        select(SetPieceRoutine).where(
+            SetPieceRoutine.id == routine_id, SetPieceRoutine.club_id == user.club_id
+        )
+    )
+    routine = result.scalar_one_or_none()
+    if not routine:
+        raise HTTPException(status_code=404, detail="Routine not found")
+
+    key = body.get("key")
+    if not key:
+        raise HTTPException(status_code=400, detail="Missing key")
+
+    routine.voiceover_key = key
+    await db.commit()
+    return {"voiceover_key": key}
+
+
+@router.get("/set-pieces/{routine_id}/voiceover-url")
+async def get_voiceover_download_url(
+    routine_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a presigned download URL for the voiceover audio."""
+    result = await db.execute(
+        select(SetPieceRoutine).where(
+            SetPieceRoutine.id == routine_id, SetPieceRoutine.club_id == user.club_id
+        )
+    )
+    routine = result.scalar_one_or_none()
+    if not routine:
+        raise HTTPException(status_code=404, detail="Routine not found")
+
+    if not routine.voiceover_key:
+        return {"voiceover_url": None}
+
+    from app.services.storage_service import storage
+    url = storage.generate_presigned_download_url(
+        key=routine.voiceover_key,
+        expires_in=3600,
+        club_id=str(user.club_id),
+    )
+    return {"voiceover_url": url}
+
+
+@router.delete("/set-pieces/{routine_id}/voiceover", status_code=204)
+async def delete_voiceover(
+    routine_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete the voiceover audio for a routine."""
+    result = await db.execute(
+        select(SetPieceRoutine).where(
+            SetPieceRoutine.id == routine_id, SetPieceRoutine.club_id == user.club_id
+        )
+    )
+    routine = result.scalar_one_or_none()
+    if not routine:
+        raise HTTPException(status_code=404, detail="Routine not found")
+
+    if routine.voiceover_key:
+        from app.services.storage_service import storage
+        storage.delete_file(routine.voiceover_key, club_id=str(user.club_id))
+        routine.voiceover_key = None
+        await db.commit()

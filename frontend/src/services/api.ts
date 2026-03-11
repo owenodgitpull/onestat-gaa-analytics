@@ -2372,6 +2372,8 @@ export interface SetPieceRoutine {
   category: 'attacking' | 'defensive' | 'kickout';
   description: string | null;
   elements: Array<Record<string, unknown>>;
+  animation_settings?: Record<string, number> | null;
+  has_voiceover?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -2431,6 +2433,47 @@ const matchPrepAPI = {
 
   deleteMarking: (assignmentId: string): Promise<void> =>
     fetchAPI(`/match-prep/marking/${assignmentId}`, { method: 'DELETE' }),
+
+  // Voiceover
+  getVoiceoverUploadUrl: (routineId: string): Promise<{ upload_url: string; key: string }> =>
+    fetchAPI(`/match-prep/set-pieces/${routineId}/voiceover-upload-url`, { method: 'POST' }),
+
+  confirmVoiceoverUpload: (routineId: string, key: string): Promise<{ voiceover_key: string }> =>
+    fetchAPI(`/match-prep/set-pieces/${routineId}/voiceover-confirm`, {
+      method: 'PUT',
+      body: JSON.stringify({ key }),
+    }),
+
+  getVoiceoverUrl: (routineId: string): Promise<{ voiceover_url: string | null }> =>
+    fetchAPI(`/match-prep/set-pieces/${routineId}/voiceover-url`),
+
+  deleteVoiceover: (routineId: string): Promise<void> =>
+    fetchAPI(`/match-prep/set-pieces/${routineId}/voiceover`, { method: 'DELETE' }),
+};
+
+// ============================================================================
+// Playbook Push API
+// ============================================================================
+
+const playbookAPI = {
+  pushToPlayers: (routineId: string, playerIds: string[], message?: string) =>
+    fetchAPI('/playbook/push', {
+      method: 'POST',
+      body: JSON.stringify({ routine_id: routineId, player_ids: playerIds, message }),
+    }),
+
+  listPushes: () =>
+    fetchAPI('/playbook/pushes'),
+
+  revokePush: (pushId: string): Promise<void> =>
+    fetchAPI(`/playbook/pushes/${pushId}`, { method: 'DELETE' }),
+
+  // Player portal
+  getMyPlaybooks: () =>
+    fetchAPI('/playbook/player/playbooks'),
+
+  markPlaybookViewed: (pushId: string) =>
+    fetchAPI(`/playbook/player/playbooks/${pushId}/viewed`, { method: 'POST' }),
 };
 
 // ============================================================================
@@ -2484,6 +2527,7 @@ export const api = {
   clubMembers: clubMembersAPI,
   playerMovement: playerMovementAPI,
   matchPrep: matchPrepAPI,
+  playbook: playbookAPI,
 };
 
 export default api;

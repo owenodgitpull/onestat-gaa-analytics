@@ -229,6 +229,33 @@ class StorageService:
             logger.error(f"Failed to generate presigned upload URL: {e}")
             return None
 
+    def generate_presigned_download_url(
+        self,
+        key: str,
+        expires_in: int = 3600,
+        club_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """Generate a presigned GET URL for downloading a file from R2."""
+        if not self.is_configured:
+            logger.error("R2 not configured - cannot generate presigned download URL")
+            return None
+
+        self._validate_club_access(key, club_id)
+
+        try:
+            url = self.client.generate_presigned_url(
+                'get_object',
+                Params={
+                    'Bucket': self.bucket_name,
+                    'Key': key,
+                },
+                ExpiresIn=expires_in,
+            )
+            return url
+        except ClientError as e:
+            logger.error(f"Failed to generate presigned download URL: {e}")
+            return None
+
     # ------------------------------------------------------------------
     # Download / read methods
     # ------------------------------------------------------------------

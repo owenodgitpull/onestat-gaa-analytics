@@ -23,6 +23,7 @@ import { useClub } from '@/contexts/ClubContext'
 import OppositionBriefing from '@/components/OppositionBriefing'
 import ManMarkingPanel from '@/components/ManMarkingPanel'
 import SetPieceEditor from '@/components/SetPieceEditor'
+import { PushToPlayersModal } from '@/components/playbook'
 import ConfirmationModal from '@/components/ConfirmationModal'
 
 // ── Pitch position data (mirrored from StartingLineupModal) ──────────────
@@ -152,6 +153,8 @@ export default function MatchPrep() {
 
   // Delete confirmation state
   const [deletingSetPieceId, setDeletingSetPieceId] = useState<string | null>(null)
+  // Push to players state
+  const [pushingRoutine, setPushingRoutine] = useState<SetPieceRoutine | null>(null)
 
   // Section collapse state
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -940,6 +943,7 @@ export default function MatchPrep() {
         <SetPieceEditor
           initialElements={editingSetPiece?.elements || []}
           routineName={editingSetPiece?.name || newSetPieceName || 'Tactical Routine'}
+          routineId={editingSetPiece?.id}
           onSave={handleSaveSetPiece}
           onClose={() => {
             setShowSetPieceEditor(false)
@@ -952,6 +956,9 @@ export default function MatchPrep() {
           }))}
           teamPrimaryColor={jerseyBg}
           teamSecondaryColor={jerseyText}
+          onPushToPlayers={editingSetPiece ? () => {
+            setPushingRoutine(editingSetPiece)
+          } : undefined}
         />
       )}
 
@@ -968,6 +975,19 @@ export default function MatchPrep() {
         confirmText="Delete"
         variant="danger"
       />
+
+      {/* Push to Players Modal */}
+      {pushingRoutine && (
+        <PushToPlayersModal
+          routineId={pushingRoutine.id}
+          routineName={pushingRoutine.name}
+          players={players}
+          onPush={async (routineId, playerIds, message) => {
+            await api.playbook.pushToPlayers(routineId, playerIds, message)
+          }}
+          onClose={() => setPushingRoutine(null)}
+        />
+      )}
     </div>
   )
 }

@@ -20,6 +20,7 @@ class SetPieceRoutineUpdate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     elements: Optional[list[Any]] = None
+    animation_settings: Optional[dict[str, Any]] = None
 
 
 class SetPieceRoutineResponse(BaseModel):
@@ -28,6 +29,8 @@ class SetPieceRoutineResponse(BaseModel):
     category: str
     description: Optional[str]
     elements: list[Any]
+    animation_settings: Optional[dict[str, Any]] = None
+    has_voiceover: bool = False
     created_at: datetime
     updated_at: datetime
 
