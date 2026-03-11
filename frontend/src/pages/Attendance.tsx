@@ -793,6 +793,11 @@ export default function Attendance() {
       const session = await createMutation.mutateAsync(data)
       if (gpsFile && session?.id) {
         await uploadGpsFile(session.id, gpsFile)
+        // GPS processing is a background task — wait briefly then re-fetch
+        // so attendance counts are populated
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['sessions'] })
+        }, 3000)
       }
     } catch (error) {
       console.error('Failed to create session:', error)
