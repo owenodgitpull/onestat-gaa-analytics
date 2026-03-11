@@ -112,9 +112,11 @@ export default function VoiceoverRecorder({
     onStopAnimation()
   }, [onStopAnimation])
 
-  // Auto-stop when animation finishes
+  // Auto-stop when animation finishes (only if recording has been going for at least 2s)
   useEffect(() => {
     if (state === 'recording' && !isAnimating) {
+      const elapsed = Date.now() - startTimeRef.current
+      if (elapsed < 2000) return // Don't auto-stop if recording just started (isAnimating may not have kicked in yet)
       // Small delay to capture any trailing audio
       setTimeout(() => {
         stopRecording()
