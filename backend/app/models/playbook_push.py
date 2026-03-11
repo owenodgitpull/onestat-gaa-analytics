@@ -16,7 +16,7 @@ class PlaybookPush(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     club_id = Column(UUID(as_uuid=True), ForeignKey("clubs.id", ondelete="CASCADE"), nullable=False, index=True)
     routine_id = Column(UUID(as_uuid=True), ForeignKey("set_piece_routines.id", ondelete="CASCADE"), nullable=False, index=True)
-    pushed_by = Column(UUID(as_uuid=True), ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    pushed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
     message = Column(Text, nullable=True)  # optional coach's note
     is_revoked = Column(Boolean, default=False, nullable=False)
