@@ -459,7 +459,7 @@ export default function FullscreenPitchMode({
 
         {/* Event Toast */}
         <div
-          className={`absolute ${isPhoneLandscape ? 'bottom-28' : 'bottom-20'} left-1/2 -translate-x-1/2 z-20 transition-all duration-500 ${
+          className={`absolute bottom-20 left-1/2 -translate-x-1/2 z-20 transition-all duration-500 ${
             toastVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
           }`}
         >
@@ -467,54 +467,11 @@ export default function FullscreenPitchMode({
             {toastText}
           </div>
         </div>
-
-        {/* In phone landscape: controls overlay at bottom of pitch area */}
-        {isPhoneLandscape && (
-          <div className="absolute bottom-0 left-0 right-0 z-20">
-            {/* Jersey Number Strip */}
-            {jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
-              <div className="backdrop-blur-xl bg-black/50 border-t border-white/10 px-2">
-                <JerseyNumberStrip
-                  players={jerseyStripPlayers}
-                  activeCarrierId={activeCarrierId}
-                  currentPossession={currentPossession}
-                  onCarrierSelect={onCarrierSelect}
-                  disabled={actionsDisabled}
-                  teamPrimaryColor={teamPrimaryColor}
-                  teamSecondaryColor={teamSecondaryColor}
-                />
-              </div>
-            )}
-            {/* Action Buttons */}
-            <div className="backdrop-blur-xl bg-black/50 border-t border-white/10 px-2 py-0.5">
-              <CategorizedActionButtons
-                onActionSelect={onActionSelect}
-                onFoulClick={onFoulClick}
-                on45Click={on45Click}
-                onDiscipline={onDiscipline}
-                disabled={actionsDisabled}
-                activeCategory={activeCategory}
-                onCategoryChange={onCategoryChange}
-                currentPossession={currentPossession}
-                isIn2PointZone={isIn2PointZone}
-                isInPenaltyArea={isInPenaltyArea}
-                pendingFreeKick={pendingFreeKick}
-                pendingFoul={pendingFoul}
-                pending45={pending45}
-                pendingKickoutPosition={pendingKickoutPosition}
-                awaitingKickout={awaitingKickout}
-                onCancelFree={onCancelFree}
-                onCancel45={onCancel45}
-                onCancelKickout={onCancelKickout}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Jersey Number Strip for carrier tracking — portrait only */}
-      {!isPhoneLandscape && jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
-        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2">
+      {/* Jersey Number Strip for carrier tracking */}
+      {jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
+        <div className={`flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2 ${isPhoneLandscape ? 'py-0' : ''}`}>
           <JerseyNumberStrip
             players={jerseyStripPlayers}
             activeCarrierId={activeCarrierId}
@@ -523,37 +480,37 @@ export default function FullscreenPitchMode({
             disabled={actionsDisabled}
             teamPrimaryColor={teamPrimaryColor}
             teamSecondaryColor={teamSecondaryColor}
+            compact={isPhoneLandscape}
           />
         </div>
       )}
 
-      {/* Bottom — CategorizedActionButtons — portrait only */}
-      {!isPhoneLandscape && (
-        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-3 py-2">
-          <div className="max-w-2xl mx-auto">
-            <CategorizedActionButtons
-              onActionSelect={onActionSelect}
-              onFoulClick={onFoulClick}
-              on45Click={on45Click}
-              onDiscipline={onDiscipline}
-              disabled={actionsDisabled}
-              activeCategory={activeCategory}
-              onCategoryChange={onCategoryChange}
-              currentPossession={currentPossession}
-              isIn2PointZone={isIn2PointZone}
-              isInPenaltyArea={isInPenaltyArea}
-              pendingFreeKick={pendingFreeKick}
-              pendingFoul={pendingFoul}
-              pending45={pending45}
-              pendingKickoutPosition={pendingKickoutPosition}
-              awaitingKickout={awaitingKickout}
-              onCancelFree={onCancelFree}
-              onCancel45={onCancel45}
-              onCancelKickout={onCancelKickout}
-            />
-          </div>
+      {/* Bottom — CategorizedActionButtons */}
+      <div className={`flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 ${isPhoneLandscape ? 'px-2 py-0' : 'px-3 py-2'}`}>
+        <div className={isPhoneLandscape ? '' : 'max-w-2xl mx-auto'}>
+          <CategorizedActionButtons
+            onActionSelect={onActionSelect}
+            onFoulClick={onFoulClick}
+            on45Click={on45Click}
+            onDiscipline={onDiscipline}
+            disabled={actionsDisabled}
+            activeCategory={activeCategory}
+            onCategoryChange={onCategoryChange}
+            currentPossession={currentPossession}
+            isIn2PointZone={isIn2PointZone}
+            isInPenaltyArea={isInPenaltyArea}
+            pendingFreeKick={pendingFreeKick}
+            pendingFoul={pendingFoul}
+            pending45={pending45}
+            pendingKickoutPosition={pendingKickoutPosition}
+            awaitingKickout={awaitingKickout}
+            onCancelFree={onCancelFree}
+            onCancel45={onCancel45}
+            onCancelKickout={onCancelKickout}
+            compact={isPhoneLandscape}
+          />
         </div>
-      )}
+      </div>
 
       <style>{`
         @keyframes fadeSlideIn {
