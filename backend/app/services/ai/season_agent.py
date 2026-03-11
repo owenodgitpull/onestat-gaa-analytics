@@ -46,6 +46,7 @@ SEASON_TOOLS = [
     "get_ball_carrier_data",
     "get_formation_snapshots",
     "get_man_marking_history",
+    "get_fitness_tests",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)
@@ -57,6 +58,7 @@ PLAYER_TOOLS = [
     "get_match_events",
     "get_match_summary",
     "get_scoring_patterns",
+    "get_fitness_tests",
 ]
 
 # Tools for training session tasks

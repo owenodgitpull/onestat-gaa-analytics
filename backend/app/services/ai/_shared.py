@@ -460,6 +460,28 @@ TOOLS = [
             },
             "required": ["query"]
         }
+    },
+    {
+        "name": "get_fitness_tests",
+        "description": "Get fitness test results for the squad or a specific player. Returns body metrics, mobility (Knee to Wall), power (CMJ, Squat Jump, EUR), strength (press-ups, pull-ups), speed (10m sprint), and conditioning (Bronco, MAS). Supports comparing across test sessions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id": {
+                    "type": "string",
+                    "description": "Optional player UUID to filter results for one player"
+                },
+                "test_date": {
+                    "type": "string",
+                    "description": "Optional date (YYYY-MM-DD) to get tests from a specific session"
+                },
+                "compare": {
+                    "type": "boolean",
+                    "description": "If true, returns the two most recent test sessions with deltas for comparison"
+                }
+            },
+            "required": []
+        }
     }
 ]
 
@@ -522,6 +544,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_man_marking_history(db, **tool_input, club_id=club_id)
     elif tool_name == "web_search":
         return await web_search_tool(tool_input.get("query", ""))
+    elif tool_name == "get_fitness_tests":
+        return await get_fitness_tests(db, **tool_input, club_id=club_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -2254,4 +2278,109 @@ async def web_search_tool(query: str) -> str:
             "error": f"Web search temporarily unavailable: {str(e)}",
             "results": [],
         })
+
+
+async def get_fitness_tests(db: AsyncSession, player_id: str = None, test_date: str = None, compare: bool = False, club_id=None) -> str:
+    """Get fitness test results, optionally filtered by player/date, with comparison support."""
+    from app.models.fitness_test import FitnessTest
+    import uuid as uuid_mod
+
+    try:
+        query = select(FitnessTest).join(Player, FitnessTest.player_id == Player.id)
+        if club_id:
+            query = query.where(Player.club_id == club_id)
+        if player_id:
+            query = query.where(FitnessTest.player_id == uuid_mod.UUID(player_id))
+        if test_date:
+            query = query.where(FitnessTest.test_date == test_date)
+        query = query.order_by(FitnessTest.test_date.desc())
+
+        result = await db.execute(query)
+        tests = result.scalars().all()
+
+        if not tests:
+            return safe_json({"message": "No fitness test data found", "tests": []})
+
+        # Get player names
+        player_ids = list(set(str(t.player_id) for t in tests))
+        player_result = await db.execute(
+            select(Player).where(Player.id.in_([uuid_mod.UUID(pid) for pid in player_ids]))
+        )
+        players = {str(p.id): p.name for p in player_result.scalars().all()}
+
+        # Get distinct test dates for session grouping
+        test_dates = sorted(set(t.test_date for t in tests), reverse=True)
+
+        if compare and len(test_dates) >= 2:
+            # Return 2 most recent sessions with deltas
+            latest_date = test_dates[0]
+            previous_date = test_dates[1]
+            latest_tests = [t for t in tests if t.test_date == latest_date]
+            previous_tests = [t for t in tests if t.test_date == previous_date]
+
+            prev_by_player = {str(t.player_id): t for t in previous_tests}
+
+            comparison = []
+            for t in latest_tests:
+                pid = str(t.player_id)
+                entry = {
+                    "player": players.get(pid, "Unknown"),
+                    "player_id": pid,
+                    "latest_date": str(latest_date),
+                    "previous_date": str(previous_date),
+                    "latest": t.to_dict(),
+                }
+                prev = prev_by_player.get(pid)
+                if prev:
+                    entry["previous"] = prev.to_dict()
+                    # Compute deltas for key metrics
+                    deltas = {}
+                    metrics = [
+                        ("weight_kg", t.weight_kg, prev.weight_kg),
+                        ("body_fat_percentage", t.body_fat_percentage, prev.body_fat_percentage),
+                        ("cmj_cm", t.cmj_cm, prev.cmj_cm),
+                        ("squat_jump_cm", t.squat_jump_cm, prev.squat_jump_cm),
+                        ("press_ups_60s", t.press_ups_60s, prev.press_ups_60s),
+                        ("pull_ups_60s", t.pull_ups_60s, prev.pull_ups_60s),
+                        ("sprint_0_10m_sec", t.sprint_0_10m_sec, prev.sprint_0_10m_sec),
+                        ("bronco_test_min", t.bronco_test_min, prev.bronco_test_min),
+                        ("eur", t.eur_calculated, prev.eur_calculated),
+                    ]
+                    for name, curr_val, prev_val in metrics:
+                        if curr_val is not None and prev_val is not None:
+                            deltas[name] = round(float(curr_val) - float(prev_val), 2)
+                    entry["deltas"] = deltas
+                comparison.append(entry)
+
+            return safe_json({
+                "mode": "comparison",
+                "latest_session": str(latest_date),
+                "previous_session": str(previous_date),
+                "total_sessions": len(test_dates),
+                "players_compared": len(comparison),
+                "comparison": comparison,
+            })
+
+        # Standard return — grouped by session date
+        sessions = []
+        for d in test_dates[:5]:  # Last 5 sessions max
+            session_tests = [t for t in tests if t.test_date == d]
+            sessions.append({
+                "date": str(d),
+                "player_count": len(session_tests),
+                "results": [
+                    {**t.to_dict(), "player_name": players.get(str(t.player_id), "Unknown")}
+                    for t in session_tests
+                ],
+            })
+
+        return safe_json({
+            "mode": "list",
+            "total_sessions": len(test_dates),
+            "sessions": sessions,
+        })
+
+    except Exception as e:
+        logger.error(f"get_fitness_tests error: {e}")
+        return safe_json({"error": str(e)})
 
