@@ -574,9 +574,9 @@ export default function MatchResult() {
       />
 
       {/* Main content — 2-col layout matching live recording page */}
-      <div className="flex flex-col md:flex-row gap-6">
-        {/* Left column — event map, filters, charts */}
-        <div className="flex-[2] min-w-0 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-start gap-6">
+        {/* Left column — event map, filters */}
+        <div className="flex-[2] min-w-0 space-y-6 md:sticky md:top-4">
           {/* Event Map */}
           <div className="space-y-3">
             <div className="glass-card p-4">
