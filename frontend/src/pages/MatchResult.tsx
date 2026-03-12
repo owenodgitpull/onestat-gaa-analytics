@@ -401,6 +401,16 @@ export default function MatchResult() {
                 +GPS insights
               </span>
             )}
+            {lineupData && lineupData.length > 0 && (
+              <button
+                onClick={() => setShowLineup(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-medium transition-colors border border-blue-500/30"
+                title="View Team Lineup"
+              >
+                <Users size={14} />
+                Lineup
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
             {gpsData && gpsData.length > 0 ? (
@@ -452,16 +462,6 @@ export default function MatchResult() {
               >
                 <Upload size={14} />
                 Upload GPS
-              </button>
-            )}
-            {lineupData && lineupData.length > 0 && (
-              <button
-                onClick={() => setShowLineup(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-medium transition-colors border border-blue-500/30"
-                title="View Team Lineup"
-              >
-                <Users size={14} />
-                <span className="hidden sm:inline">Lineup</span>
               </button>
             )}
             {hasEvents && (
