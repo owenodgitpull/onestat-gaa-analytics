@@ -45,7 +45,6 @@ export default function KnowledgeBaseSettings() {
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [docType, setDocType] = useState('other')
 
   const fetchDocs = useCallback(async () => {
     try {
@@ -97,7 +96,7 @@ export default function KnowledgeBaseSettings() {
         initData = await knowledgeBaseAPI.initiateUpload({
           filename: file.name,
           content_type: file.type,
-          doc_type: docType,
+          doc_type: 'other',
         }) as { document_id: string; upload_url: string; r2_key: string }
       } catch (e: any) {
         throw new Error(`Step 1 failed (presigned URL): ${e.message}`)
@@ -148,7 +147,6 @@ export default function KnowledgeBaseSettings() {
     }
   }
 
-  const defaults = docs.filter(d => d.is_default)
   const custom = docs.filter(d => !d.is_default)
 
   return (
@@ -162,18 +160,6 @@ export default function KnowledgeBaseSettings() {
           <RefreshCw size={16} />
         </button>
       </div>
-
-      {/* Default documents */}
-      {defaults.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-white/60 uppercase tracking-wider">Default Documents</h3>
-          <div className="space-y-2">
-            {defaults.map(doc => (
-              <DocRow key={doc.id} doc={doc} />
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Custom documents */}
       <div className="space-y-3">
@@ -200,17 +186,6 @@ export default function KnowledgeBaseSettings() {
           <p className="text-sm text-amber-400/80">Maximum of {maxCustom} custom documents reached. Delete one to upload another.</p>
         ) : (
           <div className="flex flex-wrap items-center gap-3">
-            <select
-              value={docType}
-              onChange={e => setDocType(e.target.value)}
-              className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500/50"
-            >
-              <option value="tactics">Tactics</option>
-              <option value="rules">Rules</option>
-              <option value="statsports">GPS/Stats</option>
-              <option value="other">Other</option>
-            </select>
-
             <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
               style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)' }}
             >
