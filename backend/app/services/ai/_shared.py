@@ -2309,47 +2309,31 @@ async def get_man_marking_history(
 
 async def web_search_tool(query: str) -> str:
     """Search the web for GAA-related information using DuckDuckGo."""
-    import httpx
+    import asyncio
 
     try:
-        # Use DuckDuckGo instant answer API (no API key needed)
-        async with httpx.AsyncClient(timeout=10.0) as http_client:
-            response = await http_client.get(
-                "https://api.duckduckgo.com/",
-                params={"q": query, "format": "json", "no_html": 1, "skip_disambig": 1},
-            )
-            data = response.json()
+        from ddgs import DDGS
 
-        results = []
+        # Run synchronous DDGS in a thread to avoid blocking
+        def _search():
+            with DDGS() as ddgs:
+                return list(ddgs.text(query, max_results=8))
 
-        # Abstract (main answer)
-        if data.get("Abstract"):
-            results.append({
-                "source": data.get("AbstractSource", ""),
-                "text": data["Abstract"],
-                "url": data.get("AbstractURL", ""),
-            })
+        raw_results = await asyncio.to_thread(_search)
 
-        # Related topics
-        for topic in data.get("RelatedTopics", [])[:5]:
-            if isinstance(topic, dict) and topic.get("Text"):
-                results.append({
-                    "text": topic["Text"],
-                    "url": topic.get("FirstURL", ""),
-                })
-
-        if not results:
-            # Fallback: try a more direct search via DuckDuckGo lite
-            response2 = await http_client.get(
-                "https://lite.duckduckgo.com/lite/",
-                params={"q": query},
-                headers={"User-Agent": "OneStatGAA/1.0"},
-                follow_redirects=True,
-            )
+        if not raw_results:
             return safe_json({
                 "query": query,
-                "note": "Web search returned limited results. Try rephrasing or use specific team/competition names.",
+                "note": "No results found. Try different search terms.",
                 "results": [],
+            })
+
+        results = []
+        for r in raw_results:
+            results.append({
+                "title": r.get("title", ""),
+                "body": r.get("body", ""),
+                "url": r.get("href", ""),
             })
 
         return safe_json({

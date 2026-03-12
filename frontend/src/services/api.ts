@@ -931,6 +931,207 @@ export interface TrainingOverviewData {
   overview_kpis: TrainingOverviewKPIs;
 }
 
+// ============================================================================
+// Reports Hub Types
+// ============================================================================
+
+export interface MatchReportScorer {
+  player_id: string | null;
+  player_name: string;
+  goals: number;
+  points: number;
+  two_pointers: number;
+  total: number;
+  is_from_play: boolean;
+}
+
+export interface MatchReportKeyStats {
+  team_shots: number;
+  team_wides: number;
+  team_turnovers_won: number;
+  team_turnovers_lost: number;
+  team_possession_pct: number;
+  opp_shots: number;
+  opp_wides: number;
+  opp_turnovers_won: number;
+  opp_turnovers_lost: number;
+  own_kickouts_won_pct: number;
+  opp_kickouts_won_pct: number;
+}
+
+export interface ScoringTimelinePoint {
+  minute: number;
+  team_cumulative: number;
+  opp_cumulative: number;
+}
+
+export interface MatchReportGPSSummary {
+  player_id: string;
+  player_name: string;
+  total_distance_km: number | null;
+  high_speed_running_m: number | null;
+  sprint_count: number | null;
+  max_speed_kmh: number | null;
+  dynamic_stress_load: number | null;
+}
+
+export interface MatchReportPlayerRating {
+  player_id: string;
+  player_name: string;
+  goals: number;
+  points: number;
+  two_pointers: number;
+  turnovers_won: number;
+  turnovers_lost: number;
+  score_value: number;
+}
+
+export interface MatchReportData {
+  match_id: string;
+  opponent: string;
+  match_date: string;
+  venue: string;
+  is_home: boolean;
+  competition: string | null;
+  team_goals: number;
+  team_points: number;
+  opponent_goals: number;
+  opponent_points: number;
+  team_total: number;
+  opponent_total: number;
+  result: string;
+  scorers: MatchReportScorer[];
+  key_stats: MatchReportKeyStats;
+  scoring_timeline: ScoringTimelinePoint[];
+  top_players: MatchReportPlayerRating[];
+  gps_summary: MatchReportGPSSummary[];
+  ai_analysis: string | null;
+}
+
+export interface PlayerFormMatchRow {
+  match_id: string;
+  opponent: string;
+  match_date: string;
+  result: string;
+  team_score: string;
+  opp_score: string;
+  goals: number;
+  points: number;
+  two_pointers: number;
+  score_contribution: number;
+  turnovers_won: number;
+  turnovers_lost: number;
+  gps_distance_km: number | null;
+}
+
+export interface PlayerFormRadar {
+  scoring: number;
+  defence: number;
+  workload: number;
+  attendance: number;
+  fitness: number;
+  scoring_squad_avg: number;
+  defence_squad_avg: number;
+  workload_squad_avg: number;
+  attendance_squad_avg: number;
+  fitness_squad_avg: number;
+}
+
+export interface PlayerFormData {
+  player_id: string;
+  player_name: string;
+  position: string;
+  form_trend: 'up' | 'stable' | 'down';
+  last_5_matches: PlayerFormMatchRow[];
+  radar: PlayerFormRadar;
+  match_ready: boolean;
+  attendance_rate_pct: number;
+}
+
+export interface DisciplinePlayerRow {
+  player_id: string;
+  player_name: string;
+  yellow_cards: number;
+  black_cards: number;
+  red_cards: number;
+  fouls_committed: number;
+  total_card_value: number;
+}
+
+export interface DisciplineMatchRow {
+  match_id: string;
+  opponent: string;
+  match_date: string;
+  result: string;
+  yellow_cards: number;
+  black_cards: number;
+  red_cards: number;
+  fouls_committed: number;
+  opp_yellow_cards: number;
+  opp_red_cards: number;
+}
+
+export interface DisciplineSummaryData {
+  players: DisciplinePlayerRow[];
+  per_match: DisciplineMatchRow[];
+  season_totals: {
+    yellow_cards: number;
+    black_cards: number;
+    red_cards: number;
+    fouls_committed: number;
+  };
+}
+
+export interface KickoutMatchRow {
+  match_id: string;
+  opponent: string;
+  match_date: string;
+  result: string;
+  own_won: number;
+  own_total: number;
+  own_won_pct: number;
+  opp_won: number;
+  opp_total: number;
+  opp_won_pct: number;
+}
+
+export interface KickoutSummaryData {
+  per_match: KickoutMatchRow[];
+  season_own_won_pct: number;
+  season_opp_won_pct: number;
+  best_own_match: string | null;
+  worst_own_match: string | null;
+  correlation_note: string;
+}
+
+export interface TrainingLoadSessionRow {
+  session_id: string;
+  session_date: string;
+  session_type: string;
+  location: string | null;
+  present_count: number;
+  total_invited: number;
+  attendance_pct: number;
+  absent_players: string[];
+}
+
+export interface TrainingLoadPlayerRow {
+  player_id: string;
+  player_name: string;
+  total_distance_km: number | null;
+  high_speed_running_m: number | null;
+  sprint_count: number | null;
+  dynamic_stress_load: number | null;
+  sessions_attended: number;
+}
+
+export interface TrainingLoadData {
+  sessions: TrainingLoadSessionRow[];
+  player_loads: TrainingLoadPlayerRow[];
+  date_from: string;
+  date_to: string;
+}
+
 const analyticsAPI = {
   getDashboard: async (): Promise<DashboardData> => {
     return fetchAPI<DashboardData>('/analytics/dashboard');
@@ -955,6 +1156,32 @@ const analyticsAPI = {
 
   getTrainingOverview: async (): Promise<TrainingOverviewData> => {
     return fetchAPI<TrainingOverviewData>('/analytics/training-overview');
+  },
+
+  // ─── Reports Hub endpoints ─────────────────────────────────────────────────
+
+  getMatchReport: async (matchId: string): Promise<MatchReportData> => {
+    return fetchAPI<MatchReportData>(`/analytics/match-report/${matchId}`);
+  },
+
+  getPlayerForm: async (playerId: string): Promise<PlayerFormData> => {
+    return fetchAPI<PlayerFormData>(`/analytics/player-form/${playerId}`);
+  },
+
+  getDisciplineSummary: async (): Promise<DisciplineSummaryData> => {
+    return fetchAPI<DisciplineSummaryData>('/analytics/discipline-summary');
+  },
+
+  getKickoutSummary: async (): Promise<KickoutSummaryData> => {
+    return fetchAPI<KickoutSummaryData>('/analytics/kickout-summary');
+  },
+
+  getTrainingLoad: async (dateFrom?: string, dateTo?: string): Promise<TrainingLoadData> => {
+    const params = new URLSearchParams();
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+    const qs = params.toString();
+    return fetchAPI<TrainingLoadData>(`/analytics/training-load${qs ? `?${qs}` : ''}`);
   },
 };
 

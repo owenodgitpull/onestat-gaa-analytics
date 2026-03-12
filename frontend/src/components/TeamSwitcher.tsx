@@ -13,10 +13,10 @@ export default function TeamSwitcher() {
 
   const handleSwitch = async (clubId: string) => {
     if (clubId === club?.id || switching) return
+    setIsOpen(false)
     setSwitching(true)
     try {
       await switchClub(clubId)
-      setIsOpen(false)
     } catch (err) {
       console.error('Failed to switch team:', err)
     } finally {
@@ -47,8 +47,8 @@ export default function TeamSwitcher() {
 
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
-          <div className="absolute left-0 top-full mt-2 w-64 py-1.5 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-20">
+          <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
+          <div className="absolute left-0 top-full mt-2 w-64 py-1.5 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-[70]">
             <div className="px-3 py-1.5 text-[10px] font-semibold text-white/30 uppercase tracking-wider">
               Switch Team
             </div>

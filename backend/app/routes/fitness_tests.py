@@ -471,6 +471,7 @@ async def get_test_sessions(
         )
         .join(Player, FitnessTest.player_id == Player.id)
         .where(Player.club_id == user.club_id)
+        .where(Player.active.is_(True))
         .group_by(FitnessTest.test_date)
         .order_by(desc(FitnessTest.test_date))
     )

@@ -809,31 +809,85 @@ export default function PlayerView() {
                 </div>
               )}
 
-              {fitnessHistory && fitnessHistory.length > 1 && (
+              {fitnessHistory && fitnessHistory.length > 0 && (
                 <div className="glass-card p-6">
-                  <h3 className="text-xl font-bold text-white mb-4">Test History</h3>
-                  <div className="space-y-3">
-                    {fitnessHistory.map((test: any, i: number) => (
-                      <div key={test.id} className={`p-4 rounded-xl ${i === 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-white/5'}`}>
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-white">
-                            {new Date(test.test_date).toLocaleDateString()}
-                            {i === 0 && <span className="ml-2 text-xs text-emerald-400">(Latest)</span>}
-                          </span>
-                          <div className="flex items-center gap-4 text-sm">
-                            {test.cmj_cm && <span className="text-white/60">CMJ: <span className="text-white">{test.cmj_cm}cm</span></span>}
-                            {test.bronco_test_min && <span className="text-white/60">Bronco: <span className="text-white">{test.bronco_test_min}min</span></span>}
-                            {test.injury_risk_score && (
-                              <span className={`px-2 py-0.5 rounded text-xs ${
-                                test.injury_risk_score <= 3 ? 'bg-emerald-500/20 text-emerald-400' :
-                                test.injury_risk_score <= 6 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'
-                              }`}>Risk: {test.injury_risk_score}/10</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  <h3 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
+                    <GitCompareArrows size={20} />
+                    All Fitness Tests
+                  </h3>
+                  <p className="text-sm text-white/40 mb-4">{fitnessHistory.length} test{fitnessHistory.length !== 1 ? 's' : ''} recorded — newest first</p>
+                  <div className="overflow-x-auto -mx-2 px-2">
+                    <table className="w-full text-sm min-w-[700px]">
+                      <thead>
+                        <tr className="border-b border-white/10">
+                          <th className="text-left py-2 pr-4 text-white/50 font-medium whitespace-nowrap">Date</th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">CMJ<span className="text-white/30 font-normal"> cm</span></th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">SJ<span className="text-white/30 font-normal"> cm</span></th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">EUR</th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">0-10m<span className="text-white/30 font-normal"> s</span></th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">Bronco<span className="text-white/30 font-normal"> min</span></th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">Press-ups</th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">Pull-ups</th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">Wt<span className="text-white/30 font-normal"> kg</span></th>
+                          <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">KTW R/L</th>
+                          <th className="text-right py-2 pl-3 text-white/50 font-medium whitespace-nowrap">Risk</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {fitnessHistory.map((test: any, i: number) => {
+                          const riskScore = test.injury_risk_score ?? test.ai_analysis?.injury_risk_score
+                          const riskColor = riskScore == null ? 'text-white/30' :
+                            riskScore <= 3 ? 'text-emerald-400' :
+                            riskScore <= 6 ? 'text-amber-400' : 'text-red-400'
+                          return (
+                            <tr key={test.id} className={`${i === 0 ? 'bg-emerald-500/5' : ''} hover:bg-white/5 transition-colors`}>
+                              <td className="py-2.5 pr-4 whitespace-nowrap">
+                                <span className="font-medium text-white/90">
+                                  {new Date(test.test_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </span>
+                                {i === 0 && (
+                                  <span className="ml-2 text-xs text-emerald-400 font-semibold">Latest</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90">
+                                {test.cmj_cm != null ? test.cmj_cm : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90">
+                                {test.squat_jump_cm != null ? test.squat_jump_cm : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90">
+                                {test.eur_calculated != null ? test.eur_calculated.toFixed(2) : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90">
+                                {test.sprint_0_10m_sec != null ? test.sprint_0_10m_sec.toFixed(2) : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90">
+                                {test.bronco_test_min != null ? test.bronco_test_min.toFixed(2) : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90">
+                                {test.press_ups_60s != null ? test.press_ups_60s : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90">
+                                {test.pull_ups_60s != null ? test.pull_ups_60s : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90">
+                                {test.weight_kg != null ? test.weight_kg : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-white/90 whitespace-nowrap">
+                                {(test.ktw_right_cm != null || test.ktw_left_cm != null)
+                                  ? `${test.ktw_right_cm ?? '—'} / ${test.ktw_left_cm ?? '—'}`
+                                  : <span className="text-white/20">—</span>}
+                              </td>
+                              <td className={`py-2.5 pl-3 text-right font-mono font-semibold ${riskColor}`}>
+                                {riskScore != null ? `${riskScore}/10` : <span className="text-white/20">—</span>}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
+                  <p className="text-xs text-white/30 mt-3">SJ = Squat Jump · EUR = Elasticity-to-Utilisation Ratio · KTW = Knee-to-Wall</p>
                 </div>
               )}
             </>

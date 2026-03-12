@@ -470,7 +470,8 @@ export default function CategorizedActionButtons({
           const Icon = category.icon
           const isActive = activeCategory === category.id
           const isKickoutTab = category.id === 'our_kickouts' || category.id === 'opp_kickouts'
-          const shouldPulse = isKickoutTab && awaitingKickout && !isActive
+          // Pulse the CORRECT kickout tab (the active one) to draw attention
+          const shouldPulse = isKickoutTab && awaitingKickout && isActive
 
           return (
             <button
@@ -478,10 +479,10 @@ export default function CategorizedActionButtons({
               onClick={() => setActiveCategory(category.id)}
               {...(category.id === 'turnovers' ? { 'data-tour': 'turnovers-tab' } : {})}
               className={`flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 ${
-                isActive
-                  ? 'bg-emerald-600 text-white'
-                  : shouldPulse
-                    ? 'bg-amber-500/20 text-amber-300 animate-pulse border-t-2 border-amber-400'
+                shouldPulse
+                  ? 'bg-amber-500/30 text-amber-300 animate-pulse border-t-2 border-amber-400'
+                  : isActive
+                    ? 'bg-emerald-600 text-white'
                     : 'text-white/60 hover:text-white hover:bg-white/5'
               }`}
             >

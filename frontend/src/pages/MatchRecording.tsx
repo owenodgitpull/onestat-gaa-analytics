@@ -511,9 +511,9 @@ export default function MatchRecording() {
   const teamKickoutRetention = totalTeamKickouts > 0 ? ((teamKickoutsWon / totalTeamKickouts) * 100).toFixed(1) : '0.0'
   const opponentKickoutRetention = totalOpponentKickouts > 0 ? ((opponentKickoutsWon / totalOpponentKickouts) * 100).toFixed(1) : '0.0'
 
-  // Recent events - fetch from backend, newest first
+  // Recent events - fetch from backend, display newest first
   const { data: matchEventsData } = useMatchEvents(matchId)
-  const allEvents = matchEventsData?.events || []
+  const allEvents = [...(matchEventsData?.events || [])].reverse()
   const [visibleEventCount, setVisibleEventCount] = useState(15)
 
   // Track players on yellow cards (for second yellow → automatic red)

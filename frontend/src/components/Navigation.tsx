@@ -205,7 +205,7 @@ export default function Navigation() {
       <nav className="sticky top-0 z-50 backdrop-blur-2xl border-b border-white/[0.12] safe-area-top" style={{ background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.06))', boxShadow: '0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.10)' }}>
         <div className="flex items-center h-14 px-4">
           {/* Logo */}
-          <Link to="/" className="flex items-center group mr-3 lg:mr-8 flex-shrink-0 gap-1.5">
+          <Link to="/" className="flex items-center group mr-1 lg:mr-2 flex-shrink-0 gap-1.5">
             <img
               src="/oneStatLogoTransparent.png"
               alt="OneStat Analytics"
@@ -227,7 +227,7 @@ export default function Navigation() {
           {/* Team Switcher — shows club logo + caret when multiple teams */}
           {clubs.length > 1 && (
             <>
-              <div className="w-px h-5 bg-white/15 mx-1" />
+              <div className="w-px h-5 bg-white/15" />
               <TeamSwitcher />
             </>
           )}

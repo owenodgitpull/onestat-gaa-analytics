@@ -850,8 +850,8 @@ class SeasonAgent:
         # Check cache unless force_refresh
         if club_id and not force_refresh:
             try:
-                from app.services.season_dashboard_service import SeasonDashboardService
-                fingerprint = await SeasonDashboardService._compute_data_fingerprint(db, club_id)
+                from app.services.season_dashboard_service import _compute_data_fingerprint
+                fingerprint = await _compute_data_fingerprint(db, club_id)
                 cache_result = await db.execute(
                     select(SeasonCache).where(
                         SeasonCache.cache_type == "weekly_brief",
@@ -891,8 +891,8 @@ class SeasonAgent:
             if club_id and brief:
                 try:
                     if fingerprint is None:
-                        from app.services.season_dashboard_service import SeasonDashboardService
-                        fingerprint = await SeasonDashboardService._compute_data_fingerprint(db, club_id)
+                        from app.services.season_dashboard_service import _compute_data_fingerprint
+                        fingerprint = await _compute_data_fingerprint(db, club_id)
 
                     if cache is None:
                         cache_result = await db.execute(

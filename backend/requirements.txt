@@ -27,3 +27,4 @@ beautifulsoup4==4.12.3
 lxml==5.1.0
 python-docx==1.1.0
 
+ddgs==9.11.3
