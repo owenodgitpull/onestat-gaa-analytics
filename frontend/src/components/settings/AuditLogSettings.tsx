@@ -240,7 +240,7 @@ export default function AuditLogSettings() {
               {/* Content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-white/80 font-medium truncate max-w-[140px]">
+                  <span className="text-sm text-white/80 font-medium">
                     {log.user_name || log.user_email?.split('@')[0] || 'Unknown'}
                   </span>
                   <span className={`text-xs px-2 py-0.5 rounded-full border ${ACTION_COLORS[log.action] || DEFAULT_COLOR}`}>
@@ -252,7 +252,7 @@ export default function AuditLogSettings() {
                 </div>
                 <div className="flex items-center gap-3 mt-0.5">
                   {log.endpoint && (
-                    <span className="text-[11px] text-white/25 font-mono truncate max-w-[200px]">
+                    <span className="text-[11px] text-white/25 font-mono">
                       {log.http_method} {log.endpoint}
                     </span>
                   )}

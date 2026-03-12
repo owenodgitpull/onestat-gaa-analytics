@@ -178,7 +178,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
                     resource_type=resource_type,
                     resource_id=resource_id,
                     http_method=method,
-                    endpoint=path[:500],
+                    endpoint=path,
                     ip_address=ip,
                 )
                 db.add(log)
