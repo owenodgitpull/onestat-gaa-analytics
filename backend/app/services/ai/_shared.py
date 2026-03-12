@@ -403,7 +403,7 @@ TOOLS = [
     },
     {
         "name": "get_ball_carrier_data",
-        "description": "Get ball carrier tracking data for a match: who carried the ball, how far, carry sequences forming possession chains. Returns carrier segments with player names, jersey numbers, path points, and auto-derived possession chains. IMPORTANT: This data is manually logged by the analyst during the match — it represents LOGGED carries, not all carries. Not every carry is captured due to the fast pace of play. Frame insights as 'Shane O'Donnell carried a lot of ball in dangerous positions' rather than 'Shane O'Donnell had the most carries'. If no carrier data exists for a match, returns empty — gracefully skip carrier-dependent analysis.",
+        "description": "Get ball carrier tracking + PASSING NETWORK data for a match. When the analyst switches carrier from Player A to Player B (same team), that is a confirmed pass A→B. Returns: carrier_stats (carries per player), pass_network (who passed to whom with frequency), pass_leaders (top distributors), chain_effectiveness (scoring chains vs turnovers, avg chain length), tempo_analysis (avg seconds between carrier transitions), territory_progression (passes that advance ball forward vs lateral/backward), and raw possession chains. IMPORTANT: This data is manually logged — it represents LOGGED carries/passes, not all of them. Frame insights as 'the data shows' or 'from logged possessions' rather than definitive totals. If no carrier data exists, returns empty — gracefully skip.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -2127,7 +2127,7 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
 
 
 async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -> str:
-    """Get ball carrier segments and derived possession chains for a match."""
+    """Get ball carrier segments, passing network, and possession chain analysis."""
     from app.models.ball_carrier_segment import BallCarrierSegment
     from app.models.possession_chain import PossessionChain
     import uuid as uuid_mod
@@ -2149,42 +2149,111 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         .where(BallCarrierSegment.match_id == match_uuid)
         .order_by(BallCarrierSegment.sequence_number.asc())
     )
-    segments = seg_result.scalars().all()
+    segments = list(seg_result.scalars().all())
 
     if not segments:
         return safe_json({"message": "No ball carrier data available for this match", "segments": [], "chains": []})
 
-    # Build segment summaries
-    segment_data = []
+    # ── Build carrier stats + PASSING NETWORK from transitions ──
     carrier_stats: dict = {}
+    pass_connections: dict = {}  # "pidA->pidB" -> {from_name, from_jersey, to_name, to_jersey, count}
+    pass_count_by_player: dict = {}  # pid -> {name, jersey, passes_made, passes_received}
+    transition_times_ms: list = []  # time gaps between consecutive segments
+
+    # Zone classification helper (x coordinate 0-100)
+    def _zone(x: float | None) -> str:
+        if x is None:
+            return "unknown"
+        if x < 33:
+            return "defensive"
+        if x < 66:
+            return "midfield"
+        return "attacking"
+
+    territory_passes = {"forward": 0, "lateral": 0, "backward": 0}
+
+    prev_seg = None
     for seg in segments:
         player_name = seg.player.name if seg.player else "Unknown"
         path_len = len(seg.path_points) if seg.path_points else 0
-        segment_data.append({
-            "player_name": player_name,
-            "jersey_number": seg.jersey_number,
-            "team": seg.team,
-            "half": seg.half,
-            "minute": seg.minute,
-            "path_points_count": path_len,
-            "ended_by": seg.ended_by,
-        })
-
-        # Aggregate per-player stats
         pid = str(seg.player_id)
+
+        # Carrier stats
         if pid not in carrier_stats:
             carrier_stats[pid] = {"name": player_name, "jersey": seg.jersey_number, "carries": 0, "total_points": 0}
         carrier_stats[pid]["carries"] += 1
         carrier_stats[pid]["total_points"] += path_len
 
-    # Fetch live-derived chains
+        # Pass detection: consecutive segments on same team, different player = pass
+        if prev_seg and seg.team == prev_seg.team and str(seg.player_id) != str(prev_seg.player_id):
+            from_pid = str(prev_seg.player_id)
+            to_pid = pid
+            from_name = prev_seg.player.name if prev_seg.player else "Unknown"
+            conn_key = f"{from_pid}->{to_pid}"
+
+            if conn_key not in pass_connections:
+                pass_connections[conn_key] = {
+                    "from_name": from_name,
+                    "from_jersey": prev_seg.jersey_number,
+                    "to_name": player_name,
+                    "to_jersey": seg.jersey_number,
+                    "count": 0,
+                }
+            pass_connections[conn_key]["count"] += 1
+
+            # Per-player pass counts
+            for p, name, jersey in [(from_pid, from_name, prev_seg.jersey_number), (to_pid, player_name, seg.jersey_number)]:
+                if p not in pass_count_by_player:
+                    pass_count_by_player[p] = {"name": name, "jersey": jersey, "passes_made": 0, "passes_received": 0}
+            pass_count_by_player[from_pid]["passes_made"] += 1
+            pass_count_by_player[to_pid]["passes_received"] += 1
+
+            # Territory progression (based on end position of passer → start position of receiver)
+            if prev_seg.end_x is not None and seg.start_x is not None:
+                dx = seg.start_x - prev_seg.end_x
+                if dx > 10:
+                    territory_passes["forward"] += 1
+                elif dx < -10:
+                    territory_passes["backward"] += 1
+                else:
+                    territory_passes["lateral"] += 1
+
+            # Transition tempo
+            if prev_seg.end_time_ms and seg.start_time_ms:
+                gap = seg.start_time_ms - prev_seg.end_time_ms
+                if 0 <= gap <= 30000:  # Ignore gaps > 30s (dead ball)
+                    transition_times_ms.append(gap)
+
+        prev_seg = seg
+
+    total_passes = sum(c["count"] for c in pass_connections.values())
+
+    # ── Possession Chain Analysis ──
     chain_result = await db.execute(
         select(PossessionChain)
         .where(PossessionChain.match_id == match_uuid, PossessionChain.source == "live")
         .order_by(PossessionChain.created_at.asc())
     )
-    chains = chain_result.scalars().all()
+    chains = list(chain_result.scalars().all())
 
+    # Chain effectiveness breakdown
+    scoring_chains = [c for c in chains if c.outcome == "score"]
+    turnover_chains = [c for c in chains if c.outcome == "turnover"]
+    wide_chains = [c for c in chains if c.outcome == "wide"]
+
+    chain_effectiveness = {
+        "total_chains": len(chains),
+        "scoring_chains": len(scoring_chains),
+        "turnover_chains": len(turnover_chains),
+        "wide_chains": len(wide_chains),
+        "avg_chain_length_all": round(sum(c.chain_length or 0 for c in chains) / max(len(chains), 1), 1),
+        "avg_chain_length_scores": round(sum(c.chain_length or 0 for c in scoring_chains) / max(len(scoring_chains), 1), 1),
+        "avg_chain_length_turnovers": round(sum(c.chain_length or 0 for c in turnover_chains) / max(len(turnover_chains), 1), 1),
+        "direct_scores": len([c for c in scoring_chains if (c.chain_length or 0) <= 3]),
+        "buildup_scores": len([c for c in scoring_chains if (c.chain_length or 0) > 3]),
+    }
+
+    # Chain detail for AI
     chain_data = []
     for c in chains:
         chain_data.append({
@@ -2197,11 +2266,31 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
             "end_zone": c.end_zone,
         })
 
+    # Tempo analysis
+    tempo = {}
+    if transition_times_ms:
+        avg_ms = sum(transition_times_ms) / len(transition_times_ms)
+        tempo = {
+            "avg_transition_seconds": round(avg_ms / 1000, 1),
+            "fastest_transition_seconds": round(min(transition_times_ms) / 1000, 1),
+            "total_transitions_timed": len(transition_times_ms),
+        }
+
+    # Top pass connections (sorted by frequency)
+    top_connections = sorted(pass_connections.values(), key=lambda x: x["count"], reverse=True)[:15]
+
+    # Pass leaders
+    pass_leaders = sorted(pass_count_by_player.values(), key=lambda x: x["passes_made"], reverse=True)
+
     return safe_json({
         "total_segments": len(segments),
-        "total_chains": len(chains),
+        "total_logged_passes": total_passes,
         "carrier_stats": sorted(carrier_stats.values(), key=lambda x: x["carries"], reverse=True),
-        "segments": segment_data[:50],  # Cap for context window
+        "pass_network": top_connections,
+        "pass_leaders": pass_leaders[:10],
+        "territory_progression": territory_passes,
+        "chain_effectiveness": chain_effectiveness,
+        "tempo": tempo,
         "chains": chain_data[:30],
     })
 
