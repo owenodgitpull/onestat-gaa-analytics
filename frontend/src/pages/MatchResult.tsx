@@ -689,7 +689,7 @@ export default function MatchResult() {
         </div>
 
         {/* Right column — stats sidebar */}
-        <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden">
+        <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden md:self-start md:sticky md:top-4">
           {/* Match Statistics */}
           <div className="glass-card p-5">
             <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
