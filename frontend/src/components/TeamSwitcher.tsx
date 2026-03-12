@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, Check, Shield } from 'lucide-react'
 import { useClub } from '../contexts/ClubContext'
 import { API_BASE } from '../services/api'
@@ -7,6 +7,19 @@ export default function TeamSwitcher() {
   const { club, clubs, logoUrl, switchClub } = useClub()
   const [isOpen, setIsOpen] = useState(false)
   const [switching, setSwitching] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Close on any click outside
+  useEffect(() => {
+    if (!isOpen) return
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [isOpen])
 
   // Don't render if user only has one club (or none)
   if (clubs.length <= 1) return null
@@ -25,7 +38,7 @@ export default function TeamSwitcher() {
   }
 
   return (
-    <div className="relative flex items-center">
+    <div ref={containerRef} className="relative flex items-center">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1 rounded-lg hover:bg-white/5 transition-colors p-1"
@@ -46,9 +59,7 @@ export default function TeamSwitcher() {
       </button>
 
       {isOpen && (
-        <>
-          <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)} />
-          <div className="absolute left-0 top-full mt-2 w-64 py-1.5 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-[70]">
+        <div className="absolute left-0 top-full mt-2 w-64 py-1.5 bg-slate-800 border border-white/10 rounded-xl shadow-xl z-[70]">
             <div className="px-3 py-1.5 text-[10px] font-semibold text-white/30 uppercase tracking-wider">
               Switch Team
             </div>
@@ -84,8 +95,7 @@ export default function TeamSwitcher() {
                 )}
               </button>
             ))}
-          </div>
-        </>
+        </div>
       )}
     </div>
   )
