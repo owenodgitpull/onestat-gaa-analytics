@@ -92,22 +92,35 @@ export default function KnowledgeBaseSettings() {
 
     try {
       // Step 1: Get presigned URL
-      const initData = await knowledgeBaseAPI.initiateUpload({
-        filename: file.name,
-        content_type: file.type,
-        doc_type: docType,
-      }) as { document_id: string; upload_url: string; r2_key: string }
+      let initData: { document_id: string; upload_url: string; r2_key: string }
+      try {
+        initData = await knowledgeBaseAPI.initiateUpload({
+          filename: file.name,
+          content_type: file.type,
+          doc_type: docType,
+        }) as { document_id: string; upload_url: string; r2_key: string }
+      } catch (e: any) {
+        throw new Error(`Step 1 failed (presigned URL): ${e.message}`)
+      }
 
       // Step 2: Upload directly to R2
-      const uploadRes = await fetch(initData.upload_url, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type },
-      })
-      if (!uploadRes.ok) throw new Error('Upload to storage failed')
+      try {
+        const uploadRes = await fetch(initData.upload_url, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type },
+        })
+        if (!uploadRes.ok) throw new Error(`R2 returned ${uploadRes.status}: ${uploadRes.statusText}`)
+      } catch (e: any) {
+        throw new Error(`Step 2 failed (R2 upload): ${e.message}`)
+      }
 
       // Step 3: Confirm upload
-      await knowledgeBaseAPI.confirmUpload(initData.document_id)
+      try {
+        await knowledgeBaseAPI.confirmUpload(initData.document_id)
+      } catch (e: any) {
+        throw new Error(`Step 3 failed (confirm): ${e.message}`)
+      }
 
       // Refresh list
       await fetchDocs()
