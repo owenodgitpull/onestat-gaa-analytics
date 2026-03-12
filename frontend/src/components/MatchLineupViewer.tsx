@@ -1,5 +1,8 @@
 import { X, Users } from 'lucide-react'
 import { useClub } from '@/contexts/ClubContext'
+import ManMarkingPanel from './ManMarkingPanel'
+import type { ManMarkingAssignment } from '../services/api'
+import type { Player } from '../types'
 
 interface LineupPlayer {
   player_id: string
@@ -31,6 +34,11 @@ interface MatchLineupViewerProps {
   lineup: LineupPlayer[]
   events: any[]
   opponentName: string
+  matchId?: string
+  markingAssignments?: ManMarkingAssignment[]
+  players?: Player[]
+  onAddMarking?: (playerId: string, opponentName: string, notes?: string) => void
+  onDeleteMarking?: (assignmentId: string) => void
 }
 
 const CAPTAIN_RE = /\s*\((?:c|vc)\)\s*$/i
@@ -133,7 +141,7 @@ function formatScoreLine(m: PlayerMeta): string {
   return parts.join('')
 }
 
-export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opponentName }: MatchLineupViewerProps) {
+export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opponentName, matchId, markingAssignments, players, onAddMarking, onDeleteMarking }: MatchLineupViewerProps) {
   const { club } = useClub()
   const jerseyBg = club?.primary_colour || '#10B981'
   const jerseyText = club?.secondary_colour || '#FFFFFF'
@@ -272,6 +280,19 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
           <span className="flex items-center gap-1"><div className="w-2.5 h-3.5 rounded-[1px] bg-gray-900 border border-white/30 inline-block" /> black</span>
           <span className="flex items-center gap-1"><div className="w-2.5 h-3.5 rounded-[1px] bg-red-600 inline-block" /> red</span>
         </div>
+
+        {/* Man Marking Assignments */}
+        {matchId && onAddMarking && onDeleteMarking && (
+          <div className="mt-6 pt-5 border-t border-white/10">
+            <ManMarkingPanel
+              matchId={matchId}
+              assignments={markingAssignments || []}
+              players={players || []}
+              onAdd={onAddMarking}
+              onDelete={onDeleteMarking}
+            />
+          </div>
+        )}
       </div>
     </div>
   )

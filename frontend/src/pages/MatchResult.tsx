@@ -31,7 +31,6 @@ import { api } from '../services/api'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import { useClubName } from '../contexts/ClubContext'
 import GAAPitch from '../components/GAAPitch'
-import ManMarkingPanel from '../components/ManMarkingPanel'
 import MatchLineupViewer from '../components/MatchLineupViewer'
 import EventFilterToggles, { getEventTypesForFilters } from '../components/EventFilterToggles'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
@@ -571,6 +570,29 @@ export default function MatchResult() {
         lineup={lineupData || []}
         events={eventsData?.events || []}
         opponentName={match?.opponent || ''}
+        matchId={matchId!}
+        markingAssignments={markingAssignments}
+        players={players || []}
+        onAddMarking={async (playerId, opponentName, notes) => {
+          try {
+            await api.matchPrep.createMarking(matchId!, {
+              player_id: playerId,
+              opponent_player_name: opponentName,
+              notes,
+            })
+            refetchMarkings()
+          } catch (err) {
+            console.error('Failed to add marking:', err)
+          }
+        }}
+        onDeleteMarking={async (assignmentId) => {
+          try {
+            await api.matchPrep.deleteMarking(assignmentId)
+            refetchMarkings()
+          } catch (err) {
+            console.error('Failed to delete marking:', err)
+          }
+        }}
       />
 
       {/* Main content — 2-col layout matching live recording page */}
@@ -703,32 +725,6 @@ export default function MatchResult() {
             )}
           </div>
 
-          {/* Man Marking */}
-          <ManMarkingPanel
-            matchId={matchId!}
-            assignments={markingAssignments}
-            players={players || []}
-            onAdd={async (playerId, opponentName, notes) => {
-              try {
-                await api.matchPrep.createMarking(matchId!, {
-                  player_id: playerId,
-                  opponent_player_name: opponentName,
-                  notes,
-                })
-                refetchMarkings()
-              } catch (err) {
-                console.error('Failed to add marking:', err)
-              }
-            }}
-            onDelete={async (assignmentId) => {
-              try {
-                await api.matchPrep.deleteMarking(assignmentId)
-                refetchMarkings()
-              } catch (err) {
-                console.error('Failed to delete marking:', err)
-              }
-            }}
-          />
         </div>
       </div>
 
