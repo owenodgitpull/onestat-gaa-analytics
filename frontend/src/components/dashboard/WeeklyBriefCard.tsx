@@ -184,10 +184,10 @@ export default function WeeklyBriefCard() {
           )}
         </div>
 
-        <div className="flex-1 text-left min-w-0">
+        <div className="flex-1 text-left min-w-0 overflow-hidden">
           <span className="text-sm font-semibold text-white/90">Weekly Brief</span>
           {brief.headline && (
-            <span className="text-sm text-white/40 ml-2 truncate">
+            <span className="text-sm text-white/40 ml-2 hidden sm:inline">
               — {brief.headline}
             </span>
           )}
@@ -205,7 +205,7 @@ export default function WeeklyBriefCard() {
 
   // Expanded state: full glass card with sections
   return (
-    <div className="glass-card p-5 mb-6">
+    <div className="glass-card p-3 sm:p-5 mb-6 overflow-hidden">
       <div className="flex items-center justify-between mb-4">
         <button
           onClick={() => setExpanded(false)}
@@ -233,7 +233,7 @@ export default function WeeklyBriefCard() {
           <div key={section.key} className="rounded-xl overflow-hidden bg-white/[0.04] border border-white/[0.06]">
             <button
               onClick={() => toggleSection(section.key)}
-              className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-white/[0.06] transition-colors"
+              className="w-full flex items-center justify-between px-3 sm:px-4 py-2.5 text-left hover:bg-white/[0.06] transition-colors"
             >
               <div className="flex items-center gap-2.5 text-white/40">
                 {section.icon}
@@ -249,7 +249,7 @@ export default function WeeklyBriefCard() {
               </svg>
             </button>
             {expandedSections.has(section.key) && (
-              <div className="px-4 pb-3 border-t border-white/[0.06]">
+              <div className="px-3 sm:px-4 pb-3 border-t border-white/[0.06]">
                 <div className="pt-3">
                   {section.content}
                 </div>

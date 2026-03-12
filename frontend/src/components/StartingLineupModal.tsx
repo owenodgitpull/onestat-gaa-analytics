@@ -213,7 +213,7 @@ export default function StartingLineupModal({
                   >
                     {/* Jersey Icon */}
                     <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
+                      className={`w-8 h-8 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-[10px] sm:text-sm transition-all ${
                         assignedPlayer
                           ? 'ring-2 shadow-lg'
                           : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
@@ -226,7 +226,7 @@ export default function StartingLineupModal({
                     {/* Player Name */}
                     {assignedPlayer && (
                       <div className="absolute top-full mt-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                        <span className="text-white text-xs font-semibold bg-black/50 px-2 py-1 rounded">
+                        <span className="text-white text-[9px] sm:text-xs font-semibold bg-black/50 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
                           {displaySurname(assignedPlayer.name)}
                         </span>
                       </div>
@@ -251,7 +251,7 @@ export default function StartingLineupModal({
                   >
                     {/* Jersey Icon - Smaller for subs */}
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                      className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[9px] sm:text-xs transition-all ${
                         assignedPlayer
                           ? 'ring-2 shadow-lg'
                           : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'

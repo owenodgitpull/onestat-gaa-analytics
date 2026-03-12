@@ -558,7 +558,7 @@ export default function MatchPrep() {
                     onClick={() => handlePositionClick(pos.id)}
                   >
                     <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-sm transition-all ring-2 ${
+                      className={`w-8 h-8 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-[10px] sm:text-sm transition-all ring-2 ${
                         player
                           ? 'shadow-lg'
                           : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
@@ -569,7 +569,7 @@ export default function MatchPrep() {
                     </div>
                     {player && (
                       <div className="absolute top-full mt-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                        <span className="text-white text-xs font-semibold bg-black/60 px-2 py-0.5 rounded flex items-center gap-1">
+                        <span className="text-white text-[9px] sm:text-xs font-semibold bg-black/60 px-1.5 sm:px-2 py-0.5 rounded flex items-center gap-1">
                           {workload && (
                             <span className={`w-1.5 h-1.5 rounded-full inline-block ${getStatusDot(workload.status)}`} />
                           )}
@@ -596,7 +596,7 @@ export default function MatchPrep() {
                     onClick={() => handlePositionClick(pos.id)}
                   >
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs transition-all ring-2 ${
+                      className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[9px] sm:text-xs transition-all ring-2 ${
                         player
                           ? 'shadow-lg'
                           : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
