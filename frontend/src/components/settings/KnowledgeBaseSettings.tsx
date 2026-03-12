@@ -112,20 +112,23 @@ export default function KnowledgeBaseSettings() {
         })
         if (!uploadRes.ok) throw new Error(`R2 returned ${uploadRes.status}: ${uploadRes.statusText}`)
       } catch (e: any) {
-        throw new Error(`Step 2 failed (R2 upload): ${e.message}`)
+        // Clean up orphaned DB record
+        try { await knowledgeBaseAPI.deleteDocument(initData.document_id) } catch {}
+        throw new Error(`Upload to storage failed. Please check your connection and try again.`)
       }
 
       // Step 3: Confirm upload
       try {
         await knowledgeBaseAPI.confirmUpload(initData.document_id)
       } catch (e: any) {
-        throw new Error(`Step 3 failed (confirm): ${e.message}`)
+        throw new Error(`Upload succeeded but processing failed: ${e.message}`)
       }
 
       // Refresh list
       await fetchDocs()
     } catch (err: any) {
       setError(err.message || 'Upload failed')
+      await fetchDocs() // Refresh to remove any cleaned-up records
     } finally {
       setUploading(false)
     }
