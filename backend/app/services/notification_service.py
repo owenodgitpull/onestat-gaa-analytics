@@ -232,6 +232,23 @@ class NotificationService:
             )
 
     @staticmethod
+    async def notify_weekly_brief(db: AsyncSession, club_id: UUID, headline: str):
+        """Send weekly brief push notification to all club admins."""
+        users_result = await db.execute(
+            select(User).where(
+                and_(User.club_id == club_id, User.role == "admin")
+            )
+        )
+        for u in users_result.scalars().all():
+            await NotificationService.send_push(
+                db, u.id,
+                NotificationType.WEEKLY_BRIEF,
+                "Weekly Brief Ready",
+                headline,
+                {"type": "weekly_brief"},
+            )
+
+    @staticmethod
     async def get_notifications(
         db: AsyncSession, user_id: UUID, limit: int = 50
     ) -> list[Notification]:

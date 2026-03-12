@@ -47,6 +47,11 @@ SEASON_TOOLS = [
     "get_formation_snapshots",
     "get_man_marking_history",
     "get_fitness_tests",
+    "get_performance_correlations",
+    "get_player_form_trajectory",
+    "get_fitness_match_link",
+    "get_contextual_patterns",
+    "get_workload_risk_assessment",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)
@@ -59,6 +64,8 @@ PLAYER_TOOLS = [
     "get_match_summary",
     "get_scoring_patterns",
     "get_fitness_tests",
+    "get_performance_correlations",
+    "get_workload_risk_assessment",
 ]
 
 # Tools for training session tasks
@@ -831,6 +838,91 @@ class SeasonAgent:
             logger.error(f"Training session analysis failed: {e}")
             return {"summary": None}
 
+    # -------------------------------------------------------------------------
+    # WEEKLY BRIEF wrapper
+    # -------------------------------------------------------------------------
+
+    @staticmethod
+    async def generate_weekly_brief(db: AsyncSession, club_id=None, force_refresh: bool = False) -> dict:
+        """Generate a weekly team brief with form, physical state, and tactical insights."""
+        from app.models.season_cache import SeasonCache
+
+        # Check cache unless force_refresh
+        if club_id and not force_refresh:
+            try:
+                from app.services.season_dashboard_service import SeasonDashboardService
+                fingerprint = await SeasonDashboardService._compute_data_fingerprint(db, club_id)
+                cache_result = await db.execute(
+                    select(SeasonCache).where(
+                        SeasonCache.cache_type == "weekly_brief",
+                        SeasonCache.club_id == club_id,
+                    )
+                )
+                cache = cache_result.scalar_one_or_none()
+                if cache and cache.data_fingerprint == fingerprint and cache.cached_result:
+                    return cache.cached_result
+            except Exception as e:
+                logger.warning(f"Weekly brief cache check failed: {e}")
+                fingerprint = None
+                cache = None
+        else:
+            fingerprint = None
+            cache = None
+
+        try:
+            context = {}
+            result = await SeasonAgent.analyze_season(
+                db, "weekly_brief", context, club_id=club_id,
+                model="claude-sonnet-4-20250514", max_turns=5,
+                tool_names=[
+                    "get_team_season_stats", "get_team_gps_summary",
+                    "get_attendance_data", "search_players",
+                    "get_player_season_stats", "get_player_gps_stats",
+                    "get_match_summary", "get_fitness_tests",
+                    "get_performance_correlations", "get_workload_risk_assessment",
+                    "get_player_form_trajectory", "get_contextual_patterns",
+                ],
+            )
+            brief = result.get("brief", {})
+
+            output = {"success": True, "brief": brief, "generated_at": str(datetime.utcnow())}
+
+            # Cache result
+            if club_id and brief:
+                try:
+                    if fingerprint is None:
+                        from app.services.season_dashboard_service import SeasonDashboardService
+                        fingerprint = await SeasonDashboardService._compute_data_fingerprint(db, club_id)
+
+                    if cache is None:
+                        cache_result = await db.execute(
+                            select(SeasonCache).where(
+                                SeasonCache.cache_type == "weekly_brief",
+                                SeasonCache.club_id == club_id,
+                            )
+                        )
+                        cache = cache_result.scalar_one_or_none()
+
+                    if cache:
+                        cache.cached_result = output
+                        cache.data_fingerprint = fingerprint
+                        cache.cached_at = datetime.utcnow()
+                    else:
+                        db.add(SeasonCache(
+                            club_id=club_id,
+                            cache_type="weekly_brief",
+                            data_fingerprint=fingerprint,
+                            cached_result=output,
+                        ))
+                    await db.commit()
+                except Exception as e:
+                    logger.warning(f"Weekly brief cache save failed: {e}")
+
+            return output
+        except Exception as e:
+            logger.error(f"Weekly brief generation failed: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
 
 # =============================================================================
 # Fallback challenges (static)
@@ -875,6 +967,7 @@ def _task_to_rag_query(task: str) -> str:
         "player_insights": "GAA player performance goals targets scoring benchmarks training",
         "player_challenges": "GAA player performance goals targets scoring benchmarks training",
         "training_summary": "GAA training session GPS performance workload benchmarks",
+        "weekly_brief": "GAA weekly performance summary form trajectory workload upcoming fixture",
     }
     return queries.get(task, "GAA football analytics season analysis")
 
@@ -1273,6 +1366,44 @@ Generate a 1-2 sentence summary of a training GPS session as an S&C analyst.
 Return ONLY 1-2 sentences of prose. No bullet points, no JSON, no headers.
 """
 
+    elif task == "weekly_brief":
+        base += f"""
+## Task: Weekly Team Brief
+
+Generate a comprehensive weekly brief for the coaching staff. Use the available tools to gather data about recent matches, training, GPS loads, and upcoming fixtures.
+
+{GAA_ESSENTIALS}
+
+Return a single valid JSON object with these keys (omit any key if insufficient data):
+
+{{
+  "headline": "One-line summary of the week (max 15 words)",
+  "form_watch": {{
+    "summary": "2-3 sentence overview of recent form",
+    "hot_players": [{{"name": "...", "detail": "..."}}],
+    "cold_players": [{{"name": "...", "detail": "..."}}]
+  }},
+  "physical_state": {{
+    "summary": "2-3 sentence overview of squad physical condition",
+    "workload_flags": [{{"player": "...", "acwr": 1.6, "risk": "..."}}],
+    "recovery_notes": "Any recovery recommendations"
+  }},
+  "tactical_insight": "One key tactical observation from recent data (2-3 sentences)",
+  "upcoming_prep": {{
+    "opponent": "...",
+    "date": "...",
+    "key_considerations": ["...", "..."]
+  }}
+}}
+
+IMPORTANT:
+- Use "we/our" voice — you are the team's analyst
+- Be specific with names and numbers, not generic
+- If no upcoming fixture, omit upcoming_prep entirely
+- If no GPS data, omit physical_state entirely
+- Hot/cold players: max 3 each, only include if genuinely noteworthy
+"""
+
     return base
 
 
@@ -1301,6 +1432,8 @@ def _build_season_user_message(task: str, context: dict) -> str:
     elif task == "training_summary":
         session_id = context.get("session_id", "")
         return f"Summarize this training session (ID: {session_id}). Use get_training_session_gps to fetch the data."
+    elif task == "weekly_brief":
+        return "Generate the weekly brief. Start by using get_team_season_stats, get_team_gps_summary, and get_workload_risk_assessment to gather data. Then investigate individual players who stand out. Return JSON."
     else:
         return "Provide a comprehensive season review. Use tools to gather all available data."
 
@@ -1386,6 +1519,24 @@ def _parse_season_response(task: str, response_text: str) -> dict:
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Player challenges parse failed: {e}")
             return {"challenges": []}
+
+    elif task == "weekly_brief":
+        try:
+            raw = response_text.strip()
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+                if raw.endswith("```"):
+                    raw = raw[:-3]
+            try:
+                return {"brief": json.loads(raw)}
+            except json.JSONDecodeError:
+                json_match = re.search(r'\{[\s\S]*\}', response_text)
+                if json_match:
+                    return {"brief": json.loads(json_match.group())}
+            return {"brief": {"headline": response_text[:100]}}
+        except Exception as e:
+            logger.warning(f"Weekly brief parse failed: {e}")
+            return {"brief": {"headline": "Weekly brief generated — see details below", "tactical_insight": response_text}}
 
     # season_story, player_insights, training_summary — return raw text
     return {"text": response_text}

@@ -1156,6 +1156,34 @@ export interface OutlierSuggestionsResponse {
   generated_at?: string;
 }
 
+// Weekly Brief types
+export interface WeeklyBrief {
+  headline?: string;
+  form_watch?: {
+    summary: string;
+    hot_players: { name: string; detail: string }[];
+    cold_players: { name: string; detail: string }[];
+  };
+  physical_state?: {
+    summary: string;
+    workload_flags: { player: string; acwr: number; risk: string }[];
+    recovery_notes: string;
+  };
+  tactical_insight?: string;
+  upcoming_prep?: {
+    opponent: string;
+    date: string;
+    key_considerations: string[];
+  };
+}
+
+export interface WeeklyBriefResponse {
+  success: boolean;
+  brief: WeeklyBrief | null;
+  error?: string;
+  generated_at?: string;
+}
+
 // Insight Alert types
 export interface InsightAlert {
   id: string;
@@ -1412,6 +1440,10 @@ const aiAPI = {
 
   getOutlierSuggestions: async (): Promise<OutlierSuggestionsResponse> => {
     return fetchAPI<OutlierSuggestionsResponse>('/ai/outlier-suggestions');
+  },
+
+  getWeeklyBrief: async (forceRefresh = false): Promise<WeeklyBriefResponse> => {
+    return fetchAPI<WeeklyBriefResponse>(`/ai/weekly-brief?force_refresh=${forceRefresh}`);
   },
 
   // Chat session CRUD

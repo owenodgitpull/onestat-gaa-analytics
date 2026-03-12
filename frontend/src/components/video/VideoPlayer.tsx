@@ -17,6 +17,7 @@ export interface VideoPlayerHandle {
   play: () => void
   pause: () => void
   isPlaying: () => boolean
+  getVideoElement: () => HTMLVideoElement | null
 }
 
 interface VideoPlayerProps {
@@ -52,6 +53,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       play: () => videoRef.current?.play(),
       pause: () => videoRef.current?.pause(),
       isPlaying: () => playing,
+      getVideoElement: () => videoRef.current,
     }))
 
     const handleTimeUpdate = useCallback(() => {

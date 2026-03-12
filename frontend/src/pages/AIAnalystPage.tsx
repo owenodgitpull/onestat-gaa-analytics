@@ -34,10 +34,10 @@ type VizItem =
   | { kind: 'table'; table: DataTable; id: string }
 
 const QUICK_PROMPTS = [
-  { category: 'Match Analysis', prompts: ['How are our kickouts performing?', 'Compare home vs away results'] },
-  { category: 'Player Performance', prompts: ['Who are our most accurate scorers?', 'Show me our top scorers'] },
-  { category: 'Tactical Insights', prompts: ['Where do we lose the most turnovers?', 'Analyze our scoring zones'] },
-  { category: 'Fitness & GPS', prompts: ['How does our sprint data compare?', 'Who has the highest attendance?'] },
+  { category: 'Match Analysis', prompts: ['How does our GPS output correlate with wins?', 'Compare home vs away results'] },
+  { category: 'Player Performance', prompts: ['Who is in the best form right now?', 'Show me our top scorers'] },
+  { category: 'Tactical Insights', prompts: ['What patterns do we see in different weather?', 'Analyze our scoring zones'] },
+  { category: 'Fitness & GPS', prompts: ['Are any players at workload injury risk?', 'How do fitness levels link to match performance?'] },
 ]
 
 function getGreeting(): string {

@@ -51,6 +51,7 @@ from app.models.organization import Organization, TIER_LIMITS
 from app.models.user_club_membership import UserClubMembership
 from app.models.team_invitation import TeamInvitation
 from app.models.playbook_push import PlaybookPush, PlaybookPushRecipient
+from app.models.tactical_snapshot import TacticalAnalysisSnapshot
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -123,5 +124,6 @@ __all__ = [
     "TeamInvitation",
     "PlaybookPush",
     "PlaybookPushRecipient",
+    "TacticalAnalysisSnapshot",
 ]
 

@@ -34,6 +34,7 @@ generate_season_story = SeasonAgent.generate_season_story
 generate_player_insights = SeasonAgent.generate_player_insights
 generate_player_challenges = SeasonAgent.generate_player_challenges
 analyze_training_session = SeasonAgent.analyze_training_session
+generate_weekly_brief = SeasonAgent.generate_weekly_brief
 
 # Shared utilities
 from app.services.ai._shared import get_fixture_context, get_weather_context, STATIC_CHARTS
@@ -69,6 +70,7 @@ __all__ = [
     "generate_player_insights",
     "generate_player_challenges",
     "generate_season_story",
+    "generate_weekly_brief",
     # Shared
     "get_fixture_context",
     "get_weather_context",

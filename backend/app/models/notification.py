@@ -18,6 +18,7 @@ class NotificationType(str, enum.Enum):
     LEADERBOARD_CHANGE = "leaderboard_change"
     TRAINING_REMINDER = "training_reminder"
     FITNESS_RESULTS = "fitness_results"
+    WEEKLY_BRIEF = "weekly_brief"
 
 
 class Notification(Base):

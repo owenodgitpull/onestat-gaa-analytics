@@ -33,6 +33,7 @@ from app.services.ai import (
     generate_single_chart,
     generate_outlier_suggestions,
     analyze_match_gps,
+    generate_weekly_brief,
 )
 from app.services.ai._shared import client as anthropic_client
 from app.models.insight_alert import InsightAlert
@@ -150,6 +151,13 @@ class SingleChartResponse(BaseModel):
 class OutlierSuggestionsResponse(BaseModel):
     success: bool
     suggestions: List[dict] = []
+    error: Optional[str] = None
+    generated_at: Optional[str] = None
+
+
+class WeeklyBriefResponse(BaseModel):
+    success: bool
+    brief: Optional[dict] = None
     error: Optional[str] = None
     generated_at: Optional[str] = None
 
@@ -729,6 +737,36 @@ async def get_outlier_suggestions_endpoint(
     except Exception as e:
         logger.error(f"Outlier suggestions failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Outlier suggestions failed: {str(e)}")
+
+
+@router.get("/weekly-brief", response_model=WeeklyBriefResponse)
+async def get_weekly_brief_endpoint(
+    force_refresh: bool = False,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get the weekly AI brief for the coaching staff.
+
+    Returns cached brief if data hasn't changed, or generates fresh.
+    Use force_refresh=true to regenerate and notify admins.
+    """
+    try:
+        result = await generate_weekly_brief(db, club_id=user.club_id, force_refresh=force_refresh)
+
+        if force_refresh and result.get("success") and result.get("brief", {}).get("headline"):
+            try:
+                from app.services.notification_service import NotificationService
+                await NotificationService.notify_weekly_brief(
+                    db, user.club_id, result["brief"]["headline"]
+                )
+            except Exception as e:
+                logger.warning(f"Weekly brief notification failed: {e}")
+
+        return WeeklyBriefResponse(**result)
+    except Exception as e:
+        logger.error(f"Weekly brief failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Weekly brief failed: {str(e)}")
 
 
 @router.post("/analyze-gps", response_model=GPSAnalysisResponse)

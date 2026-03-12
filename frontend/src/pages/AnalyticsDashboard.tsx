@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Sparkles,
 } from 'lucide-react'
+import WeeklyBriefCard from '@/components/dashboard/WeeklyBriefCard'
 import KPILibraryModal from '@/components/dashboard/KPILibraryModal'
 import { KPI_REGISTRY, DEFAULT_VISIBLE_KPIS } from '@/config/kpiRegistry'
 import SquadHealthView from '@/components/SquadHealthView'
@@ -567,6 +568,9 @@ export default function AnalyticsDashboard() {
         />
       ) : (
         <>
+      {/* Weekly Brief */}
+      <WeeklyBriefCard />
+
       {/* 1. Season Overview — KPI Cards (always at top, not draggable) */}
       <div>
         <div className="flex items-center justify-between mb-2">

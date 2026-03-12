@@ -482,7 +482,83 @@ TOOLS = [
             },
             "required": []
         }
-    }
+    },
+    {
+        "name": "get_performance_correlations",
+        "description": "Analyze correlation between a GPS metric and match results. Shows win rate when the team is above vs below median for that metric. Use this to answer questions like 'Does more running lead to more wins?'",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "enum": ["total_distance", "hsr", "sprints", "player_load"],
+                    "description": "The GPS metric to correlate with match outcomes"
+                }
+            },
+            "required": ["metric"]
+        }
+    },
+    {
+        "name": "get_player_form_trajectory",
+        "description": "Get a player's rolling form over their last N matches: scoring rate, GPS load, attendance. Returns trend classification (peaking/stable/declining). Use search_players first to get the UUID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id": {
+                    "type": "string",
+                    "description": "The UUID of the player"
+                },
+                "window": {
+                    "type": "integer",
+                    "description": "Number of recent matches to consider. Defaults to 5."
+                }
+            },
+            "required": ["player_id"]
+        }
+    },
+    {
+        "name": "get_fitness_match_link",
+        "description": "Link fitness test results to match performance. Splits players by fitness quartile and shows average match GPS/performance per quartile. Use this to see if fitter players perform better.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "enum": ["cmj_cm", "bronco_test_min", "sprint_0_10m_sec"],
+                    "description": "The fitness test metric to analyze"
+                }
+            },
+            "required": ["metric"]
+        }
+    },
+    {
+        "name": "get_contextual_patterns",
+        "description": "Analyze performance patterns split by context: weather conditions, venue (home/away), or rest days between matches. Shows win rate, average score, and GPS per group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "split_by": {
+                    "type": "string",
+                    "enum": ["weather", "venue", "rest_days"],
+                    "description": "How to split the data"
+                }
+            },
+            "required": ["split_by"]
+        }
+    },
+    {
+        "name": "get_workload_risk_assessment",
+        "description": "Calculate acute:chronic workload ratio (ACWR) for players using GPS data from matches and training. Flags players at injury risk (ACWR > 1.5) or detraining risk (ACWR < 0.8). Can check a specific player or all players.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id": {
+                    "type": "string",
+                    "description": "Optional player UUID. If omitted, returns assessment for all players."
+                }
+            }
+        }
+    },
 ]
 
 def get_cached_tools() -> list:
@@ -546,6 +622,16 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await web_search_tool(tool_input.get("query", ""))
     elif tool_name == "get_fitness_tests":
         return await get_fitness_tests(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_performance_correlations":
+        return await get_performance_correlations(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_player_form_trajectory":
+        return await get_player_form_trajectory(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_fitness_match_link":
+        return await get_fitness_match_link(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_contextual_patterns":
+        return await get_contextual_patterns(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_workload_risk_assessment":
+        return await get_workload_risk_assessment(db, **tool_input, club_id=club_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -2393,4 +2479,537 @@ async def get_fitness_tests(db: AsyncSession, player_id: str = None, test_date: 
     except Exception as e:
         logger.error(f"get_fitness_tests error: {e}")
         return safe_json({"error": str(e)})
+
+
+async def get_performance_correlations(db: AsyncSession, metric: str, club_id=None) -> str:
+    """Correlate a GPS metric with match outcomes (win/loss/draw)."""
+    from app.models.match_gps import MatchGPSData
+    from sqlalchemy import func as sqla_func
+
+    metric_col_map = {
+        "total_distance": sqla_func.avg(MatchGPSData.total_distance_m),
+        "hsr": sqla_func.avg(MatchGPSData.high_speed_running_m),
+        "sprints": sqla_func.avg(MatchGPSData.sprint_count),
+        "player_load": sqla_func.avg(MatchGPSData.player_load),
+    }
+    if metric not in metric_col_map:
+        return safe_json({"error": f"Invalid metric: {metric}. Use one of: {list(metric_col_map.keys())}"})
+
+    # Get per-match average of the chosen metric
+    match_conditions = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+    if club_id:
+        match_conditions.append(Match.club_id == club_id)
+
+    matches_result = await db.execute(select(Match).where(*match_conditions).order_by(Match.match_date))
+    matches = matches_result.scalars().all()
+    if not matches:
+        return safe_json({"message": "No completed matches with GPS data"})
+
+    # Get per-match GPS averages
+    match_metrics = []
+    for m in matches:
+        gps_q = select(metric_col_map[metric].label("avg_val")).where(MatchGPSData.match_id == m.id)
+        gps_result = await db.execute(gps_q)
+        row = gps_result.one_or_none()
+        avg_val = float(row.avg_val) if row and row.avg_val else None
+        if avg_val is None:
+            continue
+
+        # Determine result from match model
+        result = m.result  # "W", "L", "D" or None
+        if not result:
+            # Compute from scores
+            tm = (m.team_goals or 0) * 3 + (m.team_points or 0)
+            opp = (m.opponent_goals or 0) * 3 + (m.opponent_points or 0)
+            result = "W" if tm > opp else ("L" if tm < opp else "D")
+
+        match_metrics.append({"match": m.opponent, "date": str(m.match_date)[:10], "metric_avg": round(avg_val, 1), "result": result})
+
+    if len(match_metrics) < 2:
+        return safe_json({"message": f"Not enough matches with GPS data to correlate (found {len(match_metrics)})"})
+
+    # Split at median
+    values = sorted([mm["metric_avg"] for mm in match_metrics])
+    median_val = values[len(values) // 2]
+
+    above = [mm for mm in match_metrics if mm["metric_avg"] >= median_val]
+    below = [mm for mm in match_metrics if mm["metric_avg"] < median_val]
+
+    def win_rate(group):
+        if not group:
+            return {"matches": 0, "wins": 0, "win_rate": 0, "draws": 0, "losses": 0}
+        w = sum(1 for g in group if g["result"] == "W")
+        d = sum(1 for g in group if g["result"] == "D")
+        l = sum(1 for g in group if g["result"] == "L")
+        return {"matches": len(group), "wins": w, "draws": d, "losses": l, "win_rate": round(w / len(group) * 100, 1)}
+
+    above_stats = win_rate(above)
+    below_stats = win_rate(below)
+
+    # Correlation strength
+    diff = above_stats["win_rate"] - below_stats["win_rate"]
+    if abs(diff) > 30:
+        strength = "strong"
+    elif abs(diff) > 15:
+        strength = "moderate"
+    else:
+        strength = "weak"
+
+    return safe_json({
+        "metric": metric,
+        "median_value": round(median_val, 1),
+        "above_median": above_stats,
+        "below_median": below_stats,
+        "correlation_strength": strength,
+        "correlation_direction": "positive" if diff > 0 else ("negative" if diff < 0 else "neutral"),
+        "matches_analyzed": len(match_metrics),
+        "per_match_data": match_metrics,
+    })
+
+
+async def get_player_form_trajectory(db: AsyncSession, player_id: str, window: int = 5, club_id=None) -> str:
+    """Get a player's rolling form over last N matches."""
+    from app.models.match_gps import MatchGPSData
+    import uuid as uuid_mod
+
+    try:
+        pid = uuid_mod.UUID(player_id)
+    except (ValueError, AttributeError):
+        return safe_json({"error": f"'{player_id}' is not a valid UUID. Use search_players first."})
+
+    # Get player info
+    player_conditions = [Player.id == pid]
+    if club_id:
+        player_conditions.append(Player.club_id == club_id)
+    player_result = await db.execute(select(Player).where(*player_conditions))
+    player = player_result.scalar_one_or_none()
+    if not player:
+        return safe_json({"error": "Player not found"})
+
+    # Get recent matches where player had events, ordered by date
+    match_conditions = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+    if club_id:
+        match_conditions.append(Match.club_id == club_id)
+    matches_result = await db.execute(
+        select(Match).where(*match_conditions).order_by(Match.match_date.desc())
+    )
+    all_matches = matches_result.scalars().all()
+
+    # Find matches where player participated (had events)
+    player_matches = []
+    for m in all_matches:
+        ev_result = await db.execute(
+            select(func.count(MatchEvent.id)).where(
+                MatchEvent.match_id == m.id,
+                MatchEvent.player_id == pid,
+            )
+        )
+        if ev_result.scalar() > 0:
+            player_matches.append(m)
+        if len(player_matches) >= window:
+            break
+
+    if not player_matches:
+        return safe_json({"message": f"No match data found for {player.name}"})
+
+    # Build per-match form data
+    form_data = []
+    for m in player_matches:
+        # Scoring
+        events_result = await db.execute(
+            select(MatchEvent).where(MatchEvent.match_id == m.id, MatchEvent.player_id == pid)
+        )
+        events = events_result.scalars().all()
+        goals = sum(1 for e in events if e.event_type == EventType.GOAL)
+        points = sum(1 for e in events if e.event_type == EventType.POINT)
+        two_pts = sum(1 for e in events if e.event_type == EventType.TWO_POINT)
+        total_score = goals * 3 + points + two_pts * 2
+        turnovers_won = sum(1 for e in events if e.event_type == EventType.TURNOVER_WON)
+        turnovers_lost = sum(1 for e in events if e.event_type == EventType.TURNOVER_LOST)
+
+        # GPS
+        gps_result = await db.execute(
+            select(MatchGPSData).where(MatchGPSData.match_id == m.id, MatchGPSData.player_id == pid)
+        )
+        gps = gps_result.scalar_one_or_none()
+
+        match_data = {
+            "match": f"vs {m.opponent}",
+            "date": str(m.match_date)[:10],
+            "result": m.result or "?",
+            "score_contribution": total_score,
+            "goals": goals,
+            "points": points,
+            "turnovers_won": turnovers_won,
+            "turnovers_lost": turnovers_lost,
+        }
+        if gps:
+            match_data["distance_km"] = round((gps.total_distance_m or 0) / 1000, 1)
+            match_data["hsr_m"] = round(gps.high_speed_running_m or 0)
+            match_data["sprints"] = gps.sprint_count or 0
+
+        form_data.append(match_data)
+
+    # Attendance (last 4 weeks)
+    from app.models.attendance import Attendance, TrainingSession
+    from datetime import timedelta
+    four_weeks_ago = datetime.utcnow() - timedelta(weeks=4)
+    att_conditions = [
+        Attendance.player_id == pid,
+        TrainingSession.session_date >= four_weeks_ago,
+    ]
+    if club_id:
+        att_conditions.append(TrainingSession.club_id == club_id)
+    att_result = await db.execute(
+        select(Attendance, TrainingSession.session_date)
+        .join(TrainingSession, Attendance.session_id == TrainingSession.id)
+        .where(*att_conditions)
+    )
+    att_rows = att_result.all()
+    total_sessions = len(att_rows)
+    attended = sum(1 for a, _ in att_rows if a.status and a.status.lower() in ("present", "attended"))
+    attendance_rate = round(attended / max(1, total_sessions) * 100, 1)
+
+    # Trend: compare first half vs second half of window
+    mid = len(form_data) // 2
+    if mid > 0 and len(form_data) > 1:
+        recent_half = form_data[:mid]  # more recent
+        older_half = form_data[mid:]   # older
+        recent_avg_score = sum(d["score_contribution"] for d in recent_half) / len(recent_half)
+        older_avg_score = sum(d["score_contribution"] for d in older_half) / len(older_half)
+        recent_avg_dist = sum(d.get("distance_km", 0) for d in recent_half) / len(recent_half)
+        older_avg_dist = sum(d.get("distance_km", 0) for d in older_half) / len(older_half)
+
+        score_delta = recent_avg_score - older_avg_score
+        dist_delta = recent_avg_dist - older_avg_dist
+
+        if score_delta > 1 or dist_delta > 0.5:
+            trend = "peaking"
+        elif score_delta < -1 or dist_delta < -0.5:
+            trend = "declining"
+        else:
+            trend = "stable"
+    else:
+        trend = "insufficient_data"
+
+    return safe_json({
+        "player": player.name,
+        "position": player.position,
+        "window": len(form_data),
+        "trend": trend,
+        "attendance_rate_4w": attendance_rate,
+        "training_sessions_4w": total_sessions,
+        "matches": form_data,
+    })
+
+
+async def get_fitness_match_link(db: AsyncSession, metric: str, club_id=None) -> str:
+    """Link fitness test results to subsequent match performance by quartile."""
+    from app.models.fitness_test import FitnessTest
+    from app.models.match_gps import MatchGPSData
+    from sqlalchemy import func as sqla_func
+
+    metric_col_map = {
+        "cmj_cm": "cmj_cm",
+        "bronco_test_min": "bronco_test_min",
+        "sprint_0_10m_sec": "sprint_0_10m_sec",
+    }
+    if metric not in metric_col_map:
+        return safe_json({"error": f"Invalid metric. Use one of: {list(metric_col_map.keys())}"})
+
+    col_name = metric_col_map[metric]
+
+    # Get latest fitness test per player
+    # Subquery: max test_date per player
+    latest_date_sq = (
+        select(FitnessTest.player_id, sqla_func.max(FitnessTest.test_date).label("max_date"))
+        .group_by(FitnessTest.player_id)
+        .subquery()
+    )
+
+    ft_conditions = []
+    if club_id:
+        ft_conditions.append(FitnessTest.club_id == club_id)
+
+    ft_query = (
+        select(FitnessTest)
+        .join(latest_date_sq, (FitnessTest.player_id == latest_date_sq.c.player_id) & (FitnessTest.test_date == latest_date_sq.c.max_date))
+    )
+    if ft_conditions:
+        ft_query = ft_query.where(*ft_conditions)
+
+    ft_result = await db.execute(ft_query)
+    fitness_tests = ft_result.scalars().all()
+
+    # Filter to those who have the metric
+    players_with_metric = []
+    for ft in fitness_tests:
+        val = getattr(ft, col_name, None)
+        if val is not None:
+            players_with_metric.append({"player_id": ft.player_id, "fitness_value": float(val), "test_date": ft.test_date})
+
+    if len(players_with_metric) < 4:
+        return safe_json({"message": f"Not enough players with {metric} data to create quartiles (found {len(players_with_metric)})"})
+
+    # Sort by metric value and split into quartiles
+    # For bronco and sprint, LOWER is better — invert for quartile assignment
+    lower_is_better = metric in ("bronco_test_min", "sprint_0_10m_sec")
+    players_with_metric.sort(key=lambda x: x["fitness_value"], reverse=lower_is_better)
+
+    q_size = len(players_with_metric) // 4
+    quartiles = {
+        "Q1 (Best)": players_with_metric[:q_size] if q_size > 0 else players_with_metric[:1],
+        "Q2": players_with_metric[q_size:q_size*2],
+        "Q3": players_with_metric[q_size*2:q_size*3],
+        "Q4 (Worst)": players_with_metric[q_size*3:],
+    }
+
+    # For each quartile, get average match GPS performance
+    result_quartiles = []
+    for q_label, q_players in quartiles.items():
+        if not q_players:
+            continue
+        pids = [p["player_id"] for p in q_players]
+        avg_fitness = round(sum(p["fitness_value"] for p in q_players) / len(q_players), 2)
+
+        # Average match GPS for these players (last 5 matches each)
+        gps_q = (
+            select(
+                sqla_func.avg(MatchGPSData.total_distance_m).label("avg_dist"),
+                sqla_func.avg(MatchGPSData.high_speed_running_m).label("avg_hsr"),
+                sqla_func.avg(MatchGPSData.sprint_count).label("avg_sprints"),
+            )
+            .where(MatchGPSData.player_id.in_(pids))
+        )
+        gps_result = await db.execute(gps_q)
+        gps_row = gps_result.one()
+
+        result_quartiles.append({
+            "quartile": q_label,
+            "player_count": len(q_players),
+            f"avg_{metric}": avg_fitness,
+            "avg_match_distance_km": round(float(gps_row.avg_dist or 0) / 1000, 1),
+            "avg_match_hsr_m": round(float(gps_row.avg_hsr or 0)),
+            "avg_match_sprints": round(float(gps_row.avg_sprints or 0), 1),
+        })
+
+    return safe_json({
+        "fitness_metric": metric,
+        "lower_is_better": lower_is_better,
+        "total_players": len(players_with_metric),
+        "quartiles": result_quartiles,
+    })
+
+
+async def get_contextual_patterns(db: AsyncSession, split_by: str, club_id=None) -> str:
+    """Analyze match performance split by weather, venue, or rest days."""
+    from app.models.match_gps import MatchGPSData
+    from sqlalchemy import func as sqla_func
+
+    match_conditions = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+    if club_id:
+        match_conditions.append(Match.club_id == club_id)
+    matches_result = await db.execute(
+        select(Match).where(*match_conditions).order_by(Match.match_date)
+    )
+    matches = matches_result.scalars().all()
+    if not matches:
+        return safe_json({"message": "No completed matches"})
+
+    # Group matches
+    groups = {}
+    prev_match_date = None
+    for m in matches:
+        if split_by == "weather":
+            key = (m.weather_condition.value if m.weather_condition else "unknown")
+        elif split_by == "venue":
+            key = (m.venue.value if m.venue else "unknown")
+        elif split_by == "rest_days":
+            if prev_match_date and m.match_date:
+                rest = (m.match_date - prev_match_date).days
+                if rest <= 5:
+                    key = "0-5 days"
+                elif rest <= 10:
+                    key = "6-10 days"
+                else:
+                    key = "11+ days"
+            else:
+                key = "first_match"
+            prev_match_date = m.match_date
+        else:
+            return safe_json({"error": f"Invalid split_by: {split_by}"})
+
+        groups.setdefault(key, []).append(m)
+
+    # Compute stats per group
+    result_groups = []
+    for key, group_matches in groups.items():
+        wins = sum(1 for m in group_matches if m.result == "W")
+        draws = sum(1 for m in group_matches if m.result == "D")
+        losses = sum(1 for m in group_matches if m.result == "L")
+
+        avg_scored = sum((m.team_goals or 0) * 3 + (m.team_points or 0) for m in group_matches) / len(group_matches)
+        avg_conceded = sum((m.opponent_goals or 0) * 3 + (m.opponent_points or 0) for m in group_matches) / len(group_matches)
+
+        # GPS averages
+        match_ids = [m.id for m in group_matches]
+        gps_q = select(
+            sqla_func.avg(MatchGPSData.total_distance_m).label("avg_dist"),
+            sqla_func.avg(MatchGPSData.high_speed_running_m).label("avg_hsr"),
+        ).where(MatchGPSData.match_id.in_(match_ids))
+        gps_result = await db.execute(gps_q)
+        gps_row = gps_result.one()
+
+        result_groups.append({
+            "group": key,
+            "matches": len(group_matches),
+            "wins": wins, "draws": draws, "losses": losses,
+            "win_rate": round(wins / len(group_matches) * 100, 1),
+            "avg_scored": round(avg_scored, 1),
+            "avg_conceded": round(avg_conceded, 1),
+            "avg_team_distance_km": round(float(gps_row.avg_dist or 0) / 1000, 1),
+            "avg_team_hsr_m": round(float(gps_row.avg_hsr or 0)),
+        })
+
+    return safe_json({
+        "split_by": split_by,
+        "groups": result_groups,
+        "total_matches": len(matches),
+    })
+
+
+async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, club_id=None) -> str:
+    """Calculate ACWR (acute:chronic workload ratio) for injury risk monitoring."""
+    from app.models.match_gps import MatchGPSData
+    from app.models.training_performance import TrainingGPSData
+    from app.models.attendance import TrainingSession
+    from datetime import timedelta
+    import uuid as uuid_mod
+
+    now = datetime.utcnow()
+    acute_start = now - timedelta(days=7)
+    chronic_start = now - timedelta(days=28)
+
+    # Resolve player filter
+    target_pids = None
+    if player_id:
+        try:
+            target_pids = [uuid_mod.UUID(player_id)]
+        except (ValueError, AttributeError):
+            return safe_json({"error": f"'{player_id}' is not a valid UUID"})
+
+    # Get all match GPS in chronic window
+    match_gps_conditions = [
+        Match.match_date >= chronic_start,
+        Match.status == MatchStatus.COMPLETED,
+    ]
+    if club_id:
+        match_gps_conditions.append(Match.club_id == club_id)
+    if target_pids:
+        match_gps_conditions.append(MatchGPSData.player_id.in_(target_pids))
+
+    match_gps_result = await db.execute(
+        select(MatchGPSData.player_id, MatchGPSData.total_distance_m, MatchGPSData.player_load, Match.match_date)
+        .join(Match, MatchGPSData.match_id == Match.id)
+        .where(*match_gps_conditions)
+    )
+    match_gps_rows = match_gps_result.all()
+
+    # Get all training GPS in chronic window
+    training_gps_conditions = [
+        TrainingSession.session_date >= chronic_start.date(),
+    ]
+    if club_id:
+        training_gps_conditions.append(TrainingSession.club_id == club_id)
+    if target_pids:
+        training_gps_conditions.append(TrainingGPSData.player_id.in_(target_pids))
+
+    training_gps_result = await db.execute(
+        select(TrainingGPSData.player_id, TrainingGPSData.total_distance_m, TrainingGPSData.player_load, TrainingSession.session_date)
+        .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
+        .where(*training_gps_conditions)
+    )
+    training_gps_rows = training_gps_result.all()
+
+    # Combine all workload data per player
+    from collections import defaultdict
+    player_loads = defaultdict(list)  # player_id -> [(date, load)]
+
+    for pid, dist, load, match_date in match_gps_rows:
+        workload = float(load or 0) or float(dist or 0) / 100  # Use player_load, fallback to distance/100
+        player_loads[pid].append((match_date, workload))
+
+    for pid, dist, load, sess_date in training_gps_rows:
+        workload = float(load or 0) or float(dist or 0) / 100
+        player_loads[pid].append((datetime.combine(sess_date, datetime.min.time()) if hasattr(sess_date, 'year') else sess_date, workload))
+
+    if not player_loads:
+        return safe_json({"message": "No GPS data in the last 28 days"})
+
+    # Get player names
+    all_pids = list(player_loads.keys())
+    name_result = await db.execute(select(Player.id, Player.name).where(Player.id.in_(all_pids)))
+    name_lookup = {row.id: row.name for row in name_result.all()}
+
+    # Calculate ACWR per player
+    assessments = []
+    for pid, loads in player_loads.items():
+        acute_loads = [w for d, w in loads if d >= acute_start]
+        chronic_loads = [w for d, w in loads if d >= chronic_start]
+
+        acute_total = sum(acute_loads)
+        chronic_weekly_avg = sum(chronic_loads) / 4  # 4-week average per week
+
+        acwr = round(acute_total / max(chronic_weekly_avg, 0.01), 2)
+
+        if acwr > 1.5:
+            risk = "HIGH — injury risk (overload)"
+        elif acwr > 1.3:
+            risk = "MODERATE — approaching overload"
+        elif acwr < 0.8:
+            risk = "LOW LOAD — possible detraining"
+        else:
+            risk = "OPTIMAL"
+
+        # Monotony: SD of daily loads over last 7 days
+        daily_totals = defaultdict(float)
+        for d, w in loads:
+            day_key = d.date() if hasattr(d, 'date') else d
+            daily_totals[day_key] += w
+
+        if len(daily_totals) >= 3:
+            vals = list(daily_totals.values())
+            mean_load = sum(vals) / len(vals)
+            variance = sum((v - mean_load) ** 2 for v in vals) / len(vals)
+            sd = variance ** 0.5
+            monotony = round(mean_load / max(sd, 0.01), 2)
+            strain = round(sum(vals) * monotony, 1)
+        else:
+            monotony = None
+            strain = None
+
+        assessments.append({
+            "player": name_lookup.get(pid, "Unknown"),
+            "acute_load_7d": round(acute_total, 1),
+            "chronic_weekly_avg_28d": round(chronic_weekly_avg, 1),
+            "acwr": acwr,
+            "risk": risk,
+            "sessions_7d": len(acute_loads),
+            "sessions_28d": len(chronic_loads),
+            "monotony": monotony,
+            "strain": strain,
+        })
+
+    # Sort: high risk first
+    risk_order = {"HIGH — injury risk (overload)": 0, "MODERATE — approaching overload": 1, "LOW LOAD — possible detraining": 2, "OPTIMAL": 3}
+    assessments.sort(key=lambda a: risk_order.get(a["risk"], 3))
+
+    flagged = [a for a in assessments if "OPTIMAL" not in a["risk"]]
+
+    return safe_json({
+        "assessment_date": str(now.date()),
+        "players_assessed": len(assessments),
+        "players_flagged": len(flagged),
+        "assessments": assessments,
+    })
 

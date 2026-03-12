@@ -34,8 +34,9 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Crosshair } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
+import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
 import VideoQuickActions, { type Category, type OverlayPendingEvent } from '../components/video/VideoQuickActions'
 import VideoEventLog from '../components/video/VideoEventLog'
@@ -165,6 +166,9 @@ export default function VideoTagging() {
   // Formation snapshot overlay
   const [isSnapshotOpen, setIsSnapshotOpen] = useState(false)
   const [snapshotCount, setSnapshotCount] = useState(0)
+
+  // Tactical view overlay
+  const [showTacticalView, setShowTacticalView] = useState(false)
 
   // Prereq check modal
   const [prereqModal, setPrereqModal] = useState<{
@@ -763,6 +767,48 @@ export default function VideoTagging() {
     if (session?.match_id) navigate(`/results/${session.match_id}`)
   }
 
+  // Build own players list for formation snapshot from lineup data
+  // (must be before early returns to satisfy Rules of Hooks)
+  const snapshotOwnPlayers = useMemo(() => {
+    if (!matchLineup) return []
+    return matchLineup.map((entry) => ({
+      playerId: entry.player_id,
+      jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? null,
+      playerName: entry.player_name || `#${entry.match_jersey_number ?? '?'}`,
+    }))
+  }, [matchLineup])
+
+  // Handle snapshot save — POST to API
+  // (must be before early returns to satisfy Rules of Hooks)
+  const handleSnapshotSave = useCallback(async (
+    positions: Array<{ playerId?: string | null; jerseyNumber: number | null; playerName?: string | null; team: 'own' | 'opponent'; x: number; y: number }>,
+    label: string,
+  ) => {
+    if (!session?.match_id) return
+    const matchTime = calcMatchTime(currentTimeMs)
+    try {
+      await api.playerMovement.createSnapshot({
+        match_id: session.match_id,
+        half: matchTime.half,
+        minute: matchTime.minute,
+        label,
+        positions: positions.map((p) => ({
+          player_id: p.playerId ?? undefined,
+          jersey_number: p.jerseyNumber,
+          x: p.x,
+          y: p.y,
+          team: p.team,
+          player_name: p.playerName ?? undefined,
+        })),
+        source: 'video',
+        video_timestamp_ms: currentTimeMs,
+      })
+      setSnapshotCount((c) => c + 1)
+    } catch (err) {
+      console.error('Failed to save formation snapshot:', err)
+    }
+  }, [session?.match_id, currentTimeMs, calcMatchTime])
+
   // ── Loading / error states ────────────────────────────────────────────
 
   if (sessionLoading) {
@@ -812,46 +858,6 @@ export default function VideoTagging() {
   const handleSkipHalftime = () => setHalftimeSkipped(true)
 
   const opponentName = matchData?.opponent || 'Opposition'
-
-  // Build own players list for formation snapshot from lineup data
-  const snapshotOwnPlayers = useMemo(() => {
-    if (!matchLineup) return []
-    return matchLineup.map((entry) => ({
-      playerId: entry.player_id,
-      jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? null,
-      playerName: entry.player_name || `#${entry.match_jersey_number ?? '?'}`,
-    }))
-  }, [matchLineup])
-
-  // Handle snapshot save — POST to API
-  const handleSnapshotSave = useCallback(async (
-    positions: Array<{ playerId?: string | null; jerseyNumber: number | null; playerName?: string | null; team: 'own' | 'opponent'; x: number; y: number }>,
-    label: string,
-  ) => {
-    if (!session?.match_id) return
-    const matchTime = calcMatchTime(currentTimeMs)
-    try {
-      await api.playerMovement.createSnapshot({
-        match_id: session.match_id,
-        half: matchTime.half,
-        minute: matchTime.minute,
-        label,
-        positions: positions.map((p) => ({
-          player_id: p.playerId ?? undefined,
-          jersey_number: p.jerseyNumber,
-          x: p.x,
-          y: p.y,
-          team: p.team,
-          player_name: p.playerName ?? undefined,
-        })),
-        source: 'video',
-        video_timestamp_ms: currentTimeMs,
-      })
-      setSnapshotCount((c) => c + 1)
-    } catch (err) {
-      console.error('Failed to save formation snapshot:', err)
-    }
-  }, [session?.match_id, currentTimeMs, calcMatchTime])
 
   // ── Shared sub-components ─────────────────────────────────────────────
 
@@ -920,6 +926,15 @@ export default function VideoTagging() {
       >
         <Camera size={compact ? 12 : 14} />
         {snapshotCount > 0 ? `Snapshot (${snapshotCount})` : compact ? 'Snapshot' : 'Formation Snapshot'}
+      </button>
+      <button
+        onClick={() => { playerRef.current?.pause(); setShowTacticalView(true) }}
+        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-indigo-400/20 backdrop-blur-sm shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/25 hover:border-indigo-400/30 hover:scale-[1.02] active:scale-[0.98] text-white whitespace-nowrap`}
+        style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.45) 0%, rgba(79,70,229,0.35) 50%, rgba(129,140,248,0.25) 100%)' }}
+        title="Open tactical bird's-eye view"
+      >
+        <Crosshair size={compact ? 12 : 14} />
+        {compact ? 'Tactical' : 'Tactical View'}
       </button>
       <button
         onClick={handleSyncClick}
@@ -1146,6 +1161,17 @@ export default function VideoTagging() {
           ownPlayers={snapshotOwnPlayers}
           opponentName={opponentName}
         />
+
+        {/* Tactical View Overlay */}
+        {showTacticalView && playerRef.current?.getVideoElement() && (
+          <VideoTacticalView
+            videoElement={playerRef.current.getVideoElement()!}
+            matchId={session.match_id}
+            videoSessionId={sessionId}
+            currentTimeMs={currentTimeMs}
+            onClose={() => setShowTacticalView(false)}
+          />
+        )}
       </div>
     )
   }
@@ -1408,6 +1434,17 @@ export default function VideoTagging() {
         message={alertModal?.message || ''}
         variant={alertModal?.variant || 'danger'}
       />
+
+      {/* Tactical View Overlay */}
+      {showTacticalView && playerRef.current?.getVideoElement() && (
+        <VideoTacticalView
+          videoElement={playerRef.current.getVideoElement()!}
+          matchId={session.match_id}
+          videoSessionId={sessionId}
+          currentTimeMs={currentTimeMs}
+          onClose={() => setShowTacticalView(false)}
+        />
+      )}
 
       {/* Second Yellow → Red Card dramatic overlay */}
       {secondYellowFlash && (
