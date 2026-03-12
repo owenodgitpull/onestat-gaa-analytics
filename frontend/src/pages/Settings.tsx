@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, BookOpen, Users, Bell, Building2 } from 'lucide-react'
+import { Settings as SettingsIcon, BookOpen, Users, Bell, Building2, ScrollText } from 'lucide-react'
 import ClubProfileSettings from '../components/settings/ClubProfileSettings'
 import KnowledgeBaseSettings from '../components/settings/KnowledgeBaseSettings'
 import UserManagementSettings from '../components/settings/UserManagementSettings'
 import NotificationSettings from '../components/settings/NotificationSettings'
 import TeamManagementSettings from '../components/settings/TeamManagementSettings'
+import AuditLogSettings from '../components/settings/AuditLogSettings'
 
 const TABS = [
   { id: 'profile', label: 'Team Profile', icon: SettingsIcon },
@@ -12,6 +13,7 @@ const TABS = [
   { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'audit', label: 'Audit Log', icon: ScrollText },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
@@ -49,6 +51,7 @@ export default function Settings() {
         {activeTab === 'knowledge' && <KnowledgeBaseSettings />}
         {activeTab === 'users' && <UserManagementSettings />}
         {activeTab === 'notifications' && <NotificationSettings />}
+        {activeTab === 'audit' && <AuditLogSettings />}
       </div>
     </div>
   )

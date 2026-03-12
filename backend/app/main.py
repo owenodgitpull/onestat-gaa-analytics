@@ -28,7 +28,7 @@ from app.database import engine, Base, get_db
 from app.routes import players
 from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, fitness_tests, club, onboarding, player_portal, notifications
 from app.routes import auth as auth_routes
-from app.routes import video_analysis, video_events, fixtures, club_members, player_movement, match_prep, organizations, invitations, playbook_push, tactical_analysis
+from app.routes import video_analysis, video_events, fixtures, club_members, player_movement, match_prep, organizations, invitations, playbook_push, tactical_analysis, audit_log
 
 # Configure logging
 logging.basicConfig(
@@ -113,6 +113,10 @@ app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, PUT, DELETE)
     allow_headers=["*"],  # Allow all headers
 )
+
+# Audit trail middleware — logs POST/PUT/DELETE mutations by authenticated users
+from app.middleware.audit import AuditMiddleware
+app.add_middleware(AuditMiddleware)
 
 
 # Global exception handler
@@ -236,6 +240,7 @@ app.include_router(organizations.router, prefix="/api/v1", tags=["Organizations"
 app.include_router(invitations.router, prefix="/api/v1/invitations", tags=["Invitations"])
 app.include_router(playbook_push.router, prefix="/api/v1/playbook", tags=["Playbook"])
 app.include_router(tactical_analysis.router, prefix="/api/v1/tactical", tags=["Tactical Analysis"])
+app.include_router(audit_log.router, prefix="/api/v1/audit-log", tags=["Audit Log"])
 
 
 if __name__ == "__main__":

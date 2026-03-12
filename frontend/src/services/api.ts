@@ -2787,6 +2787,54 @@ export const organizationsAPI = {
 };
 
 
+// ============================================================================
+// Audit Log API
+// ============================================================================
+
+export interface AuditLogEntry {
+  id: string
+  user_email: string
+  user_name: string | null
+  action: string
+  resource_type: string | null
+  resource_id: string | null
+  detail: Record<string, unknown> | null
+  http_method: string | null
+  endpoint: string | null
+  ip_address: string | null
+  created_at: string | null
+}
+
+export interface AuditLogResponse {
+  logs: AuditLogEntry[]
+  total: number
+  page: number
+  per_page: number
+  total_pages: number
+}
+
+export interface AuditSummary {
+  action_counts: Record<string, number>
+  resource_counts: Record<string, number>
+  active_users: { email: string; name: string | null; actions: number }[]
+}
+
+export const auditLogAPI = {
+  list: (params: { page?: number; per_page?: number; action?: string; resource_type?: string; user_email?: string } = {}) => {
+    const search = new URLSearchParams()
+    if (params.page) search.set('page', String(params.page))
+    if (params.per_page) search.set('per_page', String(params.per_page))
+    if (params.action) search.set('action', params.action)
+    if (params.resource_type) search.set('resource_type', params.resource_type)
+    if (params.user_email) search.set('user_email', params.user_email)
+    const qs = search.toString()
+    return fetchAPI<AuditLogResponse>(`/audit-log/${qs ? '?' + qs : ''}`)
+  },
+
+  summary: () =>
+    fetchAPI<AuditSummary>('/audit-log/summary'),
+}
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -2807,6 +2855,7 @@ export const api = {
   playerMovement: playerMovementAPI,
   matchPrep: matchPrepAPI,
   playbook: playbookAPI,
+  auditLog: auditLogAPI,
 };
 
 export default api;

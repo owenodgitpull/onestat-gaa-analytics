@@ -108,6 +108,12 @@ async def get_current_user(
             detail="Account is deactivated",
         )
 
+    # Populate request.state for audit middleware
+    request.state.user_id = user.id
+    request.state.user_email = user.email
+    request.state.user_name = user.name
+    request.state.club_id = user.club_id
+
     return AuthenticatedUser(
         cognito_sub=cognito_sub,
         email=user.email,
