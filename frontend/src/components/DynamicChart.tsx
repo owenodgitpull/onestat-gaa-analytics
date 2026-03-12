@@ -568,7 +568,11 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
 
       {/* Chart */}
       <div className={`transition-opacity duration-200 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
-        {renderChart()}
+        {!data || data.length === 0 ? (
+          <div className="flex items-center justify-center h-[200px] text-white/30 text-sm">
+            No data available for this chart
+          </div>
+        ) : renderChart()}
       </div>
 
       {/* Insight */}
