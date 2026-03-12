@@ -346,3 +346,164 @@ def _extract_text_from_docx(file_bytes: bytes) -> str:
     doc = docx.Document(io.BytesIO(file_bytes))
     paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
     return "\n\n".join(paragraphs)
+
+
+# ---- Seed default documents from R2 ----
+
+DEFAULT_DOCS_R2_PREFIX = "default_gaa_football_knowledge_base/"
+
+# Map filename patterns to doc_type
+def _guess_doc_type(filename: str) -> str:
+    name_lower = filename.lower()
+    if "rule" in name_lower:
+        return "rules"
+    if "tactic" in name_lower or "coaching" in name_lower or "blueprint" in name_lower:
+        return "tactics"
+    if "gps" in name_lower or "statsport" in name_lower or "fitness" in name_lower:
+        return "statsports"
+    return "other"
+
+
+@router.post("/seed-defaults")
+async def seed_default_documents(
+    background_tasks: BackgroundTasks,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Seed shared default documents from R2 folder.
+    Lists all files in default_gaa_football_knowledge_base/,
+    creates KnowledgeDocument records (is_default=True, club_id=NULL),
+    and triggers background RAG processing.
+    Admin-only, idempotent (skips files already seeded).
+    """
+    # List files in the defaults folder
+    files = storage.list_files(prefix=DEFAULT_DOCS_R2_PREFIX)
+    if not files:
+        raise HTTPException(status_code=404, detail="No files found in defaults folder")
+
+    seeded = []
+    skipped = []
+
+    for f in files:
+        r2_key = f["key"]
+        # Extract filename from key
+        filename = r2_key.split("/")[-1]
+        if not filename:
+            continue
+
+        # Skip non-document files
+        is_pdf = filename.lower().endswith(".pdf")
+        is_docx = filename.lower().endswith(".docx")
+        if not is_pdf and not is_docx:
+            continue
+
+        # Check if already seeded (by original_filename + is_default)
+        existing = await db.execute(
+            select(KnowledgeDocument).where(
+                KnowledgeDocument.is_default.is_(True),
+                KnowledgeDocument.original_filename == filename,
+            )
+        )
+        if existing.scalar_one_or_none():
+            skipped.append(filename)
+            continue
+
+        content_type = "application/pdf" if is_pdf else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        doc_type = _guess_doc_type(filename)
+
+        # Create document record — club_id=NULL, is_default=True
+        doc = KnowledgeDocument(
+            club_id=None,
+            filename=filename,
+            original_filename=filename,
+            doc_type=doc_type,
+            r2_key=r2_key,
+            content_type=content_type,
+            is_default=True,
+            processing_status="processing",
+            file_size_bytes=f.get("size"),
+        )
+        db.add(doc)
+        await db.commit()
+        await db.refresh(doc)
+
+        # Trigger background processing (club_id=None for shared chunks)
+        background_tasks.add_task(
+            _process_default_document_background,
+            document_id=doc.id,
+            r2_key=r2_key,
+            content_type=content_type,
+        )
+        seeded.append(filename)
+
+    return {
+        "detail": f"Seeded {len(seeded)} default documents, skipped {len(skipped)} already existing",
+        "seeded": seeded,
+        "skipped": skipped,
+    }
+
+
+async def _process_default_document_background(
+    document_id: UUID,
+    r2_key: str,
+    content_type: str,
+):
+    """Process a default document — same as club docs but club_id=None for shared RAG chunks."""
+    async with async_session_maker() as db:
+        try:
+            result = await db.execute(
+                select(KnowledgeDocument).where(KnowledgeDocument.id == document_id)
+            )
+            doc = result.scalar_one_or_none()
+            if not doc:
+                return
+
+            # Download directly — no club_id validation for default docs
+            file_bytes = storage.download_file(r2_key)
+            if not file_bytes:
+                doc.processing_status = "failed"
+                doc.processing_error = "Failed to download file from storage"
+                await db.commit()
+                return
+
+            doc.file_size_bytes = len(file_bytes)
+
+            # Extract text
+            text_content = ""
+            if content_type == "application/pdf":
+                text_content = _extract_text_from_pdf(file_bytes)
+            elif "wordprocessingml" in (content_type or ""):
+                text_content = _extract_text_from_docx(file_bytes)
+
+            if not text_content or len(text_content.strip()) < 50:
+                doc.processing_status = "failed"
+                doc.processing_error = "Could not extract meaningful text from file"
+                await db.commit()
+                return
+
+            # Process through RAG — club_id=None so all teams can access
+            rag_result = await RAGService.process_document(
+                db,
+                source_file=doc.filename,
+                content=text_content,
+                doc_type=doc.doc_type,
+                force=True,
+                club_id=None,
+            )
+
+            doc.chunk_count = rag_result.get("chunk_count", 0)
+            doc.processing_status = "completed"
+            doc.processing_error = None
+            await db.commit()
+
+            logger.info(f"Default document processed: {doc.filename} — {doc.chunk_count} chunks")
+
+        except Exception as e:
+            logger.error(f"Default document processing failed for {document_id}: {e}", exc_info=True)
+            try:
+                doc.processing_status = "failed"
+                doc.processing_error = str(e)[:500]
+                await db.commit()
+            except Exception:
+                pass
