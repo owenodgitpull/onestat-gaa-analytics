@@ -2282,17 +2282,61 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     # Pass leaders
     pass_leaders = sorted(pass_count_by_player.values(), key=lambda x: x["passes_made"], reverse=True)
 
-    return safe_json({
-        "total_segments": len(segments),
+    # ── Data confidence tier ──
+    # A typical GAA match has ~80-120 possession changes. Tier determines
+    # what the AI agent should and should NOT present.
+    n = len(segments)
+    if n < 10:
+        confidence = "low"
+        guidance = (
+            "VERY LOW SAMPLE: Only {n} ball carries were logged in this match. "
+            "DO NOT present pass networks, chain effectiveness averages, tempo stats, "
+            "or territory progression percentages — they would be misleading. "
+            "ONLY mention individual observations: e.g. 'Player X was seen carrying "
+            "into dangerous positions in the 2nd half'. Do NOT quote averages or "
+            "percentages from this data."
+        ).format(n=n)
+    elif n < 30:
+        confidence = "medium"
+        guidance = (
+            "PARTIAL SAMPLE: {n} ball carries were logged (estimated ~20-30% of match "
+            "possessions). You may mention recurring patterns with qualifiers like "
+            "'from the possessions logged' or 'a notable pattern in the recorded data'. "
+            "Do NOT present chain averages or tempo stats as definitive. Pass connections "
+            "with 2+ occurrences are meaningful; single connections may be coincidental."
+        ).format(n=n)
+    else:
+        confidence = "high"
+        guidance = (
+            "GOOD SAMPLE: {n} ball carries were logged, giving reasonable coverage of "
+            "the match. Pass network, chain effectiveness, tempo, and territory stats "
+            "are meaningful. Still frame as 'from logged possessions' rather than "
+            "definitive totals, but you can present averages, percentages, and patterns "
+            "with confidence."
+        ).format(n=n)
+
+    # Build response — always include basic carrier stats, gate advanced stats by tier
+    result = {
+        "data_confidence": confidence,
+        "analysis_guidance": guidance,
+        "total_segments": n,
         "total_logged_passes": total_passes,
         "carrier_stats": sorted(carrier_stats.values(), key=lambda x: x["carries"], reverse=True),
-        "pass_network": top_connections,
-        "pass_leaders": pass_leaders[:10],
-        "territory_progression": territory_passes,
-        "chain_effectiveness": chain_effectiveness,
-        "tempo": tempo,
-        "chains": chain_data[:30],
-    })
+    }
+
+    # Medium+ tier: include pass network and leaders
+    if confidence in ("medium", "high"):
+        result["pass_network"] = top_connections
+        result["pass_leaders"] = pass_leaders[:10]
+        result["chains"] = chain_data[:30]
+
+    # High tier only: include aggregated stats (averages, percentages, tempo)
+    if confidence == "high":
+        result["territory_progression"] = territory_passes
+        result["chain_effectiveness"] = chain_effectiveness
+        result["tempo"] = tempo
+
+    return safe_json(result)
 
 
 async def get_formation_snapshots_tool(db: AsyncSession, match_id: str, club_id=None) -> str:
