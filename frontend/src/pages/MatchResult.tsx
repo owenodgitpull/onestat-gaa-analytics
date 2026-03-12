@@ -575,8 +575,8 @@ export default function MatchResult() {
 
       {/* Main content — 2-col layout matching live recording page */}
       <div className="flex flex-col md:flex-row md:items-start gap-6">
-        {/* Left column — event map, filters */}
-        <div className="flex-[2] min-w-0 space-y-6 md:sticky md:top-4">
+        {/* Left column — event map, filters, first charts */}
+        <div className="flex-[2] min-w-0 space-y-6">
           {/* Event Map */}
           <div className="space-y-3">
             <div className="glass-card p-4">
@@ -631,6 +631,25 @@ export default function MatchResult() {
               <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
             )}
           </div>
+
+          {/* First chart pair fills the gap beside the events sidebar */}
+          {(eventsData?.events?.length ?? 0) > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+              <ChartZoomModal title="Paths Taken">
+                <PathsTakenChart matchId={matchId!} />
+              </ChartZoomModal>
+              <ChartZoomModal title="Possession & Territory">
+                <PossessionTerritoryChart
+                  stats={matchStats}
+                  events={eventsData?.events || []}
+                  matchId={matchId!}
+                  opponent={match.opponent}
+                  insight={postMatchReport?.insights?.possession}
+                  insightLoading={reportLoading}
+                />
+              </ChartZoomModal>
+            </div>
+          )}
 
         </div>
 
@@ -713,25 +732,9 @@ export default function MatchResult() {
         </div>
       </div>
 
-      {/* Full-width charts — outside the 2-col layout so they use all available space */}
+      {/* Full-width charts — remaining charts outside the 2-col layout */}
       {(eventsData?.events?.length ?? 0) > 0 ? (
         <div className="space-y-4 mt-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
-            <ChartZoomModal title="Paths Taken">
-              <PathsTakenChart matchId={matchId!} />
-            </ChartZoomModal>
-            <ChartZoomModal title="Possession & Territory">
-              <PossessionTerritoryChart
-                stats={matchStats}
-                events={eventsData?.events || []}
-                matchId={matchId!}
-                opponent={match.opponent}
-                insight={postMatchReport?.insights?.possession}
-                insightLoading={reportLoading}
-              />
-            </ChartZoomModal>
-          </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Scoring Timeline">
               <ScoringTimeline
