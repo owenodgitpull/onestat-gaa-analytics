@@ -187,26 +187,22 @@ async def health_check():
         200: All systems operational
         503: Service unavailable
     """
+    db_status = "unknown"
     try:
-        # Test database connection
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "environment": os.getenv("ENVIRONMENT", "unknown"),
-        }
+        db_status = "connected"
     except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "database": "disconnected",
-                "error": str(e),
-            }
-        )
+        logger.warning(f"Health check DB probe failed: {str(e)}")
+        db_status = "disconnected"
+
+    # Always return 200 so Fly keeps the machine running
+    # DB issues are transient and shouldn't kill the process
+    return {
+        "status": "healthy" if db_status == "connected" else "degraded",
+        "database": db_status,
+        "environment": os.getenv("ENVIRONMENT", "unknown"),
+    }
 
 
 # Register API routes
