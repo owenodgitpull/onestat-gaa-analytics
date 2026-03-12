@@ -632,60 +632,6 @@ export default function MatchResult() {
             )}
           </div>
 
-          {/* Charts */}
-          {(eventsData?.events?.length ?? 0) > 0 ? (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
-                <ChartZoomModal title="Paths Taken">
-                  <PathsTakenChart matchId={matchId!} />
-                </ChartZoomModal>
-                <ChartZoomModal title="Possession & Territory">
-                  <PossessionTerritoryChart
-                    stats={matchStats}
-                    events={eventsData?.events || []}
-                    matchId={matchId!}
-                    opponent={match.opponent}
-                    insight={postMatchReport?.insights?.possession}
-                    insightLoading={reportLoading}
-                  />
-                </ChartZoomModal>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
-                <ChartZoomModal title="Scoring Timeline">
-                  <ScoringTimeline
-                    events={eventsData?.events || []}
-                    opponent={match.opponent}
-                    insight={postMatchReport?.insights?.scoring}
-                    insightLoading={reportLoading}
-                  />
-                </ChartZoomModal>
-                <ChartZoomModal title="Shot Outcomes">
-                  <ShotOutcomeChart
-                    events={eventsData?.events || []}
-                    opponent={match.opponent}
-                    insight={postMatchReport?.insights?.shooting}
-                    insightLoading={reportLoading}
-                  />
-                </ChartZoomModal>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
-                <ChartZoomModal title="Kickout Zones">
-                  <MatchKickoutZones events={eventsData?.events || []} />
-                </ChartZoomModal>
-                <ChartZoomModal title="Kickout Outcomes">
-                  <MatchKickoutOutcomes events={eventsData?.events || []} />
-                </ChartZoomModal>
-              </div>
-            </>
-          ) : (
-            <div className="glass-card p-8 text-center">
-              <Activity size={32} className="text-white/20 mx-auto mb-3" />
-              <p className="text-white/40 text-sm">Awaiting match events</p>
-              <p className="text-white/20 text-xs mt-1">Charts and analysis will appear once events are recorded</p>
-            </div>
-          )}
         </div>
 
         {/* Right column — stats sidebar */}
@@ -766,6 +712,61 @@ export default function MatchResult() {
           />
         </div>
       </div>
+
+      {/* Full-width charts — outside the 2-col layout so they use all available space */}
+      {(eventsData?.events?.length ?? 0) > 0 ? (
+        <div className="space-y-4 mt-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Paths Taken">
+              <PathsTakenChart matchId={matchId!} />
+            </ChartZoomModal>
+            <ChartZoomModal title="Possession & Territory">
+              <PossessionTerritoryChart
+                stats={matchStats}
+                events={eventsData?.events || []}
+                matchId={matchId!}
+                opponent={match.opponent}
+                insight={postMatchReport?.insights?.possession}
+                insightLoading={reportLoading}
+              />
+            </ChartZoomModal>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Scoring Timeline">
+              <ScoringTimeline
+                events={eventsData?.events || []}
+                opponent={match.opponent}
+                insight={postMatchReport?.insights?.scoring}
+                insightLoading={reportLoading}
+              />
+            </ChartZoomModal>
+            <ChartZoomModal title="Shot Outcomes">
+              <ShotOutcomeChart
+                events={eventsData?.events || []}
+                opponent={match.opponent}
+                insight={postMatchReport?.insights?.shooting}
+                insightLoading={reportLoading}
+              />
+            </ChartZoomModal>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Kickout Zones">
+              <MatchKickoutZones events={eventsData?.events || []} />
+            </ChartZoomModal>
+            <ChartZoomModal title="Kickout Outcomes">
+              <MatchKickoutOutcomes events={eventsData?.events || []} />
+            </ChartZoomModal>
+          </div>
+        </div>
+      ) : (
+        <div className="glass-card p-8 text-center mt-6">
+          <Activity size={32} className="text-white/20 mx-auto mb-3" />
+          <p className="text-white/40 text-sm">Awaiting match events</p>
+          <p className="text-white/20 text-xs mt-1">Charts and analysis will appear once events are recorded</p>
+        </div>
+      )}
 
       {/* GPS Performance Section - Only shows when GPS data exists */}
       {gpsData && gpsData.length > 0 && (
