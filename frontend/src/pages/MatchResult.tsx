@@ -373,63 +373,64 @@ export default function MatchResult() {
         )}
 
         {/* GPS Data Section */}
-        <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 mr-auto">
             {gpsData && gpsData.length > 0 ? (
-              <div className="flex items-center gap-2 text-emerald-400">
-                <CheckCircle size={16} />
-                <span className="text-sm">GPS data loaded ({gpsData.length} players)</span>
+              <div className="flex items-center gap-1.5 text-emerald-400">
+                <CheckCircle size={14} className="flex-shrink-0" />
+                <span className="text-xs font-medium">GPS ({gpsData.length})</span>
               </div>
             ) : (
-              <div className="flex items-center gap-2 text-white/40">
-                <Activity size={16} />
-                <span className="text-sm">No GPS data uploaded</span>
+              <div className="flex items-center gap-1.5 text-white/40">
+                <Activity size={14} className="flex-shrink-0" />
+                <span className="text-xs">No GPS</span>
               </div>
             )}
             {postMatchReport?.gps_included && (
-              <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400">
-                AI analysis includes GPS insights
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 whitespace-nowrap">
+                +GPS insights
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {gpsData && gpsData.length > 0 ? (
               <>
-                {/* Delete Confirmation */}
                 {showDeleteConfirm ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-white/60">Delete GPS data?</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-white/60">Delete?</span>
                     <button
                       onClick={handleDeleteGps}
                       disabled={isDeleting}
-                      className="flex items-center gap-1 px-3 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-medium transition-colors disabled:opacity-50"
                     >
-                      {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                      Confirm
+                      {isDeleting ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                      Yes
                     </button>
                     <button
                       onClick={() => setShowDeleteConfirm(false)}
                       disabled={isDeleting}
-                      className="flex items-center gap-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-sm font-medium transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-medium transition-colors"
                     >
-                      Cancel
+                      No
                     </button>
                   </div>
                 ) : (
                   <>
                     <button
                       onClick={() => setShowDeleteConfirm(true)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm font-medium transition-colors border border-red-500/30"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs font-medium transition-colors border border-red-500/30"
+                      title="Remove GPS Data"
                     >
-                      <X size={16} />
-                      Remove GPS Data
+                      <X size={14} />
+                      <span className="hidden sm:inline">Remove GPS</span>
                     </button>
                     <button
                       onClick={() => setShowGpsUpload(true)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
+                      title="Replace GPS Data"
                     >
-                      <Upload size={16} />
-                      Replace GPS Data
+                      <Upload size={14} />
+                      <span className="hidden sm:inline">Replace GPS</span>
                     </button>
                   </>
                 )}
@@ -437,19 +438,19 @@ export default function MatchResult() {
             ) : (
               <button
                 onClick={() => setShowGpsUpload(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
               >
-                <Upload size={16} />
-                Upload GPS Data
+                <Upload size={14} />
+                Upload GPS
               </button>
             )}
             {hasEvents && (
               <Link
                 to={`/results/${matchId}/video`}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-medium transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition-colors"
               >
-                <Video size={16} />
-                Video Analysis
+                <Video size={14} />
+                Video
               </Link>
             )}
           </div>
@@ -807,6 +808,19 @@ export default function MatchResult() {
 }
 
 // Stats Table Component - matches live match glassmorphic styling
+function abbreviateTeamName(name: string, maxLen = 12): string {
+  if (name.length <= maxLen) return name
+  // Try dropping common suffixes first
+  const short = name.replace(/\s+(GAA|CLG|GFC|AFC)$/i, '')
+  if (short.length <= maxLen) return short
+  // Split into words, abbreviate all but the first
+  const words = short.split(/\s+/)
+  if (words.length >= 2) {
+    return words[0] + ' ' + words.slice(1).map(w => w[0].toUpperCase()).join('')
+  }
+  return name.slice(0, maxLen)
+}
+
 function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; opponent: string; teamName?: string }) {
   const totalTeamKickouts = stats.team_kickouts_won + stats.team_kickouts_lost
   const totalOpponentKickouts = stats.opponent_kickouts_won + stats.opponent_kickouts_lost
@@ -842,9 +856,9 @@ function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; o
   return (
     <div className="rounded-xl border border-white/[0.08] overflow-hidden" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)' }}>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 bg-white/[0.06] border-b border-white/[0.08]">
-        <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-wider">{teamName}</div>
-        <div className="min-w-[90px]" />
-        <div className="text-center text-xs font-bold text-white/50 uppercase tracking-wider">{opponent}</div>
+        <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-wider truncate" title={teamName}>{abbreviateTeamName(teamName)}</div>
+        <div className="min-w-[80px]" />
+        <div className="text-center text-xs font-bold text-white/50 uppercase tracking-wider truncate" title={opponent}>{abbreviateTeamName(opponent)}</div>
       </div>
       {rows.map((row, idx) => {
         const leftWins = row.leftVal > row.rightVal
@@ -854,7 +868,7 @@ function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; o
             <div className={`text-center text-base font-bold ${leftWins ? 'text-emerald-400' : 'text-white/80'}`}>
               {row.left}
             </div>
-            <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[90px]">
+            <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[80px]">
               {row.label}
             </div>
             <div className={`text-center text-base font-bold ${rightWins ? 'text-emerald-400' : 'text-white/80'}`}>
