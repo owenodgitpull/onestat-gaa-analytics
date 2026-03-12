@@ -15,6 +15,8 @@ import PossessionTerritoryChart from '@/components/charts/PossessionTerritoryCha
 import ScoringTimeline from '@/components/charts/ScoringTimeline'
 import ShotOutcomeChart from '@/components/charts/ShotOutcomeChart'
 import PathsTakenChart from '@/components/charts/PathsTakenChart'
+import MatchKickoutZones from '@/components/charts/MatchKickoutZones'
+import MatchKickoutOutcomes from '@/components/charts/MatchKickoutOutcomes'
 import FullscreenPitchMode from '@/components/FullscreenPitchMode'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import FormationSnapshotButton from '@/components/FormationSnapshotButton'
@@ -2525,20 +2527,30 @@ export default function MatchRecording() {
 
               {/* Scoring + Shot Outcome — full width, 2 side by side */}
               {matchId && matchEventsData?.events && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <ChartZoomModal title="Scoring Timeline">
-                    <ScoringTimeline
-                      events={matchEventsData.events}
-                      opponent={matchDisplay.opponent}
-                    />
-                  </ChartZoomModal>
-                  <ChartZoomModal title="Shot Outcomes">
-                    <ShotOutcomeChart
-                      events={matchEventsData.events}
-                      opponent={matchDisplay.opponent}
-                    />
-                  </ChartZoomModal>
-                </div>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <ChartZoomModal title="Scoring Timeline">
+                      <ScoringTimeline
+                        events={matchEventsData.events}
+                        opponent={matchDisplay.opponent}
+                      />
+                    </ChartZoomModal>
+                    <ChartZoomModal title="Shot Outcomes">
+                      <ShotOutcomeChart
+                        events={matchEventsData.events}
+                        opponent={matchDisplay.opponent}
+                      />
+                    </ChartZoomModal>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+                    <ChartZoomModal title="Kickout Zones">
+                      <MatchKickoutZones events={matchEventsData.events} />
+                    </ChartZoomModal>
+                    <ChartZoomModal title="Kickout Outcomes">
+                      <MatchKickoutOutcomes events={matchEventsData.events} />
+                    </ChartZoomModal>
+                  </div>
+                </>
               )}
             </div>
 

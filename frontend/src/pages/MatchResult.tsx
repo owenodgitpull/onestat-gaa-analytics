@@ -38,6 +38,8 @@ import PossessionTerritoryChart from '../components/charts/PossessionTerritoryCh
 import ScoringTimeline from '../components/charts/ScoringTimeline'
 import ShotOutcomeChart from '../components/charts/ShotOutcomeChart'
 import PathsTakenChart from '../components/charts/PathsTakenChart'
+import MatchKickoutZones from '../components/charts/MatchKickoutZones'
+import MatchKickoutOutcomes from '../components/charts/MatchKickoutOutcomes'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
 import { usePlayers } from '../hooks/usePlayers'
@@ -665,6 +667,15 @@ export default function MatchResult() {
                     insight={postMatchReport?.insights?.shooting}
                     insightLoading={reportLoading}
                   />
+                </ChartZoomModal>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+                <ChartZoomModal title="Kickout Zones">
+                  <MatchKickoutZones events={eventsData?.events || []} />
+                </ChartZoomModal>
+                <ChartZoomModal title="Kickout Outcomes">
+                  <MatchKickoutOutcomes events={eventsData?.events || []} />
                 </ChartZoomModal>
               </div>
             </>
