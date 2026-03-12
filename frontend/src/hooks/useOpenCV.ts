@@ -24,7 +24,7 @@ export function useOpenCV() {
     setLoading(true);
 
     const script = document.createElement('script');
-    script.src = '/opencv.js';
+    script.src = 'https://docs.opencv.org/4.10.0/opencv.js';
     script.async = true;
 
     script.onload = () => {

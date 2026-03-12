@@ -242,23 +242,22 @@ export default function VideoTacticalView({
 
       {/* Main content */}
       <div className="flex-1 flex items-center justify-center p-4">
-        {/* Loading OpenCV */}
+        {/* Loading OpenCV indicator (non-blocking) */}
         {cvLoading && (
-          <div className="text-white text-center">
-            <div className="animate-spin w-8 h-8 border-2 border-white border-t-transparent rounded-full mx-auto mb-3" />
-            <p>Loading OpenCV.js...</p>
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-white/10 text-white/60 text-xs px-3 py-1.5 rounded-lg z-10 flex items-center gap-2">
+            <div className="animate-spin w-3 h-3 border-2 border-white/40 border-t-white rounded-full" />
+            Loading OpenCV.js for bird's-eye view...
           </div>
         )}
 
-        {cvError && (
-          <div className="text-red-400 text-center">
-            <p>Failed to load OpenCV: {cvError}</p>
-            <p className="text-sm text-gray-400 mt-1">Tactical view requires OpenCV.js in public/opencv.js</p>
+        {cvError && state === 'CALIBRATING' && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs px-3 py-1.5 rounded-lg z-10">
+            Bird's-eye warp unavailable — calibration + player detection still work
           </div>
         )}
 
         {/* Calibration state */}
-        {state === 'CALIBRATING' && !cvLoading && !cvError && (
+        {state === 'CALIBRATING' && (
           <div className="relative" style={{ width: '80vw', maxWidth: 960 }}>
             <canvas
               ref={frameCanvasRef}
