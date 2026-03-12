@@ -23,7 +23,8 @@ import {
   X,
   Target,
   Video,
-  Info
+  Info,
+  Users
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { api } from '../services/api'
@@ -31,6 +32,7 @@ import ChartZoomModal from '@/components/ChartZoomModal'
 import { useClubName } from '../contexts/ClubContext'
 import GAAPitch from '../components/GAAPitch'
 import ManMarkingPanel from '../components/ManMarkingPanel'
+import MatchLineupViewer from '../components/MatchLineupViewer'
 import EventFilterToggles, { getEventTypesForFilters } from '../components/EventFilterToggles'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
 import ScoringTimeline from '../components/charts/ScoringTimeline'
@@ -99,6 +101,14 @@ export default function MatchResult() {
 
   // Team filter state - which team's events to show on pitch
   const [teamFilter, setTeamFilter] = useState<'own' | 'opponent'>('own')
+
+  // Lineup
+  const [showLineup, setShowLineup] = useState(false)
+  const { data: lineupData } = useQuery({
+    queryKey: ['match-lineup', matchId],
+    queryFn: () => api.matchLineups.getLineup(matchId!),
+    enabled: !!matchId,
+  })
 
   // Man marking
   const { data: markingAssignments = [], refetch: refetchMarkings } = useQuery({
@@ -444,6 +454,16 @@ export default function MatchResult() {
                 Upload GPS
               </button>
             )}
+            {lineupData && lineupData.length > 0 && (
+              <button
+                onClick={() => setShowLineup(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 text-xs font-medium transition-colors border border-blue-500/30"
+                title="View Team Lineup"
+              >
+                <Users size={14} />
+                <span className="hidden sm:inline">Lineup</span>
+              </button>
+            )}
             {hasEvents && (
               <Link
                 to={`/results/${matchId}/video`}
@@ -541,6 +561,15 @@ export default function MatchResult() {
           </div>
         </div>
       )}
+
+      {/* Match Lineup Viewer */}
+      <MatchLineupViewer
+        isOpen={showLineup}
+        onClose={() => setShowLineup(false)}
+        lineup={lineupData || []}
+        events={eventsData?.events || []}
+        opponentName={match?.opponent || ''}
+      />
 
       {/* Main content — 2-col layout matching live recording page */}
       <div className="flex flex-col md:flex-row gap-6">
