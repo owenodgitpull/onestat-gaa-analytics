@@ -53,7 +53,9 @@ function setOnline(online: boolean) {
 
 async function healthCheck() {
   try {
-    const baseUrl = import.meta.env.VITE_API_URL || ''
+    // Strip /api/v1 suffix to reach the root health endpoint
+    const rawBase = import.meta.env.VITE_API_URL || ''
+    const baseUrl = rawBase.replace(/\/api\/v\d+\/?$/, '')
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 5000)
     const resp = await fetch(`${baseUrl}${PING_URL}`, {

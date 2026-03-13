@@ -44,6 +44,21 @@ class MatchService:
             status=MatchStatus.SCHEDULED,
             club_id=club_id,
         )
+        # Optional fields from the create schema
+        if match_data.weather_condition is not None:
+            match_kwargs['weather_condition'] = match_data.weather_condition
+        if match_data.temperature_celsius is not None:
+            match_kwargs['temperature_celsius'] = match_data.temperature_celsius
+        if match_data.competition is not None:
+            match_kwargs['competition'] = match_data.competition
+        if match_data.referee is not None:
+            match_kwargs['referee'] = match_data.referee
+        if match_data.pitch_condition is not None:
+            match_kwargs['pitch_condition'] = match_data.pitch_condition
+        if match_data.wind_speed_kmh is not None:
+            match_kwargs['wind_speed_kmh'] = match_data.wind_speed_kmh
+        if match_data.tactical_notes is not None:
+            match_kwargs['tactical_notes'] = match_data.tactical_notes
         # Support client-provided UUID for offline-created matches
         if getattr(match_data, 'id', None):
             match_kwargs['id'] = match_data.id
