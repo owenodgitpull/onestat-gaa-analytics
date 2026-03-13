@@ -28,6 +28,10 @@ SKIP_PATTERNS = [
     r"^/api/v1/notifications/subscribe", # Push subscription — internal
     r"^/api/v1/player-movement/.*/path-points",  # Path point appends (very frequent during recording)
     r"^/api/v1/live-insights",           # Live AI calls during match
+    r"^/api/v1/ai/dashboard",           # Dashboard chart generation (POST but read-like)
+    r"^/api/v1/ai/kpi",                 # KPI insight generation (POST but read-like)
+    r"^/api/v1/ai/outlier",             # Outlier suggestions (POST but read-like)
+    r"^/api/v1/ai/insight-alerts",      # Insight alert generation (POST but read-like)
     r"^/api/v1/audit-log",              # Don't audit the audit log itself
 ]
 
