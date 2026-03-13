@@ -10,10 +10,10 @@ import AuditLogSettings from '../components/settings/AuditLogSettings'
 const TABS = [
   { id: 'profile', label: 'Team Profile', icon: SettingsIcon },
   { id: 'teams', label: 'Teams', icon: Building2 },
-  { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
+  { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'audit', label: 'Audit Log', icon: ScrollText },
+  { id: 'audit', label: 'Audit', icon: ScrollText },
 ] as const
 
 type TabId = (typeof TABS)[number]['id']
