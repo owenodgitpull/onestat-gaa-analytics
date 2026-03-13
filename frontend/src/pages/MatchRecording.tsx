@@ -245,9 +245,13 @@ export default function MatchRecording() {
         playerName: player?.name ?? entry.player_name ?? 'Unknown',
         isOnField: entry.is_on_field,
         positionLabel: POSITION_LABELS[entry.position_id] || entry.position_id || '',
+        positionId: entry.position_id || '',
       }
     })
   }, [matchLineup, players])
+
+  // Track recent carrier selections (most recent first) for quick-pick shortcuts
+  const [recentCarrierIds, setRecentCarrierIds] = useState<string[]>([])
 
   const handleCarrierSelect = async (playerId: string, jerseyNumber: number | null) => {
     if (activeCarrierId === playerId) {
@@ -258,6 +262,8 @@ export default function MatchRecording() {
       // Select new carrier
       await playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y)
       setActiveCarrierId(playerId)
+      // Track recent carriers (keep last 10, most recent first)
+      setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     }
   }
 
@@ -2324,6 +2330,8 @@ export default function MatchRecording() {
                     onCarrierSelect={handleCarrierSelect}
                     teamPrimaryColor={club?.primary_colour || '#10B981'}
                     teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                    currentHalf={currentHalf}
+                    recentCarrierIds={recentCarrierIds}
                   />
                 </div>
               )}
