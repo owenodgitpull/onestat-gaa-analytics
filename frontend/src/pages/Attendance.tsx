@@ -635,11 +635,11 @@ function TrainingLeaderboard({ leaderboard, squadAverages }: { leaderboard: Lead
   const [metric, setMetric] = useState<string>('total_distance')
 
   const metrics = [
-    { key: 'total_distance', label: 'Total Distance', avgField: 'avg_total_distance_m', getValue: (p: LeaderboardPlayer) => p.avg_total_distance_m, format: (v: number) => Math.round(v).toLocaleString() + 'm' },
-    { key: 'max_speed', label: 'Max Speed', avgField: 'avg_max_speed_ms', getValue: (p: LeaderboardPlayer) => p.avg_max_speed_ms, format: (v: number) => v.toFixed(2) + ' m/s' },
-    { key: 'hsr', label: 'HSR', avgField: 'avg_high_speed_running_m', getValue: (p: LeaderboardPlayer) => p.avg_high_speed_running_m, format: (v: number) => Math.round(v).toLocaleString() + 'm' },
-    { key: 'sprints', label: 'Sprints', avgField: 'avg_sprint_count', getValue: (p: LeaderboardPlayer) => p.avg_sprint_count, format: (v: number) => v.toFixed(1) },
-    { key: 'dsl', label: 'DSL', avgField: 'avg_dynamic_stress_load', getValue: (p: LeaderboardPlayer) => p.avg_dynamic_stress_load, format: (v: number) => Math.round(v).toLocaleString() },
+    { key: 'total_distance', label: 'Total Distance', avgField: 'avg_total_distance_m', getValue: (p: LeaderboardPlayer) => p.avg_total_distance_m ?? 0, format: (v: number) => Math.round(v).toLocaleString() + 'm' },
+    { key: 'max_speed', label: 'Max Speed', avgField: 'avg_max_speed_ms', getValue: (p: LeaderboardPlayer) => p.avg_max_speed_ms ?? 0, format: (v: number) => v.toFixed(2) + ' m/s' },
+    { key: 'hsr', label: 'HSR', avgField: 'avg_high_speed_running_m', getValue: (p: LeaderboardPlayer) => p.avg_high_speed_running_m ?? 0, format: (v: number) => Math.round(v).toLocaleString() + 'm' },
+    { key: 'sprints', label: 'Sprints', avgField: 'avg_sprint_count', getValue: (p: LeaderboardPlayer) => p.avg_sprint_count ?? 0, format: (v: number) => v.toFixed(1) },
+    { key: 'dsl', label: 'DSL', avgField: 'avg_dynamic_stress_load', getValue: (p: LeaderboardPlayer) => p.avg_dynamic_stress_load ?? 0, format: (v: number) => Math.round(v).toLocaleString() },
   ]
 
   const activeMetric = metrics.find(m => m.key === metric)!
