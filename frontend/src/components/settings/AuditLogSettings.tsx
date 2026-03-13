@@ -12,6 +12,8 @@ const ACTION_COLORS: Record<string, string> = {
   used: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
   pushed: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
   viewed: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+  log_in: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  log_out: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   logout: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   invited_player: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
   setup_profile: 'bg-pink-500/10 text-pink-400 border-pink-500/20',

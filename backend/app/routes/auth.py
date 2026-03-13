@@ -25,7 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user, require_club, require_role
 from app.config import get_settings
-from app.database import get_db
+from app.database import get_db, async_session_maker
+from app.models.audit_log import AuditLog
 from app.models.club import Club
 from app.models.player import Player
 from app.models.user import User
@@ -36,6 +37,29 @@ from app.schemas.player_portal import SelectPlayerRequest
 logger = logging.getLogger(__name__)
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
+
+
+async def _write_audit(request: Request, user: User, action: str):
+    """Write an audit log entry for auth events (login/logout)."""
+    try:
+        ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if not ip:
+            ip = request.client.host if request.client else None
+        async with async_session_maker() as db:
+            db.add(AuditLog(
+                club_id=user.club_id,
+                user_id=user.id,
+                user_email=user.email,
+                user_name=user.name,
+                action=action,
+                resource_type="auth",
+                http_method=request.method,
+                endpoint=request.url.path,
+                ip_address=ip,
+            ))
+            await db.commit()
+    except Exception as e:
+        logger.warning(f"Auth audit log write failed: {e}")
 
 
 def _looks_like_uuid(value: str) -> bool:
@@ -284,6 +308,8 @@ async def exchange_token(
     else:
         user_response.onboarding_completed = False
 
+    await _write_audit(request, user, "log_in")
+
     return CookieAuthResponse(
         user=user_response,
         expires_in=expires_in,
@@ -397,6 +423,24 @@ async def logout(
 
         if resp.status_code != 200:
             logger.warning(f"Token revocation failed: {resp.status_code}")
+
+    # Audit: try to identify the user from the access token cookie before clearing
+    access_token = request.cookies.get("access_token")
+    if access_token:
+        try:
+            from app.auth.cognito import verify_cognito_token
+            claims = await verify_cognito_token(access_token)
+            cognito_sub = claims.get("sub")
+            if cognito_sub:
+                async with async_session_maker() as audit_db:
+                    result = await audit_db.execute(
+                        select(User).where(User.cognito_sub == cognito_sub)
+                    )
+                    logout_user = result.scalar_one_or_none()
+                    if logout_user:
+                        await _write_audit(request, logout_user, "log_out")
+        except Exception:
+            pass  # Don't block logout if audit fails
 
     _clear_auth_cookies(response)
     return {"success": True}
