@@ -49,7 +49,8 @@ import HalftimeMarker from '../components/video/HalftimeMarker'
 import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video/PitchZoneSelector'
 import BlackCardTimer, { type BlackCardEntry } from '../components/BlackCardTimer'
 import VideoFormationSnapshot from '../components/video/VideoFormationSnapshot'
-import { useClubName } from '../contexts/ClubContext'
+import JerseyNumberStrip, { type JerseyPlayer } from '../components/JerseyNumberStrip'
+import { useClubName, useClub } from '../contexts/ClubContext'
 import { useTour } from '../hooks/useTour'
 import { videoTaggingSteps } from '../config/tourSteps'
 import { useVideoSession, useSetHalftime } from '../hooks/useVideoSessions'
@@ -64,7 +65,7 @@ import {
 } from '../hooks/useVideoEvents'
 import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
 import type { VideoEventCreateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData } from '../services/videoApi'
-import { api } from '../services/api'
+import { api, type BallCarrierSegment } from '../services/api'
 import { useQuery } from '@tanstack/react-query'
 import type { Player } from '../types'
 
@@ -98,6 +99,14 @@ export default function VideoTagging() {
   const navigate = useNavigate()
   const playerRef = useRef<VideoPlayerHandle>(null)
   const clubName = useClubName()
+  const { club } = useClub()
+
+  // Ball carrier tracking state
+  const [activeCarrierId, setActiveCarrierId] = useState<string | null>(null)
+  const [recentCarrierIds, setRecentCarrierIds] = useState<string[]>([])
+  const activeSegmentRef = useRef<BallCarrierSegment | null>(null)
+  const carrierPathBufferRef = useRef<Array<{ x: number; y: number }>>([])
+  const carrierFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Core state
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
@@ -440,10 +449,15 @@ export default function VideoTagging() {
 
     createEvent.mutate({ sessionId, data })
 
+    // Auto-end carrier on terminal events (scores, turnovers, wides, etc.)
+    onCarrierTerminalEvent(data.event_type)
+
     // Auto-flip possession (action.autoFlipTo is the source of truth)
     const action = pending.action
     if (action.autoFlipTo) {
       setPossession(action.autoFlipTo === 'us' ? 'team_a' : 'team_b')
+      // End carrier on possession swap
+      onCarrierPossessionSwap()
     }
     // Context-aware tab switch (score/wide → kickouts)
     if (action.autoSwitchTab) {
@@ -557,6 +571,7 @@ export default function VideoTagging() {
   const handleDirectCreate = useCallback((data: VideoEventCreateData) => {
     if (!sessionId) return
     createEvent.mutate({ sessionId, data })
+    onCarrierTerminalEvent(data.event_type)
     setAiDismissed(true)
 
     // Start black card 10-min countdown
@@ -771,12 +786,201 @@ export default function VideoTagging() {
   // (must be before early returns to satisfy Rules of Hooks)
   const snapshotOwnPlayers = useMemo(() => {
     if (!matchLineup) return []
-    return matchLineup.map((entry) => ({
-      playerId: entry.player_id,
-      jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? null,
-      playerName: entry.player_name || `#${entry.match_jersey_number ?? '?'}`,
-    }))
-  }, [matchLineup])
+    const playerMap = new Map(players?.map(p => [p.id, p]) ?? [])
+    return matchLineup.map((entry) => {
+      const player = playerMap.get(entry.player_id)
+      const jerseyNumber = entry.match_jersey_number ?? entry.player_jersey_number ?? player?.jersey_number ?? null
+      return {
+        playerId: entry.player_id,
+        jerseyNumber,
+        playerName: entry.player_name || player?.name || `#${jerseyNumber ?? '?'}`,
+      }
+    })
+  }, [matchLineup, players])
+
+  // ── Position label map for carrier strip ─────────────────────────────
+  const POSITION_LABELS: Record<string, string> = {
+    'gk': 'GK', 'fb-left': 'CB', 'fb-center': 'FB', 'fb-right': 'CB',
+    'hb-left': 'HB', 'hb-center': 'CHB', 'hb-right': 'HB',
+    'mf-left': 'MF', 'mf-right': 'MF',
+    'hf-left': 'HF', 'hf-center': 'CHF', 'hf-right': 'HF',
+    'ff-left': 'CF', 'ff-center': 'FF', 'ff-right': 'CF',
+  }
+
+  // Build jersey strip player list from lineup data
+  const jerseyStripPlayers: JerseyPlayer[] = useMemo(() => {
+    if (!matchLineup || matchLineup.length === 0) return []
+    const playerMap = new Map((players || []).map(p => [p.id, p]))
+    return matchLineup.map((entry: any) => {
+      const player = playerMap.get(entry.player_id)
+      return {
+        playerId: entry.player_id,
+        jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? player?.jersey_number ?? null,
+        playerName: player?.name ?? entry.player_name ?? 'Unknown',
+        isOnField: entry.is_on_field ?? true,
+        positionLabel: POSITION_LABELS[entry.position_id] || entry.position_id || '',
+        positionId: entry.position_id || '',
+      }
+    })
+  }, [matchLineup, players])
+
+  // ── Ball carrier segment management (direct API, no offline layer) ───
+
+  const endCarrierSegment = useCallback(async (
+    endX?: number | null,
+    endY?: number | null,
+    endedBy?: string,
+  ) => {
+    const seg = activeSegmentRef.current
+    if (!seg) return
+
+    // Flush buffered path points
+    if (carrierPathBufferRef.current.length > 0) {
+      try {
+        await api.playerMovement.appendPathPoints(seg.id, carrierPathBufferRef.current)
+      } catch (err) {
+        console.error('Failed to flush carrier path points:', err)
+      }
+      carrierPathBufferRef.current = []
+    }
+    if (carrierFlushTimerRef.current) {
+      clearTimeout(carrierFlushTimerRef.current)
+      carrierFlushTimerRef.current = null
+    }
+
+    try {
+      await api.playerMovement.endCarrierSegment(seg.id, {
+        end_x: endX ?? undefined,
+        end_y: endY ?? undefined,
+        ended_by: endedBy,
+      })
+    } catch (err) {
+      console.error('Failed to end carrier segment:', err)
+    }
+
+    activeSegmentRef.current = null
+    setActiveCarrierId(null)
+  }, [])
+
+  const startCarrierSegment = useCallback(async (
+    playerId: string,
+    jerseyNumber: number | null,
+    startX: number | null,
+    startY: number | null,
+  ) => {
+    if (!session?.match_id) return null
+
+    // End current segment first
+    if (activeSegmentRef.current) {
+      await endCarrierSegment(startX, startY, 'pass')
+    }
+
+    const matchTime = calcMatchTime(currentTimeMs)
+
+    try {
+      const segment = await api.playerMovement.startCarrierSegment({
+        match_id: session.match_id,
+        player_id: playerId,
+        jersey_number: jerseyNumber,
+        team: possession === 'team_a' ? 'own' : 'opponent',
+        half: matchTime.half,
+        minute: matchTime.minute,
+        start_x: startX,
+        start_y: startY,
+        source: 'video',
+      })
+      activeSegmentRef.current = segment
+      setActiveCarrierId(playerId)
+      carrierPathBufferRef.current = []
+      return segment
+    } catch (err) {
+      console.error('Failed to start carrier segment:', err)
+      return null
+    }
+  }, [session?.match_id, calcMatchTime, currentTimeMs, possession, endCarrierSegment])
+
+  const handleCarrierSelect = useCallback(async (playerId: string, jerseyNumber: number | null) => {
+    const bx = ballPosition?.x ?? null
+    const by = ballPosition?.y ?? null
+
+    if (activeCarrierId === playerId) {
+      // Deselect — end segment
+      await endCarrierSegment(bx, by, 'manual')
+    } else {
+      // Select new carrier
+      await startCarrierSegment(playerId, jerseyNumber, bx, by)
+      // Track recent carriers (most recent first, max 10)
+      setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
+    }
+  }, [activeCarrierId, ballPosition, startCarrierSegment, endCarrierSegment])
+
+  // Append path points to active carrier segment (throttled 200ms batching)
+  const appendCarrierPathPoint = useCallback((x: number, y: number) => {
+    if (!activeSegmentRef.current) return
+    carrierPathBufferRef.current.push({ x, y })
+
+    if (!carrierFlushTimerRef.current) {
+      carrierFlushTimerRef.current = setTimeout(() => {
+        const seg = activeSegmentRef.current
+        const points = carrierPathBufferRef.current
+        if (seg && points.length > 0) {
+          api.playerMovement.appendPathPoints(seg.id, points).catch(err => {
+            console.error('Failed to append carrier path points:', err)
+          })
+          carrierPathBufferRef.current = []
+        }
+        carrierFlushTimerRef.current = null
+      }, 200)
+    }
+  }, [])
+
+  // Auto-end carrier on terminal events (scores, turnovers, wides)
+  const onCarrierTerminalEvent = useCallback(async (eventType: string) => {
+    if (!activeSegmentRef.current) return
+
+    const terminalMap: Record<string, string> = {
+      GOAL_SCORED: 'score',
+      POINT_SCORED: 'score',
+      FREE_KICK: 'score',
+      FORTY_FIVE: 'score',
+      PENALTY: 'score',
+      WIDE: 'wide',
+      SHORT: 'wide',
+      SAVED: 'wide',
+      TURNOVER_WON: 'turnover',
+      TURNOVER_LOST: 'turnover',
+      KICKOUT_WON: 'kickout',
+      KICKOUT_LOST: 'kickout',
+    }
+
+    const endReason = terminalMap[eventType]
+    if (endReason) {
+      const bx = ballPosition?.x ?? null
+      const by = ballPosition?.y ?? null
+      await endCarrierSegment(bx, by, endReason)
+    }
+  }, [endCarrierSegment, ballPosition])
+
+  // Auto-end carrier on possession swap
+  const onCarrierPossessionSwap = useCallback(async () => {
+    if (!activeSegmentRef.current) return
+    const bx = ballPosition?.x ?? null
+    const by = ballPosition?.y ?? null
+    await endCarrierSegment(bx, by, 'turnover')
+  }, [endCarrierSegment, ballPosition])
+
+  // Wire minimap ball movement to carrier path tracking
+  const handleMinimapBallMoveWithCarrier = useCallback((x: number, y: number) => {
+    handleMinimapBallMove(x, y)
+    appendCarrierPathPoint(x, y)
+  }, [handleMinimapBallMove, appendCarrierPathPoint])
+
+  // Clean up carrier segment on unmount
+  useEffect(() => {
+    return () => {
+      if (carrierFlushTimerRef.current) clearTimeout(carrierFlushTimerRef.current)
+    }
+  }, [])
 
   // Handle snapshot save — POST to API
   // (must be before early returns to satisfy Rules of Hooks)
@@ -1020,7 +1224,7 @@ export default function VideoTagging() {
       <BallMinimap
         ballPosition={ballPosition}
         possession={possession}
-        onBallMove={handleMinimapBallMove}
+        onBallMove={handleMinimapBallMoveWithCarrier}
         trail={ballTrail}
         disabled={overlayState !== 'none'}
       />
@@ -1072,7 +1276,7 @@ export default function VideoTagging() {
         {getStatusLabel(ballPosition, possession, clubName, opponentName)}
       </span>
       <button
-        onClick={() => setPossession(p => p === 'team_a' ? 'team_b' : 'team_a')}
+        onClick={() => { onCarrierPossessionSwap(); setPossession(p => p === 'team_a' ? 'team_b' : 'team_a') }}
         className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-all ${
           possession === 'team_a'
             ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
@@ -1119,6 +1323,22 @@ export default function VideoTagging() {
           {videoArea}
           {sidebar}
         </div>
+
+        {/* Ball carrier strip — below video, above status bar */}
+        {jerseyStripPlayers.length > 0 && (
+          <div className="flex-shrink-0 px-2 py-0.5 bg-slate-900/80 border-t border-white/5">
+            <JerseyNumberStrip
+              players={jerseyStripPlayers}
+              activeCarrierId={activeCarrierId}
+              currentPossession={possession === 'team_a' ? 'team_a' as any : 'team_b' as any}
+              onCarrierSelect={handleCarrierSelect}
+              teamPrimaryColor={club?.primary_colour || '#10B981'}
+              teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+              currentHalf={calcMatchTime(currentTimeMs).half as 1 | 2}
+              recentCarrierIds={recentCarrierIds}
+            />
+          </div>
+        )}
 
         {/* Status bar */}
         {statusBar && (
@@ -1169,6 +1389,8 @@ export default function VideoTagging() {
             matchId={session.match_id}
             videoSessionId={sessionId}
             currentTimeMs={currentTimeMs}
+            roster={matchLineup?.map(e => ({ jersey_number: e.match_jersey_number ?? e.player_jersey_number ?? 0, name: e.player_name || `#${e.match_jersey_number ?? '?'}`, position: e.position_id || undefined })) ?? []}
+            teamColors={matchData ? { own: matchData.team_strip_colour || '#00AA00', opponent: matchData.opponent_strip_colour || '#FF6600' } : undefined}
             onClose={() => setShowTacticalView(false)}
           />
         )}
@@ -1296,6 +1518,22 @@ export default function VideoTagging() {
 
       {/* ── Tracking status bar ──────────────────────────────────────────── */}
       {statusBar}
+
+      {/* ── Ball Carrier Strip ─────────────────────────────────────────── */}
+      {jerseyStripPlayers.length > 0 && (
+        <div className="bg-slate-900/60 rounded-lg border border-white/5 px-1 py-0.5">
+          <JerseyNumberStrip
+            players={jerseyStripPlayers}
+            activeCarrierId={activeCarrierId}
+            currentPossession={possession === 'team_a' ? 'team_a' as any : 'team_b' as any}
+            onCarrierSelect={handleCarrierSelect}
+            teamPrimaryColor={club?.primary_colour || '#10B981'}
+            teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+            currentHalf={calcMatchTime(currentTimeMs).half as 1 | 2}
+            recentCarrierIds={recentCarrierIds}
+          />
+        </div>
+      )}
 
       {/* ── Event Timeline ──────────────────────────────────────────────── */}
       <div data-tour="event-timeline">
@@ -1442,6 +1680,8 @@ export default function VideoTagging() {
           matchId={session.match_id}
           videoSessionId={sessionId}
           currentTimeMs={currentTimeMs}
+          roster={matchLineup?.map(e => ({ jersey_number: e.match_jersey_number ?? e.player_jersey_number ?? 0, name: e.player_name || `#${e.match_jersey_number ?? '?'}`, position: e.position_id || undefined })) ?? []}
+          teamColors={matchData ? { own: matchData.team_strip_colour || '#00AA00', opponent: matchData.opponent_strip_colour || '#FF6600' } : undefined}
           onClose={() => setShowTacticalView(false)}
         />
       )}

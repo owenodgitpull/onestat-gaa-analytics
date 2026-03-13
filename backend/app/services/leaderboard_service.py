@@ -363,8 +363,8 @@ class LeaderboardService:
                 "rank": i + 1,
                 "player_id": pid,
                 "player_name": players[pid].name,
-                "value": round(speed, 2),
-                "detail": f"{round(speed * 3.6, 1)} km/h",
+                "value": round(speed * 3.6, 1),
+                "detail": f"{round(speed, 2)} m/s",
             }
             for i, (pid, speed) in enumerate(ranked)
         ]
@@ -544,7 +544,7 @@ class LeaderboardService:
         },
         "speed_demon": {
             "display_name": "Speed Demon",
-            "unit": "m/s",
+            "unit": "km/h",
             "method": "speed_demon",
         },
         "sprint_king": {

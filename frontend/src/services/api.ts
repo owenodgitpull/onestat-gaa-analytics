@@ -294,8 +294,9 @@ export const matchesAPI = {
   getNextScheduled: async (): Promise<Match | null> => {
     try {
       const response = await fetchAPI<{ matches: Match[] }>('/matches/?status=scheduled&sort=asc&limit=10');
-      const now = new Date();
-      const upcoming = response.matches.find(m => new Date(m.match_date) >= now);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const upcoming = response.matches.find(m => new Date(m.match_date) >= today);
       return upcoming ?? null;
     } catch {
       return null;

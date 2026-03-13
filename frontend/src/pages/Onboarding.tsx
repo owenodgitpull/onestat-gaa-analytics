@@ -217,6 +217,13 @@ export default function Onboarding() {
         });
       }
 
+      // Refresh auth tokens so the dashboard has a fresh session
+      try {
+        await fetchAPI<any>('/auth/refresh', { method: 'POST' });
+      } catch {
+        // Non-critical — existing token may still be valid
+      }
+
       // Update auth context so the app knows onboarding is done
       if (user) {
         setUser({ ...user, club_id: clubId, onboarding_completed: true });

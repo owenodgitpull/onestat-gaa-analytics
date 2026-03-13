@@ -209,7 +209,7 @@ export default function VideoFormationSnapshot({
             }}
             title={`${pos.playerName} — tap to remove`}
           >
-            {pos.jerseyNumber ?? '?'}
+            {pos.jerseyNumber ?? pos.playerName?.split(' ').map(w => w[0]).join('').slice(0, 2) ?? '?'}
           </div>
         ))}
 
@@ -282,10 +282,14 @@ export default function VideoFormationSnapshot({
                     <button
                       key={player.playerId}
                       onClick={() => handleOwnPlayerSelect(player)}
-                      className="flex-shrink-0 w-10 h-10 rounded-full bg-emerald-500/30 border-2 border-emerald-400/50 text-emerald-200 font-bold text-sm hover:bg-emerald-500/50 transition-all"
+                      className={`flex-shrink-0 rounded-full bg-emerald-500/30 border-2 border-emerald-400/50 text-emerald-200 font-bold hover:bg-emerald-500/50 transition-all flex items-center justify-center ${
+                        player.jerseyNumber != null ? 'w-10 h-10 text-sm' : 'h-10 px-3 text-xs'
+                      }`}
                       title={player.playerName}
                     >
-                      {player.jerseyNumber ?? '?'}
+                      {player.jerseyNumber != null
+                        ? player.jerseyNumber
+                        : player.playerName.split(' ').map(w => w[0]).join('').slice(0, 3)}
                     </button>
                   ))
                 : unplacedOpp.map((jersey) => (

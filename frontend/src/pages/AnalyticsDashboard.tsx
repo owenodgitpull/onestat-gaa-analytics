@@ -568,8 +568,8 @@ export default function AnalyticsDashboard() {
         />
       ) : (
         <>
-      {/* Weekly Brief */}
-      <WeeklyBriefCard />
+      {/* Weekly Brief — only show when there's match data */}
+      {season_summary.matches_played > 0 && <WeeklyBriefCard />}
 
       {/* 1. Season Overview — KPI Cards (always at top, not draggable) */}
       <div>

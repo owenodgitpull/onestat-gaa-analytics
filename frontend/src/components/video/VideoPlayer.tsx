@@ -169,6 +169,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               <video
                 ref={videoRef}
                 src={src}
+                crossOrigin="anonymous"
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleDurationChange}
                 onClick={togglePlay}

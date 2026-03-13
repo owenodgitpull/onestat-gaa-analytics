@@ -1648,7 +1648,7 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
         </div>
         <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-lg p-2 text-center border border-cyan-500/30">
           <div className="text-xl font-bold text-cyan-400">{teamTotals.totalHSR.toFixed(1)}km</div>
-          <div className="text-xs text-white/60">High Speed</div>
+          <div className="text-xs text-white/60">HSR Distance</div>
         </div>
         <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-lg p-2 text-center border border-cyan-500/30">
           <div className="text-xl font-bold text-cyan-400">{teamTotals.avgMaxSpeed.toFixed(1)}</div>

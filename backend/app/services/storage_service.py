@@ -69,9 +69,29 @@ class StorageService:
                 region_name='auto'  # R2 uses 'auto' for region
             )
             logger.info("R2 Storage initialized successfully")
+            # Ensure CORS is configured for cross-origin video/image access
+            self._ensure_cors()
         else:
             self.client = None
             logger.warning("R2 Storage not configured - file uploads will be disabled")
+
+    def _ensure_cors(self):
+        """Set CORS on the R2 bucket so presigned URLs work with crossOrigin='anonymous'."""
+        try:
+            self.client.put_bucket_cors(
+                Bucket=self.bucket_name,
+                CORSConfiguration={
+                    'CORSRules': [{
+                        'AllowedOrigins': ['*'],
+                        'AllowedMethods': ['GET', 'HEAD'],
+                        'AllowedHeaders': ['*'],
+                        'MaxAgeSeconds': 86400,
+                    }]
+                }
+            )
+            logger.info("R2 CORS configured successfully")
+        except Exception as e:
+            logger.warning(f"Failed to set R2 CORS (may already be set): {e}")
 
     # ------------------------------------------------------------------
     # Internal helpers
