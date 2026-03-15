@@ -2158,7 +2158,7 @@ export default function MatchRecording() {
                   vs {matchDisplay.opponent}
                 </h1>
                 <div className="flex items-center gap-2">
-                  <p className="text-white/60 text-sm">League Match - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
+                  <p className="text-white/60 text-sm">{match?.competition || 'Match'} - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
                   <NetworkStatusIndicator compact />
                   <button
                     data-tour="weather-btn"
@@ -2773,6 +2773,7 @@ export default function MatchRecording() {
         onConfirm={handleLineupConfirm}
         players={players}
         lastMatchLineup={lastMatchLineup}
+        savedLineup={startingLineup}
       />
       <WeatherPickerPopover
         isOpen={isWeatherPickerOpen}

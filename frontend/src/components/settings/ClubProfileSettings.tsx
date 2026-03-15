@@ -22,6 +22,7 @@ export default function ClubProfileSettings() {
     primary_colour: '#00e676',
     secondary_colour: '#ffffff',
     team_aliases: '' as string,
+    default_half_duration: 30,
   })
 
   useEffect(() => {
@@ -35,6 +36,7 @@ export default function ClubProfileSettings() {
         primary_colour: club.primary_colour || '#00e676',
         secondary_colour: club.secondary_colour || '#ffffff',
         team_aliases: (club.team_aliases || []).join(', '),
+        default_half_duration: club.default_half_duration || 30,
       })
     }
   }, [club])
@@ -183,6 +185,28 @@ export default function ClubProfileSettings() {
         <div className="sm:col-span-2">
           <label className={labelClass}>Home Ground</label>
           <input className={inputClass} value={form.home_ground} onChange={e => setForm(f => ({ ...f, home_ground: e.target.value }))} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className={labelClass}>Default Half Duration</label>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { value: 30, label: 'Club (30 min halves)' },
+              { value: 35, label: 'Inter-County (35 min halves)' },
+            ] as const).map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setForm(f => ({ ...f, default_half_duration: value }))}
+                className={`p-3 rounded-xl border-2 transition-all text-sm font-medium ${
+                  form.default_half_duration === value
+                    ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300'
+                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-white/60'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <div>
           <label className={labelClass}>Primary Colour</label>

@@ -73,6 +73,7 @@ export function useCreateMatch() {
       temperature_celsius?: number | null;
       competition?: string | null;
       referee?: string | null;
+      half_duration_mins?: number;
     }) => api.matches.create(data),
     onSuccess: () => {
       // Invalidate matches list to refetch

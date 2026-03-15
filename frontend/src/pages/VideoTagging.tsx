@@ -288,7 +288,8 @@ export default function VideoTagging() {
     if (h2Start != null && videoMs >= h2Start) {
       const elapsed = Math.max(0, videoMs - h2Start)
       const totalSec = Math.floor(elapsed / 1000)
-      return { minute: 35 + Math.floor(totalSec / 60), second: totalSec % 60, half: 2 }
+      const hdm = matchData?.half_duration_mins ?? 30
+      return { minute: hdm + Math.floor(totalSec / 60), second: totalSec % 60, half: 2 }
     }
 
     // Otherwise first half (relative to 1st half throw-in)

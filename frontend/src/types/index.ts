@@ -32,6 +32,7 @@ export interface Club {
   team_aliases: string[] | null;
   is_active: boolean;
   onboarding_completed: boolean;
+  default_half_duration?: number;
   created_at: string;
 }
 
@@ -81,6 +82,7 @@ export interface Match {
   current_phase?: string | null;
   second_half_started_at?: string | null;
   attacking_right_first_half?: boolean | null;
+  half_duration_mins?: number;
   team_strip_colour?: string | null;
   opponent_strip_colour?: string | null;
   has_gps?: boolean;

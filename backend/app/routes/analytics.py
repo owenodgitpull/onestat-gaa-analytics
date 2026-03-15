@@ -965,7 +965,7 @@ async def get_player_shot_events(
         match = matches_map.get(event.match_id)
         if match:
             half = 1
-            if event.minute and event.minute > 35:
+            if event.minute and event.minute > (match.half_duration_mins or 30):
                 half = 2
             result.append(PlayerShotEvent(
                 match_id=str(event.match_id),

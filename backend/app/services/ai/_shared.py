@@ -1142,12 +1142,15 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             query = query.where(MatchEvent.team == Team.OWN)
         elif team == 'opponent':
             query = query.where(MatchEvent.team == Team.OPPONENT)
+    # Get match half duration for half splitting
+    match_obj = await db.execute(select(Match).where(Match.id == match_id))
+    match_row = match_obj.scalar_one_or_none()
+    hdm = (match_row.half_duration_mins if match_row else 30) or 30
     if half:
-        # Filter by half based on minute (first half = minute <= 30)
         if half == 1:
-            query = query.where(MatchEvent.minute <= 30)
+            query = query.where(MatchEvent.minute <= hdm)
         elif half == 2:
-            query = query.where(MatchEvent.minute > 30)
+            query = query.where(MatchEvent.minute > hdm)
 
     query = query.order_by(MatchEvent.minute)
     result = await db.execute(query)
@@ -1165,7 +1168,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     for e in events:
         events_data.append({
             "minute": e.minute,
-            "half": 1 if e.minute <= 30 else 2,
+            "half": 1 if e.minute <= hdm else 2,
             "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
             "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
             "player": players.get(str(e.player_id), "Unknown") if e.player_id else None,
@@ -1689,12 +1692,13 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
     results = []
     for match in matches:
         m_events = [e for e in events if e.match_id == match.id]
-        # Split by half using minute (≤35 = 1st half, >35 = 2nd half)
+        # Split by half using match's half_duration_mins
+        _hdm = getattr(match, 'half_duration_mins', 30) or 30
         halves_to_process = []
         if half is None or half == 1:
-            halves_to_process.append((1, [e for e in m_events if (e.minute or 0) <= 35]))
+            halves_to_process.append((1, [e for e in m_events if (e.minute or 0) <= _hdm]))
         if half is None or half == 2:
-            halves_to_process.append((2, [e for e in m_events if (e.minute or 0) > 35]))
+            halves_to_process.append((2, [e for e in m_events if (e.minute or 0) > _hdm]))
 
         for h_num, h_events in halves_to_process:
             total = len(h_events)

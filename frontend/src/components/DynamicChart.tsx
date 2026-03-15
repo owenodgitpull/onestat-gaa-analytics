@@ -332,7 +332,8 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
           return `the square`
         }
         const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boolean): number => {
-          const isFirstHalf = minute <= 35
+          const hdm: number = (data?.[0] as any)?.half_duration_mins ?? 30
+          const isFirstHalf = minute <= hdm
           const attackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
           return attackingRight ? rawX : 100 - rawX
         }

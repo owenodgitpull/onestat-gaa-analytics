@@ -42,7 +42,7 @@ import SortableSection from '@/components/dashboard/SortableSection'
 import { useDashboardLayout } from '@/hooks/useDashboardLayout'
 import type { ChartRenderProps } from '@/config/chartRegistry'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem } from '@/services/api'
-import { consumeDashboard, consumeSeasonDashboard, consumeLiveMatch, consumeNextMatch } from '@/services/prefetch'
+import { consumeDashboard, consumeSeasonDashboard, consumeLiveMatch } from '@/services/prefetch'
 import type { Match } from '@/types'
 import { useTour } from '@/hooks/useTour'
 import { dashboardSteps } from '@/config/tourSteps'
@@ -287,7 +287,8 @@ export default function AnalyticsDashboard() {
     }
     load()
     consumeLiveMatch().then(m => setLiveMatch(m))
-    consumeNextMatch().then(m => setNextMatch(m))
+    // Always fetch fresh — prefetch cache may be stale after creating a fixture
+    api.matches.getNextScheduled().then(m => setNextMatch(m))
   }, [])
 
   // Trigger tour on first visit after data loads

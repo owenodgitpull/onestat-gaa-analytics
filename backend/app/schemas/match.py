@@ -20,6 +20,7 @@ class MatchBase(BaseModel):
     referee: Optional[str] = Field(None, max_length=200, description="Referee name")
     notes: Optional[str] = Field(None, max_length=1000, description="Optional match notes")
     tactical_notes: Optional[str] = Field(None, max_length=5000, description="Tactical notes for match day reference")
+    half_duration_mins: Optional[int] = Field(30, ge=25, le=40, description="Minutes per half (30 for clubs, 35 for inter-county)")
 
     # Weather and pitch conditions (optional, for pattern analysis)
     weather_condition: Optional[WeatherCondition] = Field(None, description="Weather during match")
@@ -61,6 +62,7 @@ class MatchUpdate(BaseModel):
     referee: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = Field(None, max_length=1000)
     tactical_notes: Optional[str] = Field(None, max_length=5000)
+    half_duration_mins: Optional[int] = Field(None, ge=25, le=40)
 
     # Weather and pitch conditions
     weather_condition: Optional[WeatherCondition] = None
@@ -115,6 +117,7 @@ class MatchResponse(MatchBase):
 
     # Tactical notes
     tactical_notes: Optional[str] = Field(None, description="Tactical notes for match day reference")
+    half_duration_mins: int = Field(30, description="Minutes per half (30 for clubs, 35 for inter-county)")
 
     # AI analysis (generated when match completes)
     ai_analysis: Optional[str] = Field(None, description="AI-generated post-match analysis")

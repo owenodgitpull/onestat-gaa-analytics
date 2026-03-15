@@ -127,6 +127,9 @@ class Match(Base):
     # Chart insights (cached from analyze_match to avoid separate LLM call)
     chart_insights = Column(JSON, nullable=True)
 
+    # Half duration in minutes (30 for clubs, 35 for inter-county)
+    half_duration_mins: Column[int] = Column(Integer, default=30, nullable=False)
+
     # Soft delete
     is_deleted: Column[bool] = Column(Boolean, default=False, nullable=False)
     

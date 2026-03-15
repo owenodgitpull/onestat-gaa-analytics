@@ -30,6 +30,7 @@ class ClubUpdate(BaseModel):
     secondary_colour: Optional[str] = Field(None, max_length=7)
     logo_url: Optional[str] = Field(None, max_length=500)
     team_aliases: Optional[List[str]] = Field(None, description="Alternative team names (e.g. Irish name)")
+    default_half_duration: Optional[int] = Field(None, ge=25, le=40, description="Default minutes per half")
 
 
 class ClubResponse(BaseModel):
@@ -46,6 +47,7 @@ class ClubResponse(BaseModel):
     team_aliases: Optional[List[str]]
     is_active: bool
     onboarding_completed: bool
+    default_half_duration: int = 30
     created_at: datetime
 
     class Config:

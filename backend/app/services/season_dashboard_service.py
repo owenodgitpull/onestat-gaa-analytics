@@ -725,10 +725,11 @@ class SeasonDashboardService:
                 "events": timeline,
             }
 
-            # HT lead (at minute 35)
+            # HT lead (at match's half duration)
+            _hdm = getattr(m, 'half_duration_mins', 30) or 30
             ht_diff = 0
             for t in timeline:
-                if t["minute"] <= 35:
+                if t["minute"] <= _hdm:
                     ht_diff = t["cumulative_diff"]
             ht_leads.append(ht_diff)
 

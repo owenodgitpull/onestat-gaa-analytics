@@ -373,7 +373,7 @@ export default function FullscreenPitchMode({
           onBallMove={onBallMove}
           showZones={true}
           readonly={readonly}
-          containerClassName="w-full h-full"
+          containerClassName="w-full h-full aspect-[16/10]"
           gradientBorder
           trail={trail}
           onTrailUpdate={onTrailUpdate}

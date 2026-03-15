@@ -10,10 +10,12 @@ interface NewFixtureModalProps {
     venue: 'home' | 'away' | 'neutral'
     matchDate: Date
     competition?: string | null
+    half_duration_mins?: number
   }) => void
+  defaultHalfDuration?: number
 }
 
-export default function NewFixtureModal({ isOpen, onClose, onCreate }: NewFixtureModalProps) {
+export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalfDuration = 30 }: NewFixtureModalProps) {
   const [opponent, setOpponent] = useState('')
   const [venue, setVenue] = useState<'home' | 'away' | 'neutral'>('home')
   const [matchDate, setMatchDate] = useState(() => {
@@ -22,6 +24,7 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate }: NewFixtur
   })
   const [matchTime, setMatchTime] = useState('15:00')
   const [competition, setCompetition] = useState('')
+  const [halfDurationMins, setHalfDurationMins] = useState(defaultHalfDuration)
   const [errors, setErrors] = useState<{ opponent?: string; matchDate?: string }>({})
 
   if (!isOpen) return null
@@ -45,6 +48,7 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate }: NewFixtur
       venue,
       matchDate: dateTime,
       competition: competition.trim() || null,
+      half_duration_mins: halfDurationMins,
     })
 
     // Reset
@@ -53,6 +57,7 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate }: NewFixtur
     setMatchDate(new Date().toISOString().split('T')[0])
     setMatchTime('15:00')
     setCompetition('')
+    setHalfDurationMins(defaultHalfDuration)
     setErrors({})
   }
 
@@ -62,6 +67,7 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate }: NewFixtur
     setMatchDate(new Date().toISOString().split('T')[0])
     setMatchTime('15:00')
     setCompetition('')
+    setHalfDurationMins(defaultHalfDuration)
     setErrors({})
     onClose()
   }
@@ -166,6 +172,30 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate }: NewFixtur
                 >
                   <Icon size={20} className={venue === value ? 'text-cyan-400' : 'text-white/60'} />
                   <span className="text-xs font-medium text-white">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Half Duration */}
+          <div>
+            <label className="block text-sm font-medium text-white mb-3">Match Type</label>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { value: 30, label: 'Club (30 min)' },
+                { value: 35, label: 'Inter-County (35 min)' },
+              ] as const).map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setHalfDurationMins(value)}
+                  className={`p-3 rounded-xl border-2 transition-all text-sm font-medium ${
+                    halfDurationMins === value
+                      ? 'border-cyan-500 bg-cyan-500/20 text-cyan-300'
+                      : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20 text-white/60'
+                  }`}
+                >
+                  {label}
                 </button>
               ))}
             </div>

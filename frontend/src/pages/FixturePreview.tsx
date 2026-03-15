@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList } from 'lucide-react'
+import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, Pencil } from 'lucide-react'
 import { api } from '../services/api'
-import type { FormResult } from '../types'
+import EditFixtureModal from '../components/EditFixtureModal'
+import type { Match, FormResult } from '../types'
 
 function FormBadge({ result }: { result: 'W' | 'L' | 'D' }) {
   const colors = {
@@ -52,6 +54,20 @@ function FormRow({ results }: { results: FormResult[] }) {
 export default function FixturePreview() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [editingFixture, setEditingFixture] = useState<Match | null>(null)
+
+  const handleEditFixture = async (id: string, data: any) => {
+    await api.matches.update(id, data)
+    queryClient.invalidateQueries({ queryKey: ['fixture-preview', matchId] })
+    queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+  }
+
+  const handleDeleteFixture = async (id: string) => {
+    await api.matches.delete(id)
+    queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+    navigate('/fixtures')
+  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['fixture-preview', matchId],
@@ -133,7 +149,18 @@ export default function FixturePreview() {
                 {format(matchDate, 'EEEE d MMMM yyyy')} at {format(matchDate, 'HH:mm')}
               </p>
             </div>
-            {venueBadge(match.venue)}
+            <div className="flex items-center gap-2">
+              {venueBadge(match.venue)}
+              {match.status === 'scheduled' && (
+                <button
+                  onClick={() => setEditingFixture(match as unknown as Match)}
+                  className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-white/40 hover:text-white transition-all"
+                  title="Edit fixture"
+                >
+                  <Pencil size={15} />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3 text-xs text-white/50">
@@ -246,6 +273,12 @@ export default function FixturePreview() {
         </div>
       </div>
 
+      <EditFixtureModal
+        fixture={editingFixture}
+        onClose={() => setEditingFixture(null)}
+        onSave={handleEditFixture}
+        onDelete={handleDeleteFixture}
+      />
     </div>
   )
 }

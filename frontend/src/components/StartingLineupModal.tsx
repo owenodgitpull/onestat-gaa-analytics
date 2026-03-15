@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Users, Copy, Search } from 'lucide-react'
 import { Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
@@ -70,6 +70,7 @@ interface StartingLineupModalProps {
   onConfirm: (lineup: Record<string, LineupEntry>) => void
   players: Player[]
   lastMatchLineup?: Record<string, LineupEntry>
+  savedLineup?: Record<string, LineupEntry>
 }
 
 export default function StartingLineupModal({
@@ -77,14 +78,22 @@ export default function StartingLineupModal({
   onClose,
   onConfirm,
   players,
-  lastMatchLineup
+  lastMatchLineup,
+  savedLineup
 }: StartingLineupModalProps) {
-  const [lineup, setLineup] = useState<Record<string, LineupEntry>>({})
+  const [lineup, setLineup] = useState<Record<string, LineupEntry>>(savedLineup ?? {})
   const [selectingPosition, setSelectingPosition] = useState<string | null>(null)
   const [playerSearchQuery, setPlayerSearchQuery] = useState('')
   const { club } = useClub()
   const jerseyBg = club?.primary_colour || '#10B981'
   const jerseyText = club?.secondary_colour || '#FFFFFF'
+
+  // Sync saved lineup when it loads (e.g. from API after mount)
+  useEffect(() => {
+    if (savedLineup && Object.keys(savedLineup).length > 0 && Object.keys(lineup).length === 0) {
+      setLineup(savedLineup)
+    }
+  }, [savedLineup])
 
   if (!isOpen) return null
 
@@ -155,33 +164,31 @@ export default function StartingLineupModal({
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !selectingPosition && onClose()} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-6xl glass-card p-8 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="relative w-full max-w-6xl glass-card p-5 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-3">
-            <div className="p-3 rounded-full bg-emerald-500/20">
-              <Users className="text-emerald-400" size={28} />
+            <div className="p-2 rounded-full bg-emerald-500/20">
+              <Users className="text-emerald-400" size={20} />
             </div>
-            <h2 className="text-2xl font-bold text-white">Select Starting Lineup</h2>
+            <h2 className="text-xl font-bold text-white">Select Starting Lineup</h2>
+            {lastMatchLineup && (
+              <button
+                onClick={handleUseLastLineup}
+                className="glass-card-hover px-3 py-1.5 flex items-center space-x-1.5 ml-3"
+              >
+                <Copy size={14} className="text-blue-400" />
+                <span className="text-white text-xs font-semibold">Use Last Match</span>
+              </button>
+            )}
           </div>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
-            <X size={24} />
+            <X size={22} />
           </button>
         </div>
 
-        {/* Use Last Match Lineup Button */}
-        {lastMatchLineup && (
-          <button
-            onClick={handleUseLastLineup}
-            className="mb-4 glass-card-hover px-6 py-3 flex items-center space-x-2"
-          >
-            <Copy size={20} className="text-blue-400" />
-            <span className="text-white font-semibold">Use Last Match Lineup</span>
-          </button>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Pitch View with Substitutes */}
-          <div className="flex flex-col gap-3">
+          <div className="md:col-span-2 flex flex-col gap-2">
             {/* Pitch */}
             <div className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-2xl overflow-hidden aspect-[16/10]">
               {/* Actual GAA Pitch SVG */}
@@ -213,7 +220,7 @@ export default function StartingLineupModal({
                   >
                     {/* Jersey Icon */}
                     <div
-                      className={`w-8 h-8 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-[10px] sm:text-sm transition-all ${
+                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[10px] sm:text-xs transition-all ${
                         assignedPlayer
                           ? 'ring-2 shadow-lg'
                           : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
@@ -251,7 +258,7 @@ export default function StartingLineupModal({
                   >
                     {/* Jersey Icon - Smaller for subs */}
                     <div
-                      className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[9px] sm:text-xs transition-all ${
+                      className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-bold text-[9px] sm:text-xs transition-all ${
                         assignedPlayer
                           ? 'ring-2 shadow-lg'
                           : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
@@ -295,7 +302,7 @@ export default function StartingLineupModal({
                     autoFocus
                   />
                 </div>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                <div className="space-y-1 max-h-[60vh] overflow-y-auto">
                   {(() => {
                     const available = getAvailablePlayers().filter(p => {
                       if (!playerSearchQuery) return true
@@ -307,9 +314,9 @@ export default function StartingLineupModal({
                         <button
                           key={player.id}
                           onClick={() => handlePlayerSelect(player.id)}
-                          className="w-full glass-card-hover p-4 text-left"
+                          className="w-full glass-card-hover px-3 py-2 text-left"
                         >
-                          <p className="text-white font-semibold">
+                          <p className="text-white font-semibold text-sm">
                             {player.jersey_number != null && (
                               <span className="text-emerald-400 mr-2">#{player.jersey_number}</span>
                             )}
@@ -336,18 +343,18 @@ export default function StartingLineupModal({
                 <h3 className="text-xl font-bold text-white mb-4">
                   Selected Players ({Object.keys(lineup).length}/26)
                 </h3>
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                <div className="space-y-1 max-h-[60vh] overflow-y-auto">
                   {/* Starting lineup */}
-                  <div className="mb-3">
-                    <p className="text-white/50 text-sm font-semibold mb-2">Starting XV</p>
+                  <div className="mb-2">
+                    <p className="text-white/50 text-xs font-semibold mb-1">Starting XV</p>
                     {FORMATION_POSITIONS.map((pos) => {
                       const entry = lineup[pos.id]
                       const player = entry ? getPlayerById(entry.playerId) : null
                       return (
-                        <div key={pos.id} className="glass-card p-3 flex items-center justify-between mb-1">
-                          <span className="text-white/70 font-medium">{pos.label}</span>
+                        <div key={pos.id} className="glass-card px-2 py-1 flex items-center gap-1.5 mb-0.5">
+                          <span className="text-white/50 text-[10px] font-semibold w-7 flex-shrink-0">{pos.label}</span>
                           {player ? (
-                            <div className="flex items-center gap-2">
+                            <>
                               <input
                                 type="number"
                                 min="1"
@@ -355,19 +362,19 @@ export default function StartingLineupModal({
                                 value={entry.jerseyNumber ?? ''}
                                 onChange={(e) => handleJerseyChange(pos.id, e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
-                                className="w-12 h-8 bg-white/10 border border-white/20 rounded text-center text-white text-sm font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
+                                className="w-9 h-6 bg-white/10 border border-white/20 rounded text-center text-white text-xs font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
                                 placeholder="#"
                               />
-                              <span className="text-white font-semibold">{player.name}</span>
+                              <span className="text-white text-xs font-medium truncate flex-1">{player.name}</span>
                               <button
                                 onClick={() => handleRemovePlayer(pos.id)}
-                                className="text-white/60 hover:text-red-400 transition-colors"
+                                className="text-white/40 hover:text-red-400 transition-colors flex-shrink-0"
                               >
-                                <X size={16} />
+                                <X size={12} />
                               </button>
-                            </div>
+                            </>
                           ) : (
-                            <span className="text-white/40 italic">Not selected</span>
+                            <span className="text-white/30 italic text-[10px]">—</span>
                           )}
                         </div>
                       )
@@ -375,15 +382,15 @@ export default function StartingLineupModal({
                   </div>
                   {/* Substitutes */}
                   <div>
-                    <p className="text-white/50 text-sm font-semibold mb-2">Substitutes</p>
+                    <p className="text-white/50 text-xs font-semibold mb-1">Substitutes</p>
                     {SUBSTITUTE_POSITIONS.map((pos, index) => {
                       const entry = lineup[pos.id]
                       const player = entry ? getPlayerById(entry.playerId) : null
                       return (
-                        <div key={pos.id} className="glass-card p-3 flex items-center justify-between mb-1">
-                          <span className="text-white/70 font-medium">Sub {index + 1}</span>
+                        <div key={pos.id} className="glass-card px-2 py-1 flex items-center gap-1.5 mb-0.5">
+                          <span className="text-white/50 text-[10px] font-semibold w-7 flex-shrink-0">S{index + 1}</span>
                           {player ? (
-                            <div className="flex items-center gap-2">
+                            <>
                               <input
                                 type="number"
                                 min="1"
@@ -391,19 +398,19 @@ export default function StartingLineupModal({
                                 value={entry.jerseyNumber ?? ''}
                                 onChange={(e) => handleJerseyChange(pos.id, e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
-                                className="w-12 h-8 bg-white/10 border border-white/20 rounded text-center text-white text-sm font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
+                                className="w-9 h-6 bg-white/10 border border-white/20 rounded text-center text-white text-xs font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
                                 placeholder="#"
                               />
-                              <span className="text-white font-semibold">{player.name}</span>
+                              <span className="text-white text-xs font-medium truncate flex-1">{player.name}</span>
                               <button
                                 onClick={() => handleRemovePlayer(pos.id)}
-                                className="text-white/60 hover:text-red-400 transition-colors"
+                                className="text-white/40 hover:text-red-400 transition-colors flex-shrink-0"
                               >
-                                <X size={16} />
+                                <X size={12} />
                               </button>
-                            </div>
+                            </>
                           ) : (
-                            <span className="text-white/40 italic">Not selected</span>
+                            <span className="text-white/30 italic text-[10px]">—</span>
                           )}
                         </div>
                       )

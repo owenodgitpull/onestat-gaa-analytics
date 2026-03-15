@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   format,
   addMonths,
@@ -13,12 +13,13 @@ import {
   isSameMonth,
   isToday,
 } from 'date-fns'
-import { CalendarDays, ChevronLeft, ChevronRight, RefreshCw, Trophy, PlusCircle, Upload, Dumbbell, AlertTriangle } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, ChevronDown, Trophy, PlusCircle, Upload, Dumbbell, AlertTriangle } from 'lucide-react'
 import { api } from '../services/api'
 import type { CsvImportResult } from '../services/api'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useClub } from '../contexts/ClubContext'
 import NewFixtureModal from '../components/NewFixtureModal'
+import EditFixtureModal from '../components/EditFixtureModal'
 import ImportFixturesModal from '../components/ImportFixturesModal'
 import type { Match } from '../types'
 
@@ -52,6 +53,7 @@ export default function Fixtures() {
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [editingFixture, setEditingFixture] = useState<Match | null>(null)
   const [importResult, setImportResult] = useState<CsvImportResult | null>(null)
   const [importError, setImportError] = useState<string | null>(null)
 
@@ -73,15 +75,6 @@ export default function Fixtures() {
     },
   })
 
-  const syncMutation = useMutation({
-    mutationFn: () => api.fixtures.sync(),
-    onSuccess: () => {
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['fixtures'] })
-        queryClient.invalidateQueries({ queryKey: ['matches'] })
-      }, 3000)
-    },
-  })
 
   const handleImported = (result: CsvImportResult) => {
     setImportResult(result)
@@ -95,6 +88,7 @@ export default function Fixtures() {
     venue: 'home' | 'away' | 'neutral'
     matchDate: Date
     competition?: string | null
+    half_duration_mins?: number
   }) => {
     try {
       await createMatch.mutateAsync({
@@ -102,12 +96,31 @@ export default function Fixtures() {
         match_date: data.matchDate.toISOString(),
         venue: data.venue,
         competition: data.competition,
+        half_duration_mins: data.half_duration_mins ?? 30,
       })
       setIsModalOpen(false)
       queryClient.invalidateQueries({ queryKey: ['fixtures'] })
     } catch (error) {
       console.error('Failed to create fixture:', error)
     }
+  }
+
+  const handleEditFixture = async (id: string, data: {
+    opponent: string
+    venue: 'home' | 'away' | 'neutral'
+    match_date: string
+    competition?: string | null
+    half_duration_mins?: number
+  }) => {
+    await api.matches.update(id, data)
+    queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
+  }
+
+  const handleDeleteFixture = async (id: string) => {
+    await api.matches.delete(id)
+    queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+    queryClient.invalidateQueries({ queryKey: ['matches'] })
   }
 
   // Build calendar grid
@@ -154,21 +167,13 @@ export default function Fixtures() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {hasScraper && (
-            <button
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: 'linear-gradient(135deg, rgba(6,182,212,0.15), rgba(59,130,246,0.15))',
-                border: '1px solid rgba(6,182,212,0.3)',
-                color: syncMutation.isPending ? 'rgba(255,255,255,0.4)' : 'rgb(6,182,212)',
-              }}
-            >
-              <RefreshCw size={16} className={syncMutation.isPending ? 'animate-spin' : ''} />
-              <span className="hidden sm:inline">{syncMutation.isPending ? 'Syncing...' : 'Sync'}</span>
-            </button>
-          )}
+          <button
+            onClick={() => document.getElementById('upcoming-fixtures')?.scrollIntoView({ behavior: 'smooth' })}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all bg-white/[0.06] border border-white/10 text-white/70 hover:bg-white/[0.10] hover:text-white"
+          >
+            <ChevronDown size={16} />
+            <span className="hidden sm:inline">Upcoming</span>
+          </button>
           <button
             onClick={() => setIsImportModalOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all bg-white/[0.06] border border-white/10 text-white/70 hover:bg-white/[0.10] hover:text-white"
@@ -182,17 +187,12 @@ export default function Fixtures() {
             style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
           >
             <PlusCircle size={16} />
-            <span className="hidden sm:inline">Add Fixture</span>
+            <span className="hidden sm:inline">Fixture</span>
           </button>
         </div>
       </div>
 
       {/* Status banners */}
-      {syncMutation.isSuccess && (
-        <div className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-400">
-          Fixtures are syncing in the background. They'll appear shortly.
-        </div>
-      )}
       {importResult && (
         <div className="px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-sm text-emerald-400 flex items-center justify-between">
           <span>{importResult.message}</span>
@@ -346,7 +346,7 @@ export default function Fixtures() {
       </div>
 
       {/* Upcoming Fixtures List */}
-      <div>
+      <div id="upcoming-fixtures">
         <h2 className="text-lg font-semibold text-white mb-3">Upcoming Fixtures</h2>
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -397,6 +397,15 @@ export default function Fixtures() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreate={handleCreateFixture}
+        defaultHalfDuration={club?.default_half_duration ?? 30}
+      />
+
+      {/* Edit Fixture Modal */}
+      <EditFixtureModal
+        fixture={editingFixture}
+        onClose={() => setEditingFixture(null)}
+        onSave={handleEditFixture}
+        onDelete={handleDeleteFixture}
       />
 
       {/* Import Fixtures Modal */}

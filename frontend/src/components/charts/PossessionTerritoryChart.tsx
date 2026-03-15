@@ -47,8 +47,9 @@ export default function PossessionTerritoryChart({
       if (px === null || px === undefined) return
 
       const minute = e.minute || 0
-      if (selectedHalf === '1st' && minute > 35) return
-      if (selectedHalf === '2nd' && minute <= 35) return
+      const hdm = e.half_duration_mins ?? 30
+      if (selectedHalf === '1st' && minute > hdm) return
+      if (selectedHalf === '2nd' && minute <= hdm) return
 
       const team = e.team || (e.is_home_team ? 'own' : 'opponent')
       if (team !== 'own' && team !== 'opponent') return

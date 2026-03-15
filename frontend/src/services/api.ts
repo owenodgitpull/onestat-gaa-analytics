@@ -212,6 +212,7 @@ export const matchesAPI = {
     temperature_celsius?: number | null;
     competition?: string | null;
     referee?: string | null;
+    half_duration_mins?: number;
   }): Promise<Match> => {
     return fetchAPI<Match>('/matches/', {
       method: 'POST',
@@ -227,6 +228,13 @@ export const matchesAPI = {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  },
+
+  /**
+   * Delete a match (soft delete)
+   */
+  delete: async (id: string): Promise<void> => {
+    await fetchAPI<void>(`/matches/${id}`, { method: 'DELETE' });
   },
 
   /**
