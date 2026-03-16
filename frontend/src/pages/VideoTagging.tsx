@@ -498,10 +498,12 @@ export default function VideoTagging() {
 
     if (pending.action.needsPitch) {
       setOverlayState('pitch')
-    } else if (pending.action.needsPlayer) {
+    } else if (pending.action.needsPlayer && possession === 'team_a') {
       setOverlayState('player')
     } else {
+      // No pitch/player needed, or opponent event — finalize directly
       setOverlayState('none')
+      setTimeout(() => finalizeEventRef.current(pending, pending.eventData), 0)
     }
   }, [ballPosition, possession])
 
@@ -527,8 +529,8 @@ export default function VideoTagging() {
 
       const updatedPending = { ...prev, eventData: updatedData }
 
-      if (prev.action.needsPlayer) {
-        // Advance to player selection (state update batched with setPendingOverlay)
+      if (prev.action.needsPlayer && possession === 'team_a') {
+        // Advance to player selection for own team only
         setTimeout(() => setOverlayState('player'), 0)
       } else {
         // No player needed — finalize directly

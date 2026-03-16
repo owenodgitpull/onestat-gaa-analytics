@@ -122,7 +122,7 @@ export const offlineMatchEvents = {
     is_home_team: boolean
     notes?: string
   }): Promise<MatchEvent> => {
-    const { is_home_team, x_coord, y_coord, half, ...rest } = data
+    const { is_home_team, x_coord, y_coord, half, minute, ...rest } = data
     const team = is_home_team ? 'own' : 'opponent'
 
     const clientEventId = await enqueueAndSync(
@@ -132,6 +132,7 @@ export const offlineMatchEvents = {
       {
         ...rest,
         team,
+        minute: Math.min(minute, 120),
         pitch_x: x_coord,
         pitch_y: y_coord,
       },
@@ -255,18 +256,18 @@ export const offlinePossession = {
     x_coord: number
     y_coord: number
   }): Promise<PossessionEvent> => {
-    const { is_home_team, half, ...rest } = data
-    const team = is_home_team ? 'own' : 'opponent'
+    const team = data.is_home_team ? 'own' : 'opponent'
 
     const clientEventId = await enqueueAndSync(
       data.match_id,
       '/possession-events/',
       'POST',
       {
-        ...rest,
+        match_id: data.match_id,
         team,
-        pitch_x: rest.x_coord,
-        pitch_y: rest.y_coord,
+        pitch_x: data.x_coord,
+        pitch_y: data.y_coord,
+        minute: Math.min(data.minute, 120),
       },
       'possession',
     )
@@ -318,9 +319,9 @@ export const offlinePlayerMovement = {
 
     await enqueueAndSync(
       data.match_id,
-      '/player-movement/carrier-segments/start',
+      '/player-movement/carrier-segments',
       'POST',
-      { ...data, client_segment_id: tempSegmentId },
+      { ...data, client_event_id: tempSegmentId },
       'carrier',
     )
 
@@ -350,7 +351,7 @@ export const offlinePlayerMovement = {
 
     await enqueueAndSync(
       '', // matchId not needed for endpoint
-      `/player-movement/carrier-segments/${realId}/end`,
+      `/player-movement/carrier-segments/${realId}`,
       'PUT',
       data,
       'carrier',
@@ -368,7 +369,7 @@ export const offlinePlayerMovement = {
     await enqueueAndSync(
       '', // matchId not needed
       `/player-movement/carrier-segments/${realId}/path-points`,
-      'PUT',
+      'POST',
       { points },
       'carrier',
       isTemp ? segmentId : undefined,

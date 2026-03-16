@@ -100,7 +100,63 @@ GAA_ESSENTIALS = """
 10. RHF  11. CHF (Playmaker)  12. LHF
 13. RCF  14. FF (Full Forward)  15. LCF
 
+## Pitch Coordinate System (145m × 90m)
+Events have x (0-100) and y (0-100) coordinates mapped to a real GAA pitch.
+- x=0 is the OWN team's goal line, x=100 is the OPPONENT's goal line
+- y=0 is the left sideline, y=100 is the right sideline
+
+### Key pitch lines (x coordinate, from own goal):
+- 0-9%: inside own 13m line (goalkeeper area)
+- 9-14%: inside own 20m line (full-back area)
+- 14-31%: inside own 45m line (half-back area)
+- 31-50%: own side of midfield
+- 50-69%: opponent's side of midfield
+- 69-72%: inside opponent's 45m line
+- 72-86%: inside the 40m arc (2-POINTER SCORING ZONE — points from here worth 2)
+- 86-91%: inside opponent's 20m line (close range)
+- 91-100%: inside opponent's 13m line (goal-mouth area)
+
+### Side of pitch (y coordinate):
+- y < 33%: left side | y 33-67%: centre | y > 67%: right side
+
+Events include a "location" field with human-readable zone descriptions. Use these for tactical analysis — e.g. "3 turnovers inside our 45m" or "scoring 60% from inside the arc, left side".
 """
+
+
+def _pitch_location(x, y) -> str:
+    """Convert pitch x,y (0-100) to human-readable GAA pitch zone."""
+    if x is None or y is None:
+        return ""
+
+    # Side
+    if y < 33:
+        side = ", left side"
+    elif y > 67:
+        side = ", right side"
+    else:
+        side = ""
+
+    # Zone (from own goal x=0 to opponent goal x=100)
+    if x >= 91:
+        zone = "inside the 13m line"
+    elif x >= 86:
+        zone = "inside the 20m line"
+    elif x >= 72:
+        zone = "inside the 40m arc"
+    elif x >= 69:
+        zone = "inside the 45m line"
+    elif x >= 50:
+        zone = "past midfield"
+    elif x >= 31:
+        zone = "own half"
+    elif x >= 14:
+        zone = "inside own 45m line"
+    elif x >= 9:
+        zone = "inside own 20m line"
+    else:
+        zone = "inside own 13m line"
+
+    return f"{zone}{side}"
 
 
 async def get_club_context(db: AsyncSession, club_id) -> tuple:
@@ -1166,7 +1222,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
 
     events_data = []
     for e in events:
-        events_data.append({
+        event_dict = {
             "minute": e.minute,
             "half": 1 if e.minute <= hdm else 2,
             "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
@@ -1174,8 +1230,12 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             "player": players.get(str(e.player_id), "Unknown") if e.player_id else None,
             "x": e.pitch_x,
             "y": e.pitch_y,
-            "notes": e.notes
-        })
+            "notes": e.notes,
+        }
+        loc = _pitch_location(e.pitch_x, e.pitch_y)
+        if loc:
+            event_dict["location"] = loc
+        events_data.append(event_dict)
 
     return safe_json({"events": events_data, "total": len(events_data)})
 
@@ -1449,7 +1509,16 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             "opponent_accuracy": opp_accuracy,
             "opponent_possession_percentage": opp_possession,
             "opponent_turnovers_won": opp_turnovers_won
-        }
+        },
+        "recent_events": [
+            {
+                "minute": e.minute,
+                "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
+                "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
+                "location": _pitch_location(e.pitch_x, e.pitch_y),
+            }
+            for e in sorted(events, key=lambda ev: ev.minute or 0, reverse=True)[:10]
+        ],
     })
 
 
@@ -2168,11 +2237,7 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     def _zone(x: float | None) -> str:
         if x is None:
             return "unknown"
-        if x < 33:
-            return "defensive"
-        if x < 66:
-            return "midfield"
-        return "attacking"
+        return _pitch_location(x, 50) or "unknown"  # y=50 (centre) for zone-only label
 
     territory_passes = {"forward": 0, "lateral": 0, "backward": 0}
 

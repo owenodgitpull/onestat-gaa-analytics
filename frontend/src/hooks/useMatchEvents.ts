@@ -84,12 +84,39 @@ export function useRecordEvent() {
         },
       )
 
+      // Optimistically update match score in cache (server sync is async)
+      const et = variables.event_type
+      const isOwn = variables.is_home_team
+      const goalTypes = ['goal', 'penalty_goal']
+      const pointTypes = ['point', 'point_free', 'forty_five']
+      const twoPointTypes = ['two_point', 'two_point_free']
+      const isGoal = goalTypes.includes(et)
+      const isPoint = pointTypes.includes(et)
+      const isTwoPoint = twoPointTypes.includes(et)
+
+      if (isGoal || isPoint || isTwoPoint) {
+        queryClient.setQueryData(
+          matchKeys.detail(variables.match_id),
+          (old: any) => {
+            if (!old) return old
+            const updated = { ...old }
+            if (isOwn) {
+              if (isGoal) updated.team_goals = (updated.team_goals || 0) + 1
+              else if (isTwoPoint) updated.team_points = (updated.team_points || 0) + 2
+              else updated.team_points = (updated.team_points || 0) + 1
+            } else {
+              if (isGoal) updated.opponent_goals = (updated.opponent_goals || 0) + 1
+              else if (isTwoPoint) updated.opponent_points = (updated.opponent_points || 0) + 2
+              else updated.opponent_points = (updated.opponent_points || 0) + 1
+            }
+            return updated
+          },
+        )
+      }
+
       // Invalidate stats (these are computed server-side, will refetch when online)
       queryClient.invalidateQueries({
         queryKey: matchKeys.stats(variables.match_id)
-      });
-      queryClient.invalidateQueries({
-        queryKey: matchKeys.detail(variables.match_id)
       });
     },
   });

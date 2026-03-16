@@ -31,6 +31,7 @@ interface JerseyNumberStripProps {
   teamPrimaryColor?: string
   teamSecondaryColor?: string
   currentHalf?: 1 | 2
+  attackingRight?: boolean
   recentCarrierIds?: string[]
 }
 
@@ -73,6 +74,7 @@ export default function JerseyNumberStrip({
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
   currentHalf = 1,
+  attackingRight = true,
   recentCarrierIds = [],
 }: JerseyNumberStripProps) {
   // Sort by positional line, direction-aware based on half
@@ -83,8 +85,9 @@ export default function JerseyNumberStrip({
       const lineA = getPositionLine(a.positionId)
       const lineB = getPositionLine(b.positionId)
 
-      // 1st half: defence first (GK → FF), 2nd half: attack first (FF → GK)
-      const lineCompare = currentHalf === 1 ? lineA - lineB : lineB - lineA
+      // Mirror pitch: defence first when attacking right (GK on left), reversed when attacking left
+      const defenceFirst = attackingRight
+      const lineCompare = defenceFirst ? lineA - lineB : lineB - lineA
 
       if (lineCompare !== 0) return lineCompare
 
@@ -94,7 +97,7 @@ export default function JerseyNumberStrip({
       if (b.jerseyNumber != null) return 1
       return a.playerName.localeCompare(b.playerName)
     })
-  }, [players, currentHalf])
+  }, [players, attackingRight])
 
   // Recent carriers (last 3 unique, excluding current active carrier)
   const recentPlayers = useMemo(() => {

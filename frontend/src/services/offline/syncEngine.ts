@@ -113,8 +113,8 @@ async function processItem(item: OutboxItem): Promise<boolean> {
   }
 
   try {
-    const baseUrl = import.meta.env.VITE_API_URL || ''
-    const url = `${baseUrl}/api/v1${endpoint}`
+    const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+    const url = `${baseUrl}${endpoint}`
 
     const fetchOpts: RequestInit = {
       method: item.method,

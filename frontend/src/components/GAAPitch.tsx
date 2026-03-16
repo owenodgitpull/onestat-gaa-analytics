@@ -122,11 +122,16 @@ export default function GAAPitch({
     const svg = svgRef.current
     if (!svg) return null
 
-    const rect = svg.getBoundingClientRect()
-    const svgX = ((clientX - rect.left) / rect.width) * 2332
-    const svgY = ((clientY - rect.top) / rect.height) * 1446
-    const x = ((svgX - 183) / 1960) * 100
-    const y = ((svgY - 123) / 1167) * 100
+    // Use SVG's own coordinate transform — immune to aspect-ratio letterboxing
+    const pt = svg.createSVGPoint()
+    pt.x = clientX
+    pt.y = clientY
+    const ctm = svg.getScreenCTM()
+    if (!ctm) return null
+    const svgPt = pt.matrixTransform(ctm.inverse())
+
+    const x = ((svgPt.x - 183) / 1960) * 100
+    const y = ((svgPt.y - 123) / 1167) * 100
 
     return {
       x: Math.max(0, Math.min(100, x)),

@@ -217,7 +217,7 @@ export default function MatchRecording() {
       const wasStopped = saved.isStopped
       const catchUpSeconds = wasStopped ? 0 : elapsedSinceSave
       const totalSeconds = saved.minute * 60 + saved.seconds + catchUpSeconds
-      setMinute(Math.floor(totalSeconds / 60))
+      setMinute(Math.min(Math.floor(totalSeconds / 60), 120))
       setSeconds(totalSeconds % 60)
 
       setIsStopped(saved.isStopped)
@@ -465,10 +465,11 @@ export default function MatchRecording() {
             setMinute((m) => {
               // At 60 minutes, just mark full time reached but DON'T auto-finish
               // User must click "End Match" to properly complete and trigger AI analysis
-              if (m >= 59 && matchPhase === 'second_half') {
+              const next = m + 1
+              if (next >= 59 && matchPhase === 'second_half') {
                 setFullTimeReached(true)
               }
-              return m + 1
+              return Math.min(next, 120)
             })
             return 0
           }
@@ -2092,19 +2093,29 @@ export default function MatchRecording() {
     const carrierPlayer = activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId) : null
     const displayName = isOwn && carrierPlayer ? carrierPlayer.playerName : (isOwn ? clubName : teamName)
 
+    // GAA pitch zones mapped to % (145m pitch):
+    // 13m = 9%, 20m = 14%, 45m = 31%, midfield = 50%, 40m arc = 72%
     let text: string
     if (isOwn) {
-      if (attackingProgress >= 78) text = `${displayName} inside the 21m line${side}`
-      else if (attackingProgress >= 55) text = `${displayName} inside the 45m line${side}`
-      else if (attackingProgress >= 45) text = `${displayName} around midfield${side}`
-      else if (attackingProgress >= 22) text = `${displayName} in their own half${side}`
-      else text = `${displayName} deep in their own half${side}`
+      if (attackingProgress >= 91) text = `${displayName} inside the 13m line${side}`
+      else if (attackingProgress >= 86) text = `${displayName} inside the 20m line${side}`
+      else if (attackingProgress >= 72) text = `${displayName} inside the 40m arc${side}`
+      else if (attackingProgress >= 69) text = `${displayName} inside the 45m line${side}`
+      else if (attackingProgress >= 50) text = `${displayName} past midfield${side}`
+      else if (attackingProgress >= 31) text = `${displayName} in their own half${side}`
+      else if (attackingProgress >= 14) text = `${displayName} inside own 45m line${side}`
+      else if (attackingProgress >= 9) text = `${displayName} inside own 20m line${side}`
+      else text = `${displayName} inside own 13m line${side}`
     } else {
-      if (attackingProgress <= 22) text = `${teamName} inside our 21m line${side}`
-      else if (attackingProgress <= 45) text = `${teamName} inside our 45m line${side}`
-      else if (attackingProgress <= 55) text = `${teamName} around midfield${side}`
-      else if (attackingProgress <= 78) text = `${teamName} in their own half${side}`
-      else text = `${teamName} deep in their own half${side}`
+      if (attackingProgress <= 9) text = `${teamName} inside our 13m line${side}`
+      else if (attackingProgress <= 14) text = `${teamName} inside our 20m line${side}`
+      else if (attackingProgress <= 28) text = `${teamName} inside our 40m arc${side}`
+      else if (attackingProgress <= 31) text = `${teamName} inside our 45m line${side}`
+      else if (attackingProgress <= 50) text = `${teamName} in our half${side}`
+      else if (attackingProgress <= 69) text = `${teamName} past midfield${side}`
+      else if (attackingProgress <= 86) text = `${teamName} inside their 45m line${side}`
+      else if (attackingProgress <= 91) text = `${teamName} inside their 20m line${side}`
+      else text = `${teamName} inside their 13m line${side}`
     }
 
     const bg = isOwn
@@ -2331,6 +2342,7 @@ export default function MatchRecording() {
                     teamPrimaryColor={club?.primary_colour || '#10B981'}
                     teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
                     currentHalf={currentHalf}
+                    attackingRight={teamAttackingRight}
                     recentCarrierIds={recentCarrierIds}
                   />
                 </div>

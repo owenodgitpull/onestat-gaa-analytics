@@ -113,6 +113,7 @@ export default function FullscreenPitchMode({
   onCancelKickout,
   activeCategory,
   onCategoryChange,
+  teamAttackingRight,
   statusText,
   onSwapPossession,
   selectingFoulPlayer = false,
@@ -348,7 +349,7 @@ export default function FullscreenPitchMode({
       )}
 
       {/* Pitch — fills all remaining space (in landscape, controls overlay on pitch) */}
-      <div className="flex-1 relative overflow-hidden min-h-0">
+      <div className="flex-1 relative overflow-hidden min-h-0 flex items-center justify-center">
         {/* Phone landscape: floating scoreboard overlay on pitch */}
         {isPhoneLandscape && (
           <div className="absolute top-1 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 backdrop-blur-xl bg-black/60 border border-white/15 rounded-xl px-3 py-1">
@@ -373,7 +374,7 @@ export default function FullscreenPitchMode({
           onBallMove={onBallMove}
           showZones={true}
           readonly={readonly}
-          containerClassName="w-full h-full aspect-[16/10]"
+          containerClassName="w-full max-h-full aspect-[16/10]"
           gradientBorder
           trail={trail}
           onTrailUpdate={onTrailUpdate}
@@ -480,6 +481,7 @@ export default function FullscreenPitchMode({
             disabled={actionsDisabled}
             teamPrimaryColor={teamPrimaryColor}
             teamSecondaryColor={teamSecondaryColor}
+            attackingRight={teamAttackingRight}
           />
         </div>
       )}
