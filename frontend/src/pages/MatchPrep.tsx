@@ -136,6 +136,12 @@ export default function MatchPrep() {
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  // Opposition roster state
+  const [oppositionRoster, setOppositionRoster] = useState<string[]>([])
+  const [oppositionInput, setOppositionInput] = useState('')
+  const [rosterSaving, setRosterSaving] = useState(false)
+  const [rosterSaved, setRosterSaved] = useState(false)
+
   // Tactical notes state
   const [tacticalNotes, setTacticalNotes] = useState('')
   const [notesSaved, setNotesSaved] = useState(true)
@@ -176,7 +182,7 @@ export default function MatchPrep() {
     const load = async () => {
       setLoading(true)
       try {
-        const [matchData, playerData, healthData, existingLineup, lastLineup, notesData, markingsData, setPiecesData] = await Promise.all([
+        const [matchData, playerData, healthData, existingLineup, lastLineup, notesData, markingsData, setPiecesData, rosterData] = await Promise.all([
           api.matches.getById(matchId),
           api.players.getAll(),
           api.squadHealth.getSummary().catch(() => null),
@@ -185,6 +191,7 @@ export default function MatchPrep() {
           api.matchPrep.getTacticalNotes(matchId).catch(() => ({ tactical_notes: '' })),
           api.matchPrep.listMarkings(matchId).catch(() => []),
           api.matchPrep.listSetPieces().catch(() => []),
+          api.matchPrep.getOppositionRoster(matchId).catch(() => ({ players: [] })),
         ])
         setMatch(matchData)
         setPlayers(playerData)
@@ -218,6 +225,10 @@ export default function MatchPrep() {
         setTacticalNotes(notesData.tactical_notes || '')
         setMarkingAssignments(markingsData)
         setSetPieces(setPiecesData)
+        if (rosterData.players?.length) {
+          setOppositionRoster(rosterData.players)
+          setOppositionInput(rosterData.players.join('\n'))
+        }
       } catch (err) {
         console.error('Failed to load match prep data:', err)
       } finally {
@@ -842,6 +853,67 @@ export default function MatchPrep() {
         {expandedSections.briefing && (
           <div className="px-4 pb-4">
             <OppositionBriefing matchId={matchId!} opponent={match.opponent} />
+          </div>
+        )}
+      </div>
+
+      {/* Opposition Roster */}
+      <div className="glass-card overflow-hidden">
+        <button
+          onClick={() => toggleSection('opposition')}
+          className="flex items-center justify-between w-full px-4 py-3 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Users size={16} className="text-orange-400" />
+            <span className="text-sm font-bold text-white">Opposition Players</span>
+            {oppositionRoster.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300">{oppositionRoster.length}</span>
+            )}
+          </div>
+          {expandedSections.opposition ? <ChevronUp size={16} className="text-white/40" /> : <ChevronDown size={16} className="text-white/40" />}
+        </button>
+        {expandedSections.opposition && (
+          <div className="px-4 pb-4 space-y-3">
+            <p className="text-xs text-white/40">
+              Only opposition <strong className="text-white/60">scores</strong> are tracked during match recording. Enter key players likely to score — you can quickly attribute their goals and points during the match.
+            </p>
+            <textarea
+              value={oppositionInput}
+              onChange={(e) => setOppositionInput(e.target.value)}
+              placeholder={"Enter one player per line, e.g.:\nConor Cox\nDiarmuid Murtagh\nEgan Smith"}
+              rows={6}
+              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-orange-500/40 resize-none"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-white/30">
+                {oppositionInput.split('\n').filter(l => l.trim()).length} players entered
+              </span>
+              <button
+                onClick={async () => {
+                  const names = oppositionInput.split('\n').map(n => n.trim()).filter(Boolean)
+                  setRosterSaving(true)
+                  try {
+                    const result = await api.matchPrep.saveOppositionRoster(matchId!, names)
+                    setOppositionRoster(result.players)
+                    setRosterSaved(true)
+                    setTimeout(() => setRosterSaved(false), 3000)
+                  } catch (err) {
+                    console.error('Failed to save opposition roster:', err)
+                  } finally {
+                    setRosterSaving(false)
+                  }
+                }}
+                disabled={rosterSaving}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                style={{
+                  background: rosterSaved ? 'rgba(16,185,129,0.2)' : 'rgba(251,146,60,0.15)',
+                  border: rosterSaved ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(251,146,60,0.3)',
+                  color: rosterSaved ? '#34d399' : '#fb923c',
+                }}
+              >
+                {rosterSaving ? 'Saving...' : rosterSaved ? 'Saved' : 'Save Roster'}
+              </button>
+            </div>
           </div>
         )}
       </div>

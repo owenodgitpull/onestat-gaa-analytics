@@ -69,6 +69,7 @@ export function useRecordEvent() {
       y_coord?: number;
       is_home_team: boolean;
       notes?: string;
+      opponent_player_name?: string;
     }) => offlineMatchEvents.create(data),
     onSuccess: (result, variables) => {
       // Optimistically add the event to the cache (no refetch needed)

@@ -51,6 +51,7 @@ class MatchEventService:
             pitch_x=event_data.pitch_x,
             pitch_y=event_data.pitch_y,
             notes=event_data.notes,
+            opponent_player_name=getattr(event_data, 'opponent_player_name', None),
             client_event_id=event_data.client_event_id,
         )
         

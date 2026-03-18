@@ -195,6 +195,8 @@ export default function Navigation() {
     { to: '/results', matchPath: '/matches', label: 'Matches', icon: Trophy, tour: 'nav-matches' },
     { to: '/players', matchPath: '/players', label: 'Players', icon: Users },
     { to: '/training', matchPath: '/training', label: 'Training', icon: Dumbbell },
+    { to: '/fitness', matchPath: '/fitness', label: 'Fitness', icon: Activity, mobileOnly: true },
+    { to: '/fixtures', matchPath: '/fixtures', label: 'Fixtures', icon: CalendarDays, mobileOnly: true },
     { to: '/reports/season', matchPath: '/reports', label: 'Reports', icon: FileText, tour: 'nav-reports' },
     { to: '/analyst', matchPath: '/analyst', label: 'Analyst', icon: MessageSquare, tour: 'nav-analyst' },
   ]
@@ -234,7 +236,7 @@ export default function Navigation() {
 
           {/* Main Navigation Links — hidden on mobile, visible md+ */}
           <div className="hidden md:flex items-center h-full overflow-x-auto scrollbar-hide flex-1 min-w-0">
-            {NAV_LINKS.map(({ to, matchPath, label, tour }) => (
+            {NAV_LINKS.filter(l => !(l as any).mobileOnly).map(({ to, matchPath, label, tour }) => (
               <Link
                 key={to}
                 to={to}

@@ -130,6 +130,9 @@ class Match(Base):
     # Half duration in minutes (30 for clubs, 35 for inter-county)
     half_duration_mins: Column[int] = Column(Integer, default=30, nullable=False)
 
+    # Opposition roster (list of player names for opponent scoring attribution)
+    opposition_roster = Column(JSON, nullable=True)
+
     # Soft delete
     is_deleted: Column[bool] = Column(Boolean, default=False, nullable=False)
     

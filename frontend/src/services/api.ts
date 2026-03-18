@@ -2722,6 +2722,16 @@ const matchPrepAPI = {
   deleteMarking: (assignmentId: string): Promise<void> =>
     fetchAPI(`/match-prep/marking/${assignmentId}`, { method: 'DELETE' }),
 
+  // Opposition Roster
+  getOppositionRoster: (matchId: string): Promise<{ players: string[] }> =>
+    fetchAPI(`/match-prep/matches/${matchId}/opposition-roster`),
+
+  saveOppositionRoster: (matchId: string, players: string[]): Promise<{ players: string[] }> =>
+    fetchAPI(`/match-prep/matches/${matchId}/opposition-roster`, {
+      method: 'PUT',
+      body: JSON.stringify({ players }),
+    }),
+
   // Voiceover
   getVoiceoverUploadUrl: (routineId: string): Promise<{ upload_url: string; key: string }> =>
     fetchAPI(`/match-prep/set-pieces/${routineId}/voiceover-upload-url`, { method: 'POST' }),

@@ -83,6 +83,7 @@ export interface Match {
   second_half_started_at?: string | null;
   attacking_right_first_half?: boolean | null;
   half_duration_mins?: number;
+  opposition_roster?: string[] | null;
   team_strip_colour?: string | null;
   opponent_strip_colour?: string | null;
   has_gps?: boolean;

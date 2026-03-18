@@ -492,3 +492,46 @@ async def delete_voiceover(
         storage.delete_file(routine.voiceover_key, club_id=str(user.club_id))
         routine.voiceover_key = None
         await db.commit()
+
+
+# ── Opposition Roster ─────────────────────────────────────────────────────
+
+@router.get("/matches/{match_id}/opposition-roster")
+async def get_opposition_roster(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get opposition roster for a match (list of player names)."""
+    from app.models.match import Match
+    result = await db.execute(select(Match).where(Match.id == match_id, Match.club_id == user.club_id))
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    return {"players": match.opposition_roster or []}
+
+
+@router.put("/matches/{match_id}/opposition-roster")
+async def save_opposition_roster(
+    match_id: UUID,
+    body: dict,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save opposition roster (list of player names)."""
+    from app.models.match import Match
+    result = await db.execute(select(Match).where(Match.id == match_id, Match.club_id == user.club_id))
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    players = body.get("players", [])
+    if not isinstance(players, list):
+        raise HTTPException(status_code=400, detail="players must be a list of names")
+
+    # Clean: strip whitespace, remove empty strings
+    match.opposition_roster = [p.strip() for p in players if isinstance(p, str) and p.strip()]
+    await db.commit()
+
+    return {"players": match.opposition_roster}

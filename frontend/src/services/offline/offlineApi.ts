@@ -121,8 +121,9 @@ export const offlineMatchEvents = {
     y_coord?: number
     is_home_team: boolean
     notes?: string
+    opponent_player_name?: string
   }): Promise<MatchEvent> => {
-    const { is_home_team, x_coord, y_coord, half, minute, ...rest } = data
+    const { is_home_team, x_coord, y_coord, half, minute, opponent_player_name, ...rest } = data
     const team = is_home_team ? 'own' : 'opponent'
 
     const clientEventId = await enqueueAndSync(
@@ -135,6 +136,7 @@ export const offlineMatchEvents = {
         minute: Math.min(minute, 120),
         pitch_x: x_coord,
         pitch_y: y_coord,
+        ...(opponent_player_name ? { opponent_player_name } : {}),
       },
       'event',
     )

@@ -23,6 +23,7 @@ import FormationSnapshotButton from '@/components/FormationSnapshotButton'
 import FormationSnapshotMode from '@/components/FormationSnapshotMode'
 import TacticalTagButton from '@/components/TacticalTagButton'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
+import OppositionScorerStrip from '@/components/OppositionScorerStrip'
 import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '@/components/WeatherPickerPopover'
 import { BallPosition, PossessionTeam, EventType, Player, MatchEvent } from '@/types'
 import { useMatch, useMatchStats, useStartMatch, useCompleteMatch, useUpdateMatchPhase } from '@/hooks/useMatches'
@@ -109,6 +110,7 @@ export default function MatchRecording() {
     playerId?: string
   } | null>(null) // Kickout event waiting for position selection
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition } | null>(null)
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false)
@@ -758,9 +760,9 @@ export default function MatchRecording() {
   const formatEventDescription = (event: MatchEvent): string => {
     const player = players.find(p => p.id === String(event.player_id))
     const teamName = match?.opponent || 'Opposition'
-    // Backend returns team as 'own' or 'opponent', fallback to is_home_team logic
+    // Backend returns team as 'own' or 'opponent', fallback to is_home_team
     const eventTeam = (event as any).team
-    const isOwn = eventTeam ? eventTeam === 'own' : (event.is_home_team === match?.is_home)
+    const isOwn = eventTeam ? eventTeam === 'own' : event.is_home_team
     // Get contextual area description based on which team the event is for
     const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, teamName)
     // For own team events, use player name; for opponent events, use team name
@@ -1006,6 +1008,9 @@ export default function MatchRecording() {
     // Update local ball position
     setBallPosition(newPosition)
     setBallTrail(prev => [...prev.slice(-49), { x: newPosition.x, y: newPosition.y }])
+
+    // Don't record possession during dead ball (awaiting kickout)
+    if (awaitingKickout) return
 
     // Record possession event to backend
     try {
@@ -1378,8 +1383,7 @@ export default function MatchRecording() {
   }
 
   const handleQuickAction = (eventType: EventType) => {
-    console.log('Quick action:', eventType, 'at position:', ballPosition)
-    console.log('Ball possession team:', ballPosition.team)
+    console.log('[QuickAction] event:', eventType, 'ballPos:', JSON.stringify(ballPosition), 'possession:', ballPosition.team)
 
     // Check if this is a free kick result or 45 result
     const eventStr = String(eventType).toUpperCase()
@@ -1439,7 +1443,7 @@ export default function MatchRecording() {
       isHomeTeam = actionPosition.team === PossessionTeam.OWN
     }
 
-    console.log('Determined isHomeTeam:', isHomeTeam, 'for event:', eventType)
+    console.log('[QuickAction] DETERMINED isHomeTeam:', isHomeTeam, 'for event:', eventType, 'actionPosition.team:', actionPosition.team)
 
     // Events that don't require player selection
     // Only "Opposition Won" events and opponent errors (we don't track their players)
@@ -1451,10 +1455,13 @@ export default function MatchRecording() {
       EventType.OPP_UNFORCED_ERROR,  // Opponent's mistake - we don't track their players
     ]
 
-    // Opponent scoring/shooting/interception — we don't track opponent players
-    const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SAVED]
-    const isOpponentScoring = scoringEvents.includes(eventType) && !isHomeTeam
+    // Opponent scoring/shooting/interception
+    const allOpponentEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SAVED]
+    const opponentScoringOnly = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
+    const isOpponentScoring = allOpponentEvents.includes(eventType) && !isHomeTeam
+    const isOpponentActualScore = opponentScoringOnly.includes(eventType) && !isHomeTeam
     const isOpponentDefence = (eventType === EventType.INTERCEPTION || eventType === EventType.BLOCK) && !isHomeTeam
+    const oppositionRoster = match?.opposition_roster || []
 
     // Free kick results - record with context of which team is taking the free
     if (isFreeKickResult) {
@@ -1470,6 +1477,9 @@ export default function MatchRecording() {
         // Opponent taking the free — record immediately (we don't track their players)
         recordFreeKickResult(eventType, actionPosition, false)
       }
+    } else if (isOpponentActualScore && oppositionRoster.length > 0) {
+      // Opponent scored and we have a roster — show opposition scorer strip
+      setPendingOpponentScore({ eventType, position: actionPosition })
     } else if (noPlayerNeeded.includes(eventType as EventType) || isOpponentScoring || isOpponentDefence) {
       // Record immediately without player selection
       recordEventWithoutPlayer(eventType, isHomeTeam, actionPosition)
@@ -1553,7 +1563,7 @@ export default function MatchRecording() {
     }
   }
 
-  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean, position: BallPosition = ballPosition) => {
+  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean, position: BallPosition = ballPosition, opponentPlayerName?: string) => {
     if (!matchId) return
 
     // Check if this is a kickout event - these need position selection first
@@ -1591,7 +1601,8 @@ export default function MatchRecording() {
         x_coord: position.x,
         y_coord: position.y,
         is_home_team: isHomeTeam,
-        notes: undefined
+        notes: undefined,
+        opponent_player_name: opponentPlayerName,
       })
 
       // Track for tutorial
@@ -1722,6 +1733,21 @@ export default function MatchRecording() {
       console.error('Failed to record event:', error)
       setErrorAlert('Failed to record event. Please try again.')
     }
+  }
+
+  // Handle opposition scorer selection
+  const handleOpponentScorerSelect = (name: string) => {
+    if (!pendingOpponentScore) return
+    const { eventType, position } = pendingOpponentScore
+    setPendingOpponentScore(null)
+    recordEventWithoutPlayer(eventType, false, position, name)
+  }
+
+  const handleOpponentScorerSkip = () => {
+    if (!pendingOpponentScore) return
+    const { eventType, position } = pendingOpponentScore
+    setPendingOpponentScore(null)
+    recordEventWithoutPlayer(eventType, false, position)
   }
 
   const handlePlayerSelected = async (player: Player) => {
@@ -2328,6 +2354,18 @@ export default function MatchRecording() {
               {blackCardTimers.length > 0 && (
                 <div className="flex items-center gap-2 mb-3">
                   <BlackCardTimer entries={blackCardTimers} onRemove={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))} />
+                </div>
+              )}
+
+              {/* Opposition scorer selector — shown when opponent scores and roster exists */}
+              {pendingOpponentScore && (
+                <div className="max-w-2xl mx-auto mb-2">
+                  <OppositionScorerStrip
+                    players={match?.opposition_roster || []}
+                    onSelect={handleOpponentScorerSelect}
+                    onSkip={handleOpponentScorerSkip}
+                    eventType={String(pendingOpponentScore.eventType).toLowerCase()}
+                  />
                 </div>
               )}
 

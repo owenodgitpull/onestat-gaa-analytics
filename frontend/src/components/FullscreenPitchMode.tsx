@@ -408,7 +408,7 @@ export default function FullscreenPitchMode({
                     <button
                       onClick={onSwapPossession}
                       style={{
-                        padding: 16, borderRadius: 14,
+                        padding: 20, borderRadius: 16,
                         background: 'rgba(0,0,0,0.75)',
                         border: '2px solid rgba(255,255,255,0.25)',
                         color: 'rgba(255,255,255,0.7)',
@@ -417,13 +417,13 @@ export default function FullscreenPitchMode({
                       }}
                       title="Swap possession"
                     >
-                      <ArrowLeftRight size={30} />
+                      <ArrowLeftRight size={38} />
                     </button>
                     {onToggleStoppage && (
                       <button
                         onClick={onToggleStoppage}
                         style={{
-                          padding: 16, borderRadius: 14,
+                          padding: 20, borderRadius: 16,
                           background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.75)',
                           border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.25)'}`,
                           color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
@@ -432,14 +432,14 @@ export default function FullscreenPitchMode({
                         }}
                         title={isStopped ? 'Resume play' : 'Stoppage'}
                       >
-                        {isStopped ? <Play size={30} /> : <Pause size={30} />}
+                        {isStopped ? <Play size={38} /> : <Pause size={38} />}
                       </button>
                     )}
                     {onSubstitution && (
                       <button
                         onClick={onSubstitution}
                         style={{
-                          padding: 16, borderRadius: 14,
+                          padding: 20, borderRadius: 16,
                           background: 'rgba(0,0,0,0.75)',
                           border: '2px solid rgba(255,255,255,0.25)',
                           color: 'rgba(255,255,255,0.7)',
@@ -448,7 +448,7 @@ export default function FullscreenPitchMode({
                         }}
                         title="Substitution"
                       >
-                        <ArrowUpDown size={30} />
+                        <ArrowUpDown size={38} />
                       </button>
                     )}
                   </>
@@ -472,7 +472,7 @@ export default function FullscreenPitchMode({
 
       {/* Jersey Number Strip — hidden in phone landscape to maximize pitch space */}
       {!isPhoneLandscape && jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
-        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2">
+        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2 flex justify-center">
           <JerseyNumberStrip
             players={jerseyStripPlayers}
             activeCarrierId={activeCarrierId}

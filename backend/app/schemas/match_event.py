@@ -21,6 +21,7 @@ class MatchEventBase(BaseModel):
     pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
     notes: Optional[str] = Field(None, max_length=500, description="Optional event notes")
+    opponent_player_name: Optional[str] = Field(None, max_length=200, description="Opposition player name for opponent scoring events")
 
     @field_validator('event_type', mode='before')
     @classmethod

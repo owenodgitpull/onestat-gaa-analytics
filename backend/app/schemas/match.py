@@ -118,6 +118,7 @@ class MatchResponse(MatchBase):
     # Tactical notes
     tactical_notes: Optional[str] = Field(None, description="Tactical notes for match day reference")
     half_duration_mins: int = Field(30, description="Minutes per half (30 for clubs, 35 for inter-county)")
+    opposition_roster: Optional[list] = Field(None, description="List of opposition player names")
 
     # AI analysis (generated when match completes)
     ai_analysis: Optional[str] = Field(None, description="AI-generated post-match analysis")

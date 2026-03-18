@@ -22,11 +22,13 @@ import {
   Pencil,
   Trash2,
   MoreVertical,
-  Calendar
+  Calendar,
+  UserPlus
 } from 'lucide-react'
 import { api, TopScorer, fetchAPI } from '@/services/api'
 import { usePlayers } from '@/hooks/usePlayers'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
+import AddPlayerModal from '@/components/AddPlayerModal'
 
 const POSITIONS = ['goalkeeper', 'defender', 'midfielder', 'forward'] as const
 
@@ -60,6 +62,7 @@ export default function Players() {
   const [editingDobId, setEditingDobId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
 
   const queryClient = useQueryClient()
   const { data: players, isLoading } = usePlayers()
@@ -235,17 +238,27 @@ export default function Players() {
             </p>
           </div>
         </div>
-        <button
-          onClick={toggleCompareMode}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
-            compareMode
-              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-              : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
-          }`}
-        >
-          {compareMode ? <X size={16} /> : <GitCompareArrows size={16} />}
-          {compareMode ? 'Cancel' : 'Compare'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all"
+            style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+          >
+            <UserPlus size={16} />
+            <span className="hidden sm:inline">Player</span>
+          </button>
+          <button
+            onClick={toggleCompareMode}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
+              compareMode
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                : 'bg-white/10 text-white hover:bg-white/20 border border-white/20'
+            }`}
+          >
+            {compareMode ? <X size={16} /> : <GitCompareArrows size={16} />}
+            {compareMode ? 'Cancel' : 'Compare'}
+          </button>
+        </div>
       </div>
 
       {compareMode && (
@@ -658,6 +671,22 @@ export default function Players() {
           </button>
         </div>
       )}
+
+      <AddPlayerModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onAdd={async (data) => {
+          await api.players.create({
+            name: data.name,
+            position: data.position,
+            jersey_number: null,
+            date_of_birth: data.date_of_birth,
+            status: 'active',
+            active: true,
+          })
+          queryClient.invalidateQueries({ queryKey: ['players'] })
+        }}
+      />
     </div>
   )
 }
