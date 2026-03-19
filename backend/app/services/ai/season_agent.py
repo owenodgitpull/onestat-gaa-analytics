@@ -52,6 +52,7 @@ SEASON_TOOLS = [
     "get_fitness_match_link",
     "get_contextual_patterns",
     "get_workload_risk_assessment",
+    "get_tactical_tags",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)

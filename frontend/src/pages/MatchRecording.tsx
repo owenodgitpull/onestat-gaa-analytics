@@ -49,7 +49,9 @@ import {
   Maximize,
   Target,
   ArrowLeftRight,
-  Pause
+  Pause,
+  RotateCcw,
+  Users,
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -111,6 +113,8 @@ export default function MatchRecording() {
   } | null>(null) // Kickout event waiting for position selection
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition } | null>(null)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [resetting, setResetting] = useState(false)
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false)
@@ -883,6 +887,13 @@ export default function MatchRecording() {
       case 'opp_kickout_opposition_won_break':
         return `${teamName} won breaking ball from own kickout in ${area.replace(`${teamName}'s`, 'their')}`
 
+      case 'own_kickout_sideline':
+        return 'Our kickout went over the sideline'
+      case 'opp_kickout_sideline':
+        return `${teamName} kickout went over the sideline`
+      case 'sideline_ball':
+        return `Sideline ball ${area}`
+
       case 'breaking_ball_won':
         // Breaking ball from kickout
         return isOwn
@@ -992,11 +1003,11 @@ export default function MatchRecording() {
       return
     }
 
-    // If there's a pending free kick and user moves ball, cancel the free (short free played)
+    // If there's a pending free kick and user moves ball, update the free position
+    // This allows the user to reposition the free kick location (e.g. move outside arc for 2PT)
     if (pendingFreeKick) {
-      console.log('Ball moved - cancelling pending free kick (short free played)')
-      setPendingFreeKick(null)
-      setPendingFoul(null)
+      console.log('Ball moved - updating free kick position')
+      setPendingFreeKick({ position: newPosition })
     }
 
     // If there's a pending 45 and user moves ball, cancel it
@@ -1170,6 +1181,13 @@ export default function MatchRecording() {
       'opp_kickout_won_break': 'opp_kickout_won_break',
       'opp_kickout_opposition_won_break': 'opp_kickout_opposition_won_break',
 
+      // Kickout over sideline
+      'own_kickout_sideline': 'own_kickout_sideline',
+      'opp_kickout_sideline': 'opp_kickout_sideline',
+
+      // Sideline ball (general — ball out of play)
+      'sideline_ball': 'sideline_ball',
+
       // Frees
       'point_free': 'point_free',
       'two_point_free': 'two_point_free',
@@ -1297,7 +1315,7 @@ export default function MatchRecording() {
     if (!matchId) return
 
     try {
-      const isHomeTeam = data.team === PossessionTeam.OWN ? (match?.is_home || false) : !(match?.is_home || false)
+      const isHomeTeam = data.team === PossessionTeam.OWN
 
       // For substitutions, record event and update field status
       if (data.eventType === EventType.SUBSTITUTION && data.playerId && data.playerComingOn) {
@@ -1410,7 +1428,7 @@ export default function MatchRecording() {
     // "Opposition Won" → no player needed, is_home_team: false
 
     const isTeamWon = eventStr.includes('_WON') && !eventStr.includes('OPPOSITION_WON')
-    const isOppositionWon = eventStr.includes('OPPOSITION_WON')
+    const isOppositionWon = eventStr.includes('OPPOSITION_WON') || eventStr.includes('KICKOUT_SIDELINE')
 
     // Determine team based on event type
     let isHomeTeam: boolean
@@ -1452,6 +1470,9 @@ export default function MatchRecording() {
       EventType.OPP_KICKOUT_OPPOSITION_WON,
       EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
       EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
+      EventType.OWN_KICKOUT_SIDELINE,
+      EventType.OPP_KICKOUT_SIDELINE,
+      EventType.SIDELINE_BALL,
       EventType.OPP_UNFORCED_ERROR,  // Opponent's mistake - we don't track their players
     ]
 
@@ -1732,6 +1753,30 @@ export default function MatchRecording() {
     } catch (error) {
       console.error('Failed to record event:', error)
       setErrorAlert('Failed to record event. Please try again.')
+    }
+  }
+
+  // Reset match events and restart
+  const handleResetMatch = async () => {
+    if (!matchId) return
+    setResetting(true)
+    try {
+      await api.matchEvents.resetMatch(matchId)
+      // Clear offline state (timer, ball position, etc.)
+      const { deleteMatchState } = await import('@/services/offline')
+      await deleteMatchState(matchId)
+      // Clear local state
+      queryClient.invalidateQueries({ queryKey: ['matches', matchId] })
+      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      queryClient.invalidateQueries({ queryKey: ['matchEvents', matchId] })
+      setShowResetConfirm(false)
+      // Reload page to get clean state
+      window.location.reload()
+    } catch (err) {
+      console.error('Failed to reset match:', err)
+      setErrorAlert('Failed to reset match events.')
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -2035,9 +2080,9 @@ export default function MatchRecording() {
   }
 
   const getEndButtonText = () => {
-    if (matchPhase === 'first_half') return minute >= 30 ? 'End First Half (HT)' : 'End First Half'
+    if (matchPhase === 'first_half') return minute >= 30 ? 'Half Time' : 'End Half'
     if (matchPhase === 'second_half') {
-      return fullTimeReached ? 'End Match (FT)' : 'End Match'
+      return fullTimeReached ? 'Full Time' : 'End Match'
     }
     return null
   }
@@ -2049,8 +2094,8 @@ export default function MatchRecording() {
   }
 
   const getPhaseButtonText = () => {
-    if (matchPhase === 'not_started') return 'Start First Half'
-    if (matchPhase === 'half_time') return 'Start Second Half'
+    if (matchPhase === 'not_started') return 'Start Match'
+    if (matchPhase === 'half_time') return 'Start 2nd Half'
     return null
   }
 
@@ -2073,7 +2118,7 @@ export default function MatchRecording() {
       return { text: 'Match not started', subtext: 'Select lineup and start first half', bg: 'from-slate-600/20 to-slate-700/20 border-white/10', accent: 'text-white/50' }
     }
     if (matchPhase === 'half_time') {
-      return { text: 'Half Time', subtext: 'Tap "Start Second Half" to continue', bg: 'from-emerald-600/20 to-cyan-600/20 border-emerald-500/40', accent: 'text-emerald-400' }
+      return { text: 'Half Time', subtext: 'Tap "Start 2nd Half" to continue', bg: 'from-emerald-600/20 to-cyan-600/20 border-emerald-500/40', accent: 'text-emerald-400' }
     }
     if (matchPhase === 'finished') {
       return { text: 'Match Finished', subtext: 'Recording complete', bg: 'from-slate-600/20 to-slate-700/20 border-white/10', accent: 'text-white/50' }
@@ -2263,11 +2308,11 @@ export default function MatchRecording() {
                 <div className="flex items-center space-x-2">
                   {matchPhase === 'not_started' && (
                     <button
-                      className="glass-card-hover flex items-center space-x-2 !py-2 !px-4 text-sm"
+                      className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
                       onClick={() => setIsLineupModalOpen(true)}
                     >
-                      <Activity size={16} />
-                      <span>Select Lineup</span>
+                      <Users size={14} />
+                      <span>Lineup</span>
                     </button>
                   )}
                   {getPhaseButtonText() && (
@@ -2318,6 +2363,13 @@ export default function MatchRecording() {
                       {getEndButtonText()}
                     </button>
                   )}
+                  <button
+                    onClick={() => setShowResetConfirm(true)}
+                    className="p-2 rounded-xl bg-white/5 text-white/30 hover:text-red-400 hover:bg-red-500/10 border border-white/10 hover:border-red-500/20 transition-all"
+                    title="Reset match events"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -2332,7 +2384,7 @@ export default function MatchRecording() {
                   <div className="flex items-center justify-center space-x-2">
                     <Clock size={16} className="text-amber-400" />
                     <p className="text-sm font-medium text-white/90">
-                      Injury time — tap "End First Half" when ready
+                      Injury time — tap "Half Time" when ready
                     </p>
                   </div>
                 </div>
@@ -2344,7 +2396,7 @@ export default function MatchRecording() {
                   <div className="flex items-center justify-center space-x-2">
                     <Clock size={16} className="text-emerald-400" />
                     <p className="text-sm font-medium text-white/90">
-                      Full time — tap "End Match" to save and generate AI analysis
+                      Full time — tap "Full Time" to save and generate AI analysis
                     </p>
                   </div>
                 </div>
@@ -2369,8 +2421,8 @@ export default function MatchRecording() {
                 </div>
               )}
 
-              {/* Jersey Number Strip for carrier tracking — above pitch */}
-              {jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && (
+              {/* Jersey Number Strip for carrier tracking — hidden when opposition scorer strip is showing */}
+              {!pendingOpponentScore && jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && (
                 <div data-tour="jersey-strip" className="max-w-2xl mx-auto mb-1">
                   <JerseyNumberStrip
                     players={jerseyStripPlayers}
@@ -2396,6 +2448,10 @@ export default function MatchRecording() {
                   trail={ballTrail}
                   onTrailUpdate={setBallTrail}
                   onDragPath={handleDragPath}
+                  onDragUpdate={(pos) => {
+                    setBallPosition(pos)
+                    setBallTrail(prev => [...prev.slice(-49), { x: pos.x, y: pos.y }])
+                  }}
                   carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
                   svgOverlay={
                     (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
@@ -2419,47 +2475,6 @@ export default function MatchRecording() {
                             {statusLabel.text}
                           </span>
                         </div>
-                        {!awaitingKickout && !pendingFreeKick && !pending45 && !selectingFoulPlayer && (
-                          <>
-                            <button
-                              onClick={async () => {
-                                // End carrier segment on possession swap
-                                if (activeCarrierId) {
-                                  await playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y)
-                                  setActiveCarrierId(null)
-                                }
-                                const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
-                                setBallPosition(prev => ({ ...prev, team: newTeam }))
-                              }}
-                              style={{
-                                padding: 14, borderRadius: 12,
-                                background: 'rgba(0,0,0,0.75)',
-                                border: '2px solid rgba(255,255,255,0.25)',
-                                color: 'rgba(255,255,255,0.7)',
-                                cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}
-                              title="Swap possession"
-                            >
-                              <ArrowLeftRight size={28} />
-                            </button>
-                            <button
-                              data-tour="stoppage-btn"
-                              onClick={() => setIsStopped(prev => !prev)}
-                              style={{
-                                padding: 14, borderRadius: 12,
-                                background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.75)',
-                                border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.25)'}`,
-                                color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
-                                cursor: 'pointer',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              }}
-                              title={isStopped ? 'Resume play' : 'Stoppage'}
-                            >
-                              {isStopped ? <Play size={28} /> : <Pause size={28} />}
-                            </button>
-                          </>
-                        )}
                       </div>
                     ) : undefined
                   }
@@ -2467,7 +2482,33 @@ export default function MatchRecording() {
 
                 {/* Pitch control buttons — top-right */}
                 {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                  <div className="absolute top-8 right-8 z-10 flex items-center gap-1.5">
+                  <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+                    <button
+                      onClick={async () => {
+                        if (activeCarrierId) {
+                          await playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y)
+                          setActiveCarrierId(null)
+                        }
+                        const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
+                        setBallPosition(prev => ({ ...prev, team: newTeam }))
+                      }}
+                      className="p-2 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
+                      title="Swap possession"
+                    >
+                      <ArrowLeftRight size={16} />
+                    </button>
+                    <button
+                      data-tour="stoppage-btn"
+                      onClick={() => setIsStopped(prev => !prev)}
+                      className={`p-2 rounded-xl border-2 transition-all ${
+                        isStopped
+                          ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
+                          : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
+                      }`}
+                      title={isStopped ? 'Resume play' : 'Stoppage'}
+                    >
+                      {isStopped ? <Play size={16} /> : <Pause size={16} />}
+                    </button>
                     <FormationSnapshotButton
                       onClick={() => setIsSnapshotMode(true)}
                       shouldPulse={shouldPulseSnapshot}
@@ -2760,6 +2801,7 @@ export default function MatchRecording() {
             matchLineup={matchLineup}
             teamPrimaryColor={club?.primary_colour || '#10B981'}
             teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+            attackingRight={teamAttackingRight}
           />
         ) : (
           <PlayerSelectionModal
@@ -2774,6 +2816,9 @@ export default function MatchRecording() {
             eventType={selectingFoulPlayer ? EventType.FOUL_COMMITTED : (pendingEvent?.eventType as any)}
             team="own"
             players={playersOnField}
+            attackingRight={teamAttackingRight}
+            teamPrimaryColor={club?.primary_colour || '#10B981'}
+            teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
           />
         )
       )}
@@ -2799,6 +2844,18 @@ export default function MatchRecording() {
         title="Delete Event?"
         message="Are you sure you want to delete this event? The match scores and statistics will be recalculated automatically."
         confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+      />
+
+      {/* Reset Match Confirmation */}
+      <ConfirmationModal
+        isOpen={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        onConfirm={handleResetMatch}
+        title="Reset Match Events?"
+        message="This will delete ALL recorded events, possession data, and ball carrier segments for this match. Scores will reset to 0-0 and you can start recording again. Your lineup, opposition roster, weather settings, and tactical notes will be kept."
+        confirmText={resetting ? 'Resetting...' : 'Reset & Restart'}
         cancelText="Cancel"
         variant="danger"
       />
@@ -2928,6 +2985,10 @@ export default function MatchRecording() {
         }}
         teamPrimaryColor={club?.primary_colour || '#10B981'}
         teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+        pendingOpponentScore={pendingOpponentScore}
+        oppositionRoster={match?.opposition_roster || []}
+        onOpponentScorerSelect={handleOpponentScorerSelect}
+        onOpponentScorerSkip={handleOpponentScorerSkip}
       />
 
       {/* Formation Snapshot Mode */}

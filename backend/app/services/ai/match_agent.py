@@ -26,7 +26,7 @@ from app.services.rag_service import RAGService
 logger = logging.getLogger(__name__)
 
 # Tools available to the live agent (fast, minimal subset)
-LIVE_TOOLS = ["get_match_events", "get_match_summary", "get_scoring_patterns", "get_stats_by_half", "get_ball_carrier_data", "get_formation_snapshots"]
+LIVE_TOOLS = ["get_match_events", "get_match_summary", "get_scoring_patterns", "get_stats_by_half", "get_ball_carrier_data", "get_formation_snapshots", "get_tactical_tags"]
 
 MAX_LIVE_TURNS = 2
 
@@ -87,7 +87,9 @@ CRITICAL: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). 
 ## Knowledge Base Context (GPS benchmarks, tactical patterns, rules)
 {kb_context}
 {tactical_section}
-Current match state:
+## Current Match
+Match ID: {match_id}
+
 {summary}
 
 Recent events (last 5):

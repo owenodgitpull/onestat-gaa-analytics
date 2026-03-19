@@ -15,6 +15,7 @@ import {
   Eye,
   Crosshair,
   ArrowLeftRight,
+  ArrowDownCircle,
 } from 'lucide-react'
 
 interface CategorizedActionButtonsProps {
@@ -62,6 +63,7 @@ const categories = [
       { eventType: EventType.OUR_UNFORCED_ERROR, label: 'Our Unforced Error', icon: XCircle },
       { eventType: EventType.OPP_UNFORCED_ERROR, label: 'Opp Unforced Error', icon: CheckCircle },
       { eventType: EventType.INTERCEPTION, label: 'Interception', icon: Eye },
+      { eventType: EventType.SIDELINE_BALL, label: 'Sideline Ball', icon: Flag },
     ]
   },
   {
@@ -73,6 +75,7 @@ const categories = [
       { eventType: EventType.OWN_KICKOUT_OPPOSITION_WON, label: 'Opposition Won', icon: XCircle },
       { eventType: EventType.OWN_KICKOUT_WON_BREAK, label: 'We Won Break', icon: Zap },
       { eventType: EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK, label: 'Opposition Won Break', icon: XCircle },
+      { eventType: EventType.OWN_KICKOUT_SIDELINE, label: 'Over Sideline', icon: Flag },
     ]
   },
   {
@@ -84,6 +87,7 @@ const categories = [
       { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON, label: 'Opposition Won', icon: XCircle },
       { eventType: EventType.OPP_KICKOUT_WON_BREAK, label: 'We Won Break', icon: Zap },
       { eventType: EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK, label: 'Opposition Won Break', icon: XCircle },
+      { eventType: EventType.OPP_KICKOUT_SIDELINE, label: 'Over Sideline', icon: Flag },
     ]
   },
 ]
@@ -93,6 +97,7 @@ const freeKickOptions = [
   { eventType: EventType.POINT_FREE, label: 'Point (Free)', icon: Target },
   { eventType: EventType.TWO_POINT_FREE, label: '2PT (Free)', icon: Target },
   { eventType: EventType.WIDE_FREE, label: 'Wide (Free)', icon: XCircle },
+  { eventType: EventType.SHORT, label: 'Dropped Short', icon: ArrowDownCircle },
 ]
 
 // 45 options - scored or missed
@@ -148,12 +153,12 @@ export default function CategorizedActionButtons({
   // Determine if a button should be disabled based on possession
   const isButtonDisabled = (eventType: EventType): boolean => {
     // Disable 2-pointer if not in 2-point zone
-    if (eventType === EventType.TWO_POINT && !isIn2PointZone) {
+    if ((eventType === EventType.TWO_POINT || eventType === EventType.TWO_POINT_FREE) && !isIn2PointZone) {
       return true
     }
 
     // Disable regular point if IN 2-point zone (must use 2-pointer button)
-    if (eventType === EventType.POINT && isIn2PointZone) {
+    if ((eventType === EventType.POINT || eventType === EventType.POINT_FREE) && isIn2PointZone) {
       return true
     }
 

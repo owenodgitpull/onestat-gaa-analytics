@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, Pencil } from 'lucide-react'
+import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, Pencil, Users, ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '../services/api'
 import EditFixtureModal from '../components/EditFixtureModal'
 import type { Match, FormResult } from '../types'
@@ -56,6 +56,11 @@ export default function FixturePreview() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [editingFixture, setEditingFixture] = useState<Match | null>(null)
+  const [rosterExpanded, setRosterExpanded] = useState(false)
+  const [rosterInput, setRosterInput] = useState('')
+  const [rosterSaving, setRosterSaving] = useState(false)
+  const [rosterSaved, setRosterSaved] = useState(false)
+  const [rosterLoaded, setRosterLoaded] = useState(false)
 
   const handleEditFixture = async (id: string, data: any) => {
     await api.matches.update(id, data)
@@ -125,20 +130,37 @@ export default function FixturePreview() {
             <ArrowLeft size={16} />
             Back to Fixtures
           </button>
-          {isPastScheduled && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate(`/match/${match.id}/setup`)}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02] active:scale-[0.98]"
-              style={{
-                background: 'linear-gradient(135deg, rgba(0,230,118,0.2), rgba(0,176,255,0.15))',
-                border: '1px solid rgba(0,176,255,0.3)',
-                boxShadow: '0 4px 16px rgba(0,230,118,0.1)',
+              onClick={() => {
+                setRosterExpanded(true)
+                if (!rosterLoaded && matchId) {
+                  api.matchPrep.getOppositionRoster(matchId)
+                    .then(r => { if (r.players?.length) setRosterInput(r.players.join('\n')); setRosterLoaded(true) })
+                    .catch(() => setRosterLoaded(true))
+                }
+                setTimeout(() => document.getElementById('opposition-roster')?.scrollIntoView({ behavior: 'smooth' }), 100)
               }}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium text-orange-300 hover:text-orange-200 transition-all bg-orange-500/10 border border-orange-500/20 hover:bg-orange-500/15"
             >
-              <ClipboardList size={16} />
-              Log Match Events
+              <Users size={14} />
+              Opposition Players
             </button>
-          )}
+            {isPastScheduled && (
+              <button
+                onClick={() => navigate(`/match/${match.id}/setup`)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02] active:scale-[0.98]"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(0,230,118,0.2), rgba(0,176,255,0.15))',
+                  border: '1px solid rgba(0,176,255,0.3)',
+                  boxShadow: '0 4px 16px rgba(0,230,118,0.1)',
+                }}
+              >
+                <ClipboardList size={16} />
+                Log Match Events
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="glass-card p-6">
@@ -271,6 +293,72 @@ export default function FixturePreview() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Opposition Key Players */}
+      <div id="opposition-roster" className="glass-card overflow-hidden">
+        <button
+          onClick={async () => {
+            setRosterExpanded(prev => !prev)
+            if (!rosterLoaded && matchId) {
+              try {
+                const result = await api.matchPrep.getOppositionRoster(matchId)
+                if (result.players?.length) setRosterInput(result.players.join('\n'))
+                setRosterLoaded(true)
+              } catch { setRosterLoaded(true) }
+            }
+          }}
+          className="flex items-center justify-between w-full px-4 py-3 hover:bg-white/5 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Users size={16} className="text-orange-400" />
+            <span className="text-sm font-bold text-white">Opposition Key Players</span>
+          </div>
+          {rosterExpanded ? <ChevronUp size={16} className="text-white/40" /> : <ChevronDown size={16} className="text-white/40" />}
+        </button>
+        {rosterExpanded && (
+          <div className="px-4 pb-4 space-y-3">
+            <p className="text-xs text-white/40">
+              Enter key opposition players likely to score — one name per line. These will appear for quick selection when recording opponent scores.
+            </p>
+            <textarea
+              value={rosterInput}
+              onChange={(e) => setRosterInput(e.target.value)}
+              placeholder={"Enter one player per line, e.g.:\nConor Cox\nDiarmuid Murtagh"}
+              rows={5}
+              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-orange-500/40 resize-none"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-white/30">
+                {rosterInput.split('\n').filter(l => l.trim()).length} players
+              </span>
+              <button
+                onClick={async () => {
+                  const names = rosterInput.split('\n').map(n => n.trim()).filter(Boolean)
+                  setRosterSaving(true)
+                  try {
+                    await api.matchPrep.saveOppositionRoster(matchId!, names)
+                    setRosterSaved(true)
+                    setTimeout(() => setRosterSaved(false), 3000)
+                  } catch (err) {
+                    console.error('Failed to save roster:', err)
+                  } finally {
+                    setRosterSaving(false)
+                  }
+                }}
+                disabled={rosterSaving}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                style={{
+                  background: rosterSaved ? 'rgba(16,185,129,0.2)' : 'rgba(251,146,60,0.15)',
+                  border: rosterSaved ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(251,146,60,0.3)',
+                  color: rosterSaved ? '#34d399' : '#fb923c',
+                }}
+              >
+                {rosterSaving ? 'Saving...' : rosterSaved ? 'Saved' : 'Save'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <EditFixtureModal

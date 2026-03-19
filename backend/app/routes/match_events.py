@@ -259,6 +259,68 @@ async def delete_event(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Event with ID {event_id} not found"
         )
-    
+
     return None
+
+
+@router.delete("/reset/{match_id}", status_code=status.HTTP_200_OK)
+async def reset_match_events(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete ALL events for a match and reset scores to 0-0, status to scheduled.
+    Keeps lineup, opposition roster, weather, tactical notes, strip colours.
+    """
+    await _verify_match_club(db, match_id, user.club_id)
+
+    # Delete all events
+    from sqlalchemy import delete
+    result = await db.execute(delete(MatchEvent).where(MatchEvent.match_id == match_id))
+    deleted_count = result.rowcount
+
+    # Delete possession events
+    from app.models.possession_event import PossessionEvent
+    await db.execute(delete(PossessionEvent).where(PossessionEvent.match_id == match_id))
+
+    # Delete carrier segments
+    try:
+        from app.models.ball_carrier_segment import BallCarrierSegment
+        await db.execute(delete(BallCarrierSegment).where(BallCarrierSegment.match_id == match_id))
+    except Exception:
+        pass
+
+    # Delete tactical tags
+    try:
+        from app.models.tactical_tag import TacticalTag
+        await db.execute(delete(TacticalTag).where(TacticalTag.match_id == match_id))
+    except Exception:
+        pass
+
+    # Delete live insights
+    try:
+        from app.models.live_insight import LiveInsight
+        await db.execute(delete(LiveInsight).where(LiveInsight.match_id == match_id))
+    except Exception:
+        pass
+
+    # Reset match scores and status
+    match_result = await db.execute(select(Match).where(Match.id == match_id))
+    match = match_result.scalar_one_or_none()
+    if match:
+        match.team_goals = 0
+        match.team_points = 0
+        match.opponent_goals = 0
+        match.opponent_points = 0
+        match.status = "SCHEDULED"
+        match.current_phase = None
+        match.started_at = None
+        match.completed_at = None
+        match.second_half_started_at = None
+        match.ai_analysis = None
+        match.ai_analysis_generated_at = None
+
+    await db.commit()
+    return {"deleted_events": deleted_count, "match_id": str(match_id)}
 

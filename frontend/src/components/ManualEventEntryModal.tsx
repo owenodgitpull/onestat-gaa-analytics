@@ -129,20 +129,20 @@ export default function ManualEventEntryModal({
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setTeam(PossessionTeam.OWN)}
-                className={`p-4 rounded-xl font-semibold transition-all ${
+                className={`p-4 rounded-xl font-semibold transition-all border-2 ${
                   team === PossessionTeam.OWN
-                    ? 'bg-emerald-600 text-white'
-                    : 'glass-card text-white/70 hover:text-white'
+                    ? 'bg-emerald-600 text-white border-emerald-400 ring-2 ring-emerald-400/30 scale-[1.02]'
+                    : 'bg-white/5 text-white/30 border-white/10'
                 }`}
               >
                 {clubName}
               </button>
               <button
                 onClick={() => setTeam(PossessionTeam.OPPONENT)}
-                className={`p-4 rounded-xl font-semibold transition-all ${
+                className={`p-4 rounded-xl font-semibold transition-all border-2 ${
                   team === PossessionTeam.OPPONENT
-                    ? 'bg-red-600 text-white'
-                    : 'glass-card text-white/70 hover:text-white'
+                    ? 'bg-red-600 text-white border-red-400 ring-2 ring-red-400/30 scale-[1.02]'
+                    : 'bg-white/5 text-white/30 border-white/10'
                 }`}
               >
                 {opponentName}

@@ -19,6 +19,7 @@ interface PitchPlayerSelectorProps {
   }>
   teamPrimaryColor?: string
   teamSecondaryColor?: string
+  attackingRight?: boolean
 }
 
 // Standard GAA formation: 1-3-3-2-3-3 (15 players)
@@ -80,6 +81,7 @@ export default function PitchPlayerSelector({
   matchLineup,
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
+  attackingRight = true,
 }: PitchPlayerSelectorProps) {
   const [animateIn, setAnimateIn] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
@@ -209,7 +211,7 @@ export default function PitchPlayerSelector({
               key={item.player.id}
               className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center focus:outline-none"
               style={{
-                left: `${item.x}%`,
+                left: `${attackingRight ? item.x : 100 - item.x}%`,
                 top: `${item.y}%`,
                 opacity: animateOut ? (isSelected ? 1 : 0) : (animateIn ? 1 : 0),
                 transform: `translate(-50%, -50%) scale(${

@@ -174,6 +174,9 @@ export enum EventType {
   OPP_KICKOUT_OPPOSITION_WON = 'opp_kickout_opposition_won',
   OPP_KICKOUT_WON_BREAK = 'opp_kickout_won_break',
   OPP_KICKOUT_OPPOSITION_WON_BREAK = 'opp_kickout_opposition_won_break',
+  OWN_KICKOUT_SIDELINE = 'own_kickout_sideline',
+  OPP_KICKOUT_SIDELINE = 'opp_kickout_sideline',
+  SIDELINE_BALL = 'sideline_ball',
   // Cards & fouls
   YELLOW_CARD = 'yellow_card',
   BLACK_CARD = 'black_card',

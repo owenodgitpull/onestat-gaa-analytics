@@ -10,6 +10,13 @@ interface PlayerSelectionModalProps {
   team: 'own' | 'opponent'
   players: Player[]
   teamName?: string
+  attackingRight?: boolean
+  teamPrimaryColor?: string
+  teamSecondaryColor?: string
+}
+
+const POSITION_LINE: Record<string, number> = {
+  goalkeeper: 0, defender: 1, midfielder: 2, forward: 3,
 }
 
 // Type for event label entries
@@ -50,6 +57,9 @@ export default function PlayerSelectionModal({
   team,
   players: providedPlayers,
   teamName,
+  attackingRight = true,
+  teamPrimaryColor = '#10B981',
+  teamSecondaryColor = '#FFFFFF',
 }: PlayerSelectionModalProps) {
   const [search, setSearch] = useState('')
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
@@ -65,11 +75,19 @@ export default function PlayerSelectionModal({
     return map
   }, [playerList])
 
-  // Jersey numbers present in the squad, sorted
-  const jerseyNumbers = useMemo(() =>
-    Array.from(byJersey.keys()).sort((a, b) => a - b),
-    [byJersey]
-  )
+  // Jersey numbers sorted by position line to mirror pitch orientation
+  const jerseyNumbers = useMemo(() => {
+    const entries = Array.from(byJersey.entries())
+    entries.sort((a, b) => {
+      const lineA = POSITION_LINE[a[1].position?.toLowerCase() || ''] ?? 2
+      const lineB = POSITION_LINE[b[1].position?.toLowerCase() || ''] ?? 2
+      // Mirror pitch: defence first when attacking right (GK on left), forwards first when attacking left (GK on right)
+      const lineCompare = attackingRight ? lineA - lineB : lineB - lineA
+      if (lineCompare !== 0) return lineCompare
+      return (a[0]) - (b[0]) // same line: sort by jersey number
+    })
+    return entries.map(([num]) => num)
+  }, [byJersey, attackingRight])
 
   if (!isOpen) return null
 
@@ -166,15 +184,20 @@ export default function PlayerSelectionModal({
                   <button
                     key={num}
                     onClick={() => { if (player) handleSelect(player) }}
-                    className={`flex flex-col items-center justify-center rounded-xl border-2 transition-all active:scale-90 ${
+                    className={`flex flex-col items-center justify-center rounded-xl transition-all active:scale-90 ${
                       selectedPlayerId === player?.id
-                        ? 'border-emerald-500 bg-emerald-500/20'
-                        : 'border-white/15 bg-white/5 hover:bg-emerald-500/15 hover:border-emerald-500/30'
+                        ? 'ring-2 ring-white/60 scale-105'
+                        : 'hover:scale-105 hover:brightness-110'
                     }`}
-                    style={{ minHeight: 56 }}
+                    style={{
+                      minHeight: 56,
+                      backgroundColor: teamPrimaryColor,
+                      border: `2px solid ${teamSecondaryColor}`,
+                      color: teamSecondaryColor,
+                    }}
                   >
-                    <span className="text-lg font-black text-white">{num}</span>
-                    <span className="text-[9px] text-white/50 truncate max-w-full px-1 leading-tight">{surname}</span>
+                    <span className="text-lg font-black">{num}</span>
+                    <span className="text-[9px] truncate max-w-full px-1 leading-tight opacity-70">{surname}</span>
                   </button>
                 )
               })}

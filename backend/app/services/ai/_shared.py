@@ -615,6 +615,20 @@ TOOLS = [
             }
         }
     },
+    {
+        "name": "get_tactical_tags",
+        "description": "Get tactical moment markers tagged during a match — high press, blanket defence, formation changes, custom notes. Each tag has a timestamp (minute/half) and optional pitch position. Use to correlate tactical shifts with scoring patterns, possession changes, and performance. E.g. 'after switching to high press at 15 min, opponent scored 0 points in next 10 minutes'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "The UUID of the match"
+                }
+            },
+            "required": ["match_id"]
+        }
+    },
 ]
 
 def get_cached_tools() -> list:
@@ -688,6 +702,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_contextual_patterns(db, **tool_input, club_id=club_id)
     elif tool_name == "get_workload_risk_assessment":
         return await get_workload_risk_assessment(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_tactical_tags":
+        return await get_tactical_tags(db, **tool_input, club_id=club_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -3198,4 +3214,65 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
         "players_flagged": len(flagged),
         "assessments": assessments,
     })
+
+
+async def get_tactical_tags(db: AsyncSession, match_id: str, club_id=None) -> str:
+    """Get tactical tags for a match with event context around each tag."""
+    from app.models.tactical_tag import TacticalTag
+    import uuid as uuid_mod
+
+    try:
+        match_uuid = uuid_mod.UUID(str(match_id))
+    except (ValueError, AttributeError):
+        return safe_json({"error": f"Invalid match_id: {match_id}"})
+
+    # Verify match belongs to club
+    if club_id:
+        match_check = await db.execute(select(Match.id).where(Match.id == match_uuid, Match.club_id == club_id))
+        if not match_check.scalar_one_or_none():
+            return safe_json({"error": "Match not found"})
+
+    # Get all tactical tags for this match
+    result = await db.execute(
+        select(TacticalTag).where(TacticalTag.match_id == match_uuid).order_by(TacticalTag.minute)
+    )
+    tags = result.scalars().all()
+
+    if not tags:
+        return safe_json({"tags": [], "total": 0, "message": "No tactical tags recorded for this match"})
+
+    # Get match events to provide context around each tag
+    events_result = await db.execute(
+        select(MatchEvent).where(MatchEvent.match_id == match_uuid).order_by(MatchEvent.minute)
+    )
+    events = events_result.scalars().all()
+
+    tag_data = []
+    for tag in tags:
+        tag_minute = tag.minute or 0
+
+        # Find events in 5 minutes before and after this tag
+        events_before = [e for e in events if e.minute and tag_minute - 5 <= e.minute < tag_minute]
+        events_after = [e for e in events if e.minute and tag_minute < e.minute <= tag_minute + 5]
+
+        # Count scores in windows
+        scoring_types = {EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE}
+        own_scores_before = sum(1 for e in events_before if e.team == Team.OWN and e.event_type in scoring_types)
+        opp_scores_before = sum(1 for e in events_before if e.team == Team.OPPONENT and e.event_type in scoring_types)
+        own_scores_after = sum(1 for e in events_after if e.team == Team.OWN and e.event_type in scoring_types)
+        opp_scores_after = sum(1 for e in events_after if e.team == Team.OPPONENT and e.event_type in scoring_types)
+
+        tag_data.append({
+            "tag_type": tag.tag_type,
+            "label": tag.label,
+            "half": tag.half,
+            "minute": tag_minute,
+            "location": _pitch_location(tag.pitch_x, tag.pitch_y) if tag.pitch_x else None,
+            "context": {
+                "5min_before": {"own_scores": own_scores_before, "opp_scores": opp_scores_before},
+                "5min_after": {"own_scores": own_scores_after, "opp_scores": opp_scores_after},
+            }
+        })
+
+    return safe_json({"tags": tag_data, "total": len(tag_data)})
 

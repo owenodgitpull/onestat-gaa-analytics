@@ -47,7 +47,13 @@ class EventType(enum.Enum):
     OPP_KICKOUT_OPPOSITION_WON = "opp_kickout_opposition_won"
     OPP_KICKOUT_WON_BREAK = "opp_kickout_won_break"
     OPP_KICKOUT_OPPOSITION_WON_BREAK = "opp_kickout_opposition_won_break"
-    
+    # Kickout over sideline (kicking team loses possession)
+    OWN_KICKOUT_SIDELINE = "own_kickout_sideline"
+    OPP_KICKOUT_SIDELINE = "opp_kickout_sideline"
+
+    # Sideline ball (ball out of play — no automatic possession change)
+    SIDELINE_BALL = "sideline_ball"
+
     # Cards
     YELLOW_CARD = "yellow_card"  # Player booked
     BLACK_CARD = "black_card"  # Player sin-binned (10 minutes)

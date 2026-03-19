@@ -116,7 +116,7 @@ export const matchRecordingSteps: DriveStep[] = [
     popover: {
       title: 'Possession Tracker',
       description:
-        'Shows which team has the ball. Tap the swap button to toggle possession manually. Possession changes automatically after scores, turnovers, and kickouts.',
+        'Shows which team has the ball and where on the pitch. Use the swap button (top-right of pitch) to toggle possession. It changes automatically after scores, turnovers, and kickouts.',
     },
   },
   {
@@ -179,7 +179,7 @@ export const matchRecordingSteps: DriveStep[] = [
     popover: {
       title: 'Fullscreen Mode',
       description:
-        'Opens a focused view with just the pitch and action buttons — ideal for pitchside recording on a phone or tablet. Includes stoppage and substitution buttons.',
+        'Opens a focused view with the pitch and action buttons — ideal for pitchside recording on a phone or tablet. All controls (pause, swap, substitution) are in the top bar.',
     },
   },
   {
@@ -203,7 +203,7 @@ export const matchRecordingSteps: DriveStep[] = [
     popover: {
       title: 'Stoppage & Half-Time',
       description:
-        'Use the stoppage button to pause the timer during injuries or delays. At half-time, use the phase controls to end the first half and start the second.',
+        'Pause the match timer during injuries or delays. Find it in the top-right controls above the pitch. At half-time, use the phase controls to end the first half and start the second.',
     },
   },
 ]

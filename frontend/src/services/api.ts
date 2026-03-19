@@ -399,6 +399,15 @@ export const matchEventsAPI = {
   },
 
   /**
+   * Reset all match events and restart match
+   */
+  resetMatch: async (matchId: string): Promise<{ deleted_events: number }> => {
+    return fetchAPI<{ deleted_events: number }>(`/match-events/reset/${matchId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  /**
    * Update a match event
    */
   update: async (eventId: string, data: Partial<{

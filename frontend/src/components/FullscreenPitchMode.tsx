@@ -5,6 +5,7 @@ import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight, Pause, Play, ArrowUpDown } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
+import OppositionScorerStrip from '@/components/OppositionScorerStrip'
 import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
 import { useClubName } from '@/contexts/ClubContext'
 
@@ -75,6 +76,11 @@ interface FullscreenPitchModeProps {
   onSubstitution?: () => void
   teamPrimaryColor?: string
   teamSecondaryColor?: string
+  // Opposition scorer
+  pendingOpponentScore?: { eventType: EventType; position: BallPosition } | null
+  oppositionRoster?: string[]
+  onOpponentScorerSelect?: (name: string) => void
+  onOpponentScorerSkip?: () => void
 }
 
 export default function FullscreenPitchMode({
@@ -116,7 +122,6 @@ export default function FullscreenPitchMode({
   teamAttackingRight,
   statusText,
   onSwapPossession,
-  selectingFoulPlayer = false,
   onStartSecondHalf,
   onEndFirstHalf,
   onEndMatch,
@@ -132,6 +137,10 @@ export default function FullscreenPitchMode({
   onSubstitution,
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
+  pendingOpponentScore,
+  oppositionRoster = [],
+  onOpponentScorerSelect,
+  onOpponentScorerSkip,
 }: FullscreenPitchModeProps) {
   const clubName = useClubName()
   const [toastVisible, setToastVisible] = useState(false)
@@ -222,7 +231,7 @@ export default function FullscreenPitchMode({
       {/* Top bar — hidden in phone landscape (overlaid on pitch instead) */}
       {!isPhoneLandscape && (
         <div className="flex-shrink-0 grid grid-cols-3 items-center px-3 py-2 backdrop-blur-xl bg-white/5 border-b border-white/10">
-          {/* Left — Exit + Network Status */}
+          {/* Left — Exit + Pause + Network Status */}
           <div className="flex justify-start items-center gap-2">
             <button
               onClick={onClose}
@@ -231,6 +240,38 @@ export default function FullscreenPitchMode({
             >
               <Minimize2 size={16} />
             </button>
+            {onToggleStoppage && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+              <button
+                onClick={onToggleStoppage}
+                className="p-2 rounded-xl border border-white/15 transition-all"
+                style={{
+                  background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.1)',
+                  borderColor: isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.15)',
+                  color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
+                }}
+                title={isStopped ? 'Resume play' : 'Stoppage'}
+              >
+                {isStopped ? <Play size={16} /> : <Pause size={16} />}
+              </button>
+            )}
+            {onSwapPossession && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+              <button
+                onClick={onSwapPossession}
+                className="p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white/70 hover:text-white transition-all"
+                title="Swap possession"
+              >
+                <ArrowLeftRight size={16} />
+              </button>
+            )}
+            {onSubstitution && (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') && (
+              <button
+                onClick={onSubstitution}
+                className="p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white/70 hover:text-white transition-all"
+                title="Substitution"
+              >
+                <ArrowUpDown size={16} />
+              </button>
+            )}
             <NetworkStatusIndicator compact />
           </div>
 
@@ -403,56 +444,6 @@ export default function FullscreenPitchMode({
                     {statusText}
                   </span>
                 </div>
-                {onSwapPossession && !pendingFreeKick && !pending45 && !pendingKickoutPosition && !selectingFoulPlayer && (
-                  <>
-                    <button
-                      onClick={onSwapPossession}
-                      style={{
-                        padding: 20, borderRadius: 16,
-                        background: 'rgba(0,0,0,0.75)',
-                        border: '2px solid rgba(255,255,255,0.25)',
-                        color: 'rgba(255,255,255,0.7)',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                      title="Swap possession"
-                    >
-                      <ArrowLeftRight size={38} />
-                    </button>
-                    {onToggleStoppage && (
-                      <button
-                        onClick={onToggleStoppage}
-                        style={{
-                          padding: 20, borderRadius: 16,
-                          background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(0,0,0,0.75)',
-                          border: `2px solid ${isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.25)'}`,
-                          color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
-                          cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                        title={isStopped ? 'Resume play' : 'Stoppage'}
-                      >
-                        {isStopped ? <Play size={38} /> : <Pause size={38} />}
-                      </button>
-                    )}
-                    {onSubstitution && (
-                      <button
-                        onClick={onSubstitution}
-                        style={{
-                          padding: 20, borderRadius: 16,
-                          background: 'rgba(0,0,0,0.75)',
-                          border: '2px solid rgba(255,255,255,0.25)',
-                          color: 'rgba(255,255,255,0.7)',
-                          cursor: 'pointer',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                        title="Substitution"
-                      >
-                        <ArrowUpDown size={38} />
-                      </button>
-                    )}
-                  </>
-                )}
               </div>
             ) : undefined
           }
@@ -470,8 +461,20 @@ export default function FullscreenPitchMode({
         </div>
       </div>
 
-      {/* Jersey Number Strip — hidden in phone landscape to maximize pitch space */}
-      {!isPhoneLandscape && jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
+      {/* Opposition scorer strip */}
+      {pendingOpponentScore && onOpponentScorerSelect && onOpponentScorerSkip && (
+        <div className="flex-shrink-0 px-3 py-1">
+          <OppositionScorerStrip
+            players={oppositionRoster}
+            onSelect={onOpponentScorerSelect}
+            onSkip={onOpponentScorerSkip}
+            eventType={String(pendingOpponentScore.eventType).toLowerCase()}
+          />
+        </div>
+      )}
+
+      {/* Jersey Number Strip — hidden when opposition scorer strip showing or phone landscape */}
+      {!pendingOpponentScore && !isPhoneLandscape && jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
         <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2 flex justify-center">
           <JerseyNumberStrip
             players={jerseyStripPlayers}

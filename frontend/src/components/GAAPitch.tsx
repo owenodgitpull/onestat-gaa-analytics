@@ -29,6 +29,8 @@ interface GAAPitchProps {
   onTrailUpdate?: (trail: Array<{ x: number; y: number }>) => void
   /** Called on drag-end with all downsampled waypoints collected during the drag */
   onDragPath?: (waypoints: Array<{ x: number; y: number }>) => void
+  /** Called during drag with current position — for updating status text without recording possession */
+  onDragUpdate?: (position: BallPosition) => void
   /** Optional overlay rendered inside SVG via foreignObject — always relative to pitch graphic */
   svgOverlay?: React.ReactNode
   /** Show gradient border around the pitch edge inside the SVG */
@@ -89,6 +91,7 @@ export default function GAAPitch({
   trail,
   onTrailUpdate,
   onDragPath,
+  onDragUpdate,
   svgOverlay,
   gradientBorder = false,
   carrierJerseyNumber,
@@ -187,6 +190,9 @@ export default function GAAPitch({
       team: localBallPosition?.team || PossessionTeam.OWN,
     }
     setDragPosition(newDragPos)
+
+    // Update parent so status text + 2PT zone updates during drag
+    onDragUpdate?.(newDragPos)
 
     // Downsample: only record waypoint if moved > threshold from last recorded point
     const waypoints = dragWaypointsRef.current
