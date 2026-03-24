@@ -164,16 +164,58 @@ export function useDeleteEvent() {
   return useMutation({
     mutationFn: (data: { eventId: string; matchId: string }) =>
       offlineMatchEvents.delete(data.eventId, data.matchId),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: matchEventKeys.byMatch(variables.matchId)
-      });
-      queryClient.invalidateQueries({
-        queryKey: matchKeys.stats(variables.matchId)
-      });
-      queryClient.invalidateQueries({
-        queryKey: matchKeys.detail(variables.matchId)
-      });
+    onMutate: (variables) => {
+      // Capture the event BEFORE deletion for score adjustment
+      const cached = queryClient.getQueryData<{ events: any[] }>(
+        matchEventKeys.byMatch(variables.matchId)
+      )
+      const deletedEvent = cached?.events?.find((e: any) => String(e.id) === variables.eventId)
+      return { deletedEvent }
+    },
+    onSuccess: (_, variables, context) => {
+      // Optimistically remove the single event from cache instead of refetching.
+      // Refetching would lose unsynced events (the server may not have them yet).
+      queryClient.setQueryData(
+        matchEventKeys.byMatch(variables.matchId),
+        (old: { events: any[]; total: number; page: number; page_size: number } | undefined) => {
+          if (!old) return old
+          const filtered = old.events.filter((e: any) => String(e.id) !== variables.eventId)
+          return { ...old, events: filtered, total: filtered.length }
+        },
+      )
+
+      // Optimistically update match score (subtract the deleted event's score)
+      const deletedEvent = context?.deletedEvent
+      if (deletedEvent) {
+        const et = deletedEvent.event_type
+        const isOwn = deletedEvent.is_home_team
+        const goalTypes = ['goal', 'penalty_goal']
+        const pointTypes = ['point', 'point_free', 'forty_five']
+        const twoPointTypes = ['two_point', 'two_point_free']
+        const isGoal = goalTypes.includes(et)
+        const isPoint = pointTypes.includes(et)
+        const isTwoPoint = twoPointTypes.includes(et)
+
+        if (isGoal || isPoint || isTwoPoint) {
+          queryClient.setQueryData(
+            matchKeys.detail(variables.matchId),
+            (old: any) => {
+              if (!old) return old
+              const updated = { ...old }
+              if (isOwn) {
+                if (isGoal) updated.team_goals = Math.max(0, (updated.team_goals || 0) - 1)
+                else if (isTwoPoint) updated.team_points = Math.max(0, (updated.team_points || 0) - 2)
+                else updated.team_points = Math.max(0, (updated.team_points || 0) - 1)
+              } else {
+                if (isGoal) updated.opponent_goals = Math.max(0, (updated.opponent_goals || 0) - 1)
+                else if (isTwoPoint) updated.opponent_points = Math.max(0, (updated.opponent_points || 0) - 2)
+                else updated.opponent_points = Math.max(0, (updated.opponent_points || 0) - 1)
+              }
+              return updated
+            },
+          )
+        }
+      }
     },
   });
 }

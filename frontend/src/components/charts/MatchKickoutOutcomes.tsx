@@ -8,6 +8,8 @@ import { Target } from 'lucide-react'
 
 interface Props {
   events: any[]
+  teamName?: string
+  opponentName?: string
 }
 
 type KickoutMode = 'own' | 'opponent'
@@ -60,7 +62,7 @@ function countOutcomes(events: any[], mode: KickoutMode): Outcomes {
   return o
 }
 
-export default function MatchKickoutOutcomes({ events }: Props) {
+export default function MatchKickoutOutcomes({ events, teamName = 'Our', opponentName = 'Opp' }: Props) {
   const [mode, setMode] = useState<KickoutMode>('own')
 
   const outcomes = useMemo(() => countOutcomes(events, mode), [events, mode])
@@ -102,7 +104,7 @@ export default function MatchKickoutOutcomes({ events }: Props) {
                 mode === m ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/70'
               }`}
             >
-              {m === 'own' ? 'Our Kickouts' : 'Opp Kickouts'}
+              {m === 'own' ? `${teamName} K/O` : `${opponentName} K/O`}
             </button>
           ))}
         </div>

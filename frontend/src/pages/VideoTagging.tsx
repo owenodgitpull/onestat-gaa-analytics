@@ -34,7 +34,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Crosshair } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -1059,6 +1059,9 @@ export default function VideoTagging() {
   const showAiBanner = hasAiEvents && !isAutoAnalyzing
     && session.status === 'draft_ready' && !aiDismissed
 
+  // Suppress unused variable warnings for hidden features
+  void handleAutoAnalyzeClick; void canAutoAnalyze
+
   const handleMarkHalftime = (ms: number) => {
     setHalftime.mutate({ sessionId: sessionId!, halftimeMs: ms })
   }
@@ -1103,19 +1106,9 @@ export default function VideoTagging() {
     </div>
   )
 
-  /** Action buttons row — Auto-Analyse, Report, Sync */
+  /** Action buttons row — Report, Snapshot, Sync */
   const actionButtons = (compact = false) => (
     <div className="flex gap-1.5 flex-shrink-0">
-      <button
-        onClick={handleAutoAnalyzeClick}
-        disabled={!canAutoAnalyze}
-        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-purple-400/20 backdrop-blur-sm shadow-lg shadow-purple-500/10 hover:shadow-purple-500/25 hover:border-purple-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white whitespace-nowrap`}
-        style={{ background: 'linear-gradient(135deg, rgba(147,51,234,0.5) 0%, rgba(124,58,237,0.4) 50%, rgba(139,92,246,0.3) 100%)' }}
-        title={needsHalftime ? 'Mark half-time first' : 'Beta — accuracy is still being improved. Results may need significant manual correction.'}
-      >
-        {isAutoAnalyzing ? <Loader2 size={compact ? 12 : 14} className="animate-spin" /> : <Sparkles size={compact ? 12 : 14} />}
-        {isAutoAnalyzing ? 'Analysing...' : compact ? 'Auto-Analyse' : 'Auto-Analyse (Beta)'}
-      </button>
       <button
         onClick={handleEnrich}
         disabled={isEnriching || events.length === 0}
@@ -1133,15 +1126,6 @@ export default function VideoTagging() {
       >
         <Camera size={compact ? 12 : 14} />
         {snapshotCount > 0 ? `Snapshot (${snapshotCount})` : compact ? 'Snapshot' : 'Formation Snapshot'}
-      </button>
-      <button
-        onClick={() => { playerRef.current?.pause(); setShowTacticalView(true) }}
-        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-indigo-400/20 backdrop-blur-sm shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/25 hover:border-indigo-400/30 hover:scale-[1.02] active:scale-[0.98] text-white whitespace-nowrap`}
-        style={{ background: 'linear-gradient(135deg, rgba(99,102,241,0.45) 0%, rgba(79,70,229,0.35) 50%, rgba(129,140,248,0.25) 100%)' }}
-        title="Open tactical bird's-eye view"
-      >
-        <Crosshair size={compact ? 12 : 14} />
-        {compact ? 'Tactical' : 'Tactical View'}
       </button>
       <button
         onClick={handleSyncClick}

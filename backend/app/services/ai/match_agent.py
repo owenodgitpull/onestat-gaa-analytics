@@ -105,7 +105,7 @@ DETECTION TRIGGERS — flag these patterns when you see them:
 When a trigger fires, explain what's happening AND suggest one specific tactical adjustment.
 Reference knowledge base context (GPS benchmarks, tactical principles) when available.
 
-You have tools available to look up additional match data if needed. Only use them if the context above is insufficient.
+IMPORTANT: You already have the match summary and recent events above. Respond with your analysis IMMEDIATELY based on this data. Do NOT call tools unless you genuinely need specific data that is missing from the context above. Most of the time, the context is sufficient — just give your tactical read.
 """
 
         # Use trigger-specific user prompt
@@ -117,8 +117,8 @@ You have tools available to look up additional match data if needed. Only use th
             )
             max_tokens = 200
         else:
-            user_prompt = "What's the current tactical situation and one key adjustment we should make?"
-            max_tokens = 150
+            user_prompt = "Analyze the match state above and give one key tactical observation and one adjustment we should make. Respond directly — do not call any tools."
+            max_tokens = 200
 
         raw_live_tools = get_tools_subset(LIVE_TOOLS)
         # Enable Anthropic prompt caching on system prompt + tools

@@ -1454,6 +1454,7 @@ export interface PitchPath {
   started_by: string | null;
   started_with: string | null;
   points: { x: number; y: number }[];
+  carriers?: string[];
 }
 
 export interface PitchPathsResponse {

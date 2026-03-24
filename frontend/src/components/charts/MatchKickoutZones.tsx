@@ -7,6 +7,9 @@ import { Crosshair } from 'lucide-react'
 
 interface Props {
   events: any[]
+  attackingRightFirstHalf?: boolean | null
+  teamName?: string
+  opponentName?: string
 }
 
 type KickoutMode = 'own' | 'opponent'
@@ -69,7 +72,7 @@ function parseKickoutEvents(events: any[]): ParsedKickout[] {
   return results
 }
 
-export default function MatchKickoutZones({ events }: Props) {
+export default function MatchKickoutZones({ events, attackingRightFirstHalf, teamName = 'Our', opponentName = 'Opp' }: Props) {
   const [mode, setMode] = useState<KickoutMode>('own')
 
   const allKickouts = useMemo(() => parseKickoutEvents(events), [events])
@@ -80,9 +83,19 @@ export default function MatchKickoutZones({ events }: Props) {
     for (const zone of ZONE_DEFS) stats[zone.id] = { total: 0, won: 0, lost: 0, win_pct: 0 }
 
     for (const k of filtered) {
+      // For own kickouts: measure distance from OWN goal
+      // For opp kickouts: measure distance from OPPONENT goal
+      // attackingRightFirstHalf=true means own goal at x=0, opp goal at x=100
+      // attackingRightFirstHalf=false means own goal at x=100, opp goal at x=0
+      const ownGoalX = attackingRightFirstHalf === false ? 100 : 0
+      const oppGoalX = attackingRightFirstHalf === false ? 0 : 100
+      const goalX = k.isOwn ? ownGoalX : oppGoalX
+      // Distance from the kicking team's goal (0-100 scale)
+      const distFromGoal = Math.abs(k.pitch_x - goalX)
+
       let xZone: string
-      if (k.pitch_x < 14) xZone = 'Short'
-      else if (k.pitch_x < 31) xZone = 'Mid'
+      if (distFromGoal < 14) xZone = 'Short'
+      else if (distFromGoal < 31) xZone = 'Mid'
       else xZone = 'Long'
       let yZone: string
       if (k.pitch_y < 33) yZone = 'Left'
@@ -132,15 +145,16 @@ export default function MatchKickoutZones({ events }: Props) {
                 mode === m ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/70'
               }`}
             >
-              {m === 'own' ? 'Our Kickouts' : 'Opp Kickouts'}
+              {m === 'own' ? `${teamName} K/O` : `${opponentName} K/O`}
             </button>
           ))}
         </div>
       </div>
 
       <div className="relative rounded-xl overflow-hidden">
-        <svg viewBox={`0 0 ${PITCH.svgW} ${PITCH.svgH}`} className="w-full" preserveAspectRatio="xMidYMid meet">
-          <rect width={PITCH.svgW} height={PITCH.svgH} fill="#2d5016" />
+        <svg viewBox={`-100 -100 ${PITCH.svgW + 200} ${PITCH.svgH + 380}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+          <rect x={-100} y={-100} width={PITCH.svgW + 200} height={PITCH.svgH + 380} fill="#1a1a2e" />
+          <rect width={PITCH.svgW} height={PITCH.svgH} fill="#2d5016" rx="20" />
           <image href="/pitch-svg.svg" width={PITCH.svgW} height={PITCH.svgH} preserveAspectRatio="xMidYMid meet" />
 
           {ZONE_DEFS.map(zone => {

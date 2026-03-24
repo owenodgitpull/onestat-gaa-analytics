@@ -935,7 +935,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         EventType.TURNOVER_WON, EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON,
         EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
         EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK,
-        EventType.INTERCEPTION, EventType.BLOCK, EventType.FREE_WON, EventType.FOUL_WON,
+        EventType.INTERCEPTION, EventType.BLOCK, EventType.FREE_WON, EventType.FOUL_WON, EventType.TACKLE_WON,
     }
 
     # Default outcomes: all scoring events + wides
@@ -1021,6 +1021,35 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         mid = str(e.match_id)
         events_by_match.setdefault(mid, []).append(e)
 
+    # Fetch carrier segments for richer path data
+    from app.models.ball_carrier_segment import BallCarrierSegment
+    from app.models.possession_event import PossessionEvent as PossEvent
+    carrier_segments_by_match: dict[str, list] = {}
+    possession_by_match: dict[str, list] = {}
+    for mid in events_by_match.keys():
+        try:
+            seg_result = await db.execute(
+                select(BallCarrierSegment)
+                .where(BallCarrierSegment.match_id == mid)
+                .order_by(BallCarrierSegment.created_at)
+            )
+            carrier_segments_by_match[mid] = seg_result.scalars().all()
+        except Exception:
+            carrier_segments_by_match[mid] = []
+
+        # Fetch possession events (sampled every 3s) — but limit to avoid overload
+        try:
+            poss_result = await db.execute(
+                select(PossEvent)
+                .where(PossEvent.match_id == mid, PossEvent.team == 'own')
+                .order_by(PossEvent.created_at)
+            )
+            all_poss = poss_result.scalars().all()
+            # Downsample: keep every 5th possession event to avoid too many points
+            possession_by_match[mid] = all_poss[::5]
+        except Exception:
+            possession_by_match[mid] = []
+
     paths = []
     for mid, events in events_by_match.items():
         opponent = match_info.get(mid, "Unknown")
@@ -1059,11 +1088,47 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 chain.insert(0, prev)
                 last_minute = prev.minute
 
-            # Build path points (only events with location data)
+            # Build path points — include carrier segment paths and possession samples between events
             points = []
-            for e in chain:
-                if e.pitch_x is not None and e.pitch_y is not None:
-                    points.append({"x": round(e.pitch_x, 1), "y": round(e.pitch_y, 1)})
+            carriers_in_order = []  # Track who carried the ball in sequence
+            for ci, e in enumerate(chain):
+                if e.pitch_x is None or e.pitch_y is None:
+                    continue
+
+                # Look for carrier segments that occurred between this event and the previous one
+                if ci > 0 and carrier_segments_by_match.get(mid):
+                    prev_e = chain[ci - 1]
+                    prev_time = prev_e.created_at
+                    curr_time = e.created_at
+                    # Find carrier segments in this time window
+                    for seg in carrier_segments_by_match[mid]:
+                        if prev_time and curr_time:
+                            # Use created_at for time comparison
+                            if prev_time <= seg.created_at <= curr_time and seg.team == 'own':
+                                # Track carrier name
+                                carrier_name = players.get(str(seg.player_id)) if seg.player_id else None
+                                if carrier_name and (not carriers_in_order or carriers_in_order[-1] != carrier_name):
+                                    carriers_in_order.append(carrier_name)
+                                # Add carrier path points
+                                if seg.path_points:
+                                    for pp in seg.path_points:
+                                        if isinstance(pp, dict) and 'x' in pp and 'y' in pp:
+                                            points.append({"x": round(pp['x'], 1), "y": round(pp['y'], 1)})
+                                elif seg.start_x is not None:
+                                    points.append({"x": round(seg.start_x, 1), "y": round(seg.start_y or 50, 1)})
+                                    if seg.end_x is not None:
+                                        points.append({"x": round(seg.end_x, 1), "y": round(seg.end_y or 50, 1)})
+
+                # Also look for possession events between this event and the previous one
+                if ci > 0 and possession_by_match.get(mid):
+                    prev_e = chain[ci - 1]
+                    for pe in possession_by_match[mid]:
+                        if pe.team == 'own' and prev_e.created_at <= pe.created_at <= e.created_at:
+                            if pe.pitch_x is not None and pe.pitch_y is not None:
+                                points.append({"x": round(pe.pitch_x, 1), "y": round(pe.pitch_y, 1)})
+
+                # Add the event point itself
+                points.append({"x": round(e.pitch_x, 1), "y": round(e.pitch_y, 1)})
 
             if len(points) < 1:
                 continue
@@ -1089,6 +1154,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 "started_by": started_by,
                 "started_with": started_with,
                 "points": points,
+                "carriers": carriers_in_order,
                 "attacking_right_first_half": match_attacking_right.get(mid, True),
             })
 
@@ -1406,19 +1472,23 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     events = events_result.scalars().all()
 
     # Calculate scores - use EventType and Team enums
-    tm_goals = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.GOAL])
-    tm_points = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.POINT])
-    tm_2pts = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TWO_POINT])
+    goal_types = {EventType.GOAL, EventType.PENALTY_GOAL}
+    point_types = {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}
+    two_point_types = {EventType.TWO_POINT, EventType.TWO_POINT_FREE}
 
-    opp_goals = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.GOAL])
-    opp_points = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.POINT])
-    opp_2pts = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.TWO_POINT])
+    tm_goals = len([e for e in events if e.team == Team.OWN and e.event_type in goal_types])
+    tm_points = len([e for e in events if e.team == Team.OWN and e.event_type in point_types])
+    tm_2pts = len([e for e in events if e.team == Team.OWN and e.event_type in two_point_types])
+
+    opp_goals = len([e for e in events if e.team == Team.OPPONENT and e.event_type in goal_types])
+    opp_points = len([e for e in events if e.team == Team.OPPONENT and e.event_type in point_types])
+    opp_2pts = len([e for e in events if e.team == Team.OPPONENT and e.event_type in two_point_types])
 
     tm_total = tm_goals * 3 + tm_points + tm_2pts * 2
     opp_total = opp_goals * 3 + opp_points + opp_2pts * 2
 
     # Get top scorers
-    scoring_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
+    scoring_types = goal_types | point_types | two_point_types
     player_scores = {}
     for e in events:
         if e.team == Team.OWN and e.event_type in scoring_types and e.player_id:

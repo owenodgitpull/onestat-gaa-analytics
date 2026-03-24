@@ -323,6 +323,9 @@ class MatchService:
             "team_kickouts_lost": 0,
             "opponent_kickouts_won": 0,
             "opponent_kickouts_lost": 0,
+            # Fouls
+            "team_fouls": 0,
+            "opponent_fouls": 0,
             # Cards
             "team_yellow_cards": 0,
             "team_red_cards": 0,
@@ -374,8 +377,9 @@ class MatchService:
             elif event.event_type in [EventType.SHORT, EventType.SAVED]:
                 stats[f"{team_prefix}_total_shots"] += 1
             
-            # Turnovers (opposition forced)
-            elif event.event_type == EventType.TURNOVER_WON:
+            # Turnovers (opposition forced) — interceptions and tackles count as turnovers won
+            # Blocks do NOT auto-count — outcome depends on who recovers
+            elif event.event_type in (EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON):
                 stats[f"{team_prefix}_turnovers_won"] += 1
             elif event.event_type == EventType.TURNOVER_LOST:
                 stats[f"{team_prefix}_turnovers_lost"] += 1
@@ -396,6 +400,7 @@ class MatchService:
                 stats["team_kickouts_won"] += 1  # Team retained own kickout
             elif event.event_type in (
                 EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+                EventType.OWN_KICKOUT_SIDELINE,
             ):
                 stats["team_kickouts_lost"] += 1  # Team lost own kickout
 
@@ -406,6 +411,7 @@ class MatchService:
                 stats["opponent_kickouts_won"] += 1  # Opponent retained own kickout
             elif event.event_type in (
                 EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK,
+                EventType.OPP_KICKOUT_SIDELINE,
             ):
                 stats["opponent_kickouts_lost"] += 1  # Opponent lost own kickout (team won it)
 
@@ -415,6 +421,14 @@ class MatchService:
             elif event.event_type in (EventType.KICKOUT_LOST, EventType.BREAKING_BALL_LOST):
                 stats["team_kickouts_lost"] += 1
             
+            # Fouls — foul_committed = this team fouled, foul_won = this team was fouled
+            elif event.event_type == EventType.FOUL_COMMITTED:
+                stats[f"{team_prefix}_fouls"] += 1
+            elif event.event_type == EventType.FOUL_WON:
+                # The OTHER team fouled — foul_won is recorded for the team that WAS fouled
+                other_prefix = "opponent" if team_prefix == "team" else "team"
+                stats[f"{other_prefix}_fouls"] += 1
+
             # Cards
             elif event.event_type == EventType.YELLOW_CARD:
                 stats[f"{team_prefix}_yellow_cards"] += 1

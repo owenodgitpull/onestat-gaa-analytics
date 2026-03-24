@@ -1,11 +1,10 @@
 /**
  * offlineApi.ts — Offline-first API wrapper for match recording.
  *
- * Mirrors the shape of the real API (matchEvents, possession, playerMovement)
- * but writes to IndexedDB first for instant response, then syncs in background.
+ * Mirrors the shape of the real API (matchEvents, possession, playerMovement).
  *
- * When online: writes locally + triggers background sync (near-instant server push).
- * When offline: writes locally, queued for sync when connectivity returns.
+ * When online: POSTs directly to the server for immediate persistence.
+ * When offline: writes to IndexedDB outbox, syncs when connectivity returns.
  *
  * The existing hooks (useMatchEvents, usePlayerMovement) call these instead of
  * the direct API — MatchRecording.tsx doesn't change.
@@ -20,6 +19,7 @@ import {
   type OutboxCategory,
 } from './offlineDb'
 import { triggerSync, resolveTempId } from './syncEngine'
+import { isOnline } from './networkStatus'
 import type { MatchEvent, PossessionEvent } from '../../types'
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -104,12 +104,12 @@ export const offlineMatch = {
   },
 }
 
-// ── Match Events (offline-first) ─────────────────────────────────────────
+// ── Match Events (online-first, offline fallback) ────────────────────────
 
 export const offlineMatchEvents = {
   /**
-   * Record a match event — writes to IndexedDB instantly, returns synthetic MatchEvent.
-   * Background sync pushes to server.
+   * Record a match event — POST directly to server when online.
+   * Falls back to IndexedDB outbox only when offline.
    */
   create: async (data: {
     match_id: string
@@ -125,23 +125,61 @@ export const offlineMatchEvents = {
   }): Promise<MatchEvent> => {
     const { is_home_team, x_coord, y_coord, half, minute, opponent_player_name, ...rest } = data
     const team = is_home_team ? 'own' : 'opponent'
+    const clientEventId = uuid()
+    const body = {
+      ...rest,
+      team,
+      minute: Math.min(minute, 120),
+      pitch_x: x_coord,
+      pitch_y: y_coord,
+      client_event_id: clientEventId,
+      ...(opponent_player_name ? { opponent_player_name } : {}),
+    }
 
-    const clientEventId = await enqueueAndSync(
+    // Try server first when online
+    if (isOnline()) {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        const response = await fetch(`${baseUrl}/match-events/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        })
+
+        if (response.ok) {
+          const serverEvent = await response.json()
+          return {
+            id: serverEvent.id,
+            match_id: data.match_id,
+            player_id: (data.player_id as unknown as number) || null,
+            event_type: data.event_type,
+            minute: data.minute,
+            half: data.half,
+            pitch_x: x_coord || null,
+            pitch_y: y_coord || null,
+            is_home_team: data.is_home_team,
+            notes: data.notes || null,
+            created_at: serverEvent.created_at || now(),
+          }
+        }
+        // Server returned error — fall through to offline path
+        console.warn(`[MatchEvents] Server returned ${response.status}, falling back to offline`)
+      } catch (err) {
+        // Network error — fall through to offline path
+        console.warn('[MatchEvents] Network error, falling back to offline', err)
+      }
+    }
+
+    // Offline fallback — queue in IndexedDB
+    await enqueueAndSync(
       data.match_id,
       '/match-events/',
       'POST',
-      {
-        ...rest,
-        team,
-        minute: Math.min(minute, 120),
-        pitch_x: x_coord,
-        pitch_y: y_coord,
-        ...(opponent_player_name ? { opponent_player_name } : {}),
-      },
+      body,
       'event',
     )
 
-    // Store optimistic local event for instant UI display
     await putLocalEvent({
       clientEventId,
       matchId: data.match_id,
@@ -157,9 +195,8 @@ export const offlineMatchEvents = {
       pending: true,
     })
 
-    // Return synthetic MatchEvent — same shape as server response
     return {
-      id: clientEventId as unknown as number, // Temp ID — replaced by server ID after sync
+      id: clientEventId as unknown as number,
       match_id: data.match_id,
       player_id: (data.player_id as unknown as number) || null,
       event_type: data.event_type,
@@ -174,7 +211,7 @@ export const offlineMatchEvents = {
   },
 
   /**
-   * Quick score — same offline-first pattern
+   * Quick score — online-first with offline fallback
    */
   quickScore: async (data: {
     match_id: string
@@ -183,6 +220,33 @@ export const offlineMatchEvents = {
     minute: number
     half: number
   }): Promise<MatchEvent> => {
+    if (isOnline()) {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        const response = await fetch(`${baseUrl}/match-events/quick-score`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data),
+        })
+        if (response.ok) {
+          const serverEvent = await response.json()
+          return {
+            id: serverEvent.id,
+            match_id: data.match_id,
+            player_id: data.player_id as unknown as number,
+            event_type: data.event_type,
+            minute: data.minute,
+            half: data.half,
+            pitch_x: null, pitch_y: null,
+            is_home_team: true,
+            notes: null,
+            created_at: serverEvent.created_at || now(),
+          }
+        }
+      } catch { /* fall through */ }
+    }
+
     const clientEventId = await enqueueAndSync(
       data.match_id,
       '/match-events/quick-score',
@@ -198,8 +262,7 @@ export const offlineMatchEvents = {
       minute: data.minute,
       half: data.half,
       player_id: data.player_id,
-      pitch_x: null,
-      pitch_y: null,
+      pitch_x: null, pitch_y: null,
       team: 'own',
       notes: null,
       created_at: now(),
@@ -213,8 +276,7 @@ export const offlineMatchEvents = {
       event_type: data.event_type,
       minute: data.minute,
       half: data.half,
-      pitch_x: null,
-      pitch_y: null,
+      pitch_x: null, pitch_y: null,
       is_home_team: true,
       notes: null,
       created_at: now(),
@@ -222,27 +284,34 @@ export const offlineMatchEvents = {
   },
 
   /**
-   * Delete — if event hasn't synced yet, just remove from outbox.
-   * Otherwise queue a server DELETE.
+   * Delete — try server directly when online, queue when offline.
    */
   delete: async (eventId: string, matchId: string): Promise<void> => {
-    // Check if this is a local-only event (clientEventId in outbox, never synced)
+    // Check if local-only (never synced)
     const outboxItem = await findByClientEventId(eventId)
     if (outboxItem && outboxItem.status === 'pending' && outboxItem.id) {
-      // Not yet on server — just remove from local stores
       await deleteOutboxItem(outboxItem.id)
       await deleteLocalEvent(eventId)
       return
     }
 
-    // Already synced — queue a DELETE to server
-    await enqueueAndSync(
-      matchId,
-      `/match-events/${eventId}`,
-      'DELETE',
-      {},
-      'event',
-    )
+    // Try server directly
+    if (isOnline()) {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        const response = await fetch(`${baseUrl}/match-events/${eventId}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        })
+        if (response.ok || response.status === 204 || response.status === 404) {
+          await deleteLocalEvent(eventId)
+          return
+        }
+      } catch { /* fall through */ }
+    }
+
+    // Offline fallback
+    await enqueueAndSync(matchId, `/match-events/${eventId}`, 'DELETE', {}, 'event')
     await deleteLocalEvent(eventId)
   },
 }
@@ -259,18 +328,45 @@ export const offlinePossession = {
     y_coord: number
   }): Promise<PossessionEvent> => {
     const team = data.is_home_team ? 'own' : 'opponent'
+    const body = {
+      match_id: data.match_id,
+      team,
+      pitch_x: data.x_coord,
+      pitch_y: data.y_coord,
+      minute: Math.min(data.minute, 120),
+    }
 
+    // Try server first when online
+    if (isOnline()) {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        const response = await fetch(`${baseUrl}/possession-events/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        })
+        if (response.ok) {
+          return {
+            id: (await response.json().catch(() => ({ id: uuid() }))).id,
+            match_id: data.match_id,
+            minute: data.minute,
+            half: data.half,
+            is_home_team: data.is_home_team,
+            x_coord: data.x_coord,
+            y_coord: data.y_coord,
+            created_at: now(),
+          } as unknown as PossessionEvent
+        }
+      } catch { /* fall through */ }
+    }
+
+    // Offline fallback
     const clientEventId = await enqueueAndSync(
       data.match_id,
       '/possession-events/',
       'POST',
-      {
-        match_id: data.match_id,
-        team,
-        pitch_x: data.x_coord,
-        pitch_y: data.y_coord,
-        minute: Math.min(data.minute, 120),
-      },
+      body,
       'possession',
     )
 
@@ -292,6 +388,23 @@ export const offlinePossession = {
     minute: number
     waypoints: Array<{ x: number; y: number }>
   }): Promise<{ created: number }> => {
+    // Try server first
+    if (isOnline()) {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        const response = await fetch(`${baseUrl}/possession-events/bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data),
+        })
+        if (response.ok) {
+          return await response.json()
+        }
+      } catch { /* fall through */ }
+    }
+
+    // Offline fallback
     await enqueueAndSync(
       data.match_id,
       '/possession-events/bulk',
@@ -316,9 +429,27 @@ export const offlinePlayerMovement = {
     start_x: number | null
     start_y: number | null
   }): Promise<{ id: string; [key: string]: unknown }> => {
-    // Generate a temp segment ID for the dependency chain
-    const tempSegmentId = `local-${uuid()}`
+    const clientEventId = uuid()
 
+    // Try server first when online
+    if (isOnline()) {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        const response = await fetch(`${baseUrl}/player-movement/carrier-segments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ ...data, client_event_id: clientEventId }),
+        })
+        if (response.ok) {
+          const serverData = await response.json()
+          return serverData
+        }
+      } catch { /* fall through */ }
+    }
+
+    // Offline fallback
+    const tempSegmentId = `local-${clientEventId}`
     await enqueueAndSync(
       data.match_id,
       '/player-movement/carrier-segments',
@@ -327,7 +458,6 @@ export const offlinePlayerMovement = {
       'carrier',
     )
 
-    // Return synthetic response with temp ID
     return {
       id: tempSegmentId,
       match_id: data.match_id,
@@ -348,11 +478,25 @@ export const offlinePlayerMovement = {
     segmentId: string,
     data: { end_x?: number; end_y?: number; ended_by?: string },
   ): Promise<void> => {
+    // Try server first
+    if (isOnline() && !segmentId.startsWith('local-')) {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        const response = await fetch(`${baseUrl}/player-movement/carrier-segments/${segmentId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(data),
+        })
+        if (response.ok) return
+      } catch { /* fall through */ }
+    }
+
+    // Offline fallback
     const realId = resolveTempId(segmentId)
     const isTemp = segmentId.startsWith('local-')
-
     await enqueueAndSync(
-      '', // matchId not needed for endpoint
+      '',
       `/player-movement/carrier-segments/${realId}`,
       'PUT',
       data,
@@ -365,11 +509,25 @@ export const offlinePlayerMovement = {
     segmentId: string,
     points: Array<{ x: number; y: number }>,
   ): Promise<void> => {
+    // Try server first
+    if (isOnline() && !segmentId.startsWith('local-')) {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        const response = await fetch(`${baseUrl}/player-movement/carrier-segments/${segmentId}/path-points`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ points }),
+        })
+        if (response.ok) return
+      } catch { /* fall through */ }
+    }
+
+    // Offline fallback
     const realId = resolveTempId(segmentId)
     const isTemp = segmentId.startsWith('local-')
-
     await enqueueAndSync(
-      '', // matchId not needed
+      '',
       `/player-movement/carrier-segments/${realId}/path-points`,
       'POST',
       { points },

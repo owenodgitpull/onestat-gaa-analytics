@@ -52,6 +52,7 @@ import {
   Pause,
   RotateCcw,
   Users,
+  HelpCircle,
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -104,7 +105,7 @@ export default function MatchRecording() {
   const [activeKickoutTab, setActiveKickoutTab] = useState<string | null>('scoring')
   const [awaitingKickout, setAwaitingKickout] = useState(false) // Lock ball until kickout resolved
   const [insightRefresh, setInsightRefresh] = useState(0)
-  const [eventMapTeamFilter, setEventMapTeamFilter] = useState<'own' | 'opponent'>('own')
+  const [eventMapTeamFilter, setEventMapTeamFilter] = useState<'all' | 'own' | 'opponent'>('all')
   const [eventMapFilters, setEventMapFilters] = useState<Set<string>>(new Set(['all']))
   const [pendingKickoutEvent, setPendingKickoutEvent] = useState<{
     eventType: EventType
@@ -114,6 +115,7 @@ export default function MatchRecording() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition } | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [pendingBlockRecovery, setPendingBlockRecovery] = useState<{ position: BallPosition } | null>(null)
   const [resetting, setResetting] = useState(false)
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
@@ -125,6 +127,7 @@ export default function MatchRecording() {
   const [teamAttackingRight, setTeamAttackingRight] = useState<boolean>(true) // true = attacking towards x=100
   const [ballTrail, setBallTrail] = useState<Array<{ x: number; y: number }>>([])
   const prevTeamRef = useRef(ballPosition.team)
+  const preTutorialBallRef = useRef<BallPosition | null>(null)
 
   // Clear trail and carrier on possession change (team switch)
   useEffect(() => {
@@ -219,12 +222,15 @@ export default function MatchRecording() {
       setCurrentHalf(saved.currentHalf as 1 | 2)
 
       // Catch up timer for elapsed time since crash (match clock keeps ticking in real life)
-      const elapsedSinceSave = Math.floor((Date.now() - saved.lastSavedAt) / 1000)
-      const wasStopped = saved.isStopped
-      const catchUpSeconds = wasStopped ? 0 : elapsedSinceSave
-      const totalSeconds = saved.minute * 60 + saved.seconds + catchUpSeconds
-      setMinute(Math.min(Math.floor(totalSeconds / 60), 120))
-      setSeconds(totalSeconds % 60)
+      // Don't catch up during half-time, stoppages, or pre/post match — clock isn't running
+      const isClockRunning = !saved.isStopped && (saved.matchPhase === 'first_half' || saved.matchPhase === 'second_half')
+      if (isClockRunning) {
+        const elapsedSinceSave = Math.floor((Date.now() - saved.lastSavedAt) / 1000)
+        const totalSeconds = saved.minute * 60 + saved.seconds + elapsedSinceSave
+        setMinute(Math.min(Math.floor(totalSeconds / 60), 120))
+        setSeconds(totalSeconds % 60)
+      }
+      // Don't restore minute/seconds during half-time — let the server state handler set it
 
       setIsStopped(saved.isStopped)
       if (saved.activeCarrierId) setActiveCarrierId(saved.activeCarrierId)
@@ -327,7 +333,7 @@ export default function MatchRecording() {
   useEffect(() => {
     if (!match) return
 
-    if (match.status === 'in_progress' && matchPhase === 'not_started') {
+    if (match.status === 'in_progress' && (matchPhase === 'not_started' || matchPhase === 'half_time' || minute === 0)) {
       const phase = (match.current_phase as MatchPhase) || 'first_half'
       setMatchPhase(phase)
 
@@ -346,12 +352,16 @@ export default function MatchRecording() {
         const elapsed = (Date.now() - parseTS(match.started_at)) * DEV_SPEED_MULTIPLIER
         const mins = Math.floor(elapsed / 60000)
         const secs = Math.floor((elapsed % 60000) / 1000)
-        setMinute(Math.min(mins, 29)) // cap at 29 so timer auto-pauses at 30
+        const hdm = match.half_duration_mins || 30
+        setMinute(Math.min(mins, hdm - 1)) // cap at hdm-1 so timer auto-pauses at half duration
         setSeconds(secs)
         setCurrentHalf(1)
       } else if (phase === 'half_time') {
-        setMinute(30)
-        setSeconds(0)
+        // Force half-time minute — overrides any crash restore value
+        setTimeout(() => {
+          setMinute(match.half_duration_mins || 30)
+          setSeconds(0)
+        }, 100)
         setCurrentHalf(1)
       } else if (phase === 'second_half' && match.second_half_started_at) {
         const elapsed = (Date.now() - parseTS(match.second_half_started_at)) * DEV_SPEED_MULTIPLIER
@@ -408,6 +418,17 @@ export default function MatchRecording() {
       }
     }
   }, [match, matchLoading, startMatchTour, searchParams, setSearchParams])
+
+  // Auto-resync any unsynced local events on page load
+  useEffect(() => {
+    if (matchId) {
+      import('@/services/offline').then(({ resyncLocalEvents }) => {
+        resyncLocalEvents(matchId).then(count => {
+          if (count > 0) console.log(`[MatchRecording] Auto-resynced ${count} events`)
+        })
+      })
+    }
+  }, [matchId])
 
   // Load match lineup
   useEffect(() => {
@@ -472,7 +493,8 @@ export default function MatchRecording() {
               // At 60 minutes, just mark full time reached but DON'T auto-finish
               // User must click "End Match" to properly complete and trigger AI analysis
               const next = m + 1
-              if (next >= 59 && matchPhase === 'second_half') {
+              const fullTimeMins = ((match?.half_duration_mins || 30) * 2) - 1
+              if (next >= fullTimeMins && matchPhase === 'second_half') {
                 setFullTimeReached(true)
               }
               return Math.min(next, 120)
@@ -485,6 +507,42 @@ export default function MatchRecording() {
       return () => clearInterval(interval)
     }
   }, [matchPhase, isStopped])
+
+  // Possession tick timer — records which team has the ball every 3 seconds
+  // This is the primary source of possession % (time-based, not movement-based)
+  const possTickBallRef = useRef(ballPosition)
+  const possTickMinuteRef = useRef(minute)
+  possTickBallRef.current = ballPosition
+  possTickMinuteRef.current = minute
+
+  useEffect(() => {
+    const isPlaying = (matchPhase === 'first_half' || matchPhase === 'second_half') && !isStopped && !awaitingKickout && !pendingFreeKick
+    if (!isPlaying || !matchId) return
+
+    const tick = setInterval(async () => {
+      const bp = possTickBallRef.current
+      const m = possTickMinuteRef.current
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        await fetch(`${baseUrl}/possession-events/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            match_id: matchId,
+            team: bp.team === PossessionTeam.OWN ? 'own' : 'opponent',
+            pitch_x: bp.x,
+            pitch_y: bp.y,
+            minute: Math.min(m, 120),
+          }),
+        })
+      } catch {
+        // Silently fail — possession tick is best-effort
+      }
+    }, 3000)
+
+    return () => clearInterval(tick)
+  }, [matchPhase, isStopped, awaitingKickout, pendingFreeKick, matchId])
 
   // Calculate real-time stats from backend - now using MatchStats directly
   // Backend calculates scores as (goals*3 + points), so we need to reverse-engineer for display
@@ -585,7 +643,9 @@ export default function MatchRecording() {
       player_name: e.player_name,
       minute: e.minute
     }))
-    events = events.filter((e: any) => e.team === eventMapTeamFilter)
+    if (eventMapTeamFilter !== 'all') {
+      events = events.filter((e: any) => e.team === eventMapTeamFilter)
+    }
     if (eventTypes) {
       events = events.filter((e: any) => eventTypes.includes(e.event_type))
     }
@@ -646,10 +706,13 @@ export default function MatchRecording() {
     // Special case: Exact center (kickout position)
     if (x === 50 && y === 50) return 'midfield'
 
-    // Left/Right description (y-axis: 0-100)
+    // Left/Right description from the perspective of the team attacking
+    // When attacking right: low y = left, high y = right (standard)
+    // When attacking left: low y = right, high y = left (flipped)
+    const facingRight = eventTeamIsOwn ? teamAttackingRight : !teamAttackingRight
     let lateral = ''
-    if (y < 25) lateral = ' (left wing)'
-    else if (y > 75) lateral = ' (right wing)'
+    if (y < 25) lateral = facingRight ? ' (left wing)' : ' (right wing)'
+    else if (y > 75) lateral = facingRight ? ' (right wing)' : ' (left wing)'
     else if (y >= 40 && y <= 60) lateral = ' (center)'
 
     // Determine which goal is ours based on attack direction
@@ -844,6 +907,10 @@ export default function MatchRecording() {
           : `${teamName} won a turnover in ${area}`
 
       case 'turnover_lost':
+        if (event.notes === 'block_recovery') {
+          const oppName = isOwn ? (match?.opponent || 'Opposition') : clubName
+          return `${oppName} recovered the ball after a block ${area}`
+        }
         return isOwn
           ? `${playerName} conceded a turnover in ${area}`
           : `${teamName} conceded a turnover in ${area}`
@@ -998,8 +1065,8 @@ export default function MatchRecording() {
       return
     }
 
-    // Only record if match is in progress (pitch stays active at half-time for late data capture)
-    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished') {
+    // Only record if match is actively in play
+    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time') {
       return
     }
 
@@ -1163,6 +1230,7 @@ export default function MatchRecording() {
 
       // Turnovers - Opposition forced
       'turnover_won': 'turnover_won',      // We won via tackle/pressure
+      'tackle_won': 'tackle_won',          // We won via a tackle specifically
       'turnover_lost': 'turnover_lost',    // They won via tackle/pressure
 
       // Unforced Errors - Own mistakes (distinct from forced turnovers!)
@@ -1263,11 +1331,13 @@ export default function MatchRecording() {
     setSelectingFoulPlayer(false)
   }
 
-  // Cancel pending free kick
+  // Cancel pending free kick — fully reset foul state
   const handleCancelFree = () => {
     setPendingFreeKick(null)
     setPendingFoul(null)
-    console.log('Free kick cancelled')
+    setSelectingFoulPlayer(false)
+    setIsPlayerModalOpen(false)
+    console.log('Free kick cancelled, all foul state cleared')
   }
 
   // Handle "45" button - opens 45 options menu (scored/missed)
@@ -1381,7 +1451,10 @@ export default function MatchRecording() {
         }))
 
         await api.matchLineups.saveLineup(matchId, lineupEntries)
-        console.log('Lineup saved successfully')
+        // Reload lineup data so carrier strip updates immediately
+        const freshLineup = await api.matchLineups.getLineup(matchId)
+        setMatchLineup(freshLineup)
+        console.log('Lineup saved and reloaded successfully')
       } catch (error) {
         console.error('Failed to save lineup:', error)
       }
@@ -1629,6 +1702,12 @@ export default function MatchRecording() {
       // Track for tutorial
       setLastEventType(String(eventType).toLowerCase())
 
+      // Block recovery prompt — ask who recovered the ball
+      if (eventType === EventType.BLOCK) {
+        setPendingBlockRecovery({ position })
+        return // Don't auto-switch tabs — wait for recovery decision
+      }
+
       // Auto-end carrier segment on terminal events
       if (activeCarrierId) {
         playerMovement.onTerminalEvent(String(eventType).toLowerCase(), position.x, position.y)
@@ -1780,6 +1859,39 @@ export default function MatchRecording() {
     }
   }
 
+  // Handle block recovery — who got the ball after the block?
+  const handleBlockRecovery = async (weRecovered: boolean) => {
+    if (!pendingBlockRecovery || !matchId) return
+    const pos = pendingBlockRecovery.position
+
+    if (!weRecovered) {
+      // They recovered → turnover lost for us
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+        await fetch(`${baseUrl}/match-events/`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            match_id: matchId,
+            event_type: 'turnover_lost',
+            team: 'own',
+            minute: Math.min(minute, 120),
+            pitch_x: pos.x,
+            pitch_y: pos.y,
+            notes: 'block_recovery',
+          }),
+        })
+      } catch { /* best effort */ }
+      // Swap possession to opponent
+      setBallPosition(prev => ({ ...prev, team: PossessionTeam.OPPONENT }))
+    } else {
+      // We recovered → possession comes to us (block = we stopped their attack)
+      setBallPosition(prev => ({ ...prev, team: PossessionTeam.OWN }))
+    }
+    setPendingBlockRecovery(null)
+  }
+
   // Handle opposition scorer selection
   const handleOpponentScorerSelect = (name: string) => {
     if (!pendingOpponentScore) return
@@ -1853,6 +1965,12 @@ export default function MatchRecording() {
       // Unlock ball so user can click on pitch to select position
       setAwaitingKickout(false)
       return
+    }
+
+    // Block recovery prompt — ask who recovered after a block
+    if (event.eventType === EventType.BLOCK) {
+      setPendingBlockRecovery({ position: event.position })
+      return // Wait for recovery decision
     }
 
     // Apply immediate UI state changes (ball position, tabs, kickout lock)
@@ -2030,7 +2148,7 @@ export default function MatchRecording() {
       }
       setMatchPhase('second_half')
       setCurrentHalf(2)
-      setMinute(30)
+      setMinute(match?.half_duration_mins || 30)
       setSeconds(0)
     }
   }
@@ -2080,7 +2198,8 @@ export default function MatchRecording() {
   }
 
   const getEndButtonText = () => {
-    if (matchPhase === 'first_half') return minute >= 30 ? 'Half Time' : 'End Half'
+    const hdm = match?.half_duration_mins || 30
+    if (matchPhase === 'first_half') return minute >= hdm ? 'Half Time' : 'End Half'
     if (matchPhase === 'second_half') {
       return fullTimeReached ? 'Full Time' : 'End Match'
     }
@@ -2100,14 +2219,16 @@ export default function MatchRecording() {
   }
 
   const formatTime = () => {
-    // Injury time format: "30 (+1:32)" for first half, "60 (+2:15)" for second half
-    if (matchPhase === 'first_half' && minute >= 30) {
-      const injuryMin = minute - 30
-      return `30 (+${injuryMin}:${seconds.toString().padStart(2, '0')})`
+    const hdm = match?.half_duration_mins || 30
+    const fullTime = hdm * 2
+    // Injury time format: "35 (+1:32)" for first half, "70 (+2:15)" for second half
+    if (matchPhase === 'first_half' && minute >= hdm) {
+      const injuryMin = minute - hdm
+      return `${hdm} (+${injuryMin}:${seconds.toString().padStart(2, '0')})`
     }
-    if (matchPhase === 'second_half' && minute >= 60) {
-      const injuryMin = minute - 60
-      return `60 (+${injuryMin}:${seconds.toString().padStart(2, '0')})`
+    if (matchPhase === 'second_half' && minute >= fullTime) {
+      const injuryMin = minute - fullTime
+      return `${fullTime} (+${injuryMin}:${seconds.toString().padStart(2, '0')})`
     }
     return `${minute}:${seconds.toString().padStart(2, '0')}`
   }
@@ -2242,6 +2363,17 @@ export default function MatchRecording() {
                 <div className="flex items-center gap-2">
                   <p className="text-white/60 text-sm">{match?.competition || 'Match'} - {matchPhase === 'not_started' ? 'Ready' : 'Live'}</p>
                   <NetworkStatusIndicator compact />
+                  <button
+                    onClick={() => {
+                      preTutorialBallRef.current = { ...ballPosition }
+                      setTutorialActive(true)
+                      setBallPosition({ x: 30, y: 50, team: PossessionTeam.OWN })
+                    }}
+                    className="p-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
+                    title="Start tutorial"
+                  >
+                    <HelpCircle size={14} className="text-white/40 hover:text-white/70" />
+                  </button>
                   <button
                     data-tour="weather-btn"
                     onClick={() => setIsWeatherPickerOpen(true)}
@@ -2379,7 +2511,7 @@ export default function MatchRecording() {
             {/* Left column — pitch, action buttons, event map */}
             <div className="flex-[2] min-w-0 space-y-6">
               {/* Half Time Banner */}
-              {minute >= 30 && matchPhase === 'first_half' && (
+              {minute >= (match?.half_duration_mins || 30) && matchPhase === 'first_half' && (
                 <div className="backdrop-blur-xl bg-white/5 border border-amber-500/20 rounded-xl px-4 py-3 mb-4">
                   <div className="flex items-center justify-center space-x-2">
                     <Clock size={16} className="text-amber-400" />
@@ -2444,7 +2576,7 @@ export default function MatchRecording() {
                   ballPosition={ballPosition}
                   onBallMove={handleBallMove}
                   showZones={true}
-                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || (awaitingKickout && !pendingKickoutEvent)}
+                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent)}
                   trail={ballTrail}
                   onTrailUpdate={setBallTrail}
                   onDragPath={handleDragPath}
@@ -2552,6 +2684,8 @@ export default function MatchRecording() {
                   })()}
                   pendingFreeKick={!!pendingFreeKick}
                   pendingFoul={pendingFoul}
+                  pendingBlockRecovery={!!pendingBlockRecovery}
+                  onBlockRecovery={handleBlockRecovery}
                   pending45={!!pending45}
                   pendingKickoutPosition={!!pendingKickoutEvent}
                   awaitingKickout={awaitingKickout}
@@ -2571,6 +2705,16 @@ export default function MatchRecording() {
                         <span>Event Map</span>
                       </h2>
                       <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setEventMapTeamFilter('all')}
+                          className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                            eventMapTeamFilter === 'all'
+                              ? 'bg-cyan-600 text-white'
+                              : 'bg-white/10 text-white/60 hover:bg-white/20'
+                          }`}
+                        >
+                          All
+                        </button>
                         <button
                           onClick={() => setEventMapTeamFilter('own')}
                           className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
@@ -2632,6 +2776,7 @@ export default function MatchRecording() {
                       <ScoringTimeline
                         events={matchEventsData.events}
                         opponent={matchDisplay.opponent}
+                        teamName={clubName}
                       />
                     </ChartZoomModal>
                     <ChartZoomModal title="Shot Outcomes">
@@ -2643,10 +2788,10 @@ export default function MatchRecording() {
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
                     <ChartZoomModal title="Kickout Zones">
-                      <MatchKickoutZones events={matchEventsData.events} />
+                      <MatchKickoutZones events={matchEventsData.events} attackingRightFirstHalf={match?.attacking_right_first_half} teamName={clubName} opponentName={matchDisplay.opponent} />
                     </ChartZoomModal>
                     <ChartZoomModal title="Kickout Outcomes">
-                      <MatchKickoutOutcomes events={matchEventsData.events} />
+                      <MatchKickoutOutcomes events={matchEventsData.events} teamName={clubName} opponentName={matchDisplay.opponent} />
                     </ChartZoomModal>
                   </div>
                 </>
@@ -2689,6 +2834,7 @@ export default function MatchRecording() {
                     { label: 'Turnovers Won', left: stats.turnovers.won, right: stats.turnovers.lost, leftVal: stats.turnovers.won, rightVal: stats.turnovers.lost },
                     { label: 'Kickouts Won', left: `${stats.kickouts.teamWon}/${stats.kickouts.teamTotal}`, right: `${stats.kickouts.opponentWon}/${stats.kickouts.opponentTotal}`, leftVal: stats.kickouts.teamWon, rightVal: stats.kickouts.opponentWon },
                     { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
+                    { label: 'Fouls', left: matchStats?.team_fouls || 0, right: matchStats?.opponent_fouls || 0, leftVal: matchStats?.opponent_fouls || 0, rightVal: matchStats?.team_fouls || 0 },
                   ].map((row, idx) => {
                     const leftWins = row.leftVal > row.rightVal
                     const rightWins = row.rightVal > row.leftVal
@@ -2896,7 +3042,7 @@ export default function MatchRecording() {
         onClose={() => setIsFullscreenPitch(false)}
         ballPosition={ballPosition}
         onBallMove={handleBallMove}
-        readonly={matchPhase === 'not_started' || matchPhase === 'finished' || (awaitingKickout && !pendingKickoutEvent)}
+        readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent)}
         trail={ballTrail}
         onTrailUpdate={setBallTrail}
         onDragPath={handleDragPath}
@@ -2947,6 +3093,8 @@ export default function MatchRecording() {
         })()}
         pendingFreeKick={!!pendingFreeKick}
         pendingFoul={pendingFoul}
+        pendingBlockRecovery={!!pendingBlockRecovery}
+        onBlockRecovery={handleBlockRecovery}
         pending45={!!pending45}
         pendingKickoutPosition={!!pendingKickoutEvent}
         onCancelFree={handleCancelFree}
@@ -3016,7 +3164,13 @@ export default function MatchRecording() {
       {/* Interactive Tutorial Overlay */}
       <MatchRecordingTutorial
         active={tutorialActive}
-        onComplete={() => setTutorialActive(false)}
+        onComplete={() => {
+          setTutorialActive(false)
+          if (preTutorialBallRef.current) {
+            setBallPosition(preTutorialBallRef.current)
+            preTutorialBallRef.current = null
+          }
+        }}
         matchState={tutorialMatchState}
       />
 

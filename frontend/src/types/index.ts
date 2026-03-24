@@ -161,6 +161,7 @@ export enum EventType {
   PENALTY_GOAL = 'penalty_goal',  // Penalty scored (counts as goal)
   PENALTY_MISS = 'penalty_miss',  // Penalty missed (wide/saved)
   // Turnovers
+  TACKLE_WON = 'tackle_won',
   TURNOVER_LOST = 'turnover_lost',
   TURNOVER_WON = 'turnover_won',
   OUR_UNFORCED_ERROR = 'our_unforced_error',
@@ -236,6 +237,8 @@ export interface MatchStats {
   team_kickouts_lost: number;
   opponent_kickouts_won: number;
   opponent_kickouts_lost: number;
+  team_fouls: number;
+  opponent_fouls: number;
   team_yellow_cards: number;
   team_red_cards: number;
   opponent_yellow_cards: number;

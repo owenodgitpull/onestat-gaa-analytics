@@ -234,6 +234,10 @@ class MatchStatsResponse(BaseModel):
     opponent_kickouts_won: int
     opponent_kickouts_lost: int
     
+    # Foul stats
+    team_fouls: int = 0
+    opponent_fouls: int = 0
+
     # Card stats
     team_yellow_cards: int
     team_red_cards: int

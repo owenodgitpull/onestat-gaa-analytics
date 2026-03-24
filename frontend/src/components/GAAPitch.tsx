@@ -486,9 +486,6 @@ export default function GAAPitch({
         {showZones && (
           <g fill="white" fillOpacity="0.4" fontSize="22" fontWeight="700">
             <text x="370" y="710" textAnchor="middle">DEF</text>
-            <text x="900" y="710" textAnchor="middle">MID</text>
-            <text x="1166" y="710" textAnchor="middle">CENTER</text>
-            <text x="1432" y="710" textAnchor="middle">MID</text>
             <text x="1962" y="710" textAnchor="middle">ATK</text>
           </g>
         )}

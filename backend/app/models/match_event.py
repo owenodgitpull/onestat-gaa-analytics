@@ -27,6 +27,7 @@ class EventType(enum.Enum):
     # Turnovers - Opposition forced
     TURNOVER_LOST = "turnover_lost"  # Lost possession due to opposition pressure
     TURNOVER_WON = "turnover_won"  # Won possession back via tackle/pressure
+    TACKLE_WON = "tackle_won"  # Won possession via a tackle specifically
     
     # Unforced Errors - Own mistakes (NO opposition pressure)
     UNFORCED_ERROR = "unforced_error"  # Player's own mistake (drop, bad pass)

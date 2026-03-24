@@ -57,7 +57,7 @@ SHOT_EVENTS = [
 ]
 
 DEFENSIVE_EVENTS = [
-    EventType.BLOCK, EventType.INTERCEPTION, EventType.TURNOVER_WON,
+    EventType.BLOCK, EventType.INTERCEPTION, EventType.TURNOVER_WON, EventType.TACKLE_WON,
 ]
 
 
@@ -234,13 +234,15 @@ class LeaderboardService:
             pid = str(e.player_id)
             if pid not in players:
                 continue
-            d = stats.setdefault(pid, {"blocks": 0, "interceptions": 0, "turnovers_won": 0})
+            d = stats.setdefault(pid, {"blocks": 0, "interceptions": 0, "turnovers_won": 0, "tackles": 0})
             if e.event_type == EventType.BLOCK:
                 d["blocks"] += 1
             elif e.event_type == EventType.INTERCEPTION:
                 d["interceptions"] += 1
             elif e.event_type == EventType.TURNOVER_WON:
                 d["turnovers_won"] += 1
+            elif e.event_type == EventType.TACKLE_WON:
+                d["tackles"] += 1
 
         ranked = sorted(
             stats.items(),
@@ -253,7 +255,7 @@ class LeaderboardService:
                 "player_id": pid,
                 "player_name": players[pid].name,
                 "value": sum(d.values()),
-                "detail": f"{d['blocks']}B {d['interceptions']}I {d['turnovers_won']}TO",
+                "detail": f"{d['blocks']}B {d['interceptions']}I {d['tackles']}T {d['turnovers_won']}TO",
             }
             for i, (pid, d) in enumerate(ranked)
         ]

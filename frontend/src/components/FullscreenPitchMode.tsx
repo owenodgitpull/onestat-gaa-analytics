@@ -48,6 +48,8 @@ interface FullscreenPitchModeProps {
   isInPenaltyArea: boolean
   pendingFreeKick: boolean
   pendingFoul: 'own' | 'opponent' | null
+  pendingBlockRecovery?: boolean
+  onBlockRecovery?: (weRecovered: boolean) => void
   pending45: boolean
   pendingKickoutPosition: boolean
   onCancelFree?: () => void
@@ -111,6 +113,8 @@ export default function FullscreenPitchMode({
   isInPenaltyArea,
   pendingFreeKick,
   pendingFoul,
+  pendingBlockRecovery = false,
+  onBlockRecovery,
   pending45,
   pendingKickoutPosition,
   awaitingKickout,
@@ -505,6 +509,8 @@ export default function FullscreenPitchMode({
             isInPenaltyArea={isInPenaltyArea}
             pendingFreeKick={pendingFreeKick}
             pendingFoul={pendingFoul}
+            pendingBlockRecovery={pendingBlockRecovery}
+            onBlockRecovery={onBlockRecovery}
             pending45={pending45}
             pendingKickoutPosition={pendingKickoutPosition}
             awaitingKickout={awaitingKickout}

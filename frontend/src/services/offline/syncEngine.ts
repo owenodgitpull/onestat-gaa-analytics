@@ -152,16 +152,19 @@ async function processItem(item: OutboxItem): Promise<boolean> {
       return true
     }
 
-    // 4xx — client error, don't retry (bad data, validation error, not found)
+    // 4xx — client error
     if (response.status >= 400 && response.status < 500) {
       // 409 Conflict = duplicate (already synced) — treat as success
       if (response.status === 409) {
         await updateOutboxStatus(item.id, 'synced')
         return true
       }
-      // Unrecoverable — delete from outbox silently
-      await deleteOutboxItem(item.id)
-      return true // Move on to next item
+      // Log the error for debugging — do NOT silently delete
+      const errBody = await response.text().catch(() => `HTTP ${response.status}`)
+      console.error(`[Sync] 4xx error for ${item.method} ${endpoint}: ${response.status}`, errBody)
+      await updateOutboxStatus(item.id, 'pending', `${response.status}: ${errBody.slice(0, 200)}`)
+      syncState.lastSyncError = `${response.status}: ${errBody.slice(0, 100)}`
+      return false // Retry later
     }
 
     // 5xx — server error, retry
@@ -249,6 +252,49 @@ export function syncNow() {
   if (!syncRunning && isOnline()) {
     runSyncLoop()
   }
+}
+
+/** Re-queue unsynced local events back into the outbox for retry */
+export async function resyncLocalEvents(matchId: string): Promise<number> {
+  const { getLocalEvents, enqueueOutbox } = await import('./offlineDb')
+  const localEvents = await getLocalEvents(matchId)
+  let requeued = 0
+
+  for (const event of localEvents) {
+    if (event.pending) {
+      // This event never synced — re-queue it
+      await enqueueOutbox({
+        clientEventId: event.clientEventId,
+        matchId: event.matchId,
+        endpoint: '/match-events/',
+        method: 'POST',
+        body: {
+          match_id: event.matchId,
+          event_type: event.event_type,
+          team: event.team,
+          minute: Math.min(event.minute || 0, 120),
+          pitch_x: event.pitch_x,
+          pitch_y: event.pitch_y,
+          player_id: event.player_id,
+          notes: event.notes,
+          client_event_id: event.clientEventId,
+        },
+        status: 'pending',
+        createdAt: Date.now(),
+        retryCount: 0,
+        lastError: null,
+        category: 'event',
+      })
+      requeued++
+    }
+  }
+
+  if (requeued > 0) {
+    console.log(`[Sync] Re-queued ${requeued} unsynced events for match ${matchId}`)
+    triggerSync()
+  }
+
+  return requeued
 }
 
 /** Initialize: subscribe to network status changes */

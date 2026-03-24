@@ -41,29 +41,43 @@ const toSvg = (px: number, py: number) => ({
   y: (py / 100) * PITCH_H + PITCH_Y_OFFSET,
 })
 
-// Convert pitch coordinates to a GAA-friendly zone name
-// normX: 0 = own goal, 100 = opponent goal (always normalized for own team attacking direction)
-// Thresholds based on standard GAA pitch (~140m): 13m≈9, 20m/arc≈14, 45m≈32, opp 45≈68, opp arc≈86, opp 13≈91
-const getZone = (normX: number, y: number): string => {
-  let lateral = ''
-  if (y < 30) lateral = ' on the left'
-  else if (y > 70) lateral = ' on the right'
+// Convert pitch coordinates to a GAA zone ID (no lateral — handled in description)
+const getZoneId = (normX: number): string => {
+  if (normX <= 4) return 'own_square'
+  if (normX <= 10) return 'own_13'
+  if (normX <= 15) return 'own_20'
+  if (normX <= 31) return 'own_45'
+  if (normX <= 50) return 'own_midfield'
+  if (normX <= 69) return 'opp_midfield'
+  if (normX <= 72) return 'opp_45'
+  if (normX <= 86) return 'inside_arc'
+  if (normX <= 91) return 'opp_20'
+  if (normX <= 97) return 'opp_13'
+  return 'opp_square'
+}
 
-  if (normX <= 4) return `our square`
-  if (normX <= 10) return `our 13m line${lateral}`
-  if (normX <= 15) return `our 21m line${lateral}`
-  if (normX <= 33) return `our 45m line${lateral}`
-  if (normX <= 50) return `midfield${lateral}`
-  if (normX <= 68) return `the opposition 45m line${lateral}`
-  if (normX <= 86) return `outside the arc${lateral}`
-  if (normX <= 91) return `inside the arc${lateral}`
-  if (normX <= 97) return `the 13m line${lateral}`
-  return `the square`
+// GAA zone display names for shot location
+const zoneDisplayName = (zoneId: string, y: number): string => {
+  const lateral = y < 30 ? ' on the left' : y > 70 ? ' on the right' : ''
+  const names: Record<string, string> = {
+    own_square: 'our own square',
+    own_13: 'our 13',
+    own_20: 'our 20',
+    own_45: 'our 45',
+    own_midfield: 'midfield',
+    opp_midfield: 'the opposition half',
+    opp_45: 'inside the 45',
+    inside_arc: 'inside the 40-meter arc',
+    opp_20: 'the 20-meter line',
+    opp_13: 'the 13-meter line',
+    opp_square: 'the edge of the square',
+  }
+  return (names[zoneId] || zoneId) + lateral
 }
 
 // Normalize raw pitch x (0=left of screen) to attacking x (0=own goal, 100=opp goal)
 const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boolean): number => {
-  const isFirstHalf = minute <= 30
+  const isFirstHalf = minute < 40  // Works for both 30 and 35 min halves
   const attackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
   return attackingRight ? rawX : 100 - rawX
 }
@@ -71,17 +85,18 @@ const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boole
 // Prettify event type names for natural language
 const prettyAction = (raw: string): string => {
   const map: Record<string, string> = {
-    turnover_won: 'a turnover won',
-    kickout_won: 'a kickout won',
-    own_kickout_won: 'an own kickout won',
-    own_kickout_won_break: 'a breaking ball from own kickout',
-    opp_kickout_won: 'an opposition kickout won',
-    opp_kickout_won_break: 'a breaking ball from opposition kickout',
+    turnover_won: 'a turnover',
+    tackle_won: 'a tackle',
+    kickout_won: 'our kickout',
+    own_kickout_won: 'our kickout',
+    own_kickout_won_break: 'our kickout (breaking ball)',
+    opp_kickout_won: 'opposition kickout won',
+    opp_kickout_won_break: 'opposition kickout (breaking ball)',
     interception: 'an interception',
     block: 'a block',
-    free_won: 'a free won',
-    foul_won: 'a foul won',
-    breaking_ball_won: 'a breaking ball won',
+    free_won: 'a free',
+    foul_won: 'a free won',
+    breaking_ball_won: 'a breaking ball',
     mark: 'a mark',
     hand_pass: 'a hand pass',
     kick_pass: 'a kick pass',
@@ -98,41 +113,83 @@ const prettyAction = (raw: string): string => {
   return map[raw] || raw.replace(/_/g, ' ')
 }
 
-// Build a human-readable natural language path description
+// Build a natural GAA commentary-style path description
 const describePath = (
   points: { x: number; y: number }[],
   minute: number,
   attackingRightFirstHalf: boolean,
   startedWith?: string | null,
+  outcome?: string | null,
+  carriers?: string[],
 ): string => {
   if (points.length === 0) return ''
 
   const zones = points.map(p => {
     const nx = normalizeX(p.x, minute, attackingRightFirstHalf)
-    return getZone(nx, p.y)
+    return getZoneId(nx)
   })
   // Deduplicate consecutive zones
   const uniqueZones = zones.filter((z, i) => i === 0 || z !== zones[i - 1])
+  const lastPoint = points[points.length - 1]
+  const lastY = lastPoint.y
+
+  // Natural start phrase
+  const startAction = startedWith ? prettyAction(startedWith) : null
+  const startZone = zoneDisplayName(uniqueZones[0], points[0].y)
+  const endZone = zoneDisplayName(uniqueZones[uniqueZones.length - 1], lastY)
+
+  // Outcome verb
+  const outcomeVerb = outcome === 'goal' ? 'goaled' :
+    outcome === 'wide' || outcome === 'wide_free' ? 'went wide' :
+    outcome === 'short' ? 'dropped short' :
+    outcome === 'saved' ? 'was saved' :
+    'pointed'
 
   if (points.length === 1) {
-    return `Shot taken from ${uniqueZones[0]}`
+    return `Shot from ${endZone} — ${outcomeVerb}`
   }
 
-  const origin = uniqueZones[0]
-  const startAction = startedWith ? prettyAction(startedWith) : 'play'
-
-  if (uniqueZones.length === 1) {
-    return `Started with ${startAction} in ${origin}`
+  if (uniqueZones.length <= 2) {
+    const start = startAction ? `From ${startAction} ${startZone}` : `From ${startZone}`
+    return `${start}. ${outcomeVerb.charAt(0).toUpperCase() + outcomeVerb.slice(1)} from ${endZone}`
   }
 
-  if (uniqueZones.length === 2) {
-    return `Started with ${startAction} at ${origin}, finished from ${uniqueZones[1]}`
+  // Build journey description — only mention significant zone transitions
+  const journeyZones: string[] = []
+  const zoneProgression = ['own_square', 'own_13', 'own_20', 'own_45', 'own_midfield', 'opp_midfield', 'opp_45', 'inside_arc', 'opp_20', 'opp_13', 'opp_square']
+
+  // Movement descriptions based on zone transitions
+  const middleZones = uniqueZones.slice(1, -1)
+  let prevIdx = zoneProgression.indexOf(uniqueZones[0])
+
+  for (const z of middleZones) {
+    const currIdx = zoneProgression.indexOf(z)
+    if (currIdx > prevIdx + 1) {
+      // Skipped zones = quick progression
+      journeyZones.push(zoneDisplayName(z, 50))
+    } else if (currIdx > prevIdx) {
+      journeyZones.push(zoneDisplayName(z, 50))
+    }
+    prevIdx = currIdx
   }
 
-  // 3+ zones: describe the journey through intermediate zones
-  const middle = uniqueZones.slice(1, -1)
-  const end = uniqueZones[uniqueZones.length - 1]
-  return `Started with ${startAction} at ${origin}, worked through ${middle.join(', ')} and finished from ${end}`
+  const start = startAction ? `From ${startAction} ${startZone}` : `From ${startZone}`
+
+  // Build carrier narrative if we have names
+  let carrierText = ''
+  if (carriers && carriers.length > 0) {
+    if (carriers.length === 1) {
+      carrierText = `. ${carriers[0]} carried`
+    } else {
+      const surnames = carriers.map(n => n.split(' ').pop() || n)
+      carrierText = `. ${surnames.slice(0, -1).join(' to ')} to ${surnames[surnames.length - 1]}`
+    }
+  }
+
+  const journey = journeyZones.length > 0
+    ? ` through ${journeyZones.join(', ')}`
+    : ''
+  return `${start}${carrierText}${journey}. ${outcomeVerb.charAt(0).toUpperCase() + outcomeVerb.slice(1)} from ${endZone}`
 }
 
 export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTakenChartProps) {
@@ -323,7 +380,8 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
             const outcomeLabel = OUTCOME_LABELS[activeDetail.outcome] || activeDetail.outcome?.replace(/_/g, ' ')
             const pathDesc = describePath(
               activeDetail.points || [], activeDetail.minute,
-              attackingRightFirstHalf, activeDetail.started_with
+              attackingRightFirstHalf, activeDetail.started_with, activeDetail.outcome,
+              (activeDetail as any).carriers
             )
             return (
               <div className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10">

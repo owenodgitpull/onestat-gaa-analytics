@@ -736,6 +736,7 @@ export default function MatchResult() {
               <ScoringTimeline
                 events={eventsData?.events || []}
                 opponent={match.opponent}
+                teamName={clubName}
                 insight={postMatchReport?.insights?.scoring}
                 insightLoading={reportLoading}
               />
@@ -752,10 +753,10 @@ export default function MatchResult() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Kickout Zones">
-              <MatchKickoutZones events={eventsData?.events || []} />
+              <MatchKickoutZones events={eventsData?.events || []} attackingRightFirstHalf={match?.attacking_right_first_half} teamName={clubName} opponentName={match.opponent} />
             </ChartZoomModal>
             <ChartZoomModal title="Kickout Outcomes">
-              <MatchKickoutOutcomes events={eventsData?.events || []} />
+              <MatchKickoutOutcomes events={eventsData?.events || []} teamName={clubName} opponentName={match.opponent} />
             </ChartZoomModal>
           </div>
         </div>

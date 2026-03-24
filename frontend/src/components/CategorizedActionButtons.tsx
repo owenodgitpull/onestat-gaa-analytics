@@ -30,6 +30,8 @@ interface CategorizedActionButtonsProps {
   isIn2PointZone?: boolean
   pendingFreeKick?: boolean
   pendingFoul?: 'own' | 'opponent' | null  // Track which team fouled
+  pendingBlockRecovery?: boolean  // Waiting for block recovery decision
+  onBlockRecovery?: (weRecovered: boolean) => void
   pending45?: boolean
   pendingKickoutPosition?: boolean  // Waiting for user to click pitch for kickout position
   awaitingKickout?: boolean  // Score just happened, kickout expected next
@@ -59,6 +61,7 @@ const categories = [
     icon: Zap,
     buttons: [
       { eventType: EventType.TURNOVER_WON, label: 'T/O Won', icon: CheckCircle },
+      { eventType: EventType.TACKLE_WON, label: 'Tackle Won', icon: Shield },
       { eventType: EventType.TURNOVER_LOST, label: 'T/O Lost', icon: AlertCircle },
       { eventType: EventType.OUR_UNFORCED_ERROR, label: 'Our Unforced Error', icon: XCircle },
       { eventType: EventType.OPP_UNFORCED_ERROR, label: 'Opp Unforced Error', icon: CheckCircle },
@@ -118,6 +121,8 @@ export default function CategorizedActionButtons({
   isIn2PointZone = false,
   pendingFreeKick = false,
   pendingFoul = null,
+  pendingBlockRecovery = false,
+  onBlockRecovery,
   pending45 = false,
   pendingKickoutPosition = false,
   awaitingKickout = false,
@@ -339,6 +344,34 @@ export default function CategorizedActionButtons({
   }
 
   // Show free kick options menu
+  // Block recovery panel — who got the ball after the block?
+  if (pendingBlockRecovery && onBlockRecovery) {
+    return (
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-purple-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="px-3 py-2 bg-gradient-to-r from-purple-600/30 to-indigo-600/30 border-b border-purple-500/30">
+          <div className="flex items-center space-x-2">
+            <Shield size={16} className="text-purple-400" />
+            <span className="text-sm font-semibold text-purple-300">Block — Who Recovered?</span>
+          </div>
+        </div>
+        <div className="p-3 flex gap-2">
+          <button
+            onClick={() => onBlockRecovery(true)}
+            className="flex-1 py-3 rounded-xl bg-emerald-500/20 border-2 border-emerald-400/30 text-emerald-200 text-sm font-bold hover:bg-emerald-500/35 hover:border-emerald-400/50 transition-all active:scale-95"
+          >
+            We Recovered
+          </button>
+          <button
+            onClick={() => onBlockRecovery(false)}
+            className="flex-1 py-3 rounded-xl bg-orange-500/20 border-2 border-orange-400/30 text-orange-200 text-sm font-bold hover:bg-orange-500/35 hover:border-orange-400/50 transition-all active:scale-95"
+          >
+            They Recovered
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (pendingFreeKick) {
     const isOwnFoul = pendingFoul === 'own'
     const headerText = isOwnFoul
@@ -489,7 +522,7 @@ export default function CategorizedActionButtons({
                   : isActive
                     ? 'bg-emerald-600 text-white'
                     : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
+              } ${awaitingKickout && !isActive ? 'opacity-20 blur-[1px]' : ''}`}
             >
               <Icon size={16} />
               <span className="text-[10px] font-medium">{category.label}</span>
@@ -502,14 +535,14 @@ export default function CategorizedActionButtons({
           data-tour="fouls-tab"
           onClick={() => setShowFoulSelection(true)}
           disabled={disabled}
-          className="flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 text-white/60 hover:text-white hover:bg-white/5"
+          className={`flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 text-white/60 hover:text-white hover:bg-white/5 ${awaitingKickout ? 'opacity-20 blur-[1px]' : ''}`}
         >
           <Hand size={16} />
           <span className="text-[10px] font-medium">Foul</span>
         </button>
 
         {/* Discipline cards */}
-        <div data-tour="discipline-cards" className="flex items-center gap-0.5 px-1 border-l border-white/10">
+        <div data-tour="discipline-cards" className={`flex items-center gap-0.5 px-1 border-l border-white/10 ${awaitingKickout ? 'opacity-20 blur-[1px]' : ''}`}>
           <button
             onClick={() => onDiscipline?.(EventType.YELLOW_CARD)}
             disabled={disabled}
