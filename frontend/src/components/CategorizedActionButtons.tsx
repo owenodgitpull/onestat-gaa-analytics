@@ -435,7 +435,7 @@ export default function CategorizedActionButtons({
   return (
     <div data-tour="action-category-tabs" className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       {/* Action Buttons */}
-      <div data-tour="scoring-buttons" className="p-2 flex flex-nowrap gap-1 justify-center min-h-[48px] overflow-x-auto">
+      <div data-tour="scoring-buttons" className="p-2 flex flex-nowrap gap-1 justify-start min-h-[48px] overflow-x-auto">
         {currentCategory?.buttons.map((button) => {
           const Icon = button.icon
           const isContextDisabled = isButtonDisabled(button.eventType)
