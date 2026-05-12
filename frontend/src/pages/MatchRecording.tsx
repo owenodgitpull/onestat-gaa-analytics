@@ -835,17 +835,34 @@ export default function MatchRecording() {
   const handleEditPlayerSelected = async (player: Player) => {
     if (!matchId || editingEventId === null) return
     setIsPlayerModalOpen(false)
+    const targetEventId = editingEventId
     setEditingEventId(null)
+
+    // Optimistically update the cache so text changes immediately
+    const queryKey = ['match-events', matchId]
+    const previous = queryClient.getQueryData(queryKey)
+    queryClient.setQueryData(queryKey, (old: any) => {
+      if (!old?.events) return old
+      return {
+        ...old,
+        events: old.events.map((e: any) =>
+          e.id === targetEventId ? { ...e, player_id: player.id } : e
+        ),
+      }
+    })
+
     try {
       const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-      await fetch(`${baseUrl}/match-events/${editingEventId}`, {
+      const res = await fetch(`${baseUrl}/match-events/${targetEventId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ player_id: player.id }),
       })
-      queryClient.invalidateQueries({ queryKey: ['match-events', matchId] })
+      if (!res.ok) throw new Error(`Server error ${res.status}`)
     } catch (err) {
+      // Roll back optimistic update
+      queryClient.setQueryData(queryKey, previous)
       console.error('Failed to update event player:', err)
       setErrorAlert('Failed to update player. Please try again.')
     }
