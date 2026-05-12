@@ -2993,21 +2993,39 @@ export default function MatchRecording() {
       {/* Also renders for event-player edits (editingEventId set) */}
       {(pendingEvent || selectingFoulPlayer || editingEventId !== null) && (
         editingEventId !== null ? (
-          // Edit mode — simple list modal showing all squad players
-          <PlayerSelectionModal
-            isOpen={isPlayerModalOpen}
-            onClose={() => {
-              setIsPlayerModalOpen(false)
-              setEditingEventId(null)
-            }}
-            onSelectPlayer={handleEditPlayerSelected}
-            eventType={EventType.TURNOVER_WON}
-            team="own"
-            players={players}
-            attackingRight={teamAttackingRight}
-            teamPrimaryColor={club?.primary_colour || '#10B981'}
-            teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-          />
+          // Edit mode — pitch selector when lineup exists, list modal otherwise
+          matchLineup.length > 0 ? (
+            <PitchPlayerSelector
+              isOpen={isPlayerModalOpen}
+              onClose={() => {
+                setIsPlayerModalOpen(false)
+                setEditingEventId(null)
+              }}
+              onSelectPlayer={handleEditPlayerSelected}
+              eventType={EventType.TURNOVER_WON}
+              team="own"
+              players={players}
+              matchLineup={matchLineup}
+              teamPrimaryColor={club?.primary_colour || '#10B981'}
+              teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+              attackingRight={teamAttackingRight}
+            />
+          ) : (
+            <PlayerSelectionModal
+              isOpen={isPlayerModalOpen}
+              onClose={() => {
+                setIsPlayerModalOpen(false)
+                setEditingEventId(null)
+              }}
+              onSelectPlayer={handleEditPlayerSelected}
+              eventType={EventType.TURNOVER_WON}
+              team="own"
+              players={players}
+              attackingRight={teamAttackingRight}
+              teamPrimaryColor={club?.primary_colour || '#10B981'}
+              teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+            />
+          )
         ) : matchLineup.length > 0 ? (
           <PitchPlayerSelector
             isOpen={isPlayerModalOpen}
