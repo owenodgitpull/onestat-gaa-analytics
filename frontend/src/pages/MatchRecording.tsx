@@ -53,6 +53,7 @@ import {
   RotateCcw,
   Users,
   HelpCircle,
+  Pencil,
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -113,6 +114,7 @@ export default function MatchRecording() {
     playerId?: string
   } | null>(null) // Kickout event waiting for position selection
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [editingEventId, setEditingEventId] = useState<number | null>(null) // event being player-edited
   const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition } | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState<{ position: BallPosition } | null>(null)
@@ -711,8 +713,8 @@ export default function MatchRecording() {
     // When attacking left: low y = right, high y = left (flipped)
     const facingRight = eventTeamIsOwn ? teamAttackingRight : !teamAttackingRight
     let lateral = ''
-    if (y < 25) lateral = facingRight ? ' (left wing)' : ' (right wing)'
-    else if (y > 75) lateral = facingRight ? ' (right wing)' : ' (left wing)'
+    if (y < 33) lateral = facingRight ? ' (left wing)' : ' (right wing)'
+    else if (y > 67) lateral = facingRight ? ' (right wing)' : ' (left wing)'
     else if (y >= 40 && y <= 60) lateral = ' (center)'
 
     // Determine which goal is ours based on attack direction
@@ -820,6 +822,32 @@ export default function MatchRecording() {
     } catch (error) {
       console.error('Failed to delete event:', error)
       setErrorAlert('Failed to delete event. Please try again.')
+    }
+  }
+
+  // Open player picker to assign/change the player on an existing event
+  const handleEditEventPlayer = (eventId: number) => {
+    setEditingEventId(eventId)
+    setIsPlayerModalOpen(true)
+  }
+
+  // Called when a player is selected from the edit-event modal
+  const handleEditPlayerSelected = async (player: Player) => {
+    if (!matchId || editingEventId === null) return
+    setIsPlayerModalOpen(false)
+    setEditingEventId(null)
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+      await fetch(`${baseUrl}/match-events/${editingEventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ player_id: player.id }),
+      })
+      queryClient.invalidateQueries({ queryKey: ['match-events', matchId] })
+    } catch (err) {
+      console.error('Failed to update event player:', err)
+      setErrorAlert('Failed to update player. Please try again.')
     }
   }
 
@@ -2923,6 +2951,13 @@ export default function MatchRecording() {
                               </p>
                             </div>
                             <button
+                              onClick={() => handleEditEventPlayer(event.id)}
+                              className="flex-shrink-0 text-white/40 hover:text-blue-400 transition-colors p-1"
+                              title="Edit Player"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
                               onClick={() => handleDeleteEvent(event.id)}
                               className="flex-shrink-0 text-white/60 hover:text-red-400 transition-colors p-1"
                               title="Delete Event"
@@ -2955,8 +2990,25 @@ export default function MatchRecording() {
       )}
 
       {/* Player Selection — on-pitch overlay (lineup available) or fallback modal */}
-      {(pendingEvent || selectingFoulPlayer) && (
-        matchLineup.length > 0 ? (
+      {/* Also renders for event-player edits (editingEventId set) */}
+      {(pendingEvent || selectingFoulPlayer || editingEventId !== null) && (
+        editingEventId !== null ? (
+          // Edit mode — simple list modal showing all squad players
+          <PlayerSelectionModal
+            isOpen={isPlayerModalOpen}
+            onClose={() => {
+              setIsPlayerModalOpen(false)
+              setEditingEventId(null)
+            }}
+            onSelectPlayer={handleEditPlayerSelected}
+            eventType={EventType.TURNOVER_WON}
+            team="own"
+            players={players}
+            attackingRight={teamAttackingRight}
+            teamPrimaryColor={club?.primary_colour || '#10B981'}
+            teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+          />
+        ) : matchLineup.length > 0 ? (
           <PitchPlayerSelector
             isOpen={isPlayerModalOpen}
             onClose={handlePlayerModalClose}
