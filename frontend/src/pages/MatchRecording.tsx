@@ -1273,6 +1273,31 @@ export default function MatchRecording() {
     return mapping[eventLower] || eventLower  // Fallback to original if no mapping
   }
 
+  // Shared close/skip handler for the player selection modal.
+  // For kickout events, skip proceeds to pitch-position step (no player).
+  // For all other events, skip discards the pending event entirely.
+  const handlePlayerModalClose = () => {
+    const event = pendingEvent
+    setIsPlayerModalOpen(false)
+    setPendingEvent(null)
+    setSelectingFoulPlayer(false)
+    setPendingFoul(null)
+
+    if (event) {
+      const eventTypeStr = String(event.eventType).toUpperCase()
+      const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
+      if (isKickoutEvent) {
+        // Don't discard — proceed to pitch-position selection with no player assigned
+        setPendingKickoutEvent({
+          eventType: event.eventType,
+          isHomeTeam: event.team === 'own',
+          playerId: undefined,
+        })
+        setAwaitingKickout(false)
+      }
+    }
+  }
+
   // Handle "Foul" button - receives which team committed the foul
   const handleFoulClick = (team: 'own' | 'opponent') => {
     console.log('Foul committed by:', team)
@@ -2934,12 +2959,7 @@ export default function MatchRecording() {
         matchLineup.length > 0 ? (
           <PitchPlayerSelector
             isOpen={isPlayerModalOpen}
-            onClose={() => {
-              setIsPlayerModalOpen(false)
-              setPendingEvent(null)
-              setSelectingFoulPlayer(false)
-              setPendingFoul(null)
-            }}
+            onClose={handlePlayerModalClose}
             onSelectPlayer={selectingFoulPlayer ? handleFoulPlayerSelected : handlePlayerSelected}
             eventType={selectingFoulPlayer ? EventType.FOUL_COMMITTED : (pendingEvent?.eventType as any)}
             team="own"
@@ -2952,12 +2972,7 @@ export default function MatchRecording() {
         ) : (
           <PlayerSelectionModal
             isOpen={isPlayerModalOpen}
-            onClose={() => {
-              setIsPlayerModalOpen(false)
-              setPendingEvent(null)
-              setSelectingFoulPlayer(false)
-              setPendingFoul(null)
-            }}
+            onClose={handlePlayerModalClose}
             onSelectPlayer={selectingFoulPlayer ? handleFoulPlayerSelected : handlePlayerSelected}
             eventType={selectingFoulPlayer ? EventType.FOUL_COMMITTED : (pendingEvent?.eventType as any)}
             team="own"
