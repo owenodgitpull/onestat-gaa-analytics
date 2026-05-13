@@ -41,9 +41,9 @@ const ZONE_DEFS = [
 
 // Classify event type into own/opponent kickout and whether we won it
 const OWN_WON = new Set(['own_kickout_won', 'own_kickout_won_break'])
-const OWN_LOST = new Set(['own_kickout_opposition_won', 'own_kickout_opposition_won_break'])
+const OWN_LOST = new Set(['own_kickout_opposition_won', 'own_kickout_opposition_won_break', 'own_kickout_sideline'])
 const OPP_WON = new Set(['opp_kickout_opposition_won', 'opp_kickout_opposition_won_break'])
-const OPP_LOST = new Set(['opp_kickout_won', 'opp_kickout_won_break'])
+const OPP_LOST = new Set(['opp_kickout_won', 'opp_kickout_won_break', 'opp_kickout_sideline'])
 // Legacy types
 const LEGACY_WON = new Set(['kickout_won', 'breaking_ball_won'])
 const LEGACY_LOST = new Set(['kickout_lost', 'breaking_ball_lost'])
@@ -51,23 +51,24 @@ const LEGACY_LOST = new Set(['kickout_lost', 'breaking_ball_lost'])
 interface ParsedKickout {
   isOwn: boolean
   won: boolean
-  pitch_x: number
-  pitch_y: number
+  pitch_x: number | null
+  pitch_y: number | null
 }
 
 function parseKickoutEvents(events: any[]): ParsedKickout[] {
   const results: ParsedKickout[] = []
   for (const e of events) {
-    if (e.pitch_x == null || e.pitch_y == null) continue
     const t = e.event_type
     const team = e.team || (e.is_home_team ? 'own' : 'opponent')
+    const x = e.pitch_x ?? null
+    const y = e.pitch_y ?? null
 
-    if (OWN_WON.has(t)) results.push({ isOwn: true, won: true, pitch_x: e.pitch_x, pitch_y: e.pitch_y })
-    else if (OWN_LOST.has(t)) results.push({ isOwn: true, won: false, pitch_x: e.pitch_x, pitch_y: e.pitch_y })
-    else if (OPP_WON.has(t)) results.push({ isOwn: false, won: true, pitch_x: e.pitch_x, pitch_y: e.pitch_y })
-    else if (OPP_LOST.has(t)) results.push({ isOwn: false, won: false, pitch_x: e.pitch_x, pitch_y: e.pitch_y })
-    else if (LEGACY_WON.has(t)) results.push({ isOwn: team === 'own', won: true, pitch_x: e.pitch_x, pitch_y: e.pitch_y })
-    else if (LEGACY_LOST.has(t)) results.push({ isOwn: team === 'own', won: false, pitch_x: e.pitch_x, pitch_y: e.pitch_y })
+    if (OWN_WON.has(t)) results.push({ isOwn: true, won: true, pitch_x: x, pitch_y: y })
+    else if (OWN_LOST.has(t)) results.push({ isOwn: true, won: false, pitch_x: x, pitch_y: y })
+    else if (OPP_WON.has(t)) results.push({ isOwn: false, won: true, pitch_x: x, pitch_y: y })
+    else if (OPP_LOST.has(t)) results.push({ isOwn: false, won: false, pitch_x: x, pitch_y: y })
+    else if (LEGACY_WON.has(t)) results.push({ isOwn: team === 'own', won: true, pitch_x: x, pitch_y: y })
+    else if (LEGACY_LOST.has(t)) results.push({ isOwn: team === 'own', won: false, pitch_x: x, pitch_y: y })
   }
   return results
 }
@@ -83,6 +84,9 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
     for (const zone of ZONE_DEFS) stats[zone.id] = { total: 0, won: 0, lost: 0, win_pct: 0 }
 
     for (const k of filtered) {
+      // Only place in a zone if we have pitch coordinates
+      if (k.pitch_x == null || k.pitch_y == null) continue
+
       // For own kickouts: measure distance from OWN goal
       // For opp kickouts: measure distance from OPPONENT goal
       // attackingRightFirstHalf=true means own goal at x=0, opp goal at x=100
@@ -115,7 +119,9 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
   }, [filtered])
 
   const maxCount = useMemo(() => Math.max(1, ...Object.values(zoneStats).map(z => z.total)), [zoneStats])
-  const totalKickouts = filtered.length
+  const totalKickouts = filtered.length  // includes sidelines / events without coords
+  const totalKickoutsWon = filtered.filter(k => k.won).length
+  const retentionPct = totalKickouts > 0 ? Math.round(totalKickoutsWon / totalKickouts * 100) : 0
 
   if (allKickouts.length === 0) {
     return (
@@ -239,9 +245,9 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
       </div>
       <div className="flex flex-wrap gap-2 mt-2">
         <span className="px-2.5 py-1 rounded-full bg-white/10 text-xs text-white/70">
-          Total: <span className="text-white font-medium">{totalKickouts}</span>
+          Retention: <span className="text-white font-medium">{totalKickoutsWon}/{totalKickouts} ({retentionPct}%)</span>
         </span>
-        {totalKickouts > 0 && (
+        {totalKickouts > 0 && (shortTotal + midTotal + longTotal) > 0 && (
           <span className="px-2.5 py-1 rounded-full bg-white/10 text-xs text-white/70">
             Short {Math.round(shortTotal / totalKickouts * 100)}% /
             Mid {Math.round(midTotal / totalKickouts * 100)}% /
