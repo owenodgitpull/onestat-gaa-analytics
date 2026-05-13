@@ -39,7 +39,7 @@ const ZONE_DEFS = [
   { id: 'Long_Right',   xMin: 31, xMax: 65, yMin: 67, yMax: 100, label: 'Long R' },
 ]
 
-// Classify event type into own/opponent kickout and whether we won it
+// Classify event type into own/opponent kickout and whether we won it (includes sideline events)
 const OWN_WON = new Set(['own_kickout_won', 'own_kickout_won_break'])
 const OWN_LOST = new Set(['own_kickout_opposition_won', 'own_kickout_opposition_won_break', 'own_kickout_sideline'])
 const OPP_WON = new Set(['opp_kickout_opposition_won', 'opp_kickout_opposition_won_break'])
