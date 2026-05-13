@@ -46,6 +46,12 @@ const filterCategories: FilterCategory[] = [
     eventTypes: ['foul_won', 'foul_committed'],
     color: 'pink'
   },
+  {
+    id: 'forty_fives',
+    label: '45s',
+    eventTypes: ['forty_five', 'forty_five_missed'],
+    color: 'violet'
+  },
 ]
 
 // Color mapping for dynamic classes
@@ -59,6 +65,7 @@ const colorClasses: Record<string, { active: string; inactive: string }> = {
   orange: { active: 'bg-orange-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   cyan: { active: 'bg-cyan-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
   pink: { active: 'bg-pink-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
+  violet: { active: 'bg-violet-600 text-white', inactive: 'bg-white/10 text-white/60 hover:bg-white/20' },
 }
 
 interface EventFilterTogglesProps {
