@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.schemas.possession_event import PossessionEventCreate
 
+# If a possession event spans more than this, treat it as an app pause/restart
+# and discard the time rather than recording it as real possession
+MAX_POSSESSION_SECONDS = 300  # 5 minutes
+
 
 class PossessionService:
     """Service for managing possession events with duration tracking."""
@@ -67,10 +71,12 @@ class PossessionService:
         await db.flush()  # Get the new event's timestamp
         
         # Calculate duration for the previous event
+        # Cap at MAX_POSSESSION_SECONDS — any larger gap means the app was
+        # paused/restarted overnight and should not count as possession time
         if previous_event:
             duration = (new_event.created_at - previous_event.created_at).total_seconds()
-            previous_event.duration_seconds = int(duration)
-        
+            previous_event.duration_seconds = int(min(duration, MAX_POSSESSION_SECONDS))
+
         await db.commit()
         await db.refresh(new_event)
         
@@ -114,7 +120,7 @@ class PossessionService:
 
             if previous_event:
                 duration = (new_event.created_at - previous_event.created_at).total_seconds()
-                previous_event.duration_seconds = int(duration)
+                previous_event.duration_seconds = int(min(duration, MAX_POSSESSION_SECONDS))
 
             previous_event = new_event
             count += 1
@@ -167,31 +173,47 @@ class PossessionService:
         return list(result.scalars().all())
     
     @staticmethod
+    async def close_open_events(
+        db: AsyncSession,
+        match_id: UUID,
+    ) -> int:
+        """
+        Close ALL possession events that have duration_seconds = NULL.
+
+        Called at half-time and at match end to ensure no events are left hanging.
+        Events that have been open for longer than MAX_POSSESSION_SECONDS are
+        assumed to be app-pause artefacts — their duration is set to 0 rather than
+        recording an unrealistic block of possession.
+
+        Returns the number of events closed.
+        """
+        result = await db.execute(
+            select(PossessionEvent)
+            .where(
+                PossessionEvent.match_id == match_id,
+                PossessionEvent.duration_seconds.is_(None),
+            )
+        )
+        open_events = result.scalars().all()
+
+        now = datetime.utcnow()
+        for event in open_events:
+            raw = (now - event.created_at).total_seconds()
+            # Discard unrealistically long gaps (app was closed/paused)
+            event.duration_seconds = int(raw) if raw <= MAX_POSSESSION_SECONDS else 0
+
+        if open_events:
+            await db.commit()
+
+        return len(open_events)
+
+    @staticmethod
     async def finalize_match_possession(
         db: AsyncSession,
         match_id: UUID
     ) -> None:
         """
         Finalize possession tracking when match ends.
-        
-        Sets the duration for the last possession event based on match end time.
-        Call this when completing a match.
-        
-        Args:
-            db: Database session
-            match_id: Match that's being completed
+        Closes all open events — delegates to close_open_events.
         """
-        # Get the last possession event
-        result = await db.execute(
-            select(PossessionEvent)
-            .where(PossessionEvent.match_id == match_id)
-            .order_by(PossessionEvent.created_at.desc())
-            .limit(1)
-        )
-        last_event = result.scalar_one_or_none()
-        
-        if last_event and last_event.duration_seconds is None:
-            # Set duration to time since creation (until now)
-            duration = (datetime.utcnow() - last_event.created_at).total_seconds()
-            last_event.duration_seconds = int(duration)
-            await db.commit()
+        await PossessionService.close_open_events(db, match_id)

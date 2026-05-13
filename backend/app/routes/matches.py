@@ -30,6 +30,7 @@ from app.schemas.match import (
     MatchStatsResponse,
 )
 from app.services.match_service import MatchService
+from app.services.possession_service import PossessionService
 import math
 
 router = APIRouter()
@@ -217,6 +218,11 @@ async def update_match_phase(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Match with ID {match_id} not found"
         )
+
+    # Close all open possession events at half-time so no timer bleeds
+    # into the break (or overnight if the recording is resumed later)
+    if phase_data.phase == "half_time":
+        await PossessionService.close_open_events(db, match_id)
 
     response = MatchResponse.model_validate(match)
     response.team_total_score = match.team_total_score
