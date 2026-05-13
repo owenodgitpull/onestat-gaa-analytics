@@ -10,6 +10,10 @@ interface LiveInsightDisplayProps {
   onNewInsight?: (insight: LiveInsight) => void
   /** Increment to force re-fetch of latest insight (e.g. after half-time trigger) */
   refreshTrigger?: number
+  /** Show loading state immediately (e.g. while half-time AI is generating) */
+  externalLoading?: boolean
+  /** Directly inject an insight (e.g. the half-time insight returned from the API) */
+  externalInsight?: LiveInsight | null
 }
 
 export default function LiveInsightDisplay({
@@ -19,6 +23,8 @@ export default function LiveInsightDisplay({
   isMatchActive,
   onNewInsight,
   refreshTrigger = 0,
+  externalLoading = false,
+  externalInsight = null,
 }: LiveInsightDisplayProps) {
   const [latestInsight, setLatestInsight] = useState<LiveInsight | null>(null)
   const [allInsights, setAllInsights] = useState<LiveInsight[]>([])
@@ -40,6 +46,14 @@ export default function LiveInsightDisplay({
       fetchLatestInsight()
     }
   }, [refreshTrigger])
+
+  // Use externally provided insight directly (e.g. half-time insight returned from API)
+  useEffect(() => {
+    if (externalInsight) {
+      setLatestInsight(externalInsight)
+      setInsightExpanded(false)
+    }
+  }, [externalInsight])
 
   // Check for new insights every 5 minutes during active match
   useEffect(() => {
@@ -161,7 +175,9 @@ export default function LiveInsightDisplay({
     return colors[trigger] || 'from-slate-600/30 to-gray-600/30 border-slate-500/50'
   }
 
-  if (!latestInsight && !loading) {
+  const isLoading = loading || externalLoading
+
+  if (!latestInsight && !isLoading) {
     return (
       <div className="glass-card p-4 bg-gradient-to-r from-emerald-600/10 to-cyan-600/10 border border-emerald-500/20">
         <div className="flex items-center space-x-3">
@@ -187,7 +203,7 @@ export default function LiveInsightDisplay({
       {latestInsight && (
         <div
           className={`glass-card p-4 bg-gradient-to-r ${getTriggerColor(latestInsight.trigger)} border-2 transition-all ${
-            loading ? 'animate-pulse' : ''
+            isLoading ? 'animate-pulse' : ''
           }`}
         >
           <div className="flex items-start space-x-3">
@@ -268,10 +284,10 @@ export default function LiveInsightDisplay({
       )}
 
       {/* Loading indicator */}
-      {loading && (
+      {isLoading && (
         <div className="text-center text-xs text-white/60 py-2">
           <Sparkles className="inline-block animate-spin mr-1" size={12} />
-          Generating insight...
+          {externalLoading ? 'Generating half-time analysis...' : 'Generating insight...'}
         </div>
       )}
     </div>

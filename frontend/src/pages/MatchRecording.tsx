@@ -106,6 +106,8 @@ export default function MatchRecording() {
   const [activeKickoutTab, setActiveKickoutTab] = useState<string | null>('scoring')
   const [awaitingKickout, setAwaitingKickout] = useState(false) // Lock ball until kickout resolved
   const [insightRefresh, setInsightRefresh] = useState(0)
+  const [halfTimeInsightLoading, setHalfTimeInsightLoading] = useState(false)
+  const [halfTimeInsight, setHalfTimeInsight] = useState<import('@/services/api').LiveInsight | null>(null)
   const [eventMapTeamFilter, setEventMapTeamFilter] = useState<'all' | 'own' | 'opponent'>('all')
   const [eventMapFilters, setEventMapFilters] = useState<Set<string>>(new Set(['all']))
   const [pendingKickoutEvent, setPendingKickoutEvent] = useState<{
@@ -2261,12 +2263,16 @@ export default function MatchRecording() {
     api.matches.updatePhase(matchId, 'half_time').catch(console.error)
 
     // Trigger half-time AI insight and refresh display
+    setHalfTimeInsightLoading(true)
     try {
-      await api.liveInsights.triggerHalfTime(matchId)
+      const insight = await api.liveInsights.triggerHalfTime(matchId)
+      setHalfTimeInsight(insight)
       setInsightRefresh(prev => prev + 1)
       console.log('Half-time insight triggered')
     } catch (error) {
       console.error('Failed to trigger half-time insight:', error)
+    } finally {
+      setHalfTimeInsightLoading(false)
     }
   }
 
@@ -2903,6 +2909,8 @@ export default function MatchRecording() {
                 half={currentHalf}
                 isMatchActive={matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time'}
                 refreshTrigger={insightRefresh}
+                externalLoading={halfTimeInsightLoading}
+                externalInsight={halfTimeInsight}
               />
 
               {/* Match Statistics */}
