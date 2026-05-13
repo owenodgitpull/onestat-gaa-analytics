@@ -349,7 +349,7 @@ export default function GAAPitch({
           // 45s are always taken from the 45m line — snap x to nearest 45m line, keep y
           const isFortyFive = event.event_type === 'forty_five' || event.event_type === 'forty_five_missed'
           const displayX = isFortyFive
-            ? (event.pitch_x < 50 ? 31 : 69)
+            ? (event.pitch_x < 50 ? 35 : 65)
             : event.pitch_x
           const x = toSvgX(displayX)
           const y = toSvgY(event.pitch_y)
