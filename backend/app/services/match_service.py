@@ -435,12 +435,16 @@ class MatchService:
             elif event.event_type == EventType.RED_CARD:
                 stats[f"{team_prefix}_red_cards"] += 1
         
-        # Calculate accuracy
+        # Calculate accuracy: scores / (scores + wides)
+        # Wides = missed target (wide, wide_free, 45_missed). Saves/shorts excluded
+        # — if the keeper stops it or it falls short, that's not inaccuracy.
+        # Conversion (scores / total_shots) is calculated on the frontend.
         for team_prefix in ["team", "opponent"]:
-            total = stats[f"{team_prefix}_total_shots"]
-            if total > 0:
-                scores = stats[f"{team_prefix}_scores"]
-                stats[f"{team_prefix}_accuracy"] = (scores / total) * 100
+            scores = stats[f"{team_prefix}_scores"]
+            wides = stats[f"{team_prefix}_wides"]
+            on_target_attempts = scores + wides
+            if on_target_attempts > 0:
+                stats[f"{team_prefix}_accuracy"] = (scores / on_target_attempts) * 100
         
         return stats
 
