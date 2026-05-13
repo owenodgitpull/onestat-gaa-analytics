@@ -1120,10 +1120,18 @@ export default function MatchRecording() {
     }
 
     // If there's a pending free kick and user moves ball, update the free position
-    // This allows the user to reposition the free kick location (e.g. move outside arc for 2PT)
+    // This allows the user to reposition the free kick location (e.g. move outside/inside arc for 2PT/1PT)
     if (pendingFreeKick) {
-      console.log('Ball moved - updating free kick position')
-      setPendingFreeKick({ position: newPosition })
+      // Always stamp the correct team on the position — the team taking the free
+      // doesn't change just because the ball moved, and GAAPitch localBallPosition
+      // may be stale (useEffect runs async), which would otherwise give us the wrong
+      // attacking direction for isIn2PointZone.
+      const freeTeam = pendingFoul === 'opponent' ? PossessionTeam.OWN : PossessionTeam.OPPONENT
+      const correctedPosition = { ...newPosition, team: freeTeam }
+      setPendingFreeKick({ position: correctedPosition })
+      setBallPosition(correctedPosition)
+      setBallTrail(prev => [...prev.slice(-49), { x: newPosition.x, y: newPosition.y }])
+      return  // Don't record a possession event during a dead-ball free kick
     }
 
     // If there's a pending 45 and user moves ball, cancel it
@@ -2753,10 +2761,19 @@ export default function MatchRecording() {
                   activeCategory={activeKickoutTab}
                   onCategoryChange={setActiveKickoutTab}
                   currentPossession={ballPosition.team}
-                  isIn2PointZone={isIn2PointZone(ballPosition.x, ballPosition.y, ballPosition.team)}
+                  isIn2PointZone={isIn2PointZone(
+                    ballPosition.x,
+                    ballPosition.y,
+                    pendingFreeKick
+                      ? (pendingFoul === 'opponent' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
+                      : ballPosition.team
+                  )}
                   isInPenaltyArea={(() => {
                     // Ball is near opponent's goal = inside 13m line
-                    const attackingGoalX = ballPosition.team === PossessionTeam.OWN
+                    const freeTeam = pendingFreeKick
+                      ? (pendingFoul === 'opponent' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
+                      : ballPosition.team
+                    const attackingGoalX = freeTeam === PossessionTeam.OWN
                       ? (teamAttackingRight ? 100 : 0)
                       : (teamAttackingRight ? 0 : 100)
                     return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
@@ -3197,9 +3214,18 @@ export default function MatchRecording() {
         on45Click={handle45Click}
         onDiscipline={handleDiscipline}
         currentPossession={ballPosition.team}
-        isIn2PointZone={isIn2PointZone(ballPosition.x, ballPosition.y, ballPosition.team)}
+        isIn2PointZone={isIn2PointZone(
+          ballPosition.x,
+          ballPosition.y,
+          pendingFreeKick
+            ? (pendingFoul === 'opponent' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
+            : ballPosition.team
+        )}
         isInPenaltyArea={(() => {
-          const attackingGoalX = ballPosition.team === PossessionTeam.OWN
+          const freeTeam = pendingFreeKick
+            ? (pendingFoul === 'opponent' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
+            : ballPosition.team
+          const attackingGoalX = freeTeam === PossessionTeam.OWN
             ? (teamAttackingRight ? 100 : 0)
             : (teamAttackingRight ? 0 : 100)
           return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
