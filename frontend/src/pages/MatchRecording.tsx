@@ -1334,17 +1334,41 @@ export default function MatchRecording() {
 
   // Shared close/skip handler for the player selection modal.
   // For kickout events: proceed to pitch-position step with no player.
+  // For foul player selection: record the foul without a player, then proceed to free kick step.
   // For all other own-team events: record immediately with no player ("our player").
-  // For foul player selection: cancel entirely (foul is complex, don't half-record).
   const handlePlayerModalClose = () => {
     const event = pendingEvent
     const wasFoulSelect = selectingFoulPlayer
+    const foulPosition = ballPosition
     setIsPlayerModalOpen(false)
     setPendingEvent(null)
     setSelectingFoulPlayer(false)
     setPendingFoul(null)
 
-    if (event && !wasFoulSelect) {
+    if (wasFoulSelect && matchId) {
+      // Skip player for foul — still record the foul_committed event (player_id = null),
+      // then open the free kick options so the possession flow isn't broken.
+      recordEvent.mutateAsync({
+        match_id: matchId,
+        player_id: undefined,
+        event_type: 'foul_committed',
+        minute: minute,
+        half: currentHalf,
+        x_coord: foulPosition.x,
+        y_coord: foulPosition.y,
+        is_home_team: true,
+        notes: undefined,
+      }).then(() => {
+        setPendingFreeKick({ position: foulPosition })
+        setBallPosition(prev => ({ ...prev, team: PossessionTeam.OPPONENT }))
+      }).catch((error) => {
+        console.error('Failed to record foul without player:', error)
+        setErrorAlert('Failed to record foul. Please try again.')
+      })
+      return
+    }
+
+    if (event) {
       const eventTypeStr = String(event.eventType).toUpperCase()
       const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
       if (isKickoutEvent) {

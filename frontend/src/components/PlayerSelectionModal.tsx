@@ -264,9 +264,10 @@ export default function PlayerSelectionModal({
         <div className="p-6 border-t border-white/10 bg-white/5">
           <button
             onClick={onClose}
-            className="btn-glass w-full"
+            className="btn-glass w-full flex flex-col items-center gap-0.5"
           >
-            Skip
+            <span>Skip Player</span>
+            <span className="text-[11px] text-white/40 font-normal">Event will still be logged — assign player later</span>
           </button>
         </div>
       </div>
