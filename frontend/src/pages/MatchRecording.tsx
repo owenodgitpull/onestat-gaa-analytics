@@ -115,6 +115,7 @@ export default function MatchRecording() {
   } | null>(null) // Kickout event waiting for position selection
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [editingEventId, setEditingEventId] = useState<number | null>(null) // event being player-edited
+  const [editingEventType, setEditingEventType] = useState<string | null>(null) // event type for edit modal title
   const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition } | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState<{ position: BallPosition } | null>(null)
@@ -827,7 +828,9 @@ export default function MatchRecording() {
 
   // Open player picker to assign/change the player on an existing event
   const handleEditEventPlayer = (eventId: number) => {
+    const event = allEvents.find(e => e.id === eventId)
     setEditingEventId(eventId)
+    setEditingEventType(event?.event_type ?? null)
     setIsPlayerModalOpen(true)
   }
 
@@ -837,6 +840,7 @@ export default function MatchRecording() {
     setIsPlayerModalOpen(false)
     const targetEventId = editingEventId
     setEditingEventId(null)
+    setEditingEventType(null)
 
     // Optimistically update the cache so text changes immediately
     const queryKey = ['match-events', matchId]
@@ -1319,26 +1323,31 @@ export default function MatchRecording() {
   }
 
   // Shared close/skip handler for the player selection modal.
-  // For kickout events, skip proceeds to pitch-position step (no player).
-  // For all other events, skip discards the pending event entirely.
+  // For kickout events: proceed to pitch-position step with no player.
+  // For all other own-team events: record immediately with no player ("our player").
+  // For foul player selection: cancel entirely (foul is complex, don't half-record).
   const handlePlayerModalClose = () => {
     const event = pendingEvent
+    const wasFoulSelect = selectingFoulPlayer
     setIsPlayerModalOpen(false)
     setPendingEvent(null)
     setSelectingFoulPlayer(false)
     setPendingFoul(null)
 
-    if (event) {
+    if (event && !wasFoulSelect) {
       const eventTypeStr = String(event.eventType).toUpperCase()
       const isKickoutEvent = eventTypeStr.includes('KICKOUT') || eventTypeStr.includes('BREAK')
       if (isKickoutEvent) {
-        // Don't discard — proceed to pitch-position selection with no player assigned
+        // Proceed to pitch-position selection with no player assigned
         setPendingKickoutEvent({
           eventType: event.eventType,
           isHomeTeam: event.team === 'own',
           playerId: undefined,
         })
         setAwaitingKickout(false)
+      } else {
+        // Record the event without a player — shows "our player" in description
+        recordEventWithoutPlayer(event.eventType, event.team === 'own', event.position)
       }
     }
   }
@@ -1689,8 +1698,8 @@ export default function MatchRecording() {
       // Track for tutorial
       setLastEventType(String(eventType).toLowerCase())
 
-      // Free kick scores result in kickout
-      const scoringFrees = [EventType.POINT_FREE, EventType.TWO_POINT_FREE]
+      // Free kick scores and 45 result in kickout
+      const scoringFrees = [EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
       const isScore = scoringFrees.includes(eventType)
       const isWide = eventType === EventType.WIDE_FREE
 
@@ -3017,9 +3026,10 @@ export default function MatchRecording() {
               onClose={() => {
                 setIsPlayerModalOpen(false)
                 setEditingEventId(null)
+                setEditingEventType(null)
               }}
               onSelectPlayer={handleEditPlayerSelected}
-              eventType={EventType.TURNOVER_WON}
+              eventType={(editingEventType ?? EventType.TURNOVER_WON) as any}
               team="own"
               players={players}
               matchLineup={matchLineup}
@@ -3033,9 +3043,10 @@ export default function MatchRecording() {
               onClose={() => {
                 setIsPlayerModalOpen(false)
                 setEditingEventId(null)
+                setEditingEventType(null)
               }}
               onSelectPlayer={handleEditPlayerSelected}
-              eventType={EventType.TURNOVER_WON}
+              eventType={(editingEventType ?? EventType.TURNOVER_WON) as any}
               team="own"
               players={players}
               attackingRight={teamAttackingRight}

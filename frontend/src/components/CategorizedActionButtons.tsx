@@ -530,12 +530,12 @@ export default function CategorizedActionButtons({
           )
         })}
 
-        {/* Foul - category level button */}
+        {/* Foul - always available, even during kickout (keepers can time-waste) */}
         <button
           data-tour="fouls-tab"
           onClick={() => setShowFoulSelection(true)}
           disabled={disabled}
-          className={`flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 text-white/60 hover:text-white hover:bg-white/5 ${awaitingKickout ? 'opacity-20 blur-[1px]' : ''}`}
+          className="flex-1 flex flex-col items-center justify-center py-2 space-y-0.5 transition-all duration-200 text-white/60 hover:text-white hover:bg-white/5"
         >
           <Hand size={16} />
           <span className="text-[10px] font-medium">Foul</span>

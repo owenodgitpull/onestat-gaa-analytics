@@ -44,6 +44,25 @@ const FORMATION_POSITIONS: LineupPosition[] = [
   { id: 'ff-right', x: 80, y: 82, label: 'CF' },
 ]
 
+// Default GAA jersey numbers by position (standard Irish football numbering)
+const POSITION_DEFAULT_JERSEY: Record<string, number> = {
+  'gk':        1,
+  'fb-left':   4,  // Left Corner Back
+  'fb-center': 3,  // Full Back
+  'fb-right':  2,  // Right Corner Back
+  'hb-left':   7,  // Left Half Back
+  'hb-center': 6,  // Centre Half Back
+  'hb-right':  5,  // Right Half Back
+  'mf-left':   8,  // Midfield
+  'mf-right':  9,  // Midfield
+  'hf-left':   12, // Left Half Forward
+  'hf-center': 11, // Centre Half Forward
+  'hf-right':  10, // Right Half Forward
+  'ff-left':   15, // Left Corner Forward
+  'ff-center': 14, // Full Forward
+  'ff-right':  13, // Right Corner Forward
+}
+
 // Substitute positions (shown below the pitch)
 const SUBSTITUTE_POSITIONS: LineupPosition[] = [
   { id: 'sub-1', x: 0, y: 0, label: 'SUB' },
@@ -121,12 +140,11 @@ export default function StartingLineupModal({
   const handlePlayerSelect = (playerId: string) => {
     if (selectingPosition) {
       const player = players.find(p => p.id === playerId)
+      // Use player's registered jersey number, fall back to position default
+      const jerseyNumber = player?.jersey_number ?? POSITION_DEFAULT_JERSEY[selectingPosition] ?? null
       setLineup(prev => ({
         ...prev,
-        [selectingPosition]: {
-          playerId,
-          jerseyNumber: player?.jersey_number ?? null,
-        },
+        [selectingPosition]: { playerId, jerseyNumber },
       }))
       setSelectingPosition(null)
     }
