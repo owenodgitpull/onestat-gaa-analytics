@@ -127,6 +127,7 @@ export default function MatchRecording() {
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false)
   const [manualEntryDefaultType, setManualEntryDefaultType] = useState<EventType | undefined>(undefined)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
+  const [isLineupViewOpen, setIsLineupViewOpen] = useState(false)
   const [startingLineup, setStartingLineup] = useState<Record<string, LineupEntry>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
   const [teamAttackingRight, setTeamAttackingRight] = useState<boolean>(true) // true = attacking towards x=100
@@ -1518,12 +1519,15 @@ export default function MatchRecording() {
           notes: `${playerOff?.name || 'Player'} off, ${playerOn?.name || 'Player'} on`
         })
 
-        // Update field status for both players
+        // Update field status for both players.
+        // Pass the outgoing player's position_id to the incoming player so
+        // their circle appears at the same spot on the pitch selector.
+        const outgoingLineupEntry = matchLineup.find(l => l.player_id === data.playerId)
         if (data.playerId) {
           await api.matchLineups.updateFieldStatus(matchId, data.playerId)
         }
         if (data.playerComingOn) {
-          await api.matchLineups.updateFieldStatus(matchId, data.playerComingOn)
+          await api.matchLineups.updateFieldStatus(matchId, data.playerComingOn, outgoingLineupEntry?.position_id)
         }
 
         // Reload lineup
@@ -1591,7 +1595,8 @@ export default function MatchRecording() {
 
     // Check if this is a free kick result or 45 result
     const eventStr = String(eventType).toUpperCase()
-    const isFreeKickResult = eventStr.includes('FREE')
+    // SHORT during a pending free kick = "free dropped short" (same flow as WIDE_FREE etc.)
+    const isFreeKickResult = eventStr.includes('FREE') || (eventType === EventType.SHORT && !!pendingFreeKick)
     const is45Result = eventStr.includes('FORTY_FIVE')
 
     // Determine action position based on pending state
@@ -2564,6 +2569,15 @@ export default function MatchRecording() {
                       <span>Lineup</span>
                     </button>
                   )}
+                  {(matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') && matchLineup.length > 0 && (
+                    <button
+                      className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
+                      onClick={() => setIsLineupViewOpen(true)}
+                    >
+                      <Users size={14} />
+                      <span>Lineup</span>
+                    </button>
+                  )}
                   {getPhaseButtonText() && (
                     matchPhase === 'half_time' ? (
                       <div className="glass-card-live" style={{ borderRadius: '0.75rem' }}>
@@ -3179,6 +3193,21 @@ export default function MatchRecording() {
         currentMinute={minute}
         currentHalf={currentHalf}
         defaultEventType={manualEntryDefaultType}
+      />
+
+      {/* View Lineup (read-only pitch) */}
+      <PitchPlayerSelector
+        isOpen={isLineupViewOpen}
+        onClose={() => setIsLineupViewOpen(false)}
+        onSelectPlayer={() => setIsLineupViewOpen(false)}
+        eventType=""
+        team="own"
+        players={players}
+        matchLineup={matchLineup}
+        teamPrimaryColor={club?.primary_colour || '#10B981'}
+        teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+        attackingRight={teamAttackingRight}
+        readOnly
       />
 
       {/* Starting Lineup Modal */}

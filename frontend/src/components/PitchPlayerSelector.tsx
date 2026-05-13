@@ -20,6 +20,7 @@ interface PitchPlayerSelectorProps {
   teamPrimaryColor?: string
   teamSecondaryColor?: string
   attackingRight?: boolean
+  readOnly?: boolean  // View-only mode — shows lineup without player selection
 }
 
 // Standard GAA formation: 1-3-3-2-3-3 (15 players)
@@ -82,6 +83,7 @@ export default function PitchPlayerSelector({
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
   attackingRight = true,
+  readOnly = false,
 }: PitchPlayerSelectorProps) {
   const [animateIn, setAnimateIn] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
@@ -182,8 +184,17 @@ export default function PitchPlayerSelector({
           transform: animateIn && !animateOut ? 'translateY(0)' : 'translateY(-20px)',
         }}
       >
-        <h2 className={`text-lg font-bold ${eventInfo.color}`}>{eventInfo.title}</h2>
-        <p className="text-white/50 text-xs mt-0.5">Tap a player on the pitch</p>
+        {readOnly ? (
+          <>
+            <h2 className="text-lg font-bold text-white">Current Lineup</h2>
+            <p className="text-white/50 text-xs mt-0.5">{playerPositions.length} players on field</p>
+          </>
+        ) : (
+          <>
+            <h2 className={`text-lg font-bold ${eventInfo.color}`}>{eventInfo.title}</h2>
+            <p className="text-white/50 text-xs mt-0.5">Tap a player on the pitch</p>
+          </>
+        )}
       </div>
 
       {/* Pitch with players */}
@@ -221,7 +232,7 @@ export default function PitchPlayerSelector({
                 })`,
                 transition: `all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) ${animateOut ? 0 : delay}ms`,
               }}
-              onClick={() => handleSelect(item.player)}
+              onClick={() => readOnly ? onClose() : handleSelect(item.player)}
             >
               {/* Jersey circle */}
               <div
@@ -266,7 +277,7 @@ export default function PitchPlayerSelector({
           onClick={onClose}
           className="w-full py-3 rounded-xl bg-white/10 border border-white/20 text-white/70 text-sm font-medium hover:bg-white/15 transition-colors"
         >
-          Skip
+          {readOnly ? 'Close' : 'Skip Player — Event will still be logged'}
         </button>
       </div>
     </div>

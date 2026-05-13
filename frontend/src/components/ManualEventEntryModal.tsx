@@ -206,11 +206,15 @@ export default function ManualEventEntryModal({
                   className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 >
                   <option value="" className="bg-slate-800 text-white">Select player...</option>
-                  {getPlayersOnField().map((player) => (
-                    <option key={player.id} value={player.id} className="bg-slate-800 text-white">
-                      {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
-                    </option>
-                  ))}
+                  {getPlayersOnField().map((player) => {
+                    const lineupEntry = matchLineup.find(l => l.player_id === player.id)
+                    const jerseyNum = lineupEntry?.player_jersey_number ?? player.jersey_number
+                    return (
+                      <option key={player.id} value={player.id} className="bg-slate-800 text-white">
+                        {jerseyNum ? `#${jerseyNum} ` : ''}{player.name}
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
 
@@ -224,11 +228,15 @@ export default function ManualEventEntryModal({
                   className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="" className="bg-slate-800 text-white">Select player...</option>
-                  {getPlayersOnBench().map((player) => (
-                    <option key={player.id} value={player.id} className="bg-slate-800 text-white">
-                      {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
-                    </option>
-                  ))}
+                  {getPlayersOnBench().map((player) => {
+                    const lineupEntry = matchLineup.find(l => l.player_id === player.id)
+                    const jerseyNum = lineupEntry?.player_jersey_number ?? player.jersey_number
+                    return (
+                      <option key={player.id} value={player.id} className="bg-slate-800 text-white">
+                        {jerseyNum ? `#${jerseyNum} ` : ''}{player.name}
+                      </option>
+                    )
+                  })}
                 </select>
               </div>
             </>

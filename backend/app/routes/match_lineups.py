@@ -7,7 +7,7 @@ Handles storing and retrieving match lineups (starting XI + substitutes).
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List
+from typing import List, Optional
 import uuid
 from pydantic import BaseModel
 
@@ -203,10 +203,15 @@ async def get_last_match_lineup(
     return response
 
 
+class SubstituteRequest(BaseModel):
+    new_position_id: Optional[str] = None  # If set, override the player's position_id (used when sub inherits the position of the player going off)
+
+
 @router.patch("/matches/{match_id}/lineup/{player_id}/substitute")
 async def record_substitution(
     match_id: str,
     player_id: str,
+    body: Optional[SubstituteRequest] = None,
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -215,6 +220,8 @@ async def record_substitution(
 
     When a player is subbed off, their is_on_field becomes False.
     When a player is subbed on, their is_on_field becomes True.
+    Optionally accepts new_position_id so the incoming sub inherits the
+    position slot of the player going off (keeps pitch circles intact).
     """
     try:
         match_uuid = uuid.UUID(match_id)
@@ -234,6 +241,8 @@ async def record_substitution(
 
     # Toggle on/off field status
     lineup_entry.is_on_field = not lineup_entry.is_on_field
+    if body and body.new_position_id:
+        lineup_entry.position_id = body.new_position_id
     await db.commit()
 
     return {"message": "Substitution recorded", "is_on_field": lineup_entry.is_on_field}

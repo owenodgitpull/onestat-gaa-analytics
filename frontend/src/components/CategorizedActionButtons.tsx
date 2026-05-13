@@ -52,6 +52,7 @@ const categories = [
       { eventType: EventType.TWO_POINT, label: '2 PT', icon: TrendingUp },
       { eventType: EventType.WIDE, label: 'Wide', icon: XCircle },
       { eventType: EventType.SAVED, label: 'Saved', icon: CheckCircle },
+      { eventType: EventType.SHORT, label: 'Dropped Short', icon: ArrowDownCircle },
       { eventType: EventType.BLOCK, label: 'Blocked', icon: Shield },
     ]
   },

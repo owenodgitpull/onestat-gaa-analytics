@@ -536,9 +536,13 @@ const matchLineupsAPI = {
   /**
    * Update player field status (for substitutions)
    */
-  updateFieldStatus: async (matchId: string, playerId: string): Promise<{ message: string; is_on_field: boolean }> => {
+  updateFieldStatus: async (matchId: string, playerId: string, newPositionId?: string): Promise<{ message: string; is_on_field: boolean }> => {
     return fetchAPI<{ message: string; is_on_field: boolean }>(`/match-lineups/matches/${matchId}/lineup/${playerId}/substitute`, {
       method: 'PATCH',
+      ...(newPositionId ? {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_position_id: newPositionId }),
+      } : {}),
     });
   },
 };
