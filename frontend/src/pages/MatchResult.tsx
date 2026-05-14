@@ -745,6 +745,7 @@ export default function MatchResult() {
                       teamName={clubName || 'Us'}
                       matchId={matchId!}
                       attackingRightFirstHalf={match.attacking_right_first_half}
+                      halfDurationMins={match.half_duration_mins || 30}
                     />
                   ))}
               </div>
@@ -1075,10 +1076,13 @@ function getPitchArea(
 }
 
 // Format event description like live match
-function formatEventDescription(event: any, players: any[], opponentName: string, teamName: string, attackingRightFirstHalf?: boolean | null): string {
+function formatEventDescription(event: any, players: any[], opponentName: string, teamName: string, attackingRightFirstHalf?: boolean | null, halfDurationMins?: number): string {
   const player = players?.find(p => p.id === String(event.player_id))
   const isOwn = event.team === 'own' || event.is_home_team
-  const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName, teamName, attackingRightFirstHalf, event.half)
+  // match_events has no `half` column — derive from minute vs half duration
+  const halfDuration = halfDurationMins || 30
+  const derivedHalf = event.minute <= halfDuration ? 1 : 2
+  const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName, teamName, attackingRightFirstHalf, derivedHalf)
   const playerName = isOwn ? (player?.name || event.player_name || 'our player') : opponentName
 
   switch (event.event_type) {
@@ -1189,7 +1193,7 @@ const EVENT_TYPE_OPTIONS = [
 ]
 
 // Event Item Component with proper descriptions
-function EventItem({ event, players, opponentName, teamName, matchId, attackingRightFirstHalf }: { event: any; players: any[]; opponentName: string; teamName: string; matchId: string; attackingRightFirstHalf?: boolean | null }) {
+function EventItem({ event, players, opponentName, teamName, matchId, attackingRightFirstHalf, halfDurationMins }: { event: any; players: any[]; opponentName: string; teamName: string; matchId: string; attackingRightFirstHalf?: boolean | null; halfDurationMins?: number }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [editMinute, setEditMinute] = useState(String(event.minute))
@@ -1231,7 +1235,7 @@ function EventItem({ event, players, opponentName, teamName, matchId, attackingR
     }
   }
 
-  const description = formatEventDescription(event, players, opponentName, teamName, attackingRightFirstHalf)
+  const description = formatEventDescription(event, players, opponentName, teamName, attackingRightFirstHalf, halfDurationMins)
 
   if (editing) {
     return (
