@@ -222,17 +222,21 @@ export interface MatchStats {
   team_total_shots: number;
   team_scores: number;
   team_wides: number;
+  team_dropped_short: number;
   team_accuracy: number;
   team_conversion_rate: number;
   opponent_total_shots: number;
   opponent_scores: number;
   opponent_wides: number;
+  opponent_dropped_short: number;
   opponent_accuracy: number;
   opponent_conversion_rate: number;
   team_turnovers_won: number;
   team_turnovers_lost: number;
+  team_unforced_errors: number;
   opponent_turnovers_won: number;
   opponent_turnovers_lost: number;
+  opponent_unforced_errors: number;
   team_kickouts_won: number;
   team_kickouts_lost: number;
   opponent_kickouts_won: number;
@@ -240,8 +244,10 @@ export interface MatchStats {
   team_fouls: number;
   opponent_fouls: number;
   team_yellow_cards: number;
+  team_black_cards: number;
   team_red_cards: number;
   opponent_yellow_cards: number;
+  opponent_black_cards: number;
   opponent_red_cards: number;
 }
 

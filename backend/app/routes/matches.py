@@ -329,6 +329,7 @@ async def update_match_score(
 @router.get("/{match_id}/stats", response_model=MatchStatsResponse)
 async def get_match_stats(
     match_id: UUID,
+    half: Optional[int] = Query(None, ge=1, le=2, description="Filter stats by half (1 or 2). Omit for full match."),
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -353,8 +354,8 @@ async def get_match_stats(
         )
     
     # Calculate stats
-    stats = await MatchService.calculate_match_stats(db, match_id)
-    
+    stats = await MatchService.calculate_match_stats(db, match_id, half=half)
+
     return MatchStatsResponse(**stats)
 
 

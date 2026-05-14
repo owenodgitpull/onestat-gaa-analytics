@@ -546,6 +546,7 @@ async def chat_stream_endpoint(
 async def post_match_report_endpoint(
     match_id: str,
     force_regenerate: bool = False,
+    exclude_ball_carry: bool = False,
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -581,7 +582,7 @@ async def post_match_report_endpoint(
                 generated_at="",
             )
 
-        report = await generate_post_match_report(db, match_id, force_regenerate=force_regenerate)
+        report = await generate_post_match_report(db, match_id, force_regenerate=force_regenerate, exclude_ball_carry=exclude_ball_carry)
         return PostMatchReportResponse(**report)
     except Exception as e:
         logger.error(f"Report generation failed: {str(e)}", exc_info=True)

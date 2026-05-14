@@ -215,18 +215,22 @@ class MatchStatsResponse(BaseModel):
     team_total_shots: int
     team_scores: int
     team_wides: int
+    team_dropped_short: int = 0
     team_accuracy: float
-    
+
     opponent_total_shots: int
     opponent_scores: int
     opponent_wides: int
+    opponent_dropped_short: int = 0
     opponent_accuracy: float
     
     # Turnover stats
     team_turnovers_won: int
     team_turnovers_lost: int
+    team_unforced_errors: int = 0
     opponent_turnovers_won: int
     opponent_turnovers_lost: int
+    opponent_unforced_errors: int = 0
     
     # Kickout stats
     team_kickouts_won: int
@@ -240,7 +244,9 @@ class MatchStatsResponse(BaseModel):
 
     # Card stats
     team_yellow_cards: int
+    team_black_cards: int = 0
     team_red_cards: int
     opponent_yellow_cards: int
+    opponent_black_cards: int = 0
     opponent_red_cards: int
 

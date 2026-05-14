@@ -44,12 +44,12 @@ export function useMatch(matchId: string | null) {
 /**
  * Get match statistics (includes events, possession, player stats)
  */
-export function useMatchStats(matchId: string | null) {
+export function useMatchStats(matchId: string | null, half?: 1 | 2) {
   return useQuery({
-    queryKey: matchKeys.stats(matchId!),
-    queryFn: () => api.matches.getStats(matchId!),
+    queryKey: [...matchKeys.stats(matchId!), half ?? 'all'],
+    queryFn: () => api.matches.getStats(matchId!, half),
     enabled: !!matchId,
-    refetchInterval: 60000, // Refresh every 60 seconds for possession updates
+    refetchInterval: 60000,
   });
 }
 

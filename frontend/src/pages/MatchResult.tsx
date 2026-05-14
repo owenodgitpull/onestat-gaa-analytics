@@ -62,7 +62,8 @@ export default function MatchResult() {
   const { matchId } = useParams<{ matchId: string }>()
   const clubName = useClubName()
   const { data: match, isLoading: matchLoading } = useMatch(matchId || null)
-  const { data: matchStats } = useMatchStats(matchId || null)
+  const [statsHalf, setStatsHalf] = useState<1 | 2 | undefined>(undefined)
+  const { data: matchStats } = useMatchStats(matchId || null, statsHalf)
   const { data: eventsData } = useMatchEvents(matchId || null)
   const { data: players } = usePlayers()
 
@@ -96,6 +97,23 @@ export default function MatchResult() {
   const [, setUploadId] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // AI report regeneration state
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [excludeBallCarry, setExcludeBallCarry] = useState(false)
+
+  const handleRegenerateReport = async () => {
+    if (!matchId || isRegenerating) return
+    setIsRegenerating(true)
+    try {
+      await api.ai.regeneratePostMatchReport(matchId, excludeBallCarry)
+      refetchReport()
+    } catch (e) {
+      console.error('Failed to regenerate report:', e)
+    } finally {
+      setIsRegenerating(false)
+    }
+  }
 
   // Event filter state
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(['all']))
@@ -465,15 +483,6 @@ export default function MatchResult() {
                 Upload GPS
               </button>
             )}
-            {hasEvents && (
-              <Link
-                to={`/results/${matchId}/video`}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-medium transition-colors"
-              >
-                <Video size={14} />
-                Video
-              </Link>
-            )}
           </div>
         </div>
       </div>
@@ -685,7 +694,25 @@ export default function MatchResult() {
             </h3>
             {hasEvents ? (
               matchStats ? (
-                <StatsTable stats={matchStats} opponent={match.opponent} teamName={clubName} />
+                <>
+                  {/* Half filter toggle */}
+                  <div className="flex gap-1.5 mb-3">
+                    {([undefined, 1, 2] as const).map((h) => (
+                      <button
+                        key={h ?? 'all'}
+                        onClick={() => setStatsHalf(h)}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                          statsHalf === h
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-white/10 text-white/50 hover:bg-white/15'
+                        }`}
+                      >
+                        {h === undefined ? 'Full Match' : h === 1 ? '1st Half' : '2nd Half'}
+                      </button>
+                    ))}
+                  </div>
+                  <StatsTable stats={matchStats} opponent={match.opponent} teamName={clubName} />
+                </>
               ) : (
                 <div className="text-center text-white/40 py-8">Loading stats...</div>
               )
@@ -715,6 +742,7 @@ export default function MatchResult() {
                       event={event}
                       players={players || []}
                       opponentName={match.opponent}
+                      attackingRightFirstHalf={match.attacking_right_first_half}
                     />
                   ))}
               </div>
@@ -818,12 +846,32 @@ export default function MatchResult() {
           <div className="max-w-none">
             {renderAnalysisText(postMatchReport.analysis)}
           </div>
-          <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 text-xs text-white/40">
-            <Brain size={14} />
-            <span>AI-generated analysis based on match data</span>
+          <div className="mt-4 pt-4 border-t border-white/10 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <div
+                  onClick={() => setExcludeBallCarry(v => !v)}
+                  className={`w-9 h-5 rounded-full transition-colors relative ${excludeBallCarry ? 'bg-amber-500' : 'bg-white/20'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${excludeBallCarry ? 'translate-x-4' : 'translate-x-0'}`} />
+                </div>
+                <span className="text-xs text-white/60">Exclude ball carry data from report</span>
+              </label>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleRegenerateReport}
+                disabled={isRegenerating}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 text-xs font-medium transition-colors border border-emerald-500/30 disabled:opacity-50"
+              >
+                {isRegenerating ? <Loader2 size={13} className="animate-spin" /> : <Brain size={13} />}
+                {isRegenerating ? 'Regenerating…' : 'Re-generate AI Analysis'}
+              </button>
+              <span className="text-xs text-white/30">AI-generated analysis based on match data</span>
+            </div>
           </div>
         </div>
-      ) : reportLoading ? (
+      ) : reportLoading || isRegenerating ? (
         <div className="glass-card p-6 mt-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center animate-pulse">
@@ -840,7 +888,7 @@ export default function MatchResult() {
           </div>
           <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 text-xs text-white/40">
             <Brain size={14} />
-            <span>Generating AI analysis...</span>
+            <span>Generating AI analysis…</span>
           </div>
         </div>
       ) : null}
@@ -887,11 +935,17 @@ function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; o
     { label: 'Shots', left: stats.team_total_shots, right: stats.opponent_total_shots, leftVal: stats.team_total_shots, rightVal: stats.opponent_total_shots },
     { label: 'Scores', left: stats.team_scores, right: stats.opponent_scores, leftVal: stats.team_scores, rightVal: stats.opponent_scores },
     { label: 'Wides', left: stats.team_wides, right: stats.opponent_wides, leftVal: stats.opponent_wides, rightVal: stats.team_wides },
+    { label: 'Dropped Short', left: stats.team_dropped_short ?? 0, right: stats.opponent_dropped_short ?? 0, leftVal: stats.opponent_dropped_short ?? 0, rightVal: stats.team_dropped_short ?? 0 },
     { label: 'Accuracy', left: `${Math.round(stats.team_accuracy)}%`, right: `${Math.round(stats.opponent_accuracy)}%`, leftVal: stats.team_accuracy, rightVal: stats.opponent_accuracy },
     { label: 'Conversion', left: `${teamConversion}%`, right: `${opponentConversion}%`, leftVal: Number(teamConversion), rightVal: Number(opponentConversion) },
     { label: 'Turnovers Won', left: stats.team_turnovers_won, right: stats.opponent_turnovers_won, leftVal: stats.team_turnovers_won, rightVal: stats.opponent_turnovers_won },
+    { label: 'Unforced Errors', left: stats.team_unforced_errors ?? 0, right: stats.opponent_unforced_errors ?? 0, leftVal: stats.opponent_unforced_errors ?? 0, rightVal: stats.team_unforced_errors ?? 0 },
     { label: 'Kickouts Won', left: `${stats.team_kickouts_won}/${totalTeamKickouts}`, right: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}`, leftVal: stats.team_kickouts_won, rightVal: stats.opponent_kickouts_won },
     { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
+    { label: 'Fouls', left: stats.team_fouls, right: stats.opponent_fouls, leftVal: stats.opponent_fouls, rightVal: stats.team_fouls },
+    { label: 'Yellow Cards', left: stats.team_yellow_cards, right: stats.opponent_yellow_cards, leftVal: stats.opponent_yellow_cards, rightVal: stats.team_yellow_cards },
+    { label: 'Black Cards', left: stats.team_black_cards ?? 0, right: stats.opponent_black_cards ?? 0, leftVal: stats.opponent_black_cards ?? 0, rightVal: stats.team_black_cards ?? 0 },
+    { label: 'Red Cards', left: stats.team_red_cards, right: stats.opponent_red_cards, leftVal: stats.opponent_red_cards, rightVal: stats.team_red_cards },
   ]
 
   return (
@@ -923,8 +977,20 @@ function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; o
 }
 
 // Helper function to get pitch area description with variety
-function getPitchArea(x: number | null, y: number | null, eventTeamIsOwn: boolean, opponentName: string): string {
+function getPitchArea(
+  x: number | null,
+  y: number | null,
+  eventTeamIsOwn: boolean,
+  opponentName: string,
+  attackingRightFirstHalf?: boolean | null,
+  half?: number | null,
+): string {
   if (x === null || y === null) return 'the field'
+
+  // Determine which direction we're attacking in this half.
+  // Default: own team attacks right (x=100) in the first half.
+  const isFirstHalf = !half || half === 1
+  const ownTeamAttacksRight = isFirstHalf ? (attackingRightFirstHalf ?? true) : !(attackingRightFirstHalf ?? true)
 
   // Get lateral position description
   let lateralDesc = ''
@@ -947,10 +1013,12 @@ function getPitchArea(x: number | null, y: number | null, eventTeamIsOwn: boolea
   }
 
   // Calculate distances
+  // When ownTeamAttacksRight, own goal is at x=0 (left) and opponent goal is at x=100 (right)
   const distFromRightGoal = 100 - x
   const distFromLeftGoal = x
-  const distFromAttackingGoal = eventTeamIsOwn ? distFromRightGoal : distFromLeftGoal
-  const distFromDefendingGoal = eventTeamIsOwn ? distFromLeftGoal : distFromRightGoal
+  const ownTeamAttacking = eventTeamIsOwn ? ownTeamAttacksRight : !ownTeamAttacksRight
+  const distFromAttackingGoal = ownTeamAttacking ? distFromRightGoal : distFromLeftGoal
+  const distFromDefendingGoal = ownTeamAttacking ? distFromLeftGoal : distFromRightGoal
   const defendingTeamName = eventTeamIsOwn ? opponentName : 'our team'
   const attackingTeamName = eventTeamIsOwn ? 'our team' : opponentName
 
@@ -989,10 +1057,10 @@ function getPitchArea(x: number | null, y: number | null, eventTeamIsOwn: boolea
 }
 
 // Format event description like live match
-function formatEventDescription(event: any, players: any[], opponentName: string): string {
+function formatEventDescription(event: any, players: any[], opponentName: string, attackingRightFirstHalf?: boolean | null): string {
   const player = players?.find(p => p.id === String(event.player_id))
   const isOwn = event.team === 'own' || event.is_home_team
-  const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName)
+  const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName, attackingRightFirstHalf, event.half)
   const playerName = isOwn ? (player?.name || event.player_name || 'our player') : opponentName
 
   switch (event.event_type) {
@@ -1069,7 +1137,7 @@ function formatEventDescription(event: any, players: any[], opponentName: string
 }
 
 // Event Item Component with proper descriptions
-function EventItem({ event, players, opponentName }: { event: any; players: any[]; opponentName: string }) {
+function EventItem({ event, players, opponentName, attackingRightFirstHalf }: { event: any; players: any[]; opponentName: string; attackingRightFirstHalf?: boolean | null }) {
   const getEventStyle = (eventType: string) => {
     if (['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'].includes(eventType)) {
       return event.team === 'own' || event.is_home_team
@@ -1088,7 +1156,7 @@ function EventItem({ event, players, opponentName }: { event: any; players: any[
     return 'border-l-slate-500 bg-slate-500/10'
   }
 
-  const description = formatEventDescription(event, players, opponentName)
+  const description = formatEventDescription(event, players, opponentName, attackingRightFirstHalf)
 
   return (
     <div className={`p-3 rounded-lg border-l-4 ${getEventStyle(event.event_type)}`}>

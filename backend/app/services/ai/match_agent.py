@@ -309,7 +309,7 @@ INSTRUCTIONS:
     # -------------------------------------------------------------------------
 
     @staticmethod
-    async def generate_post_match_report(db: AsyncSession, match_id: str, force_regenerate: bool = False) -> dict:
+    async def generate_post_match_report(db: AsyncSession, match_id: str, force_regenerate: bool = False, exclude_ball_carry: bool = False) -> dict:
         """
         Generate a comprehensive post-match report.
         Returns structured data for display including chart-specific insights.
@@ -379,8 +379,10 @@ INSTRUCTIONS:
                 "\n- Only flag outfield full-match players significantly below position benchmarks"
             )
 
+        ball_carry_note = "\n\nIMPORTANT: Do NOT use the get_ball_carrier_data tool — ball carry data has been excluded from this report by the analyst. Do not mention passes, carries, or ball-carrying chains." if exclude_ball_carry else ""
+
         analysis = await MatchAgent.analyze_match(db, match_id,
-            f"""Generate a detailed post-match report including:
+            f"""Generate a detailed post-match report including:{ball_carry_note}
             1. Match Summary (2-3 sentences)
             2. Key Statistics
             3. Top Performers (with ratings 1-10)

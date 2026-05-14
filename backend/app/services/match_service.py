@@ -280,22 +280,44 @@ class MatchService:
         return True
     
     @staticmethod
-    async def calculate_match_stats(db: AsyncSession, match_id: UUID) -> Dict[str, Any]:
+    async def calculate_match_stats(db: AsyncSession, match_id: UUID, half: int = None) -> Dict[str, Any]:
         """
         Calculate comprehensive match statistics.
-        
+
         Returns dictionary with possession, shots, turnovers, etc.
+        Optionally filter by half (1 or 2).
         """
-        # Get all events for this match
-        events_result = await db.execute(
-            select(MatchEvent).where(MatchEvent.match_id == match_id)
-        )
+        from app.models.match import Match as MatchModel
+        match_obj_result = await db.execute(select(MatchModel).where(MatchModel.id == match_id))
+        match_obj = match_obj_result.scalar_one_or_none()
+        half_duration = (match_obj.half_duration_mins if match_obj and match_obj.half_duration_mins else 30)
+
+        # Determine minute range for the requested half
+        if half == 1:
+            min_minute, max_minute = 0, half_duration
+        elif half == 2:
+            min_minute, max_minute = half_duration + 1, 9999
+        else:
+            min_minute, max_minute = 0, 9999
+
+        # Get events for this match (filtered by half if requested)
+        events_query = select(MatchEvent).where(MatchEvent.match_id == match_id)
+        if half is not None:
+            events_query = events_query.where(
+                MatchEvent.minute >= min_minute,
+                MatchEvent.minute <= max_minute,
+            )
+        events_result = await db.execute(events_query)
         events = events_result.scalars().all()
-        
-        # Get all possession events
-        possession_result = await db.execute(
-            select(PossessionEvent).where(PossessionEvent.match_id == match_id)
-        )
+
+        # Get possession events (filtered by half if requested)
+        possession_query = select(PossessionEvent).where(PossessionEvent.match_id == match_id)
+        if half is not None:
+            possession_query = possession_query.where(
+                PossessionEvent.minute >= min_minute,
+                PossessionEvent.minute <= max_minute,
+            )
+        possession_result = await db.execute(possession_query)
         possession_events = possession_result.scalars().all()
         
         # Initialize stats
@@ -308,16 +330,20 @@ class MatchService:
             "team_total_shots": 0,
             "team_scores": 0,
             "team_wides": 0,
+            "team_dropped_short": 0,
             "team_accuracy": 0.0,
             "opponent_total_shots": 0,
             "opponent_scores": 0,
             "opponent_wides": 0,
+            "opponent_dropped_short": 0,
             "opponent_accuracy": 0.0,
             # Turnovers
             "team_turnovers_won": 0,
             "team_turnovers_lost": 0,
+            "team_unforced_errors": 0,
             "opponent_turnovers_won": 0,
             "opponent_turnovers_lost": 0,
+            "opponent_unforced_errors": 0,
             # Kickouts
             "team_kickouts_won": 0,
             "team_kickouts_lost": 0,
@@ -328,8 +354,10 @@ class MatchService:
             "opponent_fouls": 0,
             # Cards
             "team_yellow_cards": 0,
+            "team_black_cards": 0,
             "team_red_cards": 0,
             "opponent_yellow_cards": 0,
+            "opponent_black_cards": 0,
             "opponent_red_cards": 0,
         }
         
@@ -374,7 +402,10 @@ class MatchService:
             elif event.event_type in [EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED]:
                 stats[f"{team_prefix}_total_shots"] += 1
                 stats[f"{team_prefix}_wides"] += 1
-            elif event.event_type in [EventType.SHORT, EventType.SAVED]:
+            elif event.event_type == EventType.SHORT:
+                stats[f"{team_prefix}_total_shots"] += 1
+                stats[f"{team_prefix}_dropped_short"] += 1
+            elif event.event_type == EventType.SAVED:
                 stats[f"{team_prefix}_total_shots"] += 1
             
             # Turnovers (opposition forced) — interceptions and tackles count as turnovers won
@@ -382,12 +413,14 @@ class MatchService:
             elif event.event_type in (EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON):
                 stats[f"{team_prefix}_turnovers_won"] += 1
             elif event.event_type == EventType.TURNOVER_LOST:
+                other_prefix = "opponent" if team_prefix == "team" else "team"
                 stats[f"{team_prefix}_turnovers_lost"] += 1
-            
-            # Unforced Errors (own mistakes) - count towards turnovers lost
+                # A turnover lost by one team is automatically a turnover won by the other
+                stats[f"{other_prefix}_turnovers_won"] += 1
+
+            # Unforced Errors — tracked separately from contested turnovers
             elif event.event_type == EventType.UNFORCED_ERROR:
-                # Unforced error counts as possession lost
-                stats[f"{team_prefix}_turnovers_lost"] += 1
+                stats[f"{team_prefix}_unforced_errors"] += 1
             
             # Kickouts — decode from event type name, NOT from event.team
             # OWN_KICKOUT = our team kicking out, OPP_KICKOUT = Opponent kicking out
@@ -432,6 +465,8 @@ class MatchService:
             # Cards
             elif event.event_type == EventType.YELLOW_CARD:
                 stats[f"{team_prefix}_yellow_cards"] += 1
+            elif event.event_type == EventType.BLACK_CARD:
+                stats[f"{team_prefix}_black_cards"] += 1
             elif event.event_type == EventType.RED_CARD:
                 stats[f"{team_prefix}_red_cards"] += 1
         

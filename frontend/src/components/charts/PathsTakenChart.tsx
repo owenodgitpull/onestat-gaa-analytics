@@ -113,6 +113,20 @@ const prettyAction = (raw: string): string => {
   return map[raw] || raw.replace(/_/g, ' ')
 }
 
+// Remove points that are too close together — keeps path shape without noise
+const thinPoints = (points: { x: number; y: number }[], minDist = 5): { x: number; y: number }[] => {
+  if (points.length <= 2) return points
+  const result = [points[0]]
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = result[result.length - 1]
+    const curr = points[i]
+    const dist = Math.sqrt((curr.x - prev.x) ** 2 + (curr.y - prev.y) ** 2)
+    if (dist >= minDist) result.push(curr)
+  }
+  result.push(points[points.length - 1]) // always keep endpoint
+  return result
+}
+
 // Build a natural GAA commentary-style path description
 const describePath = (
   points: { x: number; y: number }[],
@@ -186,8 +200,10 @@ const describePath = (
     }
   }
 
-  const journey = journeyZones.length > 0
-    ? ` through ${journeyZones.join(', ')}`
+  // Deduplicate consecutive identical zone descriptions
+  const dedupedJourney = journeyZones.filter((z, i) => i === 0 || z !== journeyZones[i - 1])
+  const journey = dedupedJourney.length > 0
+    ? ` through ${dedupedJourney.join(', ')}`
     : ''
   return `${start}${carrierText}${journey}. ${outcomeVerb.charAt(0).toUpperCase() + outcomeVerb.slice(1)} from ${endZone}`
 }
@@ -275,8 +291,11 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
           <rect width="2332" height="1446" fill="rgba(0,0,0,0.3)" />
 
           {hasData && visiblePaths.map((path, vIdx) => {
-            const points = path.points || []
-            if (points.length === 0) return null
+            const rawPoints = path.points || []
+            if (rawPoints.length === 0) return null
+
+            // Thin points to remove noise — tighter threshold when showing all paths
+            const points = thinPoints(rawPoints, selectedIdx === null ? 6 : 4)
 
             // Find the real index in currentPaths for numbering
             const realIdx = selectedIdx !== null ? selectedIdx : currentPaths.indexOf(path)
@@ -298,12 +317,14 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
               i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
             ).join(' ')
             const last = svgPoints[svgPoints.length - 1]
+            // Only show intermediate dots in single-path view — too noisy in All view
+            const showDots = selectedIdx !== null
 
             return (
               <g key={vIdx} opacity={isHighlighted ? 0.9 : 0.2}>
                 <path d={pathD} fill="none" stroke={color} strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" opacity={0.2} />
                 <path d={pathD} fill="none" stroke={color} strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" />
-                {svgPoints.slice(1, -1).map((p, di) => (
+                {showDots && svgPoints.slice(1, -1).map((p, di) => (
                   <circle key={di} cx={p.x} cy={p.y} r={14} fill={color} stroke="white" strokeWidth={2} opacity={0.7} />
                 ))}
                 <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={22} fill={color} stroke="white" strokeWidth={3} opacity={0.8} />

@@ -279,8 +279,9 @@ export const matchesAPI = {
   /**
    * Get match statistics
    */
-  getStats: async (matchId: string): Promise<MatchStats> => {
-    return fetchAPI<MatchStats>(`/matches/${matchId}/stats`);
+  getStats: async (matchId: string, half?: 1 | 2): Promise<MatchStats> => {
+    const q = half ? `?half=${half}` : ''
+    return fetchAPI<MatchStats>(`/matches/${matchId}/stats${q}`);
   },
 
   /**
@@ -386,7 +387,7 @@ export const matchEventsAPI = {
    * Get all events for a match
    */
   getByMatch: async (matchId: string): Promise<{ events: MatchEvent[], total: number, page: number, page_size: number }> => {
-    return fetchAPI<{ events: MatchEvent[], total: number, page: number, page_size: number }>(`/match-events/match/${matchId}`);
+    return fetchAPI<{ events: MatchEvent[], total: number, page: number, page_size: number }>(`/match-events/match/${matchId}?limit=500`);
   },
 
   /**
@@ -480,7 +481,7 @@ export const possessionAPI = {
    * Get all possession events for a match
    */
   getByMatch: async (matchId: string): Promise<PossessionEvent[]> => {
-    return fetchAPI<PossessionEvent[]>(`/possession-events/?match_id=${matchId}`);
+    return fetchAPI<PossessionEvent[]>(`/possession-events/?match_id=${matchId}&limit=5000`);
   },
 };
 
@@ -1610,6 +1611,10 @@ const aiAPI = {
 
   getPostMatchReport: async (matchId: string): Promise<PostMatchReport> => {
     return fetchAPI<PostMatchReport>(`/ai/post-match-report/${matchId}`);
+  },
+
+  regeneratePostMatchReport: async (matchId: string, excludeBallCarry = false): Promise<PostMatchReport> => {
+    return fetchAPI<PostMatchReport>(`/ai/post-match-report/${matchId}?force_regenerate=true&exclude_ball_carry=${excludeBallCarry}`);
   },
 
   analyzeGps: async (gpsData: any[], matchInfo?: any): Promise<GPSAnalysisResponse> => {
