@@ -112,7 +112,7 @@ class MatchEventService:
         result = await db.execute(
             select(MatchEvent)
             .where(and_(*conditions))
-            .order_by(MatchEvent.created_at.asc())
+            .order_by(MatchEvent.minute.asc(), MatchEvent.created_at.asc())
             .offset(skip)
             .limit(limit)
         )
