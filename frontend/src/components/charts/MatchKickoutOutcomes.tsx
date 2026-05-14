@@ -41,6 +41,7 @@ function countOutcomes(events: any[], mode: KickoutMode): Outcomes {
       else if (t === 'own_kickout_won_break') o.wonBreak++
       else if (t === 'own_kickout_opposition_won') o.lostClean++
       else if (t === 'own_kickout_opposition_won_break') o.lostBreak++
+      else if (t === 'own_kickout_sideline') o.lostClean++
       // Legacy types for own team
       else if (t === 'kickout_won' && team === 'own') o.wonClean++
       else if (t === 'breaking_ball_won' && team === 'own') o.wonBreak++
@@ -52,6 +53,7 @@ function countOutcomes(events: any[], mode: KickoutMode): Outcomes {
       else if (t === 'opp_kickout_opposition_won_break') o.wonBreak++
       else if (t === 'opp_kickout_won') o.lostClean++
       else if (t === 'opp_kickout_won_break') o.lostBreak++
+      else if (t === 'opp_kickout_sideline') o.lostClean++
       // Legacy types for opponent
       else if (t === 'kickout_won' && team === 'opponent') o.lostClean++
       else if (t === 'breaking_ball_won' && team === 'opponent') o.lostBreak++
