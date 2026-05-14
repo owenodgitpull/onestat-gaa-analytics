@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Trophy,
   Clock,
@@ -742,6 +742,8 @@ export default function MatchResult() {
                       event={event}
                       players={players || []}
                       opponentName={match.opponent}
+                      teamName={clubName || 'Us'}
+                      matchId={matchId!}
                       attackingRightFirstHalf={match.attacking_right_first_half}
                     />
                   ))}
@@ -982,85 +984,101 @@ function getPitchArea(
   y: number | null,
   eventTeamIsOwn: boolean,
   opponentName: string,
+  teamName: string,
   attackingRightFirstHalf?: boolean | null,
   half?: number | null,
 ): string {
   if (x === null || y === null) return 'the field'
 
-  // Determine which direction we're attacking in this half.
-  // Default: own team attacks right (x=100) in the first half.
+  // Special case: Exact center (kickout position)
+  if (x === 50 && y === 50) return 'midfield'
+
+  // Determine attacking direction for this half
   const isFirstHalf = !half || half === 1
-  const ownTeamAttacksRight = isFirstHalf ? (attackingRightFirstHalf ?? true) : !(attackingRightFirstHalf ?? true)
+  const teamAttackingRight = isFirstHalf ? (attackingRightFirstHalf ?? true) : !(attackingRightFirstHalf ?? true)
 
-  // Get lateral position description
-  let lateralDesc = ''
-  let lateralShort = ''
-  if (y < 20) {
-    lateralDesc = 'on the left wing'
-    lateralShort = 'left side'
-  } else if (y < 35) {
-    lateralDesc = 'on the left flank'
-    lateralShort = 'left channel'
-  } else if (y > 80) {
-    lateralDesc = 'on the right wing'
-    lateralShort = 'right side'
-  } else if (y > 65) {
-    lateralDesc = 'on the right flank'
-    lateralShort = 'right channel'
-  } else {
-    lateralDesc = 'through the center'
-    lateralShort = 'centrally'
-  }
+  // Lateral description relative to the event team's facing direction
+  const facingRight = eventTeamIsOwn ? teamAttackingRight : !teamAttackingRight
+  let lateral = ''
+  if (y < 33) lateral = facingRight ? ' (left wing)' : ' (right wing)'
+  else if (y > 67) lateral = facingRight ? ' (right wing)' : ' (left wing)'
+  else if (y >= 40 && y <= 60) lateral = ' (center)'
 
-  // Calculate distances
-  // When ownTeamAttacksRight, own goal is at x=0 (left) and opponent goal is at x=100 (right)
-  const distFromRightGoal = 100 - x
   const distFromLeftGoal = x
-  const ownTeamAttacking = eventTeamIsOwn ? ownTeamAttacksRight : !ownTeamAttacksRight
-  const distFromAttackingGoal = ownTeamAttacking ? distFromRightGoal : distFromLeftGoal
-  const distFromDefendingGoal = ownTeamAttacking ? distFromLeftGoal : distFromRightGoal
-  const defendingTeamName = eventTeamIsOwn ? opponentName : 'our team'
-  const attackingTeamName = eventTeamIsOwn ? 'our team' : opponentName
+  const distFromRightGoal = 100 - x
 
-  // In attacking half (closer to opponent's goal)
-  // Thresholds calibrated to pitch-area coords (0=goal line, 100=opposite goal)
-  if (distFromAttackingGoal < 50) {
-    if (distFromAttackingGoal <= 3) return `inside ${defendingTeamName}'s small rectangle`
-    if (distFromAttackingGoal <= 9) return `near ${defendingTeamName}'s goalmouth, ${lateralShort}`
-    if (distFromAttackingGoal <= 14) return `${defendingTeamName}'s 20-meter line, ${lateralShort}`
-    if (distFromAttackingGoal <= 32) return `inside ${defendingTeamName}'s 45, ${lateralShort}`
-    if (distFromAttackingGoal <= 40) return `${defendingTeamName}'s half, ${lateralDesc}`
-    return `${defendingTeamName}'s side of midfield, ${lateralShort}`
-  }
+  let distFromAttackingGoal: number
+  let distFromDefendingGoal: number
+  let attackingTeamName: string
+  let defendingTeamName: string
 
-  // In defensive half or midfield
-  if (distFromDefendingGoal < 20) {
-    return `deep in ${attackingTeamName}'s defense, ${lateralShort}`
-  }
-  if (distFromDefendingGoal < 40) {
-    return `${attackingTeamName}'s half, ${lateralDesc}`
-  }
-
-  // True midfield area (x: 40-60)
-  if (x >= 45 && x <= 55) {
-    // Vary the midfield description based on y position
-    if (y < 35) return `the left side of midfield`
-    if (y > 65) return `the right side of midfield`
-    return `the center of the park`
+  if (eventTeamIsOwn) {
+    if (teamAttackingRight) {
+      distFromAttackingGoal = distFromRightGoal
+      distFromDefendingGoal = distFromLeftGoal
+    } else {
+      distFromAttackingGoal = distFromLeftGoal
+      distFromDefendingGoal = distFromRightGoal
+    }
+    attackingTeamName = teamName
+    defendingTeamName = opponentName
+  } else {
+    if (teamAttackingRight) {
+      distFromAttackingGoal = distFromLeftGoal
+      distFromDefendingGoal = distFromRightGoal
+    } else {
+      distFromAttackingGoal = distFromRightGoal
+      distFromDefendingGoal = distFromLeftGoal
+    }
+    attackingTeamName = opponentName
+    defendingTeamName = teamName
   }
 
-  // Near midfield but slightly in one half
-  if (x < 50) {
-    return `${attackingTeamName}'s side of midfield, ${lateralShort}`
+  // Arc-based zone calculations (matches live recording precision)
+  const X_RADIUS_PERCENT = 27.72
+  const Y_RADIUS_PERCENT = 55.06
+  const dy_percent = y - 50
+  const normalizedArcDistance = Math.sqrt(
+    Math.pow(distFromAttackingGoal / X_RADIUS_PERCENT, 2) +
+    Math.pow(dy_percent / Y_RADIUS_PERCENT, 2)
+  )
+  const isOutsideAttackingArc = normalizedArcDistance > 1.0
+  const normalizedDefendingArcDistance = Math.sqrt(
+    Math.pow(distFromDefendingGoal / X_RADIUS_PERCENT, 2) +
+    Math.pow(dy_percent / Y_RADIUS_PERCENT, 2)
+  )
+  const isInsideDefendingArc = normalizedDefendingArcDistance <= 1.0
+
+  // ATTACKING ZONES (closer to opponent's goal)
+  if (distFromAttackingGoal < distFromDefendingGoal) {
+    if (distFromAttackingGoal <= 3.2) return `inside ${defendingTeamName}'s small rectangle${lateral}`
+    if (distFromAttackingGoal <= 10.5) return `${defendingTeamName}'s 13-meter line${lateral}`
+    if (distFromAttackingGoal <= 14) return `${defendingTeamName}'s 20-meter line${lateral}`
+    if (!isOutsideAttackingArc) return `inside ${defendingTeamName}'s 40-meter arc${lateral}`
+    if (distFromAttackingGoal <= 35) return `outside ${defendingTeamName}'s 40-meter arc${lateral}`
+    return `${defendingTeamName}'s half${lateral}`
   }
-  return `${defendingTeamName}'s side of midfield, ${lateralShort}`
+
+  // TRUE MIDFIELD
+  if (distFromAttackingGoal <= 50 && distFromDefendingGoal <= 50) {
+    return `around midfield${lateral}`
+  }
+
+  // DEFENSIVE ZONES (closer to own goal)
+  if (distFromDefendingGoal <= 3.2) return `inside ${attackingTeamName}'s small rectangle${lateral}`
+  if (distFromDefendingGoal <= 10.5) return `${attackingTeamName}'s 13-meter line${lateral}`
+  if (distFromDefendingGoal <= 14) return `${attackingTeamName}'s 20-meter line${lateral}`
+  if (isInsideDefendingArc) return `inside ${attackingTeamName}'s 40-meter arc${lateral}`
+  if (distFromDefendingGoal <= 35) return `${attackingTeamName}'s 45-meter line${lateral}`
+
+  return `${attackingTeamName}'s half${lateral}`
 }
 
 // Format event description like live match
-function formatEventDescription(event: any, players: any[], opponentName: string, attackingRightFirstHalf?: boolean | null): string {
+function formatEventDescription(event: any, players: any[], opponentName: string, teamName: string, attackingRightFirstHalf?: boolean | null): string {
   const player = players?.find(p => p.id === String(event.player_id))
   const isOwn = event.team === 'own' || event.is_home_team
-  const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName, attackingRightFirstHalf, event.half)
+  const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName, teamName, attackingRightFirstHalf, event.half)
   const playerName = isOwn ? (player?.name || event.player_name || 'our player') : opponentName
 
   switch (event.event_type) {
@@ -1136,8 +1154,49 @@ function formatEventDescription(event: any, players: any[], opponentName: string
   }
 }
 
+const EVENT_TYPE_OPTIONS = [
+  { value: 'point', label: 'Point' },
+  { value: 'two_point', label: '2-Pointer' },
+  { value: 'goal', label: 'Goal' },
+  { value: 'wide', label: 'Wide' },
+  { value: 'short', label: 'Dropped Short' },
+  { value: 'saved', label: 'Shot Saved' },
+  { value: 'point_free', label: 'Point (Free)' },
+  { value: 'two_point_free', label: '2-Point Free' },
+  { value: 'wide_free', label: 'Wide (Free)' },
+  { value: 'forty_five', label: '45 Scored' },
+  { value: 'forty_five_missed', label: '45 Missed' },
+  { value: 'penalty_goal', label: 'Penalty Goal' },
+  { value: 'penalty_miss', label: 'Penalty Miss' },
+  { value: 'turnover_won', label: 'Turnover Won' },
+  { value: 'turnover_lost', label: 'Turnover Lost' },
+  { value: 'unforced_error', label: 'Unforced Error' },
+  { value: 'own_kickout_won', label: 'Own Kickout Won' },
+  { value: 'own_kickout_opposition_won', label: 'Own Kickout Lost' },
+  { value: 'own_kickout_won_break', label: 'Own Kickout Won (Break)' },
+  { value: 'own_kickout_opposition_won_break', label: 'Own Kickout Lost (Break)' },
+  { value: 'opp_kickout_won', label: 'Opp Kickout Won' },
+  { value: 'opp_kickout_opposition_won', label: 'Opp Kickout Lost' },
+  { value: 'opp_kickout_won_break', label: 'Opp Kickout Won (Break)' },
+  { value: 'opp_kickout_opposition_won_break', label: 'Opp Kickout Lost (Break)' },
+  { value: 'sideline_ball', label: 'Sideline Ball' },
+  { value: 'foul_committed', label: 'Foul Committed' },
+  { value: 'foul_won', label: 'Foul Won' },
+  { value: 'yellow_card', label: 'Yellow Card' },
+  { value: 'black_card', label: 'Black Card' },
+  { value: 'red_card', label: 'Red Card' },
+  { value: 'substitution', label: 'Substitution' },
+]
+
 // Event Item Component with proper descriptions
-function EventItem({ event, players, opponentName, attackingRightFirstHalf }: { event: any; players: any[]; opponentName: string; attackingRightFirstHalf?: boolean | null }) {
+function EventItem({ event, players, opponentName, teamName, matchId, attackingRightFirstHalf }: { event: any; players: any[]; opponentName: string; teamName: string; matchId: string; attackingRightFirstHalf?: boolean | null }) {
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [editMinute, setEditMinute] = useState(String(event.minute))
+  const [editEventType, setEditEventType] = useState(event.event_type)
+  const [editNotes, setEditNotes] = useState(event.notes || '')
+  const [saving, setSaving] = useState(false)
+
   const getEventStyle = (eventType: string) => {
     if (['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'].includes(eventType)) {
       return event.team === 'own' || event.is_home_team
@@ -1156,7 +1215,73 @@ function EventItem({ event, players, opponentName, attackingRightFirstHalf }: { 
     return 'border-l-slate-500 bg-slate-500/10'
   }
 
-  const description = formatEventDescription(event, players, opponentName, attackingRightFirstHalf)
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await api.matchEvents.update(String(event.id), {
+        event_type: editEventType,
+        minute: parseInt(editMinute) || event.minute,
+        notes: editNotes || null,
+      })
+      queryClient.invalidateQueries({ queryKey: ['match-events', 'match', matchId] })
+      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      setEditing(false)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const description = formatEventDescription(event, players, opponentName, teamName, attackingRightFirstHalf)
+
+  if (editing) {
+    return (
+      <div className="p-3 rounded-lg border-l-4 border-l-blue-500 bg-blue-500/10">
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <select
+              value={editEventType}
+              onChange={e => setEditEventType(e.target.value)}
+              className="flex-1 bg-white/10 text-white text-xs rounded px-2 py-1.5 border border-white/20"
+            >
+              {EVENT_TYPE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value} className="bg-slate-800">{o.label}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              value={editMinute}
+              onChange={e => setEditMinute(e.target.value)}
+              min={0} max={120}
+              className="w-16 bg-white/10 text-white text-xs rounded px-2 py-1.5 border border-white/20 text-center"
+              placeholder="Min"
+            />
+          </div>
+          <input
+            type="text"
+            value={editNotes}
+            onChange={e => setEditNotes(e.target.value)}
+            className="w-full bg-white/10 text-white text-xs rounded px-2 py-1.5 border border-white/20"
+            placeholder="Notes (optional)"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-1.5 rounded transition-colors disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={() => { setEditing(false); setEditEventType(event.event_type); setEditMinute(String(event.minute)); setEditNotes(event.notes || '') }}
+              className="flex-1 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold py-1.5 rounded transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={`p-3 rounded-lg border-l-4 ${getEventStyle(event.event_type)}`}>
@@ -1167,6 +1292,13 @@ function EventItem({ event, players, opponentName, attackingRightFirstHalf }: { 
         <p className="flex-1 text-white/90 text-sm leading-relaxed">
           {description}
         </p>
+        <button
+          onClick={() => setEditing(true)}
+          className="ml-2 flex-shrink-0 text-white/30 hover:text-white/70 transition-colors"
+          title="Edit event"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
       </div>
     </div>
   )

@@ -231,7 +231,7 @@ INSTRUCTIONS:
    <chart_insights>
    {{"possession": "Brief insight about possession and territory patterns", "scoring": "Brief insight about when scoring happened", "shooting": "Brief insight about shot selection and efficiency"}}
    </chart_insights>
-   Each insight should be 1-2 sentences referencing specific stats from the match.
+   Each insight should be 1-2 sentences referencing specific stats from the match. IMPORTANT: Always use the actual team names (from club_context and the match opponent) — never say "Team" generically.
 """
 
         # Always include tool instruction with the match_id
@@ -350,7 +350,7 @@ INSTRUCTIONS:
             logger.info(f"Using cached AI analysis for match {match_id} (version {match.ai_analysis_version})")
 
             # Use cached chart insights if available, otherwise generate them
-            insights = match.chart_insights or await MatchAgent._generate_chart_insights(db, match_id, summary)
+            insights = match.chart_insights or await MatchAgent._generate_chart_insights(db, match_id, summary, report_club_name)
 
             return {
                 "match": summary.get("match", {}),
@@ -412,7 +412,7 @@ INSTRUCTIONS:
         logger.info(f"Saved AI analysis for match {match_id} (version {match.ai_analysis_version}, GPS={has_gps_data}, chart_insights={'yes' if chart_insights else 'no'})")
 
         # Use parsed chart insights, or fallback to separate generation
-        insights = chart_insights or await MatchAgent._generate_chart_insights(db, match_id, summary)
+        insights = chart_insights or await MatchAgent._generate_chart_insights(db, match_id, summary, report_club_name)
 
         return {
             "match": summary.get("match", {}),
@@ -596,26 +596,29 @@ Return ONLY the JSON object, no other text."""
             return None
 
     @staticmethod
-    async def _generate_chart_insights(db: AsyncSession, match_id: str, summary: dict) -> dict:
+    async def _generate_chart_insights(db: AsyncSession, match_id: str, summary: dict, club_name: str = "Team") -> dict:
         """Generate short AI insights for each chart type on the match result page."""
         try:
             stats = summary.get("stats", {})
             score = summary.get("score", {})
+            opponent = summary.get('match', {}).get('opponent', 'Opponent')
 
             prompt = f"""Based on this GAA match data, generate 3 short insights (1-2 sentences each) for charts:
 
-Match: Team {score.get('team', '0-00')} vs {summary.get('match', {}).get('opponent', 'Opponent')} {score.get('opponent', '0-00')}
+Match: {club_name} {score.get('team', '0-00')} vs {opponent} {score.get('opponent', '0-00')}
 
 Stats:
-- Possession: Team {stats.get('team_possession_percentage', 50)}% vs Opponent {stats.get('opponent_possession_percentage', 50)}%
-- Shots: Team {stats.get('team_total_shots', 0)} (Accuracy: {stats.get('team_accuracy', 0):.0f}%) vs Opponent {stats.get('opponent_total_shots', 0)}
-- Turnovers Won: Team {stats.get('turnovers_won', 0)} vs Opponent {stats.get('opponent_turnovers_won', 0)}
+- Possession: {club_name} {stats.get('team_possession_percentage', 50)}% vs {opponent} {stats.get('opponent_possession_percentage', 50)}%
+- Shots: {club_name} {stats.get('team_total_shots', 0)} (Accuracy: {stats.get('team_accuracy', 0):.0f}%, Conversion: {stats.get('team_conversion_rate', 0):.0f}%) vs {opponent} {stats.get('opponent_total_shots', 0)}
+- Turnovers Won: {club_name} {stats.get('team_turnovers_won', 0)} vs {opponent} {stats.get('opponent_turnovers_won', 0)}
+
+Use the team names ({club_name} and {opponent}) — never say "Team" generically. Each insight should be 1-2 sentences using actual stats.
 
 Respond in this exact JSON format (no markdown):
 {{
-    "possession": "Brief insight about possession and territory patterns",
-    "scoring": "Brief insight about when scoring happened during the match",
-    "shooting": "Brief insight about shot selection and efficiency"
+    "possession": "1-2 sentences about possession and territory patterns using {club_name}/{opponent} names",
+    "scoring": "1-2 sentences about scoring patterns using {club_name}/{opponent} names",
+    "shooting": "1-2 sentences about shot selection and efficiency using {club_name}/{opponent} names"
 }}"""
 
             response = client.messages.create(
