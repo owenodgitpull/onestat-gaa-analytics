@@ -165,7 +165,9 @@ async def get_session(
         created_at=session.created_at,
         attendance_count=len(session.attendance_records),
         present_count=present,
-        attendance_records=attendance_responses
+        attendance_records=attendance_responses,
+        ai_summary=session.ai_summary,
+        ai_summary_generated_at=session.ai_summary_generated_at,
     )
 
 

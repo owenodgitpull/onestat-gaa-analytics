@@ -53,6 +53,8 @@ class TrainingSessionResponse(TrainingSessionBase):
 class TrainingSessionDetail(TrainingSessionResponse):
     """Detailed training session with attendance records."""
     attendance_records: list["AttendanceResponse"] = []
+    ai_summary: Optional[str] = None
+    ai_summary_generated_at: Optional[datetime] = None
 
 
 # ============ Attendance Schemas ============

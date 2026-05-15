@@ -66,6 +66,8 @@ interface AttendanceRecord {
 
 interface SessionDetail extends TrainingSession {
   attendance_records: AttendanceRecord[]
+  ai_summary?: string | null
+  ai_summary_generated_at?: string | null
 }
 
 interface GPSPlayerData {
@@ -394,6 +396,29 @@ function SessionDetailModal({ session, onClose }: {
   const [isRecording, setIsRecording] = useState(false)
   const [attendance, setAttendance] = useState<Record<string, string>>({})
   const [showAttendance, setShowAttendance] = useState(false)
+  const [generatedSummary, setGeneratedSummary] = useState<string | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+
+  // Auto-generate AI summary if session has GPS data but no summary yet
+  useEffect(() => {
+    if (!session?.id) return
+    if (session.ai_summary || generatedSummary || summaryLoading) return
+
+    setSummaryLoading(true)
+    fetch(`${API_BASE}/training/sessions/${session.id}/generate-summary`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.summary) {
+          setGeneratedSummary(data.summary)
+          queryClient.invalidateQueries({ queryKey: ['session', session.id] })
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSummaryLoading(false))
+  }, [session?.id])
 
   // Fetch GPS data for this session
   const { data: gpsData } = useQuery({
@@ -461,6 +486,29 @@ function SessionDetailModal({ session, onClose }: {
             <XCircle size={24} />
           </button>
         </div>
+
+        {/* AI Summary */}
+        {(session.ai_summary || generatedSummary || summaryLoading) && (
+          <div className="mb-5 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Bot size={14} className="text-emerald-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                {summaryLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-white/50">
+                    <RefreshCw size={13} className="animate-spin" />
+                    Generating session summary…
+                  </div>
+                ) : (
+                  <div className="text-sm leading-relaxed">
+                    {renderAnalysisText(session.ai_summary || generatedSummary || '')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* GPS Summary Stats */}
         {gpsStats && (

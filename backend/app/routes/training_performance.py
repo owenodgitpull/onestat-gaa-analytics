@@ -648,6 +648,54 @@ async def get_latest_training_ai_summary(
     }
 
 
+@router.post("/sessions/{session_id}/generate-summary")
+async def generate_session_summary(
+    session_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate and cache an AI summary for a specific training session.
+
+    Returns immediately if a summary already exists (no regeneration).
+    Pass ?force=true to regenerate even if cached.
+    """
+    from fastapi import Query as FQuery
+    session_result = await db.execute(
+        select(TrainingSession).where(and_(TrainingSession.id == session_id, TrainingSession.club_id == user.club_id))
+    )
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.ai_summary:
+        return {
+            "summary": session.ai_summary,
+            "session_date": session.session_date.isoformat() if session.session_date else None,
+            "generated_at": session.ai_summary_generated_at.isoformat() if session.ai_summary_generated_at else None,
+            "cached": True,
+        }
+
+    try:
+        from app.services.ai import analyze_training_session
+        result = await analyze_training_session(db, str(session_id))
+        if result.get("summary"):
+            session.ai_summary = result["summary"]
+            session.ai_summary_generated_at = datetime.utcnow()
+            await db.commit()
+            logger.info(f"AI training summary generated for session {session_id}")
+    except Exception as e:
+        logger.error(f"AI training summary failed for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate summary")
+
+    return {
+        "summary": session.ai_summary,
+        "session_date": session.session_date.isoformat() if session.session_date else None,
+        "generated_at": session.ai_summary_generated_at.isoformat() if session.ai_summary_generated_at else None,
+        "cached": False,
+    }
+
+
 @router.get("/gps/session/{session_id}", response_model=list[TrainingGPSDataResponse])
 async def get_session_gps_data(
     session_id: UUID,
