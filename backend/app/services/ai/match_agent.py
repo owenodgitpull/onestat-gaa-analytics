@@ -445,12 +445,14 @@ INSTRUCTIONS:
         # Prepare GPS summary for the AI
         gps_summary = {"player_count": len(gps_data), "players": []}
 
-        outfield_data = [p for p in gps_data if p.get("position", "").lower() != "goalkeeper"]
+        # Exclude unused subs (bench players who wore a device but never came on)
+        active_data = [p for p in gps_data if p.get("status") != "unused_substitute"]
+        outfield_data = [p for p in active_data if p.get("position", "").lower() != "goalkeeper"]
 
-        total_distance = sum(p.get("total_distance_m", 0) or 0 for p in gps_data)
-        total_hsr = sum(p.get("high_speed_running_m", 0) or 0 for p in gps_data)
-        total_sprints = sum(p.get("sprint_count", 0) or 0 for p in gps_data)
-        total_hmld = sum(p.get("hml_distance_m", 0) or 0 for p in gps_data)
+        total_distance = sum(p.get("total_distance_m", 0) or 0 for p in active_data)
+        total_hsr = sum(p.get("high_speed_running_m", 0) or 0 for p in active_data)
+        total_sprints = sum(p.get("sprint_count", 0) or 0 for p in active_data)
+        total_hmld = sum(p.get("hml_distance_m", 0) or 0 for p in active_data)
 
         outfield_distance = sum(p.get("total_distance_m", 0) or 0 for p in outfield_data)
         outfield_sprints = sum(p.get("sprint_count", 0) or 0 for p in outfield_data)
@@ -466,7 +468,7 @@ INSTRUCTIONS:
             "total_team_hmld_km": round(total_hmld / 1000, 1),
         }
 
-        for p in gps_data:
+        for p in active_data:
             is_gk = p.get("position", "").lower() == "goalkeeper"
             was_subbed = p.get("subbed_off_minute") is not None
             player_summary = {
@@ -532,7 +534,9 @@ Provide your analysis as a JSON object with this EXACT structure:
 }}
 
 ANALYSIS GUIDELINES:
+- Players with status "unused_substitute" wore a GPS device on the bench but never played — COMPLETELY IGNORE them in all analysis, alerts, and averages
 - NEVER flag the goalkeeper for low distance/activity — GKs typically cover 2-4km which is normal
+- Any max_speed_kmh above 38 km/h should be treated as a likely GPS spike/sensor error — do not cite it as a genuine achievement or use it for recovery recommendations
 - Players with a "subbed_off_minute" were DEFINITELY substituted — state as fact, do NOT say "possible tactical substitution". Evaluate their output relative to minutes played
 - Use positions for distance expectations: Midfielders 9-12km, Forwards/Defenders 7-10km, Goalkeeper 2-4km
 - Only flag outfield players who played the full match and are significantly below position benchmarks

@@ -788,13 +788,19 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
         if was_subbed:
             player_data["subbed_off_minute"] = sub_lookup[g.player_id]
 
-        # Outlier flags for outfield full-match players
-        if not is_gk and not was_subbed and g.total_distance_m and avg_distance > 0:
-            diff_pct = ((g.total_distance_m - avg_distance) / avg_distance) * 100
-            if diff_pct > 20:
-                player_data["workload_flag"] = "HIGH"
-            elif diff_pct < -20:
-                player_data["workload_flag"] = "LOW"
+        # Flag players who appear to have never come on (bench player with GPS device)
+        playing_mins = g.playing_minutes or g.duration_mins or 0
+        if playing_mins < 5 and not was_subbed:
+            player_data["status"] = "unused_substitute"
+            player_data["analysis_note"] = "Did not play — GPS device worn on bench only. Exclude from performance analysis."
+        else:
+            # Outlier flags for outfield full-match players only
+            if not is_gk and not was_subbed and g.total_distance_m and avg_distance > 0:
+                diff_pct = ((g.total_distance_m - avg_distance) / avg_distance) * 100
+                if diff_pct > 20:
+                    player_data["workload_flag"] = "HIGH"
+                elif diff_pct < -20:
+                    player_data["workload_flag"] = "LOW"
 
         players.append(player_data)
 
