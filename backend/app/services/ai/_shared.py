@@ -1533,10 +1533,12 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     top_scorers.sort(key=lambda x: x['total'], reverse=True)
 
     # Count other stats - use EventType and Team enums
-    turnovers_won = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_WON])
+    # turnovers_won includes interceptions and tackles (same logic as match stats page)
+    _turnover_won_types = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}
+    turnovers_won = len([e for e in events if e.team == Team.OWN and e.event_type in _turnover_won_types])
     turnovers_lost = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST])
     wides = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.WIDE])
-    opp_turnovers_won = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.TURNOVER_WON])
+    opp_turnovers_won = len([e for e in events if e.team == Team.OPPONENT and e.event_type in _turnover_won_types])
     opp_wides = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.WIDE])
 
     # Calculate shots and accuracy
@@ -2907,7 +2909,7 @@ async def get_player_form_trajectory(db: AsyncSession, player_id: str, window: i
         points = sum(1 for e in events if e.event_type == EventType.POINT)
         two_pts = sum(1 for e in events if e.event_type == EventType.TWO_POINT)
         total_score = goals * 3 + points + two_pts * 2
-        turnovers_won = sum(1 for e in events if e.event_type == EventType.TURNOVER_WON)
+        turnovers_won = sum(1 for e in events if e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON})
         turnovers_lost = sum(1 for e in events if e.event_type == EventType.TURNOVER_LOST)
 
         # GPS
