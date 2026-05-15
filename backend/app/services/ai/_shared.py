@@ -789,8 +789,13 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
             player_data["subbed_off_minute"] = sub_lookup[g.player_id]
 
         # Flag players who appear to have never come on (bench player with GPS device)
-        playing_mins = g.playing_minutes or g.duration_mins or 0
-        if playing_mins < 5 and not was_subbed:
+        # STATSports exports total session time (not playing time), so use distance/min as signal.
+        # Outfield players who played typically cover 70+ m/min; bench players show 20-40 m/min.
+        total_mins = (g.playing_minutes or g.duration_mins or 0)
+        distance_m = g.total_distance_m or 0
+        dist_per_min = (distance_m / total_mins) if total_mins > 0 else 0
+        is_unused_sub = not is_gk and not was_subbed and dist_per_min < 45 and distance_m < 5000
+        if is_unused_sub:
             player_data["status"] = "unused_substitute"
             player_data["analysis_note"] = "Did not play — GPS device worn on bench only. Exclude from performance analysis."
         else:
