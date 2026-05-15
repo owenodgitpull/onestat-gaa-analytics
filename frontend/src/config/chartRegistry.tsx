@@ -38,7 +38,7 @@ export const CANONICAL_CHARTS: ChartRegistryEntry[] = [
     description: 'How possessions convert through attacks, shots, and scores',
     category: 'Possession',
     render: ({ seasonDashboard }) =>
-      seasonDashboard ? <PossessionFunnel data={seasonDashboard.possession_funnel} /> : null,
+      seasonDashboard ? <PossessionFunnel data={seasonDashboard.possession_funnel} insight={seasonDashboard.possession_funnel?.insight} /> : null,
   },
   {
     id: 'kickout-trend',

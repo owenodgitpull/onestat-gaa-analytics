@@ -120,6 +120,14 @@ Events have x (0-100) and y (0-100) coordinates mapped to a real GAA pitch.
 - y < 33%: left side | y 33-67%: centre | y > 67%: right side
 
 Events include a "location" field with human-readable zone descriptions. Use these for tactical analysis — e.g. "3 turnovers inside our 45m" or "scoring 60% from inside the arc, left side".
+
+## Key Interpretations (do NOT get these backwards)
+- Possession %: >50% = we had MORE of the ball — dominant. 57% is GOOD, not a concern.
+- Turnover differential: POSITIVE = good (won more than lost). +1 means we edged the battle.
+- Opp kickout win %: % of the OPPONENT's kickouts that WE win — 35% means we won 35 of theirs.
+  Above 40% is dominant; 30-40% is competitive. Do NOT confuse with our own kickout retention.
+- Our kickout retention %: % of OUR OWN kickouts we keep. Above 60% is the target.
+- ACWR > 1.5 = high injury risk; ACWR 0.8-1.3 = optimal; "INSUFFICIENT BASELINE" = early season, not enough history yet — do NOT flag as risky.
 """
 
 
@@ -3273,20 +3281,27 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
     for pid, loads in player_loads.items():
         acute_loads = [w for d, w in loads if d >= acute_start]
         chronic_loads = [w for d, w in loads if d >= chronic_start]
+        # Sessions older than 7 days (needed for a meaningful chronic baseline)
+        older_loads = [w for d, w in loads if chronic_start <= d < acute_start]
 
         acute_total = sum(acute_loads)
-        chronic_weekly_avg = sum(chronic_loads) / 4  # 4-week average per week
+        chronic_weekly_avg = sum(chronic_loads) / 4  # standard 4-week denominator
 
-        acwr = round(acute_total / max(chronic_weekly_avg, 0.01), 2)
-
-        if acwr > 1.5:
-            risk = "HIGH — injury risk (overload)"
-        elif acwr > 1.3:
-            risk = "MODERATE — approaching overload"
-        elif acwr < 0.8:
-            risk = "LOW LOAD — possible detraining"
+        # ACWR is unreliable without at least some data outside the acute window —
+        # dividing by 4 with only 1 week of data would give a spurious 4.0 ratio.
+        if not older_loads:
+            acwr = None
+            risk = "INSUFFICIENT BASELINE — only first-session data available"
         else:
-            risk = "OPTIMAL"
+            acwr = round(acute_total / max(chronic_weekly_avg, 0.01), 2)
+            if acwr > 1.5:
+                risk = "HIGH — injury risk (overload)"
+            elif acwr > 1.3:
+                risk = "MODERATE — approaching overload"
+            elif acwr < 0.8:
+                risk = "LOW LOAD — possible detraining"
+            else:
+                risk = "OPTIMAL"
 
         # Monotony: SD of daily loads over last 7 days
         daily_totals = defaultdict(float)
@@ -3317,11 +3332,11 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
             "strain": strain,
         })
 
-    # Sort: high risk first
+    # Sort: high risk first (insufficient baseline goes last — not a real flag)
     risk_order = {"HIGH — injury risk (overload)": 0, "MODERATE — approaching overload": 1, "LOW LOAD — possible detraining": 2, "OPTIMAL": 3}
-    assessments.sort(key=lambda a: risk_order.get(a["risk"], 3))
+    assessments.sort(key=lambda a: risk_order.get(a["risk"], 4))
 
-    flagged = [a for a in assessments if "OPTIMAL" not in a["risk"]]
+    flagged = [a for a in assessments if a["risk"] not in ("OPTIMAL", ) and "INSUFFICIENT" not in a["risk"]]
 
     return safe_json({
         "assessment_date": str(now.date()),

@@ -1025,9 +1025,28 @@ Use the tools to gather data before providing your analysis.
 - When relevant, link a KPI trend to the upcoming fixture
 - Do NOT force a fixture reference into every insight — only where it adds genuine value"""
 
+        funnel = kpi_data.get("funnel_summary", {})
+        funnel_section = ""
+        if funnel:
+            funnel_section = f"""
+## Possession Funnel Rates (season avg)
+- Possessions → Attacks: {funnel.get('attack_rate', 0)}%
+- Attacks → Shots: {funnel.get('shot_rate', 0)}%
+- Shots → Scores: {funnel.get('score_rate', 0)}%
+- Opponent: Attack {funnel.get('opponent_attack_rate', 0)}%, Shot {funnel.get('opponent_shot_rate', 0)}%, Score {funnel.get('opponent_score_rate', 0)}%
+Generate a 1-2 sentence insight for the `possession_funnel` key comparing our funnel efficiency to the opponent's."""
+
         base += f"""
 ## Task: Generate KPI Insights
 Generate a SHORT, punchy insight for each KPI card.
+
+## CRITICAL metric interpretations — get these right:
+- turnover_diff: POSITIVE = GOOD. +1 or higher = we win more than we lose. Never call positive a draw or concern.
+- kickout_retention: OUR OWN kickout retention %. Above 60% is the target.
+- opp_kickout_win: % of the OPPONENT'S kickouts that WE win. 35% = we won 35% of theirs.
+  Do NOT confuse with kickout_retention. Do NOT say we "win 65%" when the value is 35%.
+- possession %: >50% = dominant. 57% means we had MORE ball, which is GOOD.
+- avg_scored / avg_conceded: higher scored = better; lower conceded = better.
 
 ## Rules
 - Each insight MUST be 1 sentence, max 15 words
@@ -1044,8 +1063,9 @@ Generate a SHORT, punchy insight for each KPI card.
 
 ## KPI Cards
 {chr(10).join(cards_summary)}
+{funnel_section}
 
-Return ONLY valid JSON: {{"productivity": "...", "turnover_diff": "...", "kickout_retention": "...", "shot_efficiency": "...", "fouls_per_game": "...", "avg_scored": "...", "avg_conceded": "..."}}
+Return ONLY valid JSON: {{"productivity": "...", "turnover_diff": "...", "kickout_retention": "...", "opp_kickout_win": "...", "shot_efficiency": "...", "fouls_per_game": "...", "avg_scored": "...", "avg_conceded": "...", "possession_funnel": "..."}}
 """
 
     elif task == "insight_alerts":

@@ -134,11 +134,22 @@ class SeasonDashboardService:
         try:
             from app.services.ai import generate_kpi_insights, get_fixture_context
             fixture_ctx = await get_fixture_context(db, club_id=club_id)
+            # Include possession funnel rates so AI can generate a funnel insight
+            kpi["funnel_summary"] = {
+                "attack_rate": funnel.get("attack_rate", 0),
+                "shot_rate": funnel.get("shot_rate", 0),
+                "score_rate": funnel.get("score_rate", 0),
+                "opponent_attack_rate": funnel.get("opponent_attack_rate", 0),
+                "opponent_shot_rate": funnel.get("opponent_shot_rate", 0),
+                "opponent_score_rate": funnel.get("opponent_score_rate", 0),
+            }
             insights = await _get_cached_kpi_insights(db, kpi, fixture_ctx, club_id)
             logger.info(f"KPI insights result: {len(insights)} keys returned: {list(insights.keys()) if insights else 'empty'}")
             if insights:
                 for card in kpi.get("cards", []):
                     card["insight"] = insights.get(card["key"], "")
+                if insights.get("possession_funnel"):
+                    funnel["insight"] = insights["possession_funnel"]
         except Exception as e:
             logger.warning(f"KPI insights generation failed: {e}", exc_info=True)
 

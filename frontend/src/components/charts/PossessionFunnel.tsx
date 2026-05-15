@@ -13,12 +13,13 @@ import type { PossessionFunnelData } from '@/services/api'
 
 interface PossessionFunnelProps {
   data: PossessionFunnelData
+  insight?: string
 }
 
 const OWN_COLORS = ['#10b981', '#06b6d4', '#10b981', '#34d399']
 const OPP_COLORS = ['#f97316', '#fb923c', '#ef4444', '#f87171']
 
-export default function PossessionFunnel({ data }: PossessionFunnelProps) {
+export default function PossessionFunnel({ data, insight }: PossessionFunnelProps) {
   const clubName = useClubName()
   const [showOpponent, setShowOpponent] = useState(false)
 
@@ -171,6 +172,12 @@ export default function PossessionFunnel({ data }: PossessionFunnelProps) {
           <div className="text-[10px] text-white/30">of shots</div>
         </div>
       </div>
+
+      {insight && (
+        <div className="mt-3 pt-3 border-t border-white/10">
+          <p className="text-xs text-white/60 leading-relaxed">{insight}</p>
+        </div>
+      )}
     </div>
   )
 }
