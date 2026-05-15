@@ -646,6 +646,7 @@ export interface PossessionFunnelData {
   opponent_attack_rate: number;
   opponent_shot_rate: number;
   opponent_score_rate: number;
+  insight?: string;
 }
 
 export interface KickoutTrendMatch {
