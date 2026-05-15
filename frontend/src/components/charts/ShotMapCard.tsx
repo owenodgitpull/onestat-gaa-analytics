@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { MapPin } from 'lucide-react'
 import type { ShotLocation, MatchTrend } from '@/services/api'
 
@@ -26,22 +26,51 @@ const SHOT_TYPE_CONFIG: Record<ShotType, { label: string; color: string; match: 
     match: (s) => s.is_score && ['two_point', 'two_point_free'].includes(s.event_type),
   },
   miss: {
-    label: 'Missed',
+    label: 'Off Target',
     color: '#ef4444',
     match: (s) => !s.is_score,
   },
+}
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  goal: 'Goal',
+  point: 'Point',
+  point_free: 'Point (Free)',
+  forty_five: "45'",
+  two_point: '2-Pointer',
+  two_point_free: '2-Pointer (Free)',
+  wide: 'Wide',
+  wide_free: 'Wide (Free)',
+  saved: 'Saved',
+  saved_goal: 'Goal Saved',
+  short: 'Dropped Short',
+  forty_five_missed: "45' Missed",
+  penalty_saved: 'Penalty Saved',
+  penalty_missed: 'Penalty Missed',
+}
+
+function getEventLabel(event_type: string): string {
+  return EVENT_TYPE_LABELS[event_type] ?? event_type.replace(/_/g, ' ')
+}
+
+interface TooltipState {
+  shot: ShotLocation
+  x: number
+  y: number
 }
 
 export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardProps) {
   const [shotFilter, setShotFilter] = useState<'all' | 'own' | 'opponent'>('own')
   const [shotMatchRange, setShotMatchRange] = useState<'all' | '3' | '5'>('all')
   const [visibleTypes, setVisibleTypes] = useState<Set<ShotType>>(new Set(['goal', 'point', 'two_point', 'miss']))
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const toggleType = (type: ShotType) => {
     setVisibleTypes(prev => {
       const next = new Set(prev)
       if (next.has(type)) {
-        if (next.size > 1) next.delete(type) // Don't allow empty
+        if (next.size > 1) next.delete(type)
       } else {
         next.add(type)
       }
@@ -49,12 +78,10 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
     })
   }
 
-  // Filter shots by team
   const teamFilteredShots = shotFilter === 'all'
     ? shotLocations
     : shotLocations.filter(s => s.team === shotFilter)
 
-  // Filter shots by match range
   const hasMatchIds = teamFilteredShots.length > 0 && !!teamFilteredShots[0].match_id
   const recentMatchIds = (() => {
     if (shotMatchRange === 'all' || !hasMatchIds) return null
@@ -67,7 +94,6 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
     ? teamFilteredShots.filter(s => recentMatchIds.has(s.match_id))
     : teamFilteredShots
 
-  // Filter by shot type
   const filteredShots = useMemo(() =>
     rangeFilteredShots.filter(s => {
       for (const [type, config] of Object.entries(SHOT_TYPE_CONFIG)) {
@@ -78,7 +104,6 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
     [rangeFilteredShots, visibleTypes]
   )
 
-  // Stats from range-filtered (before type filter) for the stat bar
   const totalShots = rangeFilteredShots.length
   const scoredShots = rangeFilteredShots.filter(s => s.is_score)
   const goals = rangeFilteredShots.filter(s => SHOT_TYPE_CONFIG.goal.match(s))
@@ -86,7 +111,6 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
   const twoPointers = rangeFilteredShots.filter(s => SHOT_TYPE_CONFIG.two_point.match(s))
   const accuracy = totalShots > 0 ? Math.round((scoredShots.length / totalShots) * 100) : 0
 
-  // Get color for a shot on the map
   const getShotColor = (shot: ShotLocation): string => {
     for (const config of Object.values(SHOT_TYPE_CONFIG)) {
       if (config.match(shot)) return config.color
@@ -94,7 +118,22 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
     return '#ef4444'
   }
 
-  // Empty state — after hooks
+  const showTooltip = (shot: ShotLocation, e: React.MouseEvent | React.TouchEvent) => {
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    let clientX: number, clientY: number
+    if ('touches' in e) {
+      clientX = e.touches[0].clientX
+      clientY = e.touches[0].clientY
+    } else {
+      clientX = e.clientX
+      clientY = e.clientY
+    }
+    setTooltip({ shot, x: clientX - rect.left, y: clientY - rect.top })
+  }
+
+  const hideTooltip = () => setTooltip(null)
+
   if (shotLocations.length === 0) {
     return (
       <div className="glass-card p-6 h-full flex flex-col">
@@ -111,7 +150,6 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
 
   return (
     <div className="glass-card p-4 sm:p-6 h-full flex flex-col">
-      {/* Header row: title + team filter */}
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-lg font-bold flex items-center gap-2 text-white shrink-0">
           <MapPin size={18} className="text-white" />
@@ -134,7 +172,6 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
         </div>
       </div>
 
-      {/* Controls row: match range + shot type toggles */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div className="flex gap-1">
           {(Object.entries(SHOT_TYPE_CONFIG) as [ShotType, typeof SHOT_TYPE_CONFIG[ShotType]][]).map(([type, config]) => {
@@ -183,7 +220,12 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
         )}
       </div>
 
-      <div className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-xl overflow-hidden flex-1 min-h-0" style={{ aspectRatio: '16/10' }}>
+      <div
+        ref={containerRef}
+        className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-xl overflow-hidden flex-1 min-h-0"
+        style={{ aspectRatio: '16/10' }}
+        onMouseLeave={hideTooltip}
+      >
         <svg viewBox="0 0 2332 1446" className="w-full h-full">
           <rect width="2332" height="1446" fill="#2d5016" />
           <image href="/pitch-svg.svg" width="2332" height="1446" preserveAspectRatio="xMidYMid meet" />
@@ -192,10 +234,37 @@ export default function ShotMapCard({ shotLocations, matchTrends }: ShotMapCardP
             const y = (shot.y / 100) * 1167 + 123
             const color = getShotColor(shot)
             return (
-              <circle key={idx} cx={x} cy={y} r="18" fill={color} stroke="white" strokeWidth="3" opacity="0.85" />
+              <circle
+                key={idx}
+                cx={x}
+                cy={y}
+                r="22"
+                fill={color}
+                stroke="white"
+                strokeWidth="3"
+                opacity="0.85"
+                className="cursor-pointer"
+                onMouseEnter={(e) => showTooltip(shot, e)}
+                onTouchStart={(e) => { e.preventDefault(); showTooltip(shot, e) }}
+                onTouchEnd={hideTooltip}
+              />
             )
           })}
         </svg>
+
+        {tooltip && (
+          <div
+            className="absolute z-10 pointer-events-none bg-black/90 border border-white/20 rounded-lg px-3 py-2 text-xs text-white shadow-xl"
+            style={{
+              left: tooltip.x + 12,
+              top: tooltip.y - 36,
+              transform: tooltip.x > (containerRef.current?.clientWidth ?? 0) / 2 ? 'translateX(-110%)' : undefined,
+            }}
+          >
+            <div className="font-semibold">{getEventLabel(tooltip.shot.event_type)}</div>
+            <div className="text-white/60 mt-0.5">{tooltip.shot.is_score ? 'Scored' : 'Not scored'}</div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-5 gap-2 mt-4">
