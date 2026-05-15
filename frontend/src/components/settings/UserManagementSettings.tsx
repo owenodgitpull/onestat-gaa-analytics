@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock, RefreshCw } from 'lucide-react'
+import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock, RefreshCw, Send } from 'lucide-react'
 import { clubMembersAPI } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 // ClubContext no longer needed — invite code fetched from API
@@ -35,6 +35,8 @@ export default function UserManagementSettings() {
   const [inviting, setInviting] = useState(false)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
   const [inviteError, setInviteError] = useState<string | null>(null)
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [resendSuccess, setResendSuccess] = useState<string | null>(null)
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -117,6 +119,21 @@ export default function UserManagementSettings() {
       setInviteError(err.message || 'Failed to send invite')
     } finally {
       setInviting(false)
+    }
+  }
+
+  const handleResendInvite = async (invitationId: string, email: string) => {
+    setResendingId(invitationId)
+    setResendSuccess(null)
+    try {
+      await clubMembersAPI.resendInvitation(invitationId)
+      setResendSuccess(`Invitation resent to ${email}`)
+      await fetchMembers()
+      setTimeout(() => setResendSuccess(null), 4000)
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend invitation')
+    } finally {
+      setResendingId(null)
     }
   }
 
@@ -220,20 +237,26 @@ export default function UserManagementSettings() {
         {inviteSuccess && (
           <p className="text-sm text-emerald-400">{inviteSuccess}</p>
         )}
+        {resendSuccess && (
+          <p className="text-sm text-emerald-400">{resendSuccess}</p>
+        )}
 
-        {/* Pending invitations */}
-        {invitations.filter(i => i.status === 'pending').length > 0 && (
+        {/* Pending + expired invitations */}
+        {invitations.filter(i => i.status === 'pending' || i.status === 'expired').length > 0 && (
           <div className="pt-3 border-t border-white/[0.06] space-y-2">
             <h4 className="text-xs font-medium text-white/40 flex items-center gap-1.5">
-              <Clock size={12} /> Pending Invitations
+              <Clock size={12} /> Invitations
             </h4>
-            {invitations.filter(i => i.status === 'pending').map(inv => (
+            {invitations.filter(i => i.status === 'pending' || i.status === 'expired').map(inv => (
               <div key={inv.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-                <Mail size={14} className="text-amber-400/60 flex-shrink-0" />
+                <Mail size={14} className={inv.status === 'expired' ? 'text-white/20 flex-shrink-0' : 'text-amber-400/60 flex-shrink-0'} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white/70 truncate">{inv.invitee_email}</p>
+                  <p className={`text-sm truncate ${inv.status === 'expired' ? 'text-white/40' : 'text-white/70'}`}>{inv.invitee_email}</p>
                   <p className="text-[10px] text-white/30">
-                    Sent {new Date(inv.created_at).toLocaleDateString()} · Expires {new Date(inv.expires_at).toLocaleDateString()}
+                    {inv.status === 'expired'
+                      ? `Expired ${new Date(inv.expires_at).toLocaleDateString()}`
+                      : `Sent ${new Date(inv.created_at).toLocaleDateString()} · Expires ${new Date(inv.expires_at).toLocaleDateString()}`
+                    }
                   </p>
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full border ${
@@ -243,6 +266,21 @@ export default function UserManagementSettings() {
                 }`}>
                   {inv.role === 'club_admin' ? 'Admin' : 'Player'}
                 </span>
+                {inv.status === 'expired' && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">Expired</span>
+                )}
+                <button
+                  onClick={() => handleResendInvite(inv.id, inv.invitee_email)}
+                  disabled={resendingId === inv.id}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 border border-white/10 text-white/50 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-50 flex-shrink-0"
+                  title="Send a fresh invitation email"
+                >
+                  {resendingId === inv.id
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <Send size={12} />
+                  }
+                  {resendingId === inv.id ? 'Sending…' : 'Resend'}
+                </button>
               </div>
             ))}
           </div>

@@ -302,3 +302,48 @@ async def list_club_invitations(
             for inv in invitations
         ]
     }
+
+
+@router.post("/members/invitations/{invitation_id}/resend")
+async def resend_invitation(
+    invitation_id: str,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resend a stale or expired invitation with a fresh 7-day token."""
+    result = await db.execute(
+        select(TeamInvitation).where(
+            TeamInvitation.id == invitation_id,
+            TeamInvitation.club_id == user.club_id,
+            TeamInvitation.status == "pending",  # only pending rows (includes expired-but-not-cancelled)
+        )
+    )
+    invitation = result.scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found or already accepted")
+
+    # Rotate the token and reset the expiry window
+    invitation.token = secrets.token_urlsafe(48)
+    invitation.expires_at = datetime.utcnow() + timedelta(days=INVITATION_EXPIRY_DAYS)
+    await db.commit()
+    await db.refresh(invitation)
+
+    inviter_result = await db.execute(select(User).where(User.id == user.user_id))
+    inviter = inviter_result.scalar_one()
+    club_result = await db.execute(select(Club).where(Club.id == user.club_id))
+    club = club_result.scalar_one()
+
+    try:
+        from app.services.invitation_email_service import send_invitation_email
+        send_invitation_email(
+            invitee_email=invitation.invitee_email,
+            inviter_name=inviter.name,
+            club_name=club.name,
+            token=invitation.token,
+            role=invitation.role,
+        )
+    except Exception as e:
+        logger.error(f"Failed to resend invitation email to {invitation.invitee_email}: {e}")
+
+    logger.info(f"Invitation resent: {invitation.invitee_email} by {user.email}")
+    return {"detail": f"Invitation resent to {invitation.invitee_email} — they have 7 days to accept."}
