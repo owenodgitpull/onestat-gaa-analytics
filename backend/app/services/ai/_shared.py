@@ -1752,8 +1752,9 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
     if not matches:
         return safe_json({"message": "No completed matches yet"})
 
-    # Get all events
-    events_result = await db.execute(select(MatchEvent))
+    # Get events only for the filtered matches (scoped to club)
+    match_ids = [m.id for m in matches]
+    events_result = await db.execute(select(MatchEvent).where(MatchEvent.match_id.in_(match_ids)))
     events = events_result.scalars().all()
 
     # Calculate totals - compare against EventType enum
