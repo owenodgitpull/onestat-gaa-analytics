@@ -1537,6 +1537,12 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     _turnover_won_types = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}
     turnovers_won = len([e for e in events if e.team == Team.OWN and e.event_type in _turnover_won_types])
     turnovers_lost = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST])
+    unforced_errors = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.UNFORCED_ERROR])
+    blocks = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.BLOCK])
+    fouls_committed = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FOUL_COMMITTED])
+    frees_won = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FREE_WON])
+    opp_fouls_committed = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.FOUL_COMMITTED])
+    opp_unforced_errors = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.UNFORCED_ERROR])
     wides = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.WIDE])
     opp_turnovers_won = len([e for e in events if e.team == Team.OPPONENT and e.event_type in _turnover_won_types])
     opp_wides = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.WIDE])
@@ -1600,6 +1606,10 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
         "stats": {
             "turnovers_won": turnovers_won,
             "turnovers_lost": turnovers_lost,
+            "unforced_errors": unforced_errors,
+            "blocks": blocks,
+            "fouls_committed": fouls_committed,
+            "frees_won": frees_won,
             "wides": wides,
             "team_total_shots": tm_total_shots,
             "team_accuracy": tm_accuracy,
@@ -1607,7 +1617,9 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             "opponent_total_shots": opp_total_shots,
             "opponent_accuracy": opp_accuracy,
             "opponent_possession_percentage": opp_possession,
-            "opponent_turnovers_won": opp_turnovers_won
+            "opponent_turnovers_won": opp_turnovers_won,
+            "opponent_fouls_committed": opp_fouls_committed,
+            "opponent_unforced_errors": opp_unforced_errors,
         },
         "recent_events": [
             {
@@ -1911,6 +1923,8 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
 
 async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=None) -> str:
     """Analyze scoring patterns by zone."""
+    if not match_id and not club_id:
+        return safe_json({"error": "match_id or club_id required"})
     scoring_event_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SHORT]
     query = select(MatchEvent).where(
         MatchEvent.team == Team.OWN,
@@ -1965,6 +1979,8 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=N
 
 async def get_turnover_analysis(db: AsyncSession, match_id: str = None, club_id=None) -> str:
     """Analyze turnover patterns."""
+    if not match_id and not club_id:
+        return safe_json({"error": "match_id or club_id required"})
     turnover_types = [EventType.TURNOVER_WON, EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR]
     query = select(MatchEvent).where(
         MatchEvent.event_type.in_(turnover_types)
