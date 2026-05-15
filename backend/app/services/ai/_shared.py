@@ -1780,32 +1780,44 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
     tm_total = tm_goals * 3 + tm_points + tm_two_pts * 2
     opp_total = opp_goals * 3 + opp_points + opp_two_pts * 2
 
-    # Win/Loss record
+    # Win/Loss record + per-match results
     wins = 0
     losses = 0
     draws = 0
+    match_results = []
 
     scoring_events = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
 
-    for match in matches:
+    for match in sorted(matches, key=lambda m: m.match_date or m.created_at):
         match_events = [e for e in events if str(e.match_id) == str(match.id)]
-        d_score = sum(
-            3 if e.event_type == EventType.GOAL else (2 if e.event_type == EventType.TWO_POINT else 1)
-            for e in match_events if e.team == Team.OWN and e.event_type in scoring_events
-        )
-        o_score = sum(
-            3 if e.event_type == EventType.GOAL else (2 if e.event_type == EventType.TWO_POINT else 1)
-            for e in match_events if e.team == Team.OPPONENT and e.event_type in scoring_events
-        )
+        d_goals = sum(1 for e in match_events if e.team == Team.OWN and e.event_type == EventType.GOAL)
+        d_pts = sum(1 for e in match_events if e.team == Team.OWN and e.event_type == EventType.POINT)
+        d_2pts = sum(1 for e in match_events if e.team == Team.OWN and e.event_type == EventType.TWO_POINT)
+        d_score = d_goals * 3 + d_pts + d_2pts * 2
+        o_goals = sum(1 for e in match_events if e.team == Team.OPPONENT and e.event_type == EventType.GOAL)
+        o_pts = sum(1 for e in match_events if e.team == Team.OPPONENT and e.event_type == EventType.POINT)
+        o_2pts = sum(1 for e in match_events if e.team == Team.OPPONENT and e.event_type == EventType.TWO_POINT)
+        o_score = o_goals * 3 + o_pts + o_2pts * 2
 
-        if d_score > o_score:
+        result = "W" if d_score > o_score else "L" if d_score < o_score else "D"
+        if result == "W":
             wins += 1
-        elif d_score < o_score:
+        elif result == "L":
             losses += 1
         else:
             draws += 1
 
+        match_results.append({
+            "match_id": str(match.id),
+            "opponent": match.opponent,
+            "date": match.match_date.strftime("%Y-%m-%d") if match.match_date else None,
+            "result": result,
+            "our_score": f"{d_goals}-{d_2pts}-{d_pts} ({d_score}pts)" if d_2pts else f"{d_goals}-{d_pts} ({d_score}pts)",
+            "opp_score": f"{o_goals}-{o_2pts}-{o_pts} ({o_score}pts)" if o_2pts else f"{o_goals}-{o_pts} ({o_score}pts)",
+        })
+
     return safe_json({
+        "NOTE": "These are SEASON TOTALS across all matches — NOT a single match score. Use get_match_summary(match_id) for per-match detail.",
         "matches_played": len(matches),
         "record": {
             "wins": wins,
@@ -1813,14 +1825,17 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
             "draws": draws,
             "win_rate": round(wins / max(1, len(matches)) * 100, 1)
         },
-        "scoring": {
+        "match_results": match_results,
+        "season_scoring_totals": {
+            "NOTE": "Sum across all matches — not a match score",
             "total_goals": tm_goals,
             "total_points": tm_points,
             "total_two_pointers": tm_two_pts,
             "total_score": tm_total,
             "avg_per_match": round(tm_total / max(1, len(matches)), 1)
         },
-        "defense": {
+        "season_defense_totals": {
+            "NOTE": "Sum across all matches — not a match score",
             "goals_conceded": opp_goals,
             "points_conceded": opp_points,
             "two_pointers_conceded": opp_two_pts,

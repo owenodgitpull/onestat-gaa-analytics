@@ -1434,7 +1434,15 @@ def _build_season_user_message(task: str, context: dict) -> str:
         session_id = context.get("session_id", "")
         return f"Summarize this training session (ID: {session_id}). Use get_training_session_gps to fetch the data."
     elif task == "weekly_brief":
-        return "Generate the weekly brief. Start by using get_team_season_stats, get_team_gps_summary, and get_workload_risk_assessment to gather data. Then investigate individual players who stand out. Return JSON."
+        return (
+            "Generate the weekly brief. "
+            "1) Call get_team_season_stats first — it returns per-match results with actual scores AND season totals. "
+            "Use the match_results array for individual game scores; do NOT use season_scoring_totals as a match score. "
+            "2) Call get_match_summary with the most recent match_id for detailed stats (possession, turnovers, shots). "
+            "3) Call get_team_gps_summary and get_workload_risk_assessment for physical state. "
+            "4) Investigate standout individual players if needed. "
+            "Return JSON."
+        )
     else:
         return "Provide a comprehensive season review. Use tools to gather all available data."
 
