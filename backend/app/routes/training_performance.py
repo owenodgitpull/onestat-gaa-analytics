@@ -136,8 +136,15 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                 # Store raw extracted text for reference
                 upload_log.raw_extracted_text = json.dumps(extracted_data) if isinstance(extracted_data, dict) else str(extracted_data)
 
-                # Get players to match names
-                players_query = select(Player)
+                # Get the club_id for this session so we scope players correctly
+                session_for_club = await db.execute(
+                    select(TrainingSession).where(TrainingSession.id == session_id)
+                )
+                session_obj = session_for_club.scalar_one_or_none()
+                club_id_for_gps = session_obj.club_id if session_obj else None
+
+                # Get players scoped to this club only
+                players_query = select(Player).where(Player.club_id == club_id_for_gps) if club_id_for_gps else select(Player).where(False)
                 players_result = await db.execute(players_query)
                 all_players = list(players_result.scalars().all())
 
