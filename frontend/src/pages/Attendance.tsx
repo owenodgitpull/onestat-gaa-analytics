@@ -693,6 +693,7 @@ function TrainingLeaderboard({ leaderboard, squadAverages }: { leaderboard: Lead
   const activeMetric = metrics.find(m => m.key === metric)!
   const sorted = [...leaderboard].sort((a, b) => activeMetric.getValue(b) - activeMetric.getValue(a))
   const squadAvg = squadAverages[activeMetric.avgField] || 0
+  const hasData = sorted.some(p => activeMetric.getValue(p) > 0)
 
   return (
     <div className="glass-card p-6">
@@ -719,8 +720,14 @@ function TrainingLeaderboard({ leaderboard, squadAverages }: { leaderboard: Lead
         ))}
       </div>
 
+      {!hasData && (
+        <div className="text-center text-white/40 text-sm py-6">
+          No {activeMetric.label.toLowerCase()} data recorded yet — check your GPS file includes this column
+        </div>
+      )}
+
       {/* Leaderboard rows */}
-      <div className="space-y-0.5">
+      <div className={`space-y-0.5 ${!hasData ? 'hidden' : ''}`}>
         {/* Header */}
         <div className="grid grid-cols-[2rem_1fr_5rem_5rem] gap-2 text-xs text-white/40 px-2 pb-2 border-b border-white/10">
           <span className="text-center">#</span>

@@ -477,7 +477,7 @@ def _parse_csv_local(content: bytes) -> dict:
     hsr_col = find_col("high speed running", "hsr")
     sprint_dist_col = find_col("sprint distance")
     max_speed_col = find_col("max speed", "max vel", "top speed")
-    sprint_count_col = find_col("sprints", "sprint count", "number of sprints")
+    sprint_count_col = find_col("sprints", "sprint count", "number of sprints", "total sprints", "sprint events", "fast runs", "sprint no", "no of sprints", "count of sprint")
     accel_col = find_col("accelerations", "accel count")
     decel_col = find_col("decelerations", "decel count")
     dsl_col = find_col("dynamic stress load", "dsl", "stress load")
