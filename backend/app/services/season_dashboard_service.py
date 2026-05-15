@@ -1109,31 +1109,33 @@ class SeasonDashboardService:
         n = len(matches)
 
         # --- Fresh per-match queries ---
-        # Turnovers won/lost per match
+        # Turnovers won/lost per match (consistent with KPI card: interceptions counted both ways)
         to_result = await db.execute(
-            select(MatchEvent.match_id, MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_([
                         EventType.TURNOVER_WON, EventType.TURNOVER_LOST,
+                        EventType.INTERCEPTION, EventType.TACKLE_WON,
                         EventType.UNFORCED_ERROR,
                     ]),
                 )
             )
-            .group_by(MatchEvent.match_id, MatchEvent.event_type)
+            .group_by(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type)
         )
         match_to = {}
         for row in to_result:
             mid = row.match_id
             match_to.setdefault(mid, {"won": 0, "lost": 0, "errors": 0})
-            if row.event_type == EventType.TURNOVER_WON:
-                match_to[mid]["won"] = row.cnt
-            elif row.event_type == EventType.TURNOVER_LOST:
-                match_to[mid]["lost"] = row.cnt
-            elif row.event_type == EventType.UNFORCED_ERROR:
-                match_to[mid]["errors"] = row.cnt
+            if row.team == Team.OWN and row.event_type in (EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON):
+                match_to[mid]["won"] += row.cnt
+            elif row.team == Team.OWN and row.event_type == EventType.TURNOVER_LOST:
+                match_to[mid]["lost"] += row.cnt
+            elif row.team == Team.OPPONENT and row.event_type in (EventType.INTERCEPTION, EventType.TACKLE_WON):
+                match_to[mid]["lost"] += row.cnt
+            elif row.team == Team.OWN and row.event_type == EventType.UNFORCED_ERROR:
+                match_to[mid]["errors"] += row.cnt
 
         # Fouls per match
         foul_result = await db.execute(
@@ -1649,20 +1651,32 @@ class SeasonDashboardService:
         match_ids = [m.id for m in matches]
 
         # --- Turnover differential ---
+        # Won = own TURNOVER_WON + own INTERCEPTION + own TACKLE_WON
+        # Lost = own TURNOVER_LOST + opp INTERCEPTION + opp TACKLE_WON (symmetric)
         to_result = await db.execute(
-            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            select(MatchEvent.team, MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OWN,
-                    MatchEvent.event_type.in_([EventType.TURNOVER_WON, EventType.TURNOVER_LOST]),
+                    MatchEvent.event_type.in_([
+                        EventType.TURNOVER_WON, EventType.TURNOVER_LOST,
+                        EventType.INTERCEPTION, EventType.TACKLE_WON,
+                    ]),
                 )
             )
-            .group_by(MatchEvent.event_type)
+            .group_by(MatchEvent.team, MatchEvent.event_type)
         )
-        to_counts = {row.event_type: row.cnt for row in to_result}
-        t_won = to_counts.get(EventType.TURNOVER_WON, 0)
-        t_lost = to_counts.get(EventType.TURNOVER_LOST, 0)
+        to_counts = {(row.team, row.event_type): row.cnt for row in to_result}
+        t_won = (
+            to_counts.get((Team.OWN, EventType.TURNOVER_WON), 0) +
+            to_counts.get((Team.OWN, EventType.INTERCEPTION), 0) +
+            to_counts.get((Team.OWN, EventType.TACKLE_WON), 0)
+        )
+        t_lost = (
+            to_counts.get((Team.OWN, EventType.TURNOVER_LOST), 0) +
+            to_counts.get((Team.OPPONENT, EventType.INTERCEPTION), 0) +
+            to_counts.get((Team.OPPONENT, EventType.TACKLE_WON), 0)
+        )
         turnover_diff = t_won - t_lost
 
         # --- Kickout retention (own kickouts) ---

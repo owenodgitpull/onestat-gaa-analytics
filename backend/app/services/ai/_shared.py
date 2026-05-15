@@ -1541,19 +1541,24 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     top_scorers.sort(key=lambda x: x['total'], reverse=True)
 
     # Count other stats - use EventType and Team enums
-    # turnovers_won includes interceptions and tackles (same logic as match stats page)
+    # turnovers_won = own TURNOVER_WON + own INTERCEPTION + own TACKLE_WON
+    # turnovers_lost = own TURNOVER_LOST + opp INTERCEPTION + opp TACKLE_WON (symmetric with opp won count)
     _turnover_won_types = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}
     turnovers_won = len([e for e in events if e.team == Team.OWN and e.event_type in _turnover_won_types])
-    turnovers_lost = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST])
+    turnovers_lost = (
+        len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST]) +
+        len([e for e in events if e.team == Team.OPPONENT and e.event_type in {EventType.INTERCEPTION, EventType.TACKLE_WON}])
+    )
     unforced_errors = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.UNFORCED_ERROR])
     blocks = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.BLOCK])
     fouls_committed = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FOUL_COMMITTED])
     frees_won = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FREE_WON])
     opp_fouls_committed = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.FOUL_COMMITTED])
     opp_unforced_errors = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.UNFORCED_ERROR])
-    wides = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.WIDE])
+    _wide_types = {EventType.WIDE, EventType.WIDE_FREE}
+    wides = len([e for e in events if e.team == Team.OWN and e.event_type in _wide_types])
     opp_turnovers_won = len([e for e in events if e.team == Team.OPPONENT and e.event_type in _turnover_won_types])
-    opp_wides = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.WIDE])
+    opp_wides = len([e for e in events if e.team == Team.OPPONENT and e.event_type in _wide_types])
 
     # Calculate shots and accuracy
     scoring_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
