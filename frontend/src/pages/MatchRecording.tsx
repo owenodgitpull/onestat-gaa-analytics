@@ -384,7 +384,7 @@ export default function MatchRecording() {
   useEffect(() => {
     if (!match) return
 
-    if (match.status === 'in_progress' && (matchPhase === 'not_started' || matchPhase === 'half_time' || minute === 0 || forceServerTimeSync)) {
+    if (match.status === 'in_progress' && (matchPhase === 'not_started' || matchPhase === 'half_time' || minute === 0 || forceServerTimeSync || match.current_phase?.startsWith('stopped_'))) {
       if (forceServerTimeSync) setForceServerTimeSync(false)
       const rawPhase = match.current_phase || 'first_half'
 
@@ -2490,6 +2490,10 @@ export default function MatchRecording() {
       setIsStopped(false)
       const halfStr = currentHalf === 1 ? 'first_half' : 'second_half'
       const newStartedAt = new Date(Date.now() - elapsed * 1000).toISOString()
+      // Optimistically update cache so a concurrent refetch doesn't re-trigger stopped detection
+      queryClient.setQueryData(['matches', matchId], (old: any) =>
+        old ? { ...old, current_phase: halfStr, started_at: newStartedAt } : old
+      )
       try {
         await api.matches.update(matchId, {
           current_phase: halfStr,
