@@ -1138,13 +1138,15 @@ export default function MatchRecording() {
   const handleBallMove = async (newPosition: BallPosition) => {
     // Check if there's a pending kickout event waiting for position
     if (pendingKickoutEvent) {
+      // Capture and clear immediately — prevents a second pitch tap from firing
+      // another kickout record before the async save completes
+      const kickout = pendingKickoutEvent
+      setPendingKickoutEvent(null)
       console.log('Recording pending kickout at position:', newPosition)
       try {
-        await recordKickoutAtPosition(pendingKickoutEvent, newPosition)
+        await recordKickoutAtPosition(kickout, newPosition)
       } catch (err) {
         console.error('Kickout recording failed in handleBallMove:', err)
-        // Always clear pending state so user isn't stuck
-        setPendingKickoutEvent(null)
         setAwaitingKickout(false)
         setActiveKickoutTab('scoring')
       }
