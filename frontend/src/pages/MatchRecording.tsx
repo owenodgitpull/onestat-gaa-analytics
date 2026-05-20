@@ -274,9 +274,9 @@ export default function MatchRecording() {
         setMinute(Math.min(Math.floor(totalSeconds / 60), 120))
         setSeconds(totalSeconds % 60)
       } else if (saved.isStopped) {
-        // Clock was stopped at a stoppage — don't restore stale IndexedDB time.
-        // Signal the match data effect to re-compute from server started_at instead.
-        setForceServerTimeSync(true)
+        // Clock was stopped at a stoppage — the backend already has stopped_*:ELAPSED.
+        // Don't restore IndexedDB time and don't trigger forceSync (risks stale-cache race).
+        // The match data effect on initial load already froze the timer from server data.
       } else if (saved.matchPhase !== 'half_time') {
         setMinute(saved.minute)
         setSeconds(saved.seconds)
@@ -384,17 +384,19 @@ export default function MatchRecording() {
   useEffect(() => {
     if (!match) return
 
-    if (match.status === 'in_progress' && (matchPhase === 'not_started' || matchPhase === 'half_time' || minute === 0 || forceServerTimeSync || match.current_phase?.startsWith('stopped_'))) {
+    const serverPhase = match.current_phase || 'first_half'
+    const serverIsStopped = serverPhase.startsWith('stopped_')
+    // Fire when: initial load, half-time, minute=0, forceSync, server says stopped, or server resumed but we're still locally stopped
+    if (match.status === 'in_progress' && (matchPhase === 'not_started' || matchPhase === 'half_time' || minute === 0 || forceServerTimeSync || serverIsStopped || (isStopped && !serverIsStopped))) {
       if (forceServerTimeSync) setForceServerTimeSync(false)
-      const rawPhase = match.current_phase || 'first_half'
 
       // Stoppage persisted to backend — restore frozen timer and stopped state
-      if (rawPhase.startsWith('stopped_')) {
-        const parts = rawPhase.split(':')
+      if (serverIsStopped) {
+        const parts = serverPhase.split(':')
         const elapsedSeconds = parts[1] ? parseInt(parts[1], 10) : 0
-        const half = rawPhase.includes('second') ? 'second_half' : 'first_half'
+        const half = serverPhase.includes('second') ? 'second_half' : 'first_half'
         setMatchPhase(half as MatchPhase)
-        setCurrentHalf(rawPhase.includes('second') ? 2 : 1)
+        setCurrentHalf(serverPhase.includes('second') ? 2 : 1)
         setMinute(Math.floor(elapsedSeconds / 60))
         setSeconds(elapsedSeconds % 60)
         setIsStopped(true)
@@ -406,7 +408,10 @@ export default function MatchRecording() {
         return
       }
 
-      const phase = rawPhase as MatchPhase
+      // Server says running — clear any local stoppage state
+      setIsStopped(false)
+
+      const phase = serverPhase as MatchPhase
       setMatchPhase(phase)
 
       // Restore attack direction
@@ -2478,9 +2483,14 @@ export default function MatchRecording() {
       // Pause: freeze timer and persist stopped phase + elapsed to DB
       setIsStopped(true)
       const halfStr = currentHalf === 1 ? 'first_half' : 'second_half'
+      const phaseStr = `stopped_${halfStr}:${elapsed}`
+      // Optimistically update cache so match data effect sees stopped state immediately
+      queryClient.setQueryData(['matches', matchId], (old: any) =>
+        old ? { ...old, current_phase: phaseStr } : old
+      )
       try {
         await api.matches.update(matchId, {
-          current_phase: `stopped_${halfStr}:${elapsed}`,
+          current_phase: phaseStr,
         } as any)
       } catch (err) {
         console.error('Failed to persist stoppage:', err)
