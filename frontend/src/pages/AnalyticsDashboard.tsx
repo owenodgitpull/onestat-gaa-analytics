@@ -289,6 +289,12 @@ export default function AnalyticsDashboard() {
     consumeLiveMatch().then(m => setLiveMatch(m))
     // Always fetch fresh — prefetch cache may be stale after creating a fixture
     api.matches.getNextScheduled().then(m => setNextMatch(m))
+
+    // Poll live match every 30s so phase label stays current while recording is active
+    const livePoll = setInterval(() => {
+      api.matches.getInProgress().then(m => setLiveMatch(m)).catch(() => {})
+    }, 30000)
+    return () => clearInterval(livePoll)
   }, [])
 
   // Trigger tour on first visit after data loads
