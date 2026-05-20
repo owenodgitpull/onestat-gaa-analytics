@@ -60,6 +60,7 @@ export default function Players() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [editingPositionId, setEditingPositionId] = useState<string | null>(null)
   const [editingDobId, setEditingDobId] = useState<string | null>(null)
+  const [editingGpsAliasId, setEditingGpsAliasId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -193,6 +194,17 @@ export default function Players() {
       // silently fail
     }
     setEditingDobId(null)
+  }
+
+  const handleGpsAliasSave = async (playerId: string) => {
+    const input = document.getElementById(`gps-alias-input-${playerId}`) as HTMLInputElement | null
+    try {
+      await api.players.update(playerId, { gps_alias: input?.value ?? '' } as Partial<import('@/types').Player>)
+      await queryClient.invalidateQueries({ queryKey: ['players'] })
+    } catch {
+      // silently fail
+    }
+    setEditingGpsAliasId(null)
   }
 
   const getAge = (dob: string | null): number | null => {
@@ -479,7 +491,42 @@ export default function Players() {
                           : ''}
                       </span>
                     )}
+
                   </div>
+
+                  {/* GPS alias — its own row below position/age */}
+                  {editingGpsAliasId === player.id ? (
+                    <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        id={`gps-alias-input-${player.id}`}
+                        type="text"
+                        placeholder="GPS device name, e.g. Damo McG"
+                        className="px-2 py-1 rounded bg-white/10 border border-white/20 text-xs text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 w-48"
+                        defaultValue={player.gps_alias || ''}
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleGpsAliasSave(player.id) }}
+                      />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleGpsAliasSave(player.id) }}
+                        className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs font-medium hover:bg-emerald-500/30"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditingGpsAliasId(null) }}
+                        className="px-2 py-1 rounded bg-white/10 text-white/60 text-xs hover:bg-white/20"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingGpsAliasId(player.id) }}
+                      className="mt-1 text-xs text-white/40 hover:text-cyan-400 transition-colors"
+                    >
+                      {player.gps_alias ? `GPS: ${player.gps_alias}` : '+ GPS alias'}
+                    </button>
+                  )}
                 </div>
               </div>
 

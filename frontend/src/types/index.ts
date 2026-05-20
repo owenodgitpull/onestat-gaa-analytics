@@ -44,6 +44,7 @@ export interface Player {
   date_of_birth: string | null;
   status: string;  // Using string to match backend
   active: boolean;
+  gps_alias?: string | null;
   created_at?: string;
   updated_at?: string;
 }
