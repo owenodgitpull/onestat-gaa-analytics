@@ -486,7 +486,7 @@ export default function AnalyticsDashboard() {
                 </span>
                 {liveMatch.current_phase && (
                   <span className="text-xs text-white/50 font-medium">
-                    {liveMatch.current_phase === 'first_half' ? '1st Half' : liveMatch.current_phase === 'half_time' ? 'HT' : '2nd Half'}
+                    {(liveMatch.current_phase === 'first_half' || liveMatch.current_phase?.startsWith('stopped_first')) ? '1st Half' : liveMatch.current_phase === 'half_time' ? 'HT' : '2nd Half'}
                   </span>
                 )}
                 <ChevronRight size={16} className="text-white/40" />
