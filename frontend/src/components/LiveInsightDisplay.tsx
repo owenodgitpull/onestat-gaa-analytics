@@ -7,6 +7,8 @@ interface LiveInsightDisplayProps {
   minute: number
   half: number
   isMatchActive: boolean
+  /** When true, suppress automatic 5-minute insight triggers (match clock is stopped) */
+  isStopped?: boolean
   onNewInsight?: (insight: LiveInsight) => void
   /** Increment to force re-fetch of latest insight (e.g. after half-time trigger) */
   refreshTrigger?: number
@@ -21,6 +23,7 @@ export default function LiveInsightDisplay({
   minute,
   half,
   isMatchActive,
+  isStopped = false,
   onNewInsight,
   refreshTrigger = 0,
   externalLoading = false,
@@ -55,9 +58,9 @@ export default function LiveInsightDisplay({
     }
   }, [externalInsight])
 
-  // Check for new insights every 5 minutes during active match
+  // Check for new insights every 5 minutes during active match — not during stoppages
   useEffect(() => {
-    if (!matchId || !isMatchActive) return
+    if (!matchId || !isMatchActive || isStopped) return
 
     // Trigger at every 5-minute mark that we haven't checked yet
     const fiveMinBlock = Math.floor(minute / 5)
@@ -65,7 +68,7 @@ export default function LiveInsightDisplay({
       setLastCheckMinute(fiveMinBlock)
       triggerInsightCheck()
     }
-  }, [matchId, minute, isMatchActive, lastCheckMinute])
+  }, [matchId, minute, isMatchActive, isStopped, lastCheckMinute])
 
   const fetchLatestInsight = async () => {
     if (!matchId) return

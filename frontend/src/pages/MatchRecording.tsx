@@ -11,12 +11,15 @@ import ManualEventEntryModal from '@/components/ManualEventEntryModal'
 import StartingLineupModal, { type LineupEntry } from '@/components/StartingLineupModal'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
 import EventFilterToggles, { getEventTypesForFilters } from '@/components/EventFilterToggles'
+import ExtendedStatsModal from '@/components/ExtendedStatsModal'
 import PossessionTerritoryChart from '@/components/charts/PossessionTerritoryChart'
 import ScoringTimeline from '@/components/charts/ScoringTimeline'
 import ShotOutcomeChart from '@/components/charts/ShotOutcomeChart'
 import PathsTakenChart from '@/components/charts/PathsTakenChart'
 import MatchKickoutZones from '@/components/charts/MatchKickoutZones'
 import MatchKickoutOutcomes from '@/components/charts/MatchKickoutOutcomes'
+import ScoringZoneMap from '@/components/charts/ScoringZoneMap'
+import TurnoverMap from '@/components/charts/TurnoverMap'
 import FullscreenPitchMode from '@/components/FullscreenPitchMode'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import FormationSnapshotButton from '@/components/FormationSnapshotButton'
@@ -62,6 +65,27 @@ type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | '
 // Set VITE_DEV_MATCH_SPEED=10 in .env.local for faster testing
 const DEV_SPEED_MULTIPLIER = parseInt(import.meta.env.VITE_DEV_MATCH_SPEED || '1', 10)
 const IS_DEV_SPEED = DEV_SPEED_MULTIPLIER > 1
+
+const UNFORCED_ERROR_SUBTYPES = [
+  { value: 'stray_pass', label: 'Stray Pass' },
+  { value: 'dropped_ball', label: 'Dropped Ball' },
+  { value: 'overcarrying', label: 'Overcarrying' },
+  { value: 'picked_off_ground', label: 'Picked Off Ground' },
+  { value: 'kick_over_sideline', label: 'Kicked Over Sideline' },
+  { value: 'square_ball', label: 'Square Ball' },
+  { value: 'three_v_three', label: '3v3 Violation' },
+  { value: 'time_wasting', label: 'Time Wasting' },
+]
+
+const FOUL_SUBTYPES = [
+  { value: 'pushing', label: 'Pushing' },
+  { value: 'pulling', label: 'Pulling' },
+  { value: 'charging', label: 'Charging' },
+  { value: 'late_tackle', label: 'Late Tackle' },
+  { value: 'jersey_pull', label: 'Jersey Pull' },
+  { value: 'obstruction', label: 'Obstruction' },
+  { value: 'dissent', label: 'Dissent' },
+]
 
 interface PendingEvent {
   eventType: EventType
@@ -118,7 +142,7 @@ export default function MatchRecording() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [editingEventId, setEditingEventId] = useState<number | null>(null) // event being player-edited
   const [editingEventType, setEditingEventType] = useState<string | null>(null) // event type for edit modal title
-  const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition } | null>(null)
+  const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition; isFreeKick?: boolean } | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState<{ position: BallPosition } | null>(null)
   const [resetting, setResetting] = useState(false)
@@ -152,6 +176,17 @@ export default function MatchRecording() {
   const [isWeatherPickerOpen, setIsWeatherPickerOpen] = useState(false)
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
   const [isStopped, setIsStopped] = useState(false)
+  const [showExtendedStats, setShowExtendedStats] = useState(false)
+
+  // Sub-type picker — shown after player selection for unforced errors and fouls
+  const [pendingSubType, setPendingSubType] = useState<{
+    player?: Player
+    eventType: string
+    foulMode: boolean
+    capturedMinute: number
+    capturedHalf: number
+    position: BallPosition
+  } | null>(null)
 
   // Guided tour (basic driver.js)
   const { startTour: startMatchTour } = useTour('matchRecording', matchRecordingSteps)
@@ -227,16 +262,23 @@ export default function MatchRecording() {
       setMatchPhase(saved.matchPhase as MatchPhase)
       setCurrentHalf(saved.currentHalf as 1 | 2)
 
-      // Catch up timer for elapsed time since crash (match clock keeps ticking in real life)
-      // Don't catch up during half-time, stoppages, or pre/post match — clock isn't running
+      // Restore timer — always set minute/seconds from saved state.
+      // Only add catch-up time when the clock was actively running (not stopped/half-time).
       const isClockRunning = !saved.isStopped && (saved.matchPhase === 'first_half' || saved.matchPhase === 'second_half')
       if (isClockRunning) {
+        // Clock was running when we saved — add elapsed real time since last save
         const elapsedSinceSave = Math.floor((Date.now() - saved.lastSavedAt) / 1000)
         const totalSeconds = saved.minute * 60 + saved.seconds + elapsedSinceSave
         setMinute(Math.min(Math.floor(totalSeconds / 60), 120))
         setSeconds(totalSeconds % 60)
+      } else if (saved.matchPhase !== 'half_time') {
+        // Clock was stopped (stoppage) — restore exact saved time, no catch-up.
+        // This also prevents minute staying at 0, which would cause the backend sync
+        // to override with wall-clock elapsed time (the refresh-increments bug).
+        setMinute(saved.minute)
+        setSeconds(saved.seconds)
       }
-      // Don't restore minute/seconds during half-time — let the server state handler set it
+      // During half-time, let the server state handler set the minute instead
 
       setIsStopped(saved.isStopped)
       if (saved.activeCarrierId) setActiveCarrierId(saved.activeCarrierId)
@@ -712,9 +754,9 @@ export default function MatchRecording() {
     // Special case: Exact center (kickout position)
     if (x === 50 && y === 50) return 'midfield'
 
-    // Left/Right description from the perspective of the team attacking
-    // When attacking right: low y = left, high y = right (standard)
-    // When attacking left: low y = right, high y = left (flipped)
+    // Left/Right is relative to the team's attacking direction.
+    // Attacking right (facing right): top of screen (low y) = left wing, bottom = right wing.
+    // Attacking left (facing left): top of screen (low y) = right wing, bottom = left wing.
     const facingRight = eventTeamIsOwn ? teamAttackingRight : !teamAttackingRight
     let lateral = ''
     if (y < 33) lateral = facingRight ? ' (left wing)' : ' (right wing)'
@@ -1360,6 +1402,7 @@ export default function MatchRecording() {
         is_home_team: true,
         notes: undefined,
       }).then(() => {
+        void playerMovement.endSegment(foulPosition.x, foulPosition.y, 'foul')
         setPendingFreeKick({ position: foulPosition })
         setBallPosition(prev => ({ ...prev, team: PossessionTeam.OPPONENT }))
       }).catch((error) => {
@@ -1399,6 +1442,8 @@ export default function MatchRecording() {
       console.log('Own team foul - selecting player who fouled...')
     } else {
       // Opposition fouled - our team wins free, go straight to free options
+      // End any active carrier segment — dead-ball time doesn't count as possession
+      void playerMovement.endSegment(ballPosition.x, ballPosition.y, 'foul')
       setPendingFreeKick({ position: ballPosition })
       // Our team now has possession (they won the free)
       setBallPosition(prev => ({
@@ -1413,36 +1458,51 @@ export default function MatchRecording() {
   const handleFoulPlayerSelected = async (player: Player) => {
     if (!matchId) return
 
-    // Record foul_committed event for this own team player
+    // Show sub-type picker before recording foul
+    setSelectingFoulPlayer(false)
+    setIsPlayerModalOpen(false)
+    setPendingSubType({
+      player,
+      eventType: 'foul_committed',
+      foulMode: true,
+      capturedMinute: minute,
+      capturedHalf: currentHalf,
+      position: ballPosition,
+    })
+  }
+
+  // Record event after sub-type selection (or skip)
+  const handleSubTypeSelected = async (subType?: string) => {
+    if (!pendingSubType || !matchId) { setPendingSubType(null); return }
+    const { player, eventType, foulMode, capturedMinute, capturedHalf, position } = pendingSubType
+    setPendingSubType(null)
+
     try {
       await recordEvent.mutateAsync({
         match_id: matchId,
-        player_id: player.id,
-        event_type: 'foul_committed',
-        minute: minute,
-        half: currentHalf,
-        x_coord: ballPosition.x,
-        y_coord: ballPosition.y,
-        is_home_team: true, // Own team committed the foul
-        notes: undefined
+        player_id: player?.id,
+        event_type: eventType,
+        minute: capturedMinute,
+        half: capturedHalf,
+        x_coord: position.x,
+        y_coord: position.y,
+        is_home_team: true,
+        sub_type: subType,
       })
-      console.log('Foul committed recorded for:', player.name)
+      setLastEventType(eventType)
+      await queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
 
-      // Now show free kick options for opponent
-      setPendingFreeKick({ position: ballPosition, player })
-      // Opponent now has possession (they get the free)
-      setBallPosition(prev => ({
-        ...prev,
-        team: PossessionTeam.OPPONENT
-      }))
-    } catch (error) {
-      console.error('Failed to record foul:', error)
-      setErrorAlert('Failed to record foul. Please try again.')
+      if (foulMode) {
+        await playerMovement.endSegment(position.x, position.y, 'foul')
+        setPendingFreeKick({ position, player })
+        setBallPosition(prev => ({ ...prev, team: PossessionTeam.OPPONENT }))
+      } else {
+        // Unforced error — opponent gets possession
+        setBallPosition({ x: position.x, y: position.y, team: PossessionTeam.OPPONENT })
+      }
+    } catch {
+      setErrorAlert('Failed to record event. Please try again.')
     }
-
-    // Close player modal and reset foul player selection flag
-    setIsPlayerModalOpen(false)
-    setSelectingFoulPlayer(false)
   }
 
   // Cancel pending free kick — fully reset foul state
@@ -1686,8 +1746,13 @@ export default function MatchRecording() {
         })
         setIsPlayerModalOpen(true)
       } else {
-        // Opponent taking the free — record immediately (we don't track their players)
-        recordFreeKickResult(eventType, actionPosition, false)
+        // Opponent taking the free — if it's a score and we have their roster, let user pick scorer
+        const oppScoringFrees = [EventType.POINT_FREE, EventType.TWO_POINT_FREE]
+        if (oppScoringFrees.includes(eventType as EventType) && oppositionRoster.length > 0) {
+          setPendingOpponentScore({ eventType: eventType as EventType, position: actionPosition, isFreeKick: true })
+        } else {
+          recordFreeKickResult(eventType, actionPosition, false)
+        }
       }
     } else if (isOpponentActualScore && oppositionRoster.length > 0) {
       // Opponent scored and we have a roster — show opposition scorer strip
@@ -1708,7 +1773,7 @@ export default function MatchRecording() {
   }
 
   // Record free kick result - works for both own team and opponent frees
-  const recordFreeKickResult = async (eventType: EventType, position: BallPosition, isTeamTakingFree: boolean, player?: Player) => {
+  const recordFreeKickResult = async (eventType: EventType, position: BallPosition, isTeamTakingFree: boolean, player?: Player, scorerName?: string) => {
     if (!matchId) return
 
     try {
@@ -1731,7 +1796,7 @@ export default function MatchRecording() {
         x_coord: position.x,
         y_coord: position.y,
         is_home_team: isTeamTakingFree, // true if own team takes the free, false if opponent takes
-        notes: undefined
+        notes: scorerName ? `Scored by ${scorerName}` : undefined
       })
 
       // Track for tutorial
@@ -2013,16 +2078,24 @@ export default function MatchRecording() {
   // Handle opposition scorer selection
   const handleOpponentScorerSelect = (name: string) => {
     if (!pendingOpponentScore) return
-    const { eventType, position } = pendingOpponentScore
+    const { eventType, position, isFreeKick } = pendingOpponentScore
     setPendingOpponentScore(null)
-    recordEventWithoutPlayer(eventType, false, position, name)
+    if (isFreeKick) {
+      recordFreeKickResult(eventType, position, false, undefined, name)
+    } else {
+      recordEventWithoutPlayer(eventType, false, position, name)
+    }
   }
 
   const handleOpponentScorerSkip = () => {
     if (!pendingOpponentScore) return
-    const { eventType, position } = pendingOpponentScore
+    const { eventType, position, isFreeKick } = pendingOpponentScore
     setPendingOpponentScore(null)
-    recordEventWithoutPlayer(eventType, false, position)
+    if (isFreeKick) {
+      recordFreeKickResult(eventType, position, false)
+    } else {
+      recordEventWithoutPlayer(eventType, false, position)
+    }
   }
 
   const handlePlayerSelected = async (player: Player) => {
@@ -2060,6 +2133,19 @@ export default function MatchRecording() {
       minute: capturedMinute,
       second: seconds
     })
+
+    // Show sub-type picker for unforced errors before recording
+    if (event.eventType === EventType.OUR_UNFORCED_ERROR) {
+      setPendingSubType({
+        player,
+        eventType: 'unforced_error',
+        foulMode: false,
+        capturedMinute,
+        capturedHalf,
+        position: event.position,
+      })
+      return
+    }
 
     // Check if this is a free kick result (own team taking free — player selected)
     const eventTypeStr = String(event.eventType).toUpperCase()
@@ -2893,7 +2979,7 @@ export default function MatchRecording() {
                   <ChartZoomModal title="Paths Taken">
                     <PathsTakenChart
                       matchId={matchId}
-                      pollInterval={15000}
+                      pollInterval={0}
                     />
                   </ChartZoomModal>
                   <ChartZoomModal title="Possession & Territory">
@@ -2902,7 +2988,7 @@ export default function MatchRecording() {
                       events={matchEventsData.events}
                       matchId={matchId}
                       opponent={matchDisplay.opponent}
-                      pollInterval={15000}
+                      pollInterval={0}
                     />
                   </ChartZoomModal>
                 </div>
@@ -2934,6 +3020,14 @@ export default function MatchRecording() {
                       <MatchKickoutOutcomes events={matchEventsData.events} teamName={clubName} opponentName={matchDisplay.opponent} />
                     </ChartZoomModal>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+                    <ChartZoomModal title="Scoring Zone Map">
+                      <ScoringZoneMap events={matchEventsData.events} teamName={clubName || 'Us'} opponent={matchDisplay.opponent} />
+                    </ChartZoomModal>
+                    <ChartZoomModal title="Possession Battle Map">
+                      <TurnoverMap events={matchEventsData.events} teamName={clubName || 'Us'} />
+                    </ChartZoomModal>
+                  </div>
                 </>
               )}
             </div>
@@ -2946,6 +3040,7 @@ export default function MatchRecording() {
                 minute={minute}
                 half={currentHalf}
                 isMatchActive={matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time'}
+                isStopped={isStopped}
                 refreshTrigger={insightRefresh}
                 externalLoading={halfTimeInsightLoading}
                 externalInsight={halfTimeInsight}
@@ -2953,10 +3048,20 @@ export default function MatchRecording() {
 
               {/* Match Statistics */}
               <div className="glass-card p-5">
-                <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
-                  <Activity size={20} className="text-emerald-400" />
-                  <span>Match Statistics</span>
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
+                    <Activity size={20} className="text-emerald-400" />
+                    <span>Match Statistics</span>
+                  </h3>
+                  {allEvents.length > 0 && (
+                    <button
+                      onClick={() => setShowExtendedStats(true)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 hover:text-white text-xs font-medium transition-colors"
+                    >
+                      More Stats
+                    </button>
+                  )}
+                </div>
 
                 <div className="rounded-xl border border-white/[0.08] overflow-hidden" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)' }}>
                   {/* Header row */}
@@ -3402,6 +3507,48 @@ export default function MatchRecording() {
           100% { background-color: #ef4444; border-color: #dc2626; }
         }
       `}</style>
+
+      {/* Sub-type picker — shown after player selection for unforced errors / fouls */}
+      {pendingSubType && (
+        <div className="fixed inset-0 z-[180] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-5">
+            <p className="text-sm font-bold text-white mb-1">
+              {pendingSubType.foulMode ? 'What type of foul?' : 'What type of error?'}
+            </p>
+            <p className="text-xs text-white/40 mb-4">
+              {pendingSubType.player?.name ?? 'Player'} — tap to categorise or skip
+            </p>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {(pendingSubType.foulMode ? FOUL_SUBTYPES : UNFORCED_ERROR_SUBTYPES).map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => handleSubTypeSelected(value)}
+                  className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-emerald-600/30 border border-white/10 hover:border-emerald-500/40 text-white/80 hover:text-white text-xs font-medium transition-all"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => handleSubTypeSelected(undefined)}
+              className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+            >
+              Skip categorisation
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Extended Stats Modal */}
+      {showExtendedStats && matchDisplay && (
+        <ExtendedStatsModal
+          events={allEvents}
+          opponent={matchDisplay.opponent}
+          teamName={clubName || 'Us'}
+          halfDurationMins={match?.half_duration_mins || 30}
+          onClose={() => setShowExtendedStats(false)}
+        />
+      )}
     </div>
   )
 }
