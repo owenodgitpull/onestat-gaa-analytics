@@ -177,6 +177,8 @@ export default function MatchRecording() {
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
   const [isStopped, setIsStopped] = useState(false)
   const [showExtendedStats, setShowExtendedStats] = useState(false)
+  // Set to true by crash-restore when the match was stopped — forces match data effect to re-sync time from server
+  const [forceServerTimeSync, setForceServerTimeSync] = useState(false)
 
   // Sub-type picker — shown after player selection for unforced errors and fouls
   const [pendingSubType, setPendingSubType] = useState<{
@@ -271,10 +273,11 @@ export default function MatchRecording() {
         const totalSeconds = saved.minute * 60 + saved.seconds + elapsedSinceSave
         setMinute(Math.min(Math.floor(totalSeconds / 60), 120))
         setSeconds(totalSeconds % 60)
+      } else if (saved.isStopped) {
+        // Clock was stopped at a stoppage — don't restore stale IndexedDB time.
+        // Signal the match data effect to re-compute from server started_at instead.
+        setForceServerTimeSync(true)
       } else if (saved.matchPhase !== 'half_time') {
-        // Clock was stopped (stoppage) — restore exact saved time, no catch-up.
-        // This also prevents minute staying at 0, which would cause the backend sync
-        // to override with wall-clock elapsed time (the refresh-increments bug).
         setMinute(saved.minute)
         setSeconds(saved.seconds)
       }
@@ -381,7 +384,8 @@ export default function MatchRecording() {
   useEffect(() => {
     if (!match) return
 
-    if (match.status === 'in_progress' && (matchPhase === 'not_started' || matchPhase === 'half_time' || minute === 0)) {
+    if (match.status === 'in_progress' && (matchPhase === 'not_started' || matchPhase === 'half_time' || minute === 0 || forceServerTimeSync)) {
+      if (forceServerTimeSync) setForceServerTimeSync(false)
       const phase = (match.current_phase as MatchPhase) || 'first_half'
       setMatchPhase(phase)
 
@@ -424,7 +428,7 @@ export default function MatchRecording() {
       setMatchPhase('finished')
     }
 
-  }, [match])
+  }, [match, forceServerTimeSync])
 
   // Weather: use local override (optimistic) if set, otherwise fall back to match data
   const weatherCondition = weatherOverride ? weatherOverride.condition : (match?.weather_condition ?? null)
