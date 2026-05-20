@@ -238,6 +238,7 @@ class SeasonAgent:
         db: AsyncSession,
         kpi_data: dict,
         fixture_context: str = "",
+        club_id=None,
     ) -> dict[str, str]:
         """
         Generate dynamic, team-specific insights for each KPI card.
@@ -248,7 +249,7 @@ class SeasonAgent:
                 "kpi_data": kpi_data,
                 "fixture_context": fixture_context,
             }
-            result = await SeasonAgent.analyze_season(db, "kpi_insights", context)
+            result = await SeasonAgent.analyze_season(db, "kpi_insights", context, club_id=club_id)
             return result.get("insights", {})
         except Exception as e:
             logger.warning(f"KPI insight generation failed: {e}")
@@ -264,6 +265,7 @@ class SeasonAgent:
         source: str,
         session_id=None,
         match_id=None,
+        club_id=None,
     ) -> list[dict]:
         """
         Generate cross-cutting insight alerts after a data upload.
@@ -295,7 +297,10 @@ class SeasonAgent:
                     func.count(TrainingGPSData.id).label("player_count"),
                 )
                 .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
-                .where(TrainingSession.session_date >= four_weeks_ago)
+                .where(
+                    TrainingSession.session_date >= four_weeks_ago,
+                    *([ TrainingSession.club_id == club_id] if club_id else []),
+                )
                 .group_by(TrainingSession.id, TrainingSession.session_date)
                 .order_by(TrainingSession.session_date.desc())
                 .limit(12)
@@ -319,9 +324,12 @@ class SeasonAgent:
         # 2. Match context
         match_context = ""
         try:
+            _match_conds = [Match.status == "completed"]
+            if club_id:
+                _match_conds.append(Match.club_id == club_id)
             matches_query = (
                 select(Match)
-                .where(Match.status == "completed")
+                .where(*_match_conds)
                 .order_by(Match.match_date.desc())
                 .limit(5)
             )
@@ -342,9 +350,12 @@ class SeasonAgent:
         # 3. Previous undismissed insights
         previous_insights_text = ""
         try:
+            _prev_conds = [InsightAlert.is_dismissed.is_(False)]
+            if club_id:
+                _prev_conds.append(InsightAlert.club_id == club_id)
             prev_query = (
                 select(InsightAlert)
-                .where(InsightAlert.is_dismissed .is_(False))
+                .where(*_prev_conds)
                 .order_by(InsightAlert.created_at.desc())
                 .limit(10)
             )
@@ -414,7 +425,7 @@ class SeasonAgent:
                 logger.warning(f"Insight context: video sync specifics failed: {e}")
 
         # 5. Fixture context
-        fixture_context = await get_fixture_context(db)
+        fixture_context = await get_fixture_context(db, club_id=club_id)
 
         context = {
             "training_context": training_context,
@@ -426,7 +437,7 @@ class SeasonAgent:
         }
 
         try:
-            result = await SeasonAgent.analyze_season(db, "insight_alerts", context)
+            result = await SeasonAgent.analyze_season(db, "insight_alerts", context, club_id=club_id)
             insights = result.get("alerts", [])
 
             if not isinstance(insights, list):
@@ -569,9 +580,10 @@ class SeasonAgent:
     async def generate_single_chart(
         db: AsyncSession,
         excluded_chart_ids: list[str] = None,
+        club_id=None,
     ) -> dict:
         """Generate a single replacement chart when one is dismissed."""
-        result = await SeasonAgent.generate_dashboard_charts(db, excluded_chart_ids, num_charts=1)
+        result = await SeasonAgent.generate_dashboard_charts(db, excluded_chart_ids, num_charts=1, club_id=club_id)
 
         if result.get("success") and result.get("charts"):
             return {"success": True, "chart": result["charts"][0]}
@@ -583,11 +595,11 @@ class SeasonAgent:
     # -------------------------------------------------------------------------
 
     @staticmethod
-    async def get_dynamic_chart_recommendations(db: AsyncSession) -> dict:
+    async def get_dynamic_chart_recommendations(db: AsyncSession, club_id=None) -> dict:
         """Let the Season Agent decide which charts are most relevant."""
         context = {"task_detail": "recommendations"}
         try:
-            result = await SeasonAgent.analyze_season(db, "chart_recommendations", context)
+            result = await SeasonAgent.analyze_season(db, "chart_recommendations", context, club_id=club_id)
             return {
                 "recommendations": result,
                 "season_state": {},
@@ -641,7 +653,7 @@ class SeasonAgent:
             "outliers": outliers[:max_suggestions],
         }
         try:
-            result = await SeasonAgent.analyze_season(db, "outlier_suggestions", context)
+            result = await SeasonAgent.analyze_season(db, "outlier_suggestions", context, club_id=club_id)
             suggestions = result.get("suggestions", [])
 
             for i, s in enumerate(suggestions):
@@ -1176,8 +1188,15 @@ Return ONLY a valid JSON array. If nothing noteworthy, return [].
 ## Task: Generate {num_charts} Dashboard Charts
 Generate actual Recharts-compatible chart specifications.
 
+## CRITICAL DATA INTEGRITY RULES — READ BEFORE CALLING ANY TOOL
+1. Call get_team_season_stats FIRST to establish how many completed matches exist.
+2. The number of matches returned by that tool is THE ONLY correct count. Do not infer match count from anything else.
+3. get_stats_by_half returns HALF-TIME records (one row per half per match). Two rows = ONE match with two halves — NOT two separate games.
+4. NEVER write phrases like "after X scoreless games", "two scoreless draws", "opening loss", "winning streak of X" unless the tool data explicitly shows X distinct completed matches with those results.
+5. If there is only 1 completed match, write all insights in the context of that single match. Do not fabricate a season narrative.
+
 ## ACTUAL SEASON DATA (Use these exact numbers!)
-### Matches Played: {len(matches)} (completed only)
+### Matches Played: {len(matches)} (completed only — call get_team_season_stats to verify the real count)
 ### Match Results:
 {json.dumps(match_results, indent=2)}
 

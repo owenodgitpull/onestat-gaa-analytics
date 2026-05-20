@@ -10,7 +10,7 @@ This module handles:
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import NullPool, AsyncAdaptedQueuePool
 import os
 from pathlib import Path
 from typing import AsyncGenerator
@@ -39,13 +39,29 @@ else:
 # echo: Log all SQL queries (useful for debugging, disable in production)
 _is_prod = os.getenv("ENVIRONMENT") == "production"
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=not _is_prod,
-    pool_pre_ping=True,
-    pool_size=5 if _is_prod else 10,  # Supabase free tier has limited connections
-    max_overflow=5 if _is_prod else 20,
-)
+# PgBouncer (port 6543) runs in transaction mode and doesn't support prepared
+# statements — statement_cache_size=0 disables asyncpg's cache so it sends
+# plain queries instead, which work correctly through the pooler.
+#
+# When connecting through PgBouncer we use NullPool: PgBouncer is already
+# the connection pool, so SQLAlchemy's QueuePool on top creates a "pool of
+# pools" that can deadlock and exhaust under high-frequency match recording
+# traffic. NullPool lets PgBouncer do its job cleanly with no double-pooling.
+_using_pooler = ":6543" in DATABASE_URL
+
+_engine_kwargs: dict = {
+    "echo": not _is_prod,
+    "connect_args": {"statement_cache_size": 0} if _using_pooler else {},
+}
+
+if _using_pooler:
+    _engine_kwargs["poolclass"] = NullPool
+else:
+    _engine_kwargs["pool_pre_ping"] = True
+    _engine_kwargs["pool_size"] = 5 if _is_prod else 10
+    _engine_kwargs["max_overflow"] = 5 if _is_prod else 20
+
+engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
 
 # Create async session factory
 # expire_on_commit=False: Keep objects usable after commit

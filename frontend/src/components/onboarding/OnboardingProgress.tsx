@@ -15,7 +15,8 @@ const STEPS = [
   { number: 1, label: 'Team Details' },
   { number: 2, label: 'Branding' },
   { number: 3, label: 'Players' },
-  { number: 4, label: 'Review' },
+  { number: 4, label: 'Fixtures' },
+  { number: 5, label: 'Review' },
 ];
 
 export default function OnboardingProgress({ currentStep, onStepClick }: OnboardingProgressProps) {

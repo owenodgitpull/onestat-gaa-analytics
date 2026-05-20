@@ -122,8 +122,9 @@ export const offlineMatchEvents = {
     is_home_team: boolean
     notes?: string
     opponent_player_name?: string
+    sub_type?: string
   }): Promise<MatchEvent> => {
-    const { is_home_team, x_coord, y_coord, half, minute, opponent_player_name, ...rest } = data
+    const { is_home_team, x_coord, y_coord, half, minute, opponent_player_name, sub_type, ...rest } = data
     const team = is_home_team ? 'own' : 'opponent'
     const clientEventId = uuid()
     const body = {
@@ -134,6 +135,7 @@ export const offlineMatchEvents = {
       pitch_y: y_coord,
       client_event_id: clientEventId,
       ...(opponent_player_name ? { opponent_player_name } : {}),
+      ...(sub_type ? { sub_type } : {}),
     }
 
     // Try server first when online

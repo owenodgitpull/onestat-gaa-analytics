@@ -3,7 +3,7 @@
  * Shows comprehensive player profile with stats, attendance, and performance data
  */
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -216,14 +216,29 @@ function ChartInsight({ insight }: { insight: string | null }) {
   )
 }
 
+const SHOT_EVENT_LABELS: Record<string, string> = {
+  goal: 'Goal', point: 'Point', point_free: 'Point (Free)', forty_five: "45'",
+  two_point: '2-Pointer', two_point_free: '2-Pointer (Free)',
+  wide: 'Wide', wide_free: 'Wide (Free)', saved: 'Saved', saved_goal: 'Goal Saved',
+  short: 'Dropped Short', forty_five_missed: "45' Missed",
+  penalty_saved: 'Penalty Saved', penalty_missed: 'Penalty Missed',
+}
+function shotLabel(event_type: string) {
+  return SHOT_EVENT_LABELS[event_type] ?? event_type.replace(/_/g, ' ')
+}
+
 // GAA Half-Pitch SVG Shot Map (attacking half only)
 function ShotMap({ shots }: { shots: ShotEvent[] }) {
+  const [selectedShot, setSelectedShot] = useState<{ shot: ShotEvent; x: number; y: number } | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
   const scoringTypes = new Set([
     'goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'
   ])
 
   // Only show shots with coordinates in the attacking half (pitch_x >= 50)
   const plotShots = shots.filter(s => s.pitch_x !== null && s.pitch_y !== null && s.pitch_x! >= 50)
+  const hiddenCount = shots.length - plotShots.length
 
   if (plotShots.length === 0) {
     return (
@@ -233,51 +248,103 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
     )
   }
 
+  const handleShotInteraction = (shot: ShotEvent, e: React.MouseEvent | React.TouchEvent) => {
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    let clientX: number, clientY: number
+    if ('touches' in e) {
+      e.preventDefault()
+      clientX = e.touches[0].clientX
+      clientY = e.touches[0].clientY
+    } else {
+      clientX = e.clientX
+      clientY = e.clientY
+    }
+    if (selectedShot?.shot === shot) {
+      setSelectedShot(null)
+    } else {
+      setSelectedShot({ shot, x: clientX - rect.left, y: clientY - rect.top })
+    }
+  }
+
   return (
     <div className="w-full max-w-lg mx-auto">
-      <div className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-xl overflow-hidden" style={{ aspectRatio: '16/10' }}>
+      <div
+        ref={containerRef}
+        className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-xl overflow-hidden"
+        style={{ aspectRatio: '16/10' }}
+        onClick={() => setSelectedShot(null)}
+      >
         <svg viewBox="0 0 2332 1446" className="w-full h-full">
           <rect width="2332" height="1446" fill="#2d5016" />
           <image href="/pitch-svg.svg" width="2332" height="1446" preserveAspectRatio="xMidYMid meet" />
           {plotShots.map((shot, i) => {
             const isScore = scoringTypes.has(shot.event_type)
             const isGoal = shot.event_type === 'goal'
-            // Remap attacking half (50-100) to full pitch width
             const normX = ((shot.pitch_x! - 50) / 50) * 100
             const x = (normX / 100) * 1960 + 183
             const y = (shot.pitch_y! / 100) * 1167 + 123
+            const isSelected = selectedShot?.shot === shot
             return (
               <circle
                 key={i}
                 cx={x}
                 cy={y}
-                r={isGoal ? 24 : 18}
+                r={isGoal ? 26 : 20}
                 fill={isScore ? '#10b981' : '#ef4444'}
-                stroke="white"
-                strokeWidth={3}
-                opacity={0.85}
-              >
-                <title>{`${shot.event_type.replace(/_/g, ' ')} vs ${shot.opponent}${shot.minute ? ` (${shot.minute}')` : ''}`}</title>
-              </circle>
+                stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.7)'}
+                strokeWidth={isSelected ? 5 : 3}
+                opacity={isSelected ? 1 : 0.85}
+                className="cursor-pointer"
+                onClick={(e) => { e.stopPropagation(); handleShotInteraction(shot, e) }}
+                onTouchStart={(e) => { e.stopPropagation(); handleShotInteraction(shot, e) }}
+              />
             )
           })}
         </svg>
+
+        {/* Touch/click tooltip */}
+        {selectedShot && (
+          <div
+            className="absolute z-10 pointer-events-none bg-black/90 border border-white/20 rounded-lg px-3 py-2 text-xs text-white shadow-xl"
+            style={{
+              left: selectedShot.x + 10,
+              top: selectedShot.y - 48,
+              transform: selectedShot.x > (containerRef.current?.clientWidth ?? 0) / 2 ? 'translateX(-110%)' : undefined,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="font-semibold">{shotLabel(selectedShot.shot.event_type)}</div>
+            <div className="text-white/60">vs {selectedShot.shot.opponent}</div>
+            {selectedShot.shot.minute && <div className="text-white/50">{selectedShot.shot.minute}'</div>}
+          </div>
+        )}
       </div>
-      {/* Legend */}
-      <div className="flex items-center justify-center gap-6 mt-3">
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full bg-emerald-500" />
-          <span className="text-xs text-white/50">Score</span>
+
+      {/* Legend + hint */}
+      <div className="flex items-center justify-between mt-3">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-emerald-500" />
+            <span className="text-xs text-white/50">Score</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-red-500" />
+            <span className="text-xs text-white/50">Miss</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded-full border-2 border-white/30" />
+            <span className="text-xs text-white/50">Goal</span>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full bg-red-500" />
-          <span className="text-xs text-white/50">Miss</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-4 h-4 rounded-full border-2 border-white/30" />
-          <span className="text-xs text-white/50">Goal</span>
-        </div>
+        <span className="text-[10px] text-white/30 italic">Tap a shot for detail</span>
       </div>
+
+      {hiddenCount > 0 && (
+        <p className="text-xs text-white/30 text-center mt-1">
+          {hiddenCount} shot{hiddenCount > 1 ? 's' : ''} recorded outside the attacking half — not shown
+        </p>
+      )}
     </div>
   )
 }
@@ -368,8 +435,10 @@ function computeImpactInsight(matches: { score: number; turnovers: number; defen
 
 function computeShotInsight(shots: ShotEvent[], accuracy: number): string | null {
   if (shots.length === 0) return null
-  const withCoords = shots.filter(s => s.pitch_x !== null)
-  return `${shots.length} shots tracked${withCoords.length < shots.length ? ` (${withCoords.length} with location data)` : ''}. ${accuracy}% conversion rate.`
+  const plotShots = shots.filter(s => s.pitch_x !== null && s.pitch_x >= 50)
+  const hidden = shots.length - plotShots.length
+  const mapNote = hidden > 0 ? ` (${plotShots.length} shown on map)` : ''
+  return `${shots.length} shot${shots.length !== 1 ? 's' : ''} tracked${mapNote}. ${accuracy}% conversion rate.`
 }
 
 function computeDefenceInsight(blocks: number, intercepts: number, towon: number, frees: number, games: number): string | null {

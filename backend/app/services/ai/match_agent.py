@@ -227,11 +227,17 @@ INSTRUCTIONS:
 5. Reference knowledge base context: compare to tactical documents, GPS benchmarks, and rules when available.
 6. Be specific — cite player names, minutes, and events from the tool results.
 7. Be constructive but honest about weaknesses.
+7a. NEVER analyse or mention players who did not play in this match. Only discuss players with match events or GPS data in the tool results. Do not speculate about players absent from the data.
+7b. SPATIAL ANALYSIS — REQUIRED: The get_match_events tool returns a zone_summary block. You MUST use it to make specific territorial observations in your Tactical Analysis section. For example:
+    - Scoring: "X scored Y/Z shots from the inside-45 left channel (N%) — their most productive zone"
+    - Shooting wastage: "0 conversions from outside-45 right — avoid speculative shots from there"
+    - Turnover battle: "won the midfield center channel convincingly (4 won vs 1 lost) but struggled in the defensive left (0 won, 3 lost — sustained pressure from opposition press)"
+    Always name the specific zone (e.g. "inside-45 center", "defensive left channel", "midfield right") not vague references to "certain areas".
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>
    {{"possession": "Brief insight about possession and territory patterns", "scoring": "Brief insight about when scoring happened", "shooting": "Brief insight about shot selection and efficiency"}}
    </chart_insights>
-   Each insight should be 1-2 sentences referencing specific stats from the match. IMPORTANT: Always use the actual team names (from club_context and the match opponent) — never say "Team" generically.
+   Each insight must be 1-2 sentences using ONLY data from the tools you called for THIS match — never infer or reference previous matches, sequences, or historical context. IMPORTANT: Always use the actual team names (from club_context and the match opponent) — never say "Team" generically.
 """
 
         # Always include tool instruction with the match_id

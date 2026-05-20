@@ -2,10 +2,15 @@
 Audit Trail Middleware.
 
 Automatically logs meaningful admin actions (POST/PUT/DELETE) to the audit_logs table.
-Skips noisy/irrelevant endpoints (health checks, token refresh, path points, etc.).
-Runs AFTER the response is sent so it doesn't slow down requests.
+Skips noisy/irrelevant endpoints (health checks, token refresh, live match recording, etc.).
+Audit writes are fire-and-forget (asyncio.create_task) so they never block a response.
+
+Live match recording endpoints are intentionally excluded — high-frequency writes (possession
+events, ball carrier segments, individual match events) would saturate the DB connection pool
+over a 90-minute match. Only match lifecycle transitions (create, half-time, end) are audited.
 """
 
+import asyncio
 import logging
 import re
 from datetime import datetime
@@ -18,20 +23,28 @@ from app.models.audit_log import AuditLog
 
 logger = logging.getLogger(__name__)
 
-# Endpoints to SKIP — these are noisy, internal, or not meaningful actions
+# Endpoints to SKIP — these are either too noisy or not meaningful admin actions.
+# Live match recording routes (possession-events, match-events, ball-carrier, formation-snapshots,
+# player-movement) are excluded to prevent DB connection pool exhaustion during matches.
 SKIP_PATTERNS = [
-    r"^/$",                              # Health check
+    r"^/$",                              # Root health check
     r"^/health",                         # Health check
     r"^/api/v1/auth/token",              # Token exchange (logged separately as login)
     r"^/api/v1/auth/refresh",            # Token refresh — not meaningful
     r"^/api/v1/auth/me$",               # Profile check — GET-like
     r"^/api/v1/notifications/subscribe", # Push subscription — internal
-    r"^/api/v1/player-movement/.*/path-points",  # Path point appends (very frequent during recording)
+    # ---- Live match recording (high-frequency, excluded to protect DB pool) ----
+    r"^/api/v1/possession-events",       # Fires every 1-2s during play — NOT audited
+    r"^/api/v1/match-events",            # Individual events during recording — NOT audited
+    r"^/api/v1/ball-carrier",            # Ball carrier segments — NOT audited
+    r"^/api/v1/formation-snapshots",     # Formation snapshots — NOT audited
+    r"^/api/v1/player-movement",         # All player movement (path points etc.) — NOT audited
+    # ---- AI / read-like POSTs ----
     r"^/api/v1/live-insights",           # Live AI calls during match
-    r"^/api/v1/ai/dashboard",           # Dashboard chart generation (POST but read-like)
-    r"^/api/v1/ai/kpi",                 # KPI insight generation (POST but read-like)
-    r"^/api/v1/ai/outlier",             # Outlier suggestions (POST but read-like)
-    r"^/api/v1/ai/insight-alerts",      # Insight alert generation (POST but read-like)
+    r"^/api/v1/ai/dashboard",            # Dashboard chart generation (POST but read-like)
+    r"^/api/v1/ai/kpi",                  # KPI insight generation (POST but read-like)
+    r"^/api/v1/ai/outlier",              # Outlier suggestions (POST but read-like)
+    r"^/api/v1/ai/insight-alerts",       # Insight alert generation (POST but read-like)
     r"^/api/v1/audit-log",              # Don't audit the audit log itself
 ]
 
@@ -129,6 +142,31 @@ def _extract_resource_id(path: str) -> str | None:
     return uuid_match.group(1) if uuid_match else None
 
 
+async def _write_audit_log(
+    club_id, user_id, user_email, user_name,
+    action, resource_type, resource_id, method, path, ip,
+):
+    """Fire-and-forget audit write — runs in background after response is returned."""
+    try:
+        async with async_session_maker() as db:
+            log = AuditLog(
+                club_id=club_id,
+                user_id=user_id,
+                user_email=user_email,
+                user_name=user_name,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                http_method=method,
+                endpoint=path,
+                ip_address=ip,
+            )
+            db.add(log)
+            await db.commit()
+    except Exception as e:
+        logger.warning(f"Audit log write failed: {e}")
+
+
 class AuditMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Only audit mutations (POST/PUT/DELETE) — skip GETs
@@ -138,11 +176,11 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
         path = request.url.path
 
-        # Skip noisy/internal endpoints
+        # Skip noisy/internal/high-frequency endpoints
         if _should_skip(path):
             return await call_next(request)
 
-        # Process the request
+        # Process the request — response is returned to client immediately after this
         response: Response = await call_next(request)
 
         # Only log successful mutations (2xx/3xx)
@@ -170,25 +208,10 @@ class AuditMiddleware(BaseHTTPMiddleware):
         if not ip:
             ip = request.client.host if request.client else None
 
-        # Write audit log asynchronously (don't block the response)
-        try:
-            async with async_session_maker() as db:
-                log = AuditLog(
-                    club_id=club_id,
-                    user_id=user_id,
-                    user_email=user_email,
-                    user_name=user_name,
-                    action=action,
-                    resource_type=resource_type,
-                    resource_id=resource_id,
-                    http_method=method,
-                    endpoint=path,
-                    ip_address=ip,
-                )
-                db.add(log)
-                await db.commit()
-        except Exception as e:
-            # Never let audit logging break the actual request
-            logger.warning(f"Audit log write failed: {e}")
+        # Fire-and-forget — response is already returned; audit write cannot block it
+        asyncio.create_task(_write_audit_log(
+            club_id, user_id, user_email, user_name,
+            action, resource_type, resource_id, method, path, ip,
+        ))
 
         return response

@@ -12,7 +12,9 @@ import {
   X,
   User,
   Bot,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  Calendar
 } from 'lucide-react'
 import { api, SquadHealthSummary, PlayerWorkload, SquadFitnessSummary } from '@/services/api'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
@@ -29,6 +31,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [aiSummary, setAiSummary] = useState<string | null>(null)
   const [showAllAlerts, setShowAllAlerts] = useState(false)
+  const [showAttendanceDetails, setShowAttendanceDetails] = useState(false)
   const [fitnessSummary, setFitnessSummary] = useState<SquadFitnessSummary | null>(null)
 
   const fetchHealthData = async () => {
@@ -110,13 +113,15 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
     }
   }
 
-  // Combine all alerts for display
+  // Separate attendance drop alerts from real health/workload alerts
   const allAlerts = [
     ...healthData.alerts.critical,
     ...healthData.alerts.high,
     ...healthData.alerts.medium,
     ...healthData.alerts.low
   ]
+  const attendanceDropAlerts = allAlerts.filter(a => a.alert_type === 'attendance_drop' || a.alert_type === 'ATTENDANCE_DROP')
+  const healthAlerts = allAlerts.filter(a => a.alert_type !== 'attendance_drop' && a.alert_type !== 'ATTENDANCE_DROP')
 
   // Categorize players by status
   const playersByStatus = healthData.player_workloads.reduce((acc, player) => {
@@ -220,15 +225,15 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
         </div>
       </div>
 
-      {/* Active Alerts */}
-      {allAlerts.length > 0 && (
+      {/* Active Alerts — workload / injury / overload only */}
+      {healthAlerts.length > 0 && (
         <div className="glass-card p-6">
           <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-white">
             <AlertTriangle size={20} className="text-amber-400" />
             Active Alerts
           </h3>
           <div className="space-y-3">
-            {(showAllAlerts ? allAlerts : allAlerts.slice(0, 1)).map((alert) => (
+            {(showAllAlerts ? healthAlerts : healthAlerts.slice(0, 3)).map((alert) => (
               <Link
                 key={alert.id}
                 to={`/players/${alert.player_id}`}
@@ -265,13 +270,65 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
               </Link>
             ))}
           </div>
-          {allAlerts.length > 1 && (
+          {healthAlerts.length > 3 && (
             <button
               onClick={() => setShowAllAlerts(!showAllAlerts)}
               className="mt-3 text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
             >
-              {showAllAlerts ? 'Show less' : `View ${allAlerts.length - 1} more alert${allAlerts.length - 1 > 1 ? 's' : ''}`}
+              {showAllAlerts ? 'Show less' : `View ${healthAlerts.length - 3} more alert${healthAlerts.length - 3 > 1 ? 's' : ''}`}
             </button>
+          )}
+        </div>
+      )}
+
+      {/* Attendance Concerns — separate compact section */}
+      {attendanceDropAlerts.length > 0 && (
+        <div className="glass-card p-6">
+          <button
+            className="w-full flex items-center justify-between"
+            onClick={() => setShowAttendanceDetails(!showAttendanceDetails)}
+          >
+            <h3 className="text-base font-bold flex items-center gap-2 text-white">
+              <Calendar size={18} className="text-blue-400" />
+              Attendance Concerns
+              <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-semibold">
+                {attendanceDropAlerts.length} players
+              </span>
+            </h3>
+            <ChevronDown
+              size={18}
+              className={`text-white/40 transition-transform ${showAttendanceDetails ? 'rotate-180' : ''}`}
+            />
+          </button>
+          <p className="text-sm text-white/40 mt-1 text-left">
+            Players with &lt;70% training attendance in the last 2 weeks
+          </p>
+          {showAttendanceDetails && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+              {attendanceDropAlerts.map((alert) => (
+                <Link
+                  key={alert.id}
+                  to={`/players/${alert.player_id}`}
+                  className="flex items-center justify-between p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-blue-500/20 flex items-center justify-center">
+                      <User size={13} className="text-blue-300" />
+                    </div>
+                    <span className="text-sm text-white">{alert.player_name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-white/50">{alert.message}</span>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismissAlert(alert.id) }}
+                      className="p-1 rounded hover:bg-white/10"
+                    >
+                      <X size={13} className="text-white/30" />
+                    </button>
+                  </div>
+                </Link>
+              ))}
+            </div>
           )}
         </div>
       )}

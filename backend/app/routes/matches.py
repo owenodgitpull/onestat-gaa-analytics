@@ -126,13 +126,13 @@ async def get_match(
     """
     Get a specific match by ID.
     """
-    match = await MatchService.get_match(db, match_id)
+    match = await MatchService.get_match(db, match_id, club_id=user.club_id)
     if not match:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Match with ID {match_id} not found"
         )
-    
+
     response = MatchResponse.model_validate(match)
     response.team_total_score = match.team_total_score
     response.opponent_total_score = match.opponent_total_score
@@ -156,18 +156,18 @@ async def update_match(
     
     Can update any field including scores and status.
     """
-    match = await MatchService.update_match(db, match_id, match_data)
+    match = await MatchService.update_match(db, match_id, match_data, club_id=user.club_id)
     if not match:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Match with ID {match_id} not found"
         )
-    
+
     response = MatchResponse.model_validate(match)
     response.team_total_score = match.team_total_score
     response.opponent_total_score = match.opponent_total_score
     response.result = match.result
-    
+
     return response
 
 
@@ -183,7 +183,7 @@ async def start_match(
     
     Sets the match status and records the start time.
     """
-    match = await MatchService.start_match(db, match_id, start_data.started_at)
+    match = await MatchService.start_match(db, match_id, start_data.started_at, club_id=user.club_id)
     if not match:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -211,7 +211,7 @@ async def update_match_phase(
     Persists current_phase, attacking_right_first_half, and second_half_started_at.
     """
     match = await MatchService.update_match_phase(
-        db, match_id, phase_data.phase, phase_data.attacking_right_first_half
+        db, match_id, phase_data.phase, phase_data.attacking_right_first_half, club_id=user.club_id
     )
     if not match:
         raise HTTPException(
@@ -250,7 +250,8 @@ async def complete_match(
         db,
         match_id,
         complete_data.completed_at,
-        complete_data.notes
+        complete_data.notes,
+        club_id=user.club_id,
     )
     if not match:
         raise HTTPException(
@@ -311,18 +312,18 @@ async def update_match_score(
         opponent_points=score_data.opponent_points
     )
     
-    match = await MatchService.update_match(db, match_id, update_data)
+    match = await MatchService.update_match(db, match_id, update_data, club_id=user.club_id)
     if not match:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Match with ID {match_id} not found"
         )
-    
+
     response = MatchResponse.model_validate(match)
     response.team_total_score = match.team_total_score
     response.opponent_total_score = match.opponent_total_score
     response.result = match.result
-    
+
     return response
 
 
@@ -345,14 +346,13 @@ async def get_match_stats(
     
     Calculated in real-time from match events.
     """
-    # Verify match exists
-    match = await MatchService.get_match(db, match_id)
+    match = await MatchService.get_match(db, match_id, club_id=user.club_id)
     if not match:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Match with ID {match_id} not found"
         )
-    
+
     # Calculate stats
     stats = await MatchService.calculate_match_stats(db, match_id, half=half)
 
@@ -370,7 +370,7 @@ async def delete_match(
     
     The match and all related events are marked as deleted but not removed from database.
     """
-    success = await MatchService.delete_match(db, match_id)
+    success = await MatchService.delete_match(db, match_id, club_id=user.club_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -393,7 +393,7 @@ async def get_match_pitch_paths(
     """
     from app.services.ai._shared import get_pitch_paths
 
-    match = await MatchService.get_match(db, match_id)
+    match = await MatchService.get_match(db, match_id, club_id=user.club_id)
     if not match:
         raise HTTPException(status_code=404, detail=f"Match {match_id} not found")
 

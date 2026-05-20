@@ -70,6 +70,7 @@ export function useRecordEvent() {
       is_home_team: boolean;
       notes?: string;
       opponent_player_name?: string;
+      sub_type?: string;
     }) => offlineMatchEvents.create(data),
     onSuccess: (result, variables) => {
       // Optimistically add the event to the cache (no refetch needed)
@@ -115,10 +116,7 @@ export function useRecordEvent() {
         )
       }
 
-      // Invalidate stats (these are computed server-side, will refetch when online)
-      queryClient.invalidateQueries({
-        queryKey: matchKeys.stats(variables.match_id)
-      });
+      // Stats refresh on their own 60s interval — no need to invalidate on every event
     },
   });
 }
@@ -149,7 +147,6 @@ export function useQuickScore() {
           }
         },
       )
-      queryClient.invalidateQueries({ queryKey: matchKeys.stats(variables.match_id) });
       queryClient.invalidateQueries({ queryKey: matchKeys.detail(variables.match_id) });
     },
   });
@@ -226,13 +223,17 @@ export function useDeleteEvent() {
 
 /**
  * Get all possession events for a match — with offline tolerance.
+ * No auto-poll: possession data is written locally (offline-first) so there
+ * is no benefit in re-fetching thousands of rows from the server every few
+ * seconds during a live match.
  */
 export function usePossessionEvents(matchId: string | null) {
   return useQuery({
     queryKey: possessionKeys.byMatch(matchId!),
     queryFn: () => api.possession.getByMatch(matchId!),
     enabled: !!matchId,
-    refetchInterval: 5000,
+    refetchInterval: 0,
+    staleTime: 30_000,
     retry: (failureCount, error) => {
       if (error instanceof TypeError && error.message === 'Failed to fetch') return false
       return failureCount < 1
@@ -246,10 +247,11 @@ export function usePossessionEvents(matchId: string | null) {
 
 /**
  * Record a possession event — offline-first.
+ * No cache invalidation on success: possession data lives in IndexedDB and
+ * the server-side query (5000 rows) should not be re-fetched on every tick.
+ * Stats are not affected by possession ticks; they refresh on their own interval.
  */
 export function useRecordPossession() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: (data: {
       match_id: string;
@@ -259,13 +261,5 @@ export function useRecordPossession() {
       x_coord: number;
       y_coord: number;
     }) => offlinePossession.create(data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: possessionKeys.byMatch(variables.match_id)
-      });
-      queryClient.invalidateQueries({
-        queryKey: matchKeys.stats(variables.match_id)
-      });
-    },
   });
 }

@@ -2499,6 +2499,9 @@ export const clubMembersAPI = {
   resendInvitation: (invitationId: string) =>
     fetchAPI(`/club/members/invitations/${invitationId}/resend`, { method: 'POST' }),
 
+  deleteInvitation: (invitationId: string) =>
+    fetchAPI(`/club/members/invitations/${invitationId}`, { method: 'DELETE' }),
+
   getInviteCode: () =>
     fetchAPI<{ invite_code: string }>('/auth/invite-code'),
 

@@ -130,6 +130,12 @@ export default function Fixtures() {
   const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
   const calendarDays = eachDayOfInterval({ start: calStart, end: calEnd })
 
+  // Upcoming fixtures — today or later, sorted soonest first
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+  const upcomingFixtures = fixtures
+    .filter(f => new Date(f.match_date) >= todayStart)
+    .sort((a, b) => new Date(a.match_date).getTime() - new Date(b.match_date).getTime())
+
   // Map fixtures to dates
   const fixturesByDate = new Map<string, Match[]>()
   fixtures.forEach((f) => {
@@ -352,7 +358,7 @@ export default function Fixtures() {
           <div className="flex items-center justify-center py-12">
             <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : fixtures.length === 0 ? (
+        ) : upcomingFixtures.length === 0 ? (
           <div className="glass-card p-8 text-center">
             <CalendarDays size={40} className="mx-auto text-white/20 mb-3" />
             <p className="text-white/50 text-sm">No upcoming fixtures</p>
@@ -362,7 +368,7 @@ export default function Fixtures() {
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {fixtures.slice(0, 12).map((f) => (
+            {upcomingFixtures.slice(0, 12).map((f) => (
               <div
                 key={f.id}
                 onClick={() => navigate(`/fixtures/${f.id}/preview`)}

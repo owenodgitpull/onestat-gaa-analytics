@@ -41,6 +41,12 @@ const filterCategories: FilterCategory[] = [
     color: 'cyan'
   },
   {
+    id: 'defence',
+    label: 'Defence',
+    eventTypes: ['block', 'interception', 'tackle_won'],
+    color: 'violet'
+  },
+  {
     id: 'fouls',
     label: 'Fouls',
     eventTypes: ['foul_won', 'foul_committed'],

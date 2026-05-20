@@ -71,13 +71,14 @@ class MatchService:
         return match
     
     @staticmethod
-    async def get_match(db: AsyncSession, match_id: UUID) -> Optional[Match]:
-        """Get a match by ID."""
-        result = await db.execute(
-            select(Match).where(
-                and_(Match.id == match_id, Match.is_deleted.is_(False))
-            )
-        )
+    async def get_match(
+        db: AsyncSession, match_id: UUID, club_id: Optional[UUID] = None
+    ) -> Optional[Match]:
+        """Get a match by ID. Pass club_id to enforce club scoping (required on all HTTP routes)."""
+        conditions = [Match.id == match_id, Match.is_deleted.is_(False)]
+        if club_id is not None:
+            conditions.append(Match.club_id == club_id)
+        result = await db.execute(select(Match).where(and_(*conditions)))
         return result.scalar_one_or_none()
     
     @staticmethod
@@ -129,10 +130,11 @@ class MatchService:
     async def update_match(
         db: AsyncSession,
         match_id: UUID,
-        match_data: MatchUpdate
+        match_data: MatchUpdate,
+        club_id: Optional[UUID] = None,
     ) -> Optional[Match]:
         """Update a match."""
-        match = await MatchService.get_match(db, match_id)
+        match = await MatchService.get_match(db, match_id, club_id=club_id)
         if not match:
             return None
         
@@ -150,10 +152,11 @@ class MatchService:
     async def start_match(
         db: AsyncSession,
         match_id: UUID,
-        started_at: Optional[datetime] = None
+        started_at: Optional[datetime] = None,
+        club_id: Optional[UUID] = None,
     ) -> Optional[Match]:
         """Start a match (change status to IN_PROGRESS)."""
-        match = await MatchService.get_match(db, match_id)
+        match = await MatchService.get_match(db, match_id, club_id=club_id)
         if not match:
             return None
         
@@ -171,10 +174,11 @@ class MatchService:
         db: AsyncSession,
         match_id: UUID,
         phase: str,
-        attacking_right_first_half: Optional[bool] = None
+        attacking_right_first_half: Optional[bool] = None,
+        club_id: Optional[UUID] = None,
     ) -> Optional[Match]:
         """Update match phase for resumable recording."""
-        match = await MatchService.get_match(db, match_id)
+        match = await MatchService.get_match(db, match_id, club_id=club_id)
         if not match:
             return None
 
@@ -195,14 +199,15 @@ class MatchService:
         match_id: UUID,
         completed_at: Optional[datetime] = None,
         notes: Optional[str] = None,
-        trigger_ai_analysis: bool = True
+        trigger_ai_analysis: bool = True,
+        club_id: Optional[UUID] = None,
     ) -> Optional[Match]:
         """
         Complete a match (change status to COMPLETED).
 
         Optionally triggers AI post-match analysis in the background.
         """
-        match = await MatchService.get_match(db, match_id)
+        match = await MatchService.get_match(db, match_id, club_id=club_id)
         if not match:
             return None
 
@@ -268,9 +273,9 @@ class MatchService:
             logger.error(f"Failed to generate post-match analysis for {match_id}: {e}", exc_info=True)
     
     @staticmethod
-    async def delete_match(db: AsyncSession, match_id: UUID) -> bool:
+    async def delete_match(db: AsyncSession, match_id: UUID, club_id: Optional[UUID] = None) -> bool:
         """Soft delete a match."""
-        match = await MatchService.get_match(db, match_id)
+        match = await MatchService.get_match(db, match_id, club_id=club_id)
         if not match:
             return False
         

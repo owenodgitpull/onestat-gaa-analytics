@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock, RefreshCw, Send } from 'lucide-react'
+import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock, RefreshCw, Send, Trash2 } from 'lucide-react'
 import { clubMembersAPI } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 // ClubContext no longer needed — invite code fetched from API
@@ -37,6 +37,7 @@ export default function UserManagementSettings() {
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
   const [resendSuccess, setResendSuccess] = useState<string | null>(null)
+  const [deletingInviteId, setDeletingInviteId] = useState<string | null>(null)
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -119,6 +120,18 @@ export default function UserManagementSettings() {
       setInviteError(err.message || 'Failed to send invite')
     } finally {
       setInviting(false)
+    }
+  }
+
+  const handleDeleteInvite = async (invitationId: string) => {
+    setDeletingInviteId(invitationId)
+    try {
+      await clubMembersAPI.deleteInvitation(invitationId)
+      await fetchMembers()
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete invitation')
+    } finally {
+      setDeletingInviteId(null)
     }
   }
 
@@ -280,6 +293,17 @@ export default function UserManagementSettings() {
                     : <Send size={12} />
                   }
                   {resendingId === inv.id ? 'Sending…' : 'Resend'}
+                </button>
+                <button
+                  onClick={() => handleDeleteInvite(inv.id)}
+                  disabled={deletingInviteId === inv.id}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50 flex-shrink-0"
+                  title="Delete this invitation"
+                >
+                  {deletingInviteId === inv.id
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <Trash2 size={12} />
+                  }
                 </button>
               </div>
             ))}

@@ -137,6 +137,9 @@ class MatchEvent(Base):
     # Opposition player name (for opponent scoring events)
     opponent_player_name: Column[Optional[str]] = Column(String(200), nullable=True)
 
+    # Sub-type for unforced errors and fouls (e.g. 'stray_pass', 'pushing')
+    sub_type: Column[Optional[str]] = Column(String(50), nullable=True)
+
     # Offline sync — client-generated UUID for idempotent deduplication
     client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
 

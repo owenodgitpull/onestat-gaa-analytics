@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import logging
@@ -72,25 +73,29 @@ async def lifespan(app: FastAPI):
     logger.info("✅ Application shutdown complete")
 
 
+_is_prod_main = os.getenv("ENVIRONMENT") == "production"
+
 # Create FastAPI application
 app = FastAPI(
     title="GAA Analytics API",
     description="Team analytics platform with AI-powered insights for GAA clubs",
     version="1.0.0",
-    docs_url="/docs",  # Swagger UI at /docs
-    redoc_url="/redoc",  # ReDoc at /redoc
-    lifespan=lifespan,  # Lifecycle manager
+    docs_url=None if _is_prod_main else "/docs",
+    redoc_url=None if _is_prod_main else "/redoc",
+    openapi_url=None if _is_prod_main else "/openapi.json",
+    lifespan=lifespan,
 )
 
 
 # ---------- Rate limiting ----------
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["100/minute"],  # Global default
+    default_limits=["300/minute"],  # Auth endpoints have their own stricter limits (5-10/min)
     storage_uri="memory://",
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)  # Required to enforce default_limits globally
 
 
 # Configure CORS (Cross-Origin Resource Sharing)

@@ -40,7 +40,7 @@ class PlayerCreate(PlayerBase):
 class PlayerUpdate(BaseModel):
     """
     Schema for updating a player.
-    
+
     All fields optional - only update what's provided.
     """
     name: Optional[str] = Field(None, min_length=2, max_length=100)
@@ -49,6 +49,7 @@ class PlayerUpdate(BaseModel):
     date_of_birth: Optional[date] = None
     status: Optional[PlayerStatus] = None
     active: Optional[bool] = None
+    gps_alias: Optional[str] = Field(None, description="Comma-separated GPS device names / nicknames (e.g. 'Damo McG, Damo')")
     
     @field_validator('name')
     @classmethod
@@ -62,12 +63,13 @@ class PlayerUpdate(BaseModel):
 class PlayerResponse(PlayerBase):
     """
     Schema for player responses.
-    
+
     Includes database-generated fields like ID.
     """
     id: UUID = Field(..., description="Unique player identifier")
     active: bool = Field(..., description="Whether player is active (soft delete flag)")
-    
+    gps_alias: Optional[str] = Field(None, description="Comma-separated GPS device names / nicknames")
+
     class Config:
         from_attributes = True  # Allows creating from SQLAlchemy models
 

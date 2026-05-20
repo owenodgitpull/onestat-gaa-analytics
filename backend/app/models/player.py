@@ -75,6 +75,10 @@ class Player(Base):
     
     # Soft delete - never actually delete players (preserve historical data)
     active = Column(Boolean, default=True, nullable=False, index=True)
+
+    # Comma-separated GPS device names / nicknames for this player.
+    # Used to match GPS tracker labels (e.g. "Damo McG") to the correct player.
+    gps_alias = Column(String(255), nullable=True)
     
     # Relationships (defined as strings to avoid circular imports)
     # lazy="selectin": Eager load related data (1 query instead of N+1)

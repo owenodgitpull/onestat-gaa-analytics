@@ -61,6 +61,10 @@ const getEventColor = (event: PitchEvent): string => {
     case 'saved':
     case 'short':
       return '#f59e0b'  // yellow
+    case 'block':
+    case 'interception':
+    case 'tackle_won':
+      return '#a78bfa'  // violet — defensive wins
     case 'turnover_won':
       return '#06b6d4'  // cyan
     case 'turnover_lost':

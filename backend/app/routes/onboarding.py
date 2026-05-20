@@ -69,6 +69,7 @@ async def upload_club_logo(
     club_id: UUID,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Step 2: Upload club logo image. Stores in R2 under club prefix.
@@ -104,6 +105,7 @@ async def upload_club_logo(
 async def preview_player_file(
     club_id: UUID,
     file: UploadFile = File(...),
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Step 3a: Parse a CSV/XLSX file and return a preview of players.
@@ -135,6 +137,7 @@ async def confirm_players(
     club_id: UUID,
     request: PlayerBulkCreateRequest,
     db: AsyncSession = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Step 3b: Bulk create players from the confirmed preview data.
@@ -153,6 +156,7 @@ async def confirm_players(
 async def complete_onboarding(
     club_id: UUID,
     db: AsyncSession = Depends(get_db),
+    user: AuthenticatedUser = Depends(get_current_user),
 ):
     """
     Step 4: Mark club onboarding as completed.

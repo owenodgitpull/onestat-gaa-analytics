@@ -20,6 +20,7 @@ import StepClubBranding from '../components/onboarding/StepClubBranding';
 import StepPlayerUpload from '../components/onboarding/StepPlayerUpload';
 import type { PlayerPreviewRow, ManualPlayer } from '../components/onboarding/StepPlayerUpload';
 import StepReview from '../components/onboarding/StepReview';
+import StepFixtures from '../components/onboarding/StepFixtures';
 
 // ── Initial state ──────────────────────────────────────────────────────────
 
@@ -135,6 +136,7 @@ export default function Onboarding() {
     if (currentStep === 1) return clubData.name.trim().length > 0;
     if (currentStep === 2) return true; // branding is optional
     if (currentStep === 3) return true; // players can be added later
+    if (currentStep === 4) return true; // fixtures can be added later
     return true;
   };
 
@@ -164,6 +166,13 @@ export default function Onboarding() {
           setUser({ ...user, club_id: result.id, onboarding_completed: false });
         }
 
+        // Refresh token so the fixtures endpoint (step 4) gets a valid club_id in the JWT
+        try {
+          await fetchAPI<any>('/auth/refresh', { method: 'POST' });
+        } catch {
+          // Non-critical — fixtures step will just fail gracefully if token is stale
+        }
+
         // Upload logo if selected
         if (logoFile) {
           try {
@@ -181,7 +190,7 @@ export default function Onboarding() {
       setLoading(false);
     }
 
-    setCurrentStep((s) => Math.min(s + 1, 4));
+    setCurrentStep((s) => Math.min(s + 1, 5));
   };
 
   const handleBack = () => {
@@ -297,6 +306,13 @@ export default function Onboarding() {
             )}
 
             {currentStep === 4 && (
+              <StepFixtures
+                onSkip={() => setCurrentStep(5)}
+                onImported={() => setCurrentStep(5)}
+              />
+            )}
+
+            {currentStep === 5 && (
               <StepReview
                 clubData={clubData}
                 playerCount={totalPlayerCount}
@@ -314,7 +330,7 @@ export default function Onboarding() {
               </div>
             )}
 
-            {/* Navigation Buttons (not shown on step 4 -- it has its own button) */}
+            {/* Navigation Buttons (not shown on step 4/5 — those have their own controls) */}
             {currentStep < 4 && (
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-white/10">
                 <button

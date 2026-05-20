@@ -347,3 +347,29 @@ async def resend_invitation(
 
     logger.info(f"Invitation resent: {invitation.invitee_email} by {user.email}")
     return {"detail": f"Invitation resent to {invitation.invitee_email} — they have 7 days to accept."}
+
+
+@router.delete("/members/invitations/{invitation_id}")
+async def delete_invitation(
+    invitation_id: str,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a pending or expired invitation."""
+    result = await db.execute(
+        select(TeamInvitation).where(
+            TeamInvitation.id == invitation_id,
+            TeamInvitation.club_id == user.club_id,
+        )
+    )
+    invitation = result.scalar_one_or_none()
+    if not invitation:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    if invitation.status == "accepted":
+        raise HTTPException(status_code=400, detail="Cannot delete an accepted invitation")
+
+    email = invitation.invitee_email
+    await db.delete(invitation)
+    await db.commit()
+    logger.info(f"Invitation deleted: {email} by {user.email}")
+    return {"detail": f"Invitation for {email} deleted."}

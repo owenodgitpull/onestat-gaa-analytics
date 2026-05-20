@@ -24,11 +24,13 @@ import {
   Target,
   Video,
   Info,
-  Users
+  Users,
+  BarChart2
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
 import { api } from '../services/api'
 import ChartZoomModal from '@/components/ChartZoomModal'
+import ExtendedStatsModal from '@/components/ExtendedStatsModal'
 import { useClubName } from '../contexts/ClubContext'
 import GAAPitch from '../components/GAAPitch'
 import MatchLineupViewer from '../components/MatchLineupViewer'
@@ -39,6 +41,9 @@ import ShotOutcomeChart from '../components/charts/ShotOutcomeChart'
 import PathsTakenChart from '../components/charts/PathsTakenChart'
 import MatchKickoutZones from '../components/charts/MatchKickoutZones'
 import MatchKickoutOutcomes from '../components/charts/MatchKickoutOutcomes'
+import ScoringZoneMap from '../components/charts/ScoringZoneMap'
+import TurnoverMap from '../components/charts/TurnoverMap'
+import ShootingEfficiencyHeatmap from '../components/charts/ShootingEfficiencyHeatmap'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
 import { usePlayers } from '../hooks/usePlayers'
@@ -63,6 +68,7 @@ export default function MatchResult() {
   const clubName = useClubName()
   const { data: match, isLoading: matchLoading } = useMatch(matchId || null)
   const [statsHalf, setStatsHalf] = useState<1 | 2 | undefined>(undefined)
+  const [showExtendedStats, setShowExtendedStats] = useState(false)
   const { data: matchStats } = useMatchStats(matchId || null, statsHalf)
   const { data: eventsData } = useMatchEvents(matchId || null)
   const { data: players } = usePlayers()
@@ -198,6 +204,21 @@ export default function MatchResult() {
       setIsDeleting(false)
     }
   }
+
+  const shotLocations = useMemo(() => {
+    const shotTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'wide', 'short', 'saved', 'point_free', 'two_point_free', 'wide_free', 'forty_five', 'forty_five_missed', 'penalty_miss'])
+    const scoreTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'])
+    return (eventsData?.events || [])
+      .filter((e: any) => shotTypes.has(e.event_type) && e.pitch_x != null)
+      .map((e: any) => ({
+        x: e.pitch_x as number,
+        y: e.pitch_y ?? 50,
+        event_type: e.event_type,
+        is_score: scoreTypes.has(e.event_type),
+        team: e.team || (e.is_home_team ? 'own' : 'opponent'),
+        match_id: e.match_id,
+      }))
+  }, [eventsData])
 
   // Extract Man of the Match — prefer AI pick, fall back to formula
   const manOfMatch = useMemo(() => {
@@ -688,10 +709,21 @@ export default function MatchResult() {
         <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden md:self-start md:sticky md:top-4">
           {/* Match Statistics */}
           <div className="glass-card p-5">
-            <h3 className="text-lg font-semibold mb-4 flex items-center space-x-2 text-white">
-              <Activity size={20} className="text-emerald-400" />
-              <span>Match Statistics</span>
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
+                <Activity size={20} className="text-emerald-400" />
+                <span>Match Statistics</span>
+              </h3>
+              {hasEvents && (
+                <button
+                  onClick={() => setShowExtendedStats(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 hover:text-white text-xs font-medium transition-colors"
+                >
+                  <BarChart2 size={13} />
+                  More Stats
+                </button>
+              )}
+            </div>
             {hasEvents ? (
               matchStats ? (
                 <>
@@ -788,6 +820,21 @@ export default function MatchResult() {
             </ChartZoomModal>
             <ChartZoomModal title="Kickout Outcomes">
               <MatchKickoutOutcomes events={eventsData?.events || []} teamName={clubName} opponentName={match.opponent} />
+            </ChartZoomModal>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Scoring Zone Map">
+              <ScoringZoneMap events={eventsData?.events || []} teamName={clubName || 'Us'} opponent={match.opponent} />
+            </ChartZoomModal>
+            <ChartZoomModal title="Possession Battle Map">
+              <TurnoverMap events={eventsData?.events || []} teamName={clubName || 'Us'} />
+            </ChartZoomModal>
+          </div>
+
+          <div className="h-[450px] [&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Shooting Efficiency">
+              <ShootingEfficiencyHeatmap shots={shotLocations} />
             </ChartZoomModal>
           </div>
         </div>
@@ -895,6 +942,17 @@ export default function MatchResult() {
           </div>
         </div>
       ) : null}
+
+      {/* Extended Stats Modal */}
+      {showExtendedStats && match && (
+        <ExtendedStatsModal
+          events={eventsData?.events || []}
+          opponent={match.opponent}
+          teamName={clubName || 'Us'}
+          halfDurationMins={match.half_duration_mins || 30}
+          onClose={() => setShowExtendedStats(false)}
+        />
+      )}
     </div>
   )
 }

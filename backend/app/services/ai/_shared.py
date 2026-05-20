@@ -92,6 +92,8 @@ GAA_ESSENTIALS = """
 ## Scoring
 - Goal (net) = 3 points | Point (over bar) = 1 point | 2-Pointer (outside 40m arc) = 2 points
 - Score format: Goals-Points (e.g., 2-14 = 2 goals + 14 points = 20 total)
+- Points includes: play points, frees (point_free), 45s (forty_five) — always sum ALL of these
+- When describing results use GAA margin language: "won by 4 points", "a 1-point win", "lost by 7 points". Always state the margin, not just the raw score.
 
 ## Positions (15 players)
 1. GK (Goalkeeper)  2. RCB  3. FB (Full Back)  4. LCB
@@ -120,6 +122,14 @@ Events have x (0-100) and y (0-100) coordinates mapped to a real GAA pitch.
 - y < 33%: left side | y 33-67%: centre | y > 67%: right side
 
 Events include a "location" field with human-readable zone descriptions. Use these for tactical analysis — e.g. "3 turnovers inside our 45m" or "scoring 60% from inside the arc, left side".
+
+## Shot Locations — CRITICAL
+- A scoring event's x,y coordinate is where the SHOT was taken FROM (toward the opponent's goal).
+- Shots at goal can ONLY originate from the opponent's half (x > 50). A scoring event with x < 50 means
+  the recorder logged the ball-carrier's position, NOT a shot position. Do NOT call these "shots from
+  the defensive third." Refer to them as transitions or moves — only call something a shot if x > 50.
+- If the data tool returns events flagged as "suspicious_position" (x < 50 for a score/wide), treat
+  those as carrier/transition events and explain this to the user.
 
 ## Key Interpretations (do NOT get these backwards)
 - Possession %: >50% = we had MORE of the ball — dominant. 57% is GOOD, not a concern.
@@ -165,6 +175,22 @@ def _pitch_location(x, y) -> str:
         zone = "inside own 13m line"
 
     return f"{zone}{side}"
+
+
+def _gaa_score(goals: int, points: int, two_pts_play: int = 0, two_pts_free: int = 0) -> str:
+    """Standard GAA score string: Goals-TotalPoints (total_pts[, Xtp][, Xtpf]).
+
+    points = 1-point scores (from play + frees + 45s).
+    two_pts_play / two_pts_free each count as 2 points in the total.
+    """
+    total_pts = points + two_pts_play * 2 + two_pts_free * 2
+    total_score = goals * 3 + total_pts
+    parts = [f"{total_score}pts"]
+    if two_pts_play:
+        parts.append(f"{two_pts_play}tp")
+    if two_pts_free:
+        parts.append(f"{two_pts_free}tpf")
+    return f"{goals}-{total_pts} ({', '.join(parts)})"
 
 
 async def get_club_context(db: AsyncSession, club_id) -> tuple:
@@ -804,8 +830,8 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
         dist_per_min = (distance_m / total_mins) if total_mins > 0 else 0
         is_unused_sub = not is_gk and not was_subbed and dist_per_min < 45 and distance_m < 5000
         if is_unused_sub:
-            player_data["status"] = "unused_substitute"
-            player_data["analysis_note"] = "Did not play — GPS device worn on bench only. Exclude from performance analysis."
+            # Exclude unused subs from tool response — they didn't play, their GPS is bench-only noise
+            continue
         else:
             # Outlier flags for outfield full-match players only
             if not is_gk and not was_subbed and g.total_distance_m and avg_distance > 0:
@@ -1333,12 +1359,118 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             "y": e.pitch_y,
             "notes": e.notes,
         }
+        if e.sub_type:
+            event_dict["sub_type"] = e.sub_type
         loc = _pitch_location(e.pitch_x, e.pitch_y)
         if loc:
             event_dict["location"] = loc
         events_data.append(event_dict)
 
-    return safe_json({"events": events_data, "total": len(events_data)})
+    # ── Spatial zone summary ────────────────────────────────────────────────
+    # Gives the AI pre-aggregated zone data so it can call out tactical
+    # patterns (e.g. "losing possession in the defensive left channel")
+    # without having to reason over hundreds of individual event rows.
+
+    SCORE_TYPES = {"goal", "point", "two_point", "point_free", "two_point_free", "forty_five", "penalty_goal"}
+    MISS_TYPES  = {"wide", "wide_free", "saved", "short", "forty_five_missed", "penalty_miss"}
+    TO_WON  = {"turnover_won", "interception", "block", "tackle_won"}
+    TO_LOST = {"turnover_lost", "unforced_error", "our_unforced_error"}
+
+    def _y_channel(y):
+        if y is None: return None
+        return "left" if y < 33 else ("right" if y > 67 else "center")
+
+    def _x_third(x):
+        if x is None: return None
+        return "defensive" if x < 33 else ("midfield" if x < 67 else "attacking")
+
+    # Scoring zones: own-team shots in attacking half (x>=50)
+    # 6 zones: (outside-45 / inside-45) × (left / center / right)
+    scoring_zones: dict = {}
+    for e in events:
+        et = e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type)
+        is_score = et in SCORE_TYPES
+        is_miss  = et in MISS_TYPES
+        if not (is_score or is_miss): continue
+        tm = e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None
+        if tm != "own": continue
+        x, y = e.pitch_x, e.pitch_y
+        if x is None or y is None or x < 50: continue
+        depth = "inside_45" if x >= 69 else "outside_45"
+        channel = _y_channel(y)
+        key = f"{depth}_{channel}"
+        z = scoring_zones.setdefault(key, {"scores": 0, "misses": 0})
+        if is_score: z["scores"] += 1
+        else: z["misses"] += 1
+
+    # Add efficiency to scoring zones
+    for k, z in scoring_zones.items():
+        total = z["scores"] + z["misses"]
+        z["shots"] = total
+        z["efficiency_pct"] = round(z["scores"] / total * 100) if total else 0
+
+    # Opp scoring zones (attacking toward x=0): x<50
+    opp_scoring_zones: dict = {}
+    for e in events:
+        et = e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type)
+        is_score = et in SCORE_TYPES
+        is_miss  = et in MISS_TYPES
+        if not (is_score or is_miss): continue
+        tm = e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None
+        if tm != "opponent": continue
+        x, y = e.pitch_x, e.pitch_y
+        if x is None or y is None or x > 50: continue
+        depth = "inside_45" if x <= 31 else "outside_45"
+        channel = _y_channel(y)
+        key = f"{depth}_{channel}"
+        z = opp_scoring_zones.setdefault(key, {"scores": 0, "misses": 0})
+        if is_score: z["scores"] += 1
+        else: z["misses"] += 1
+    for k, z in opp_scoring_zones.items():
+        total = z["scores"] + z["misses"]
+        z["shots"] = total
+        z["efficiency_pct"] = round(z["scores"] / total * 100) if total else 0
+
+    # Turnover zones: own-team possession won/lost across full pitch (3 thirds × 3 channels)
+    turnover_zones: dict = {}
+    for e in events:
+        et = e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type)
+        is_won  = et in TO_WON
+        is_lost = et in TO_LOST
+        if not (is_won or is_lost): continue
+        tm = e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None
+        if tm != "own": continue
+        x, y = e.pitch_x, e.pitch_y
+        if x is None or y is None: continue
+        third   = _x_third(x)
+        channel = _y_channel(y)
+        key = f"{third}_{channel}"
+        z = turnover_zones.setdefault(key, {"won": 0, "lost": 0})
+        if is_won: z["won"] += 1
+        else: z["lost"] += 1
+    for k, z in turnover_zones.items():
+        z["net"] = z["won"] - z["lost"]
+
+    zone_summary = {}
+    if scoring_zones:
+        zone_summary["own_scoring_zones"] = scoring_zones
+    if opp_scoring_zones:
+        zone_summary["opp_scoring_zones"] = opp_scoring_zones
+    if turnover_zones:
+        zone_summary["turnover_zones"] = turnover_zones
+
+    result_payload: dict = {"events": events_data, "total": len(events_data)}
+    if zone_summary:
+        result_payload["zone_summary"] = zone_summary
+        result_payload["zone_summary_guide"] = (
+            "zone_summary keys: own_scoring_zones/opp_scoring_zones use format "
+            "'inside_45_left' / 'outside_45_center' etc. "
+            "turnover_zones use 'defensive_left', 'midfield_center', 'attacking_right' etc. "
+            "Use these to make specific spatial observations in your analysis — "
+            "e.g. 'dominated the midfield center channel (4 won vs 1 lost)' or "
+            "'struggled on the outside-45 right channel (0/3 shooting)'."
+        )
+    return safe_json(result_payload)
 
 
 async def get_fixture_context(db: AsyncSession, club_id=None) -> str:
@@ -1495,13 +1627,17 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     point_types = {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}
     two_point_types = {EventType.TWO_POINT, EventType.TWO_POINT_FREE}
 
-    tm_goals = len([e for e in events if e.team == Team.OWN and e.event_type in goal_types])
-    tm_points = len([e for e in events if e.team == Team.OWN and e.event_type in point_types])
-    tm_2pts = len([e for e in events if e.team == Team.OWN and e.event_type in two_point_types])
+    tm_goals      = len([e for e in events if e.team == Team.OWN      and e.event_type in goal_types])
+    tm_points     = len([e for e in events if e.team == Team.OWN      and e.event_type in point_types])
+    tm_2pts_play  = len([e for e in events if e.team == Team.OWN      and e.event_type == EventType.TWO_POINT])
+    tm_2pts_free  = len([e for e in events if e.team == Team.OWN      and e.event_type == EventType.TWO_POINT_FREE])
+    tm_2pts       = tm_2pts_play + tm_2pts_free
 
-    opp_goals = len([e for e in events if e.team == Team.OPPONENT and e.event_type in goal_types])
-    opp_points = len([e for e in events if e.team == Team.OPPONENT and e.event_type in point_types])
-    opp_2pts = len([e for e in events if e.team == Team.OPPONENT and e.event_type in two_point_types])
+    opp_goals     = len([e for e in events if e.team == Team.OPPONENT  and e.event_type in goal_types])
+    opp_points    = len([e for e in events if e.team == Team.OPPONENT  and e.event_type in point_types])
+    opp_2pts_play = len([e for e in events if e.team == Team.OPPONENT  and e.event_type == EventType.TWO_POINT])
+    opp_2pts_free = len([e for e in events if e.team == Team.OPPONENT  and e.event_type == EventType.TWO_POINT_FREE])
+    opp_2pts      = opp_2pts_play + opp_2pts_free
 
     tm_total = tm_goals * 3 + tm_points + tm_2pts * 2
     opp_total = opp_goals * 3 + opp_points + opp_2pts * 2
@@ -1514,11 +1650,11 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             pid = str(e.player_id)
             if pid not in player_scores:
                 player_scores[pid] = {'goals': 0, 'points': 0, '2pts': 0}
-            if e.event_type == EventType.GOAL:
+            if e.event_type in {EventType.GOAL, EventType.PENALTY_GOAL}:
                 player_scores[pid]['goals'] += 1
-            elif e.event_type == EventType.POINT:
+            elif e.event_type in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}:
                 player_scores[pid]['points'] += 1
-            elif e.event_type == EventType.TWO_POINT:
+            elif e.event_type in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}:
                 player_scores[pid]['2pts'] += 1
 
     # Get player names
@@ -1609,11 +1745,18 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             "status": match.status.value if match.status else None
         },
         "score": {
-            "team": f"{tm_goals}-{tm_2pts}-{tm_points} ({tm_total}pts)" if tm_2pts else f"{tm_goals}-{tm_points} ({tm_total}pts)",
+            "team": _gaa_score(tm_goals, tm_points, tm_2pts_play, tm_2pts_free),
             "team_total": tm_total,
-            "opponent": f"{opp_goals}-{opp_2pts}-{opp_points} ({opp_total}pts)" if opp_2pts else f"{opp_goals}-{opp_points} ({opp_total}pts)",
+            "opponent": _gaa_score(opp_goals, opp_points, opp_2pts_play, opp_2pts_free),
             "opponent_total": opp_total,
-            "result": "W" if tm_total > opp_total else "L" if tm_total < opp_total else "D"
+            "result": "W" if tm_total > opp_total else "L" if tm_total < opp_total else "D",
+            "margin_pts": abs(tm_total - opp_total),
+            "margin_desc": (
+                f"won by {abs(tm_total - opp_total)} {'point' if abs(tm_total - opp_total) == 1 else 'points'}"
+                if tm_total > opp_total else
+                f"lost by {abs(tm_total - opp_total)} {'point' if abs(tm_total - opp_total) == 1 else 'points'}"
+                if tm_total < opp_total else "draw"
+            ),
         },
         "top_scorers": top_scorers[:5],
         "stats": {
@@ -1718,12 +1861,12 @@ async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None
     )
     events = events_result.scalars().all()
 
-    goals = len([e for e in events if e.event_type == EventType.GOAL])
-    points = len([e for e in events if e.event_type == EventType.POINT])
-    two_pts = len([e for e in events if e.event_type == EventType.TWO_POINT])
+    goals    = len([e for e in events if e.event_type in {EventType.GOAL, EventType.PENALTY_GOAL}])
+    points   = len([e for e in events if e.event_type in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}])
+    two_pts  = len([e for e in events if e.event_type in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}])
     turnovers_won = len([e for e in events if e.event_type == EventType.TURNOVER_WON])
     turnovers_lost = len([e for e in events if e.event_type == EventType.TURNOVER_LOST])
-    wides = len([e for e in events if e.event_type == EventType.WIDE])
+    wides = len([e for e in events if e.event_type in {EventType.WIDE, EventType.WIDE_FREE}])
 
     # Get matches played
     match_ids = set(e.match_id for e in events)
@@ -1782,13 +1925,16 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
     events_result = await db.execute(select(MatchEvent).where(MatchEvent.match_id.in_(match_ids)))
     events = events_result.scalars().all()
 
-    # Calculate totals - compare against EventType enum
-    tm_goals = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.GOAL])
-    tm_points = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.POINT])
-    tm_two_pts = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TWO_POINT])
-    opp_goals = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.GOAL])
-    opp_points = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.POINT])
-    opp_two_pts = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.TWO_POINT])
+    # Calculate totals — include all scoring variants
+    _G_TYPES  = {EventType.GOAL, EventType.PENALTY_GOAL}
+    _PT_TYPES = {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}
+    _2P_TYPES = {EventType.TWO_POINT, EventType.TWO_POINT_FREE}
+    tm_goals   = len([e for e in events if e.team == Team.OWN      and e.event_type in _G_TYPES])
+    tm_points  = len([e for e in events if e.team == Team.OWN      and e.event_type in _PT_TYPES])
+    tm_two_pts = len([e for e in events if e.team == Team.OWN      and e.event_type in _2P_TYPES])
+    opp_goals  = len([e for e in events if e.team == Team.OPPONENT  and e.event_type in _G_TYPES])
+    opp_points = len([e for e in events if e.team == Team.OPPONENT  and e.event_type in _PT_TYPES])
+    opp_two_pts= len([e for e in events if e.team == Team.OPPONENT  and e.event_type in _2P_TYPES])
 
     tm_total = tm_goals * 3 + tm_points + tm_two_pts * 2
     opp_total = opp_goals * 3 + opp_points + opp_two_pts * 2
@@ -1799,18 +1945,20 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
     draws = 0
     match_results = []
 
-    scoring_events = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
-
     for match in sorted(matches, key=lambda m: m.match_date or m.created_at):
         match_events = [e for e in events if str(e.match_id) == str(match.id)]
-        d_goals = sum(1 for e in match_events if e.team == Team.OWN and e.event_type == EventType.GOAL)
-        d_pts = sum(1 for e in match_events if e.team == Team.OWN and e.event_type == EventType.POINT)
-        d_2pts = sum(1 for e in match_events if e.team == Team.OWN and e.event_type == EventType.TWO_POINT)
-        d_score = d_goals * 3 + d_pts + d_2pts * 2
-        o_goals = sum(1 for e in match_events if e.team == Team.OPPONENT and e.event_type == EventType.GOAL)
-        o_pts = sum(1 for e in match_events if e.team == Team.OPPONENT and e.event_type == EventType.POINT)
-        o_2pts = sum(1 for e in match_events if e.team == Team.OPPONENT and e.event_type == EventType.TWO_POINT)
-        o_score = o_goals * 3 + o_pts + o_2pts * 2
+        d_goals      = sum(1 for e in match_events if e.team == Team.OWN      and e.event_type in _G_TYPES)
+        d_pts        = sum(1 for e in match_events if e.team == Team.OWN      and e.event_type in _PT_TYPES)
+        d_2pts_play  = sum(1 for e in match_events if e.team == Team.OWN      and e.event_type == EventType.TWO_POINT)
+        d_2pts_free  = sum(1 for e in match_events if e.team == Team.OWN      and e.event_type == EventType.TWO_POINT_FREE)
+        d_2pts       = d_2pts_play + d_2pts_free
+        d_score      = d_goals * 3 + d_pts + d_2pts * 2
+        o_goals      = sum(1 for e in match_events if e.team == Team.OPPONENT  and e.event_type in _G_TYPES)
+        o_pts        = sum(1 for e in match_events if e.team == Team.OPPONENT  and e.event_type in _PT_TYPES)
+        o_2pts_play  = sum(1 for e in match_events if e.team == Team.OPPONENT  and e.event_type == EventType.TWO_POINT)
+        o_2pts_free  = sum(1 for e in match_events if e.team == Team.OPPONENT  and e.event_type == EventType.TWO_POINT_FREE)
+        o_2pts       = o_2pts_play + o_2pts_free
+        o_score      = o_goals * 3 + o_pts + o_2pts * 2
 
         result = "W" if d_score > o_score else "L" if d_score < o_score else "D"
         if result == "W":
@@ -1820,13 +1968,23 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
         else:
             draws += 1
 
+        margin = abs(d_score - o_score)
+        pt_word = "point" if margin == 1 else "points"
+        if result == "W":
+            margin_desc = f"won by {margin} {pt_word}"
+        elif result == "L":
+            margin_desc = f"lost by {margin} {pt_word}"
+        else:
+            margin_desc = "draw"
+
         match_results.append({
             "match_id": str(match.id),
             "opponent": match.opponent,
             "date": match.match_date.strftime("%Y-%m-%d") if match.match_date else None,
             "result": result,
-            "our_score": f"{d_goals}-{d_2pts}-{d_pts} ({d_score}pts)" if d_2pts else f"{d_goals}-{d_pts} ({d_score}pts)",
-            "opp_score": f"{o_goals}-{o_2pts}-{o_pts} ({o_score}pts)" if o_2pts else f"{o_goals}-{o_pts} ({o_score}pts)",
+            "margin_desc": margin_desc,
+            "our_score": _gaa_score(d_goals, d_pts, d_2pts_play, d_2pts_free),
+            "opp_score": _gaa_score(o_goals, o_pts, o_2pts_play, o_2pts_free),
         })
 
     return safe_json({
@@ -1892,6 +2050,17 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
         select(MatchEvent).where(MatchEvent.match_id.in_(match_ids)).order_by(MatchEvent.minute)
     )).scalars().all()
 
+    # Get possession events for duration-based possession % (accurate, not proxy)
+    from app.models.possession_event import PossessionEvent, PossessionTeam
+    poss_events_result = await db.execute(
+        select(PossessionEvent).where(PossessionEvent.match_id.in_(match_ids))
+    )
+    all_poss_events = poss_events_result.scalars().all()
+    # Index by match_id for quick lookup
+    poss_by_match: dict = {}
+    for pe in all_poss_events:
+        poss_by_match.setdefault(str(pe.match_id), []).append(pe)
+
     scoring_types = {EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
                      EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE}
     wide_types = {EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED}
@@ -1901,7 +2070,6 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
     results = []
     for match in matches:
         m_events = [e for e in events if e.match_id == match.id]
-        # Split by half using match's half_duration_mins
         _hdm = getattr(match, 'half_duration_mins', 30) or 30
         halves_to_process = []
         if half is None or half == 1:
@@ -1909,8 +2077,9 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
         if half is None or half == 2:
             halves_to_process.append((2, [e for e in m_events if (e.minute or 0) > _hdm]))
 
+        m_poss = poss_by_match.get(str(match.id), [])
+
         for h_num, h_events in halves_to_process:
-            total = len(h_events)
             team_events = [e for e in h_events if e.team == Team.OWN]
             opp_events = [e for e in h_events if e.team == Team.OPPONENT]
 
@@ -1929,7 +2098,17 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
                 for e in o_scores
             )
 
-            possession_pct = round(len(team_events) / total * 100, 1) if total > 0 else 0
+            # Duration-based possession from PossessionEvent (same method as get_match_summary)
+            h_poss = [p for p in m_poss if h_num == (1 if (p.minute or 0) <= _hdm else 2)]
+            total_dur = sum(p.duration_seconds or 0 for p in h_poss)
+            if total_dur > 0:
+                own_dur = sum(p.duration_seconds or 0 for p in h_poss if p.team == PossessionTeam.OWN.value)
+                possession_pct = round(own_dur / total_dur * 100, 1)
+            elif h_poss:
+                own_count = sum(1 for p in h_poss if p.team == PossessionTeam.OWN.value)
+                possession_pct = round(own_count / len(h_poss) * 100, 1)
+            else:
+                possession_pct = 50.0
 
             results.append({
                 "match": f"vs {match.opponent}",
@@ -1943,7 +2122,7 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
                 "team_wides": len(d_wides),
                 "team_turnovers_won": len(d_turnovers_won),
                 "team_turnovers_lost": len(d_turnovers_lost),
-                "total_events": total,
+                "total_events": len(h_events),
             })
 
     return safe_json({"stats_by_half": results, "matches_count": len(matches)})
@@ -1969,25 +2148,32 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=N
     result = await db.execute(query)
     events = result.scalars().all()
 
-    # Categorize by zone based on x coordinate
+    # Shots can only originate from the opponent's half (x > 50).
+    # Events with x <= 50 logged as scores/wides are carrier/transition positions,
+    # not actual shot locations — quarantine them rather than call them "shots."
     zones = {
-        "defensive_third": {"scored": 0, "missed": 0},
-        "middle_third": {"scored": 0, "missed": 0},
-        "attacking_third": {"scored": 0, "missed": 0}
+        "inside_45m":   {"scored": 0, "missed": 0},   # x >= 69 (inside opp 45m line)
+        "outside_45m":  {"scored": 0, "missed": 0},   # 50 < x < 69 (opp half, outside 45m)
     }
+    suspicious_positions = []   # scoring events with x <= 50 — likely carrier coords, not shot coords
 
     for e in events:
         if e.pitch_x is None:
             continue
 
-        if e.pitch_x < 33:
-            zone = "defensive_third"
-        elif e.pitch_x < 66:
-            zone = "middle_third"
-        else:
-            zone = "attacking_third"
+        if e.pitch_x <= 50:
+            # Cannot be a shot from own half — record separately
+            suspicious_positions.append({
+                "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
+                "x": e.pitch_x, "y": e.pitch_y,
+                "note": "Logged in own half — likely carrier position recorded, not a shot location"
+            })
+            continue
 
-        if e.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]:
+        zone = "inside_45m" if e.pitch_x >= 69 else "outside_45m"
+
+        if e.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
+                            EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]:
             zones[zone]["scored"] += 1
         else:
             zones[zone]["missed"] += 1
@@ -1998,11 +2184,18 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=N
         zones[zone]["conversion_rate"] = round(zones[zone]["scored"] / max(1, total) * 100, 1)
         zones[zone]["total_attempts"] = total
 
-    return safe_json({
+    result = {
         "zones": zones,
         "total_scores": sum(z["scored"] for z in zones.values()),
-        "total_misses": sum(z["missed"] for z in zones.values())
-    })
+        "total_misses": sum(z["missed"] for z in zones.values()),
+    }
+    if suspicious_positions:
+        result["suspicious_positions"] = suspicious_positions
+        result["suspicious_note"] = (
+            f"{len(suspicious_positions)} scoring/wide event(s) were logged with x<=50 (own half). "
+            "These are carrier or transition positions, NOT shots at goal. Do not describe them as shots."
+        )
+    return safe_json(result)
 
 
 async def get_turnover_analysis(db: AsyncSession, match_id: str = None, club_id=None) -> str:
@@ -2950,9 +3143,9 @@ async def get_player_form_trajectory(db: AsyncSession, player_id: str, window: i
             select(MatchEvent).where(MatchEvent.match_id == m.id, MatchEvent.player_id == pid)
         )
         events = events_result.scalars().all()
-        goals = sum(1 for e in events if e.event_type == EventType.GOAL)
-        points = sum(1 for e in events if e.event_type == EventType.POINT)
-        two_pts = sum(1 for e in events if e.event_type == EventType.TWO_POINT)
+        goals   = sum(1 for e in events if e.event_type in {EventType.GOAL, EventType.PENALTY_GOAL})
+        points  = sum(1 for e in events if e.event_type in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE})
+        two_pts = sum(1 for e in events if e.event_type in {EventType.TWO_POINT, EventType.TWO_POINT_FREE})
         total_score = goals * 3 + points + two_pts * 2
         turnovers_won = sum(1 for e in events if e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON})
         turnovers_lost = sum(1 for e in events if e.event_type == EventType.TURNOVER_LOST)

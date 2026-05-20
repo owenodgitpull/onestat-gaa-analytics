@@ -236,7 +236,7 @@ async def get_chat_session(
 ):
     """Get a full chat session with all messages."""
     result = await db.execute(
-        select(ChatSession).where(ChatSession.id == session_id)
+        select(ChatSession).where(ChatSession.id == session_id, ChatSession.club_id == user.club_id)
     )
     session = result.scalar_one_or_none()
     if not session:
@@ -294,7 +294,7 @@ async def delete_chat_session(
 ):
     """Delete a chat session and all its messages."""
     result = await db.execute(
-        select(ChatSession).where(ChatSession.id == session_id)
+        select(ChatSession).where(ChatSession.id == session_id, ChatSession.club_id == user.club_id)
     )
     session = result.scalar_one_or_none()
     if not session:
@@ -314,7 +314,7 @@ async def rename_chat_session(
 ):
     """Rename a chat session."""
     result = await db.execute(
-        select(ChatSession).where(ChatSession.id == session_id)
+        select(ChatSession).where(ChatSession.id == session_id, ChatSession.club_id == user.club_id)
     )
     session = result.scalar_one_or_none()
     if not session:
@@ -437,10 +437,10 @@ async def chat_stream_endpoint(
         session_id = request.session_id
         session = None
 
-        # Create or load session
+        # Create or load session (always verify it belongs to this club)
         if session_id:
             result = await db.execute(
-                select(ChatSession).where(ChatSession.id == session_id)
+                select(ChatSession).where(ChatSession.id == session_id, ChatSession.club_id == user.club_id)
             )
             session = result.scalar_one_or_none()
 
@@ -630,7 +630,7 @@ async def get_chart_recommendations_endpoint(
     including GPS data, tactical guides, and historical performance.
     """
     try:
-        recommendations = await get_dynamic_chart_recommendations(db)
+        recommendations = await get_dynamic_chart_recommendations(db, club_id=user.club_id)
         return ChartRecommendationsResponse(**recommendations)
     except Exception as e:
         logger.error(f"Chart recommendations failed: {str(e)}", exc_info=True)
@@ -709,7 +709,8 @@ async def generate_replacement_chart_endpoint(
     try:
         result = await generate_single_chart(
             db,
-            excluded_chart_ids=request.excluded_chart_ids
+            excluded_chart_ids=request.excluded_chart_ids,
+            club_id=user.club_id,
         )
         return SingleChartResponse(**result)
     except Exception as e:

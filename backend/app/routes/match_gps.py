@@ -170,63 +170,101 @@ async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: st
                 all_players = list(players_result.scalars().all())
                 logger.info(f"Database has {len(all_players)} players")
 
+                def _norm(s: str) -> str:
+                    """Normalise: lowercase, strip apostrophes/hyphens/special chars."""
+                    import re as _re
+                    return _re.sub(r"['\-?]", "", s.lower()).strip()
+
                 def match_player(gps_name: str) -> Optional[Player]:
                     """
-                    Smart player matching - handles abbreviated names like "Dylan S" -> "Dylan Sweeney"
-                    """
-                    gps_name = gps_name.strip().lower()
-                    logger.info(f"Matching GPS name: '{gps_name}'")
+                    Match a GPS device name to a player record.
 
-                    # Try exact match first
+                    Handles formats:
+                    - "Dylan S"       → "Dylan Sweeney"   (FirstName SurnameInitial)
+                    - "C O'Donnell"   → "Conor O'Donnell" (Initial FullSurname)
+                    - "D McCready"    → "David McCready"  (Initial FullSurname)
+                    - "Aaron Ward"    → exact match
+                    - "Matthew"       → single first-name match
+                    - "Damo McG"      → no match (nickname; needs gps_alias on player)
+                    """
+                    gps_name_raw = gps_name.strip()
+                    gps_lower = gps_name_raw.lower()
+                    logger.info(f"Matching GPS name: '{gps_name_raw}'")
+
+                    # 1. Exact match
                     for p in all_players:
-                        if p.name.lower() == gps_name:
+                        if p.name.lower() == gps_lower:
                             logger.info(f"  Exact match: {p.name}")
                             return p
 
-                    # Parse the GPS name - could be "FirstName LastInitial" or just "FirstName"
-                    parts = gps_name.split()
+                    # 2. Match via gps_alias field (nickname support)
+                    gps_alias_norm = _norm(gps_lower)
+                    for p in all_players:
+                        aliases = getattr(p, 'gps_alias', None) or ''
+                        for alias in [a.strip() for a in aliases.split(',') if a.strip()]:
+                            if _norm(alias) == gps_alias_norm:
+                                logger.info(f"  GPS alias match: {p.name} (alias={alias})")
+                                return p
+
+                    parts = gps_lower.split()
                     if not parts:
-                        logger.info(f"  No parts found in name")
+                        logger.info("  No parts found in name")
                         return None
 
-                    first_name = parts[0]
-                    # Handle surname initial - could be single letter "S" or abbreviated "Sw"
-                    surname_part = parts[1] if len(parts) > 1 else None
-                    surname_initial = surname_part[0] if surname_part else None
+                    first_part = parts[0]   # could be a full first name OR a single initial
+                    rest_parts = parts[1:]  # surname, surname-initial, or empty
 
-                    logger.info(f"  Parsed: first='{first_name}', surname_part='{surname_part}'")
+                    # 3. "Initial FullSurname" pattern — e.g. "C O'Donnell", "D McCready"
+                    if len(first_part) == 1 and rest_parts:
+                        first_initial = first_part
+                        surname_str = _norm(' '.join(rest_parts))
+                        for p in all_players:
+                            p_parts = p.name.split()
+                            if len(p_parts) < 2:
+                                continue
+                            p_first_initial = p_parts[0][0].lower()
+                            p_surname = _norm(' '.join(p_parts[1:]))
+                            if p_first_initial == first_initial and p_surname == surname_str:
+                                logger.info(f"  Initial+surname match: {p.name}")
+                                return p
 
-                    # Find matches where first name matches the start of player's first name
-                    first_name_matches = []
-                    for p in all_players:
-                        player_parts = p.name.lower().split()
-                        if player_parts and player_parts[0] == first_name:
-                            first_name_matches.append(p)
-
+                    # 4. "FirstName" or "FirstName SurnameInitial/Abbrev" pattern
+                    first_name_matches = [
+                        p for p in all_players
+                        if p.name.lower().split()[0] == first_part
+                    ]
                     logger.info(f"  First name matches: {[p.name for p in first_name_matches]}")
 
                     if len(first_name_matches) == 1:
-                        # Only one player with this first name - use them
                         logger.info(f"  Single first name match: {first_name_matches[0].name}")
                         return first_name_matches[0]
 
-                    if surname_initial and len(first_name_matches) > 1:
-                        # Multiple matches, filter by surname initial
+                    if first_name_matches and rest_parts:
+                        surname_abbrev = rest_parts[0]  # e.g. "S", "Sw", "McG"
+                        surname_initial = surname_abbrev[0]
+                        # Try exact surname abbreviation match first
                         for p in first_name_matches:
-                            name_parts = p.name.split()
-                            if len(name_parts) > 1:
-                                surname = name_parts[-1].lower()
-                                if surname.startswith(surname_initial):
-                                    logger.info(f"  Surname initial match: {p.name}")
+                            p_parts = p.name.split()
+                            if len(p_parts) > 1:
+                                p_surname = _norm(p_parts[-1])
+                                if p_surname.startswith(_norm(surname_abbrev)):
+                                    logger.info(f"  Surname abbrev match: {p.name}")
                                     return p
+                        # Fall back to initial only
+                        for p in first_name_matches:
+                            p_parts = p.name.split()
+                            if len(p_parts) > 1 and p_parts[-1][0].lower() == surname_initial:
+                                logger.info(f"  Surname initial match: {p.name}")
+                                return p
 
-                    # Try matching first name anywhere in the player name
-                    for p in all_players:
-                        if first_name in p.name.lower():
-                            logger.info(f"  Partial match: {p.name}")
-                            return p
+                    # 5. Substring fallback — only safe when first_part is long enough to be meaningful
+                    if len(first_part) > 3:
+                        for p in all_players:
+                            if first_part in p.name.lower():
+                                logger.info(f"  Substring fallback match: {p.name}")
+                                return p
 
-                    logger.info(f"  No match found for '{gps_name}'")
+                    logger.info(f"  No match found for '{gps_name_raw}'")
                     return None
 
                 # Create Match GPS records for each player

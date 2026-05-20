@@ -503,7 +503,7 @@ class SeasonDashboardService:
             })
 
         leaderboard.sort(key=lambda x: x["total"], reverse=True)
-        return leaderboard[:5]
+        return leaderboard[:10]
 
     @staticmethod
     async def _red_zone_players(db: AsyncSession, matches: list) -> list:
@@ -2387,7 +2387,7 @@ async def _get_cached_kpi_insights(db: AsyncSession, kpi_data: dict, fixture_con
 
     # Cache miss — generate via Season Agent
     logger.info(f"KPI insights cache MISS (fingerprint={fingerprint[:12]}...) — calling Season Agent")
-    insights = await generate_kpi_insights(db, kpi_data, fixture_context=fixture_context)
+    insights = await generate_kpi_insights(db, kpi_data, fixture_context=fixture_context, club_id=club_id)
 
     # Only cache non-empty successful results
     if insights:

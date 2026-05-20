@@ -144,12 +144,27 @@ DATE_FORMATS = [
     "%d %B %Y %H:%M", "%d %B %Y",
 ]
 
+# Year-less formats (e.g. "Sun 8 Mar", "Sun 21 June") — current year is substituted
+_DATE_FORMATS_YEARLESS = [
+    "%a %d %b", "%a %d %B",   # Sun 8 Mar / Sun 21 June
+    "%A %d %b", "%A %d %B",   # Sunday 8 Mar / Sunday 21 June
+    "%d %b", "%d %B",         # 8 Mar / 21 June
+]
+
 
 def _parse_date(raw: str) -> datetime | None:
     raw = raw.strip()
     for fmt in DATE_FORMATS:
         try:
             return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    # Try year-less formats — substitute current year
+    current_year = datetime.now().year
+    for fmt in _DATE_FORMATS_YEARLESS:
+        try:
+            d = datetime.strptime(raw, fmt)
+            return d.replace(year=current_year)
         except ValueError:
             continue
     return None
@@ -183,10 +198,28 @@ def _build_club_aliases(club: Club) -> set[str]:
         aliases.add(club.name.lower())
     if club.short_name:
         aliases.add(club.short_name.lower())
+    if getattr(club, "home_ground", None):
+        aliases.add(club.home_ground.lower())
     for a in (club.team_aliases or []):
         if a:
             aliases.add(a.strip().lower())
     return aliases
+
+
+def _infer_venue_from_location(venue_str: str, opponent_raw: str, club_aliases: set[str]) -> "MatchVenue":
+    """Infer HOME/AWAY/NEUTRAL from a venue location string in club-centric XLSX files."""
+    if not venue_str:
+        return MatchVenue.HOME
+    v = venue_str.strip().lower()
+    opp = opponent_raw.strip().lower()
+    opp_norm = _normalize_team(opponent_raw).lower()
+    # Venue matches opponent name → AWAY
+    if opp and (opp in v or v in opp or opp_norm in v or v in opp_norm):
+        return MatchVenue.AWAY
+    # Venue matches our club identifiers → HOME
+    if any(alias and (alias in v or v in alias) for alias in club_aliases):
+        return MatchVenue.HOME
+    return MatchVenue.NEUTRAL
 
 
 def _is_our_club(name: str, club_aliases: set[str]) -> bool:
@@ -199,7 +232,7 @@ def _is_our_club(name: str, club_aliases: set[str]) -> bool:
 # XLSX parsing helpers
 # ---------------------------------------------------------------------------
 
-_FIXTURE_KEYWORDS = ["home", "away", "date", "time", "throw", "division", "competition", "comp", "round"]
+_FIXTURE_KEYWORDS = ["home", "away", "date", "time", "throw", "division", "competition", "comp", "round", "team", "opposition", "venue"]
 
 
 def _find_fixture_header_row(rows: list, max_scan: int = 10) -> int:
@@ -227,10 +260,13 @@ def _detect_xlsx_columns(header_row: list) -> dict:
     ROLE_KEYWORDS = [
         ("home",        ["home"]),
         ("away",        ["away"]),
+        ("our_team",    ["team"]),           # club-centric format: "Team" = our club
+        ("opponent",    ["opposition"]),     # club-centric format: "Opposition" = their club
         ("date",        ["date"]),
         ("time",        ["time", "throw"]),
         ("competition", ["division", "competition", "comp"]),
         ("round",       ["round"]),
+        ("venue",       ["venue"]),
     ]
 
     for i, h in enumerate(header):
@@ -263,18 +299,27 @@ def _extract_unique_teams(content: bytes) -> list[str]:
 
         header_idx = _find_fixture_header_row(rows)
         col_map = _detect_xlsx_columns(rows[header_idx])
-        if "home" not in col_map or "away" not in col_map:
+        has_home_away = "home" in col_map and "away" in col_map
+        has_team_opp = "our_team" in col_map or "opponent" in col_map
+        if not has_home_away and not has_team_opp:
             continue
 
         for row in rows[header_idx + 1:]:
             if not row or len(row) <= max(col_map.values()):
                 continue
-            home_raw = str(row[col_map["home"]] or "").strip()
-            away_raw = str(row[col_map["away"]] or "").strip()
-            if home_raw:
-                teams.add(home_raw)
-            if away_raw:
-                teams.add(away_raw)
+            if has_home_away:
+                home_raw = str(row[col_map["home"]] or "").strip()
+                away_raw = str(row[col_map["away"]] or "").strip()
+                if home_raw:
+                    teams.add(home_raw)
+                if away_raw:
+                    teams.add(away_raw)
+            else:
+                for role in ("our_team", "opponent"):
+                    if role in col_map and len(row) > col_map[role]:
+                        v = str(row[col_map[role]] or "").strip()
+                        if v:
+                            teams.add(v)
 
     return sorted(teams)
 
@@ -313,25 +358,42 @@ def _parse_xlsx_fixtures(content: bytes, club_aliases: set[str]) -> list[dict]:
         header_idx = _find_fixture_header_row(rows)
         col_map = _detect_xlsx_columns(rows[header_idx])
 
-        if "home" not in col_map or "away" not in col_map or "date" not in col_map:
+        has_home_away = "home" in col_map and "away" in col_map
+        has_team_opp = "our_team" in col_map and "opponent" in col_map
+
+        if not (has_home_away or has_team_opp) or "date" not in col_map:
             continue  # skip sheets we can't parse
 
         for row in rows[header_idx + 1:]:
             if not row or len(row) <= max(col_map.values()):
                 continue
 
-            home_raw = str(row[col_map["home"]] or "").strip()
-            away_raw = str(row[col_map["away"]] or "").strip()
-            if not home_raw or not away_raw:
-                continue
+            # ── Team / venue resolution ────────────────────────────────────────
+            if has_home_away:
+                home_raw = str(row[col_map["home"]] or "").strip()
+                away_raw = str(row[col_map["away"]] or "").strip()
+                if not home_raw or not away_raw:
+                    continue
+                is_home = _is_our_club(home_raw, club_aliases)
+                is_away = _is_our_club(away_raw, club_aliases)
+                if not is_home and not is_away:
+                    continue
+                opponent = _normalize_team(away_raw) if is_home else _normalize_team(home_raw)
+                venue = MatchVenue.HOME if is_home else MatchVenue.AWAY
+            else:
+                # Club-centric format: every row is our fixture
+                opponent_raw = str(row[col_map["opponent"]] or "").strip()
+                if not opponent_raw:
+                    continue
+                venue_str = (
+                    str(row[col_map["venue"]] or "").strip()
+                    if "venue" in col_map and len(row) > col_map["venue"]
+                    else ""
+                )
+                venue = _infer_venue_from_location(venue_str, opponent_raw, club_aliases)
+                opponent = _normalize_team(opponent_raw)
 
-            # Only keep our club's fixtures
-            is_home = _is_our_club(home_raw, club_aliases)
-            is_away = _is_our_club(away_raw, club_aliases)
-            if not is_home and not is_away:
-                continue
-
-            # Parse date
+            # ── Date ──────────────────────────────────────────────────────────
             date_val = row[col_map["date"]]
             if isinstance(date_val, datetime):
                 match_date = date_val
@@ -342,8 +404,8 @@ def _parse_xlsx_fixtures(content: bytes, club_aliases: set[str]) -> list[dict]:
             else:
                 continue
 
-            # Parse time
-            time_val = row[col_map.get("time", -1)] if "time" in col_map else None
+            # ── Time ──────────────────────────────────────────────────────────
+            time_val = row[col_map["time"]] if "time" in col_map and len(row) > col_map["time"] else None
             if time_val:
                 if isinstance(time_val, dt_time):
                     match_date = match_date.replace(hour=time_val.hour, minute=time_val.minute)
@@ -361,10 +423,17 @@ def _parse_xlsx_fixtures(content: bytes, club_aliases: set[str]) -> list[dict]:
                         except ValueError:
                             pass
 
-            opponent = _normalize_team(away_raw) if is_home else _normalize_team(home_raw)
-            venue = MatchVenue.HOME if is_home else MatchVenue.AWAY
-            competition = str(row[col_map["competition"]]).strip() if "competition" in col_map and row[col_map["competition"]] else None
-            round_val = str(row[col_map["round"]]).strip() if "round" in col_map and row[col_map["round"]] else None
+            # ── Optional metadata ─────────────────────────────────────────────
+            competition = (
+                str(row[col_map["competition"]]).strip()
+                if "competition" in col_map and len(row) > col_map["competition"] and row[col_map["competition"]]
+                else None
+            )
+            round_val = (
+                str(row[col_map["round"]]).strip()
+                if "round" in col_map and len(row) > col_map["round"] and row[col_map["round"]]
+                else None
+            )
 
             fixtures.append({
                 "opponent": opponent,

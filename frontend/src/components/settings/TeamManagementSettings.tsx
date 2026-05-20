@@ -1,5 +1,5 @@
 import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react'
-import { Plus, Shield, Check, AlertTriangle } from 'lucide-react'
+import { Plus, Shield, Check, AlertTriangle, Trash2 } from 'lucide-react'
 import { useClub } from '../../contexts/ClubContext'
 import { organizationsAPI } from '../../services/api'
 import type { Organization } from '../../types'
@@ -53,6 +53,9 @@ export default function TeamManagementSettings() {
   const [showAddModal, setShowAddModal] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ clubId: string; clubName: string } | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     loadOrg()
@@ -81,6 +84,23 @@ export default function TeamManagementSettings() {
       await switchClub(clubId)
     } catch (err: any) {
       setError(err.message || 'Failed to switch team')
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await organizationsAPI.deactivateTeam(deleteTarget.clubId)
+      setDeleteTarget(null)
+      setSuccess(`"${deleteTarget.clubName}" has been removed`)
+      await loadOrg()
+      refetch()
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete team')
+      setDeleteTarget(null)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -154,12 +174,21 @@ export default function TeamManagementSettings() {
                   Active
                 </span>
               ) : (
-                <button
-                  onClick={() => handleSwitchToTeam(m.club_id)}
-                  className="text-xs text-white/50 hover:text-white px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-                >
-                  Switch
-                </button>
+                <>
+                  <button
+                    onClick={() => handleSwitchToTeam(m.club_id)}
+                    className="text-xs text-white/50 hover:text-white px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    Switch
+                  </button>
+                  <button
+                    onClick={() => { setDeleteTarget({ clubId: m.club_id, clubName: m.club_name }); setDeleteConfirmText('') }}
+                    className="p-1.5 rounded-lg text-white/20 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title="Delete team"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -188,6 +217,55 @@ export default function TeamManagementSettings() {
         onClose={() => setShowAddModal(false)}
         onCreated={handleTeamCreated}
       />
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#1a1f2e] border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={18} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Delete Team</h3>
+                <p className="text-white/50 text-sm">This cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-white/70 text-sm">
+              Are you sure you want to delete <span className="text-white font-medium">"{deleteTarget.clubName}"</span>? All match data, players, and records for this team will be permanently removed.
+            </p>
+            <div className="space-y-2">
+              <label className="text-xs text-white/40 uppercase tracking-wide">
+                Type <span className="text-red-400 font-mono font-bold">DELETE</span> to confirm
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={e => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                autoFocus
+                className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm font-mono placeholder:text-white/20 focus:outline-none focus:border-red-500/40"
+              />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setDeleteTarget(null); setDeleteConfirmText('') }}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-white/70 hover:text-white hover:border-white/20 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={deleting || deleteConfirmText !== 'DELETE'}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 hover:bg-red-500/30 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {deleting ? 'Deleting…' : 'Delete Team'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </TeamErrorBoundary>
   )

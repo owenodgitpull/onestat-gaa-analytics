@@ -80,8 +80,13 @@ export function ClubProvider({ children }: { children: React.ReactNode }) {
   // Logo URL: if club has a logo_url, use the serve endpoint (handles R2 presigned URLs)
   const logoUrl = club?.logo_url ? `${API_BASE}/club/logo/serve` : null;
 
+  const refetchAll = useCallback(() => {
+    fetchClub();
+    fetchClubs();
+  }, []);
+
   return (
-    <ClubContext.Provider value={{ club, clubs, loading, error, refetch: fetchClub, logoUrl, switchClub }}>
+    <ClubContext.Provider value={{ club, clubs, loading, error, refetch: refetchAll, logoUrl, switchClub }}>
       {children}
     </ClubContext.Provider>
   );

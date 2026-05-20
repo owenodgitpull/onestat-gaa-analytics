@@ -22,6 +22,7 @@ class MatchEventBase(BaseModel):
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
     notes: Optional[str] = Field(None, max_length=500, description="Optional event notes")
     opponent_player_name: Optional[str] = Field(None, max_length=200, description="Opposition player name for opponent scoring events")
+    sub_type: Optional[str] = Field(None, max_length=50, description="Sub-category (e.g. 'stray_pass' for unforced errors, 'pushing' for fouls)")
 
     @field_validator('event_type', mode='before')
     @classmethod
