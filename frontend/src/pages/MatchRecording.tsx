@@ -386,7 +386,27 @@ export default function MatchRecording() {
 
     if (match.status === 'in_progress' && (matchPhase === 'not_started' || matchPhase === 'half_time' || minute === 0 || forceServerTimeSync)) {
       if (forceServerTimeSync) setForceServerTimeSync(false)
-      const phase = (match.current_phase as MatchPhase) || 'first_half'
+      const rawPhase = match.current_phase || 'first_half'
+
+      // Stoppage persisted to backend — restore frozen timer and stopped state
+      if (rawPhase.startsWith('stopped_')) {
+        const parts = rawPhase.split(':')
+        const elapsedSeconds = parts[1] ? parseInt(parts[1], 10) : 0
+        const half = rawPhase.includes('second') ? 'second_half' : 'first_half'
+        setMatchPhase(half as MatchPhase)
+        setCurrentHalf(rawPhase.includes('second') ? 2 : 1)
+        setMinute(Math.floor(elapsedSeconds / 60))
+        setSeconds(elapsedSeconds % 60)
+        setIsStopped(true)
+        if (match.attacking_right_first_half != null) {
+          setTeamAttackingRight(
+            half === 'second_half' ? !match.attacking_right_first_half : match.attacking_right_first_half
+          )
+        }
+        return
+      }
+
+      const phase = rawPhase as MatchPhase
       setMatchPhase(phase)
 
       // Restore attack direction
@@ -2447,6 +2467,40 @@ export default function MatchRecording() {
     return `${minute}:${seconds.toString().padStart(2, '0')}`
   }
 
+  // Toggle stoppage — persists state to backend so refresh doesn't lose it
+  const handleToggleStoppage = async () => {
+    if (!matchId) {
+      setIsStopped(prev => !prev)
+      return
+    }
+    const elapsed = minute * 60 + seconds
+    if (!isStopped) {
+      // Pause: freeze timer and persist stopped phase + elapsed to DB
+      setIsStopped(true)
+      const halfStr = currentHalf === 1 ? 'first_half' : 'second_half'
+      try {
+        await api.matches.update(matchId, {
+          current_phase: `stopped_${halfStr}:${elapsed}`,
+        } as any)
+      } catch (err) {
+        console.error('Failed to persist stoppage:', err)
+      }
+    } else {
+      // Resume: adjust started_at to account for stoppage duration, restore running phase
+      setIsStopped(false)
+      const halfStr = currentHalf === 1 ? 'first_half' : 'second_half'
+      const newStartedAt = new Date(Date.now() - elapsed * 1000).toISOString()
+      try {
+        await api.matches.update(matchId, {
+          current_phase: halfStr,
+          started_at: newStartedAt,
+        } as any)
+      } catch (err) {
+        console.error('Failed to persist resume:', err)
+      }
+    }
+  }
+
   // Dynamic status label — shows what's currently being tracked
   const getStatusLabel = (): { text: string; subtext: string; bg: string; accent: string } => {
     if (matchPhase === 'not_started') {
@@ -2854,7 +2908,7 @@ export default function MatchRecording() {
                     </button>
                     <button
                       data-tour="stoppage-btn"
-                      onClick={() => setIsStopped(prev => !prev)}
+                      onClick={handleToggleStoppage}
                       className={`p-2 rounded-xl border-2 transition-all ${
                         isStopped
                           ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
@@ -3437,7 +3491,7 @@ export default function MatchRecording() {
         blackCardTimers={blackCardTimers}
         onRemoveBlackCard={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))}
         isStopped={isStopped}
-        onToggleStoppage={() => setIsStopped(prev => !prev)}
+        onToggleStoppage={handleToggleStoppage}
         onSubstitution={() => {
           setManualEntryDefaultType(EventType.SUBSTITUTION)
           setIsManualEntryOpen(true)
