@@ -380,6 +380,18 @@ export default function MatchRecording() {
   // Query client for manual refetching
   const queryClient = useQueryClient()
 
+  // Debounced stats invalidation — batches rapid event/possession writes into one refetch per 10s.
+  // Without this, every drag, event, and carrier update fires an immediate /stats request,
+  // which saturates the shared-cpu backend during live recording.
+  const statsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const invalidateStats = () => {
+    if (!matchId) return
+    if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current)
+    statsDebounceRef.current = setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+    }, 10000)
+  }
+
   // Sync match status with backend — resume timer from DB timestamps
   useEffect(() => {
     if (!match) return
@@ -1252,7 +1264,7 @@ export default function MatchRecording() {
       waypoints,
     }).then(res => {
       console.log(`Drag path: ${res.created} waypoints recorded`)
-      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      invalidateStats()
     }).catch(err => {
       console.error('Failed to record drag path:', err)
     })
@@ -1334,7 +1346,7 @@ export default function MatchRecording() {
       setActiveKickoutTab('scoring')
 
       // Force refetch stats
-      await queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      await invalidateStats()
 
       console.log('Kickout recorded and ball moved to:', newBallPosition)
     } catch (error) {
@@ -1521,7 +1533,7 @@ export default function MatchRecording() {
         sub_type: subType,
       })
       setLastEventType(eventType)
-      await queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      await invalidateStats()
 
       if (foulMode) {
         await playerMovement.endSegment(position.x, position.y, 'foul')
@@ -1862,7 +1874,7 @@ export default function MatchRecording() {
       setPendingFoul(null)
 
       // Force refetch stats
-      await queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      await invalidateStats()
 
       console.log('Free kick result recorded successfully')
     } catch (error) {
@@ -2040,7 +2052,7 @@ export default function MatchRecording() {
       }
 
       // Force refetch stats immediately after event
-      await queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      await invalidateStats()
 
       console.log('Event recorded without player selection')
     } catch (error) {
@@ -2060,7 +2072,7 @@ export default function MatchRecording() {
       await deleteMatchState(matchId)
       // Clear local state
       queryClient.invalidateQueries({ queryKey: ['matches', matchId] })
-      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      invalidateStats()
       queryClient.invalidateQueries({ queryKey: ['matchEvents', matchId] })
       setShowResetConfirm(false)
       // Reload page to get clean state
@@ -2284,7 +2296,7 @@ export default function MatchRecording() {
       is_home_team: event.team === 'own',
       notes: undefined
     }).then(() => {
-      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+      invalidateStats()
       setLastEventType(String(event.eventType).toLowerCase())
       console.log('Event recorded successfully!')
     }).catch((error) => {
