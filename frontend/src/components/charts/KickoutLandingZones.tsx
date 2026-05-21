@@ -33,16 +33,18 @@ const HALF_VIEW = `0 0 ${PITCH.svgW} ${PITCH.svgH}`
 // 9 zones mapped to pitch coordinates (0-100 system)
 // Short = inside 20m (~14%), Mid = 20m to 45m (~14% to 31%), Long = 45m+ (~31% to 65%)
 // GAA pitch is ~145m so: 20m ≈ 14%, 45m ≈ 31%, midfield = 50%, opp 45 ≈ 69%
+// circleCenterXPct overrides the default zone-center x for the circle visual only —
+// Mid circles are pushed past the 45m arc so they read as "outside the arc"
 const ZONE_DEFS = [
-  { id: 'Short_Left',    xMin: 0,  xMax: 14, yMin: 0,  yMax: 33, label: 'Short L' },
-  { id: 'Short_Centre',  xMin: 0,  xMax: 14, yMin: 33, yMax: 67, label: 'Short C' },
+  { id: 'Short_Left',    xMin: 0,  xMax: 14, yMin: 0,  yMax: 33,  label: 'Short L' },
+  { id: 'Short_Centre',  xMin: 0,  xMax: 14, yMin: 33, yMax: 67,  label: 'Short C' },
   { id: 'Short_Right',   xMin: 0,  xMax: 14, yMin: 67, yMax: 100, label: 'Short R' },
-  { id: 'Mid_Left',      xMin: 14, xMax: 31, yMin: 0,  yMax: 33, label: 'Mid L' },
-  { id: 'Mid_Centre',    xMin: 14, xMax: 31, yMin: 33, yMax: 67, label: 'Mid C' },
-  { id: 'Mid_Right',     xMin: 14, xMax: 31, yMin: 67, yMax: 100, label: 'Mid R' },
-  { id: 'Long_Left',     xMin: 31, xMax: 65, yMin: 0,  yMax: 33, label: 'Long L' },
-  { id: 'Long_Centre',   xMin: 31, xMax: 65, yMin: 33, yMax: 67, label: 'Long C' },
-  { id: 'Long_Right',    xMin: 31, xMax: 65, yMin: 67, yMax: 100, label: 'Long R' },
+  { id: 'Mid_Left',      xMin: 14, xMax: 31, yMin: 0,  yMax: 33,  label: 'Mid L',   circleCenterXPct: 33 },
+  { id: 'Mid_Centre',    xMin: 14, xMax: 31, yMin: 33, yMax: 67,  label: 'Mid C',   circleCenterXPct: 33 },
+  { id: 'Mid_Right',     xMin: 14, xMax: 31, yMin: 67, yMax: 100, label: 'Mid R',   circleCenterXPct: 33 },
+  { id: 'Long_Left',     xMin: 31, xMax: 65, yMin: 0,  yMax: 33,  label: 'Long L',  circleCenterXPct: 53 },
+  { id: 'Long_Centre',   xMin: 31, xMax: 65, yMin: 33, yMax: 67,  label: 'Long C',  circleCenterXPct: 53 },
+  { id: 'Long_Right',    xMin: 31, xMax: 65, yMin: 67, yMax: 100, label: 'Long R',  circleCenterXPct: 53 },
 ]
 
 export default function KickoutLandingZones({ data }: Props) {
@@ -144,7 +146,11 @@ export default function KickoutLandingZones({ data }: Props) {
             const br = toSvg(zone.xMax, zone.yMax)
             const w = br.x - tl.x
             const h = br.y - tl.y
-            const cx = tl.x + w / 2
+            // Use circleCenterXPct override if set (e.g. Mid zones pushed past the 45m arc)
+            const circleSvgX = 'circleCenterXPct' in zone
+              ? toSvg(zone.circleCenterXPct as number, 0).x
+              : tl.x + w / 2
+            const cx = circleSvgX
             const cy = tl.y + h / 2
 
             // Background shading by density

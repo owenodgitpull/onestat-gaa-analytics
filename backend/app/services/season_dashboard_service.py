@@ -110,7 +110,7 @@ class SeasonDashboardService:
         matches = await SeasonDashboardService._get_completed_matches(db, club_id)
 
         (funnel, kickouts, turnovers, red_zone, radar, territory,
-         score_timeline, dead_ball, def_zones, kickout_zones) = await asyncio.gather(
+         score_timeline, dead_ball, def_zones, kickout_zones, season_hmld) = await asyncio.gather(
             SeasonDashboardService._possession_funnel(db, matches),
             SeasonDashboardService._kickout_trends(db, matches),
             SeasonDashboardService._turnover_source_leaderboard(db, matches),
@@ -121,6 +121,7 @@ class SeasonDashboardService:
             SeasonDashboardService._dead_ball_vs_play(db, matches),
             SeasonDashboardService._defensive_action_zones(db, matches),
             SeasonDashboardService._kickout_landing_zones(db, matches),
+            SeasonDashboardService._season_hmld_chart(db, matches),
         )
 
         kpi = await SeasonDashboardService._kpi_cards(db, matches, funnel)
@@ -166,6 +167,7 @@ class SeasonDashboardService:
             "defensive_action_zones": def_zones,
             "kickout_landing_zones": kickout_zones,
             "kpi_sparkline_grid": kpi_sparkline,
+            "season_hmld": season_hmld,
         }
 
     # ------------------------------------------------------------------
@@ -312,15 +314,17 @@ class SeasonDashboardService:
         for mid in match_ids:
             m = matches_map[mid]
             dp = team_poss_count.get(mid, 0)
-            da = team_attacks.get(mid, 0)
             dsh = team_shots.get(mid, 0)
             dsc = team_scores.get(mid, 0)
+            # A shot always implies an attack — possession ticks may miss fast breaks
+            # or shots near the 45m boundary, so attacks can't be less than shots
+            da = max(team_attacks.get(mid, 0), dsh)
             t_poss += dp; t_att += da; t_sh += dsh; t_sc += dsc
 
             op = opp_poss_count.get(mid, 0)
-            oa = opp_attacks.get(mid, 0)
             osh = opp_shots.get(mid, 0)
             osc = opp_scores.get(mid, 0)
+            oa = max(opp_attacks.get(mid, 0), osh)
             o_poss += op; o_att += oa; o_sh += osh; o_sc += osc
 
             # Only include matches that have event data
@@ -1566,10 +1570,25 @@ class SeasonDashboardService:
             # Use duration_seconds for time-weighting; fall back to 1 if not set
             duration = pe.duration_seconds if pe.duration_seconds else 1
 
-            # Determine zone
-            if x < 35:
+            # Normalise x to attacking-right frame so zone boundaries are consistent.
+            # pitch_x is stored as raw screen coordinate (0=left, 100=right of displayed pitch).
+            # Flip when the team was attacking toward the left end of the screen.
+            match = matches_map.get(mid)
+            is_first_half = (pe.minute or 0) <= (match.half_duration_mins or 30) if match else True
+            atk_right_1h = match.attacking_right_first_half if match else None
+            own_attacking_right = (atk_right_1h if is_first_half else not atk_right_1h) if atk_right_1h is not None else True
+
+            if pe.team == PossessionTeam.OWN.value:
+                effective_x = x if own_attacking_right else 100 - x
+            else:
+                # Opponent always attacks opposite direction to own team
+                opp_attacking_right = not own_attacking_right
+                effective_x = x if opp_attacking_right else 100 - x
+
+            # Determine zone using normalised coordinate
+            if effective_x < 35:
                 zone = "defensive"
-            elif x < 65:
+            elif effective_x < 65:
                 zone = "midfield"
             else:
                 zone = "attacking"
@@ -2272,6 +2291,105 @@ class SeasonDashboardService:
                 "draws": draws,
             },
             "cards": cards,
+        }
+
+    # ------------------------------------------------------------------
+    # Season HMLD / Physical Intensity chart
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _season_hmld_chart(db: AsyncSession, matches: list) -> dict:
+        """
+        Per-match team GPS intensity for the Season Intensity dashboard chart.
+        Returns avg HML density, total HML, HSR, and sprint per match (team averages).
+        """
+        empty = {"per_match": [], "season_avg": {}, "peak_match": None, "trend_pct": None}
+        if not matches:
+            return empty
+
+        match_ids = [m.id for m in matches]
+        matches_map = {m.id: m for m in matches}
+
+        gps_result = await db.execute(
+            select(MatchGPSData).where(MatchGPSData.match_id.in_(match_ids))
+        )
+        all_gps = gps_result.scalars().all()
+        if not all_gps:
+            return empty
+
+        gps_by_match: dict = {}
+        for g in all_gps:
+            gps_by_match.setdefault(g.match_id, []).append(g)
+
+        def _avg(vals: list) -> float | None:
+            vals = [v for v in vals if v is not None]
+            return round(sum(vals) / len(vals), 1) if vals else None
+
+        per_match = []
+        for m in matches:
+            rows = gps_by_match.get(m.id, [])
+            if not rows:
+                continue
+
+            avg_dur = _avg([g.duration_mins for g in rows]) or 70.0
+            avg_hml = _avg([g.hml_distance_m for g in rows])
+            avg_hsr = _avg([g.high_speed_running_m for g in rows])
+            avg_sprint = _avg([g.sprint_distance_m for g in rows])
+
+            if avg_hml is not None:
+                hmld_density = round(avg_hml / max(avg_dur, 1), 2)
+                is_estimate = False
+            elif avg_hsr is not None:
+                hmld_density = round(avg_hsr / max(avg_dur, 1), 2)
+                is_estimate = True
+            else:
+                hmld_density = None
+                is_estimate = False
+
+            per_match.append({
+                "match_id": str(m.id),
+                "opponent": m.opponent,
+                "date": m.match_date.isoformat() if m.match_date else "",
+                "hmld_density": hmld_density,
+                "total_hml_m": avg_hml,
+                "hsr_m": avg_hsr,
+                "sprint_m": avg_sprint,
+                "player_count": len(rows),
+                "is_estimate": is_estimate,
+            })
+
+        if not per_match:
+            return empty
+
+        def _season_avg(key: str) -> float | None:
+            vals = [m[key] for m in per_match if m[key] is not None]
+            return round(sum(vals) / len(vals), 1) if vals else None
+
+        # Trend: last 3 matches vs the rest
+        trend_pct = None
+        density_matches = [m for m in per_match if m["hmld_density"] is not None]
+        if len(density_matches) >= 4:
+            recent = density_matches[-3:]
+            prior = density_matches[:-3]
+            recent_avg = sum(m["hmld_density"] for m in recent) / len(recent)
+            prior_avg = sum(m["hmld_density"] for m in prior) / len(prior)
+            trend_pct = round((recent_avg - prior_avg) / max(prior_avg, 0.01) * 100, 1)
+
+        peak = max(density_matches, key=lambda m: m["hmld_density"]) if density_matches else None
+
+        return {
+            "per_match": per_match,
+            "season_avg": {
+                "hmld_density": _season_avg("hmld_density"),
+                "total_hml_m": _season_avg("total_hml_m"),
+                "hsr_m": _season_avg("hsr_m"),
+                "sprint_m": _season_avg("sprint_m"),
+            },
+            "peak_match": {
+                "opponent": peak["opponent"],
+                "hmld_density": peak["hmld_density"],
+            } if peak else None,
+            "trend_pct": trend_pct,
         }
 
     # ------------------------------------------------------------------

@@ -1136,6 +1136,34 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             # Build path points — include carrier segment paths and possession samples between events
             points = []
             carriers_in_order = []  # Track who carried the ball in sequence
+
+            # For single-event chains (outcome immediately follows dead ball / opponent event),
+            # still look for BCS carriers in the window between the last boundary event and the outcome.
+            if len(chain) == 1 and carrier_segments_by_match.get(mid):
+                prev_time = None
+                for i in range(oe_idx - 1, -1, -1):
+                    prev = events[i]
+                    if oe.minute - prev.minute > 4:
+                        break
+                    if prev.team == Team.OPPONENT or prev.event_type in DEAD_BALL_TYPES:
+                        prev_time = prev.created_at
+                        break
+                if prev_time:
+                    curr_time = oe.created_at
+                    for seg in carrier_segments_by_match[mid]:
+                        if prev_time and curr_time and prev_time <= seg.created_at <= curr_time and seg.team == 'own':
+                            carrier_name = players.get(str(seg.player_id)) if seg.player_id else None
+                            if carrier_name and (not carriers_in_order or carriers_in_order[-1] != carrier_name):
+                                carriers_in_order.append(carrier_name)
+                            if seg.path_points:
+                                for pp in seg.path_points:
+                                    if isinstance(pp, dict) and 'x' in pp and 'y' in pp:
+                                        points.append({"x": round(pp['x'], 1), "y": round(pp['y'], 1)})
+                            elif seg.start_x is not None:
+                                points.append({"x": round(seg.start_x, 1), "y": round(seg.start_y or 50, 1)})
+                                if seg.end_x is not None:
+                                    points.append({"x": round(seg.end_x, 1), "y": round(seg.end_y or 50, 1)})
+
             for ci, e in enumerate(chain):
                 if e.pitch_x is None or e.pitch_y is None:
                     continue
@@ -1737,12 +1765,25 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             tm_possession = round((tm_poss_events / total_poss_events) * 100, 1) if total_poss_events > 0 else 50.0
             opp_possession = round(100 - tm_possession, 1)
 
+    # Derive current match minute from current_phase (e.g. "running_second_half:1860" = 31 mins)
+    _current_minute: int | None = None
+    if match.current_phase:
+        _phase_parts = match.current_phase.split(":")
+        if len(_phase_parts) == 2:
+            try:
+                _elapsed_secs = int(_phase_parts[1])
+                _current_minute = _elapsed_secs // 60
+            except ValueError:
+                pass
+
     return safe_json({
         "match": {
             "opponent": match.opponent,
             "date": str(match.match_date),
             "venue": match.venue.value if match.venue else None,
-            "status": match.status.value if match.status else None
+            "status": match.status.value if match.status else None,
+            "current_phase": match.current_phase,
+            "current_match_minute": _current_minute,
         },
         "score": {
             "team": _gaa_score(tm_goals, tm_points, tm_2pts_play, tm_2pts_free),

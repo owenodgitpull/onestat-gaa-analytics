@@ -44,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUserState] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const refreshRetryCount = useRef(0);
 
   const isAuthenticated = !!user;
 
@@ -70,12 +71,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Schedule cookie refresh before expiry
+  // Schedule cookie refresh before expiry.
+  // On server errors (503 etc.) or network failures, retries with exponential backoff
+  // rather than clearing the session — prevents logout during Fly.io machine restarts.
   const scheduleRefresh = useCallback((expiresIn: number) => {
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current);
     }
-    // Refresh 60 seconds before expiry
+    // Refresh 60 seconds before expiry (minimum 10s delay)
     const delay = Math.max((expiresIn - 60) * 1000, 10000);
     refreshTimeoutRef.current = setTimeout(async () => {
       try {
@@ -84,22 +87,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           credentials: 'include',
         });
         if (resp.ok) {
+          refreshRetryCount.current = 0;
           const data = await resp.json();
           scheduleRefresh(data.expires_in || 3600);
-          // Update expiry in sessionStorage
           const stored = sessionStorage.getItem(USER_STORAGE_KEY);
           if (stored) {
             const parsed = JSON.parse(stored);
             parsed.expires_at = Date.now() + (data.expires_in || 3600) * 1000;
             sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(parsed));
           }
-        } else {
-          // Refresh failed — force re-login
+        } else if (resp.status === 401 || resp.status === 403) {
+          // Genuine auth rejection — session is invalid
           setUserState(null);
           sessionStorage.removeItem(USER_STORAGE_KEY);
+        } else {
+          // Server error (503, 502, etc.) — keep session alive and retry with backoff
+          const backoffSecs = Math.min(Math.pow(2, refreshRetryCount.current) * 2 + 60, 120);
+          refreshRetryCount.current += 1;
+          scheduleRefresh(backoffSecs);
         }
       } catch {
-        // Network error — will retry on next interaction
+        // Network error — keep session alive and retry with backoff
+        const backoffSecs = Math.min(Math.pow(2, refreshRetryCount.current) * 2 + 60, 120);
+        refreshRetryCount.current += 1;
+        scheduleRefresh(backoffSecs);
       }
     }, delay);
   }, []);
@@ -160,18 +171,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
               if (cancelled) return;
               if (resp.ok) {
+                refreshRetryCount.current = 0;
                 const data = await resp.json();
                 setUserState(storedUser);
                 scheduleRefresh(data.expires_in || 3600);
                 persistUser(storedUser, data.expires_in || 3600);
-              } else {
+              } else if (resp.status === 401 || resp.status === 403) {
+                // Genuine auth rejection — clear session
                 setUserState(null);
                 sessionStorage.removeItem(USER_STORAGE_KEY);
+              } else {
+                // Server error during outage — restore from cache and retry shortly
+                if (!cancelled) {
+                  setUserState(storedUser);
+                  scheduleRefresh(62); // retry in ~2s
+                }
               }
             } catch {
+              // Network error during outage — restore from cache and retry shortly
               if (!cancelled) {
-                setUserState(null);
-                sessionStorage.removeItem(USER_STORAGE_KEY);
+                setUserState(storedUser);
+                scheduleRefresh(62); // retry in ~2s
               }
             }
           }

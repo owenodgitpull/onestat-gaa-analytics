@@ -87,6 +87,7 @@ const FOUL_SUBTYPES = [
   { value: 'dissent', label: 'Dissent' },
 ]
 
+
 interface PendingEvent {
   eventType: EventType
   team: 'own' | 'opponent'
@@ -105,6 +106,7 @@ export default function MatchRecording() {
   const { data: matchStats, isLoading: statsLoading } = useMatchStats(matchId)
   const { data: players = [] } = usePlayers()
   const [matchLineup, setMatchLineup] = useState<any[]>([])
+  const [lineupLoaded, setLineupLoaded] = useState(false)
 
   // Mutations
   const startMatch = useStartMatch()
@@ -204,10 +206,13 @@ export default function MatchRecording() {
 
   // Compute players currently on the field (starting 15 + subbed on, minus subbed off)
   const playersOnField = useMemo(() => {
+    // While lineup is still loading, return empty to avoid showing full squad in modals
+    if (!lineupLoaded) return []
+    // Lineup loaded but no entries — coach hasn't set one, fall back to all active players
     if (!matchLineup.length) return players.filter(p => p.active)
     const onFieldIds = new Set(matchLineup.filter(l => l.is_on_field).map(l => l.player_id))
     return players.filter(p => onFieldIds.has(p.id))
-  }, [matchLineup, players])
+  }, [matchLineup, lineupLoaded, players])
 
   // Player movement tracking (ball carrier)
   const [activeCarrierId, setActiveCarrierId] = useState<string | null>(null)
@@ -442,8 +447,16 @@ export default function MatchRecording() {
         const mins = Math.floor(elapsed / 60000)
         const secs = Math.floor((elapsed % 60000) / 1000)
         const hdm = match.half_duration_mins || 30
-        setMinute(Math.min(mins, hdm - 1)) // cap at hdm-1 so timer auto-pauses at half duration
-        setSeconds(secs)
+        if (mins >= hdm) {
+          // Timer has overrun half duration without half-time being clicked — freeze clock at hdm
+          setMinute(hdm)
+          setSeconds(0)
+          setIsStopped(true)
+        } else {
+          setMinute(mins)
+          setSeconds(secs)
+          setIsStopped(false)
+        }
         setCurrentHalf(1)
       } else if (phase === 'half_time') {
         // Force half-time minute — overrides any crash restore value
@@ -538,6 +551,8 @@ export default function MatchRecording() {
           setStartingLineup(lineupObj)
         } catch (error) {
           console.log('No lineup found or error loading lineup')
+        } finally {
+          setLineupLoaded(true)
         }
       }
     }
@@ -579,12 +594,16 @@ export default function MatchRecording() {
         setSeconds((prev) => {
           if (prev >= 59) {
             setMinute((m) => {
-              // At 60 minutes, just mark full time reached but DON'T auto-finish
-              // User must click "End Match" to properly complete and trigger AI analysis
               const next = m + 1
-              const fullTimeMins = ((match?.half_duration_mins || 30) * 2) - 1
+              const hdm = match?.half_duration_mins || 30
+              const fullTimeMins = (hdm * 2) - 1
               if (next >= fullTimeMins && matchPhase === 'second_half') {
                 setFullTimeReached(true)
+              }
+              // Freeze first-half timer at hdm — user must click "Half Time" to advance
+              if (matchPhase === 'first_half' && next >= hdm) {
+                setIsStopped(true)
+                return hdm
               }
               return Math.min(next, 120)
             })
@@ -628,7 +647,7 @@ export default function MatchRecording() {
       } catch {
         // Silently fail — possession tick is best-effort
       }
-    }, 3000)
+    }, 10000)
 
     return () => clearInterval(tick)
   }, [matchPhase, isStopped, awaitingKickout, pendingFreeKick, matchId])
@@ -1771,7 +1790,7 @@ export default function MatchRecording() {
     ]
 
     // Opponent scoring/shooting/interception
-    const allOpponentEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SAVED]
+    const allOpponentEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SAVED, EventType.SHORT]
     const opponentScoringOnly = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
     const isOpponentScoring = allOpponentEvents.includes(eventType) && !isHomeTeam
     const isOpponentActualScore = opponentScoringOnly.includes(eventType) && !isHomeTeam
@@ -2441,7 +2460,7 @@ export default function MatchRecording() {
       await completeMatch.mutateAsync(matchId)
       setMatchPhase('finished')
       await clearSavedState()
-      navigate('/')
+      navigate(`/results/${matchId}`)
     } catch (error) {
       console.error('Failed to end match:', error)
       setErrorAlert('Failed to end match. Please try again.')
@@ -3075,6 +3094,8 @@ export default function MatchRecording() {
                       matchId={matchId}
                       opponent={matchDisplay.opponent}
                       pollInterval={0}
+                      attackingRightFirstHalf={match?.attacking_right_first_half}
+                      halfDurationMins={match?.half_duration_mins || 30}
                     />
                   </ChartZoomModal>
                 </div>
@@ -3274,7 +3295,7 @@ export default function MatchRecording() {
       {(pendingEvent || selectingFoulPlayer || editingEventId !== null) && (
         editingEventId !== null ? (
           // Edit mode — pitch selector when lineup exists, list modal otherwise
-          matchLineup.length > 0 ? (
+          lineupLoaded && matchLineup.length > 0 ? (
             <PitchPlayerSelector
               isOpen={isPlayerModalOpen}
               onClose={() => {
@@ -3308,7 +3329,7 @@ export default function MatchRecording() {
               teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
             />
           )
-        ) : matchLineup.length > 0 ? (
+        ) : lineupLoaded && matchLineup.length > 0 ? (
           <PitchPlayerSelector
             isOpen={isPlayerModalOpen}
             onClose={handlePlayerModalClose}

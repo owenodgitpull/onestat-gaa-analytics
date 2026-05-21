@@ -168,7 +168,12 @@ async def get_all_alerts(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all health alerts, optionally filtered by severity."""
-    query = select(PlayerHealthAlert)
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(days=30)
+
+    query = select(PlayerHealthAlert).where(
+        PlayerHealthAlert.created_at >= cutoff
+    )
 
     if active_only:
         query = query.where(PlayerHealthAlert.is_active .is_(True))

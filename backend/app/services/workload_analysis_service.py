@@ -572,7 +572,7 @@ Return a JSON object with:
 Be concise and actionable. Reference GAA-specific training practices when relevant."""
 
         response = client.messages.create(
-            model="claude-3-5-haiku-20241022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -598,10 +598,14 @@ Be concise and actionable. Reference GAA-specific training practices when releva
             )
             club_player_ids = {row[0] for row in pid_result.all()}
 
-        # Get all active alerts (scoped to club)
+        # Get active alerts from the last 30 days only (scoped to club)
+        thirty_days_ago_alerts = datetime.utcnow() - timedelta(days=30)
         alert_query = (
             select(PlayerHealthAlert)
-            .where(PlayerHealthAlert.is_active .is_(True))
+            .where(
+                PlayerHealthAlert.is_active .is_(True),
+                PlayerHealthAlert.created_at >= thirty_days_ago_alerts,
+            )
             .order_by(desc(PlayerHealthAlert.severity), desc(PlayerHealthAlert.created_at))
         )
         if club_player_ids is not None:

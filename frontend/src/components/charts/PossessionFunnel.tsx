@@ -50,7 +50,9 @@ export default function PossessionFunnel({ data, insight }: PossessionFunnelProp
 
     let insight = ''
     if (idx === 0) insight = `${totals.attacks} of ${totals.possessions} became attacks`
-    else if (idx === 1) insight = `${totals.shots} of ${totals.attacks} attacks produced a shot`
+    else if (idx === 1) insight = totals.shots > totals.attacks
+      ? `${totals.shots} shots from ${totals.attacks} attacks`
+      : `${totals.shots} of ${totals.attacks} attacks produced a shot`
     else if (idx === 2) insight = `${totals.scores} of ${totals.shots} shots scored`
     else if (idx === 3) {
       const overall = totals.possessions > 0

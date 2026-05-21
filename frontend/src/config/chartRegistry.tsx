@@ -1,4 +1,5 @@
 import PossessionFunnel from '@/components/charts/PossessionFunnel'
+import SeasonHMLDChart from '@/components/charts/SeasonHMLDChart'
 import KickoutTrend from '@/components/charts/KickoutTrend'
 import TurnoverLeaderboard from '@/components/charts/TurnoverLeaderboard'
 import TerritoryDistribution from '@/components/charts/TerritoryDistribution'
@@ -139,6 +140,17 @@ export const CANONICAL_CHARTS: ChartRegistryEntry[] = [
     colSpan: 2,
     render: ({ seasonDashboard }) =>
       seasonDashboard?.kpi_sparkline_grid ? <KPISparklineGrid data={seasonDashboard.kpi_sparkline_grid} /> : null,
+  },
+  {
+    id: 'season-hmld',
+    label: 'Season Intensity',
+    description: 'Per-match HMLD density, HSR, and sprint distance — team average GPS across the season',
+    category: 'GPS',
+    requiresGps: true,
+    render: ({ seasonDashboard }) =>
+      seasonDashboard?.season_hmld && seasonDashboard.season_hmld.per_match.length > 0
+        ? <SeasonHMLDChart data={seasonDashboard.season_hmld} />
+        : null,
   },
 ]
 

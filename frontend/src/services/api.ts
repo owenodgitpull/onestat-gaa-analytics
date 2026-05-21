@@ -875,6 +875,30 @@ export interface KPISparklineGridData {
 }
 
 
+export interface SeasonHMLDMatch {
+  match_id: string;
+  opponent: string;
+  date: string;
+  hmld_density: number | null;
+  total_hml_m: number | null;
+  hsr_m: number | null;
+  sprint_m: number | null;
+  player_count: number;
+  is_estimate: boolean;
+}
+
+export interface SeasonHMLDData {
+  per_match: SeasonHMLDMatch[];
+  season_avg: {
+    hmld_density: number | null;
+    total_hml_m: number | null;
+    hsr_m: number | null;
+    sprint_m: number | null;
+  };
+  peak_match: { opponent: string; hmld_density: number } | null;
+  trend_pct: number | null;
+}
+
 export interface SeasonDashboardData {
   possession_funnel: PossessionFunnelData;
   kickout_trends: KickoutTrendMatch[];
@@ -888,6 +912,7 @@ export interface SeasonDashboardData {
   defensive_action_zones?: DefensiveActionZonesData;
   kickout_landing_zones?: KickoutLandingZonesData;
   kpi_sparkline_grid?: KPISparklineGridData;
+  season_hmld?: SeasonHMLDData;
 }
 
 // Training Analytics types
