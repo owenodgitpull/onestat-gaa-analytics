@@ -2424,6 +2424,10 @@ export const fixturesAPI = {
 
   getPreview: (matchId: string) =>
     fetchAPI<FixturePreview>(`/fixtures/${matchId}/preview`),
+  fetchOpponentForm: (matchId: string) =>
+    fetchAPI<{ results: any[]; fetched_at: string; dismissed: boolean }>(`/fixtures/${matchId}/opponent-form/fetch`, { method: 'POST' }),
+  dismissOpponentForm: (matchId: string) =>
+    fetchAPI<{ ok: boolean }>(`/fixtures/${matchId}/opponent-form`, { method: 'DELETE' }),
 
   sync: () =>
     fetchAPI<{ status: string; message: string }>('/fixtures/sync', { method: 'POST' }),

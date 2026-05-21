@@ -342,6 +342,37 @@ class KPISparklineGridData(BaseModel):
     rows: List[KPISparklineRow]
 
 
+class SeasonHMLDMatch(BaseModel):
+    match_id: str
+    opponent: str
+    date: str
+    hmld_density: Optional[float] = None
+    total_hml_m: Optional[float] = None
+    hsr_m: Optional[float] = None
+    sprint_m: Optional[float] = None
+    player_count: int
+    is_estimate: bool
+
+
+class SeasonHMLDSeasonAvg(BaseModel):
+    hmld_density: Optional[float] = None
+    total_hml_m: Optional[float] = None
+    hsr_m: Optional[float] = None
+    sprint_m: Optional[float] = None
+
+
+class SeasonHMLDPeak(BaseModel):
+    opponent: str
+    hmld_density: float
+
+
+class SeasonHMLDData(BaseModel):
+    per_match: List[SeasonHMLDMatch]
+    season_avg: SeasonHMLDSeasonAvg
+    peak_match: Optional[SeasonHMLDPeak] = None
+    trend_pct: Optional[float] = None
+
+
 class SeasonDashboardData(BaseModel):
     possession_funnel: PossessionFunnelData
     kickout_trends: List[KickoutTrendMatch]
@@ -355,6 +386,7 @@ class SeasonDashboardData(BaseModel):
     defensive_action_zones: Optional[DefensiveActionZonesData] = None
     kickout_landing_zones: Optional[KickoutLandingZonesData] = None
     kpi_sparkline_grid: Optional[KPISparklineGridData] = None
+    season_hmld: Optional[SeasonHMLDData] = None
 
 
 # Training Analytics schemas
@@ -1044,6 +1076,16 @@ async def get_season_dashboard(
             rows=[KPISparklineRow(**r) for r in ks["rows"]],
         )
 
+    season_hmld = None
+    if data.get("season_hmld") and data["season_hmld"].get("per_match"):
+        sh = data["season_hmld"]
+        season_hmld = SeasonHMLDData(
+            per_match=[SeasonHMLDMatch(**m) for m in sh["per_match"]],
+            season_avg=SeasonHMLDSeasonAvg(**sh["season_avg"]),
+            peak_match=SeasonHMLDPeak(**sh["peak_match"]) if sh.get("peak_match") else None,
+            trend_pct=sh.get("trend_pct"),
+        )
+
     return SeasonDashboardData(
         possession_funnel=PossessionFunnelData(**data["possession_funnel"]),
         kickout_trends=[KickoutTrendMatch(**k) for k in data["kickout_trends"]],
@@ -1064,6 +1106,7 @@ async def get_season_dashboard(
         defensive_action_zones=def_zones,
         kickout_landing_zones=kickout_zones,
         kpi_sparkline_grid=kpi_sparkline,
+        season_hmld=season_hmld,
     )
 
 

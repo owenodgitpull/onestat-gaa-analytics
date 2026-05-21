@@ -103,6 +103,12 @@ export interface FormResult {
   competition: string | null
 }
 
+export interface AIOpponentForm {
+  results: FormResult[]
+  fetched_at: string
+  dismissed: boolean
+}
+
 export interface FixturePreview {
   match: Match
   our_form: FormResult[]
@@ -115,6 +121,8 @@ export interface FixturePreview {
     result: 'W' | 'L' | 'D'
     competition: string | null
   } | null
+  club_county: string | null
+  ai_opponent_form: AIOpponentForm | null
 }
 
 export enum MatchVenue {

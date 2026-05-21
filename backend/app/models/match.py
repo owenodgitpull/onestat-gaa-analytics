@@ -133,6 +133,10 @@ class Match(Base):
     # Opposition roster (list of player names for opponent scoring attribution)
     opposition_roster = Column(JSON, nullable=True)
 
+    # AI-fetched opponent form (from web search + Haiku parse). Stored as
+    # {"results": [...], "fetched_at": "ISO", "dismissed": bool}
+    ai_opponent_form = Column(JSON, nullable=True)
+
     # Soft delete
     is_deleted: Column[bool] = Column(Boolean, default=False, nullable=False)
     

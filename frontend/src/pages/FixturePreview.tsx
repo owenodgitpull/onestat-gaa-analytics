@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, Pencil, Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, Pencil, Users, ChevronDown, ChevronUp, Flag } from 'lucide-react'
 import { api } from '../services/api'
 import EditFixtureModal from '../components/EditFixtureModal'
 import type { Match, FormResult } from '../types'
@@ -62,6 +62,12 @@ export default function FixturePreview() {
   const [rosterSaved, setRosterSaved] = useState(false)
   const [rosterLoaded, setRosterLoaded] = useState(false)
 
+  // AI opponent form state
+  type FormState = 'idle' | 'loading' | 'loaded' | 'dismissed'
+  const [aiFormState, setAiFormState] = useState<FormState>('idle')
+  const [aiFormResults, setAiFormResults] = useState<FormResult[]>([])
+  const formInitRef = useRef<string | null>(null)
+
   const handleEditFixture = async (id: string, data: any) => {
     await api.matches.update(id, data)
     queryClient.invalidateQueries({ queryKey: ['fixture-preview', matchId] })
@@ -79,6 +85,32 @@ export default function FixturePreview() {
     queryFn: () => api.fixtures.getPreview(matchId!),
     enabled: !!matchId,
   })
+
+  useEffect(() => {
+    if (!data || formInitRef.current === data.match.id) return
+    formInitRef.current = data.match.id
+    const { ai_opponent_form, club_county } = data as any
+    if (ai_opponent_form?.dismissed) {
+      setAiFormState('dismissed')
+    } else if (ai_opponent_form?.results?.length) {
+      setAiFormResults(ai_opponent_form.results)
+      setAiFormState('loaded')
+    } else if (club_county) {
+      setAiFormState('loading')
+      api.fixtures.fetchOpponentForm(data.match.id)
+        .then(res => {
+          setAiFormResults((res as any).results || [])
+          setAiFormState('loaded')
+        })
+        .catch(() => setAiFormState('idle'))
+    }
+    // else no county set — stay idle
+  }, [data])
+
+  const handleDismissForm = async () => {
+    try { await api.fixtures.dismissOpponentForm(matchId!) } catch {}
+    setAiFormState('dismissed')
+  }
 
   if (isLoading) {
     return (
@@ -100,7 +132,7 @@ export default function FixturePreview() {
     )
   }
 
-  const { match, our_form, opponent_form, last_meeting } = data
+  const { match, our_form, last_meeting } = data
 
   // If match is already completed, redirect to the result page
   if (match.status === 'completed') {
@@ -216,8 +248,58 @@ export default function FixturePreview() {
           <div className="flex items-center gap-2 mb-4">
             <div className="w-2 h-2 rounded-full bg-red-400" />
             <h3 className="text-sm font-semibold text-white">Opponent Form</h3>
+            {aiFormState === 'loading' && (
+              <div className="ml-auto w-4 h-4 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+            )}
           </div>
-          <FormRow results={opponent_form} />
+
+          {aiFormState === 'loading' && (
+            <div className="text-center py-6">
+              <p className="text-white/30 text-sm">Searching for recent results...</p>
+            </div>
+          )}
+
+          {aiFormState === 'loaded' && (
+            <>
+              <FormRow results={aiFormResults} />
+              <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+                <p className="text-xs text-white/25">AI-powered · web search</p>
+                <button
+                  onClick={handleDismissForm}
+                  className="flex items-center gap-1 text-xs text-white/30 hover:text-red-400 transition-colors"
+                >
+                  <Flag size={11} />
+                  Data incorrect?
+                </button>
+              </div>
+            </>
+          )}
+
+          {aiFormState === 'dismissed' && (
+            <div className="text-center py-6">
+              <p className="text-white/30 text-sm">Results hidden</p>
+              <p className="text-white/20 text-xs mt-1">Thanks for the feedback</p>
+            </div>
+          )}
+
+          {aiFormState === 'idle' && !(data as any)?.club_county && (
+            <div className="text-center py-6">
+              <p className="text-white/40 text-sm mb-2">County not configured</p>
+              <p className="text-white/25 text-xs mb-3">Set your county in Club Settings to pull opponent results automatically</p>
+              <button
+                onClick={() => navigate('/settings')}
+                className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors underline"
+              >
+                Go to Settings
+              </button>
+            </div>
+          )}
+
+          {aiFormState === 'idle' && (data as any)?.club_county && (
+            <div className="text-center py-6">
+              <p className="text-white/30 text-sm">No results found</p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -324,6 +324,7 @@ export default function ExtendedStatsModal({ events, opponent, teamName, onClose
                 <StatRow label="Won Clean" left={ownKOWon} right={ownKOLost} leftBetter={true} />
                 <StatRow label="Won Breaking Ball" left={ownKOWonBreak} right={ownKOLostBreak} leftBetter={true} />
                 <StatRow label="Total Won/Taken" left={ratio(ownKOWon + ownKOWonBreak, ownKOTotal)} right={ratio(ownKOLost + ownKOLostBreak, ownKOTotal)} leftBetter={true} />
+                <StatRow label="% Won" left={pct(ownKOWon + ownKOWonBreak, ownKOTotal)} right={pct(ownKOLost + ownKOLostBreak, ownKOTotal)} leftBetter={true} />
                 {ownKOSideline > 0 && <StatRow label="Over Sideline" left={ownKOSideline} right="—" leftBetter={false} />}
               </>}
 
@@ -332,6 +333,7 @@ export default function ExtendedStatsModal({ events, opponent, teamName, onClose
                 <StatRow label="Won Clean" left={oppKOWon} right={oppKOLost} leftBetter={true} />
                 <StatRow label="Won (Break)" left={oppKOWonBreak} right={oppKOLostBreak} leftBetter={true} />
                 <StatRow label="Won / Total" left={ratio(oppKOWon + oppKOWonBreak, oppKOTotal)} right={ratio(oppKOLost + oppKOLostBreak, oppKOTotal)} leftBetter={true} />
+                <StatRow label="% Won" left={pct(oppKOWon + oppKOWonBreak, oppKOTotal)} right={pct(oppKOLost + oppKOLostBreak, oppKOTotal)} leftBetter={true} />
                 {oppKOSideline > 0 && <StatRow label="Over Sideline" left="—" right={oppKOSideline} leftBetter={true} />}
               </>}
 

@@ -13,6 +13,10 @@ const NEW_V3_CHART_IDS = [
   'kpi-sparkline-grid',
 ]
 
+const NEW_V6_CHART_IDS = [
+  'season-hmld',
+]
+
 export const DEFAULT_CHART_ORDER = [
   'possession-funnel',
   'kickout-trend',
@@ -27,6 +31,7 @@ export const DEFAULT_CHART_ORDER = [
   'defensive-zones',
   'kickout-landing-zones',
   'kpi-sparkline-grid',
+  'season-hmld',
 ]
 
 export const DEFAULT_SECTION_ORDER = [
@@ -54,7 +59,7 @@ const DEFAULT_VISIBLE_CHARTS = [
 function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   const hiddenCharts = DEFAULT_CHART_ORDER.filter(id => !DEFAULT_VISIBLE_CHARTS.includes(id))
   return {
-    version: 5,
+    version: 6,
     chartOrder: [...DEFAULT_VISIBLE_CHARTS, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
     hiddenCharts,
     sectionOrder: [...DEFAULT_SECTION_ORDER],
@@ -106,13 +111,22 @@ function loadLayout(): DashboardLayout {
       }
 
       if (parsed.version === 5) {
-        // Migrate: ensure any new default sections are added
+        // v5 → v6: add season-hmld to hiddenCharts (GPS chart, hidden by default)
+        parsed.version = 6
         const savedSections: string[] = parsed.sectionOrder || []
         const missing = DEFAULT_SECTION_ORDER.filter(s => !savedSections.includes(s))
         if (missing.length > 0) {
           parsed.sectionOrder = [...missing, ...savedSections]
-          saveLayout(parsed)
         }
+        const existing = new Set([...parsed.chartOrder, ...(parsed.hiddenCharts || [])])
+        for (const id of NEW_V6_CHART_IDS) {
+          if (!existing.has(id)) parsed.hiddenCharts.push(id)
+        }
+        saveLayout(parsed)
+        return parsed
+      }
+
+      if (parsed.version === 6) {
         return parsed
       }
     }

@@ -100,12 +100,120 @@ async def fixture_preview(
         db, match.opponent, user.club_id
     )
 
+    # Include club county so frontend knows whether AI form fetch is possible
+    club_result = await db.execute(select(Club).where(Club.id == user.club_id))
+    club = club_result.scalar_one_or_none()
+    club_county = club.county if club else None
+
     return {
         "match": MatchResponse.model_validate(match),
         "our_form": our_form,
         "opponent_form": opponent_form,
         "last_meeting": last_meeting,
+        "club_county": club_county,
+        "ai_opponent_form": match.ai_opponent_form,
     }
+
+
+async def _fetch_ai_opponent_form(opponent: str, county: str | None) -> list[dict]:
+    """Search DuckDuckGo for recent results then parse with Haiku."""
+    from app.services.ai._shared import web_search_tool, client
+
+    county_str = f" {county}" if county else " Ireland"
+    query = f'"{opponent}" GAA results 2025 2026{county_str}'
+    search_raw = await web_search_tool(query)
+
+    prompt = f"""Extract the last 5 GAA match results for the team "{opponent}" from these web search snippets.
+
+Search results:
+{search_raw}
+
+Return ONLY a JSON array (no other text). Each element:
+{{"date": "YYYY-MM-DD", "opponent_faced": "Club name", "score_for": "G-PP", "score_against": "G-PP", "result": "W"|"L"|"D", "competition": "League/Championship/etc"}}
+
+Rules:
+- Only include results for {opponent} (not results where they are the opposition team)
+- Use approximate dates if exact date is unclear (e.g. "2026-04-01")
+- score_for and score_against must be in GAA format: goals-points (e.g. "1-12" or "0-8")
+- If no results can be found, return []
+- Return at most 5 results, most recent first"""
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        import json, re
+        text = response.content[0].text.strip()
+        # Extract JSON array from response
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+        return []
+    except Exception as e:
+        logger.warning(f"AI opponent form parse failed: {e}")
+        return []
+
+
+@router.post("/{match_id}/opponent-form/fetch")
+async def fetch_ai_opponent_form(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch opponent recent form via web search + AI parse. Cached for 48 hours."""
+    result = await db.execute(
+        select(Match).where(Match.id == match_id, Match.club_id == user.club_id)
+    )
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(404, "Match not found")
+
+    # Return cached result if fresh and not dismissed
+    existing = match.ai_opponent_form or {}
+    if existing.get("dismissed"):
+        return existing
+    if existing.get("fetched_at"):
+        from datetime import timedelta
+        age = datetime.utcnow() - datetime.fromisoformat(existing["fetched_at"])
+        if age.total_seconds() < 48 * 3600:
+            return existing
+
+    # Fetch club county for search context
+    club_result = await db.execute(select(Club).where(Club.id == user.club_id))
+    club = club_result.scalar_one_or_none()
+    county = club.county if club else None
+
+    results = await _fetch_ai_opponent_form(match.opponent, county)
+
+    payload = {
+        "results": results,
+        "fetched_at": datetime.utcnow().isoformat(),
+        "dismissed": False,
+    }
+    match.ai_opponent_form = payload
+    await db.commit()
+    return payload
+
+
+@router.delete("/{match_id}/opponent-form")
+async def dismiss_ai_opponent_form(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismiss (report incorrect) AI opponent form so it won't auto-reload."""
+    result = await db.execute(
+        select(Match).where(Match.id == match_id, Match.club_id == user.club_id)
+    )
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(404, "Match not found")
+
+    match.ai_opponent_form = {"dismissed": True}
+    await db.commit()
+    return {"ok": True}
 
 
 async def _run_sync(club_id: UUID):

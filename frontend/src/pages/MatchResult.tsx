@@ -698,6 +698,8 @@ export default function MatchResult() {
                   opponent={match.opponent}
                   insight={postMatchReport?.insights?.possession}
                   insightLoading={reportLoading}
+                  attackingRightFirstHalf={match?.attacking_right_first_half}
+                  halfDurationMins={match?.half_duration_mins || 30}
                 />
               </ChartZoomModal>
             </div>

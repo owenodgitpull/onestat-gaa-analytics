@@ -237,15 +237,16 @@ export default function PitchPlayerSelector({
               {/* Jersey circle */}
               <div
                 className={`w-14 h-14 rounded-full flex flex-col items-center justify-center shadow-lg ring-2 transition-transform active:scale-90 ${
-                  isSelected ? 'ring-white scale-110' : 'ring-white/30 hover:ring-white/60 hover:scale-105'
+                  isSelected ? 'scale-110' : 'hover:ring-4 hover:scale-105'
                 }`}
                 style={{
                   backgroundColor: teamPrimaryColor,
                   color: teamSecondaryColor,
+                  '--tw-ring-color': teamSecondaryColor,
                   boxShadow: isSelected
                     ? `0 0 20px ${teamPrimaryColor}80`
                     : `0 4px 12px rgba(0,0,0,0.4)`,
-                }}
+                } as React.CSSProperties}
               >
                 {item.jerseyNumber != null ? (
                   <span className="font-bold text-lg">{item.jerseyNumber}</span>

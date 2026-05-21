@@ -12,6 +12,9 @@ interface PossessionTerritoryChartProps {
   insightLoading?: boolean
   /** Poll interval in ms for live data (0 = no polling) */
   pollInterval?: number
+  /** True = own team attacks toward x=100 in 1st half. Null = unknown (defaults to true). */
+  attackingRightFirstHalf?: boolean | null
+  halfDurationMins?: number
 }
 
 export default function PossessionTerritoryChart({
@@ -22,6 +25,8 @@ export default function PossessionTerritoryChart({
   insight,
   insightLoading = false,
   pollInterval = 0,
+  attackingRightFirstHalf,
+  halfDurationMins = 30,
 }: PossessionTerritoryChartProps) {
   const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
   const [selectedHalf, setSelectedHalf] = useState<'all' | '1st' | '2nd'>('all')
@@ -39,6 +44,18 @@ export default function PossessionTerritoryChart({
       opponent: { defensive: 0, midfield: 0, attacking: 0 }
     }
 
+    // Normalise pitch_x to "attacking-right" frame: low x = own goal, high x = opp goal.
+    // If team was attacking left in a given half, flip: effectiveX = 100 - px.
+    const getEffectiveX = (px: number, minute: number, forOwnTeam: boolean): number => {
+      const hdm = halfDurationMins ?? 30
+      const isFirstHalf = minute <= hdm
+      const ownAttackingRight = attackingRightFirstHalf != null
+        ? (isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf)
+        : true
+      const teamAttackingRight = forOwnTeam ? ownAttackingRight : !ownAttackingRight
+      return teamAttackingRight ? px : 100 - px
+    }
+
     const usePossession = possessionEvents && possessionEvents.length > 0
     const sourceData = usePossession ? possessionEvents : events
 
@@ -47,7 +64,7 @@ export default function PossessionTerritoryChart({
       if (px === null || px === undefined) return
 
       const minute = e.minute || 0
-      const hdm = e.half_duration_mins ?? 30
+      const hdm = e.half_duration_mins ?? halfDurationMins ?? 30
       if (selectedHalf === '1st' && minute > hdm) return
       if (selectedHalf === '2nd' && minute <= hdm) return
 
@@ -55,10 +72,11 @@ export default function PossessionTerritoryChart({
       if (team !== 'own' && team !== 'opponent') return
 
       const weight = usePossession ? (e.duration_seconds || 1) : 1
+      const effectiveX = getEffectiveX(px, minute, team === 'own')
 
-      if (px < 35) {
+      if (effectiveX < 35) {
         zones[team as keyof typeof zones].defensive += weight
-      } else if (px < 65) {
+      } else if (effectiveX < 65) {
         zones[team as keyof typeof zones].midfield += weight
       } else {
         zones[team as keyof typeof zones].attacking += weight
