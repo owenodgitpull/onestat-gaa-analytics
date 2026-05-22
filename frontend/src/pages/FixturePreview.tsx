@@ -112,6 +112,17 @@ export default function FixturePreview() {
     setAiFormState('dismissed')
   }
 
+  const handleRetryForm = async () => {
+    setAiFormState('loading')
+    try {
+      const res = await api.fixtures.fetchOpponentForm(matchId!, true)
+      setAiFormResults((res as any).results || [])
+      setAiFormState('loaded')
+    } catch {
+      setAiFormState('idle')
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -259,7 +270,7 @@ export default function FixturePreview() {
             </div>
           )}
 
-          {aiFormState === 'loaded' && (
+          {aiFormState === 'loaded' && aiFormResults.length > 0 && (
             <>
               <FormRow results={aiFormResults} />
               <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
@@ -275,10 +286,28 @@ export default function FixturePreview() {
             </>
           )}
 
+          {aiFormState === 'loaded' && aiFormResults.length === 0 && (
+            <div className="text-center py-6">
+              <p className="text-white/30 text-sm mb-2">No results found online</p>
+              <button
+                onClick={handleRetryForm}
+                className="text-xs text-cyan-400/60 hover:text-cyan-400 transition-colors underline"
+              >
+                Retry search
+              </button>
+            </div>
+          )}
+
           {aiFormState === 'dismissed' && (
             <div className="text-center py-6">
               <p className="text-white/30 text-sm">Results hidden</p>
-              <p className="text-white/20 text-xs mt-1">Thanks for the feedback</p>
+              <p className="text-white/20 text-xs mt-1 mb-3">Thanks for the feedback</p>
+              <button
+                onClick={handleRetryForm}
+                className="text-xs text-cyan-400/60 hover:text-cyan-400 transition-colors underline"
+              >
+                Try fresh search
+              </button>
             </div>
           )}
 

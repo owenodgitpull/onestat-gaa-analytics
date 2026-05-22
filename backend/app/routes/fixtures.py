@@ -115,28 +115,132 @@ async def fixture_preview(
     }
 
 
-async def _fetch_ai_opponent_form(opponent: str, county: str | None) -> list[dict]:
-    """Search DuckDuckGo for recent results then parse with Haiku."""
+# Known county GAA website domains — used to target official results pages
+_COUNTY_GAA_DOMAINS: dict[str, str] = {
+    "antrim": "antrimgaa.ie",
+    "armagh": "armaghgaa.ie",
+    "carlow": "carlowgaa.ie",
+    "cavan": "cavangaa.ie",
+    "clare": "claregaa.ie",
+    "cork": "gaacork.ie",
+    "derry": "derrygaa.ie",
+    "donegal": "donegalgaa.ie",
+    "down": "downgaa.ie",
+    "dublin": "dublingaa.ie",
+    "fermanagh": "fermanghgaa.ie",
+    "galway": "galwaygaa.ie",
+    "kerry": "kerrygaa.ie",
+    "kildare": "kildaregaa.ie",
+    "kilkenny": "kilkennygaa.ie",
+    "laois": "laoisgaa.ie",
+    "leitrim": "leitrimgaa.ie",
+    "limerick": "limerickgaa.ie",
+    "longford": "longfordgaa.ie",
+    "louth": "louthgaa.ie",
+    "mayo": "mayogaa.ie",
+    "meath": "meathgaa.ie",
+    "monaghan": "monaghangaa.ie",
+    "offaly": "offalygaa.ie",
+    "roscommon": "roscommongaa.ie",
+    "sligo": "sligogaa.ie",
+    "tipperary": "tipperarygaa.ie",
+    "tyrone": "tyronegaa.ie",
+    "waterford": "waterfordgaa.ie",
+    "westmeath": "westmeathgaa.ie",
+    "wexford": "wexfordgaa.ie",
+    "wicklow": "wicklowgaa.ie",
+}
+
+
+async def _fetch_club_page(url: str) -> str | None:
+    """Fetch a GAA club page and return stripped plain text, or None on failure."""
+    import re
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as http:
+            resp = await http.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; GAABot/1.0)"})
+            if resp.status_code != 200:
+                return None
+            html = resp.text
+            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
+            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL)
+            text = re.sub(r'<[^>]+>', ' ', html)
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text[:10000]
+    except Exception as e:
+        logger.debug(f"Club page fetch failed for {url}: {e}")
+        return None
+
+
+async def _fetch_ai_opponent_form(opponent: str, county: str | None, competition: str | None = None) -> list[dict]:
+    """Search for the county GAA website, fetch the club page, parse results with Haiku."""
+    import json
+    import re
     from app.services.ai._shared import web_search_tool, client
 
-    county_str = f" {county}" if county else " Ireland"
-    query = f'"{opponent}" GAA results 2025 2026{county_str}'
+    # Detect sport from competition name — default to football
+    comp_lower = (competition or "").lower()
+    sport = "hurling" if "hurling" in comp_lower else "football"
+
+    county_domain = None
+    if county:
+        county_domain = _COUNTY_GAA_DOMAINS.get(county.lower().strip())
+
+    # Search DuckDuckGo targeting the county GAA domain if known, else generic
+    if county_domain:
+        query = f'{opponent} {county_domain}'
+    else:
+        query = f'{opponent} GAA club fixtures results 2026'
+
     search_raw = await web_search_tool(query)
 
-    prompt = f"""Extract the last 5 GAA match results for the team "{opponent}" from these web search snippets.
+    # Try to find and fetch the official club page from the county GAA site
+    page_content = None
+    club_page_url = None
+    try:
+        search_json = json.loads(search_raw)
+        results = search_json.get("results", [])
+        if county_domain:
+            # Prefer a /clubs/ page, then any county-domain URL
+            for r in results:
+                url = r.get("url", "")
+                if county_domain in url and "/clubs/" in url:
+                    club_page_url = url
+                    break
+            if not club_page_url:
+                for r in results:
+                    url = r.get("url", "")
+                    if county_domain in url:
+                        club_page_url = url
+                        break
+    except Exception:
+        pass
 
-Search results:
-{search_raw}
+    if club_page_url:
+        page_content = await _fetch_club_page(club_page_url)
+
+    # Build context for Haiku — full page preferred, fall back to search snippets
+    if page_content:
+        context = f"Club page content from {club_page_url}:\n{page_content}"
+    else:
+        context = f"Web search snippets:\n{search_raw}"
+
+    prompt = f"""Extract the last 5 GAA {sport} match results for the SENIOR team "{opponent}" from this content.
+
+{context}
 
 Return ONLY a JSON array (no other text). Each element:
 {{"date": "YYYY-MM-DD", "opponent_faced": "Club name", "score_for": "G-PP", "score_against": "G-PP", "result": "W"|"L"|"D", "competition": "League/Championship/etc"}}
 
 Rules:
-- Only include results for {opponent} (not results where they are the opposition team)
-- Use approximate dates if exact date is unclear (e.g. "2026-04-01")
-- score_for and score_against must be in GAA format: goals-points (e.g. "1-12" or "0-8")
-- If no results can be found, return []
-- Return at most 5 results, most recent first"""
+- {sport.upper()} ONLY — exclude any hurling{"" if sport == "hurling" else ", camogie,"} or other sports
+- Senior team only — exclude underage, ladies, reserve, or junior grades
+- Only results FOR {opponent} (not matches where they appear as opposition)
+- Use approximate dates if exact date unclear (e.g. "2026-05-01")
+- Scores must be GAA format: goals-points e.g. "1-12" or "0-8"
+- If no results found, return []
+- At most 5 results, most recent first"""
 
     try:
         response = client.messages.create(
@@ -144,12 +248,10 @@ Rules:
             max_tokens=600,
             messages=[{"role": "user", "content": prompt}]
         )
-        import json, re
         text = response.content[0].text.strip()
-        # Extract JSON array from response
-        match = re.search(r'\[.*\]', text, re.DOTALL)
-        if match:
-            return json.loads(match.group())
+        arr_match = re.search(r'\[.*\]', text, re.DOTALL)
+        if arr_match:
+            return json.loads(arr_match.group())
         return []
     except Exception as e:
         logger.warning(f"AI opponent form parse failed: {e}")
@@ -159,10 +261,12 @@ Rules:
 @router.post("/{match_id}/opponent-form/fetch")
 async def fetch_ai_opponent_form(
     match_id: UUID,
+    force: bool = Query(False),
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Fetch opponent recent form via web search + AI parse. Cached for 48 hours."""
+    """Fetch opponent recent form via web search + AI parse. Cached for 48 hours.
+    Pass ?force=true to bypass cache and retry immediately."""
     result = await db.execute(
         select(Match).where(Match.id == match_id, Match.club_id == user.club_id)
     )
@@ -170,22 +274,22 @@ async def fetch_ai_opponent_form(
     if not match:
         raise HTTPException(404, "Match not found")
 
-    # Return cached result if fresh and not dismissed
+    # Return cached result if fresh and not dismissed (skip cache if force=true)
     existing = match.ai_opponent_form or {}
-    if existing.get("dismissed"):
-        return existing
-    if existing.get("fetched_at"):
-        from datetime import timedelta
-        age = datetime.utcnow() - datetime.fromisoformat(existing["fetched_at"])
-        if age.total_seconds() < 48 * 3600:
+    if not force:
+        if existing.get("dismissed"):
             return existing
+        if existing.get("fetched_at"):
+            age = datetime.utcnow() - datetime.fromisoformat(existing["fetched_at"])
+            if age.total_seconds() < 48 * 3600:
+                return existing
 
     # Fetch club county for search context
     club_result = await db.execute(select(Club).where(Club.id == user.club_id))
     club = club_result.scalar_one_or_none()
     county = club.county if club else None
 
-    results = await _fetch_ai_opponent_form(match.opponent, county)
+    results = await _fetch_ai_opponent_form(match.opponent, county, match.competition)
 
     payload = {
         "results": results,

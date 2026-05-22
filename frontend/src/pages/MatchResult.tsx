@@ -34,7 +34,7 @@ import ExtendedStatsModal from '@/components/ExtendedStatsModal'
 import { useClubName } from '../contexts/ClubContext'
 import GAAPitch from '../components/GAAPitch'
 import MatchLineupViewer from '../components/MatchLineupViewer'
-import EventFilterToggles, { getEventTypesForFilters } from '../components/EventFilterToggles'
+import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
 import ScoringTimeline from '../components/charts/ScoringTimeline'
 import ShotOutcomeChart from '../components/charts/ShotOutcomeChart'
@@ -44,6 +44,7 @@ import MatchKickoutOutcomes from '../components/charts/MatchKickoutOutcomes'
 import ScoringZoneMap from '../components/charts/ScoringZoneMap'
 import TurnoverMap from '../components/charts/TurnoverMap'
 import ShootingEfficiencyHeatmap from '../components/charts/ShootingEfficiencyHeatmap'
+import GPSConfirmModal from '../components/GPSConfirmModal'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
 import { usePlayers } from '../hooks/usePlayers'
@@ -100,9 +101,11 @@ export default function MatchResult() {
   const [showGpsUpload, setShowGpsUpload] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle')
   const [uploadError, setUploadError] = useState<string | null>(null)
-  const [, setUploadId] = useState<string | null>(null)
+  const [,] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [gpsPreviewData, setGpsPreviewData] = useState<import('../services/api').GPSPreviewData | null>(null)
+  const [isConfirmingGps, setIsConfirmingGps] = useState(false)
 
   // AI report regeneration state
   const [isRegenerating, setIsRegenerating] = useState(false)
@@ -123,6 +126,7 @@ export default function MatchResult() {
 
   // Event filter state
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(['all']))
+  const [halfFilter, setHalfFilter] = useState<'all' | 1 | 2>('all')
 
   // Team filter state - which team's events to show on pitch
   const [teamFilter, setTeamFilter] = useState<'own' | 'opponent'>('own')
@@ -142,48 +146,36 @@ export default function MatchResult() {
     enabled: !!matchId,
   })
 
-  // Handle GPS file upload
-  const handleGpsUpload = async (file: File) => {
-    if (!matchId) return
-
+  // Handle GPS file selected — parse/preview without saving
+  const handleGpsFileSelected = async (file: File) => {
     setUploadStatus('uploading')
     setUploadError(null)
-
     try {
-      const response = await api.matchGps.uploadGps(matchId, file)
-      setUploadId(response.upload_id)
-      setUploadStatus('processing')
-
-      // Poll for completion
-      const pollStatus = async () => {
-        try {
-          const status = await api.matchGps.getUploadStatus(matchId, response.upload_id)
-          if (status.status === 'completed') {
-            setUploadStatus('success')
-            // Refetch GPS data and AI analysis
-            refetchGps()
-            refetchReport()
-            setTimeout(() => {
-              setShowGpsUpload(false)
-              setUploadStatus('idle')
-            }, 2000)
-          } else if (status.status === 'failed') {
-            setUploadStatus('error')
-            setUploadError(status.error_message || 'Upload failed')
-          } else {
-            // Still processing, poll again
-            setTimeout(pollStatus, 2000)
-          }
-        } catch (e) {
-          setUploadStatus('error')
-          setUploadError('Failed to check upload status')
-        }
-      }
-
-      setTimeout(pollStatus, 2000)
+      const preview = await api.matchGps.previewGps(matchId!, file)
+      setGpsPreviewData(preview)
+      setUploadStatus('idle')  // reset so the modal shows on top of the upload panel
     } catch (e: any) {
       setUploadStatus('error')
-      setUploadError(e.message || 'Upload failed')
+      setUploadError(e.message || 'Failed to parse GPS file')
+    }
+  }
+
+  // Handle GPS confirm — save the reviewed assignments
+  const handleGpsConfirm = async (entries: { player_id: string; gps_data: Record<string, unknown> }[]) => {
+    if (!matchId) return
+    setIsConfirmingGps(true)
+    try {
+      await api.matchGps.confirmGps(matchId, entries)
+      setGpsPreviewData(null)
+      setShowGpsUpload(false)
+      setUploadStatus('success')
+      refetchGps()
+      refetchReport()
+      setTimeout(() => setUploadStatus('idle'), 3000)
+    } catch (e: any) {
+      setUploadError(e.message || 'Failed to save GPS data')
+    } finally {
+      setIsConfirmingGps(false)
     }
   }
 
@@ -245,8 +237,10 @@ export default function MatchResult() {
     if (!eventsData?.events) return []
 
     const eventTypes = getEventTypesForFilters(activeFilters)
+    const halfDuration = match?.half_duration_mins || 30
 
     // Map events to the format expected by GAAPitch
+    // Derive half from minute if not stored (pre-b033 events)
     let events = eventsData.events.map((e: any) => ({
       id: e.id,
       pitch_x: e.pitch_x,
@@ -254,11 +248,17 @@ export default function MatchResult() {
       event_type: e.event_type,
       team: e.team || (e.is_home_team ? 'own' : 'opponent'),
       player_name: e.player_name,
-      minute: e.minute
+      minute: e.minute,
+      half: e.half ?? (e.minute != null ? (e.minute <= halfDuration ? 1 : 2) : 1),
     }))
 
     // Filter by selected team
     events = events.filter((e: any) => e.team === teamFilter)
+
+    // Filter by half
+    if (halfFilter !== 'all') {
+      events = events.filter((e: any) => e.half === halfFilter)
+    }
 
     // Filter by event types if not showing all
     if (eventTypes) {
@@ -268,7 +268,7 @@ export default function MatchResult() {
     // Exclude cards (location not meaningful) and only include events with valid coordinates
     const CARD_TYPES = ['yellow_card', 'black_card', 'red_card']
     return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type))
-  }, [eventsData, activeFilters, teamFilter])
+  }, [eventsData, activeFilters, teamFilter, halfFilter])
 
   if (matchLoading) {
     return <LoadingSkeleton variant="match" />
@@ -543,7 +543,7 @@ export default function MatchResult() {
                     accept=".pdf,.csv"
                     onChange={(e) => {
                       const file = e.target.files?.[0]
-                      if (file) handleGpsUpload(file)
+                      if (file) handleGpsFileSelected(file)
                     }}
                   />
                 </label>
@@ -638,7 +638,23 @@ export default function MatchResult() {
                   <span>Event Map</span>
                 </h2>
                 {hasEvents && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Half filter */}
+                    {(['all', 1, 2] as const).map((h) => (
+                      <button
+                        key={h}
+                        onClick={() => setHalfFilter(h)}
+                        className={`px-2.5 py-1 rounded-lg font-medium text-xs transition-all ${
+                          halfFilter === h
+                            ? 'bg-white/25 text-white'
+                            : 'bg-white/8 text-white/40 hover:bg-white/15'
+                        }`}
+                      >
+                        {h === 'all' ? 'All' : h === 1 ? '1st' : '2nd'}
+                      </button>
+                    ))}
+                    <span className="text-white/20 text-xs">·</span>
+                    {/* Team filter */}
                     <button
                       onClick={() => setTeamFilter('own')}
                       className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
@@ -680,7 +696,10 @@ export default function MatchResult() {
               </div>
             </div>
             {hasEvents && (
-              <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
+              <>
+                <EventFilterToggles activeFilters={activeFilters} onToggle={setActiveFilters} />
+                <EventMapLegend />
+              </>
             )}
           </div>
 
@@ -953,6 +972,17 @@ export default function MatchResult() {
           teamName={clubName || 'Us'}
           halfDurationMins={match.half_duration_mins || 30}
           onClose={() => setShowExtendedStats(false)}
+        />
+      )}
+
+      {/* GPS Confirm Modal */}
+      {gpsPreviewData && (
+        <GPSConfirmModal
+          matchId={matchId!}
+          previewData={gpsPreviewData}
+          onConfirm={handleGpsConfirm}
+          onCancel={() => { setGpsPreviewData(null); setUploadStatus('idle') }}
+          isConfirming={isConfirmingGps}
         />
       )}
     </div>

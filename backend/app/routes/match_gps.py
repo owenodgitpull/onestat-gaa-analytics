@@ -15,6 +15,9 @@ from uuid import UUID
 from datetime import datetime
 import json
 import logging
+import re as _re
+
+from pydantic import BaseModel as _BaseModel
 
 from app.database import get_db, async_session_maker
 from app.auth.dependencies import AuthenticatedUser, require_admin
@@ -22,6 +25,7 @@ from app.models.match import Match, MatchStatus
 from app.models.match_gps import MatchGPSData
 from app.models.training_performance import GPSUploadLog
 from app.models.player import Player
+from app.models.match_lineup import MatchLineup
 from app.services.workload_analysis_service import WorkloadAnalysisService
 from app.schemas.match_gps import (
     MatchGPSDataCreate,
@@ -36,6 +40,76 @@ from app.schemas.match_gps import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class _GPSConfirmEntry(_BaseModel):
+    player_id: UUID
+    gps_data: dict
+
+
+class _GPSConfirmRequest(_BaseModel):
+    entries: list[_GPSConfirmEntry]
+
+
+def _match_gps_player(gps_name: str, all_players):
+    """Match a GPS device name to a player. Returns (player, match_type_str)."""
+    def _norm(s: str) -> str:
+        return _re.sub(r"['\-?]", "", s.lower()).strip()
+
+    gps_raw = gps_name.strip()
+    gps_lower = gps_raw.lower()
+
+    # 1. Exact
+    for p in all_players:
+        if p.name.lower() == gps_lower:
+            return p, 'exact'
+
+    # 2. GPS alias
+    norm_gps = _norm(gps_lower)
+    for p in all_players:
+        aliases = getattr(p, 'gps_alias', None) or ''
+        for alias in [a.strip() for a in aliases.split(',') if a.strip()]:
+            if _norm(alias) == norm_gps:
+                return p, 'alias'
+
+    parts = gps_lower.split()
+    if not parts:
+        return None, 'none'
+
+    first_part = parts[0]
+    rest_parts = parts[1:]
+
+    # 3. Initial + FullSurname  e.g. "C O'Donnell"
+    if len(first_part) == 1 and rest_parts:
+        surname_str = _norm(' '.join(rest_parts))
+        for p in all_players:
+            p_parts = p.name.split()
+            if len(p_parts) >= 2 and p_parts[0][0].lower() == first_part and _norm(' '.join(p_parts[1:])) == surname_str:
+                return p, 'initial_surname'
+
+    # 4. FirstName (+ SurnameAbbrev)
+    first_matches = [p for p in all_players if p.name.lower().split()[0] == first_part]
+    if len(first_matches) == 1:
+        return first_matches[0], 'first_name'
+
+    if first_matches and rest_parts:
+        abbrev = rest_parts[0]
+        for p in first_matches:
+            p_parts = p.name.split()
+            if len(p_parts) > 1 and _norm(p_parts[-1]).startswith(_norm(abbrev)):
+                return p, 'abbrev'
+        for p in first_matches:
+            p_parts = p.name.split()
+            if len(p_parts) > 1 and p_parts[-1][0].lower() == abbrev[0]:
+                return p, 'initial_surname2'
+
+    # 5. Substring fallback
+    if len(first_part) > 3:
+        for p in all_players:
+            if first_part in p.name.lower():
+                return p, 'substring'
+
+    return None, 'none'
 
 
 # ============ Match GPS Upload ============
@@ -102,6 +176,147 @@ async def upload_match_gps(
         filename=file.filename or "unknown",
         message="File uploaded. Processing in background. AI will re-analyze match when complete."
     )
+
+
+@router.post("/{match_id}/gps/preview")
+async def preview_match_gps(
+    match_id: UUID,
+    file: UploadFile = File(...),
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Parse GPS file and return player matching preview — does NOT save anything."""
+    from app.routes.training_performance import parse_gps_csv, extract_gps_from_pdf
+
+    match_query = select(Match).where(and_(Match.id == match_id, Match.club_id == user.club_id))
+    result = await db.execute(match_query)
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    content = await file.read()
+    filename = file.filename or "unknown"
+
+    if filename.lower().endswith('.pdf'):
+        extracted_data = await extract_gps_from_pdf(content, filename)
+    elif filename.lower().endswith('.csv'):
+        extracted_data = await parse_gps_csv(content)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Use PDF or CSV.")
+
+    if not extracted_data or not extracted_data.get("players"):
+        raise HTTPException(status_code=422, detail="Could not parse any player data from file")
+
+    # Fetch all club players
+    players_result = await db.execute(select(Player).where(Player.club_id == match.club_id))
+    all_players = list(players_result.scalars().all())
+
+    # Fetch match lineup
+    lineup_result = await db.execute(
+        select(MatchLineup, Player.name.label("pname")).join(Player, MatchLineup.player_id == Player.id).where(MatchLineup.match_id == match_id)
+    )
+    lineup_rows = lineup_result.all()
+    lineup_players = [{"id": str(row.MatchLineup.player_id), "name": row.pname} for row in lineup_rows]
+
+    # Match each GPS player
+    matched = []
+    unmatched = []
+    for player_data in extracted_data["players"]:
+        csv_name = player_data.get("name", "")
+        gps_data = {k: v for k, v in player_data.items() if k != "name"}
+        player, match_type = _match_gps_player(csv_name, all_players)
+        entry = {
+            "csv_name": csv_name,
+            "player_id": str(player.id) if player else None,
+            "player_name": player.name if player else None,
+            "match_type": match_type,
+            "gps_data": gps_data,
+        }
+        if player:
+            matched.append(entry)
+        else:
+            unmatched.append(entry)
+
+    all_players_list = sorted([{"id": str(p.id), "name": p.name} for p in all_players], key=lambda x: x["name"])
+
+    return {
+        "matched": matched,
+        "unmatched": unmatched,
+        "lineup_players": lineup_players,
+        "all_players": all_players_list,
+    }
+
+
+@router.post("/{match_id}/gps/confirm")
+async def confirm_match_gps(
+    match_id: UUID,
+    body: _GPSConfirmRequest,
+    background_tasks: BackgroundTasks,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save GPS data with user-confirmed player assignments, then trigger AI re-analysis."""
+    match_query = select(Match).where(and_(Match.id == match_id, Match.club_id == user.club_id))
+    result = await db.execute(match_query)
+    match = result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    saved = 0
+    for entry in body.entries:
+        # Check for existing record
+        existing_result = await db.execute(
+            select(MatchGPSData).where(MatchGPSData.match_id == match_id, MatchGPSData.player_id == entry.player_id)
+        )
+        existing = existing_result.scalar_one_or_none()
+
+        d = entry.gps_data
+        if existing:
+            existing.total_distance_m = d.get("total_distance_m", existing.total_distance_m)
+            existing.high_speed_running_m = d.get("high_speed_running_m", existing.high_speed_running_m)
+            existing.sprint_distance_m = d.get("sprint_distance_m", existing.sprint_distance_m)
+            existing.hml_distance_m = d.get("hml_distance_m", existing.hml_distance_m)
+            existing.max_speed_ms = d.get("max_speed_ms", existing.max_speed_ms)
+            existing.sprint_count = d.get("sprint_count", existing.sprint_count)
+            existing.acceleration_count = d.get("acceleration_count", existing.acceleration_count)
+            existing.deceleration_count = d.get("deceleration_count", existing.deceleration_count)
+            existing.dynamic_stress_load = d.get("dynamic_stress_load", existing.dynamic_stress_load)
+            existing.raw_data = d
+        else:
+            gps_record = MatchGPSData(
+                match_id=match_id,
+                player_id=entry.player_id,
+                total_distance_m=d.get("total_distance_m"),
+                high_speed_running_m=d.get("high_speed_running_m"),
+                sprint_distance_m=d.get("sprint_distance_m"),
+                hml_distance_m=d.get("hml_distance_m"),
+                max_speed_ms=d.get("max_speed_ms"),
+                avg_speed_ms=d.get("avg_speed_ms"),
+                sprint_count=d.get("sprint_count"),
+                acceleration_count=d.get("acceleration_count"),
+                deceleration_count=d.get("deceleration_count"),
+                dynamic_stress_load=d.get("dynamic_stress_load"),
+                player_load=d.get("player_load"),
+                avg_heart_rate=d.get("avg_heart_rate"),
+                max_heart_rate=d.get("max_heart_rate"),
+                playing_minutes=d.get("playing_minutes"),
+                raw_data=d,
+            )
+            db.add(gps_record)
+        saved += 1
+
+    await db.commit()
+    logger.info(f"GPS confirm: saved {saved} player records for match {match_id}")
+
+    background_tasks.add_task(_run_reanalysis_background, match_id)
+
+    return {"status": "saved", "players_saved": saved, "match_id": str(match_id)}
+
+
+async def _run_reanalysis_background(match_id: UUID):
+    """Background task wrapper that opens a fresh DB session for re-analysis."""
+    async with async_session_maker() as db:
+        await trigger_match_reanalysis_with_gps(db, match_id)
 
 
 async def process_match_gps_upload(upload_id: UUID, content: bytes, filename: str, match_id: UUID):

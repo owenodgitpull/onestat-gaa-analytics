@@ -10,7 +10,7 @@ import ConfirmationModal from '@/components/ConfirmationModal'
 import ManualEventEntryModal from '@/components/ManualEventEntryModal'
 import StartingLineupModal, { type LineupEntry } from '@/components/StartingLineupModal'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
-import EventFilterToggles, { getEventTypesForFilters } from '@/components/EventFilterToggles'
+import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '@/components/EventFilterToggles'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
 import PossessionTerritoryChart from '@/components/charts/PossessionTerritoryChart'
 import ScoringTimeline from '@/components/charts/ScoringTimeline'
@@ -42,7 +42,7 @@ import MatchRecordingTutorial, { type TutorialMatchState, consumePendingTutorial
 import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import { useMatchStateRestore } from '@/hooks/useMatchStateRestore'
-import { startActiveMonitoring, stopActiveMonitoring } from '@/services/offline'
+import { startActiveMonitoring, stopActiveMonitoring, offlineMatchEvents } from '@/services/offline'
 import {
   Clock,
   Activity,
@@ -103,7 +103,7 @@ export default function MatchRecording() {
 
   // Fetch data from backend
   const { data: match, isLoading: matchLoading } = useMatch(matchId)
-  const { data: matchStats, isLoading: statsLoading } = useMatchStats(matchId)
+  const { data: matchStats, isLoading: statsLoading } = useMatchStats(matchId, undefined, true)
   const { data: players = [] } = usePlayers()
   const [matchLineup, setMatchLineup] = useState<any[]>([])
   const [lineupLoaded, setLineupLoaded] = useState(false)
@@ -136,6 +136,7 @@ export default function MatchRecording() {
   const [halfTimeInsight, setHalfTimeInsight] = useState<import('@/services/api').LiveInsight | null>(null)
   const [eventMapTeamFilter, setEventMapTeamFilter] = useState<'all' | 'own' | 'opponent'>('all')
   const [eventMapFilters, setEventMapFilters] = useState<Set<string>>(new Set(['all']))
+  const [eventMapHalfFilter, setEventMapHalfFilter] = useState<'all' | 1 | 2>('all')
   const [pendingKickoutEvent, setPendingKickoutEvent] = useState<{
     eventType: EventType
     isHomeTeam: boolean
@@ -386,16 +387,10 @@ export default function MatchRecording() {
   const queryClient = useQueryClient()
 
   // Debounced stats invalidation — batches rapid event/possession writes into one refetch per 10s.
-  // Without this, every drag, event, and carrier update fires an immediate /stats request,
-  // which saturates the shared-cpu backend during live recording.
-  const statsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const invalidateStats = () => {
-    if (!matchId) return
-    if (statsDebounceRef.current) clearTimeout(statsDebounceRef.current)
-    statsDebounceRef.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
-    }, 10000)
-  }
+  // Stats are now pushed via SSE (useMatchStats streams from /stats/stream).
+  // invalidateStats is kept as a no-op to avoid touching every call site.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const invalidateStats = () => { /* no-op — SSE keeps stats current */ }
 
   // Sync match status with backend — resume timer from DB timestamps
   useEffect(() => {
@@ -616,40 +611,62 @@ export default function MatchRecording() {
     }
   }, [matchPhase, isStopped])
 
-  // Possession tick timer — records which team has the ball every 3 seconds
-  // This is the primary source of possession % (time-based, not movement-based)
+  // Possession tick — records ball position every 8s, flushed as a single bulk POST every 15s
   const possTickBallRef = useRef(ballPosition)
   const possTickMinuteRef = useRef(minute)
   possTickBallRef.current = ballPosition
   possTickMinuteRef.current = minute
+  const possTickBufferRef = useRef<Array<{ x: number; y: number; team: 'own' | 'opponent'; minute: number }>>([])
 
   useEffect(() => {
     const isPlaying = (matchPhase === 'first_half' || matchPhase === 'second_half') && !isStopped && !awaitingKickout && !pendingFreeKick
     if (!isPlaying || !matchId) return
 
-    const tick = setInterval(async () => {
+    // Accumulate a waypoint every 8s
+    const tick = setInterval(() => {
       const bp = possTickBallRef.current
       const m = possTickMinuteRef.current
+      possTickBufferRef.current.push({
+        x: bp.x,
+        y: bp.y,
+        team: bp.team === PossessionTeam.OWN ? 'own' : 'opponent',
+        minute: Math.min(m, 120),
+      })
+    }, 8000)
+
+    // Flush buffer as bulk POSTs every 15s — one request per distinct team
+    const flush = setInterval(async () => {
+      const batch = possTickBufferRef.current.splice(0)
+      if (!batch.length) return
+      const byTeam = new Map<'own' | 'opponent', typeof batch>()
+      for (const w of batch) {
+        if (!byTeam.has(w.team)) byTeam.set(w.team, [])
+        byTeam.get(w.team)!.push(w)
+      }
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        await fetch(`${baseUrl}/possession-events/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            match_id: matchId,
-            team: bp.team === PossessionTeam.OWN ? 'own' : 'opponent',
-            pitch_x: bp.x,
-            pitch_y: bp.y,
-            minute: Math.min(m, 120),
-          }),
-        })
+        for (const [team, pts] of byTeam) {
+          await fetch(`${baseUrl}/possession-events/bulk`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              match_id: matchId,
+              team,
+              minute: pts[pts.length - 1].minute,
+              waypoints: pts.map(w => ({ x: w.x, y: w.y })),
+            }),
+          })
+        }
       } catch {
-        // Silently fail — possession tick is best-effort
+        // Best-effort — drop buffer on failure
       }
-    }, 10000)
+    }, 15000)
 
-    return () => clearInterval(tick)
+    return () => {
+      clearInterval(tick)
+      clearInterval(flush)
+    }
   }, [matchPhase, isStopped, awaitingKickout, pendingFreeKick, matchId])
 
   // Calculate real-time stats from backend - now using MatchStats directly
@@ -742,6 +759,7 @@ export default function MatchRecording() {
   const filteredMapEvents = useMemo(() => {
     if (!matchEventsData?.events) return []
     const eventTypes = getEventTypesForFilters(eventMapFilters)
+    const halfDuration = match?.half_duration_mins || 30
     let events = matchEventsData.events.map((e: any) => ({
       id: e.id,
       pitch_x: e.pitch_x,
@@ -749,17 +767,21 @@ export default function MatchRecording() {
       event_type: e.event_type,
       team: e.team || (e.is_home_team ? 'own' : 'opponent'),
       player_name: e.player_name,
-      minute: e.minute
+      minute: e.minute,
+      half: e.half ?? (e.minute != null ? (e.minute <= halfDuration ? 1 : 2) : 1),
     }))
     if (eventMapTeamFilter !== 'all') {
       events = events.filter((e: any) => e.team === eventMapTeamFilter)
+    }
+    if (eventMapHalfFilter !== 'all') {
+      events = events.filter((e: any) => e.half === eventMapHalfFilter)
     }
     if (eventTypes) {
       events = events.filter((e: any) => eventTypes.includes(e.event_type))
     }
     const CARD_TYPES = ['yellow_card', 'black_card', 'red_card']
     return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type))
-  }, [matchEventsData, eventMapFilters, eventMapTeamFilter])
+  }, [matchEventsData, eventMapFilters, eventMapTeamFilter, eventMapHalfFilter])
 
   // Helper function to check if position is in 2-point zone (outside 40m arc)
   // Coordinates are pitch-area %: 0-100 maps to playable pitch only
@@ -1494,25 +1516,28 @@ export default function MatchRecording() {
 
   // Handle "Foul" button - receives which team committed the foul
   const handleFoulClick = (team: 'own' | 'opponent') => {
-    console.log('Foul committed by:', team)
     setPendingFoul(team)
 
     if (team === 'own') {
-      // Our team fouled - need to select which player committed the foul
+      // Our team fouled — select which player committed it
       setSelectingFoulPlayer(true)
       setIsPlayerModalOpen(true)
-      console.log('Own team foul - selecting player who fouled...')
     } else {
-      // Opposition fouled - our team wins free, go straight to free options
-      // End any active carrier segment — dead-ball time doesn't count as possession
+      // Opposition fouled — record foul_won event immediately (counts opponent foul in stats)
       void playerMovement.endSegment(ballPosition.x, ballPosition.y, 'foul')
+      if (matchId) {
+        void offlineMatchEvents.create({
+          match_id: matchId,
+          event_type: 'foul_won',
+          minute,
+          half: currentHalf,
+          x_coord: ballPosition.x,
+          y_coord: ballPosition.y,
+          is_home_team: true,
+        })
+      }
       setPendingFreeKick({ position: ballPosition })
-      // Our team now has possession (they won the free)
-      setBallPosition(prev => ({
-        ...prev,
-        team: PossessionTeam.OWN
-      }))
-      console.log('Opposition foul - own team wins free at:', ballPosition)
+      setBallPosition(prev => ({ ...prev, team: PossessionTeam.OWN }))
     }
   }
 
@@ -3035,7 +3060,23 @@ export default function MatchRecording() {
                         <Target size={16} />
                         <span>Event Map</span>
                       </h2>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {/* Half filter */}
+                        {(['all', 1, 2] as const).map((h) => (
+                          <button
+                            key={h}
+                            onClick={() => setEventMapHalfFilter(h)}
+                            className={`px-2.5 py-1 rounded-lg font-medium text-xs transition-all ${
+                              eventMapHalfFilter === h
+                                ? 'bg-white/25 text-white'
+                                : 'bg-white/8 text-white/40 hover:bg-white/15'
+                            }`}
+                          >
+                            {h === 'all' ? 'All' : h === 1 ? '1st' : '2nd'}
+                          </button>
+                        ))}
+                        <span className="text-white/20 text-xs">·</span>
+                        {/* Team filter */}
                         <button
                           onClick={() => setEventMapTeamFilter('all')}
                           className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
@@ -3075,6 +3116,7 @@ export default function MatchRecording() {
                     <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
                   </div>
                   <EventFilterToggles activeFilters={eventMapFilters} onToggle={setEventMapFilters} />
+                  <EventMapLegend />
                 </div>
               )}
 

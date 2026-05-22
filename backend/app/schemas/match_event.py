@@ -23,6 +23,7 @@ class MatchEventBase(BaseModel):
     notes: Optional[str] = Field(None, max_length=500, description="Optional event notes")
     opponent_player_name: Optional[str] = Field(None, max_length=200, description="Opposition player name for opponent scoring events")
     sub_type: Optional[str] = Field(None, max_length=50, description="Sub-category (e.g. 'stray_pass' for unforced errors, 'pushing' for fouls)")
+    half: Optional[int] = Field(None, ge=1, le=2, description="Which half (1 or 2)")
 
     @field_validator('event_type', mode='before')
     @classmethod

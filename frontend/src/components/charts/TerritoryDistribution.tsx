@@ -371,7 +371,10 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
         return (
           <div className="mt-3 pt-3 border-t border-white/10" ref={sparkRef}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-white/40">Attacking Third % by Match</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-white/40">Attacking Third % by Match</span>
+                <span className="text-[10px] text-white/25 hidden sm:inline">· tap dots</span>
+              </div>
               <span className="text-xs text-white/50">{Math.round(points[points.length - 1])}% latest</span>
             </div>
             <div className="relative">

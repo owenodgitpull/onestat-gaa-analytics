@@ -48,36 +48,37 @@ const getEventColor = (event: PitchEvent): string => {
 
   switch (event.event_type) {
     case 'goal':
-      return isOwn ? '#10b981' : '#f97316'  // emerald vs orange
+      return isOwn ? '#10b981' : '#ef4444'    // emerald / red
     case 'point':
     case 'point_free':
-      return isOwn ? '#10b981' : '#fb7185'  // emerald vs rose
+    case 'forty_five':
+      return isOwn ? '#10b981' : '#f97316'    // emerald / orange
     case 'two_point':
     case 'two_point_free':
-      return isOwn ? '#06b6d4' : '#fb7185'  // cyan vs rose
+      return isOwn ? '#10b981' : '#eab308'    // emerald / yellow
     case 'wide':
     case 'wide_free':
-      return '#fbbf24'  // amber
+    case 'forty_five_missed':
+      return '#fbbf24'                         // amber — near miss
     case 'saved':
     case 'short':
-      return '#f59e0b'  // yellow
+      return '#94a3b8'                         // slate — stopped/short
     case 'block':
     case 'interception':
     case 'tackle_won':
-      return '#a78bfa'  // violet — defensive wins
+      return '#a78bfa'                         // violet — defensive
     case 'turnover_won':
-      return '#06b6d4'  // cyan
+      return '#3b82f6'                         // blue — won possession
     case 'turnover_lost':
     case 'our_unforced_error':
     case 'opp_unforced_error':
-      return '#ec4899'  // pink
+      return '#ec4899'                         // hot pink — lost possession
     default:
-      // Kickout events — color by who won
       if (event.event_type.includes('kickout') || event.event_type.includes('breaking_ball')) {
         const ownTeamWon = event.event_type.includes('_won') && !event.event_type.includes('opposition_won')
-        return ownTeamWon ? '#06b6d4' : '#f97316'  // cyan for own team won, orange for lost
+        return ownTeamWon ? '#06b6d4' : '#f43f5e'  // cyan / rose
       }
-      return '#94a3b8'  // slate
+      return '#94a3b8'
   }
 }
 

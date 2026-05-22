@@ -130,6 +130,38 @@ export default function EventFilterToggles({ activeFilters, onToggle }: EventFil
   )
 }
 
+const LEGEND_ITEMS = [
+  { color: '#10b981', label: 'Own score' },
+  { color: '#ef4444', label: 'Opp goal' },
+  { color: '#f97316', label: 'Opp point' },
+  { color: '#eab308', label: 'Opp 2pt' },
+  { color: '#fbbf24', label: 'Wide' },
+  { color: '#94a3b8', label: 'Saved / Short' },
+  { color: '#06b6d4', label: 'KO won' },
+  { color: '#f43f5e', label: 'KO lost' },
+  { color: '#3b82f6', label: 'Turnover won' },
+  { color: '#ec4899', label: 'Turnover lost' },
+  { color: '#a78bfa', label: 'Block / Tackle' },
+]
+
+export function EventMapLegend() {
+  return (
+    <div className="glass-card px-3 py-2">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center">
+        {LEGEND_ITEMS.map(({ color, label }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+              style={{ backgroundColor: color }}
+            />
+            <span className="text-[11px] text-white/55">{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
  * Get event types for active filters
  * Used to filter events for pitch display

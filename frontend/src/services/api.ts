@@ -353,8 +353,7 @@ export const matchEventsAPI = {
     notes?: string;
   }): Promise<MatchEvent> => {
     // Convert is_home_team to team field and x_coord/y_coord to pitch_x/pitch_y
-    // Strip `half` — backend expects absolute minute only
-    const { is_home_team, x_coord, y_coord, half, ...rest } = event;
+    const { is_home_team, x_coord, y_coord, ...rest } = event;
 
     return fetchAPI<MatchEvent>('/match-events/', {
       method: 'POST',
@@ -2293,6 +2292,26 @@ export interface GPSUploadStatus {
   processed_at?: string;
 }
 
+export interface GPSPlayerMatch {
+  csv_name: string
+  player_id: string | null
+  player_name: string | null
+  match_type: string
+  gps_data: Record<string, unknown>
+}
+
+export interface GPSPreviewData {
+  matched: GPSPlayerMatch[]
+  unmatched: GPSPlayerMatch[]
+  lineup_players: { id: string; name: string }[]
+  all_players: { id: string; name: string }[]
+}
+
+export interface GPSConfirmEntry {
+  player_id: string
+  gps_data: Record<string, unknown>
+}
+
 const matchGpsAPI = {
   /**
    * Upload GPS data file for a completed match
@@ -2353,6 +2372,35 @@ const matchGpsAPI = {
   deleteMatchGps: async (matchId: string): Promise<void> => {
     await fetchAPI<void>(`/matches/${matchId}/gps`, {
       method: 'DELETE',
+    });
+  },
+
+  /**
+   * Preview GPS file — parse and match players without saving
+   */
+  previewGps: async (matchId: string, file: File): Promise<GPSPreviewData> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `${API_BASE_URL}/matches/${matchId}/gps/preview`;
+    const response = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to parse GPS file');
+    }
+    return response.json();
+  },
+
+  /**
+   * Confirm GPS assignments and save
+   */
+  confirmGps: async (matchId: string, entries: GPSConfirmEntry[]): Promise<{ status: string; players_saved: number }> => {
+    return fetchAPI(`/matches/${matchId}/gps/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ entries }),
     });
   },
 };
@@ -2424,8 +2472,8 @@ export const fixturesAPI = {
 
   getPreview: (matchId: string) =>
     fetchAPI<FixturePreview>(`/fixtures/${matchId}/preview`),
-  fetchOpponentForm: (matchId: string) =>
-    fetchAPI<{ results: any[]; fetched_at: string; dismissed: boolean }>(`/fixtures/${matchId}/opponent-form/fetch`, { method: 'POST' }),
+  fetchOpponentForm: (matchId: string, force = false) =>
+    fetchAPI<{ results: any[]; fetched_at: string; dismissed: boolean }>(`/fixtures/${matchId}/opponent-form/fetch${force ? '?force=true' : ''}`, { method: 'POST' }),
   dismissOpponentForm: (matchId: string) =>
     fetchAPI<{ ok: boolean }>(`/fixtures/${matchId}/opponent-form`, { method: 'DELETE' }),
 

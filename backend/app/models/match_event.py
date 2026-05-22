@@ -140,6 +140,9 @@ class MatchEvent(Base):
     # Sub-type for unforced errors and fouls (e.g. 'stray_pass', 'pushing')
     sub_type: Column[Optional[str]] = Column(String(50), nullable=True)
 
+    # Which half this event occurred in (1 or 2)
+    half: Column[Optional[int]] = Column(Integer, nullable=True)
+
     # Offline sync — client-generated UUID for idempotent deduplication
     client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
 

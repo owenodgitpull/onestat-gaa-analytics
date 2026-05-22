@@ -3,8 +3,9 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
-import type { Match } from '../types';
+import type { Match, MatchStats } from '../types';
 
 // ============================================================================
 // Query Keys
@@ -42,15 +43,60 @@ export function useMatch(matchId: string | null) {
 }
 
 /**
- * Get match statistics (includes events, possession, player stats)
+ * Get match statistics.
+ * live=true: SSE stream (server pushes every 5s) — for active recording.
+ * live=false (default): one-time REST fetch — for completed match views.
  */
-export function useMatchStats(matchId: string | null, half?: 1 | 2) {
-  return useQuery({
-    queryKey: [...matchKeys.stats(matchId!), half ?? 'all'],
-    queryFn: () => api.matches.getStats(matchId!, half),
-    enabled: !!matchId,
-    refetchInterval: 60000,
-  });
+export function useMatchStats(matchId: string | null, half?: 1 | 2, live = false) {
+  const [streamData, setStreamData] = useState<MatchStats | null>(null)
+  const [streamLoading, setStreamLoading] = useState(true)
+  const esRef = useRef<EventSource | null>(null)
+
+  // SSE path — only used when live=true
+  useEffect(() => {
+    if (!live || !matchId) return
+
+    const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+    const url = `${baseUrl}/matches/${matchId}/stats/stream${half ? `?half=${half}` : ''}`
+
+    const connect = () => {
+      const es = new EventSource(url, { withCredentials: true })
+      esRef.current = es
+
+      es.onmessage = (event) => {
+        try {
+          setStreamData(JSON.parse(event.data))
+          setStreamLoading(false)
+        } catch { /* ignore parse errors */ }
+      }
+
+      es.onerror = () => {
+        es.close()
+        esRef.current = null
+        setTimeout(connect, 10000)
+      }
+    }
+
+    connect()
+
+    return () => {
+      esRef.current?.close()
+      esRef.current = null
+    }
+  }, [matchId, half, live])
+
+  // REST path — used when live=false (completed match pages)
+  const restQuery = useQuery({
+    queryKey: matchKeys.stats(matchId!),
+    queryFn: () => api.matches.getStats(matchId!),
+    enabled: !live && !!matchId,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  if (live) {
+    return { data: streamData, isLoading: streamLoading }
+  }
+  return { data: restQuery.data ?? null, isLoading: restQuery.isLoading }
 }
 
 // ============================================================================

@@ -124,7 +124,7 @@ export const offlineMatchEvents = {
     opponent_player_name?: string
     sub_type?: string
   }): Promise<MatchEvent> => {
-    const { is_home_team, x_coord, y_coord, half, minute, opponent_player_name, sub_type, ...rest } = data
+    const { is_home_team, x_coord, y_coord, minute, opponent_player_name, sub_type, ...rest } = data
     const team = is_home_team ? 'own' : 'opponent'
     const clientEventId = uuid()
     const body = {

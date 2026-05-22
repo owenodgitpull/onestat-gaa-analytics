@@ -327,6 +327,59 @@ async def update_match_score(
     return response
 
 
+@router.get("/{match_id}/stats/stream")
+async def stream_match_stats(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """SSE endpoint — pushes stats every 5s. Replaces client-side polling during live recording."""
+    import asyncio
+    from fastapi.responses import StreamingResponse
+
+    match = await MatchService.get_match(db, match_id, club_id=user.club_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    async def event_generator():
+        consecutive_errors = 0
+        tick = 0
+        while True:
+            try:
+                async with async_session_maker() as session:
+                    stats = await MatchService.calculate_match_stats(session, match_id)
+                yield f"data: {json.dumps(stats)}\n\n"
+                consecutive_errors = 0
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                consecutive_errors += 1
+                logger.warning(f"SSE stats error for {match_id}: {e}")
+                if consecutive_errors > 10:
+                    break
+                yield ": retry\n\n"
+
+            tick += 1
+            # Keep-alive comment every 6 ticks (~30s) in case of idle proxies
+            if tick % 6 == 0:
+                yield ": keep-alive\n\n"
+
+            try:
+                await asyncio.sleep(5)
+            except asyncio.CancelledError:
+                break
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/{match_id}/stats", response_model=MatchStatsResponse)
 async def get_match_stats(
     match_id: UUID,
