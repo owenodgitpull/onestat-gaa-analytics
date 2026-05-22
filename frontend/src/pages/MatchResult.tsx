@@ -1839,12 +1839,20 @@ function TeamIntensityGauge({ gpsData }: { gpsData: GPSData[] }) {
   )
 }
 
+function gpsDisplayName(playerName: string | null | undefined, allNames: string[]): string {
+  const parts = (playerName || '').split(' ')
+  const first = parts[0] || 'Unknown'
+  const hasDup = allNames.filter(n => n.split(' ')[0] === first).length > 1
+  return hasDup && parts.length > 1 ? `${first} ${parts[1][0]}` : first
+}
+
 // Player Distance Chart - Bar chart showing distance covered per player
 function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
   const chartData = useMemo(() => {
+    const allNames = gpsData.map(p => p.player_name || '')
     return gpsData
       .map(p => ({
-        name: p.player_name?.split(' ')[0] || 'Unknown', // First name only for space
+        name: gpsDisplayName(p.player_name, allNames),
         fullName: p.player_name,
         distance: ((p.total_distance_m || 0) / 1000), // Convert to km
         hsr: ((p.high_speed_running_m || 0) / 1000),
@@ -1915,11 +1923,12 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
   const [spikeTooltip, setSpikeTooltip] = useState<number | null>(null)
 
   const chartData = useMemo(() => {
+    const allNames = gpsData.map(p => p.player_name || '')
     return gpsData
       .map(p => {
         const maxSpeedKmh = p.max_speed_ms ? p.max_speed_ms * 3.6 : 0
         return {
-          name: p.player_name?.split(' ')[0] || 'Unknown',
+          name: gpsDisplayName(p.player_name, allNames),
           fullName: p.player_name,
           sprints: p.sprint_count || 0,
           maxSpeed: maxSpeedKmh.toFixed(1),
