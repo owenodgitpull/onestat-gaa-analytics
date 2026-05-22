@@ -1851,10 +1851,10 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
         sprints: p.sprint_count || 0
       }))
       .sort((a, b) => b.distance - a.distance)
-      .slice(0, 10) // Top 10 for readability
   }, [gpsData])
 
   const maxDistance = Math.max(...chartData.map(d => d.distance), 1)
+  const chartHeight = Math.max(220, chartData.length * 30)
 
   return (
     <div className="glass-card p-4">
@@ -1863,7 +1863,7 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
         Distance Covered
       </h3>
 
-      <div className="h-[280px]">
+      <div style={{ height: chartHeight }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout="vertical" margin={{ left: 60, right: 20 }}>
             <XAxis type="number" domain={[0, Math.ceil(maxDistance)]} stroke="#9ca3af" fontSize={10} unit="km" />
@@ -1915,7 +1915,6 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
         hsr: (p.high_speed_running_m || 0) / 1000
       }))
       .sort((a, b) => b.sprints - a.sprints)
-      .slice(0, 8)
   }, [gpsData])
 
   // Team totals
