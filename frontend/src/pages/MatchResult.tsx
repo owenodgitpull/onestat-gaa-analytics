@@ -27,7 +27,7 @@ import {
   Users,
   BarChart2
 } from 'lucide-react'
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from 'recharts'
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from 'recharts'
 import { api } from '../services/api'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
@@ -1889,6 +1889,12 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
                   fill={index === 0 ? '#10b981' : index < 3 ? '#10b981' : '#059669'}
                 />
               ))}
+              <LabelList
+                dataKey="distance"
+                position="insideRight"
+                formatter={(v: number) => `${v.toFixed(2)} km`}
+                style={{ fill: 'white', fontSize: 10, fontWeight: 600 }}
+              />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -1902,18 +1908,27 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
   )
 }
 
+const GPS_SPIKE_THRESHOLD_KMH = 38
+
 // Player Workload Chart - Shows player load / sprint count comparison
 function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
+  const [spikeTooltip, setSpikeTooltip] = useState<number | null>(null)
+
   const chartData = useMemo(() => {
     return gpsData
-      .map(p => ({
-        name: p.player_name?.split(' ')[0] || 'Unknown',
-        fullName: p.player_name,
-        sprints: p.sprint_count || 0,
-        maxSpeed: p.max_speed_ms ? (p.max_speed_ms * 3.6).toFixed(1) : '0', // Convert m/s to km/h
-        load: p.player_load || 0,
-        hsr: (p.high_speed_running_m || 0) / 1000
-      }))
+      .map(p => {
+        const maxSpeedKmh = p.max_speed_ms ? p.max_speed_ms * 3.6 : 0
+        return {
+          name: p.player_name?.split(' ')[0] || 'Unknown',
+          fullName: p.player_name,
+          sprints: p.sprint_count || 0,
+          maxSpeed: maxSpeedKmh.toFixed(1),
+          maxSpeedKmh,
+          isSpike: maxSpeedKmh > GPS_SPIKE_THRESHOLD_KMH,
+          load: p.player_load || 0,
+          hsr: (p.high_speed_running_m || 0) / 1000,
+        }
+      })
       .sort((a, b) => b.sprints - a.sprints)
   }, [gpsData])
 
@@ -1951,28 +1966,49 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
       </div>
 
       {/* Sprint Bars */}
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {chartData.map((player, idx) => {
           const maxSprints = Math.max(...chartData.map(d => d.sprints), 1)
           const percentage = (player.sprints / maxSprints) * 100
+          const spikeOpen = spikeTooltip === idx
 
           return (
-            <div key={idx} className="flex items-center gap-2">
-              <div className="w-16 text-xs text-white/60 truncate">{player.name}</div>
-              <div className="flex-1 h-5 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white"
-                  style={{
-                    width: `${Math.max(percentage, 15)}%`,
-                    background: idx === 0
-                      ? 'linear-gradient(90deg, #f97316, #ef4444)'
-                      : 'linear-gradient(90deg, #10b981, #06b6d4)'
-                  }}
-                >
-                  {player.sprints}
+            <div key={idx}>
+              <div className="flex items-center gap-2">
+                <div className="w-16 text-xs text-white/60 truncate">{player.name}</div>
+                <div className="flex-1 h-5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white"
+                    style={{
+                      width: `${Math.max(percentage, 15)}%`,
+                      background: idx === 0
+                        ? 'linear-gradient(90deg, #f97316, #ef4444)'
+                        : 'linear-gradient(90deg, #10b981, #06b6d4)'
+                    }}
+                  >
+                    {player.sprints}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 w-20 justify-end flex-shrink-0">
+                  <span className={`text-xs ${player.isSpike ? 'text-amber-400 font-semibold' : 'text-white/40'}`}>
+                    {player.maxSpeed} km/h
+                  </span>
+                  {player.isSpike && (
+                    <button
+                      onClick={() => setSpikeTooltip(spikeOpen ? null : idx)}
+                      className="text-amber-400 hover:text-amber-300 transition-colors flex-shrink-0"
+                      title="GPS spike detected"
+                    >
+                      <AlertCircle size={12} />
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="w-14 text-xs text-white/40 text-right">{player.maxSpeed} km/h</div>
+              {player.isSpike && spikeOpen && (
+                <div className="mt-1 ml-[72px] mr-0 text-[10px] text-amber-200/80 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 leading-relaxed">
+                  <span className="font-semibold text-amber-300">GPS spike detected.</span> This reading ({player.maxSpeed} km/h) likely reflects a momentary sensor error, not actual speed. Typical GAA match max is 30–36 km/h.
+                </div>
+              )}
             </div>
           )
         })}
