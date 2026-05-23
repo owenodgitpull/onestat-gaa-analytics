@@ -81,14 +81,14 @@ export default function WorkhorseRadar({ data }: WorkhorseRadarProps) {
             dataKey="Season Avg"
             stroke="#10b981"
             fill="#10b981"
-            fillOpacity={0.3}
+            fillOpacity={0.25}
           />
           <Radar
             name="Last Game"
             dataKey="Last Game"
-            stroke="#10b981"
-            fill="#10b981"
-            fillOpacity={0.5}
+            stroke="#f97316"
+            fill="#f97316"
+            fillOpacity={0.45}
           />
           <Legend
             wrapperStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}

@@ -390,16 +390,19 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
               <span className="text-xs text-white/50">{Math.round(points[points.length - 1])}% latest</span>
             </div>
             <div className="relative">
-              {/* "Show all" label strip — one % per match above the sparkline */}
+              {/* "Show all" label strip — opponent + % above each dot */}
               {showAll && (
-                <div className="relative h-5 mb-0.5">
+                <div className="relative h-9 mb-0.5">
                   {coords.map((c, i) => (
                     <button
                       key={i}
-                      className="absolute text-center leading-none"
+                      className="absolute flex flex-col items-center leading-none gap-px"
                       style={{ left: `${(c.x / svgW) * 100}%`, transform: 'translateX(-50%)', top: 0 }}
                       onPointerDown={() => handleDotInteraction(i)}
                     >
+                      <span className="text-[8px] text-white/45 whitespace-nowrap">
+                        {c.opponent.split(' ')[0]}
+                      </span>
                       <span className="text-[9px] font-bold" style={{ color: teamColor }}>
                         {Math.round(c.val)}%
                       </span>
