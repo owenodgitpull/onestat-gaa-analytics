@@ -68,8 +68,19 @@ export default function ScoringZoneMap({ events, teamName, opponent }: Props) {
         return x >= zone.xMin && x < zone.xMax && y >= zone.yMin && y < zone.yMax
       })
       const scores = inZone.filter(e => SCORE_TYPES.has(e.event_type)).length
-      const total  = scores + inZone.filter(e => MISS_TYPES.has(e.event_type)).length
-      return { ...zone, scores, total }
+      const misses = inZone.filter(e => MISS_TYPES.has(e.event_type)).length
+      const total  = scores + misses
+
+      // Position bubble at actual centroid of shot events, not geometric zone centre
+      const shotEvents = inZone.filter(e => SCORE_TYPES.has(e.event_type) || MISS_TYPES.has(e.event_type))
+      const centroidSvgX = shotEvents.length > 0
+        ? toSvgX(shotEvents.reduce((s, e) => s + (e.pitch_x as number), 0) / shotEvents.length)
+        : zone.svgX
+      const centroidSvgY = shotEvents.length > 0
+        ? toSvgY(shotEvents.reduce((s, e) => s + (e.pitch_y as number), 0) / shotEvents.length)
+        : zone.svgY
+
+      return { ...zone, scores, total, svgX: centroidSvgX, svgY: centroidSvgY }
     })
   }, [events, view])
 
