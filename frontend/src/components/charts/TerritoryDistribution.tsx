@@ -11,22 +11,34 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
   const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
   const [timeScope, setTimeScope] = useState<'season' | 'last_match'>('season')
   const [activeDot, setActiveDot] = useState<number | null>(null)
+  const [showAll, setShowAll] = useState(false)
   const sparkRef = useRef<HTMLDivElement>(null)
 
-  // Dismiss tooltip when tapping outside
+  // Dismiss tooltip / showAll when tapping outside
   useEffect(() => {
-    if (activeDot === null) return
+    if (activeDot === null && !showAll) return
     const handler = (e: PointerEvent) => {
       if (sparkRef.current && !sparkRef.current.contains(e.target as Node)) {
         setActiveDot(null)
+        setShowAll(false)
       }
     }
     document.addEventListener('pointerdown', handler)
     return () => document.removeEventListener('pointerdown', handler)
-  }, [activeDot])
+  }, [activeDot, showAll])
 
   const handleDotInteraction = useCallback((index: number) => {
-    setActiveDot(prev => prev === index ? null : index)
+    if (showAll) {
+      setShowAll(false)
+      setActiveDot(null)
+    } else {
+      setActiveDot(prev => prev === index ? null : index)
+    }
+  }, [showAll])
+
+  const handleLineClick = useCallback(() => {
+    setShowAll(prev => !prev)
+    setActiveDot(null)
   }, [])
 
   if (!data || !data.season_pcts) {
@@ -373,11 +385,28 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-white/40">Attacking Third % by Match</span>
-                <span className="text-[10px] text-white/25 hidden sm:inline">· tap dots</span>
+                <span className="text-[10px] text-white/25 hidden sm:inline">· tap line for all · tap dots</span>
               </div>
               <span className="text-xs text-white/50">{Math.round(points[points.length - 1])}% latest</span>
             </div>
             <div className="relative">
+              {/* "Show all" label strip — one % per match above the sparkline */}
+              {showAll && (
+                <div className="relative h-5 mb-0.5">
+                  {coords.map((c, i) => (
+                    <button
+                      key={i}
+                      className="absolute text-center leading-none"
+                      style={{ left: `${(c.x / svgW) * 100}%`, transform: 'translateX(-50%)', top: 0 }}
+                      onPointerDown={() => handleDotInteraction(i)}
+                    >
+                      <span className="text-[9px] font-bold" style={{ color: teamColor }}>
+                        {Math.round(c.val)}%
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full h-10" preserveAspectRatio="none">
                 {/* Season average reference line */}
                 {(() => {
@@ -403,6 +432,12 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
                 </defs>
                 <path d={areaPath} fill={`url(#sparkGrad-${selectedTeam})`} />
                 <path d={linePath} fill="none" stroke={teamColor} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                {/* Transparent wide hit target over the line */}
+                <path
+                  d={linePath} fill="none" stroke="transparent" strokeWidth="20"
+                  style={{ cursor: 'pointer' }}
+                  onPointerDown={handleLineClick}
+                />
                 {/* Dots */}
                 {coords.map((c, i) => {
                   const isLast = i === coords.length - 1
@@ -415,8 +450,8 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
                         fill="transparent"
                         style={{ cursor: 'pointer' }}
                         onPointerDown={() => handleDotInteraction(i)}
-                        onPointerEnter={() => setActiveDot(i)}
-                        onPointerLeave={(e) => { if (e.pointerType === 'mouse') setActiveDot(null) }}
+                        onPointerEnter={() => { if (!showAll) setActiveDot(i) }}
+                        onPointerLeave={(e) => { if (!showAll && e.pointerType === 'mouse') setActiveDot(null) }}
                       />
                       <circle
                         cx={c.x} cy={c.y}
