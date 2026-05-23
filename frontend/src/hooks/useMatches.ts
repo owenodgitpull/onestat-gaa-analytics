@@ -87,8 +87,8 @@ export function useMatchStats(matchId: string | null, half?: 1 | 2, live = false
 
   // REST path — used when live=false (completed match pages)
   const restQuery = useQuery({
-    queryKey: matchKeys.stats(matchId!),
-    queryFn: () => api.matches.getStats(matchId!),
+    queryKey: [...matchKeys.stats(matchId!), half],
+    queryFn: () => api.matches.getStats(matchId!, half),
     enabled: !live && !!matchId,
     staleTime: 1000 * 60 * 5,
   })
