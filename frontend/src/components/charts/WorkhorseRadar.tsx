@@ -80,13 +80,15 @@ export default function WorkhorseRadar({ data }: WorkhorseRadarProps) {
             name="Season Avg"
             dataKey="Season Avg"
             stroke="#10b981"
+            strokeWidth={3}
             fill="#10b981"
-            fillOpacity={0.25}
+            fillOpacity={0.08}
           />
           <Radar
             name="Last Game"
             dataKey="Last Game"
             stroke="#f97316"
+            strokeWidth={2}
             fill="#f97316"
             fillOpacity={0.45}
           />
