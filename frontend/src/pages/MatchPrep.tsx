@@ -76,6 +76,31 @@ const SUBSTITUTE_POSITIONS: LineupPosition[] = [
   { id: 'sub-11', x: 0, y: 0, label: 'SUB' },
 ]
 
+const POSITION_DEFAULT_JERSEY: Record<string, number> = {
+  'gk':        1,
+  'fb-left':   4,
+  'fb-center': 3,
+  'fb-right':  2,
+  'hb-left':   7,
+  'hb-center': 6,
+  'hb-right':  5,
+  'mf-left':   8,
+  'mf-right':  9,
+  'hf-left':   12,
+  'hf-center': 11,
+  'hf-right':  10,
+  'ff-left':   15,
+  'ff-center': 14,
+  'ff-right':  13,
+}
+
+function defaultJerseyFor(positionId: string, currentLineup: Record<string, { jerseyNumber: number | null }>): number | null {
+  const posDefault = POSITION_DEFAULT_JERSEY[positionId]
+  if (posDefault == null) return null
+  const taken = Object.values(currentLineup).some(e => e.jerseyNumber === posDefault)
+  return taken ? null : posDefault
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 const getStatusDot = (status: string) => {
@@ -285,17 +310,28 @@ export default function MatchPrep() {
 
   const handlePlayerSelect = (playerId: string) => {
     if (selectingPosition) {
-      const player = players.find(p => p.id === playerId)
       setLineup(prev => ({
         ...prev,
         [selectingPosition]: {
           playerId,
-          jerseyNumber: player?.jersey_number ?? null,
+          jerseyNumber: defaultJerseyFor(selectingPosition, prev),
         },
       }))
       setSelectingPosition(null)
       setSaved(false)
     }
+  }
+
+  const handleJerseyChange = (positionId: string, value: string) => {
+    const num = value === '' ? null : parseInt(value, 10)
+    setLineup(prev => ({
+      ...prev,
+      [positionId]: {
+        ...prev[positionId],
+        jerseyNumber: num !== null && !isNaN(num) ? num : null,
+      },
+    }))
+    setSaved(false)
   }
 
   const handleUseLastLineup = () => {
@@ -614,7 +650,7 @@ export default function MatchPrep() {
                       }`}
                       style={player ? { backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties : undefined}
                     >
-                      {player ? (player.jersey_number ?? `S${index + 1}`) : `S${index + 1}`}
+                      {player ? (entry?.jerseyNumber ?? `S${index + 1}`) : `S${index + 1}`}
                     </div>
                     {player && (
                       <div className="mt-1.5">
@@ -721,25 +757,35 @@ export default function MatchPrep() {
                     const player = entry ? playerMap.get(entry.playerId) : null
                     const wl = entry ? workloadMap.get(entry.playerId) : undefined
                     return (
-                      <div key={pos.id} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/40 text-xs font-mono w-7">{pos.label}</span>
-                          {player ? (
-                            <div className="flex items-center gap-1.5">
-                              {wl && <span className={`w-1.5 h-1.5 rounded-full ${getStatusDot(wl.status)}`} />}
-                              <span className="text-white text-sm font-semibold">{player.name}</span>
+                      <div key={pos.id} className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white/5">
+                        <span className="text-white/40 text-xs font-mono w-7 flex-shrink-0">{pos.label}</span>
+                        {player ? (
+                          <>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={2}
+                              value={entry?.jerseyNumber ?? ''}
+                              onChange={(e) => handleJerseyChange(pos.id, e.target.value.replace(/\D/g, ''))}
+                              onClick={(e) => { e.stopPropagation(); (e.target as HTMLInputElement).select() }}
+                              onFocus={(e) => e.target.select()}
+                              className="w-10 h-7 bg-white/10 border border-white/20 rounded text-center text-white text-xs font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none flex-shrink-0"
+                              placeholder="#"
+                            />
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              {wl && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(wl.status)}`} />}
+                              <span className="text-white text-xs font-semibold truncate">{player.name}</span>
                             </div>
-                          ) : (
-                            <span className="text-white/20 text-sm italic">Empty</span>
-                          )}
-                        </div>
-                        {player && (
-                          <button
-                            onClick={() => handlePositionClick(pos.id)}
-                            className="text-white/30 hover:text-red-400 transition-colors"
-                          >
-                            <X size={14} />
-                          </button>
+                            <button
+                              onClick={() => handlePositionClick(pos.id)}
+                              className="text-white/30 hover:text-red-400 transition-colors flex-shrink-0"
+                            >
+                              <X size={13} />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-white/20 text-xs italic">Empty</span>
                         )}
                       </div>
                     )
@@ -756,25 +802,35 @@ export default function MatchPrep() {
                     const player = entry ? playerMap.get(entry.playerId) : null
                     const wl = entry ? workloadMap.get(entry.playerId) : undefined
                     return (
-                      <div key={pos.id} className="flex items-center justify-between p-2 rounded-lg bg-white/5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-white/40 text-xs font-mono w-7">S{i + 1}</span>
-                          {player ? (
-                            <div className="flex items-center gap-1.5">
-                              {wl && <span className={`w-1.5 h-1.5 rounded-full ${getStatusDot(wl.status)}`} />}
-                              <span className="text-white text-sm font-semibold">{player.name}</span>
+                      <div key={pos.id} className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white/5">
+                        <span className="text-white/40 text-xs font-mono w-7 flex-shrink-0">S{i + 1}</span>
+                        {player ? (
+                          <>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={2}
+                              value={entry?.jerseyNumber ?? ''}
+                              onChange={(e) => handleJerseyChange(pos.id, e.target.value.replace(/\D/g, ''))}
+                              onClick={(e) => { e.stopPropagation(); (e.target as HTMLInputElement).select() }}
+                              onFocus={(e) => e.target.select()}
+                              className="w-10 h-7 bg-white/10 border border-white/20 rounded text-center text-white text-xs font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none flex-shrink-0"
+                              placeholder="#"
+                            />
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              {wl && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(wl.status)}`} />}
+                              <span className="text-white text-xs font-semibold truncate">{player.name}</span>
                             </div>
-                          ) : (
-                            <span className="text-white/20 text-sm italic">Empty</span>
-                          )}
-                        </div>
-                        {player && (
-                          <button
-                            onClick={() => handlePositionClick(pos.id)}
-                            className="text-white/30 hover:text-red-400 transition-colors"
-                          >
-                            <X size={14} />
-                          </button>
+                            <button
+                              onClick={() => handlePositionClick(pos.id)}
+                              className="text-white/30 hover:text-red-400 transition-colors flex-shrink-0"
+                            >
+                              <X size={13} />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-white/20 text-xs italic">Empty</span>
                         )}
                       </div>
                     )

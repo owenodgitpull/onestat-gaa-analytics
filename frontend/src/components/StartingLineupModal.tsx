@@ -116,6 +116,14 @@ export default function StartingLineupModal({
 
   if (!isOpen) return null
 
+  // Returns the GAA position default number if it isn't already taken, otherwise null
+  const defaultJerseyFor = (positionId: string, currentLineup: Record<string, LineupEntry>): number | null => {
+    const posDefault = POSITION_DEFAULT_JERSEY[positionId]
+    if (posDefault == null) return null
+    const taken = Object.values(currentLineup).some(e => e.jerseyNumber === posDefault)
+    return taken ? null : posDefault
+  }
+
   const handlePositionClick = (e: React.MouseEvent, positionId: string) => {
     e.stopPropagation()
 
@@ -139,12 +147,9 @@ export default function StartingLineupModal({
 
   const handlePlayerSelect = (playerId: string) => {
     if (selectingPosition) {
-      const player = players.find(p => p.id === playerId)
-      // Use player's registered jersey number, fall back to position default
-      const jerseyNumber = player?.jersey_number ?? POSITION_DEFAULT_JERSEY[selectingPosition] ?? null
       setLineup(prev => ({
         ...prev,
-        [selectingPosition]: { playerId, jerseyNumber },
+        [selectingPosition]: { playerId, jerseyNumber: defaultJerseyFor(selectingPosition, prev) },
       }))
       setSelectingPosition(null)
     }
@@ -374,13 +379,15 @@ export default function StartingLineupModal({
                           {player ? (
                             <>
                               <input
-                                type="number"
-                                min="1"
-                                max="99"
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={2}
                                 value={entry.jerseyNumber ?? ''}
-                                onChange={(e) => handleJerseyChange(pos.id, e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-9 h-6 bg-white/10 border border-white/20 rounded text-center text-white text-xs font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
+                                onChange={(e) => handleJerseyChange(pos.id, e.target.value.replace(/\D/g, ''))}
+                                onClick={(e) => { e.stopPropagation(); (e.target as HTMLInputElement).select() }}
+                                onFocus={(e) => e.target.select()}
+                                className="w-10 h-7 bg-white/10 border border-white/20 rounded text-center text-white text-xs font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
                                 placeholder="#"
                               />
                               <span className="text-white text-xs font-medium truncate flex-1">{player.name}</span>
@@ -410,13 +417,15 @@ export default function StartingLineupModal({
                           {player ? (
                             <>
                               <input
-                                type="number"
-                                min="1"
-                                max="99"
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={2}
                                 value={entry.jerseyNumber ?? ''}
-                                onChange={(e) => handleJerseyChange(pos.id, e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-9 h-6 bg-white/10 border border-white/20 rounded text-center text-white text-xs font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
+                                onChange={(e) => handleJerseyChange(pos.id, e.target.value.replace(/\D/g, ''))}
+                                onClick={(e) => { e.stopPropagation(); (e.target as HTMLInputElement).select() }}
+                                onFocus={(e) => e.target.select()}
+                                className="w-10 h-7 bg-white/10 border border-white/20 rounded text-center text-white text-xs font-bold focus:ring-1 focus:ring-emerald-400 focus:outline-none"
                                 placeholder="#"
                               />
                               <span className="text-white text-xs font-medium truncate flex-1">{player.name}</span>
