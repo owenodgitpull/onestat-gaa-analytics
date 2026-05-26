@@ -3571,7 +3571,7 @@ export default function MatchRecording() {
             : (teamAttackingRight ? 0 : 100)
           return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
         })()}
-        pendingFreeKick={false}
+        pendingFreeKick={!!pendingFreeKick}
         pendingFoul={pendingFoul}
         pendingBlockRecovery={!!pendingBlockRecovery}
         onBlockRecovery={handleBlockRecovery}
