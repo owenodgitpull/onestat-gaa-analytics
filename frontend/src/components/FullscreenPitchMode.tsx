@@ -4,6 +4,7 @@ import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight, Pause, Play, ArrowUpDown } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
+import PitchActionOverlay from '@/components/PitchActionOverlay'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import OppositionScorerStrip from '@/components/OppositionScorerStrip'
 import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
@@ -453,9 +454,21 @@ export default function FullscreenPitchMode({
           }
         />
 
+        {/* Action-required overlay — kickout & free kick */}
+        <PitchActionOverlay
+          awaitingKickout={!!awaitingKickout && !pendingKickoutPosition}
+          pendingFreeKick={pendingFreeKick}
+          pendingFoul={pendingFoul}
+          kickoutTab={activeCategory ?? null}
+          isIn2PointZone={isIn2PointZone}
+          onAction={onActionSelect}
+          onCancelFree={onCancelFree ?? (() => {})}
+          onCancelKickout={onCancelKickout ?? (() => {})}
+        />
+
         {/* Event Toast */}
         <div
-          className={`absolute bottom-20 left-1/2 -translate-x-1/2 z-20 transition-all duration-500 ${
+          className={`absolute bottom-20 left-1/2 -translate-x-1/2 z-30 transition-all duration-500 ${
             toastVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
           }`}
         >
@@ -507,7 +520,7 @@ export default function FullscreenPitchMode({
             currentPossession={currentPossession}
             isIn2PointZone={isIn2PointZone}
             isInPenaltyArea={isInPenaltyArea}
-            pendingFreeKick={pendingFreeKick}
+            pendingFreeKick={false}
             pendingFoul={pendingFoul}
             pendingBlockRecovery={pendingBlockRecovery}
             onBlockRecovery={onBlockRecovery}

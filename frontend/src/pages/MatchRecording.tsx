@@ -21,6 +21,7 @@ import MatchKickoutOutcomes from '@/components/charts/MatchKickoutOutcomes'
 import ScoringZoneMap from '@/components/charts/ScoringZoneMap'
 import TurnoverMap from '@/components/charts/TurnoverMap'
 import FullscreenPitchMode from '@/components/FullscreenPitchMode'
+import PitchActionOverlay from '@/components/PitchActionOverlay'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import FormationSnapshotButton from '@/components/FormationSnapshotButton'
 import FormationSnapshotMode from '@/components/FormationSnapshotMode'
@@ -668,6 +669,13 @@ export default function MatchRecording() {
       clearInterval(flush)
     }
   }, [matchPhase, isStopped, awaitingKickout, pendingFreeKick, matchId])
+
+  // Haptic pulse when action is required (kickout or free kick pending)
+  useEffect(() => {
+    if ((awaitingKickout || !!pendingFreeKick) && 'vibrate' in navigator) {
+      navigator.vibrate(150)
+    }
+  }, [awaitingKickout, pendingFreeKick])
 
   // Calculate real-time stats from backend - now using MatchStats directly
   // Backend calculates scores as (goals*3 + points), so we need to reverse-engineer for display
@@ -2923,7 +2931,7 @@ export default function MatchRecording() {
                   ballPosition={ballPosition}
                   onBallMove={handleBallMove}
                   showZones={true}
-                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent)}
+                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent) || !!pendingFreeKick}
                   trail={ballTrail}
                   onTrailUpdate={setBallTrail}
                   onDragPath={handleDragPath}
@@ -2957,6 +2965,24 @@ export default function MatchRecording() {
                       </div>
                     ) : undefined
                   }
+                />
+
+                {/* Action-required overlay — kickout & free kick */}
+                <PitchActionOverlay
+                  awaitingKickout={awaitingKickout && !pendingKickoutEvent}
+                  pendingFreeKick={!!pendingFreeKick}
+                  pendingFoul={pendingFoul}
+                  kickoutTab={activeKickoutTab}
+                  isIn2PointZone={isIn2PointZone(
+                    ballPosition.x,
+                    ballPosition.y,
+                    pendingFreeKick
+                      ? (pendingFoul === 'opponent' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
+                      : ballPosition.team
+                  )}
+                  onAction={handleQuickAction}
+                  onCancelFree={handleCancelFree}
+                  onCancelKickout={handleCancelKickout}
                 />
 
                 {/* Pitch control buttons — top-right */}
@@ -3038,7 +3064,7 @@ export default function MatchRecording() {
                       : (teamAttackingRight ? 0 : 100)
                     return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
                   })()}
-                  pendingFreeKick={!!pendingFreeKick}
+                  pendingFreeKick={false}
                   pendingFoul={pendingFoul}
                   pendingBlockRecovery={!!pendingBlockRecovery}
                   onBlockRecovery={handleBlockRecovery}
@@ -3487,7 +3513,7 @@ export default function MatchRecording() {
         onClose={() => setIsFullscreenPitch(false)}
         ballPosition={ballPosition}
         onBallMove={handleBallMove}
-        readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent)}
+        readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent) || !!pendingFreeKick}
         trail={ballTrail}
         onTrailUpdate={setBallTrail}
         onDragPath={handleDragPath}
@@ -3545,7 +3571,7 @@ export default function MatchRecording() {
             : (teamAttackingRight ? 0 : 100)
           return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
         })()}
-        pendingFreeKick={!!pendingFreeKick}
+        pendingFreeKick={false}
         pendingFoul={pendingFoul}
         pendingBlockRecovery={!!pendingBlockRecovery}
         onBlockRecovery={handleBlockRecovery}
