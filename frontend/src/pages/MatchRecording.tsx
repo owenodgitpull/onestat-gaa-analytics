@@ -9,6 +9,7 @@ import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import ConfirmationModal from '@/components/ConfirmationModal'
 import ManualEventEntryModal from '@/components/ManualEventEntryModal'
 import StartingLineupModal, { type LineupEntry } from '@/components/StartingLineupModal'
+import SubstitutionModal from '@/components/SubstitutionModal'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '@/components/EventFilterToggles'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
@@ -155,7 +156,7 @@ export default function MatchRecording() {
   const [isManualEntryOpen, setIsManualEntryOpen] = useState(false)
   const [manualEntryDefaultType, setManualEntryDefaultType] = useState<EventType | undefined>(undefined)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
-  const [isLineupViewOpen, setIsLineupViewOpen] = useState(false)
+  const [isSubModalOpen, setIsSubModalOpen] = useState(false)
   const [startingLineup, setStartingLineup] = useState<Record<string, LineupEntry>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
   const [teamAttackingRight, setTeamAttackingRight] = useState<boolean>(true) // true = attacking towards x=100
@@ -1733,6 +1734,28 @@ export default function MatchRecording() {
     }
   }
 
+  const handleSubstitutionConfirm = async (playerOffId: string, playerOnId: string) => {
+    if (!matchId) return
+    const playerOff = players.find(p => p.id === playerOffId)
+    const playerOn = players.find(p => p.id === playerOnId)
+    await recordEvent.mutateAsync({
+      match_id: matchId,
+      player_id: playerOffId,
+      event_type: EventType.SUBSTITUTION,
+      minute,
+      half: currentHalf,
+      x_coord: ballPosition.x,
+      y_coord: ballPosition.y,
+      is_home_team: true,
+      notes: `${playerOff?.name ?? 'Player'} off, ${playerOn?.name ?? 'Player'} on`,
+    })
+    const outgoing = matchLineup.find(l => l.player_id === playerOffId)
+    await api.matchLineups.updateFieldStatus(matchId, playerOffId)
+    await api.matchLineups.updateFieldStatus(matchId, playerOnId, outgoing?.position_id)
+    const refreshed = await api.matchLineups.getLineup(matchId)
+    setMatchLineup(refreshed)
+  }
+
   /** Handle discipline card events — opens player modal then records */
   const handleDiscipline = (eventType: EventType) => {
     if (!matchId) return
@@ -2796,10 +2819,10 @@ export default function MatchRecording() {
                   {(matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') && matchLineup.length > 0 && (
                     <button
                       className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
-                      onClick={() => setIsLineupViewOpen(true)}
+                      onClick={() => setIsSubModalOpen(true)}
                     >
                       <Users size={14} />
-                      <span>Lineup</span>
+                      <span>Sub</span>
                     </button>
                   )}
                   {getPhaseButtonText() && (
@@ -2984,6 +3007,34 @@ export default function MatchRecording() {
                   onCancelFree={handleCancelFree}
                   onCancelKickout={handleCancelKickout}
                 />
+
+                {/* Kickout landing strip — floats at the bottom of pitch card */}
+                {!!pendingKickoutEvent && (
+                  <div className="absolute inset-x-3 bottom-3 z-10 animate-fade-in">
+                    <div
+                      className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
+                      style={{
+                        background: 'linear-gradient(90deg, rgba(245,158,11,0.22), rgba(234,179,8,0.10))',
+                        border: '1px solid rgba(245,158,11,0.38)',
+                        backdropFilter: 'blur(14px)',
+                        WebkitBackdropFilter: 'blur(14px)',
+                        boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                        <span className="text-amber-200 text-sm font-bold flex-shrink-0">Tap landing position</span>
+                        <span className="text-amber-300/60 text-xs hidden sm:block truncate">tap the pitch to mark where the ball landed</span>
+                      </div>
+                      <button
+                        onClick={handleCancelKickout}
+                        className="text-amber-400/60 hover:text-amber-300 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors flex-shrink-0"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Pitch control buttons — top-right */}
                 {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
@@ -3475,19 +3526,14 @@ export default function MatchRecording() {
         defaultEventType={manualEntryDefaultType}
       />
 
-      {/* View Lineup (read-only pitch) */}
-      <PitchPlayerSelector
-        isOpen={isLineupViewOpen}
-        onClose={() => setIsLineupViewOpen(false)}
-        onSelectPlayer={() => setIsLineupViewOpen(false)}
-        eventType=""
-        team="own"
-        players={players}
+      {/* Substitution Modal */}
+      <SubstitutionModal
+        isOpen={isSubModalOpen}
+        onClose={() => setIsSubModalOpen(false)}
+        onConfirm={handleSubstitutionConfirm}
         matchLineup={matchLineup}
-        teamPrimaryColor={club?.primary_colour || '#10B981'}
-        teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-        attackingRight={teamAttackingRight}
-        readOnly
+        players={players}
+        minute={minute}
       />
 
       {/* Starting Lineup Modal */}

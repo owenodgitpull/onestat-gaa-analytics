@@ -102,6 +102,7 @@ export default function StartingLineupModal({
 }: StartingLineupModalProps) {
   const [lineup, setLineup] = useState<Record<string, LineupEntry>>(savedLineup ?? {})
   const [selectingPosition, setSelectingPosition] = useState<string | null>(null)
+  const [selectedPitchPos, setSelectedPitchPos] = useState<string | null>(null)
   const [playerSearchQuery, setPlayerSearchQuery] = useState('')
   const { club } = useClub()
   const jerseyBg = club?.primary_colour || '#10B981'
@@ -126,23 +127,78 @@ export default function StartingLineupModal({
 
   const handlePositionClick = (e: React.MouseEvent, positionId: string) => {
     e.stopPropagation()
+    if (selectingPosition) return // picker open — ignore pitch taps
 
-    // If position already has a player, remove them
+    if (selectedPitchPos === positionId) {
+      setSelectedPitchPos(null)
+      return
+    }
+
+    if (selectedPitchPos) {
+      // Complete swap/move
+      const fromId = selectedPitchPos
+      const toId = positionId
+      setSelectedPitchPos(null)
+      setLineup(prev => {
+        const next = { ...prev }
+        const fromEntry = prev[fromId]
+        const toEntry = prev[toId]
+        if (!fromEntry) return prev
+        if (toEntry) {
+          // Swap — jersey numbers stay with positions
+          next[toId] = { playerId: fromEntry.playerId, jerseyNumber: prev[toId]?.jerseyNumber ?? null }
+          next[fromId] = { playerId: toEntry.playerId, jerseyNumber: prev[fromId]?.jerseyNumber ?? null }
+        } else {
+          // Move to empty slot
+          next[toId] = { playerId: fromEntry.playerId, jerseyNumber: defaultJerseyFor(toId, prev) }
+          delete next[fromId]
+        }
+        return next
+      })
+      return
+    }
+
     if (lineup[positionId]) {
-      const newLineup = { ...lineup }
-      delete newLineup[positionId]
-      setLineup(newLineup)
+      setSelectedPitchPos(positionId)
     } else {
-      // Otherwise, open player selection
       setSelectingPosition(positionId)
       setPlayerSearchQuery('')
     }
   }
 
   const handleRemovePlayer = (positionId: string) => {
+    setSelectedPitchPos(null)
     const newLineup = { ...lineup }
     delete newLineup[positionId]
     setLineup(newLineup)
+  }
+
+  const handleMoveToBench = (positionId: string) => {
+    const firstEmpty = SUBSTITUTE_POSITIONS.find(s => !lineup[s.id])
+    if (!firstEmpty) return
+    const entry = lineup[positionId]
+    if (!entry) return
+    setSelectedPitchPos(null)
+    setLineup(prev => {
+      const next = { ...prev }
+      delete next[positionId]
+      next[firstEmpty.id] = { playerId: entry.playerId, jerseyNumber: null }
+      return next
+    })
+  }
+
+  const handleMoveToStarting = (positionId: string) => {
+    const firstEmpty = FORMATION_POSITIONS.find(p => !lineup[p.id])
+    if (!firstEmpty) return
+    const entry = lineup[positionId]
+    if (!entry) return
+    setSelectedPitchPos(null)
+    setLineup(prev => {
+      const next = { ...prev }
+      delete next[positionId]
+      next[firstEmpty.id] = { playerId: entry.playerId, jerseyNumber: defaultJerseyFor(firstEmpty.id, prev) }
+      return next
+    })
   }
 
   const handlePlayerSelect = (playerId: string) => {
@@ -184,7 +240,7 @@ export default function StartingLineupModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !selectingPosition && onClose()} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => { setSelectedPitchPos(null); if (!selectingPosition) onClose() }} />
 
       {/* Modal */}
       <div className="relative w-full max-w-6xl glass-card p-5 max-h-[90vh] overflow-y-auto">
@@ -230,25 +286,28 @@ export default function StartingLineupModal({
                 const entry = lineup[pos.id]
                 const assignedPlayer = entry ? getPlayerById(entry.playerId) : null
                 const displayLabel = entry?.jerseyNumber != null ? `${entry.jerseyNumber}` : pos.label
+                const isSelected = selectedPitchPos === pos.id
 
                 return (
                   <div
                     key={pos.id}
                     className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
-                    style={{
-                      left: `${pos.x}%`,
-                      top: `${pos.y}%`,
-                    }}
+                    style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     onClick={(e) => handlePositionClick(e, pos.id)}
                   >
                     {/* Jersey Icon */}
                     <div
                       className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[10px] sm:text-xs transition-all ${
                         assignedPlayer
-                          ? 'ring-2 shadow-lg'
+                          ? `ring-2 shadow-lg ${isSelected ? 'scale-125 ring-4' : 'hover:scale-105'}`
                           : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
                       }`}
-                      style={assignedPlayer ? { backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties : undefined}
+                      style={assignedPlayer ? {
+                        backgroundColor: jerseyBg,
+                        color: jerseyText,
+                        '--tw-ring-color': isSelected ? '#fbbf24' : jerseyText,
+                        boxShadow: isSelected ? '0 0 16px rgba(251,191,36,0.5)' : undefined,
+                      } as React.CSSProperties : undefined}
                     >
                       {displayLabel}
                     </div>
@@ -256,7 +315,7 @@ export default function StartingLineupModal({
                     {/* Player Name */}
                     {assignedPlayer && (
                       <div className="absolute top-full mt-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                        <span className="text-white text-[9px] sm:text-xs font-semibold bg-black/50 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded">
+                        <span className={`text-[9px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded ${isSelected ? 'bg-amber-500/30 text-amber-200' : 'bg-black/50 text-white'}`}>
                           {displaySurname(assignedPlayer.name)}
                         </span>
                       </div>
@@ -264,6 +323,55 @@ export default function StartingLineupModal({
                   </div>
                 )
               })}
+
+              {/* Action strip — appears when a position is selected */}
+              {selectedPitchPos && !selectingPosition && (() => {
+                const entry = lineup[selectedPitchPos]
+                const player = entry ? getPlayerById(entry.playerId) : null
+                if (!player) return null
+                const isStarting = FORMATION_POSITIONS.some(p => p.id === selectedPitchPos)
+                const hasBenchSlot = SUBSTITUTE_POSITIONS.some(s => !lineup[s.id])
+                const hasStartSlot = FORMATION_POSITIONS.some(p => !lineup[p.id])
+                return (
+                  <div className="absolute inset-x-2 bottom-2 z-10">
+                    <div className="flex items-center justify-between gap-1.5 rounded-xl px-2.5 py-2"
+                      style={{
+                        background: 'linear-gradient(90deg, rgba(245,158,11,0.22), rgba(234,179,8,0.10))',
+                        border: '1px solid rgba(245,158,11,0.40)',
+                        backdropFilter: 'blur(14px)',
+                        WebkitBackdropFilter: 'blur(14px)',
+                      }}
+                    >
+                      <span className="text-amber-200 text-[10px] font-bold truncate flex-1 mr-1">
+                        {displaySurname(player.name)}
+                      </span>
+                      <div className="flex gap-1 flex-shrink-0">
+                        {isStarting && hasBenchSlot && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleMoveToBench(selectedPitchPos) }}
+                            className="text-[9px] px-1.5 py-0.5 rounded-lg bg-purple-500/20 border border-purple-400/30 text-purple-300 hover:bg-purple-500/30 transition-colors"
+                          >→ Bench</button>
+                        )}
+                        {!isStarting && hasStartSlot && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleMoveToStarting(selectedPitchPos) }}
+                            className="text-[9px] px-1.5 py-0.5 rounded-lg bg-blue-500/20 border border-blue-400/30 text-blue-300 hover:bg-blue-500/30 transition-colors"
+                          >← Start</button>
+                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRemovePlayer(selectedPitchPos) }}
+                          className="text-[9px] px-1.5 py-0.5 rounded-lg bg-red-500/20 border border-red-400/30 text-red-300 hover:bg-red-500/30 transition-colors"
+                        >Remove</button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedPitchPos(null) }}
+                          className="text-[9px] px-1.5 py-0.5 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:bg-white/10 transition-colors"
+                        >✕</button>
+                      </div>
+                    </div>
+                    <p className="text-center text-[8px] text-white/30 mt-0.5">or tap another position to swap</p>
+                  </div>
+                )
+              })()}
             </div>
 
             {/* Substitutes - Below the pitch */}
@@ -272,6 +380,7 @@ export default function StartingLineupModal({
                 const entry = lineup[pos.id]
                 const assignedPlayer = entry ? getPlayerById(entry.playerId) : null
                 const displayLabel = entry?.jerseyNumber != null ? `${entry.jerseyNumber}` : `S${index + 1}`
+                const isSelected = selectedPitchPos === pos.id
 
                 return (
                   <div
@@ -283,10 +392,14 @@ export default function StartingLineupModal({
                     <div
                       className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-bold text-[9px] sm:text-xs transition-all ${
                         assignedPlayer
-                          ? 'ring-2 shadow-lg'
+                          ? `ring-2 shadow-lg ${isSelected ? 'scale-125 ring-4' : 'hover:scale-105'}`
                           : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
                       }`}
-                      style={assignedPlayer ? { backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties : undefined}
+                      style={assignedPlayer ? {
+                        backgroundColor: jerseyBg, color: jerseyText,
+                        '--tw-ring-color': isSelected ? '#fbbf24' : jerseyText,
+                        boxShadow: isSelected ? '0 0 12px rgba(251,191,36,0.5)' : undefined,
+                      } as React.CSSProperties : undefined}
                     >
                       {displayLabel}
                     </div>
@@ -294,7 +407,7 @@ export default function StartingLineupModal({
                     {/* Player Name */}
                     {assignedPlayer && (
                       <div className="mt-2">
-                        <span className="text-white text-[10px] font-semibold bg-black/50 px-1.5 py-0.5 rounded">
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isSelected ? 'bg-amber-500/30 text-amber-200' : 'bg-black/50 text-white'}`}>
                           {displaySurname(assignedPlayer.name)}
                         </span>
                       </div>
@@ -339,12 +452,10 @@ export default function StartingLineupModal({
                           onClick={() => handlePlayerSelect(player.id)}
                           className="w-full glass-card-hover px-3 py-2 text-left"
                         >
-                          <p className="text-white font-semibold text-sm">
-                            {player.jersey_number != null && (
-                              <span className="text-emerald-400 mr-2">#{player.jersey_number}</span>
-                            )}
-                            {player.name}
-                          </p>
+                          <p className="text-white font-semibold text-sm">{player.name}</p>
+                          {player.position && (
+                            <p className="text-white/40 text-xs capitalize">{player.position}</p>
+                          )}
                         </button>
                       ))
                     ) : (

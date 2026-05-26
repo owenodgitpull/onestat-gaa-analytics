@@ -466,6 +466,36 @@ export default function FullscreenPitchMode({
           onCancelKickout={onCancelKickout ?? (() => {})}
         />
 
+        {/* Kickout landing strip — floats at bottom of pitch, visible without blocking tap area */}
+        {pendingKickoutPosition && (
+          <div className="absolute inset-x-3 bottom-3 z-20 animate-fade-in">
+            <div
+              className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
+              style={{
+                background: 'linear-gradient(90deg, rgba(245,158,11,0.22), rgba(234,179,8,0.10))',
+                border: '1px solid rgba(245,158,11,0.38)',
+                backdropFilter: 'blur(14px)',
+                WebkitBackdropFilter: 'blur(14px)',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                <span className="text-amber-200 text-sm font-bold">Tap landing position</span>
+                <span className="text-amber-300/60 text-xs hidden sm:block">tap the pitch to mark where the ball lands</span>
+              </div>
+              {onCancelKickout && (
+                <button
+                  onClick={onCancelKickout}
+                  className="text-amber-400/60 hover:text-amber-300 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors flex-shrink-0"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Event Toast */}
         <div
           className={`absolute bottom-20 left-1/2 -translate-x-1/2 z-30 transition-all duration-500 ${
