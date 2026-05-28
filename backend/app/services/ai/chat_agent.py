@@ -89,6 +89,7 @@ INSTRUCTIONS:
 - Reference recent AI insight alerts when relevant to the conversation.
 - You know about upcoming fixtures and opponent form — reference these when the user asks about preparation, training plans, or upcoming games.
 - You have weather data from past matches — use this to identify performance patterns in different conditions (e.g., wet weather scoring, windy day kickout strategy).
+- When asked about a player's performance or role in a match → call get_ball_carrier_data(match_id) to get their carries, passes, carry zones, and whether their turnovers led to opposition scores. Quote specific numbers.
 {insight_alerts_text}
 """
 
@@ -223,6 +224,9 @@ INSTRUCTIONS:
 - Only use create_data_table when the user specifically asks for a ranking, leaderboard, or table format.
 - You can combine text + charts + tables in a single response.
 - Do NOT try to describe paths/movement in text — always generate the pitch visual.
+- When asked about HOW A PLAYER PERFORMED, their ROLE, BALL CARRYING, DISTRIBUTION, or PASSING in a specific match → call get_ball_carrier_data(match_id) to get carrying stats, passing network, and chain data. Quote specific numbers: e.g. "carried 8 times (primarily midfield-right channel), made 5 passes, received 3 — the main link player in the first half". Use avg_gain_x to describe their style: positive = forward-carrying, negative = recycling/holding.
+- When a player had turnovers or negative events → use player_consequences from get_ball_carrier_data to state consequences explicitly: "lost possession 3 times in the defensive left — 2 of those led to opposition scores within 3 minutes". This is a critical insight managers care about — always include it if data is available.
+- NEVER describe a player's match performance without first checking get_ball_carrier_data if a match_id is known. Ball carry data is captured for ~80-90% of possessions and is the richest source of player role and contribution data.
 {insight_alerts_text}
 """
 

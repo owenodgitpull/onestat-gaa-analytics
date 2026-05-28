@@ -2605,17 +2605,34 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     if not segments:
         return safe_json({"message": "No ball carrier data available for this match", "segments": [], "chains": []})
 
+    # Fetch match events for consequence analysis (did a turnover lead to an opposition score?)
+    from app.models.match_event import MatchEvent as _ME
+    ev_result = await db.execute(
+        select(_ME)
+        .where(_ME.match_id == match_uuid)
+        .order_by(_ME.minute.asc(), _ME.created_at.asc())
+    )
+    _all_events = list(ev_result.scalars().all())
+
+    _SCORING_STR = {'goal', 'point', 'two_point_goal', 'two_point', 'penalty_goal',
+                    'point_free', 'two_point_free', 'forty_five'}
+
+    def _ev_type(e) -> str:
+        return e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type)
+
+    def _ev_team(e) -> str:
+        return e.team.value if hasattr(e.team, 'value') else str(e.team)
+
+    def _xy_zone(x, y) -> str:
+        return _pitch_location(x, y if y is not None else 50) or "unknown"
+
     # ── Build carrier stats + PASSING NETWORK from transitions ──
     carrier_stats: dict = {}
     pass_connections: dict = {}  # "pidA->pidB" -> {from_name, from_jersey, to_name, to_jersey, count}
     pass_count_by_player: dict = {}  # pid -> {name, jersey, passes_made, passes_received}
     transition_times_ms: list = []  # time gaps between consecutive segments
-
-    # Zone classification helper (x coordinate 0-100)
-    def _zone(x: float | None) -> str:
-        if x is None:
-            return "unknown"
-        return _pitch_location(x, 50) or "unknown"  # y=50 (centre) for zone-only label
+    # Per-player turnover consequences: pid -> {turnovers_lost, led_to_opp_score, turnover_zones}
+    player_consequences: dict = {}
 
     territory_passes = {"forward": 0, "lateral": 0, "backward": 0}
 
@@ -2625,11 +2642,49 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         path_len = len(seg.path_points) if seg.path_points else 0
         pid = str(seg.player_id)
 
-        # Carrier stats
+        # Carrier stats + per-player zone breakdown
         if pid not in carrier_stats:
-            carrier_stats[pid] = {"name": player_name, "jersey": seg.jersey_number, "carries": 0, "total_points": 0}
+            carrier_stats[pid] = {
+                "name": player_name, "jersey": seg.jersey_number,
+                "carries": 0, "total_points": 0,
+                "carry_zones": [],           # zones where they carried (start position)
+                "avg_gain_x": None,          # set after loop
+                "start_xs": [], "end_xs": [], # for avg territory gain calc
+            }
         carrier_stats[pid]["carries"] += 1
         carrier_stats[pid]["total_points"] += path_len
+        if seg.start_x is not None:
+            carrier_stats[pid]["carry_zones"].append(_xy_zone(seg.start_x, seg.start_y))
+            carrier_stats[pid]["start_xs"].append(seg.start_x)
+        if seg.end_x is not None:
+            carrier_stats[pid]["end_xs"].append(seg.end_x)
+
+        # Turnover consequence analysis — track own-team turnovers + whether opp scored
+        if seg.ended_by == "turnover" and seg.team == "own":
+            if pid not in player_consequences:
+                player_consequences[pid] = {
+                    "name": player_name, "jersey": seg.jersey_number,
+                    "turnovers_lost": 0, "led_to_opp_score": 0, "turnover_zones": [],
+                }
+            player_consequences[pid]["turnovers_lost"] += 1
+            if seg.end_x is not None:
+                player_consequences[pid]["turnover_zones"].append(
+                    _xy_zone(seg.end_x, seg.end_y)
+                )
+            # Check if opponent scored within 3 minutes of this turnover
+            m = seg.minute
+            if m is not None:
+                for ev in _all_events:
+                    ev_min = ev.minute
+                    if ev_min is None:
+                        continue
+                    if ev_min < m - 1:
+                        continue
+                    if ev_min > m + 3:
+                        break
+                    if _ev_team(ev) == "opponent" and _ev_type(ev) in _SCORING_STR:
+                        player_consequences[pid]["led_to_opp_score"] += 1
+                        break  # at most one score per turnover
 
         # Pass detection: consecutive segments on same team, different player = pass
         if prev_seg and seg.team == prev_seg.team and str(seg.player_id) != str(prev_seg.player_id):
@@ -2672,6 +2727,25 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                     transition_times_ms.append(gap)
 
         prev_seg = seg
+
+    # Post-loop: compute avg territory gain per player and clean up internal lists
+    for stats in carrier_stats.values():
+        sx = stats.pop("start_xs", [])
+        ex = stats.pop("end_xs", [])
+        if sx and ex:
+            stats["avg_start_x"] = round(sum(sx) / len(sx), 1)
+            stats["avg_end_x"] = round(sum(ex) / len(ex), 1)
+            stats["avg_gain_x"] = round(stats["avg_end_x"] - stats["avg_start_x"], 1)
+        else:
+            stats["avg_start_x"] = None
+            stats["avg_end_x"] = None
+            stats["avg_gain_x"] = None
+        # Summarise carry zones as top-3 most common
+        if stats["carry_zones"]:
+            from collections import Counter
+            top_zones = [z for z, _ in Counter(stats["carry_zones"]).most_common(3)]
+            stats["primary_carry_zones"] = top_zones
+        del stats["carry_zones"]
 
     total_passes = sum(c["count"] for c in pass_connections.values())
 
@@ -2769,6 +2843,12 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         "total_segments": n,
         "total_logged_passes": total_passes,
         "carrier_stats": sorted(carrier_stats.values(), key=lambda x: x["carries"], reverse=True),
+        # Consequence analysis: turnovers per player and how many led to opposition scores.
+        # avg_gain_x: positive = net territory gain per carry (forward-carrying), negative = backward.
+        # primary_carry_zones: top pitch zones where each player received/started carries.
+        "player_consequences": sorted(
+            player_consequences.values(), key=lambda x: x["turnovers_lost"], reverse=True
+        ) if player_consequences else [],
     }
 
     # Medium+ tier: include pass network and leaders

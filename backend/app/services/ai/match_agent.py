@@ -221,7 +221,7 @@ IMPORTANT: You already have the match summary and recent events above. Respond w
 
 INSTRUCTIONS:
 1. You MUST use tools to gather match data BEFORE providing any analysis.
-2. ALWAYS call get_match_summary and get_match_events first with the match ID provided.
+2. ALWAYS call get_match_summary and get_match_events first with the match ID provided. Then call get_ball_carrier_data with the same match ID to retrieve ball carrying, passing network, and possession chain data — this is REQUIRED, not optional.
 3. Do NOT ask the user for match IDs or clarification — you already have the match ID.
 4. Structure your analysis as: Summary → Key Stats → Top Performers (rated 1-10) → Tactical Analysis → Areas for Improvement → Training Recommendations.
 5. Reference knowledge base context: compare to tactical documents, GPS benchmarks, and rules when available.
@@ -233,6 +233,12 @@ INSTRUCTIONS:
     - Shooting wastage: "0 conversions from outside-45 right — avoid speculative shots from there"
     - Turnover battle: "won the midfield center channel convincingly (4 won vs 1 lost) but struggled in the defensive left (0 won, 3 lost — sustained pressure from opposition press)"
     Always name the specific zone (e.g. "inside-45 center", "defensive left channel", "midfield right") not vague references to "certain areas".
+7c. BALL CARRY & PASSING ANALYSIS — REQUIRED: Use the get_ball_carrier_data tool results as follows:
+    - In Top Performers: cite each key player's carry count, passes made/received, and primary carry zones. e.g. "carried 9 times (primarily midfield-right), made 6 passes — the main distributor in the recorded data".
+    - In Tactical Analysis: reference chain effectiveness (scoring vs turnover chain ratio), top passing connections, territory progression (forward/lateral/backward ratio), and tempo.
+    - In player event analysis: use player_consequences data to state consequences explicitly. e.g. "lost possession 3 times in the defensive third — 2 of those turnovers led directly to opposition scores within 3 minutes". Name the zone where each turnover occurred.
+    - avg_gain_x > 0 means forward-carrying player; < 0 means backward/recycling role. Use this to describe each player's carrying style.
+    - Respect the data_confidence tier: if "low" only make individual observations; if "medium" add qualifiers like "from the possessions logged"; if "high" state patterns with confidence.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>
    {{"possession": "Brief insight about possession and territory patterns", "scoring": "Brief insight about when scoring happened", "shooting": "Brief insight about shot selection and efficiency"}}
@@ -391,12 +397,13 @@ INSTRUCTIONS:
             f"""Generate a detailed post-match report including:{ball_carry_note}
             1. Match Summary (2-3 sentences)
             2. Key Statistics
-            3. Top Performers (with ratings 1-10)
-            4. Tactical Analysis
-            5. {"GPS & Physical Performance Analysis" if has_gps_data else "Areas for Improvement"}
-            6. {"Areas for Improvement" if has_gps_data else "Training Recommendations"}
-            7. {"Training Recommendations" if has_gps_data else ""}
-            8. Man of the Match — pick the single best {report_club_name} player considering scoring, workrate{", GPS data," if has_gps_data else ","} and overall impact. Write it as a section header exactly like: **Man of the Match: Player Name** followed by a 1-2 sentence justification.{gps_hint}
+            3. Top Performers (with ratings 1-10) — include each key player's carries, passes made/received, and primary carry zones from ball carrier data. For players who lost possession, state how many turnovers led to opposition scores and in which zone.
+            4. Tactical Analysis — include ball carry chain effectiveness, top passing connections, territory progression, and possession tempo from ball carrier data.
+            5. {"GPS & Physical Performance Analysis" if has_gps_data else "Ball Carrying & Possession Patterns — detail which players drove play forward (high avg_gain_x), who recycled possession, and whether scoring chains were direct (≤3 carriers) or buildup (4+ carriers)."}
+            6. {"Ball Carrying & Possession Patterns — detail which players drove play forward, who recycled possession, and whether scoring chains were direct or buildup." if has_gps_data else "Areas for Improvement"}
+            7. {"Areas for Improvement" if has_gps_data else "Training Recommendations"}
+            8. {"Training Recommendations" if has_gps_data else ""}
+            9. Man of the Match — pick the single best {report_club_name} player considering scoring, workrate, ball carrying/distribution{", GPS data," if has_gps_data else ","} and overall impact. Write it as a section header exactly like: **Man of the Match: Player Name** followed by a 1-2 sentence justification.{gps_hint}
 
             Format your response as structured sections. {"Pay special attention to the GPS data and ensure it is discussed thoroughly." if has_gps_data else ""}"""
         )
