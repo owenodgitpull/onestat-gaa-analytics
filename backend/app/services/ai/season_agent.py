@@ -21,6 +21,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.models.match import MatchStatus
 from app.services.ai._shared import (
     client, GAA_ESSENTIALS, execute_tool,
     get_tools_subset, get_fixture_context,
@@ -290,10 +291,10 @@ class SeasonAgent:
                 select(
                     TrainingSession.id,
                     TrainingSession.session_date,
-                    func.avg(TrainingGPSData.total_distance).label("avg_distance"),
+                    func.avg(TrainingGPSData.total_distance_m).label("avg_distance"),
                     func.avg(TrainingGPSData.sprint_count).label("avg_sprints"),
-                    func.avg(TrainingGPSData.max_speed).label("avg_max_speed"),
-                    func.avg(TrainingGPSData.high_speed_running).label("avg_hsr"),
+                    func.avg(TrainingGPSData.max_speed_ms).label("avg_max_speed"),
+                    func.avg(TrainingGPSData.high_speed_running_m).label("avg_hsr"),
                     func.count(TrainingGPSData.id).label("player_count"),
                 )
                 .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
@@ -324,7 +325,7 @@ class SeasonAgent:
         # 2. Match context
         match_context = ""
         try:
-            _match_conds = [Match.status == "completed"]
+            _match_conds = [Match.status == MatchStatus.COMPLETED]
             if club_id:
                 _match_conds.append(Match.club_id == club_id)
             matches_query = (
@@ -381,8 +382,8 @@ class SeasonAgent:
                     lines = [f"Just uploaded: Training session {sess.session_date}, {len(gps_data)} players"]
                     for g in gps_data[:10]:
                         lines.append(
-                            f"  {g.player_name}: dist={g.total_distance}m, sprints={g.sprint_count}, "
-                            f"HSR={g.high_speed_running}m, max_speed={g.max_speed} km/h"
+                            f"  player {str(g.player_id)[:8]}: dist={g.total_distance_m}m, sprints={g.sprint_count}, "
+                            f"HSR={g.high_speed_running_m}m, max_speed={g.max_speed_ms} m/s"
                         )
                     upload_context = "\n".join(lines)
             except Exception as e:
@@ -400,8 +401,8 @@ class SeasonAgent:
                     lines = [f"Just uploaded: Match GPS for {match_obj.opponent} ({match_obj.match_date}), {len(mgps_data)} players"]
                     for g in mgps_data[:10]:
                         lines.append(
-                            f"  {g.player_name}: dist={g.total_distance}m, sprints={g.sprint_count}, "
-                            f"HSR={g.high_speed_running}m, max_speed={g.max_speed} km/h"
+                            f"  player {str(g.player_id)[:8]}: dist={g.total_distance_m}m, sprints={g.sprint_count}, "
+                            f"HSR={g.high_speed_running_m}m, max_speed={g.max_speed_ms} m/s"
                         )
                     upload_context = "\n".join(lines)
             except Exception as e:
