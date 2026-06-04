@@ -33,13 +33,13 @@ async def list_fixtures(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """List upcoming fixtures (scheduled matches with future dates, ordered by date ASC)."""
+    """List upcoming fixtures (scheduled + in-progress matches, ordered by date ASC)."""
     result = await db.execute(
         select(Match)
         .where(
             and_(
                 Match.club_id == user.club_id,
-                Match.status == MatchStatus.SCHEDULED,
+                Match.status.in_([MatchStatus.SCHEDULED, MatchStatus.IN_PROGRESS]),
                 Match.is_deleted .is_(False),
             )
         )
