@@ -15,7 +15,7 @@ export default function ShotOutcomeChart({ events, opponent, insight, insightLoa
   const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
 
   const outcomeData = useMemo(() => {
-    const outcomes = { Goals: 0, Points: 0, Wides: 0, Shorts: 0, Saved: 0 }
+    const outcomes = { Goals: 0, Points: 0, Wides: 0, Shorts: 0, Saved: 0, 'Hit Post': 0 }
 
     events.forEach((e: any) => {
       const team = e.team || (e.is_home_team ? 'own' : 'opponent')
@@ -31,11 +31,12 @@ export default function ShotOutcomeChart({ events, opponent, insight, insightLoa
         case 'wide_free': outcomes.Wides++; break
         case 'short': outcomes.Shorts++; break
         case 'saved': outcomes.Saved++; break
+        case 'hit_post': outcomes['Hit Post']++; break
       }
     })
 
     const colors = {
-      Goals: '#10b981', Points: '#06b6d4', Wides: '#f59e0b', Shorts: '#ef4444', Saved: '#14b8a6'
+      Goals: '#10b981', Points: '#06b6d4', Wides: '#f59e0b', Shorts: '#ef4444', Saved: '#14b8a6', 'Hit Post': '#8b5cf6'
     }
 
     return Object.entries(outcomes)

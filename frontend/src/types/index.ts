@@ -160,6 +160,7 @@ export enum EventType {
   WIDE = 'wide',
   SHORT = 'short',
   SAVED = 'saved',
+  HIT_POST = 'hit_post',  // Shot hits post or crossbar — on target, no score
   // Free kick scoring
   POINT_FREE = 'point_free',
   TWO_POINT_FREE = 'two_point_free',

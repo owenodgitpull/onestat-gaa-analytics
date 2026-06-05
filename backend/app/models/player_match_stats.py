@@ -40,6 +40,7 @@ class PlayerMatchStats(Base):
     wides: Column[int] = Column(Integer, default=0, nullable=False)
     shots_short: Column[int] = Column(Integer, default=0, nullable=False)
     shots_saved: Column[int] = Column(Integer, default=0, nullable=False)
+    shots_hit_post: Column[int] = Column(Integer, default=0, nullable=False)
     
     # Possession stats
     turnovers_lost: Column[int] = Column(Integer, default=0, nullable=False)
@@ -92,8 +93,8 @@ class PlayerMatchStats(Base):
         
         # Accuracy (successful scores / total attempts)
         total_shots = (
-            self.goals + self.points + self.two_pointers + 
-            self.wides + self.shots_short + self.shots_saved
+            self.goals + self.points + self.two_pointers +
+            self.wides + self.shots_short + self.shots_saved + self.shots_hit_post
         )
         if total_shots > 0:
             successful_shots = self.goals + self.points + self.two_pointers

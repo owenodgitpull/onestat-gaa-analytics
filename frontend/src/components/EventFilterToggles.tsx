@@ -15,7 +15,7 @@ const filterCategories: FilterCategory[] = [
   {
     id: 'shots',
     label: 'Shots',
-    eventTypes: ['goal', 'point', 'two_point', 'wide', 'saved', 'short', 'point_free', 'two_point_free', 'wide_free'],
+    eventTypes: ['goal', 'point', 'two_point', 'wide', 'saved', 'short', 'hit_post', 'point_free', 'two_point_free', 'wide_free'],
     color: 'amber'
   },
   { id: 'goals', label: 'Goals', eventTypes: ['goal'], color: 'emerald' },

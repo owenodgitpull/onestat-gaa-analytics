@@ -23,6 +23,7 @@ class EventType(enum.Enum):
     WIDE = "wide"  # Shot that goes wide
     SHORT = "short"  # Shot that falls short
     SAVED = "saved"  # Shot saved by goalkeeper
+    HIT_POST = "hit_post"  # Shot hits the post or crossbar (on target, no score)
     
     # Turnovers - Opposition forced
     TURNOVER_LOST = "turnover_lost"  # Lost possession due to opposition pressure

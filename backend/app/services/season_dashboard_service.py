@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Event type groupings
 SHOT_EVENTS = [
     EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
-    EventType.WIDE, EventType.SHORT, EventType.SAVED,
+    EventType.WIDE, EventType.SHORT, EventType.SAVED, EventType.HIT_POST,
     EventType.POINT_FREE, EventType.TWO_POINT_FREE,
     EventType.WIDE_FREE, EventType.FORTY_FIVE, EventType.FORTY_FIVE_MISSED,
 ]

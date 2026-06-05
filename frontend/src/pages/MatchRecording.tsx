@@ -1848,7 +1848,7 @@ export default function MatchRecording() {
     ]
 
     // Opponent scoring/shooting/interception
-    const allOpponentEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SAVED, EventType.SHORT]
+    const allOpponentEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SAVED, EventType.SHORT, EventType.HIT_POST]
     const opponentScoringOnly = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]
     const isOpponentScoring = allOpponentEvents.includes(eventType) && !isHomeTeam
     const isOpponentActualScore = opponentScoringOnly.includes(eventType) && !isHomeTeam
@@ -2333,11 +2333,11 @@ export default function MatchRecording() {
       setActiveKickoutTab(null)
     }
 
-    // Auto-change possession for turnover events, shots that drop short, and saved shots
+    // Auto-change possession for turnover events, shots that drop short, saved shots, and hit post
     const turnoverEventStr = String(event.eventType).toUpperCase()
     let possessionPayload: { x: number; y: number; team: PossessionTeam } | null = null
 
-    if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'INTERCEPTION') {
+    if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'HIT_POST' || turnoverEventStr === 'INTERCEPTION') {
       let newTeam: PossessionTeam
       let newX = event.position.x
       let newY = event.position.y
@@ -2349,7 +2349,8 @@ export default function MatchRecording() {
         newTeam = PossessionTeam.OWN
       } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
         newTeam = PossessionTeam.OPPONENT
-      } else if (turnoverEventStr.includes('SAVED')) {
+      } else if (turnoverEventStr.includes('SAVED') || turnoverEventStr === 'HIT_POST') {
+        // Save or post → ball goes to defending goalkeeper
         const shotInOpponentHalf = event.position.x > 50
         if (shotInOpponentHalf) {
           newTeam = PossessionTeam.OPPONENT

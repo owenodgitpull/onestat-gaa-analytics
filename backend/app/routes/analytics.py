@@ -637,7 +637,7 @@ async def get_dashboard_data(
     # Shot locations for heat map
     shot_events = [
         EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
-        EventType.WIDE, EventType.SHORT, EventType.SAVED,
+        EventType.WIDE, EventType.SHORT, EventType.SAVED, EventType.HIT_POST,
         EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE,
         EventType.FORTY_FIVE, EventType.FORTY_FIVE_MISSED,
     ]
@@ -818,7 +818,7 @@ async def get_player_match_stats(
         EventType.TWO_POINT_FREE: 'two_pointers'
     }
 
-    shot_miss_events = {EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT, EventType.SAVED, EventType.FORTY_FIVE_MISSED}
+    shot_miss_events = {EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT, EventType.SAVED, EventType.HIT_POST, EventType.FORTY_FIVE_MISSED}
 
     event_field_map = {
         EventType.TURNOVER_WON: 'turnovers_won',
@@ -850,7 +850,7 @@ async def get_player_match_stats(
             'goals': 0, 'points': 0, 'two_pointers': 0,
             'turnovers_won': 0, 'turnovers_lost': 0,
             'blocks': 0, 'interceptions': 0,
-            'wides': 0, 'shots_short': 0, 'shots_saved': 0,
+            'wides': 0, 'shots_short': 0, 'shots_saved': 0, 'shots_hit_post': 0,
             'frees_won': 0, 'frees_conceded': 0,
             'yellow_cards': 0, 'red_cards': 0,
             'kickouts_won': 0, 'kickouts_lost': 0,
@@ -873,6 +873,8 @@ async def get_player_match_stats(
                 match_stats[mid]['shots_short'] += 1
             elif event.event_type == EventType.SAVED:
                 match_stats[mid]['shots_saved'] += 1
+            elif event.event_type == EventType.HIT_POST:
+                match_stats[mid]['shots_hit_post'] += 1
             match_stats[mid]['total_shots'] += 1
         elif event.event_type in event_field_map:
             match_stats[mid][event_field_map[event.event_type]] += 1
@@ -960,7 +962,7 @@ async def get_player_shot_events(
         EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
         EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE,
         EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED,
-        EventType.SHORT, EventType.SAVED,
+        EventType.SHORT, EventType.SAVED, EventType.HIT_POST,
     ]
 
     # Get completed matches
@@ -1290,7 +1292,7 @@ async def get_match_report(
     timeline_opp: list = []
 
     shot_types_all = {
-        EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SHORT, EventType.SAVED,
+        EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SHORT, EventType.SAVED, EventType.HIT_POST,
         EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE, EventType.FORTY_FIVE, EventType.FORTY_FIVE_MISSED,
         EventType.PENALTY_GOAL, EventType.PENALTY_MISS,
     }

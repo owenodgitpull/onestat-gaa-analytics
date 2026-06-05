@@ -310,6 +310,7 @@ class MatchEventService:
             EventType.WIDE: "wides",
             EventType.SHORT: "shots_short",
             EventType.SAVED: "shots_saved",
+            EventType.HIT_POST: "shots_hit_post",
             EventType.TURNOVER_LOST: "turnovers_lost",
             EventType.TURNOVER_WON: "turnovers_won",
             EventType.KICKOUT_WON: "kickouts_won",

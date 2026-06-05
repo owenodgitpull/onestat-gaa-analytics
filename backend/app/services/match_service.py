@@ -336,11 +336,13 @@ class MatchService:
             "team_scores": 0,
             "team_wides": 0,
             "team_dropped_short": 0,
+            "team_hit_post": 0,
             "team_accuracy": 0.0,
             "opponent_total_shots": 0,
             "opponent_scores": 0,
             "opponent_wides": 0,
             "opponent_dropped_short": 0,
+            "opponent_hit_post": 0,
             "opponent_accuracy": 0.0,
             # Turnovers
             "team_turnovers_won": 0,
@@ -412,7 +414,10 @@ class MatchService:
                 stats[f"{team_prefix}_dropped_short"] += 1
             elif event.event_type == EventType.SAVED:
                 stats[f"{team_prefix}_total_shots"] += 1
-            
+            elif event.event_type == EventType.HIT_POST:
+                stats[f"{team_prefix}_total_shots"] += 1
+                stats[f"{team_prefix}_hit_post"] += 1
+
             # Turnovers (opposition forced) — interceptions and tackles count as turnovers won
             # Blocks do NOT auto-count — outcome depends on who recovers
             elif event.event_type in (EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON):

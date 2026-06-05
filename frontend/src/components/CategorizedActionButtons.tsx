@@ -54,6 +54,7 @@ const categories = [
       { eventType: EventType.SAVED, label: 'Saved', icon: CheckCircle },
       { eventType: EventType.SHORT, label: 'Dropped Short', icon: ArrowDownCircle },
       { eventType: EventType.BLOCK, label: 'Blocked', icon: Shield },
+      { eventType: EventType.HIT_POST, label: 'Hit Post', icon: AlertCircle },
     ]
   },
   {

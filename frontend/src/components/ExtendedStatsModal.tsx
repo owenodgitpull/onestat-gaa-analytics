@@ -162,7 +162,7 @@ export default function ExtendedStatsModal({ events, opponent, teamName, onClose
 
   // ── Scoring from play (non-free events) ──────────────────────────────────
   const playScoreTypes = new Set(['goal', 'point', 'two_point'])
-  const playMissTypes = new Set(['wide', 'saved', 'short'])
+  const playMissTypes = new Set(['wide', 'saved', 'short', 'hit_post'])
   const freeScoreTypes = new Set(['point_free', 'two_point_free', 'forty_five', 'penalty_goal'])
   const freeMissTypes = new Set(['wide_free', 'forty_five_missed', 'penalty_miss'])
 
