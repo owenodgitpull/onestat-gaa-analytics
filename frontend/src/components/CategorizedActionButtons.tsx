@@ -458,8 +458,8 @@ export default function CategorizedActionButtons({
           )
         })}
 
-        {/* 45 button - inline with scoring buttons when our team has possession */}
-        {activeCategory === 'scoring' && currentPossession === PossessionTeam.OWN && on45Click && (
+        {/* 45 button - visible whenever in scoring tab; opponent can also be awarded a 45 */}
+        {activeCategory === 'scoring' && on45Click && (
           <button
             onClick={on45Click}
             disabled={disabled}

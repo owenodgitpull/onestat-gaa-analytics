@@ -1822,9 +1822,11 @@ export default function MatchRecording() {
     } else if (eventStr.startsWith('OWN_')) {
       // OWN_ prefix = own team action
       isHomeTeam = true
-    } else if (isFreeKickResult || is45Result) {
-      // Free kick results and 45s are always own team (we won the free / took the 45)
-      isHomeTeam = true
+    } else if (isFreeKickResult) {
+      isHomeTeam = isTeamTakingFree
+    } else if (is45Result) {
+      // 45 is awarded to whichever team was attacking (had possession)
+      isHomeTeam = actionPosition.team === PossessionTeam.OWN
     } else {
       // No prefix (GOAL, POINT, WIDE) = use POSSESSION
       isHomeTeam = actionPosition.team === PossessionTeam.OWN
@@ -1871,6 +1873,19 @@ export default function MatchRecording() {
         } else {
           recordFreeKickResult(eventType, actionPosition, false)
         }
+      }
+    } else if (is45Result) {
+      if (isHomeTeam) {
+        // Own team 45 — ask which player takes it
+        setPendingEvent({
+          eventType: eventType as EventType,
+          team: 'own',
+          position: actionPosition
+        })
+        setIsPlayerModalOpen(true)
+      } else {
+        // Opponent 45 — no player selection, record directly
+        recordFreeKickResult(eventType, actionPosition, false)
       }
     } else if (isOpponentActualScore && oppositionRoster.length > 0) {
       // Opponent scored and we have a roster — show opposition scorer strip
@@ -1920,10 +1935,10 @@ export default function MatchRecording() {
       // Track for tutorial
       setLastEventType(String(eventType).toLowerCase())
 
-      // Free kick scores and 45 result in kickout
+      // Free kick scores, misses, and 45 outcomes all result in kickout
       const scoringFrees = [EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
       const isScore = scoringFrees.includes(eventType)
-      const isWide = eventType === EventType.WIDE_FREE
+      const isWide = eventType === EventType.WIDE_FREE || eventType === EventType.FORTY_FIVE_MISSED
 
       if (isScore || isWide) {
         // Ball moves to goalkeeper area for kickout
