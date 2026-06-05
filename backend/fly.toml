@@ -29,7 +29,7 @@ primary_region = 'lhr'
     path = '/health'
 
 [[vm]]
-  size = 'performance-1x'
+  size = 'shared-cpu-8x'
   memory = '2048mb'
   cpus = 1
   memory_mb = 2048
