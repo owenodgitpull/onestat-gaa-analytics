@@ -823,6 +823,7 @@ async def get_player_match_stats(
     event_field_map = {
         EventType.TURNOVER_WON: 'turnovers_won',
         EventType.TURNOVER_LOST: 'turnovers_lost',
+        EventType.UNFORCED_ERROR: 'turnovers_lost',
         EventType.BLOCK: 'blocks',
         EventType.INTERCEPTION: 'interceptions',
         EventType.FREE_WON: 'frees_won',

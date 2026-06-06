@@ -312,6 +312,7 @@ class MatchEventService:
             EventType.SAVED: "shots_saved",
             EventType.HIT_POST: "shots_hit_post",
             EventType.TURNOVER_LOST: "turnovers_lost",
+            EventType.UNFORCED_ERROR: "turnovers_lost",
             EventType.TURNOVER_WON: "turnovers_won",
             EventType.KICKOUT_WON: "kickouts_won",
             EventType.KICKOUT_LOST: "kickouts_lost",

@@ -428,8 +428,11 @@ class MatchService:
                 # A turnover lost by one team is automatically a turnover won by the other
                 stats[f"{other_prefix}_turnovers_won"] += 1
 
-            # Unforced Errors — tracked separately from contested turnovers
+            # Unforced Errors — a subcategory of turnover lost (own mistake, no pressure)
             elif event.event_type == EventType.UNFORCED_ERROR:
+                other_prefix = "opponent" if team_prefix == "team" else "team"
+                stats[f"{team_prefix}_turnovers_lost"] += 1
+                stats[f"{other_prefix}_turnovers_won"] += 1
                 stats[f"{team_prefix}_unforced_errors"] += 1
             
             # Kickouts — decode from event type name, NOT from event.team
