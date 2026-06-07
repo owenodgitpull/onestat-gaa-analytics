@@ -229,6 +229,8 @@ export interface MatchStats {
   match_id: string;
   team_possession_percentage: number;
   opponent_possession_percentage: number;
+  team_possession_count: number;
+  opponent_possession_count: number;
   team_total_shots: number;
   team_scores: number;
   team_wides: number;

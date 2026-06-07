@@ -381,7 +381,7 @@ class LiveInsightsService:
         result = await db.execute(
             select(LiveInsight)
             .where(LiveInsight.match_id == match_id)
-            .order_by(desc(LiveInsight.minute))
+            .order_by(desc(LiveInsight.created_at))
             .limit(limit)
         )
         return list(result.scalars().all())

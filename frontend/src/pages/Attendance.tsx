@@ -22,7 +22,8 @@ import {
   TrendingUp,
   Bot,
   BarChart3,
-  Info
+  Info,
+  Sparkles
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePlayers } from '../hooks/usePlayers'
@@ -790,16 +791,19 @@ export default function Attendance() {
   const queryClient = useQueryClient()
   const [showNewSession, setShowNewSession] = useState(false)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
-  const [aiSummary, setAiSummary] = useState<{ summary: string | null; session_date: string | null } | null>(null)
   const [kpiView, setKpiView] = useState<'last-session' | 'overview'>('last-session')
   const [deleteSessionTarget, setDeleteSessionTarget] = useState<string | null>(null)
+  const [aiSummaryGenerating, setAiSummaryGenerating] = useState(false)
 
-  useEffect(() => {
-    fetch(`${API_BASE}/training/ai-summary/latest`, { credentials: 'include' })
-      .then(res => res.ok ? res.json() : null)
-      .then(data => { if (data?.summary) setAiSummary(data); else setAiSummary(null) })
-      .catch(() => {})
-  }, [])
+  const { data: aiSummaryData } = useQuery({
+    queryKey: ['training-ai-summary'],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/training/ai-summary/latest`, { credentials: 'include' })
+      return res.ok ? res.json() : null
+    },
+    staleTime: 30_000,
+  })
+  const aiSummary = aiSummaryData?.summary ? aiSummaryData : null
 
   const { data: sessions, isLoading, refetch } = useQuery({
     queryKey: ['sessions'],
@@ -847,18 +851,35 @@ export default function Attendance() {
   const handleCreateSession = async (data: any, gpsFile?: File) => {
     try {
       const session = await createMutation.mutateAsync(data)
+      setAiSummaryGenerating(true)
+
       if (gpsFile && session?.id) {
         await uploadGpsFile(session.id, gpsFile)
-        // GPS processing is a background task — wait briefly then re-fetch
-        // so attendance counts and overview KPIs are populated
+        // GPS processing + AI analysis runs as a backend background task (~15-20s total)
         setTimeout(() => {
           queryClient.invalidateQueries({ queryKey: ['sessions'] })
           queryClient.invalidateQueries({ queryKey: ['training-overview'] })
           queryClient.invalidateQueries({ queryKey: ['session-gps'] })
         }, 3000)
+        // Refresh AI summary once backend has had time to generate it
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ['training-ai-summary'] })
+          setAiSummaryGenerating(false)
+        }, 20_000)
+      } else if (session?.id) {
+        // No GPS — trigger AI summary generation directly (uses attendance data)
+        fetch(`${API_BASE}/training/sessions/${session.id}/generate-summary`, {
+          method: 'POST',
+          credentials: 'include',
+        })
+          .then(res => res.ok ? res.json() : null)
+          .then(() => queryClient.invalidateQueries({ queryKey: ['training-ai-summary'] }))
+          .catch(() => {})
+          .finally(() => setAiSummaryGenerating(false))
       }
     } catch (error) {
       console.error('Failed to create session:', error)
+      setAiSummaryGenerating(false)
     }
   }
 
@@ -866,6 +887,7 @@ export default function Attendance() {
     mutationFn: deleteSession,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sessions'] })
+      queryClient.invalidateQueries({ queryKey: ['training-ai-summary'] })
     }
   })
 
@@ -947,18 +969,27 @@ export default function Attendance() {
       </div>
 
       {/* AI Training Insight */}
-      {aiSummary?.summary && (
+      {(aiSummary?.summary || aiSummaryGenerating) && (
         <div className="glass-card p-4 border border-emerald-500/20">
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
-              <Bot size={16} className="text-emerald-400" />
+              {aiSummaryGenerating
+                ? <Sparkles size={16} className="text-emerald-400 animate-spin" />
+                : <Bot size={16} className="text-emerald-400" />
+              }
             </div>
-            <div>
-              <div className="text-sm leading-relaxed">{renderAnalysisText(aiSummary.summary)}</div>
-              {aiSummary.session_date && (
-                <p className="text-xs text-white/40 mt-1">
-                  {new Date(aiSummary.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </p>
+            <div className="flex-1 min-w-0">
+              {aiSummaryGenerating ? (
+                <p className="text-sm text-white/50 italic">Generating AI training summary…</p>
+              ) : (
+                <>
+                  <div className="text-sm leading-relaxed">{renderAnalysisText(aiSummary!.summary!)}</div>
+                  {aiSummary!.session_date && (
+                    <p className="text-xs text-white/40 mt-1">
+                      {new Date(aiSummary!.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>

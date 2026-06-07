@@ -83,12 +83,27 @@ export default function LiveInsightDisplay({
     }
   }
 
+  const sortInsightsByPriority = (insights: LiveInsight[]): LiveInsight[] => {
+    const PRIORITY = ['full_time', 'half_time']
+    return [...insights].sort((a, b) => {
+      const ai = PRIORITY.indexOf(a.trigger)
+      const bi = PRIORITY.indexOf(b.trigger)
+      if (ai !== -1 && bi !== -1) return ai - bi
+      if (ai !== -1) return -1
+      if (bi !== -1) return 1
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+  }
+
   const fetchAllInsights = async () => {
     if (!matchId) return
 
     try {
       const response = await api.liveInsights.getInsights(matchId, 10)
-      setAllInsights(response.insights)
+      const sorted = sortInsightsByPriority(response.insights)
+      setAllInsights(sorted)
+      // Keep latestInsight in sync with the priority-ordered top insight
+      if (sorted.length > 0) setLatestInsight(sorted[0])
     } catch (err) {
       console.error('Failed to fetch insights:', err)
     }
@@ -133,7 +148,7 @@ export default function LiveInsightDisplay({
       scoring_drought: 'Scoring Alert',
       card_issued: 'Card Impact',
       substitution: 'Sub Analysis',
-      half_time: 'Half-Time',
+      half_time: 'Half Time Report',
       turnover_crisis: 'Turnover Alert',
       momentum_shift: 'Momentum'
     }

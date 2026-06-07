@@ -331,6 +331,8 @@ class MatchService:
             # Possession
             "team_possession_percentage": 0.0,
             "opponent_possession_percentage": 0.0,
+            "team_possession_count": 0,
+            "opponent_possession_count": 0,
             # Shots
             "team_total_shots": 0,
             "team_scores": 0,
@@ -375,6 +377,22 @@ class MatchService:
                 t = p.team.value if hasattr(p.team, 'value') else str(p.team)
                 return t == "own"
 
+            # Possession spell count — consecutive runs of the same team
+            # Sort by created_at to get chronological order, then count transitions
+            sorted_events = sorted(possession_events, key=lambda p: p.created_at)
+            team_spells = opp_spells = 0
+            prev_team = None
+            for p in sorted_events:
+                curr = "own" if _is_own_team(p) else "opponent"
+                if curr != prev_team:
+                    if curr == "own":
+                        team_spells += 1
+                    elif curr == "opponent":
+                        opp_spells += 1
+                    prev_team = curr
+            stats["team_possession_count"] = team_spells
+            stats["opponent_possession_count"] = opp_spells
+
             # Sum up duration_seconds for each team
             total_duration = sum(p.duration_seconds or 0 for p in possession_events)
 
@@ -389,8 +407,8 @@ class MatchService:
             else:
                 # Fallback: if no durations yet, use event count (initial possession)
                 total_events = len(possession_events)
-                team_events = sum(1 for p in possession_events if _is_own_team(p))
-                stats["team_possession_percentage"] = round((team_events / total_events) * 100, 1)
+                team_events = team_count
+                stats["team_possession_percentage"] = round((team_events / total_events) * 100, 1) if total_events > 0 else 0.0
                 stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
         
         # Calculate event stats

@@ -2074,7 +2074,7 @@ export default function MatchRecording() {
         // Note: Kickout events are handled via pendingKickoutEvent pattern
         const turnoverEventStr = String(eventType).toUpperCase()
 
-        if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'INTERCEPTION') {
+        if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'INTERCEPTION' || turnoverEventStr === 'SIDELINE_BALL') {
           // Determine new possession based on event type
           let newTeam: PossessionTeam
           let newX = position.x
@@ -2115,6 +2115,9 @@ export default function MatchRecording() {
           } else if (turnoverEventStr.includes('OUR_UNFORCED_ERROR')) {
             // Our unforced error → Opponent gets possession
             newTeam = PossessionTeam.OPPONENT
+          } else if (turnoverEventStr === 'SIDELINE_BALL') {
+            // Team that put it out loses possession: other team gets sideline ball
+            newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.OWN
           } else {
             // Fallback (shouldn't reach here)
             newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.OWN
@@ -2337,7 +2340,7 @@ export default function MatchRecording() {
     const turnoverEventStr = String(event.eventType).toUpperCase()
     let possessionPayload: { x: number; y: number; team: PossessionTeam } | null = null
 
-    if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'HIT_POST' || turnoverEventStr === 'INTERCEPTION') {
+    if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'HIT_POST' || turnoverEventStr === 'INTERCEPTION' || turnoverEventStr === 'TACKLE_WON') {
       let newTeam: PossessionTeam
       let newX = event.position.x
       let newY = event.position.y
@@ -2345,6 +2348,9 @@ export default function MatchRecording() {
       if (turnoverEventStr === 'INTERCEPTION') {
         // Interception → the intercepting team gets possession
         newTeam = event.team === 'own' ? PossessionTeam.OWN : PossessionTeam.OPPONENT
+      } else if (turnoverEventStr === 'TACKLE_WON') {
+        // Tackle won by own team → own team gets possession
+        newTeam = PossessionTeam.OWN
       } else if (turnoverEventStr.includes('TURNOVER_WON')) {
         newTeam = PossessionTeam.OWN
       } else if (turnoverEventStr.includes('TURNOVER_LOST')) {
@@ -3104,7 +3110,7 @@ export default function MatchRecording() {
               </div>
 
               {/* Categorized Action Buttons */}
-              <div className="max-w-2xl mx-auto -mt-2">
+              <div className="max-w-2xl mx-auto -mt-6">
                 <CategorizedActionButtons
                   onActionSelect={handleQuickAction}
                   onFoulClick={handleFoulClick}
@@ -3315,6 +3321,7 @@ export default function MatchRecording() {
 
                   {[
                     { label: 'Possession', left: `${stats.possession.team}%`, right: `${stats.possession.opponent}%`, leftVal: stats.possession.team, rightVal: stats.possession.opponent },
+                    { label: 'Poss. Count', left: matchStats?.team_possession_count ?? 0, right: matchStats?.opponent_possession_count ?? 0, leftVal: matchStats?.team_possession_count ?? 0, rightVal: matchStats?.opponent_possession_count ?? 0 },
                     { label: 'Shots', left: stats.shots.team, right: stats.shots.opponent, leftVal: stats.shots.team, rightVal: stats.shots.opponent },
                     { label: 'Scores', left: stats.scores.team, right: stats.scores.opponent, leftVal: stats.scores.team, rightVal: stats.scores.opponent },
                     { label: 'Wides', left: stats.wides.team, right: stats.wides.opponent, leftVal: stats.wides.opponent, rightVal: stats.wides.team },
@@ -3324,6 +3331,9 @@ export default function MatchRecording() {
                     { label: 'Kickouts Won', left: `${stats.kickouts.teamWon}/${stats.kickouts.teamTotal}`, right: `${stats.kickouts.opponentWon}/${stats.kickouts.opponentTotal}`, leftVal: stats.kickouts.teamWon, rightVal: stats.kickouts.opponentWon },
                     { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
                     { label: 'Fouls', left: matchStats?.team_fouls || 0, right: matchStats?.opponent_fouls || 0, leftVal: matchStats?.opponent_fouls || 0, rightVal: matchStats?.team_fouls || 0 },
+                    { label: '🟡 Yellow', left: matchStats?.team_yellow_cards || 0, right: matchStats?.opponent_yellow_cards || 0, leftVal: matchStats?.opponent_yellow_cards || 0, rightVal: matchStats?.team_yellow_cards || 0 },
+                    ...((matchStats?.team_black_cards || 0) + (matchStats?.opponent_black_cards || 0) > 0 ? [{ label: '⬛ Black', left: matchStats?.team_black_cards || 0, right: matchStats?.opponent_black_cards || 0, leftVal: matchStats?.opponent_black_cards || 0, rightVal: matchStats?.team_black_cards || 0 }] : []),
+                    ...((matchStats?.team_red_cards || 0) + (matchStats?.opponent_red_cards || 0) > 0 ? [{ label: '🔴 Red', left: matchStats?.team_red_cards || 0, right: matchStats?.opponent_red_cards || 0, leftVal: matchStats?.opponent_red_cards || 0, rightVal: matchStats?.team_red_cards || 0 }] : []),
                   ].map((row, idx) => {
                     const leftWins = row.leftVal > row.rightVal
                     const rightWins = row.rightVal > row.leftVal

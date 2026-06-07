@@ -214,6 +214,8 @@ class MatchStatsResponse(BaseModel):
     # Possession stats
     team_possession_percentage: float
     opponent_possession_percentage: float
+    team_possession_count: int = 0
+    opponent_possession_count: int = 0
     
     # Shot stats
     team_total_shots: int

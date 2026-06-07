@@ -1025,6 +1025,7 @@ function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; o
 
   const rows = [
     { label: 'Possession', left: `${teamPos}%`, right: `${opponentPos}%`, leftVal: teamPos, rightVal: opponentPos },
+    { label: 'Poss. Count', left: stats.team_possession_count ?? 0, right: stats.opponent_possession_count ?? 0, leftVal: stats.team_possession_count ?? 0, rightVal: stats.opponent_possession_count ?? 0 },
     { label: 'Shots', left: stats.team_total_shots, right: stats.opponent_total_shots, leftVal: stats.team_total_shots, rightVal: stats.opponent_total_shots },
     { label: 'Scores', left: stats.team_scores, right: stats.opponent_scores, leftVal: stats.team_scores, rightVal: stats.opponent_scores },
     { label: 'Wides', left: stats.team_wides, right: stats.opponent_wides, leftVal: stats.opponent_wides, rightVal: stats.team_wides },

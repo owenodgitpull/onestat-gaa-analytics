@@ -37,6 +37,7 @@ const filterCategories: FilterCategory[] = [
       'own_kickout_won_break', 'own_kickout_opposition_won_break',
       'opp_kickout_won', 'opp_kickout_opposition_won',
       'opp_kickout_won_break', 'opp_kickout_opposition_won_break',
+      'own_kickout_sideline', 'opp_kickout_sideline',
     ],
     color: 'cyan'
   },
