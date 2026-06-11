@@ -1932,6 +1932,8 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
                 "minute": e.minute,
                 "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
                 "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
+                "player": players.get(str(e.player_id)) if e.player_id else None,
+                "sub_type": e.sub_type if e.sub_type else None,
                 "location": _pitch_location(e.pitch_x, e.pitch_y),
             }
             for e in sorted(events, key=lambda ev: ev.minute or 0, reverse=True)[:10]

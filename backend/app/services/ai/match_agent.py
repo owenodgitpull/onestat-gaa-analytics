@@ -95,29 +95,42 @@ Match ID: {match_id}
 Recent events (last 5):
 {json.dumps(recent_events, indent=2)}
 
-DETECTION TRIGGERS — flag these patterns when you see them:
-- Scoring run: 3+ consecutive scores without opposition reply
-- Scoring drought: 10+ minutes without a score
-- Kickout dominance shift: winning/losing 3+ consecutive kickouts
-- Turnover crisis: 5+ turnovers in last 10 minutes
-- Fatigue indicators: compare to GPS benchmarks from the knowledge base context
+## HOW TO USE PLAYER BREAKDOWN DATA
+The match summary above contains a "player_breakdown" list — per-player stats for our team this match.
+Each player entry has fields like: unforced_errors, error_subtypes, turnovers_lost, turnovers_won, wides, fouls_committed, blocks, frees_won, score, yellow_card, black_card, red_card.
+ALWAYS use this data to name specific players when giving insight. Examples:
+- "Gallagher has 2 unforced errors (stray_pass) — give him a word at the next water break"
+- "O'Donnell has won 3 turnovers — keep him at the breakdown"
+- "Two wides from Breslin at inside-45 — he needs to work his angles before shooting"
+Do NOT give vague advice like "watch out for turnovers" when you can name who is turning it over.
 
-When a trigger fires, explain what's happening AND suggest one specific tactical adjustment.
-Reference knowledge base context (GPS benchmarks, tactical principles) when available.
+## DETECTION TRIGGERS — flag these when you see them in the data
+- Scoring run: 3+ consecutive own scores — note WHO is scoring and from where
+- Scoring drought: 10+ minutes without a score — note if a specific player has been wide/turnover causing it
+- Kickout battle: who is winning/losing kickout contests from recent events
+- Turnover crisis: check player_breakdown for WHO has the most turnovers_lost/unforced_errors — name them
+- Card danger: name any player with fouls_committed >= 2 as a sin-bin risk
 
-IMPORTANT: You already have the match summary and recent events above. Respond with your analysis IMMEDIATELY based on this data. Do NOT call tools unless you genuinely need specific data that is missing from the context above. Most of the time, the context is sufficient — just give your tactical read.
+When a trigger fires: state WHAT is happening, WHO is involved (name them), and ONE tactical fix.
+Reference knowledge base context when relevant.
+
+IMPORTANT: The match summary and player_breakdown above give you everything you need. Respond directly from this data. Only call tools if you need event-level detail not visible in the summary (e.g., exact kickout destinations).
 """
 
         # Use trigger-specific user prompt
         if trigger == "half_time":
             user_prompt = (
-                "Give a concise half-time summary: the current scoreline, "
-                "which team has the momentum, one thing we did well, "
-                "and one key tactical change for the second half."
+                "Give a concise half-time read using the player_breakdown and match summary above: "
+                "the score, who has been our biggest issue (errors/turnovers by name), "
+                "one positive (a player who has performed well), and one key tactical adjustment for the second half."
             )
             max_tokens = 200
         else:
-            user_prompt = "Analyze the match state above and give one key tactical observation and one adjustment we should make. Respond directly — do not call any tools."
+            user_prompt = (
+                "Using the match summary and player_breakdown above, give one specific, data-driven tactical observation. "
+                "Name the relevant player(s) and the exact stat (e.g. '2 unforced errors', '3 turnovers lost'). "
+                "Then give one actionable adjustment. Be direct — 2-3 sentences max."
+            )
             max_tokens = 200
 
         raw_live_tools = get_tools_subset(LIVE_TOOLS)
