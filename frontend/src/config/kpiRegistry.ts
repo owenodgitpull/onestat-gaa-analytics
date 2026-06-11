@@ -253,6 +253,20 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
       },
     },
   },
+  {
+    id: 'unforced-errors',
+    frontKey: 'unforced_errors_pg',
+    frontLabel: 'Unforced Errors / Game',
+    flipKey: null,
+    flipLabel: null,
+    theme: 'Discipline',
+    explanations: {
+      unforced_errors_pg: {
+        what: 'Average unforced errors per match — possession lost through avoidable mistakes such as misplaced passes, over-carrying, or fumbles under no real pressure.',
+        formula: 'Total unforced errors (own team) ÷ Matches played. These are a subcategory of turnovers lost. Below 3 is disciplined, 4–6 is average, above 6 needs attention.',
+      },
+    },
+  },
 ]
 
 /** Default visible KPI pairing IDs (first 4 shown by default) */

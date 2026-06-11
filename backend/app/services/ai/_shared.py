@@ -1704,6 +1704,115 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
         })
     top_scorers.sort(key=lambda x: x['total'], reverse=True)
 
+    # ── Per-player breakdown for own team ────────────────────────────────────
+    # Collect per-player stats so the live agent can give specific, named
+    # observations without requiring additional tool calls.
+    _breakdown_types = {
+        EventType.UNFORCED_ERROR, EventType.TURNOVER_LOST, EventType.FOUL_COMMITTED,
+        EventType.WIDE, EventType.WIDE_FREE, EventType.YELLOW_CARD, EventType.BLACK_CARD,
+        EventType.RED_CARD, EventType.TURNOVER_WON, EventType.INTERCEPTION,
+        EventType.TACKLE_WON, EventType.BLOCK, EventType.FREE_WON,
+        EventType.GOAL, EventType.PENALTY_GOAL,
+        EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE,
+        EventType.TWO_POINT, EventType.TWO_POINT_FREE,
+    }
+    _player_breakdown_raw: dict = {}
+    _breakdown_player_ids: set = set()
+    for e in events:
+        if e.team != Team.OWN:
+            continue
+        if e.event_type not in _breakdown_types:
+            continue
+        _pid = str(e.player_id) if e.player_id else None
+        if not _pid:
+            continue
+        _breakdown_player_ids.add(_pid)
+        if _pid not in _player_breakdown_raw:
+            _player_breakdown_raw[_pid] = {
+                'unforced_errors': 0, 'error_subtypes': [],
+                'turnovers_lost': 0, 'turnovers_won': 0,
+                'wides': 0, 'fouls_committed': 0,
+                'yellow_cards': 0, 'black_cards': 0, 'red_cards': 0,
+                'blocks': 0, 'frees_won': 0,
+                'goals': 0, 'points': 0, 'two_pts': 0,
+            }
+        _pb = _player_breakdown_raw[_pid]
+        _et = e.event_type
+        if _et == EventType.UNFORCED_ERROR:
+            _pb['unforced_errors'] += 1
+            if e.sub_type:
+                _pb['error_subtypes'].append(e.sub_type)
+        elif _et == EventType.TURNOVER_LOST:
+            _pb['turnovers_lost'] += 1
+        elif _et in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}:
+            _pb['turnovers_won'] += 1
+        elif _et in {EventType.WIDE, EventType.WIDE_FREE}:
+            _pb['wides'] += 1
+        elif _et == EventType.FOUL_COMMITTED:
+            _pb['fouls_committed'] += 1
+        elif _et == EventType.YELLOW_CARD:
+            _pb['yellow_cards'] += 1
+        elif _et == EventType.BLACK_CARD:
+            _pb['black_cards'] += 1
+        elif _et == EventType.RED_CARD:
+            _pb['red_cards'] += 1
+        elif _et == EventType.BLOCK:
+            _pb['blocks'] += 1
+        elif _et == EventType.FREE_WON:
+            _pb['frees_won'] += 1
+        elif _et in {EventType.GOAL, EventType.PENALTY_GOAL}:
+            _pb['goals'] += 1
+        elif _et in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}:
+            _pb['points'] += 1
+        elif _et in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}:
+            _pb['two_pts'] += 1
+
+    # Resolve any player names not already in the players dict (from scorer lookup)
+    _missing_ids = _breakdown_player_ids - set(players.keys())
+    if _missing_ids:
+        _extra_res = await db.execute(select(Player).where(Player.id.in_(list(_missing_ids))))
+        for _p in _extra_res.scalars().all():
+            players[str(_p.id)] = _p.name
+
+    # Build compact breakdown — only non-zero fields included
+    player_breakdown = []
+    for _pid, _pb in _player_breakdown_raw.items():
+        _total_score = _pb['goals'] * 3 + _pb['points'] + _pb['two_pts'] * 2
+        _entry: dict = {'name': players.get(_pid, 'Unknown')}
+        if _total_score:
+            _entry['score'] = f"{_pb['goals']}-{_pb['points']}"
+            if _pb['two_pts']:
+                _entry['two_pts'] = _pb['two_pts']
+        if _pb['unforced_errors']:
+            _entry['unforced_errors'] = _pb['unforced_errors']
+            if _pb['error_subtypes']:
+                _entry['error_subtypes'] = _pb['error_subtypes']
+        if _pb['turnovers_lost']:
+            _entry['turnovers_lost'] = _pb['turnovers_lost']
+        if _pb['turnovers_won']:
+            _entry['turnovers_won'] = _pb['turnovers_won']
+        if _pb['wides']:
+            _entry['wides'] = _pb['wides']
+        if _pb['fouls_committed']:
+            _entry['fouls_committed'] = _pb['fouls_committed']
+        if _pb['blocks']:
+            _entry['blocks'] = _pb['blocks']
+        if _pb['frees_won']:
+            _entry['frees_won'] = _pb['frees_won']
+        if _pb['yellow_cards']:
+            _entry['yellow_card'] = True
+        if _pb['black_cards']:
+            _entry['black_card'] = True
+        if _pb['red_cards']:
+            _entry['red_card'] = True
+        player_breakdown.append(_entry)
+
+    # Sort: players with most concerns first (errors + turnovers), then by score
+    player_breakdown.sort(key=lambda x: (
+        -(x.get('unforced_errors', 0) + x.get('turnovers_lost', 0)),
+        -(x.get('goals', 0) * 3 + x.get('points', 0))
+    ))
+
     # Count other stats - use EventType and Team enums
     # turnovers_won = own TURNOVER_WON + own INTERCEPTION + own TACKLE_WON
     # turnovers_lost = own TURNOVER_LOST + opp INTERCEPTION + opp TACKLE_WON (symmetric with opp won count)
@@ -1827,6 +1936,13 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             }
             for e in sorted(events, key=lambda ev: ev.minute or 0, reverse=True)[:10]
         ],
+        "player_breakdown": player_breakdown,
+        "player_breakdown_note": (
+            "player_breakdown: per-player stats for OWN team. Sorted by most errors/turnovers first. "
+            "Fields only present when non-zero: score (G-P), two_pts, unforced_errors, error_subtypes, "
+            "turnovers_lost, turnovers_won, wides, fouls_committed, blocks, frees_won, yellow_card, "
+            "black_card, red_card. USE THESE TO NAME SPECIFIC PLAYERS in your insights."
+        ),
     })
 
 
@@ -1907,17 +2023,20 @@ async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None
     two_pts  = len([e for e in events if e.event_type in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}])
     turnovers_won = len([e for e in events if e.event_type == EventType.TURNOVER_WON])
     turnovers_lost = len([e for e in events if e.event_type == EventType.TURNOVER_LOST])
+    unforced_errors = len([e for e in events if e.event_type == EventType.UNFORCED_ERROR])
     wides = len([e for e in events if e.event_type in {EventType.WIDE, EventType.WIDE_FREE}])
+    blocks = len([e for e in events if e.event_type == EventType.BLOCK])
 
     # Get matches played
     match_ids = set(e.match_id for e in events)
+    n_matches = len(match_ids)
 
     return safe_json({
         "player": {
             "name": player.name,
             "position": player.position
         },
-        "matches_played": len(match_ids),
+        "matches_played": n_matches,
         "scoring": {
             "goals": goals,
             "points": points,
@@ -1927,12 +2046,18 @@ async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None
         "turnovers": {
             "won": turnovers_won,
             "lost": turnovers_lost,
-            "net": turnovers_won - turnovers_lost
+            "unforced_errors": unforced_errors,
+            "net": turnovers_won - turnovers_lost,
+            "unforced_errors_per_game": round(unforced_errors / max(1, n_matches), 2),
+            "note": "unforced_errors are a subcategory of turnovers_lost — each unforced error also increments turnovers_lost"
         },
         "shooting": {
             "wides": wides,
             "attempts": goals + points + two_pts + wides,
             "accuracy": round((goals + points + two_pts) / max(1, goals + points + two_pts + wides) * 100, 1)
+        },
+        "defence": {
+            "blocks": blocks,
         }
     })
 
@@ -2028,14 +2153,31 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
             "opp_score": _gaa_score(o_goals, o_pts, o_2pts_play, o_2pts_free),
         })
 
+    # --- Unforced errors season totals ---
+    ue_result = await db.execute(
+        select(
+            MatchEvent.team,
+            func.count(MatchEvent.id).label("cnt")
+        )
+        .where(
+            MatchEvent.match_id.in_(match_ids),
+            MatchEvent.event_type == EventType.UNFORCED_ERROR,
+        )
+        .group_by(MatchEvent.team)
+    )
+    ue_by_team = {row.team: row.cnt for row in ue_result}
+    team_ue = ue_by_team.get(Team.OWN, 0)
+    opp_ue = ue_by_team.get(Team.OPPONENT, 0)
+    n_matches = len(matches)
+
     return safe_json({
         "NOTE": "These are SEASON TOTALS across all matches — NOT a single match score. Use get_match_summary(match_id) for per-match detail.",
-        "matches_played": len(matches),
+        "matches_played": n_matches,
         "record": {
             "wins": wins,
             "losses": losses,
             "draws": draws,
-            "win_rate": round(wins / max(1, len(matches)) * 100, 1)
+            "win_rate": round(wins / max(1, n_matches) * 100, 1)
         },
         "match_results": match_results,
         "season_scoring_totals": {
@@ -2044,7 +2186,7 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
             "total_points": tm_points,
             "total_two_pointers": tm_two_pts,
             "total_score": tm_total,
-            "avg_per_match": round(tm_total / max(1, len(matches)), 1)
+            "avg_per_match": round(tm_total / max(1, n_matches), 1)
         },
         "season_defense_totals": {
             "NOTE": "Sum across all matches — not a match score",
@@ -2052,7 +2194,14 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
             "points_conceded": opp_points,
             "two_pointers_conceded": opp_two_pts,
             "total_conceded": opp_total,
-            "avg_conceded": round(opp_total / max(1, len(matches)), 1)
+            "avg_conceded": round(opp_total / max(1, n_matches), 1)
+        },
+        "season_discipline": {
+            "NOTE": "Unforced errors are a subcategory of turnovers_lost — each one also increments turnovers_lost",
+            "team_unforced_errors": team_ue,
+            "team_unforced_errors_pg": round(team_ue / max(1, n_matches), 1),
+            "opponent_unforced_errors": opp_ue,
+            "opponent_unforced_errors_pg": round(opp_ue / max(1, n_matches), 1),
         },
         "net_score": tm_total - opp_total
     })
@@ -3270,6 +3419,8 @@ async def get_player_form_trajectory(db: AsyncSession, player_id: str, window: i
         total_score = goals * 3 + points + two_pts * 2
         turnovers_won = sum(1 for e in events if e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON})
         turnovers_lost = sum(1 for e in events if e.event_type == EventType.TURNOVER_LOST)
+        unforced_errors = sum(1 for e in events if e.event_type == EventType.UNFORCED_ERROR)
+        wides = sum(1 for e in events if e.event_type in {EventType.WIDE, EventType.WIDE_FREE})
 
         # GPS
         gps_result = await db.execute(
@@ -3286,6 +3437,8 @@ async def get_player_form_trajectory(db: AsyncSession, player_id: str, window: i
             "points": points,
             "turnovers_won": turnovers_won,
             "turnovers_lost": turnovers_lost,
+            "unforced_errors": unforced_errors,
+            "wides": wides,
         }
         if gps:
             match_data["distance_km"] = round((gps.total_distance_m or 0) / 1000, 1)

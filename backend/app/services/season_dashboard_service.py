@@ -1944,6 +1944,33 @@ class SeasonDashboardService:
             opp_ko_total += row.cnt
         opp_kickout_win = round(opp_ko_won / opp_ko_total * 100, 0) if opp_ko_total > 0 else 0
 
+        # --- Unforced errors per game ---
+        ue_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type == EventType.UNFORCED_ERROR,
+                )
+            )
+        )
+        total_unforced_errors = ue_result.scalar() or 0
+        unforced_errors_pg = round(total_unforced_errors / n, 1)
+
+        # Recent unforced errors per game
+        recent_ue_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(recent_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type == EventType.UNFORCED_ERROR,
+                )
+            )
+        )
+        recent_ue_pg = (recent_ue_result.scalar() or 0) / trend_window
+
         # --- Card rate per game + minutes with 14 men ---
         card_result = await db.execute(
             select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
@@ -2279,6 +2306,14 @@ class SeasonDashboardService:
                 "format": "decimal",
                 "color": color(mins_14_men_pg, lambda v: v <= 5, lambda v: v > 15),
                 "trend": make_trend(mins_14_men_pg, mins_14_men_pg),
+            },
+            {
+                "key": "unforced_errors_pg",
+                "label": "Unforced Errors / Game",
+                "value": unforced_errors_pg,
+                "format": "decimal",
+                "color": color(unforced_errors_pg, lambda v: v <= 3, lambda v: v > 6),
+                "trend": make_trend(unforced_errors_pg, recent_ue_pg),
             },
         ])
 

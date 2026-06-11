@@ -1060,6 +1060,7 @@ Generate a SHORT, punchy insight for each KPI card.
   Do NOT confuse with kickout_retention. Do NOT say we "win 65%" when the value is 35%.
 - possession %: >50% = dominant. 57% means we had MORE ball, which is GOOD.
 - avg_scored / avg_conceded: higher scored = better; lower conceded = better.
+- unforced_errors_pg: LOWER = BETTER. These are avoidable possession losses (misplaced passes, fumbles, over-carrying under no pressure). Below 3 is disciplined; above 6 is a concern. Note: each unforced error also counts as a turnover_lost (subcategory).
 
 ## Rules
 - Each insight MUST be 1 sentence, max 15 words
@@ -1078,7 +1079,7 @@ Generate a SHORT, punchy insight for each KPI card.
 {chr(10).join(cards_summary)}
 {funnel_section}
 
-Return ONLY valid JSON: {{"productivity": "...", "turnover_diff": "...", "kickout_retention": "...", "opp_kickout_win": "...", "shot_efficiency": "...", "fouls_per_game": "...", "avg_scored": "...", "avg_conceded": "...", "possession_funnel": "..."}}
+Return ONLY valid JSON: {{"productivity": "...", "turnover_diff": "...", "kickout_retention": "...", "opp_kickout_win": "...", "shot_efficiency": "...", "fouls_per_game": "...", "avg_scored": "...", "avg_conceded": "...", "possession_funnel": "...", "unforced_errors_pg": "..."}}
 """
 
     elif task == "insight_alerts":
@@ -1347,11 +1348,14 @@ Generate 3-5 personalized insight bullets for a player.
 
 ## Instructions
 1. Use get_player_season_stats with player_id '{player_id}' to get scoring/defence stats.
+   - The response includes turnovers.unforced_errors and turnovers.unforced_errors_per_game — reference these if notable.
+   - Unforced errors are possession losses through avoidable mistakes (not forced by the opposition).
 2. Use get_player_gps_stats to check GPS performance trends.
 3. Use get_attendance_data with the player_id to check training attendance.
 4. Each bullet should be a single sentence with a specific stat.
 5. Highlight strengths, areas for improvement, and comparisons.
 6. Be encouraging but honest. Use concrete numbers.
+7. If the player has 2+ unforced errors per game, flag this as an area to reduce.
 
 Player ID: {player_id}
 
@@ -1366,6 +1370,10 @@ Generate 2-3 personalized weekly challenges for a GAA player.
 
 ## Instructions
 1. Use get_player_season_stats with player_id '{player_id}' to get their current stats.
+   - turnovers.unforced_errors shows total unforced errors this season.
+   - turnovers.unforced_errors_per_game shows their average per match.
+   - If this is >= 2 per game, a challenge to reduce it is highly appropriate:
+     e.g. "Keep unforced errors to 1 or fewer in your next 3 matches" (target_value=3, window=3, metric_key=unforced_errors).
 2. Use get_player_gps_stats to check GPS data.
 3. Use get_attendance_data with the player_id to check attendance rate.
 4. Base targets on the player's actual averages — make them achievable but stretching.
@@ -1376,6 +1384,7 @@ Generate 2-3 personalized weekly challenges for a GAA player.
 - Goals are rare in GAA — most club players average 0-1 goals per match.
 - Points from play are more common: a forward might score 0-3 to 0-5 per match.
 - Attendance streak challenges should use small windows (3-5 sessions).
+- For unforced_errors challenges: target_value is the MAX allowed (not a target to hit) — set it to current_avg × 0.6 × window to represent a 40% reduction.
 
 Player ID: {player_id}
 
@@ -1385,7 +1394,7 @@ Return ONLY a valid JSON array of 2-3 challenge objects:
         "title": "short actionable challenge (max 80 chars)",
         "description": "1 sentence of context",
         "category": "scoring|fitness|attendance|defence",
-        "metric_key": "goals_from_play|points_from_play|total_score_value|shooting_accuracy|turnovers_won|blocks|total_distance_m|sprint_count|attendance_streak",
+        "metric_key": "goals_from_play|points_from_play|total_score_value|shooting_accuracy|turnovers_won|unforced_errors|blocks|total_distance_m|sprint_count|attendance_streak",
         "target_value": <numeric cumulative threshold>,
         "evaluation_window": <2-5 matches/sessions>
     }}
