@@ -1944,7 +1944,7 @@ class SeasonDashboardService:
             opp_ko_total += row.cnt
         opp_kickout_win = round(opp_ko_won / opp_ko_total * 100, 0) if opp_ko_total > 0 else 0
 
-        # --- Unforced errors per game ---
+        # --- Unforced errors per game (total only — recent computed after recent_ids is set) ---
         ue_result = await db.execute(
             select(func.count(MatchEvent.id))
             .where(
@@ -1957,19 +1957,6 @@ class SeasonDashboardService:
         )
         total_unforced_errors = ue_result.scalar() or 0
         unforced_errors_pg = round(total_unforced_errors / n, 1)
-
-        # Recent unforced errors per game
-        recent_ue_result = await db.execute(
-            select(func.count(MatchEvent.id))
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(recent_ids),
-                    MatchEvent.team == Team.OWN,
-                    MatchEvent.event_type == EventType.UNFORCED_ERROR,
-                )
-            )
-        )
-        recent_ue_pg = (recent_ue_result.scalar() or 0) / trend_window
 
         # --- Card rate per game + minutes with 14 men ---
         card_result = await db.execute(
@@ -1996,6 +1983,19 @@ class SeasonDashboardService:
         trend_window = min(3, n)
         recent_matches = matches[-trend_window:]  # matches ordered by date ASC
         recent_ids = [m.id for m in recent_matches]
+
+        # Recent unforced errors per game
+        recent_ue_result = await db.execute(
+            select(func.count(MatchEvent.id))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(recent_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type == EventType.UNFORCED_ERROR,
+                )
+            )
+        )
+        recent_ue_pg = (recent_ue_result.scalar() or 0) / trend_window
 
         def make_trend(season_val, recent_val, fmt="decimal"):
             """Build trend dict with direction and percentage change."""
