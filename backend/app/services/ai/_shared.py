@@ -663,6 +663,26 @@ TOOLS = [
             "required": ["match_id"]
         }
     },
+    {
+        "name": "get_live_match_stats",
+        "description": (
+            "Get a concise, pre-formatted live match snapshot optimised for sideline analysis. "
+            "Returns: current score + minute, per-player performance table (errors, turnovers, wides, fouls, cards, score — sorted by concerns first), "
+            "kickout battle summary (own and opp kickout win/loss counts), "
+            "recent scoring run or drought detection, and foul/card risk flags. "
+            "Use this as your FIRST call during live_insight — it gives you everything needed to name specific players in your analysis."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "The UUID of the live match"
+                }
+            },
+            "required": ["match_id"]
+        }
+    },
 ]
 
 def get_cached_tools() -> list:
@@ -738,6 +758,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_workload_risk_assessment(db, **tool_input, club_id=club_id)
     elif tool_name == "get_tactical_tags":
         return await get_tactical_tags(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_live_match_stats":
+        return await get_live_match_stats(db, **tool_input, club_id=club_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -3818,6 +3840,277 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
         "players_flagged": len(flagged),
         "assessments": assessments,
     })
+
+
+async def get_live_match_stats(db: AsyncSession, match_id: str, club_id=None) -> str:
+    """
+    Returns a concise, human-readable live match snapshot for the sideline agent.
+    Includes: score + minute, per-player concern table, kickout battle, scoring run/drought,
+    and foul/card risk flags. Designed to be directly readable — no JSON parsing needed.
+    """
+    import uuid as uuid_mod
+
+    try:
+        match_uuid = uuid_mod.UUID(match_id)
+    except (ValueError, AttributeError):
+        return safe_json({"error": f"'{match_id}' is not a valid match UUID"})
+
+    # Validate match belongs to club
+    if club_id:
+        match_check = await db.execute(select(Match.id).where(Match.id == match_uuid, Match.club_id == club_id))
+        if not match_check.scalar_one_or_none():
+            return safe_json({"error": "Match not found"})
+
+    # Fetch the match
+    match_result = await db.execute(select(Match).where(Match.id == match_uuid))
+    match = match_result.scalar_one_or_none()
+    if not match:
+        return safe_json({"error": "Match not found"})
+
+    # Fetch all events
+    events_result = await db.execute(
+        select(MatchEvent).where(MatchEvent.match_id == match_uuid).order_by(MatchEvent.minute)
+    )
+    events = events_result.scalars().all()
+
+    # Fetch player names
+    player_ids = list(set(str(e.player_id) for e in events if e.player_id))
+    players_map: dict = {}
+    if player_ids:
+        pr = await db.execute(select(Player).where(Player.id.in_(player_ids)))
+        for p in pr.scalars().all():
+            players_map[str(p.id)] = p.name
+
+    # ── Score ──────────────────────────────────────────────────────────────
+    goal_types   = {EventType.GOAL, EventType.PENALTY_GOAL}
+    point_types  = {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}
+    two_pt_types = {EventType.TWO_POINT, EventType.TWO_POINT_FREE}
+
+    tm_goals  = sum(1 for e in events if e.team == Team.OWN      and e.event_type in goal_types)
+    tm_points = sum(1 for e in events if e.team == Team.OWN      and e.event_type in point_types)
+    tm_2pts   = sum(1 for e in events if e.team == Team.OWN      and e.event_type in two_pt_types)
+    op_goals  = sum(1 for e in events if e.team == Team.OPPONENT and e.event_type in goal_types)
+    op_points = sum(1 for e in events if e.team == Team.OPPONENT and e.event_type in point_types)
+    op_2pts   = sum(1 for e in events if e.team == Team.OPPONENT and e.event_type in two_pt_types)
+
+    tm_total = tm_goals * 3 + tm_points + tm_2pts * 2
+    op_total = op_goals * 3 + op_points + op_2pts * 2
+    margin = tm_total - op_total
+    margin_str = (
+        f"ahead by {abs(margin)} pts" if margin > 0
+        else f"behind by {abs(margin)} pts" if margin < 0
+        else "level"
+    )
+
+    # Derive current minute from current_phase
+    current_minute = None
+    if match.current_phase:
+        parts = match.current_phase.split(":")
+        if len(parts) == 2:
+            try:
+                current_minute = int(parts[1]) // 60
+            except ValueError:
+                pass
+    minute_str = f"{current_minute}'" if current_minute else "?"
+
+    # ── Per-player breakdown (own team) ────────────────────────────────────
+    _breakdown_types = {
+        EventType.UNFORCED_ERROR, EventType.TURNOVER_LOST, EventType.FOUL_COMMITTED,
+        EventType.WIDE, EventType.WIDE_FREE, EventType.YELLOW_CARD, EventType.BLACK_CARD,
+        EventType.RED_CARD, EventType.TURNOVER_WON, EventType.INTERCEPTION,
+        EventType.TACKLE_WON, EventType.BLOCK, EventType.FREE_WON,
+        EventType.GOAL, EventType.PENALTY_GOAL,
+        EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE,
+        EventType.TWO_POINT, EventType.TWO_POINT_FREE,
+    }
+    player_raw: dict = {}
+    for e in events:
+        if e.team != Team.OWN or not e.player_id:
+            continue
+        if e.event_type not in _breakdown_types:
+            continue
+        pid = str(e.player_id)
+        if pid not in player_raw:
+            player_raw[pid] = {
+                'unforced_errors': 0, 'error_subtypes': [],
+                'turnovers_lost': 0, 'turnovers_won': 0,
+                'wides': 0, 'fouls_committed': 0,
+                'yellow_cards': 0, 'black_cards': 0, 'red_cards': 0,
+                'blocks': 0, 'frees_won': 0,
+                'goals': 0, 'points': 0, 'two_pts': 0,
+            }
+        pb = player_raw[pid]
+        et = e.event_type
+        if et == EventType.UNFORCED_ERROR:
+            pb['unforced_errors'] += 1
+            if e.sub_type:
+                pb['error_subtypes'].append(e.sub_type)
+        elif et == EventType.TURNOVER_LOST:
+            pb['turnovers_lost'] += 1
+        elif et in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}:
+            pb['turnovers_won'] += 1
+        elif et in {EventType.WIDE, EventType.WIDE_FREE}:
+            pb['wides'] += 1
+        elif et == EventType.FOUL_COMMITTED:
+            pb['fouls_committed'] += 1
+        elif et == EventType.YELLOW_CARD:
+            pb['yellow_cards'] += 1
+        elif et == EventType.BLACK_CARD:
+            pb['black_cards'] += 1
+        elif et == EventType.RED_CARD:
+            pb['red_cards'] += 1
+        elif et == EventType.BLOCK:
+            pb['blocks'] += 1
+        elif et == EventType.FREE_WON:
+            pb['frees_won'] += 1
+        elif et in {EventType.GOAL, EventType.PENALTY_GOAL}:
+            pb['goals'] += 1
+        elif et in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}:
+            pb['points'] += 1
+        elif et in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}:
+            pb['two_pts'] += 1
+
+    # Build readable player rows (only players with something notable)
+    player_rows = []
+    for pid, pb in player_raw.items():
+        name = players_map.get(pid, 'Unknown')
+        concerns = pb['unforced_errors'] + pb['turnovers_lost'] + pb['wides'] + pb['fouls_committed']
+        positives = pb['turnovers_won'] + pb['blocks'] + pb['frees_won']
+        total_score = pb['goals'] * 3 + pb['points'] + pb['two_pts'] * 2
+
+        parts = []
+        if total_score:
+            score_str = f"{pb['goals']}-{pb['points']}"
+            if pb['two_pts']:
+                score_str += f" (+{pb['two_pts']}tp)"
+            parts.append(f"scored {score_str}")
+        if pb['unforced_errors']:
+            sub = ""
+            if pb['error_subtypes']:
+                from collections import Counter
+                top_sub = Counter(pb['error_subtypes']).most_common(1)[0][0]
+                sub = f" [{top_sub}]"
+            parts.append(f"{pb['unforced_errors']} unforced error{'s' if pb['unforced_errors'] > 1 else ''}{sub}")
+        if pb['turnovers_lost']:
+            parts.append(f"{pb['turnovers_lost']} TO lost")
+        if pb['wides']:
+            parts.append(f"{pb['wides']} wide{'s' if pb['wides'] > 1 else ''}")
+        if pb['fouls_committed']:
+            parts.append(f"{pb['fouls_committed']} foul{'s' if pb['fouls_committed'] > 1 else ''}")
+        if pb['yellow_cards']:
+            parts.append("YELLOW")
+        if pb['black_cards']:
+            parts.append("BLACK CARD")
+        if pb['red_cards']:
+            parts.append("RED CARD")
+        if pb['turnovers_won']:
+            parts.append(f"{pb['turnovers_won']} TO won")
+        if pb['blocks']:
+            parts.append(f"{pb['blocks']} block{'s' if pb['blocks'] > 1 else ''}")
+        if pb['frees_won']:
+            parts.append(f"{pb['frees_won']} free{'s' if pb['frees_won'] > 1 else ''} won")
+
+        if parts:
+            player_rows.append({
+                'name': name,
+                'concern_score': concerns,
+                'line': f"{name}: {', '.join(parts)}",
+            })
+
+    # Sort by concern score descending (most problematic first), then by positives
+    player_rows.sort(key=lambda r: -r['concern_score'])
+
+    # ── Kickout battle ─────────────────────────────────────────────────────
+    own_ko_won  = sum(1 for e in events if e.event_type in {EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK, EventType.KICKOUT_WON})
+    own_ko_lost = sum(1 for e in events if e.event_type in {EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK, EventType.KICKOUT_LOST, EventType.OWN_KICKOUT_SIDELINE})
+    opp_ko_won  = sum(1 for e in events if e.event_type in {EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK})
+    opp_ko_lost = sum(1 for e in events if e.event_type in {EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK, EventType.OPP_KICKOUT_SIDELINE})
+
+    own_ko_total = own_ko_won + own_ko_lost
+    opp_ko_total = opp_ko_won + opp_ko_lost
+    own_ko_pct = round(own_ko_won / own_ko_total * 100) if own_ko_total else None
+    opp_ko_pct = round(opp_ko_won / opp_ko_total * 100) if opp_ko_total else None
+
+    # ── Scoring run / drought detection ────────────────────────────────────
+    all_scoring = {EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE,
+                   EventType.TWO_POINT_FREE, EventType.FORTY_FIVE, EventType.PENALTY_GOAL}
+    scoring_events = [e for e in events if e.event_type in all_scoring]
+    scoring_events_sorted = sorted(scoring_events, key=lambda e: (e.minute or 0))
+
+    own_run = 0
+    opp_run = 0
+    for e in reversed(scoring_events_sorted):
+        if e.team == Team.OWN:
+            if opp_run > 0:
+                break
+            own_run += 1
+        elif e.team == Team.OPPONENT:
+            if own_run > 0:
+                break
+            opp_run += 1
+
+    # Drought: how long since our last score?
+    last_own_score = next(
+        (e for e in reversed(scoring_events_sorted) if e.team == Team.OWN), None
+    )
+    drought_minutes = None
+    if last_own_score and current_minute and last_own_score.minute:
+        drought_minutes = current_minute - last_own_score.minute
+
+    # ── Unforced errors + turnovers summary ───────────────────────────────
+    total_ue = sum(1 for e in events if e.team == Team.OWN and e.event_type == EventType.UNFORCED_ERROR)
+    total_to_lost = sum(1 for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST)
+    total_to_won  = sum(1 for e in events if e.team == Team.OWN and e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON})
+
+    # ── Card / foul risk ───────────────────────────────────────────────────
+    # Build a name→pid reverse lookup for quick foul check
+    name_to_pid = {players_map[pid]: pid for pid in player_raw if pid in players_map}
+    sin_bin_risks = [
+        r['name'] for r in player_rows
+        if player_raw.get(name_to_pid.get(r['name']), {}).get('fouls_committed', 0) >= 2
+    ]
+
+    # ── Build readable output ──────────────────────────────────────────────
+    lines = [
+        f"=== LIVE MATCH SNAPSHOT — {minute_str} ===",
+        f"SCORE: Us {tm_goals}-{tm_points} ({tm_total}pts) vs Them {op_goals}-{op_points} ({op_total}pts) — {margin_str}",
+        "",
+        "POSSESSION BATTLE:",
+        f"  Turnovers WON: {total_to_won} | Turnovers LOST: {total_to_lost} (inc. {total_ue} unforced errors)",
+        "",
+    ]
+
+    if own_ko_total or opp_ko_total:
+        lines.append("KICKOUT BATTLE:")
+        if own_ko_total:
+            lines.append(f"  Our kickouts: {own_ko_won}/{own_ko_total} retained ({own_ko_pct}%)")
+        if opp_ko_total:
+            lines.append(f"  Their kickouts: {opp_ko_won}/{opp_ko_total} won by us ({opp_ko_pct}%)")
+        lines.append("")
+
+    if own_run >= 3:
+        lines.append(f"SCORING RUN: We have scored {own_run} in a row — momentum with us.")
+    elif opp_run >= 3:
+        lines.append(f"SCORING RUN: Opponents have scored {opp_run} in a row — under pressure.")
+
+    if drought_minutes is not None and drought_minutes >= 10:
+        lines.append(f"SCORING DROUGHT: {drought_minutes} minutes since our last score.")
+
+    if own_run >= 3 or opp_run >= 3 or (drought_minutes and drought_minutes >= 10):
+        lines.append("")
+
+    lines.append("PLAYER BREAKDOWN (own team — sorted by concerns):")
+    if player_rows:
+        for row in player_rows:
+            lines.append(f"  {row['line']}")
+    else:
+        lines.append("  No notable individual events yet.")
+
+    if sin_bin_risks:
+        lines.append("")
+        lines.append(f"SIN-BIN RISK: {', '.join(sin_bin_risks)} (2+ fouls)")
+
+    return "\n".join(lines)
 
 
 async def get_tactical_tags(db: AsyncSession, match_id: str, club_id=None) -> str:

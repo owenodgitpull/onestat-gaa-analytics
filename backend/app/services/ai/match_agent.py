@@ -26,7 +26,12 @@ from app.services.rag_service import RAGService
 logger = logging.getLogger(__name__)
 
 # Tools available to the live agent (fast, minimal subset)
-LIVE_TOOLS = ["get_match_events", "get_match_summary", "get_scoring_patterns", "get_stats_by_half", "get_ball_carrier_data", "get_formation_snapshots", "get_tactical_tags"]
+# get_live_match_stats: primary tool — call this FIRST for per-player breakdown + kickout + score
+# get_match_events: fallback for event-level detail (e.g. exact kickout destinations by minute)
+# get_ball_carrier_data: if ball-carrier tracking was active, shows passing patterns live
+# get_formation_snapshots: if formation snapshots were captured
+# get_tactical_tags: if tactical tags were logged (high press, formation switch, etc.)
+LIVE_TOOLS = ["get_live_match_stats", "get_match_events", "get_ball_carrier_data", "get_formation_snapshots", "get_tactical_tags"]
 
 MAX_LIVE_TURNS = 2
 
@@ -47,11 +52,10 @@ class MatchAgent:
     ) -> str:
         """
         Agentic live match insight.
-        Model: Haiku | Max turns: 2 | Tools: LIVE_TOOLS (4 tools)
+        Model: Haiku | Max turns: 2 | Tools: LIVE_TOOLS
+        get_live_match_stats is always the first tool call — it provides per-player breakdown,
+        kickout stats, scoring run detection, and sin-bin risk in human-readable format.
         """
-        # Get current match state
-        summary = await get_match_summary(db, match_id)
-
         # Get club context for prompt personalisation
         from uuid import UUID
         from app.models.match import Match
@@ -79,7 +83,7 @@ class MatchAgent:
             tactical_section = f"\n## Manager's Tactical Notes (PRE-MATCH PLAN — reference these when making suggestions)\n{tactical_notes}\n"
 
         system_prompt = f"""You are a GAA sideline analyst providing LIVE match insights for {club_name}.
-CRITICAL: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). Be punchy and actionable — this displays in a small sidebar widget. No bullet points, no headers, no lists.
+CRITICAL OUTPUT RULE: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). Be punchy and actionable — this displays in a small sidebar widget. No bullet points, no headers, no lists.
 
 {GAA_ESSENTIALS}
 {club_context}
@@ -87,49 +91,57 @@ CRITICAL: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). 
 ## Knowledge Base Context (GPS benchmarks, tactical patterns, rules)
 {kb_context}
 {tactical_section}
-## Current Match
-Match ID: {match_id}
+## Current Match ID
+{match_id}
 
-{summary}
-
-Recent events (last 5):
+## Recent Events (last 5 logged)
 {json.dumps(recent_events, indent=2)}
 
-## HOW TO USE PLAYER BREAKDOWN DATA
-The match summary above contains a "player_breakdown" list — per-player stats for our team this match.
-Each player entry has fields like: unforced_errors, error_subtypes, turnovers_lost, turnovers_won, wides, fouls_committed, blocks, frees_won, score, yellow_card, black_card, red_card.
-ALWAYS use this data to name specific players when giving insight. Examples:
-- "Gallagher has 2 unforced errors (stray_pass) — give him a word at the next water break"
-- "O'Donnell has won 3 turnovers — keep him at the breakdown"
-- "Two wides from Breslin at inside-45 — he needs to work his angles before shooting"
-Do NOT give vague advice like "watch out for turnovers" when you can name who is turning it over.
+## HOW TO GIVE SPECIFIC, DATA-DRIVEN INSIGHTS
 
-## DETECTION TRIGGERS — flag these when you see them in the data
-- Scoring run: 3+ consecutive own scores — note WHO is scoring and from where
-- Scoring drought: 10+ minutes without a score — note if a specific player has been wide/turnover causing it
-- Kickout battle: who is winning/losing kickout contests from recent events
-- Turnover crisis: check player_breakdown for WHO has the most turnovers_lost/unforced_errors — name them
-- Card danger: name any player with fouls_committed >= 2 as a sin-bin risk
+STEP 1 — ALWAYS call get_live_match_stats(match_id) first. It returns:
+- Current score + minute
+- Per-player table (who has errors/turnovers/wides/fouls/cards/score) sorted by concerns
+- Kickout battle (our retention % + their kickout win % by us)
+- Scoring run / drought detection
+- Sin-bin risk list (2+ fouls)
 
-When a trigger fires: state WHAT is happening, WHO is involved (name them), and ONE tactical fix.
-Reference knowledge base context when relevant.
+STEP 2 — Use that data to NAME SPECIFIC PLAYERS in your insight. Examples of good output:
+- "Gallagher has 2 unforced errors (stray_pass) — give him a word at the next water break."
+- "O'Donnell leads with 3 turnovers won — keep him at the breakdown."
+- "Two wides from Breslin — he's rushing shots; tell him to steady before pulling."
+- "We're 0/4 on their kickouts — push up on the short kickout, they're targeting #6."
+- "McCarthy on 2 fouls — pull him for 5 minutes before he's sin-binned."
 
-IMPORTANT: The match summary and player_breakdown above give you everything you need. Respond directly from this data. Only call tools if you need event-level detail not visible in the summary (e.g., exact kickout destinations).
+STEP 3 — Only call get_match_events if you need event-level detail the snapshot doesn't cover (e.g. exact kickout zone targeting, the minute sequence of a scoring run, or to check ball-carrier patterns).
+
+TRIGGERS TO WATCH — check the snapshot for these:
+- 3+ consecutive own scores → name who scored, note the momentum
+- 10+ min scoring drought → name who has been wasting possession (wides/errors)
+- Kickout retention < 50% → call it out, suggest a tactical adjustment
+- Their kickout win < 35% → note we're winning their restarts, press it
+- Any player: 2+ fouls → flag sin-bin risk by name
+- Any player: 2+ unforced errors → name them and the error sub-type (stray_pass, overcarry, etc.)
+
+Reference knowledge base context when relevant to a specific trigger.
 """
 
         # Use trigger-specific user prompt
         if trigger == "half_time":
             user_prompt = (
-                "Give a concise half-time read using the player_breakdown and match summary above: "
-                "the score, who has been our biggest issue (errors/turnovers by name), "
-                "one positive (a player who has performed well), and one key tactical adjustment for the second half."
+                f"Half-time. Call get_live_match_stats('{match_id}') first, then give a concise half-time read: "
+                "the score, who has been our biggest concern (name them + their error/turnover count), "
+                "one standout positive (name them), and one key adjustment for the second half. "
+                "Under 80 words, no lists."
             )
             max_tokens = 200
         else:
             user_prompt = (
-                "Using the match summary and player_breakdown above, give one specific, data-driven tactical observation. "
-                "Name the relevant player(s) and the exact stat (e.g. '2 unforced errors', '3 turnovers lost'). "
-                "Then give one actionable adjustment. Be direct — 2-3 sentences max."
+                f"Call get_live_match_stats('{match_id}') first. Then, from the snapshot data, "
+                "give ONE specific, data-driven sideline observation. "
+                "Name the relevant player(s) and cite the exact stat from the snapshot "
+                "(e.g. '2 unforced errors [stray_pass]', 'kickout retention 40%', '3 turnovers lost'). "
+                "Then give one actionable adjustment. 2-3 sentences max, under 80 words."
             )
             max_tokens = 200
 
@@ -241,6 +253,7 @@ INSTRUCTIONS:
 6. Be specific — cite player names, minutes, and events from the tool results.
 7. Be constructive but honest about weaknesses.
 7a. NEVER analyse or mention players who did not play in this match. Only discuss players with match events or GPS data in the tool results. Do not speculate about players absent from the data.
+7a2. PLAYER-LEVEL DETAIL — REQUIRED: The get_match_summary response includes a "player_breakdown" list — use it to name specific players in your analysis. For each player with unforced_errors > 0, name them AND their error sub-type (e.g. "Gallagher had 2 unforced errors — both stray passes in the midfield third"). For players with turnovers_won >= 2, highlight them by name in Top Performers. For players with fouls_committed >= 2, note the sin-bin risk. For players with wides >= 2, name them in shooting analysis. Do NOT describe error/turnover patterns without naming the players responsible.
 7b. SPATIAL ANALYSIS — REQUIRED: The get_match_events tool returns a zone_summary block. You MUST use it to make specific territorial observations in your Tactical Analysis section. For example:
     - Scoring: "X scored Y/Z shots from the inside-45 left channel (N%) — their most productive zone"
     - Shooting wastage: "0 conversions from outside-45 right — avoid speculative shots from there"
