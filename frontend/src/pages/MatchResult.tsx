@@ -114,13 +114,24 @@ export default function MatchResult() {
   const handleRegenerateReport = async () => {
     if (!matchId || isRegenerating) return
     setIsRegenerating(true)
+
     try {
       await api.ai.regeneratePostMatchReport(matchId, excludeBallCarry)
       refetchReport()
-    } catch (e) {
-      console.error('Failed to regenerate report:', e)
-    } finally {
       setIsRegenerating(false)
+    } catch (e) {
+      console.error('Regenerate timed out — backend still running, polling for result', e)
+      // Fly.io drops the connection at 60s but the backend continues and saves to DB.
+      // Poll every 20s for up to 3 minutes to pick up the finished report.
+      let attempts = 0
+      const poll = setInterval(() => {
+        refetchReport()
+        attempts++
+        if (attempts >= 9) {
+          clearInterval(poll)
+          setIsRegenerating(false)
+        }
+      }, 20000)
     }
   }
 
