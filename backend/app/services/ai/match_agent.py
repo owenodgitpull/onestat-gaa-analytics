@@ -265,6 +265,11 @@ INSTRUCTIONS:
     - In player event analysis: use player_consequences data to state consequences explicitly. e.g. "lost possession 3 times in the defensive third — 2 of those turnovers led directly to opposition scores within 3 minutes". Name the zone where each turnover occurred.
     - avg_gain_x > 0 means forward-carrying player; < 0 means backward/recycling role. Use this to describe each player's carrying style.
     - Respect the data_confidence tier: if "low" only make individual observations; if "medium" add qualifiers like "from the possessions logged"; if "high" state patterns with confidence.
+7d. RESULT CONTEXT — REQUIRED: Always frame individual stats and sub-stats relative to the final scoreline and margin of defeat/victory.
+    - In a heavy defeat (losing by 10+ points or 2+ goals), do NOT label individual positive stats (e.g. turnovers won, passes completed) as "excellent" or "dominant" in isolation. Acknowledge the positive but contextualise it honestly — e.g. "Won the turnover battle (+4) but could not convert that pressure into scores" or "Efficient in possession but the scoreboard told a different story".
+    - Never describe a score as "crucial" or "vital" if the game was already a lost cause at that moment (score margin ≥ 10 points with ≤ 10 minutes remaining). Use "consolation" or "late" instead.
+    - Similarly, in a comfortable win, don't overstate small defensive lapses as alarming — frame them proportionally.
+    - Always check the final score from get_match_summary FIRST so every narrative judgement (excellent/poor/crucial/irrelevant) is grounded in the actual result.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>
    {{"possession": "Brief insight about possession and territory patterns", "scoring": "Brief insight about when scoring happened", "shooting": "Brief insight about shot selection and efficiency"}}
