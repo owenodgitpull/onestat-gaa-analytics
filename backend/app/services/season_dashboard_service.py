@@ -996,6 +996,7 @@ class SeasonDashboardService:
         }
 
         # 9-zone grid: Short/Mid/Long × Left/Centre/Right
+        # Short = our 20m–45m (x<31%), Mid = our 45m–opp 45m (31–69%), Long = beyond opp 45m (x>=69%)
         zone_labels = []
         for x_label in ("Short", "Mid", "Long"):
             for y_label in ("Left", "Centre", "Right"):
@@ -1038,11 +1039,12 @@ class SeasonDashboardService:
             else:
                 opp_events.append(event_data)
 
-            # Assign to zone (x-axis: distance from goal, y-axis: lateral)
+            # Assign to zone (x-axis: distance from kicking goal, y-axis: lateral)
+            # Short = our 20m–45m (<31%), Mid = midfield 31–69%, Long = beyond opp 45m (>=69%)
             if x is not None and y is not None:
-                if x < 25:
+                if x < 31:
                     x_zone = "Short"
-                elif x < 45:
+                elif x < 69:
                     x_zone = "Mid"
                 else:
                     x_zone = "Long"

@@ -27,18 +27,18 @@ function toSvg(xPct: number, yPct: number) {
   }
 }
 
-// circleCenterXPct overrides the default zone-center x for the circle visual only —
-// Mid circles are pushed past the 45m arc so they read as "outside the arc"
+// GAA pitch ~145m: our 20m=14%, our 45m=31%, midfield=50%, opp 45m=69%, opp 20m=86%
+// Short = our 20m to our 45m (14–31%), Mid = our 45m to opp 45m (31–69%), Long = beyond opp 45m (69–100%)
 const ZONE_DEFS = [
-  { id: 'Short_Left',   xMin: 0,  xMax: 14, yMin: 0,  yMax: 33,  label: 'Short L' },
-  { id: 'Short_Centre', xMin: 0,  xMax: 14, yMin: 33, yMax: 67,  label: 'Short C' },
-  { id: 'Short_Right',  xMin: 0,  xMax: 14, yMin: 67, yMax: 100, label: 'Short R' },
-  { id: 'Mid_Left',     xMin: 14, xMax: 31, yMin: 0,  yMax: 33,  label: 'Mid L',  circleCenterXPct: 33 },
-  { id: 'Mid_Centre',   xMin: 14, xMax: 31, yMin: 33, yMax: 67,  label: 'Mid C',  circleCenterXPct: 33 },
-  { id: 'Mid_Right',    xMin: 14, xMax: 31, yMin: 67, yMax: 100, label: 'Mid R',  circleCenterXPct: 33 },
-  { id: 'Long_Left',    xMin: 31, xMax: 65, yMin: 0,  yMax: 33,  label: 'Long L',  circleCenterXPct: 53 },
-  { id: 'Long_Centre',  xMin: 31, xMax: 65, yMin: 33, yMax: 67,  label: 'Long C',  circleCenterXPct: 53 },
-  { id: 'Long_Right',   xMin: 31, xMax: 65, yMin: 67, yMax: 100, label: 'Long R',  circleCenterXPct: 53 },
+  { id: 'Short_Left',   xMin: 14, xMax: 31,  yMin: 0,  yMax: 33,  label: 'Short L' },
+  { id: 'Short_Centre', xMin: 14, xMax: 31,  yMin: 33, yMax: 67,  label: 'Short C' },
+  { id: 'Short_Right',  xMin: 14, xMax: 31,  yMin: 67, yMax: 100, label: 'Short R' },
+  { id: 'Mid_Left',     xMin: 31, xMax: 69,  yMin: 0,  yMax: 33,  label: 'Mid L',  circleCenterXPct: 50 },
+  { id: 'Mid_Centre',   xMin: 31, xMax: 69,  yMin: 33, yMax: 67,  label: 'Mid C',  circleCenterXPct: 50 },
+  { id: 'Mid_Right',    xMin: 31, xMax: 69,  yMin: 67, yMax: 100, label: 'Mid R',  circleCenterXPct: 50 },
+  { id: 'Long_Left',    xMin: 69, xMax: 100, yMin: 0,  yMax: 33,  label: 'Long L', circleCenterXPct: 82 },
+  { id: 'Long_Centre',  xMin: 69, xMax: 100, yMin: 33, yMax: 67,  label: 'Long C', circleCenterXPct: 82 },
+  { id: 'Long_Right',   xMin: 69, xMax: 100, yMin: 67, yMax: 100, label: 'Long R', circleCenterXPct: 82 },
 ]
 
 // Classify event type into own/opponent kickout and whether we won it (includes sideline events)
@@ -100,9 +100,9 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
       const distFromGoal = Math.abs(k.pitch_x - goalX)
 
       let xZone: string
-      if (distFromGoal < 14) xZone = 'Short'
-      else if (distFromGoal < 31) xZone = 'Mid'
-      else xZone = 'Long'
+      if (distFromGoal < 31) xZone = 'Short'       // our 20m–45m corridor
+      else if (distFromGoal < 69) xZone = 'Mid'    // midfield (our 45m to opp 45m)
+      else xZone = 'Long'                           // beyond opp 45m arc
       let yZone: string
       if (k.pitch_y < 33) yZone = 'Left'
       else if (k.pitch_y < 67) yZone = 'Centre'
