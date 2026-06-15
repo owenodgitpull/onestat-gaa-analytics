@@ -30,12 +30,12 @@ function toSvg(xPct: number, yPct: number) {
 // GAA pitch ~145m: our 20m=14%, our 45m=31%, midfield=50%, opp 45m=69%, opp 20m=86%
 // Short = our 20m to our 45m (14–31%), Mid = our 45m to opp 45m (31–69%), Long = beyond opp 45m (69–100%)
 const ZONE_DEFS = [
-  { id: 'Short_Left',   xMin: 14, xMax: 31,  yMin: 0,  yMax: 33,  label: 'Short L', circleCenterXPct: 35 },
-  { id: 'Short_Centre', xMin: 14, xMax: 31,  yMin: 33, yMax: 67,  label: 'Short C', circleCenterXPct: 35 },
-  { id: 'Short_Right',  xMin: 14, xMax: 31,  yMin: 67, yMax: 100, label: 'Short R', circleCenterXPct: 35 },
-  { id: 'Mid_Left',     xMin: 31, xMax: 69,  yMin: 0,  yMax: 33,  label: 'Mid L',   circleCenterXPct: 50 },
-  { id: 'Mid_Centre',   xMin: 31, xMax: 69,  yMin: 33, yMax: 67,  label: 'Mid C',   circleCenterXPct: 50 },
-  { id: 'Mid_Right',    xMin: 31, xMax: 69,  yMin: 67, yMax: 100, label: 'Mid R',   circleCenterXPct: 50 },
+  { id: 'Short_Left',   xMin: 14, xMax: 31,  yMin: 0,  yMax: 33,  label: 'Short L', circleCenterXPct: 29 },
+  { id: 'Short_Centre', xMin: 14, xMax: 31,  yMin: 33, yMax: 67,  label: 'Short C', circleCenterXPct: 29 },
+  { id: 'Short_Right',  xMin: 14, xMax: 31,  yMin: 67, yMax: 100, label: 'Short R', circleCenterXPct: 29 },
+  { id: 'Mid_Left',     xMin: 31, xMax: 69,  yMin: 0,  yMax: 33,  label: 'Mid L',   circleCenterXPct: 55 },
+  { id: 'Mid_Centre',   xMin: 31, xMax: 69,  yMin: 33, yMax: 67,  label: 'Mid C',   circleCenterXPct: 55 },
+  { id: 'Mid_Right',    xMin: 31, xMax: 69,  yMin: 67, yMax: 100, label: 'Mid R',   circleCenterXPct: 55 },
   { id: 'Long_Left',    xMin: 69, xMax: 100, yMin: 0,  yMax: 33,  label: 'Long L',  circleCenterXPct: 72 },
   { id: 'Long_Centre',  xMin: 69, xMax: 100, yMin: 33, yMax: 67,  label: 'Long C',  circleCenterXPct: 72 },
   { id: 'Long_Right',   xMin: 69, xMax: 100, yMin: 67, yMax: 100, label: 'Long R',  circleCenterXPct: 72 },
