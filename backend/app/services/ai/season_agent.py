@@ -1079,7 +1079,9 @@ Generate a SHORT, punchy insight for each KPI card.
 {chr(10).join(cards_summary)}
 {funnel_section}
 
-Return ONLY valid JSON: {{"productivity": "...", "turnover_diff": "...", "kickout_retention": "...", "opp_kickout_win": "...", "shot_efficiency": "...", "fouls_per_game": "...", "avg_scored": "...", "avg_conceded": "...", "possession_funnel": "...", "unforced_errors_pg": "..."}}
+Return ONLY valid JSON with a key for EVERY card listed above (use the key shown in parentheses), plus "possession_funnel" if funnel data was provided.
+Example shape: {{{", ".join(f'"{c["key"]}": "..."' for c in kpi_data.get("cards", [])[:3])}, ...}}
+Generate an insight for every key — do not skip any.
 """
 
     elif task == "insight_alerts":
