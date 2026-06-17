@@ -152,6 +152,41 @@ export default function MatchKickoutOutcomes({ events, teamName = 'Our', opponen
           </span>
         ))}
       </div>
+
+      <TopWinnersSection events={events} mode={mode} />
+    </div>
+  )
+}
+
+function TopWinnersSection({ events, mode }: { events: any[]; mode: KickoutMode }) {
+  const topWinners = useMemo(() => {
+    const wonTypes = mode === 'own'
+      ? new Set(['own_kickout_won', 'own_kickout_won_break'])
+      : new Set(['opp_kickout_opposition_won', 'opp_kickout_opposition_won_break'])
+
+    const counts: Record<string, number> = {}
+    for (const e of events) {
+      if (!wonTypes.has(e.event_type)) continue
+      const name = e.player_name || 'Unknown'
+      counts[name] = (counts[name] || 0) + 1
+    }
+
+    return Object.entries(counts)
+      .filter(([name]) => name !== 'Unknown')
+      .sort((a, b) => b[1] - a[1])
+  }, [events, mode])
+
+  if (topWinners.length === 0) return null
+
+  return (
+    <div className="mt-3 pt-3 border-t border-white/10">
+      <p className="text-xs text-white/40 font-medium mb-1.5">Top Winners</p>
+      {topWinners.slice(0, 5).map(([name, count], i) => (
+        <div key={name} className="flex items-center justify-between py-0.5">
+          <span className="text-xs text-white/70">{i + 1}. {name}</span>
+          <span className="text-xs font-semibold text-emerald-400">{count}</span>
+        </div>
+      ))}
     </div>
   )
 }

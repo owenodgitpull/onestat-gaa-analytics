@@ -177,6 +177,7 @@ export default function MatchRecording() {
   const [pending45, setPending45] = useState<{ position: BallPosition } | null>(null) // Track 45 state
   const [selectingFoulPlayer, setSelectingFoulPlayer] = useState<boolean>(false) // True when selecting own player who fouled
   const [pendingFoul, setPendingFoul] = useState<'own' | 'opponent' | null>(null) // Track which team committed the foul
+  const [tacticalFoul, setTacticalFoul] = useState(false)
   const [weatherOverride, setWeatherOverride] = useState<{ condition: string | null; temp: number | null } | null>(null)
   const [isWeatherPickerOpen, setIsWeatherPickerOpen] = useState(false)
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
@@ -1484,6 +1485,7 @@ export default function MatchRecording() {
     if (wasFoulSelect && matchId) {
       // Skip player for foul — still record the foul_committed event (player_id = null),
       // then open the free kick options so the possession flow isn't broken.
+      setTacticalFoul(false)
       recordEvent.mutateAsync({
         match_id: matchId,
         player_id: undefined,
@@ -1572,6 +1574,8 @@ export default function MatchRecording() {
     if (!pendingSubType || !matchId) { setPendingSubType(null); return }
     const { player, eventType, foulMode, capturedMinute, capturedHalf, position } = pendingSubType
     setPendingSubType(null)
+    const resolvedSubType = foulMode && tacticalFoul ? 'tactical' : subType
+    if (foulMode) setTacticalFoul(false)
 
     try {
       await recordEvent.mutateAsync({
@@ -1583,7 +1587,7 @@ export default function MatchRecording() {
         x_coord: position.x,
         y_coord: position.y,
         is_home_team: true,
-        sub_type: subType,
+        sub_type: resolvedSubType,
       })
       setLastEventType(eventType)
       await invalidateStats()
@@ -3760,9 +3764,17 @@ export default function MatchRecording() {
       {pendingSubType && (
         <div className="fixed inset-0 z-[180] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-5">
-            <p className="text-sm font-bold text-white mb-1">
-              {pendingSubType.foulMode ? 'What type of foul?' : 'What type of error?'}
-            </p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-bold text-white">
+                {pendingSubType.foulMode ? 'What type of foul?' : 'What type of error?'}
+              </p>
+              {pendingSubType.foulMode && (
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={tacticalFoul} onChange={e => setTacticalFoul(e.target.checked)} className="w-4 h-4 rounded" />
+                  <span className="text-xs text-white/70">Tactical</span>
+                </label>
+              )}
+            </div>
             <p className="text-xs text-white/40 mb-4">
               {pendingSubType.player?.name ?? 'Player'} — tap to categorise or skip
             </p>

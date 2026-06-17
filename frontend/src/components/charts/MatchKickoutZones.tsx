@@ -75,10 +75,20 @@ function parseKickoutEvents(events: any[]): ParsedKickout[] {
   return results
 }
 
+function getHalf(e: any): number {
+  return e.half ?? (e.minute != null ? (e.minute <= 40 ? 1 : 2) : 1)
+}
+
 export default function MatchKickoutZones({ events, attackingRightFirstHalf, teamName = 'Our', opponentName = 'Opp' }: Props) {
   const [mode, setMode] = useState<KickoutMode>('own')
+  const [halfFilter, setHalfFilter] = useState<'all' | 1 | 2>('all')
 
-  const allKickouts = useMemo(() => parseKickoutEvents(events), [events])
+  const visibleEvents = useMemo(() => {
+    if (halfFilter === 'all') return events
+    return events.filter(e => getHalf(e) === halfFilter)
+  }, [events, halfFilter])
+
+  const allKickouts = useMemo(() => parseKickoutEvents(visibleEvents), [visibleEvents])
   const filtered = useMemo(() => allKickouts.filter(k => mode === 'own' ? k.isOwn : !k.isOwn), [allKickouts, mode])
 
   const zoneStats = useMemo(() => {
@@ -139,23 +149,33 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
 
   return (
     <div className="glass-card p-5 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <h3 className="text-base font-bold flex items-center gap-2 text-white">
           <Crosshair size={18} />
           Kickout Zones
         </h3>
-        <div className="flex rounded-lg overflow-hidden border border-white/10">
-          {(['own', 'opponent'] as KickoutMode[]).map(m => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`px-2.5 py-1 text-xs font-medium transition-colors ${
-                mode === m ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/70'
-              }`}
-            >
-              {m === 'own' ? `${teamName} K/O` : `${opponentName} K/O`}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg overflow-hidden border border-white/10">
+            {(['all', 1, 2] as const).map(h => (
+              <button key={h} onClick={() => setHalfFilter(h)}
+                className={`px-2 py-1 text-xs font-medium transition-colors ${halfFilter === h ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/70'}`}>
+                {h === 'all' ? 'All' : h === 1 ? 'H1' : 'H2'}
+              </button>
+            ))}
+          </div>
+          <div className="flex rounded-lg overflow-hidden border border-white/10">
+            {(['own', 'opponent'] as KickoutMode[]).map(m => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                  mode === m ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/70'
+                }`}
+              >
+                {m === 'own' ? `${teamName} K/O` : `${opponentName} K/O`}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

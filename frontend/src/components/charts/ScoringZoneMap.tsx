@@ -167,6 +167,28 @@ export default function ScoringZoneMap({ events, teamName, opponent }: Props) {
         ))}
         <span className="text-white/20">· bubble size = shot volume</span>
       </div>
+
+      {(() => {
+        const inside45 = data.filter(z => z.id.startsWith('i-')).reduce(
+          (acc, z) => ({ scores: acc.scores + z.scores, total: acc.total + z.total }),
+          { scores: 0, total: 0 }
+        )
+        const outside45 = data.filter(z => z.id.startsWith('o-')).reduce(
+          (acc, z) => ({ scores: acc.scores + z.scores, total: acc.total + z.total }),
+          { scores: 0, total: 0 }
+        )
+        if (inside45.total === 0 && outside45.total === 0) return null
+        return (
+          <div className="flex flex-wrap gap-2 mt-1.5 justify-center">
+            <span className="px-2 py-0.5 rounded-full bg-white/10 text-[11px] text-white/60">
+              Inside 45m: <span className="text-white font-medium">{inside45.scores}/{inside45.total} ({inside45.total > 0 ? Math.round(inside45.scores / inside45.total * 100) : 0}%)</span>
+            </span>
+            <span className="px-2 py-0.5 rounded-full bg-white/10 text-[11px] text-white/60">
+              Outside 45m: <span className="text-white font-medium">{outside45.scores}/{outside45.total} ({outside45.total > 0 ? Math.round(outside45.scores / outside45.total * 100) : 0}%)</span>
+            </span>
+          </div>
+        )
+      })()}
     </div>
   )
 }
