@@ -155,7 +155,7 @@ Reference knowledge base context when relevant to a specific trigger.
         messages = [{"role": "user", "content": user_prompt}]
 
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-haiku-4-5",
             max_tokens=max_tokens,
             system=cached_system,
             tools=cached_live_tools,
@@ -191,7 +191,7 @@ Reference knowledge base context when relevant to a specific trigger.
             messages.append({"role": "user", "content": tool_results})
 
             response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_tokens=max_tokens,
                 system=cached_system,
                 tools=cached_live_tools,
@@ -296,7 +296,7 @@ INSTRUCTIONS:
         # Initial call with tools
         logger.info(f"Calling Claude with match_id={match_id}, user_message={user_message[:100]}...")
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=4096,
             system=cached_system,
             tools=cached_tools,
@@ -332,7 +332,7 @@ INSTRUCTIONS:
             messages.append({"role": "user", "content": tool_results})
 
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=4096,
                 system=cached_system,
                 tools=cached_tools,
@@ -596,7 +596,7 @@ Return ONLY the JSON object, no other text."""
 
         try:
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -670,7 +670,7 @@ Respond in this exact JSON format (no markdown):
 }}"""
 
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],
             )

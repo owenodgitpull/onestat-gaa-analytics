@@ -45,6 +45,10 @@ import KickoutSequence from '../components/charts/KickoutSequence'
 import ScoringZoneMap from '../components/charts/ScoringZoneMap'
 import TurnoverMap from '../components/charts/TurnoverMap'
 import ShootingEfficiencyHeatmap from '../components/charts/ShootingEfficiencyHeatmap'
+import ScoreOrigins from '../components/charts/ScoreOrigins'
+import ScoreableFreesAnalysis from '../components/charts/ScoreableFreesAnalysis'
+import AttackEfficiencyCard from '../components/charts/AttackEfficiencyCard'
+import SeasonBenchmarkCard from '../components/charts/SeasonBenchmarkCard'
 import GPSConfirmModal from '../components/GPSConfirmModal'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
@@ -96,6 +100,27 @@ export default function MatchResult() {
     queryFn: () => api.ai.analyzeGps(gpsData!, { opponent: match?.opponent, date: match?.match_date }),
     enabled: !!gpsData && gpsData.length > 0,
     staleTime: 1000 * 60 * 30, // Cache for 30 mins
+  })
+
+  const { data: scoreOriginsData } = useQuery({
+    queryKey: ['score-origins', matchId],
+    queryFn: () => api.matchAnalytics.getScoreOrigins(matchId!),
+    enabled: !!matchId && (eventsData?.events?.length ?? 0) > 0,
+  })
+  const { data: scoreableFreesData } = useQuery({
+    queryKey: ['scoreable-frees', matchId],
+    queryFn: () => api.matchAnalytics.getScoreableFrees(matchId!),
+    enabled: !!matchId && (eventsData?.events?.length ?? 0) > 0,
+  })
+  const { data: attackEfficiencyData } = useQuery({
+    queryKey: ['attack-efficiency', matchId],
+    queryFn: () => api.matchAnalytics.getAttackEfficiency(matchId!),
+    enabled: !!matchId && (eventsData?.events?.length ?? 0) > 0,
+  })
+  const { data: seasonBenchmarkData } = useQuery({
+    queryKey: ['season-benchmark', matchId],
+    queryFn: () => api.matchAnalytics.getSeasonBenchmark(matchId!),
+    enabled: !!matchId,
   })
 
   // GPS upload state
@@ -874,6 +899,24 @@ export default function MatchResult() {
           <div className="h-[450px] [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Shooting Efficiency">
               <ShootingEfficiencyHeatmap shots={shotLocations} />
+            </ChartZoomModal>
+          </div>
+
+          {/* Phase 2+3 Analytics */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Score Origins">
+              {scoreOriginsData && <ScoreOrigins data={scoreOriginsData} teamName={clubName} opponentName={match.opponent} />}
+            </ChartZoomModal>
+            <ChartZoomModal title="Attack Efficiency">
+              {attackEfficiencyData && <AttackEfficiencyCard data={attackEfficiencyData} teamName={clubName} opponentName={match.opponent} />}
+            </ChartZoomModal>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Scoreable Frees">
+              {scoreableFreesData && <ScoreableFreesAnalysis data={scoreableFreesData} teamName={clubName} />}
+            </ChartZoomModal>
+            <ChartZoomModal title="vs Season Average">
+              {seasonBenchmarkData && <SeasonBenchmarkCard data={seasonBenchmarkData} teamName={clubName} />}
             </ChartZoomModal>
           </div>
         </div>

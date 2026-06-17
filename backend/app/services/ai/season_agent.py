@@ -94,7 +94,7 @@ class SeasonAgent:
         task: str,
         context: dict,
         club_id: UUID = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: str = "claude-sonnet-4-6",
         max_turns: int = MAX_SEASON_TURNS,
         tool_names: list[str] = None,
     ) -> dict:
@@ -719,7 +719,7 @@ class SeasonAgent:
             result = await SeasonAgent.analyze_season(
                 db, "season_story", context,
                 club_id=club_id,
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_turns=3,
                 tool_names=PLAYER_TOOLS,
             )
@@ -752,7 +752,7 @@ class SeasonAgent:
             result = await SeasonAgent.analyze_season(
                 db, "player_insights", context,
                 club_id=club_id,
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_turns=3,
                 tool_names=PLAYER_TOOLS,
             )
@@ -794,7 +794,7 @@ class SeasonAgent:
             result = await SeasonAgent.analyze_season(
                 db, "player_challenges", context,
                 club_id=club_id,
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_turns=3,
                 tool_names=PLAYER_TOOLS,
             )
@@ -838,7 +838,7 @@ class SeasonAgent:
 
             result = await SeasonAgent.analyze_season(
                 db, "training_summary", context,
-                model="claude-haiku-4-5-20251001",
+                model="claude-haiku-4-5",
                 max_turns=3,
                 tool_names=TRAINING_TOOLS,
             )
@@ -887,7 +887,7 @@ class SeasonAgent:
             context = {}
             result = await SeasonAgent.analyze_season(
                 db, "weekly_brief", context, club_id=club_id,
-                model="claude-sonnet-4-20250514", max_turns=5,
+                model="claude-sonnet-4-6", max_turns=5,
                 tool_names=[
                     "get_team_season_stats", "get_team_gps_summary",
                     "get_attendance_data", "search_players",

@@ -97,7 +97,7 @@ INSTRUCTIONS:
     messages = conversation_history + [{"role": "user", "content": user_message}]
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=2048,
         system=system_prompt,
         tools=TOOLS,
@@ -126,7 +126,7 @@ INSTRUCTIONS:
         messages.append({"role": "user", "content": tool_results})
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2048,
             system=system_prompt,
             tools=TOOLS,
@@ -269,7 +269,7 @@ async def _maybe_summarize_and_trim(
         )
 
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-haiku-4-5",
             max_tokens=300,
             messages=[{
                 "role": "user",
@@ -328,7 +328,7 @@ async def chat_with_analyst_stream(
 
         # Non-streaming tool loop phase
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2048,
             system=system_prompt,
             tools=cached_tools,
@@ -372,7 +372,7 @@ async def chat_with_analyst_stream(
             messages.append({"role": "user", "content": tool_results})
 
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-6",
                 max_tokens=2048,
                 system=system_prompt,
                 tools=cached_tools,

@@ -121,7 +121,7 @@ async def generate_video_match_report(db: AsyncSession, session_id: UUID) -> str
             match_context = f"Match: {club_name} vs {match.opponent}, {match.match_date.strftime('%d %b %Y')}, Venue: {match.venue.value if match.venue else 'unknown'}"
 
         response = client.messages.create(
-            model="claude-sonnet-4-5-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=2000,
             system=f"""You are a GAA tactical analyst for {club_name}. Analyze match events tagged from video.
 
@@ -172,7 +172,7 @@ async def enrich_video_events(db: AsyncSession, session_id: UUID) -> dict:
         events_summary = _build_events_summary(events)
 
         response = client.messages.create(
-            model="claude-sonnet-4-5-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=1500,
             system="""You are a GAA match analyst reviewing tagged events from video analysis.
 Identify potential issues:

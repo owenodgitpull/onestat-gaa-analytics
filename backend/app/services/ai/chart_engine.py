@@ -125,7 +125,7 @@ a variable called `chart_output` with the final JSON dict.
     raw_data = await _get_raw_data_for_charts(db, club_id=club_id)
 
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=2000,
         system=system_prompt,
         messages=[{

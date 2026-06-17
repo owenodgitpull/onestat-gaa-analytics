@@ -70,6 +70,37 @@ export async function fetchAPI<T>(
 }
 
 // ============================================================================
+// Match Analytics Types
+// ============================================================================
+
+export interface ScoreOriginsData {
+  own: { own_kickout: number; opp_kickout: number; turnover: number; free: number; open_play: number; total: number }
+  opp: { own_kickout: number; opp_kickout: number; turnover: number; free: number; open_play: number; total: number }
+}
+
+export interface ScoreableFreesData {
+  fouls_total: number
+  fouls_in_scoring_range: number
+  fouls_out_of_range: number
+  opponent_conversions: number
+  conversion_rate_pct: number
+  foul_locations: Array<{ pitch_x: number; pitch_y: number; in_range: boolean; converted: boolean }>
+}
+
+export interface AttackEfficiencyData {
+  own: { attacks: number; shots: number; attack_to_shot_pct: number }
+  opp: { attacks: number; shots: number; attack_to_shot_pct: number }
+  estimated?: boolean
+}
+
+export interface SeasonBenchmarkData {
+  current: { scores: number; conceded: number; shots: number; wides: number; turnovers_won: number; turnovers_lost: number; kickout_retention_pct: number }
+  season_avg: { scores: number; conceded: number; shots: number; wides: number; turnovers_won: number; turnovers_lost: number; kickout_retention_pct: number }
+  match_count: number
+  trend: Array<{ match_id: string; opponent: string; date: string; scores: number; conceded: number; shots: number; wides: number; turnovers_won: number; turnovers_lost: number; kickout_retention_pct: number }>
+}
+
+// ============================================================================
 // Player Comparison Types
 // ============================================================================
 
@@ -2957,6 +2988,13 @@ export const auditLogAPI = {
     fetchAPI<AuditSummary>('/audit-log/summary'),
 }
 
+const matchAnalyticsAPI = {
+  getScoreOrigins: (matchId: string) => fetchAPI<ScoreOriginsData>(`/match-analytics/${matchId}/score-origins`),
+  getScoreableFrees: (matchId: string) => fetchAPI<ScoreableFreesData>(`/match-analytics/${matchId}/scoreable-frees`),
+  getAttackEfficiency: (matchId: string) => fetchAPI<AttackEfficiencyData>(`/match-analytics/${matchId}/attack-efficiency`),
+  getSeasonBenchmark: (matchId: string) => fetchAPI<SeasonBenchmarkData>(`/match-analytics/${matchId}/vs-season`),
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -2978,6 +3016,7 @@ export const api = {
   matchPrep: matchPrepAPI,
   playbook: playbookAPI,
   auditLog: auditLogAPI,
+  matchAnalytics: matchAnalyticsAPI,
 };
 
 export default api;
