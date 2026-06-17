@@ -141,6 +141,46 @@ export default function TurnoverMap({ events, teamName }: Props) {
       <p className="text-[11px] text-white/25 text-center">
         Includes turnovers won/lost, blocks, interceptions, tackles · bubble size = volume
       </p>
+
+      <TurnoverCauses events={events} />
+    </div>
+  )
+}
+
+function TurnoverCauses({ events }: { events: any[] }) {
+  const causes = useMemo(() => {
+    let forced = 0, unforced = 0, blocked = 0, foul = 0
+    for (const e of events) {
+      const t = e.event_type
+      const team = e.team || (e.is_home_team ? 'own' : 'opponent')
+      if (t === 'turnover_lost' && team === 'own') forced++
+      else if (t === 'unforced_error' && team === 'own') unforced++
+      else if (t === 'block' && team === 'opponent') blocked++
+      else if (t === 'foul_committed' && team === 'own') foul++
+    }
+    return { forced, unforced, blocked, foul }
+  }, [events])
+
+  const total = causes.forced + causes.unforced + causes.blocked + causes.foul
+  if (total === 0) return null
+
+  const pills = [
+    { label: 'Forced', value: causes.forced },
+    { label: 'Unforced', value: causes.unforced },
+    { label: 'Blocked', value: causes.blocked },
+    { label: 'Foul', value: causes.foul },
+  ].filter(p => p.value > 0)
+
+  return (
+    <div>
+      <p className="text-xs text-white/40 font-medium mb-1.5">Turnover Causes</p>
+      <div className="flex flex-wrap gap-2">
+        {pills.map(p => (
+          <span key={p.label} className="px-2.5 py-1 rounded-full bg-white/10 text-xs text-white/60">
+            {p.label}: <span className="text-white font-semibold">{p.value}</span>
+          </span>
+        ))}
+      </div>
     </div>
   )
 }

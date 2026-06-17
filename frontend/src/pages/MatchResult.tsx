@@ -41,6 +41,7 @@ import ShotOutcomeChart from '../components/charts/ShotOutcomeChart'
 import PathsTakenChart from '../components/charts/PathsTakenChart'
 import MatchKickoutZones from '../components/charts/MatchKickoutZones'
 import MatchKickoutOutcomes from '../components/charts/MatchKickoutOutcomes'
+import KickoutSequence from '../components/charts/KickoutSequence'
 import ScoringZoneMap from '../components/charts/ScoringZoneMap'
 import TurnoverMap from '../components/charts/TurnoverMap'
 import ShootingEfficiencyHeatmap from '../components/charts/ShootingEfficiencyHeatmap'
@@ -843,6 +844,12 @@ export default function MatchResult() {
                 insight={postMatchReport?.insights?.shooting}
                 insightLoading={reportLoading}
               />
+            </ChartZoomModal>
+          </div>
+
+          <div className="[&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Kickout Sequence">
+              <KickoutSequence events={eventsData?.events || []} teamName={clubName} opponentName={match.opponent} />
             </ChartZoomModal>
           </div>
 
