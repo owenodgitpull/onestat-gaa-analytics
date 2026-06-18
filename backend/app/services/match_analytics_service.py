@@ -130,7 +130,8 @@ async def get_scoreable_frees(db: AsyncSession, match_id: UUID, club_id: UUID) -
 
         if et == 'foul_committed' and team == 'own':
             fouls_total += 1
-            in_range = pitch_x is not None and pitch_x > 69
+            # Opponent kicks free toward our goal (pitch_x=0); scoreable within ~50m of our goal
+            in_range = pitch_x is not None and pitch_x < 35
             if in_range:
                 fouls_in_range += 1
             else:
