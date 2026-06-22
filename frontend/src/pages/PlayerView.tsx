@@ -422,8 +422,17 @@ function computeRadarInsight(radar: { axis: string; value: number }[], _playerNa
   if (radar.length === 0) return null
   const sorted = [...radar].sort((a, b) => b.value - a.value)
   const strongest = sorted[0]
+  const secondBest = sorted[1]
   const weakest = sorted[sorted.length - 1]
-  return `Strongest in ${strongest.axis.toLowerCase()} (${Math.round(strongest.value)}). ${weakest.value < 30 ? `${weakest.axis} is an area for development (${Math.round(weakest.value)}).` : `Well-rounded profile across all axes.`}`
+  // Only claim a "strongest" axis if it meaningfully leads the next axis (avoids ties at 50/100)
+  const hasGenuineStrength = strongest.value >= 60 && (strongest.value - secondBest.value) >= 8
+  const weaknessNote = weakest.value < 30 ? `${weakest.axis} is an area for development (${Math.round(weakest.value)}).` : `Well-rounded profile across all axes.`
+  if (hasGenuineStrength) {
+    return `Strongest in ${strongest.axis.toLowerCase()} (${Math.round(strongest.value)}). ${weaknessNote}`
+  }
+  return weakest.value < 30
+    ? `${weakest.axis} is an area for development (${Math.round(weakest.value)}). Building consistency across all areas.`
+    : `Emerging profile — more match data will sharpen this picture.`
 }
 
 function computeImpactInsight(matches: { score: number; turnovers: number; defence: number; fullOpponent: string }[]): string | null {
@@ -590,6 +599,12 @@ export default function PlayerView() {
       : 50 // default midpoint
     const avgPossession = (totalTurnoversWon - totalTurnoversLost) / matchesPlayed
     const avgDiscipline = (totalFreesConceded + totalYellowCards * 5 + totalRedCards * 15) / matchesPlayed
+    // If no discipline events recorded at all (fouls/cards not tagged to player), use neutral 50
+    // rather than 100 — zero data ≠ perfectly disciplined
+    const hasDisciplineData = totalFreesConceded + totalYellowCards + totalRedCards > 0
+    const disciplineValue = hasDisciplineData
+      ? Math.min(100, Math.max(0, 100 - avgDiscipline))
+      : 50
 
     return [
       { axis: 'Scoring', value: Math.min(100, (avgScore / 6) * 100) },
@@ -597,7 +612,7 @@ export default function PlayerView() {
       { axis: 'Defence', value: Math.min(100, (avgDefence / 4) * 100) },
       { axis: 'Work Rate', value: Math.min(100, workRate > 0 ? (workRate / 70) * 100 : 50) },
       { axis: 'Possession', value: Math.min(100, Math.max(0, ((avgPossession + 2) / 6) * 100)) },
-      { axis: 'Discipline', value: Math.min(100, Math.max(0, 100 - avgDiscipline)) },
+      { axis: 'Discipline', value: disciplineValue },
     ]
   })() : []
 
