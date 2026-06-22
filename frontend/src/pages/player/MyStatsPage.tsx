@@ -1409,9 +1409,10 @@ function computeRadarData(
 
   const attRate = attendance?.rate_pct ?? 0;
   const discipline = matches.reduce((s, m) => s + m.turnovers_lost, 0);
-  const disciplineScore = matchCount > 0
+  // If no turnovers_lost recorded at all, treat as no data (neutral 50) not perfect (100)
+  const disciplineScore = matchCount > 0 && discipline > 0
     ? Math.max(0, 100 - (discipline / matchCount) * 20)
-    : 50;
+    : matchCount > 0 ? 50 : 50;
 
   // Normalize each to 0-100 scale
   const scoreNorm = Math.min(100, (totalScore / matchCount / 5) * 100); // 5pts/match = 100
