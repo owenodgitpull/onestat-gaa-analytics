@@ -238,7 +238,8 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
 
   // Only show shots with coordinates in the attacking half (pitch_x >= 50)
   const plotShots = shots.filter(s => s.pitch_x !== null && s.pitch_y !== null && s.pitch_x! >= 50)
-  const hiddenCount = shots.length - plotShots.length
+  const noCoordCount = shots.filter(s => s.pitch_x === null || s.pitch_y === null).length
+  const wrongHalfCount = shots.filter(s => s.pitch_x !== null && s.pitch_y !== null && s.pitch_x! < 50).length
 
   if (plotShots.length === 0) {
     return (
@@ -340,9 +341,14 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
         <span className="text-[10px] text-white/30 italic">Tap a shot for detail</span>
       </div>
 
-      {hiddenCount > 0 && (
+      {noCoordCount > 0 && (
         <p className="text-xs text-white/30 text-center mt-1">
-          {hiddenCount} shot{hiddenCount > 1 ? 's' : ''} recorded outside the attacking half — not shown
+          {noCoordCount} shot{noCoordCount > 1 ? 's' : ''} recorded without pitch coordinates — not shown
+        </p>
+      )}
+      {wrongHalfCount > 0 && (
+        <p className="text-xs text-white/30 text-center mt-1">
+          {wrongHalfCount} shot{wrongHalfCount > 1 ? 's' : ''} recorded outside the attacking half — not shown
         </p>
       )}
     </div>
