@@ -212,6 +212,17 @@ export interface RosterPlayer {
   position: string | null;
 }
 
+export interface SleepLogEntry {
+  date: string;        // YYYY-MM-DD
+  hours_slept: number;
+  quality: number | null;  // 1-5
+  notes: string | null;
+}
+
+export interface SleepHistory {
+  entries: SleepLogEntry[];
+}
+
 // ---- API Functions ----
 
 export const playerPortalAPI = {
@@ -261,4 +272,16 @@ export const playerPortalAPI = {
 
   getRoster: () =>
     fetchAPI<{ players: RosterPlayer[] }>('/player-portal/roster'),
+
+  // Sleep tracking
+  logSleep: (data: { hours_slept: number; quality?: number; notes?: string }) =>
+    fetchAPI<SleepLogEntry>('/player-portal/sleep/log', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getSleepHistory: (days?: number) =>
+    fetchAPI<SleepHistory>(
+      `/player-portal/sleep/history${days != null ? `?days=${days}` : ''}`
+    ),
 };
