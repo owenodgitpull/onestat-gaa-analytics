@@ -12,9 +12,10 @@ import {
 } from 'recharts';
 import {
   Crosshair, Activity, Shield, CalendarCheck, Sparkles, Flame,
-  Trophy, X, Search, ArrowLeftRight, Target, BookOpen, Check, ChevronDown,
+  Trophy, X, Search, ArrowLeftRight, Target, BookOpen, Check, ChevronDown, Moon,
 } from 'lucide-react';
 import ChartZoomModal from '../../components/ChartZoomModal';
+import SleepTracker from '../../components/player/SleepTracker';
 
 const TABS = [
   { key: 'scoring', label: 'Scoring', icon: Crosshair },
@@ -22,6 +23,7 @@ const TABS = [
   { key: 'fitness', label: 'Fitness', icon: Activity },
   { key: 'defence', label: 'Defence', icon: Shield },
   { key: 'attendance', label: 'Attendance', icon: CalendarCheck },
+  { key: 'sleep', label: 'Sleep', icon: Moon },
 ];
 
 const TOOLTIP_STYLE = {
@@ -105,6 +107,7 @@ export default function MyStatsPage() {
       {activeTab === 'fitness' && <FitnessTab />}
       {activeTab === 'defence' && <DefenceTab />}
       {activeTab === 'attendance' && <AttendanceTab />}
+      {activeTab === 'sleep' && <SleepTracker />}
 
       {showH2H && <HeadToHeadOverlay onClose={() => setShowH2H(false)} />}
     </div>
