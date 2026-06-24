@@ -5,14 +5,17 @@ All endpoints derive player_id from auth — never from URL params.
 """
 
 import logging
+from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
-from app.auth.dependencies import AuthenticatedUser, require_club
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
 from app.database import get_db
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
@@ -958,3 +961,162 @@ def _generate_highlights(
         highlights.append(f"{total_def} blocks + interceptions — defensive warrior")
 
     return highlights[:5]  # Max 5
+
+
+# ------------------------------------------------------------------
+# Sleep Tracking
+# ------------------------------------------------------------------
+
+class SleepLogBody(BaseModel):
+    hours_slept: float = Field(..., ge=0, le=24, description="Hours slept (0-24)")
+    quality: Optional[int] = Field(None, ge=1, le=5, description="Sleep quality 1-5")
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+@router.post("/sleep/log")
+async def log_sleep(
+    body: SleepLogBody,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upsert today's sleep entry for the authenticated player.
+    Idempotent — calling twice on the same date updates the existing record.
+    """
+    from app.models.sleep_log import SleepLog
+
+    player = await _get_player_for_user(db, user)
+    today = date.today()
+
+    stmt = (
+        pg_insert(SleepLog)
+        .values(
+            player_id=player.id,
+            date=today,
+            hours_slept=body.hours_slept,
+            quality=body.quality,
+            notes=body.notes,
+            created_at=datetime.utcnow(),
+        )
+        .on_conflict_do_update(
+            constraint="uq_sleep_player_date",
+            set_={
+                "hours_slept": body.hours_slept,
+                "quality": body.quality,
+                "notes": body.notes,
+            },
+        )
+        .returning(SleepLog)
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+    row = result.fetchone()
+
+    return {
+        "date": str(today),
+        "hours_slept": body.hours_slept,
+        "quality": body.quality,
+        "notes": body.notes,
+        "player_id": str(player.id),
+    }
+
+
+@router.get("/sleep/history")
+async def get_sleep_history(
+    days: int = Query(default=30, ge=1, le=365),
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Player's own sleep history — most recent first."""
+    from app.models.sleep_log import SleepLog
+
+    player = await _get_player_for_user(db, user)
+    cutoff = date.today() - timedelta(days=days)
+
+    result = await db.execute(
+        select(SleepLog)
+        .where(
+            and_(
+                SleepLog.player_id == player.id,
+                SleepLog.date >= cutoff,
+            )
+        )
+        .order_by(SleepLog.date.desc())
+    )
+    logs = result.scalars().all()
+
+    return {
+        "entries": [
+            {
+                "date": str(log.date),
+                "hours_slept": log.hours_slept,
+                "quality": log.quality,
+                "notes": log.notes,
+            }
+            for log in logs
+        ]
+    }
+
+
+@router.get("/sleep/squad")
+async def get_squad_sleep(
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin-only: last 7 days of sleep data aggregated per player.
+    Returns avg_hours, entries_count, and nights_below_7hrs per player.
+    """
+    from app.models.sleep_log import SleepLog
+
+    cutoff = date.today() - timedelta(days=7)
+
+    # Get all players in this club
+    players_result = await db.execute(
+        select(Player).where(
+            and_(Player.club_id == user.club_id, Player.active.is_(True))
+        ).order_by(Player.name)
+    )
+    players = players_result.scalars().all()
+    if not players:
+        return {"squad": []}
+
+    player_ids = [p.id for p in players]
+    players_map = {p.id: p for p in players}
+
+    # Fetch all sleep logs in the window for this club's players
+    logs_result = await db.execute(
+        select(SleepLog).where(
+            and_(
+                SleepLog.player_id.in_(player_ids),
+                SleepLog.date >= cutoff,
+            )
+        )
+    )
+    logs = logs_result.scalars().all()
+
+    # Group by player_id
+    from collections import defaultdict
+    by_player: dict[UUID, list] = defaultdict(list)
+    for log in logs:
+        by_player[log.player_id].append(log)
+
+    squad = []
+    for pid, player in players_map.items():
+        player_logs = by_player.get(pid, [])
+        entries_count = len(player_logs)
+        avg_hours = (
+            round(sum(l.hours_slept for l in player_logs) / entries_count, 1)
+            if entries_count > 0
+            else None
+        )
+        nights_below_7 = sum(1 for l in player_logs if l.hours_slept < 7)
+        squad.append({
+            "player_id": str(pid),
+            "player_name": player.name,
+            "avg_hours": avg_hours,
+            "entries_count": entries_count,
+            "nights_below_7": nights_below_7,
+        })
+
+    return {"squad": squad}

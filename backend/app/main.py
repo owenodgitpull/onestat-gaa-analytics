@@ -31,6 +31,7 @@ from app.routes import matches, match_events, possession_events, match_lineups, 
 from app.routes import auth as auth_routes
 from app.routes import video_analysis, video_events, fixtures, club_members, player_movement, match_prep, organizations, invitations, playbook_push, tactical_analysis, audit_log
 from app.routes import match_analytics
+from app.routes import cron as cron_routes
 
 # Configure logging
 logging.basicConfig(
@@ -248,6 +249,7 @@ app.include_router(playbook_push.router, prefix="/api/v1/playbook", tags=["Playb
 app.include_router(tactical_analysis.router, prefix="/api/v1/tactical", tags=["Tactical Analysis"])
 app.include_router(audit_log.router, prefix="/api/v1/audit-log", tags=["Audit Log"])
 app.include_router(match_analytics.router, prefix="/api/v1/match-analytics", tags=["Match Analytics"])
+app.include_router(cron_routes.router, prefix="/api/v1/cron", tags=["Cron"])
 
 
 if __name__ == "__main__":

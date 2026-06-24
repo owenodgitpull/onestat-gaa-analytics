@@ -249,6 +249,23 @@ class NotificationService:
             )
 
     @staticmethod
+    async def notify_sleep_reminder(db: AsyncSession, club_id: UUID):
+        """Send morning sleep log reminder to all subscribed players in a club."""
+        users_result = await db.execute(
+            select(User).where(
+                and_(User.club_id == club_id, User.role == "player")
+            )
+        )
+        for u in users_result.scalars().all():
+            await NotificationService.send_push(
+                db, u.id,
+                NotificationType.SLEEP_REMINDER,
+                "Log last night's sleep",
+                "How many hours did you sleep? Takes 10 seconds.",
+                {"type": "sleep_reminder"},
+            )
+
+    @staticmethod
     async def get_notifications(
         db: AsyncSession, user_id: UUID, limit: int = 50
     ) -> list[Notification]:
