@@ -2104,6 +2104,68 @@ class SeasonDashboardService:
         # Approximate recent possessions from shot count (rough proxy)
         recent_productivity = round(recent_pts / (r_shots * 1.5) * 10, 2) if r_shots > 0 else 0
 
+        # --- Batch recent events query for remaining KPI trends ---
+        FREE_SCORE_EVENTS = {EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE}
+        FREE_ATTEMPT_EVENTS = FREE_SCORE_EVENTS | {EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED}
+        GOAL_CHANCE_EVENTS = {EventType.GOAL, EventType.PENALTY_GOAL, EventType.SAVED, EventType.SHORT}
+        FROM_PLAY_SCORE_EVENTS = {EventType.GOAL, EventType.POINT, EventType.TWO_POINT}
+
+        recent_events_result = await db.execute(
+            select(MatchEvent.event_type, MatchEvent.team, func.count(MatchEvent.id).label("cnt"))
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(recent_ids),
+                    MatchEvent.event_type.in_(
+                        list(FREE_SCORE_EVENTS | FREE_ATTEMPT_EVENTS | GOAL_CHANCE_EVENTS |
+                             FROM_PLAY_SCORE_EVENTS | {EventType.POINT, EventType.TWO_POINT, EventType.GOAL} |
+                             opp_ko_won_types | {EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
+                                                  EventType.KICKOUT_LOST, EventType.KICKOUT_WON})
+                    ),
+                )
+            )
+            .group_by(MatchEvent.event_type, MatchEvent.team)
+        )
+        recent_ev = {}
+        for row in recent_events_result:
+            recent_ev[(row.event_type, row.team)] = row.cnt
+
+        def _rev(et, team=None):
+            if team:
+                return recent_ev.get((et, team), 0)
+            return sum(v for (e, _), v in recent_ev.items() if e == et)
+
+        # Recent from-play scores
+        r_from_play = sum(_rev(et, Team.OWN) for et in FROM_PLAY_SCORE_EVENTS)
+        r_free_scores = sum(_rev(et, Team.OWN) for et in FREE_SCORE_EVENTS)
+        r_total_own_scores = r_from_play + r_free_scores
+        recent_from_play_pct = round(r_from_play / r_total_own_scores * 100, 1) if r_total_own_scores > 0 else from_play_pct
+
+        # Recent free conversion
+        r_free_att = sum(_rev(et, Team.OWN) for et in FREE_ATTEMPT_EVENTS)
+        recent_free_conv = round(r_free_scores / r_free_att * 100, 1) if r_free_att > 0 else free_conv
+
+        # Recent goal scoring rate & goal chances
+        r_goals = _rev(EventType.GOAL, Team.OWN) + _rev(EventType.PENALTY_GOAL, Team.OWN)
+        r_goal_chances = r_goals + _rev(EventType.SAVED, Team.OWN) + _rev(EventType.SHORT, Team.OWN)
+        recent_goal_scoring_rate = round(r_goals / trend_window, 2)
+        recent_goal_chances = round(r_goal_chances / trend_window, 2)
+
+        # Recent goals conceded & clean sheets
+        r_opp_goals = _rev(EventType.GOAL, Team.OPPONENT) + _rev(EventType.PENALTY_GOAL, Team.OPPONENT)
+        recent_goals_conceded_pg = round(r_opp_goals / trend_window, 2)
+        recent_clean_sheets = sum(
+            1 for m in recent_matches if (m.opponent_goals * 3 + m.opponent_points) == 0
+        )
+        recent_clean_sheet_rate = round(recent_clean_sheets / trend_window * 100, 1)
+
+        # Recent opp kickout win %
+        r_opp_ko_won = sum(_rev(et, Team.OWN) for et in opp_ko_won_types)
+        r_opp_ko_won += _rev(EventType.KICKOUT_WON, Team.OWN)
+        r_opp_ko_total = r_opp_ko_won + sum(
+            _rev(EventType.OPP_KICKOUT_WON, Team.OPPONENT),
+        )
+        recent_opp_kickout_win = round(r_opp_ko_won / r_opp_ko_total * 100, 1) if r_opp_ko_total > 0 else opp_kickout_win
+
         # Build cards with thresholds
         def color(val, green_test, red_test):
             if green_test(val):
@@ -2227,7 +2289,7 @@ class SeasonDashboardService:
                 "value": clean_sheet_rate,
                 "format": "percent",
                 "color": color(clean_sheet_rate, lambda v: v >= 50, lambda v: v < 30),
-                "trend": make_trend(clean_sheet_rate, clean_sheet_rate),
+                "trend": make_trend(clean_sheet_rate, recent_clean_sheet_rate),
             },
             {
                 "key": "goals_conceded_pg",
@@ -2235,7 +2297,7 @@ class SeasonDashboardService:
                 "value": goals_conceded_pg,
                 "format": "decimal",
                 "color": color(goals_conceded_pg, lambda v: v <= 0.7, lambda v: v > 1.2),
-                "trend": make_trend(goals_conceded_pg, goals_conceded_pg),
+                "trend": make_trend(goals_conceded_pg, recent_goals_conceded_pg),
             },
             {
                 "key": "opp_inside_45",
@@ -2259,7 +2321,7 @@ class SeasonDashboardService:
                 "value": from_play_pct,
                 "format": "percent",
                 "color": color(from_play_pct, lambda v: v >= 60, lambda v: v < 45),
-                "trend": make_trend(from_play_pct, from_play_pct),
+                "trend": make_trend(from_play_pct, recent_from_play_pct),
             },
             {
                 "key": "free_conversion",
@@ -2267,7 +2329,7 @@ class SeasonDashboardService:
                 "value": free_conv,
                 "format": "percent",
                 "color": color(free_conv, lambda v: v >= 80, lambda v: v < 70),
-                "trend": make_trend(free_conv, free_conv),
+                "trend": make_trend(free_conv, recent_free_conv),
             },
             {
                 "key": "goal_scoring_rate",
@@ -2275,7 +2337,7 @@ class SeasonDashboardService:
                 "value": goal_scoring_rate,
                 "format": "decimal",
                 "color": color(goal_scoring_rate, lambda v: v >= 1.5, lambda v: v < 1.0),
-                "trend": make_trend(goal_scoring_rate, goal_scoring_rate),
+                "trend": make_trend(goal_scoring_rate, recent_goal_scoring_rate),
             },
             {
                 "key": "goal_chances_created",
@@ -2283,7 +2345,7 @@ class SeasonDashboardService:
                 "value": goal_chances,
                 "format": "decimal",
                 "color": color(goal_chances, lambda v: v >= 3.0, lambda v: v < 2.0),
-                "trend": make_trend(goal_chances, goal_chances),
+                "trend": make_trend(goal_chances, recent_goal_chances),
             },
             {
                 "key": "opp_kickout_win",
@@ -2291,7 +2353,7 @@ class SeasonDashboardService:
                 "value": opp_kickout_win,
                 "format": "percent",
                 "color": color(opp_kickout_win, lambda v: v >= 40, lambda v: v < 30),
-                "trend": make_trend(opp_kickout_win, opp_kickout_win),
+                "trend": make_trend(opp_kickout_win, recent_opp_kickout_win),
             },
             {
                 "key": "card_rate",

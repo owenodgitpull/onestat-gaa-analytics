@@ -19,7 +19,8 @@ import {
 } from '@dnd-kit/sortable'
 import {
   TrendingUp,
-
+  TrendingDown,
+  Minus,
   Calendar,
   RefreshCw,
   Heart,
@@ -678,6 +679,20 @@ export default function AnalyticsDashboard() {
 
                       <div className="text-white/60 text-xs font-semibold uppercase tracking-wide mb-1.5 pr-6">{card.label}</div>
                       <div className={`text-3xl font-bold ${valueColor}`}>{displayValue}</div>
+                      {card.trend && card.trend.direction !== 'stable' && (
+                        <div className={`flex items-center gap-1 mt-1 text-xs font-medium ${card.trend.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {card.trend.direction === 'up'
+                            ? <TrendingUp size={12} />
+                            : <TrendingDown size={12} />}
+                          <span>Last {card.trend.window}</span>
+                        </div>
+                      )}
+                      {card.trend && card.trend.direction === 'stable' && (
+                        <div className="flex items-center gap-1 mt-1 text-xs font-medium text-white/25">
+                          <Minus size={12} />
+                          <span>Stable</span>
+                        </div>
+                      )}
 
                       {isPair && (
                         <div className="absolute bottom-2 right-3 text-[9px] text-white/20 flex items-center gap-0.5">

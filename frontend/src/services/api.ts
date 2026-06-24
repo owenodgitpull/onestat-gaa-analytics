@@ -749,6 +749,12 @@ export interface KPICardItem {
   format: string;
   color: string;
   insight?: string;
+  trend?: {
+    direction: 'up' | 'down' | 'stable';
+    window: number;
+    season: number;
+    recent: number;
+  };
 }
 
 export interface KPIMetadata {
