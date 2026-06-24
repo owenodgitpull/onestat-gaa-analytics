@@ -663,6 +663,24 @@ TOOLS = [
             "required": ["match_id"]
         }
     },
+    {
+        "name": "get_sleep_data",
+        "description": "Get player sleep data — hours slept, sleep quality scores, and compliance rates. Use to correlate sleep with performance, GPS load, or fitness. Without player_id returns squad-level aggregates. With player_id returns that player's individual history.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id": {
+                    "type": "string",
+                    "description": "Optional UUID of a specific player to get sleep history for. Use search_players first to get the UUID."
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "How many days back to look. Defaults to 14."
+                }
+            },
+            "required": []
+        }
+    },
 ]
 
 def get_cached_tools() -> list:
@@ -738,6 +756,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_workload_risk_assessment(db, **tool_input, club_id=club_id)
     elif tool_name == "get_tactical_tags":
         return await get_tactical_tags(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_sleep_data":
+        return await get_sleep_data(db, **tool_input, club_id=club_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -3724,4 +3744,123 @@ async def get_tactical_tags(db: AsyncSession, match_id: str, club_id=None) -> st
         })
 
     return safe_json({"tags": tag_data, "total": len(tag_data)})
+
+
+async def get_sleep_data(
+    db: AsyncSession,
+    player_id: Optional[str] = None,
+    days: int = 14,
+    club_id=None,
+) -> str:
+    """
+    Get sleep data for the squad or a specific player.
+
+    Squad view (no player_id): returns team aggregates for the last `days`.
+    Player view (with player_id): returns individual log entries for that player.
+    """
+    from app.models.sleep_log import SleepLog
+    from datetime import date, timedelta
+    import uuid as uuid_mod
+
+    cutoff = date.today() - timedelta(days=days)
+
+    if player_id:
+        # Individual player history
+        try:
+            pid = uuid_mod.UUID(player_id)
+        except (ValueError, AttributeError):
+            return safe_json({"error": f"'{player_id}' is not a valid UUID"})
+
+        # Validate player belongs to club
+        if club_id:
+            check = await db.execute(
+                select(Player.id).where(Player.id == pid, Player.club_id == club_id)
+            )
+            if not check.scalar_one_or_none():
+                return safe_json({"error": "Player not found in this club"})
+
+        result = await db.execute(
+            select(SleepLog)
+            .where(
+                SleepLog.player_id == pid,
+                SleepLog.date >= cutoff,
+            )
+            .order_by(SleepLog.date.desc())
+        )
+        logs = result.scalars().all()
+
+        if not logs:
+            return safe_json({"message": "No sleep data for this player in the requested window", "entries": []})
+
+        avg_hours = round(sum(l.hours_slept for l in logs) / len(logs), 1)
+        nights_below_7 = sum(1 for l in logs if l.hours_slept < 7)
+
+        return safe_json({
+            "player_id": player_id,
+            "days_requested": days,
+            "entries_logged": len(logs),
+            "avg_hours": avg_hours,
+            "nights_below_7hrs": nights_below_7,
+            "history": [
+                {
+                    "date": str(l.date),
+                    "hours_slept": l.hours_slept,
+                    "quality": l.quality,
+                    "notes": l.notes,
+                }
+                for l in logs
+            ],
+        })
+
+    # Squad-level aggregates
+    # Get all active players in club
+    players_q = select(Player.id, Player.name).where(Player.active.is_(True))
+    if club_id:
+        players_q = players_q.where(Player.club_id == club_id)
+    players_result = await db.execute(players_q)
+    players_rows = players_result.all()
+
+    if not players_rows:
+        return safe_json({"message": "No players found"})
+
+    player_ids = [r[0] for r in players_rows]
+    squad_size = len(player_ids)
+
+    logs_result = await db.execute(
+        select(SleepLog).where(
+            SleepLog.player_id.in_(player_ids),
+            SleepLog.date >= cutoff,
+        )
+    )
+    all_logs = logs_result.scalars().all()
+
+    if not all_logs:
+        return safe_json({
+            "team_avg_hours_last_7d": None,
+            "team_compliance_pct": 0,
+            "nights_below_7hrs": 0,
+            "squad_size": squad_size,
+            "message": "No sleep data logged in the requested window",
+        })
+
+    total_hours = sum(l.hours_slept for l in all_logs)
+    avg_hours = round(total_hours / len(all_logs), 1)
+    nights_below_7 = sum(1 for l in all_logs if l.hours_slept < 7)
+
+    # Compliance = unique player-days logged / (squad_size * days)
+    # Use last 7d for compliance regardless of `days` param
+    week_cutoff = date.today() - timedelta(days=7)
+    week_logs = [l for l in all_logs if l.date >= week_cutoff]
+    unique_player_days = len({(str(l.player_id), str(l.date)) for l in week_logs})
+    expected_player_days = squad_size * 7
+    compliance_pct = round(unique_player_days / expected_player_days * 100, 1) if expected_player_days > 0 else 0
+
+    return safe_json({
+        "days_requested": days,
+        "squad_size": squad_size,
+        "total_entries": len(all_logs),
+        "team_avg_hours_last_7d": avg_hours,
+        "team_compliance_pct": compliance_pct,
+        "nights_below_7hrs": nights_below_7,
+    })
 

@@ -53,6 +53,7 @@ from app.models.team_invitation import TeamInvitation
 from app.models.playbook_push import PlaybookPush, PlaybookPushRecipient
 from app.models.tactical_snapshot import TacticalAnalysisSnapshot
 from app.models.audit_log import AuditLog
+from app.models.sleep_log import SleepLog
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -126,5 +127,6 @@ __all__ = [
     "PlaybookPush",
     "PlaybookPushRecipient",
     "TacticalAnalysisSnapshot",
+    "SleepLog",
 ]
 

@@ -54,6 +54,7 @@ SEASON_TOOLS = [
     "get_contextual_patterns",
     "get_workload_risk_assessment",
     "get_tactical_tags",
+    "get_sleep_data",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)
@@ -68,6 +69,7 @@ PLAYER_TOOLS = [
     "get_fitness_tests",
     "get_performance_correlations",
     "get_workload_risk_assessment",
+    "get_sleep_data",
 ]
 
 # Tools for training session tasks
@@ -76,6 +78,7 @@ TRAINING_TOOLS = [
     "get_team_gps_summary",
     "get_attendance_data",
     "search_players",
+    "get_sleep_data",
 ]
 
 MAX_SEASON_TURNS = 5
