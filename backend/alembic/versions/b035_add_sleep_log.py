@@ -42,9 +42,7 @@ def upgrade() -> None:
         ),
         sa.UniqueConstraint("player_id", "date", name="uq_sleep_player_date"),
     )
-    op.create_index("ix_sleep_logs_player_id", "sleep_logs", ["player_id"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_sleep_logs_player_id", table_name="sleep_logs")
     op.drop_table("sleep_logs")
