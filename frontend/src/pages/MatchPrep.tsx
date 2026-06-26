@@ -927,7 +927,7 @@ export default function MatchPrep() {
                             <div className="flex items-center gap-1.5 flex-1 min-w-0">
                               {wl && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(wl.status)}`} />}
                               <span className="text-white text-xs font-semibold truncate">{player.name}</span>
-                              {sf && <Moon size={10} className={`flex-shrink-0 ${sf.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`} title={`Avg sleep: ${sf.avg_last_2_nights}h`} />}
+                              {sf && <Moon size={10} className={`flex-shrink-0 ${sf.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`} />}
                             </div>
                             <button
                               onClick={() => handleDirectRemove(pos.id)}
@@ -974,7 +974,7 @@ export default function MatchPrep() {
                             <div className="flex items-center gap-1.5 flex-1 min-w-0">
                               {wl && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(wl.status)}`} />}
                               <span className="text-white text-xs font-semibold truncate">{player.name}</span>
-                              {sf && <Moon size={10} className={`flex-shrink-0 ${sf.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`} title={`Avg sleep: ${sf.avg_last_2_nights}h`} />}
+                              {sf && <Moon size={10} className={`flex-shrink-0 ${sf.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`} />}
                             </div>
                             <button
                               onClick={() => handleDirectRemove(pos.id)}
