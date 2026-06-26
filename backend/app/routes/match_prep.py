@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Optional
 from uuid import UUID
+from datetime import date, timedelta
+from collections import defaultdict
 import json
 import logging
 
@@ -535,3 +537,68 @@ async def save_opposition_roster(
     await db.commit()
 
     return {"players": match.opposition_roster}
+
+
+# ============ Sleep Flags ============
+
+@router.get("/sleep-flags")
+async def get_sleep_flags(
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Return per-player sleep flags for the last 3 days.
+    Used by the lineup page to show a moon badge on players with poor recent sleep.
+    Flags anyone with avg <6h over their last 2 logged nights within the last 3 days.
+    """
+    from app.models.sleep_log import SleepLog
+
+    cutoff = date.today() - timedelta(days=3)
+
+    players_result = await db.execute(
+        select(Player.id, Player.name).where(
+            Player.active.is_(True),
+            Player.club_id == user.club_id,
+        )
+    )
+    players_rows = players_result.all()
+    if not players_rows:
+        return {"flags": []}
+
+    player_ids = [r[0] for r in players_rows]
+    player_name_map = {str(r[0]): r[1] for r in players_rows}
+
+    logs_result = await db.execute(
+        select(SleepLog).where(
+            SleepLog.player_id.in_(player_ids),
+            SleepLog.date >= cutoff,
+        )
+    )
+    logs = logs_result.scalars().all()
+
+    by_player: dict = defaultdict(list)
+    for l in logs:
+        by_player[str(l.player_id)].append(l)
+
+    flags = []
+    for pid_str, plogs in by_player.items():
+        plogs_sorted = sorted(plogs, key=lambda x: x.date, reverse=True)
+        if len(plogs_sorted) >= 2:
+            avg_last_2 = round(sum(l.hours_slept for l in plogs_sorted[:2]) / 2, 1)
+        elif plogs_sorted:
+            avg_last_2 = round(plogs_sorted[0].hours_slept, 1)
+        else:
+            continue
+
+        low_nights = sum(1 for l in plogs_sorted if l.hours_slept < 6)
+
+        if low_nights >= 2 or (len(plogs_sorted) >= 2 and avg_last_2 < 6):
+            flags.append({
+                "player_id": pid_str,
+                "player_name": player_name_map.get(pid_str, "Unknown"),
+                "avg_last_2_nights": avg_last_2,
+                "nights_below_6h": low_nights,
+                "severity": "high" if avg_last_2 < 5 else "medium",
+            })
+
+    return {"flags": flags}

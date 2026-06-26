@@ -15,9 +15,10 @@ import {
   Pencil,
   ChevronDown,
   ChevronUp,
+  Moon,
 } from 'lucide-react'
 import { api } from '@/services/api'
-import type { PlayerWorkload, SetPieceRoutine, ManMarkingAssignment } from '@/services/api'
+import type { PlayerWorkload, SetPieceRoutine, ManMarkingAssignment, SleepFlag } from '@/services/api'
 import type { Match, Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
 import OppositionBriefing from '@/components/OppositionBriefing'
@@ -154,6 +155,7 @@ export default function MatchPrep() {
   const [match, setMatch] = useState<Match | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [workloads, setWorkloads] = useState<PlayerWorkload[]>([])
+  const [sleepFlagMap, setSleepFlagMap] = useState<Map<string, SleepFlag>>(new Map())
   const [lineup, setLineup] = useState<Record<string, { playerId: string; jerseyNumber: number | null }>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, { playerId: string; jerseyNumber: number | null }> | null>(null)
   const [selectingPosition, setSelectingPosition] = useState<string | null>(null)
@@ -208,7 +210,7 @@ export default function MatchPrep() {
     const load = async () => {
       setLoading(true)
       try {
-        const [matchData, playerData, healthData, existingLineup, lastLineup, notesData, markingsData, setPiecesData, rosterData] = await Promise.all([
+        const [matchData, playerData, healthData, existingLineup, lastLineup, notesData, markingsData, setPiecesData, rosterData, sleepFlagsData] = await Promise.all([
           api.matches.getById(matchId),
           api.players.getAll(),
           api.squadHealth.getSummary().catch(() => null),
@@ -218,10 +220,16 @@ export default function MatchPrep() {
           api.matchPrep.listMarkings(matchId).catch(() => []),
           api.matchPrep.listSetPieces().catch(() => []),
           api.matchPrep.getOppositionRoster(matchId).catch(() => ({ players: [] })),
+          api.matchPrep.getSleepFlags().catch(() => ({ flags: [] })),
         ])
         setMatch(matchData)
         setPlayers(playerData)
         if (healthData) setWorkloads(healthData.player_workloads)
+        if (sleepFlagsData.flags.length > 0) {
+          const flagMap = new Map<string, SleepFlag>()
+          sleepFlagsData.flags.forEach(f => flagMap.set(f.player_id, f))
+          setSleepFlagMap(flagMap)
+        }
 
         // Load existing lineup for this match
         if (existingLineup.length > 0) {
@@ -660,6 +668,7 @@ export default function MatchPrep() {
                 const entry = lineup[pos.id]
                 const player = entry ? playerMap.get(entry.playerId) : null
                 const workload = entry ? workloadMap.get(entry.playerId) : undefined
+                const sleepFlag = entry ? sleepFlagMap.get(entry.playerId) : undefined
                 const displayLabel = entry?.jerseyNumber != null ? `${entry.jerseyNumber}` : pos.label
                 const isSelected = selectedPitchPos === pos.id
 
@@ -692,6 +701,9 @@ export default function MatchPrep() {
                             <span className={`w-1.5 h-1.5 rounded-full inline-block ${getStatusDot(workload.status)}`} />
                           )}
                           {displaySurname(player.name)}
+                          {sleepFlag && (
+                            <Moon size={8} className={sleepFlag.severity === 'high' ? 'text-red-400' : 'text-amber-400'} />
+                          )}
                         </span>
                       </div>
                     )}
@@ -755,6 +767,7 @@ export default function MatchPrep() {
                 const entry = lineup[pos.id]
                 const player = entry ? playerMap.get(entry.playerId) : null
                 const workload = entry ? workloadMap.get(entry.playerId) : undefined
+                const sleepFlag = entry ? sleepFlagMap.get(entry.playerId) : undefined
                 const isSelected = selectedPitchPos === pos.id
 
                 return (
@@ -784,6 +797,9 @@ export default function MatchPrep() {
                             <span className={`w-1.5 h-1.5 rounded-full inline-block ${getStatusDot(workload.status)}`} />
                           )}
                           {displaySurname(player.name)}
+                          {sleepFlag && (
+                            <Moon size={8} className={sleepFlag.severity === 'high' ? 'text-red-400' : 'text-amber-400'} />
+                          )}
                         </span>
                       </div>
                     )}
@@ -820,6 +836,7 @@ export default function MatchPrep() {
               <div className="space-y-1.5">
                 {availablePlayers.map(player => {
                   const wl = workloadMap.get(player.id)
+                  const sf = sleepFlagMap.get(player.id)
                   const isUnavailable = player.status === 'injured' || player.status === 'suspended'
                   return (
                     <button
@@ -838,6 +855,12 @@ export default function MatchPrep() {
                             <span className={`w-2 h-2 rounded-full ${getStatusDot(wl.status)}`} />
                           )}
                           <span className="text-white font-semibold text-sm">{player.name}</span>
+                          {sf && (
+                            <span className={`flex items-center gap-0.5 text-[10px] font-semibold ${sf.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`}>
+                              <Moon size={10} />
+                              {sf.avg_last_2_nights}h
+                            </span>
+                          )}
                         </div>
                         {isUnavailable && (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-semibold">
@@ -856,6 +879,11 @@ export default function MatchPrep() {
                               {getStatusLabel(wl.status)}
                             </span>
                           </>
+                        )}
+                        {sf && (
+                          <span className={`text-xs ${sf.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`}>
+                            Poor sleep ({sf.nights_below_6h} night{sf.nights_below_6h !== 1 ? 's' : ''} &lt;6h)
+                          </span>
                         )}
                       </div>
                     </button>
@@ -878,6 +906,7 @@ export default function MatchPrep() {
                     const entry = lineup[pos.id]
                     const player = entry ? playerMap.get(entry.playerId) : null
                     const wl = entry ? workloadMap.get(entry.playerId) : undefined
+                    const sf = entry ? sleepFlagMap.get(entry.playerId) : undefined
                     return (
                       <div key={pos.id} className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white/5">
                         <span className="text-white/40 text-xs font-mono w-7 flex-shrink-0">{pos.label}</span>
@@ -898,6 +927,7 @@ export default function MatchPrep() {
                             <div className="flex items-center gap-1.5 flex-1 min-w-0">
                               {wl && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(wl.status)}`} />}
                               <span className="text-white text-xs font-semibold truncate">{player.name}</span>
+                              {sf && <Moon size={10} className={`flex-shrink-0 ${sf.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`} title={`Avg sleep: ${sf.avg_last_2_nights}h`} />}
                             </div>
                             <button
                               onClick={() => handleDirectRemove(pos.id)}
@@ -923,6 +953,7 @@ export default function MatchPrep() {
                     const entry = lineup[pos.id]
                     const player = entry ? playerMap.get(entry.playerId) : null
                     const wl = entry ? workloadMap.get(entry.playerId) : undefined
+                    const sf = entry ? sleepFlagMap.get(entry.playerId) : undefined
                     return (
                       <div key={pos.id} className="flex items-center gap-1.5 p-1.5 rounded-lg bg-white/5">
                         <span className="text-white/40 text-xs font-mono w-7 flex-shrink-0">S{i + 1}</span>
@@ -943,6 +974,7 @@ export default function MatchPrep() {
                             <div className="flex items-center gap-1.5 flex-1 min-w-0">
                               {wl && <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getStatusDot(wl.status)}`} />}
                               <span className="text-white text-xs font-semibold truncate">{player.name}</span>
+                              {sf && <Moon size={10} className={`flex-shrink-0 ${sf.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`} title={`Avg sleep: ${sf.avg_last_2_nights}h`} />}
                             </div>
                             <button
                               onClick={() => handleDirectRemove(pos.id)}
@@ -976,6 +1008,10 @@ export default function MatchPrep() {
                         {item.label}
                       </div>
                     ))}
+                    <div className="flex items-center gap-1.5 text-xs text-amber-400/70">
+                      <Moon size={10} />
+                      Poor sleep (&lt;6h)
+                    </div>
                   </div>
                 </div>
               )}

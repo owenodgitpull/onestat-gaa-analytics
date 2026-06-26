@@ -2816,6 +2816,14 @@ export interface ManMarkingAssignment {
   created_at: string;
 }
 
+export interface SleepFlag {
+  player_id: string;
+  player_name: string;
+  avg_last_2_nights: number;
+  nights_below_6h: number;
+  severity: 'medium' | 'high';
+}
+
 const matchPrepAPI = {
   // Tactical notes
   saveTacticalNotes: (matchId: string, tacticalNotes: string): Promise<{ tactical_notes: string }> =>
@@ -2871,6 +2879,10 @@ const matchPrepAPI = {
       method: 'PUT',
       body: JSON.stringify({ players }),
     }),
+
+  // Sleep flags for lineup page
+  getSleepFlags: (): Promise<{ flags: SleepFlag[] }> =>
+    fetchAPI('/match-prep/sleep-flags'),
 
   // Voiceover
   getVoiceoverUploadUrl: (routineId: string): Promise<{ upload_url: string; key: string }> =>

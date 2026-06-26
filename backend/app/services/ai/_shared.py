@@ -4273,6 +4273,7 @@ async def get_sleep_data(
 
     player_ids = [r[0] for r in players_rows]
     squad_size = len(player_ids)
+    player_name_map = {str(r[0]): r[1] for r in players_rows}
 
     logs_result = await db.execute(
         select(SleepLog).where(
@@ -4288,6 +4289,7 @@ async def get_sleep_data(
             "team_compliance_pct": 0,
             "nights_below_7hrs": 0,
             "squad_size": squad_size,
+            "alerts": [],
             "message": "No sleep data logged in the requested window",
         })
 
@@ -4303,6 +4305,40 @@ async def get_sleep_data(
     expected_player_days = squad_size * 7
     compliance_pct = round(unique_player_days / expected_player_days * 100, 1) if expected_player_days > 0 else 0
 
+    # Per-player sleep alerts: flag players with ≥2 consecutive nights <6h in last 3 days
+    from collections import defaultdict
+    three_day_cutoff = date.today() - timedelta(days=3)
+    recent_logs = [l for l in all_logs if l.date >= three_day_cutoff]
+    by_player: dict = defaultdict(list)
+    for l in recent_logs:
+        by_player[str(l.player_id)].append(l)
+
+    alerts = []
+    for pid_str, plogs in by_player.items():
+        plogs_sorted = sorted(plogs, key=lambda x: x.date, reverse=True)
+        low_nights = [l for l in plogs_sorted if l.hours_slept < 6]
+        if len(low_nights) >= 2:
+            avg_recent = round(sum(l.hours_slept for l in plogs_sorted[:2]) / 2, 1)
+            alerts.append({
+                "player_id": pid_str,
+                "player_name": player_name_map.get(pid_str, "Unknown"),
+                "consecutive_low_nights": len(low_nights),
+                "avg_last_2_nights": avg_recent,
+                "severity": "high" if avg_recent < 5 else "medium",
+                "note": f"Slept only {avg_recent}h avg over last {len(low_nights)} nights — may affect performance",
+            })
+        elif len(plogs_sorted) >= 2:
+            avg_recent = round(sum(l.hours_slept for l in plogs_sorted[:2]) / 2, 1)
+            if avg_recent < 6:
+                alerts.append({
+                    "player_id": pid_str,
+                    "player_name": player_name_map.get(pid_str, "Unknown"),
+                    "consecutive_low_nights": 1,
+                    "avg_last_2_nights": avg_recent,
+                    "severity": "medium",
+                    "note": f"Averaged {avg_recent}h sleep over last 2 nights",
+                })
+
     return safe_json({
         "days_requested": days,
         "squad_size": squad_size,
@@ -4310,5 +4346,7 @@ async def get_sleep_data(
         "team_avg_hours_last_7d": avg_hours,
         "team_compliance_pct": compliance_pct,
         "nights_below_7hrs": nights_below_7,
+        "alerts": alerts,
+        "alert_summary": f"{len(alerts)} player(s) flagged for poor sleep (avg <6h over last 2-3 nights)" if alerts else "No sleep concerns flagged",
     })
 

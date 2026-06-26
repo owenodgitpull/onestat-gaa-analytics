@@ -207,6 +207,12 @@ class TerritoryDistributionData(BaseModel):
     per_match: List[TerritoryMatchData]
     possession_pct: float
 
+class KPICardTrend(BaseModel):
+    direction: str
+    window: int
+    season: float
+    recent: float
+
 class KPICardItem(BaseModel):
     key: str
     label: str
@@ -214,6 +220,7 @@ class KPICardItem(BaseModel):
     format: str
     color: str
     insight: Optional[str] = None
+    trend: Optional[KPICardTrend] = None
 
 class KPIMetadata(BaseModel):
     matches_played: int
