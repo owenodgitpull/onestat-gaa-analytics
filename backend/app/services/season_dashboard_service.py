@@ -2118,8 +2118,8 @@ class SeasonDashboardService:
                     MatchEvent.event_type.in_(
                         list(FREE_SCORE_EVENTS | FREE_ATTEMPT_EVENTS | GOAL_CHANCE_EVENTS |
                              FROM_PLAY_SCORE_EVENTS | {EventType.POINT, EventType.TWO_POINT, EventType.GOAL} |
-                             opp_ko_won_types | {EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
-                                                  EventType.KICKOUT_LOST, EventType.KICKOUT_WON})
+                             set(opp_ko_won_types) | {EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
+                                                       EventType.KICKOUT_LOST, EventType.KICKOUT_WON})
                     ),
                 )
             )
