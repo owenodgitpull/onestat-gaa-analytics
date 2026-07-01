@@ -267,6 +267,20 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
       },
     },
   },
+  {
+    id: 'ball-recovery',
+    frontKey: 'ball_recovery_avg_min',
+    frontLabel: 'Ball Recovery Time',
+    flipKey: null,
+    flipLabel: null,
+    theme: 'Transition & Efficiency',
+    explanations: {
+      ball_recovery_avg_min: {
+        what: 'Average minutes to win back possession after a turnover or unforced error. Measures pressing intensity and transition speed — lower is better.',
+        formula: 'For each possession loss event (turnover / unforced error), find the next own-team recovery event and measure the gap in minutes (capped at 10 min to exclude half-time gaps). Average across all losses in the season. Under 2 min = strong press, over 3 min = slow transition.',
+      },
+    },
+  },
 ]
 
 /** Default visible KPI pairing IDs (first 4 shown by default) */

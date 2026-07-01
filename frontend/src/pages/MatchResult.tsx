@@ -1094,6 +1094,13 @@ function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; o
     { label: 'Accuracy', left: `${Math.round(stats.team_accuracy)}%`, right: `${Math.round(stats.opponent_accuracy)}%`, leftVal: stats.team_accuracy, rightVal: stats.opponent_accuracy },
     { label: 'Conversion', left: `${teamConversion}%`, right: `${opponentConversion}%`, leftVal: Number(teamConversion), rightVal: Number(opponentConversion) },
     { label: 'Turnovers Won', left: stats.team_turnovers_won, right: stats.opponent_turnovers_won, leftVal: stats.team_turnovers_won, rightVal: stats.opponent_turnovers_won },
+    ...(stats.team_ball_recovery_avg_min != null || stats.opponent_ball_recovery_avg_min != null ? [{
+      label: 'Ball Recovery',
+      left: stats.team_ball_recovery_avg_min != null ? `${stats.team_ball_recovery_avg_min}m` : '–',
+      right: stats.opponent_ball_recovery_avg_min != null ? `${stats.opponent_ball_recovery_avg_min}m` : '–',
+      leftVal: stats.opponent_ball_recovery_avg_min ?? 0,
+      rightVal: stats.team_ball_recovery_avg_min ?? 0,
+    }] : []),
     { label: 'Unforced Errors', left: stats.team_unforced_errors ?? 0, right: stats.opponent_unforced_errors ?? 0, leftVal: stats.opponent_unforced_errors ?? 0, rightVal: stats.team_unforced_errors ?? 0 },
     { label: 'Kickouts Won', left: `${stats.team_kickouts_won}/${totalTeamKickouts}`, right: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}`, leftVal: stats.team_kickouts_won, rightVal: stats.opponent_kickouts_won },
     { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },

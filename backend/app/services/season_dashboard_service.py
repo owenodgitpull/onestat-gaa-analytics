@@ -2166,6 +2166,68 @@ class SeasonDashboardService:
         )
         recent_opp_kickout_win = round(r_opp_ko_won / r_opp_ko_total * 100, 1) if r_opp_ko_total > 0 else opp_kickout_win
 
+        # --- Ball recovery time (avg minutes per match to win back possession) ---
+        BALL_LOSS_TYPES = frozenset([EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR])
+        BALL_RECOVERY_TYPES = frozenset([
+            EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON,
+            EventType.OWN_KICKOUT_WON, EventType.OPP_KICKOUT_WON, EventType.KICKOUT_WON,
+            EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON_BREAK,
+            EventType.GOAL, EventType.POINT, EventType.POINT_FREE,
+            EventType.TWO_POINT, EventType.TWO_POINT_FREE,
+            EventType.FORTY_FIVE, EventType.PENALTY_GOAL,
+        ])
+        recovery_ev_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute)
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.minute.isnot(None),
+                    MatchEvent.event_type.in_(list(BALL_LOSS_TYPES | BALL_RECOVERY_TYPES)),
+                )
+            )
+            .order_by(MatchEvent.match_id, MatchEvent.minute)
+        )
+        recovery_ev_rows = recovery_ev_result.all()
+
+        def _compute_recovery_avg(rows, filter_ids=None):
+            from collections import defaultdict
+            ev_by_match = defaultdict(list)
+            for r in rows:
+                if filter_ids is None or r.match_id in filter_ids:
+                    ev_by_match[r.match_id].append(r)
+            match_avgs = []
+            for evs in ev_by_match.values():
+                loss_min = None
+                gaps = []
+                for e in evs:
+                    if e.team == Team.OWN and e.event_type in BALL_LOSS_TYPES:
+                        loss_min = e.minute
+                    elif loss_min is not None and e.team == Team.OWN and e.event_type in BALL_RECOVERY_TYPES:
+                        diff = e.minute - loss_min
+                        if 0 < diff <= 10:
+                            gaps.append(diff)
+                        loss_min = None
+                if gaps:
+                    match_avgs.append(sum(gaps) / len(gaps))
+            return round(sum(match_avgs) / len(match_avgs), 1) if match_avgs else 0.0
+
+        ball_recovery_avg = _compute_recovery_avg(recovery_ev_rows)
+        recent_recovery_avg = _compute_recovery_avg(recovery_ev_rows, set(recent_ids)) or ball_recovery_avg
+
+        # Trend for recovery time: lower is better, so invert direction semantics
+        if ball_recovery_avg > 0 and recent_recovery_avg > 0:
+            _rec_chg = round((recent_recovery_avg - ball_recovery_avg) / ball_recovery_avg * 100)
+            _rec_dir = "down" if _rec_chg > 5 else ("up" if _rec_chg < -5 else "stable")
+        else:
+            _rec_chg, _rec_dir = 0, "stable"
+        recovery_trend = {
+            "window": trend_window,
+            "season": round(ball_recovery_avg, 1),
+            "recent": round(recent_recovery_avg, 1),
+            "direction": _rec_dir,
+            "change_pct": _rec_chg,
+        }
+
         # Build cards with thresholds
         def color(val, green_test, red_test):
             if green_test(val):
@@ -2378,6 +2440,14 @@ class SeasonDashboardService:
                 "format": "decimal",
                 "color": color(unforced_errors_pg, lambda v: v <= 3, lambda v: v > 6),
                 "trend": make_trend(unforced_errors_pg, recent_ue_pg),
+            },
+            {
+                "key": "ball_recovery_avg_min",
+                "label": "Ball Recovery Time",
+                "value": ball_recovery_avg,
+                "format": "decimal",
+                "color": color(ball_recovery_avg, lambda v: 0 < v <= 2.0, lambda v: v > 3.0 or v == 0),
+                "trend": recovery_trend,
             },
         ])
 

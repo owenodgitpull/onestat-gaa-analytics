@@ -53,6 +53,7 @@ export default function PlayerDashboard() {
   const { data, isLoading, error } = useQuery<DashboardData>({
     queryKey: ['player-dashboard'],
     queryFn: playerPortalAPI.getMyDashboard,
+    staleTime: 30 * 60 * 1000,
   });
 
   if (isLoading) {

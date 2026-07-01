@@ -499,11 +499,11 @@ async def get_my_attendance(
     """Attendance summary + session breakdown."""
     player = await _get_player_for_user(db, user)
 
-    # Get all club sessions
+    # Get all club sessions (cap at 200 most recent)
     sessions_result = await db.execute(
         select(TrainingSession).where(
             TrainingSession.club_id == user.club_id
-        ).order_by(TrainingSession.session_date.desc())
+        ).order_by(TrainingSession.session_date.desc()).limit(200)
     )
     sessions = sessions_result.scalars().all()
     if not sessions:

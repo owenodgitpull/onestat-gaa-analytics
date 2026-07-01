@@ -570,15 +570,282 @@ class LeaderboardService:
     async def get_all_leaderboards(
         db: AsyncSession, club_id: UUID, player_id: UUID | None = None
     ) -> list[dict]:
-        """Compute all 8 leaderboards. Returns top 3 + player context for each."""
-        results = []
-        for key, meta in LeaderboardService.CATEGORIES.items():
-            method = getattr(LeaderboardService, meta["method"])
-            full_ranking = await method(db, club_id)
-            results.append(
-                _build_context(key, meta, full_ranking, str(player_id) if player_id else None)
+        """Compute all 8 leaderboards in ~7 DB queries (was 24+)."""
+        import asyncio
+        from uuid import UUID as _UUID
+
+        # --- 1. Fetch matches ---
+        matches_result = await db.execute(
+            select(Match).where(
+                and_(
+                    Match.club_id == club_id,
+                    Match.status == MatchStatus.COMPLETED,
+                    Match.is_deleted.is_(False),
+                )
             )
-        return results
+        )
+        matches = matches_result.scalars().all()
+        if not matches:
+            return [
+                _build_context(key, meta, [], str(player_id) if player_id else None)
+                for key, meta in LeaderboardService.CATEGORIES.items()
+            ]
+
+        match_ids = [m.id for m in matches]
+
+        # --- 2. Fetch active players ---
+        players_result = await db.execute(
+            select(Player).where(and_(Player.club_id == club_id, Player.active.is_(True)))
+        )
+        players = {str(p.id): p for p in players_result.scalars().all()}
+
+        # Union of all event types needed across all categories
+        all_needed_types = list(
+            set(SCORING_EVENTS) | set(SHOT_EVENTS) | set(DEFENSIVE_EVENTS) | set(MOTM_WEIGHTS.keys())
+        )
+
+        # --- 3. Fetch all match events in one query ---
+        events_result = await db.execute(
+            select(MatchEvent).where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_(all_needed_types),
+                    MatchEvent.player_id.isnot(None),
+                )
+            )
+        )
+        all_events = events_result.scalars().all()
+
+        # --- 4. GPS aggregates (distance + max speed + sprints) in one query ---
+        gps_result = await db.execute(
+            select(
+                MatchGPSData.player_id,
+                func.avg(MatchGPSData.total_distance_m).label("avg_dist"),
+                func.max(MatchGPSData.max_speed_ms).label("top_speed"),
+                func.avg(MatchGPSData.sprint_count).label("avg_sprints"),
+                func.count(MatchGPSData.id).label("match_count"),
+            ).where(
+                and_(MatchGPSData.match_id.in_(match_ids))
+            ).group_by(MatchGPSData.player_id)
+        )
+        gps_rows = gps_result.all()
+
+        # --- 5. Training GPS max speed (optional) ---
+        speed_map: dict[str, float] = {}
+        for row in gps_rows:
+            pid = str(row.player_id)
+            if pid in players and row.top_speed is not None:
+                speed_map[pid] = float(row.top_speed)
+
+        if TrainingGPSData is not None:
+            player_ids_list = [_UUID(pid) for pid in players.keys()]
+            try:
+                train_result = await db.execute(
+                    select(
+                        TrainingGPSData.player_id,
+                        func.max(TrainingGPSData.max_speed_ms).label("top_speed"),
+                    ).where(
+                        and_(
+                            TrainingGPSData.player_id.in_(player_ids_list),
+                            TrainingGPSData.max_speed_ms.isnot(None),
+                        )
+                    ).group_by(TrainingGPSData.player_id)
+                )
+                for row in train_result:
+                    pid = str(row.player_id)
+                    if pid in players:
+                        speed_map[pid] = max(speed_map.get(pid, 0), float(row.top_speed))
+            except Exception:
+                pass
+
+        # --- 6. Training sessions + 7. Attendance in two queries ---
+        sessions_result = await db.execute(
+            select(TrainingSession.id).where(TrainingSession.club_id == club_id)
+        )
+        session_ids = [r[0] for r in sessions_result.all()]
+
+        att_by_player: dict[str, dict] = {}
+        if session_ids:
+            att_result = await db.execute(
+                select(Attendance).where(Attendance.session_id.in_(session_ids))
+            )
+            for r in att_result.scalars().all():
+                pid = str(r.player_id)
+                if pid not in players:
+                    continue
+                d = att_by_player.setdefault(pid, {"present": 0, "total": 0})
+                d["total"] += 1
+                if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
+                    d["present"] += 1
+
+        # ----------------------------------------------------------------
+        # Compute all 8 rankings from shared in-memory data
+        # ----------------------------------------------------------------
+
+        # 1. Top Scorer
+        scorer_scores: dict[str, int] = {}
+        scorer_details: dict[str, dict] = {}
+        for e in all_events:
+            if e.event_type not in SCORING_EVENTS:
+                continue
+            pid = str(e.player_id)
+            if pid not in players:
+                continue
+            scorer_scores[pid] = scorer_scores.get(pid, 0) + _score_value(e.event_type)
+            d = scorer_details.setdefault(pid, {"goals": 0, "points": 0, "two_ptrs": 0, "frees": 0})
+            if e.event_type in (EventType.GOAL, EventType.PENALTY_GOAL):
+                d["goals"] += 1
+            elif e.event_type in (EventType.TWO_POINT, EventType.TWO_POINT_FREE):
+                d["two_ptrs"] += 1
+            elif e.event_type in (EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE):
+                d["points"] += 1
+            if e.event_type in (EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE):
+                d["frees"] += 1
+        top_scorer_ranking = sorted(scorer_scores.items(), key=lambda x: x[1], reverse=True)
+        top_scorer = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": val, "detail": _format_gaa_score(scorer_details.get(pid, {}))}
+            for i, (pid, val) in enumerate(top_scorer_ranking)
+        ]
+
+        # 2. Clinical Rating
+        shot_counts: dict[str, int] = {}
+        score_counts: dict[str, int] = {}
+        for e in all_events:
+            if e.event_type not in SHOT_EVENTS:
+                continue
+            pid = str(e.player_id)
+            if pid not in players:
+                continue
+            shot_counts[pid] = shot_counts.get(pid, 0) + 1
+            if e.event_type in SCORING_EVENTS:
+                score_counts[pid] = score_counts.get(pid, 0) + 1
+        clinical_data = []
+        for pid, total in shot_counts.items():
+            if total < 10:
+                continue
+            pct = round(score_counts.get(pid, 0) / total * 100, 1)
+            clinical_data.append((pid, pct, total))
+        clinical_data.sort(key=lambda x: x[1], reverse=True)
+        clinical_rating = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": pct, "detail": f"{score_counts.get(pid, 0)}/{total} shots"}
+            for i, (pid, pct, total) in enumerate(clinical_data)
+        ]
+
+        # 3. The Wall
+        defensive_stats: dict[str, dict] = {}
+        for e in all_events:
+            if e.event_type not in DEFENSIVE_EVENTS:
+                continue
+            pid = str(e.player_id)
+            if pid not in players:
+                continue
+            d = defensive_stats.setdefault(pid, {"blocks": 0, "interceptions": 0, "turnovers_won": 0, "tackles": 0})
+            if e.event_type == EventType.BLOCK:
+                d["blocks"] += 1
+            elif e.event_type == EventType.INTERCEPTION:
+                d["interceptions"] += 1
+            elif e.event_type == EventType.TURNOVER_WON:
+                d["turnovers_won"] += 1
+            elif e.event_type == EventType.TACKLE_WON:
+                d["tackles"] += 1
+        the_wall_ranked = sorted(defensive_stats.items(), key=lambda x: sum(x[1].values()), reverse=True)
+        the_wall = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": sum(d.values()),
+             "detail": f"{d['blocks']}B {d['interceptions']}I {d['tackles']}T {d['turnovers_won']}TO"}
+            for i, (pid, d) in enumerate(the_wall_ranked)
+        ]
+
+        # 4. Workhorse (GPS avg distance)
+        workhorse_data = []
+        for row in gps_rows:
+            pid = str(row.player_id)
+            if pid not in players or row.avg_dist is None:
+                continue
+            avg_km = round(float(row.avg_dist) / 1000, 2)
+            workhorse_data.append((pid, avg_km, int(row.match_count)))
+        workhorse_data.sort(key=lambda x: x[1], reverse=True)
+        workhorse = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": avg_km, "detail": f"{mc} matches"}
+            for i, (pid, avg_km, mc) in enumerate(workhorse_data)
+        ]
+
+        # 5. Speed Demon (max speed ever)
+        speed_ranked = sorted(speed_map.items(), key=lambda x: x[1], reverse=True)
+        speed_demon = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": round(spd * 3.6, 1), "detail": f"{round(spd, 2)} m/s"}
+            for i, (pid, spd) in enumerate(speed_ranked)
+        ]
+
+        # 6. Sprint King (avg sprints per match)
+        sprint_data = []
+        for row in gps_rows:
+            pid = str(row.player_id)
+            if pid not in players or row.avg_sprints is None:
+                continue
+            sprint_data.append((pid, round(float(row.avg_sprints), 1), int(row.match_count)))
+        sprint_data.sort(key=lambda x: x[1], reverse=True)
+        sprint_king = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": avg_sp, "detail": f"{mc} matches"}
+            for i, (pid, avg_sp, mc) in enumerate(sprint_data)
+        ]
+
+        # 7. Iron Man (attendance rate)
+        iron_data = []
+        for pid, d in att_by_player.items():
+            if d["total"] == 0:
+                continue
+            rate = round(d["present"] / d["total"] * 100, 1)
+            iron_data.append((pid, rate, d["present"], d["total"]))
+        iron_data.sort(key=lambda x: x[1], reverse=True)
+        iron_man = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": rate, "detail": f"{present}/{total} sessions"}
+            for i, (pid, rate, present, total) in enumerate(iron_data)
+        ]
+
+        # 8. MOTM Points
+        motm_scores: dict[str, int] = {}
+        motm_match_counts: dict[str, set] = {}
+        motm_types = frozenset(MOTM_WEIGHTS.keys())
+        for e in all_events:
+            if e.event_type not in motm_types:
+                continue
+            pid = str(e.player_id)
+            if pid not in players:
+                continue
+            w = MOTM_WEIGHTS.get(e.event_type, 0)
+            motm_scores[pid] = motm_scores.get(pid, 0) + w
+            motm_match_counts.setdefault(pid, set()).add(str(e.match_id))
+        motm_ranked = sorted(motm_scores.items(), key=lambda x: x[1], reverse=True)
+        motm_points = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": val, "detail": f"{len(motm_match_counts.get(pid, set()))} matches"}
+            for i, (pid, val) in enumerate(motm_ranked)
+        ]
+
+        all_rankings = {
+            "top_scorer": top_scorer,
+            "clinical_rating": clinical_rating,
+            "the_wall": the_wall,
+            "workhorse": workhorse,
+            "speed_demon": speed_demon,
+            "sprint_king": sprint_king,
+            "iron_man": iron_man,
+            "motm_points": motm_points,
+        }
+
+        pid_str = str(player_id) if player_id else None
+        return [
+            _build_context(key, meta, all_rankings[key], pid_str)
+            for key, meta in LeaderboardService.CATEGORIES.items()
+        ]
 
     @staticmethod
     async def get_single_leaderboard(

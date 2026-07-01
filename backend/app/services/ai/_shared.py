@@ -701,6 +701,26 @@ TOOLS = [
             "required": []
         }
     },
+    {
+        "name": "get_ball_recovery_time",
+        "description": (
+            "Analyse how quickly the team wins back possession after a turnover or unforced error. "
+            "Returns per-match average recovery time (minutes) for own team and opponent, "
+            "season average for both, and per-match trend data suitable for a dual-line chart. "
+            "Lower = better pressing. Use to identify matches where the team conceded rapid counter-attacks "
+            "or to compare transition speed across the season."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "Optional UUID to limit analysis to a single match. Omit for season-wide analysis."
+                }
+            },
+            "required": []
+        }
+    },
 ]
 
 def get_cached_tools() -> list:
@@ -780,6 +800,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_live_match_stats(db, **tool_input, club_id=club_id)
     elif tool_name == "get_sleep_data":
         return await get_sleep_data(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_ball_recovery_time":
+        return await get_ball_recovery_time(db, **tool_input, club_id=club_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -4350,3 +4372,107 @@ async def get_sleep_data(
         "alert_summary": f"{len(alerts)} player(s) flagged for poor sleep (avg <6h over last 2-3 nights)" if alerts else "No sleep concerns flagged",
     })
 
+
+async def get_ball_recovery_time(db: AsyncSession, match_id: str | None = None, club_id=None) -> str:
+    """Compute ball recovery time — avg minutes to win back possession after a turnover or unforced error."""
+    from collections import defaultdict
+    from app.models.match import Match, MatchStatus
+    from app.models.match_event import MatchEvent, EventType, Team
+    import uuid as uuid_mod
+
+    BALL_LOSS = frozenset([EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR])
+    BALL_RECOVERY = frozenset([
+        EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON,
+        EventType.OWN_KICKOUT_WON, EventType.OPP_KICKOUT_WON, EventType.KICKOUT_WON,
+        EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON_BREAK,
+        EventType.GOAL, EventType.POINT, EventType.POINT_FREE,
+        EventType.TWO_POINT, EventType.TWO_POINT_FREE,
+        EventType.FORTY_FIVE, EventType.PENALTY_GOAL,
+    ])
+
+    try:
+        # Determine scope: single match or season
+        if match_id:
+            match_uuid = uuid_mod.UUID(match_id)
+            match_result = await db.execute(select(Match).where(Match.id == match_uuid))
+            match = match_result.scalar_one_or_none()
+            if not match:
+                return safe_json({"error": "Match not found"})
+            scope_ids = [match_uuid]
+            match_labels = {match_uuid: f"{match.opponent} ({match.match_date.strftime('%d %b') if match.match_date else 'Unknown'})"}
+        else:
+            where_clauses = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+            if club_id:
+                where_clauses.append(Match.club_id == club_id)
+            matches_result = await db.execute(
+                select(Match).where(and_(*where_clauses)).order_by(Match.match_date.asc())
+            )
+            matches = matches_result.scalars().all()
+            if not matches:
+                return safe_json({"error": "No completed matches found"})
+            scope_ids = [m.id for m in matches]
+            match_labels = {m.id: f"{m.opponent} ({m.match_date.strftime('%d %b') if m.match_date else 'Unknown'})" for m in matches}
+
+        # Fetch events with minute data
+        ev_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute)
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(scope_ids),
+                    MatchEvent.minute.isnot(None),
+                    MatchEvent.event_type.in_(list(BALL_LOSS | BALL_RECOVERY)),
+                )
+            )
+            .order_by(MatchEvent.match_id, MatchEvent.minute)
+        )
+        rows = ev_result.all()
+
+        ev_by_match = defaultdict(list)
+        for r in rows:
+            ev_by_match[r.match_id].append(r)
+
+        def _recovery_avg(evs, team):
+            loss_min = None
+            gaps = []
+            for e in evs:
+                if e.team == team and e.event_type in BALL_LOSS:
+                    loss_min = e.minute
+                elif loss_min is not None and e.team == team and e.event_type in BALL_RECOVERY:
+                    diff = e.minute - loss_min
+                    if 0 < diff <= 10:
+                        gaps.append(diff)
+                    loss_min = None
+            return round(sum(gaps) / len(gaps), 2) if gaps else None
+
+        per_match = []
+        for mid in scope_ids:
+            evs = ev_by_match.get(mid, [])
+            own_avg = _recovery_avg(evs, Team.OWN)
+            opp_avg = _recovery_avg(evs, Team.OPPONENT)
+            if own_avg is not None or opp_avg is not None:
+                per_match.append({
+                    "match": match_labels.get(mid, str(mid)),
+                    "team_recovery_min": own_avg,
+                    "opponent_recovery_min": opp_avg,
+                })
+
+        own_avgs = [m["team_recovery_min"] for m in per_match if m["team_recovery_min"] is not None]
+        opp_avgs = [m["opponent_recovery_min"] for m in per_match if m["opponent_recovery_min"] is not None]
+        season_own = round(sum(own_avgs) / len(own_avgs), 2) if own_avgs else None
+        season_opp = round(sum(opp_avgs) / len(opp_avgs), 2) if opp_avgs else None
+
+        return safe_json({
+            "scope": "single_match" if match_id else "season",
+            "matches_analysed": len(per_match),
+            "season_avg_team_recovery_min": season_own,
+            "season_avg_opponent_recovery_min": season_opp,
+            "interpretation": (
+                f"Team takes avg {season_own}min to regain possession after a turnover/error "
+                f"vs opponent avg {season_opp}min. Lower = better pressing / transition."
+                if season_own and season_opp else "Insufficient minute-level event data for recovery analysis."
+            ),
+            "per_match": per_match,
+        })
+
+    except Exception as e:
+        return safe_json({"error": str(e)})

@@ -511,6 +511,38 @@ class MatchService:
             on_target_attempts = scores + wides
             if on_target_attempts > 0:
                 stats[f"{team_prefix}_accuracy"] = (scores / on_target_attempts) * 100
-        
+
+        # Ball recovery time — avg minutes to win ball back after a loss event
+        _BALL_LOSS = frozenset([EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR])
+        _BALL_RECOVERY = frozenset([
+            EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON,
+            EventType.OWN_KICKOUT_WON, EventType.OPP_KICKOUT_WON,
+            EventType.KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
+            EventType.OPP_KICKOUT_WON_BREAK,
+            EventType.GOAL, EventType.POINT, EventType.POINT_FREE,
+            EventType.TWO_POINT, EventType.TWO_POINT_FREE,
+            EventType.FORTY_FIVE, EventType.PENALTY_GOAL,
+        ])
+
+        def _calc_recovery(evts, team):
+            timed = sorted(
+                [e for e in evts if e.minute is not None and e.team == team],
+                key=lambda e: e.minute,
+            )
+            gaps = []
+            loss_min = None
+            for e in timed:
+                if e.event_type in _BALL_LOSS:
+                    loss_min = e.minute
+                elif loss_min is not None and e.event_type in _BALL_RECOVERY:
+                    diff = e.minute - loss_min
+                    if 0 < diff <= 10:
+                        gaps.append(diff)
+                    loss_min = None
+            return round(sum(gaps) / len(gaps), 1) if gaps else None
+
+        stats["team_ball_recovery_avg_min"] = _calc_recovery(events, Team.OWN)
+        stats["opponent_ball_recovery_avg_min"] = _calc_recovery(events, Team.OPPONENT)
+
         return stats
 

@@ -55,6 +55,7 @@ SEASON_TOOLS = [
     "get_workload_risk_assessment",
     "get_tactical_tags",
     "get_sleep_data",
+    "get_ball_recovery_time",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)

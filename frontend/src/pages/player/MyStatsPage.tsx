@@ -121,18 +121,22 @@ function ScoringTab() {
   const { data: matchData, isLoading: matchLoading } = useQuery({
     queryKey: ['player-match-stats'],
     queryFn: playerPortalAPI.getMyMatchStats,
+    staleTime: 30 * 60 * 1000,
   });
   const { data: shotData, isLoading: shotLoading } = useQuery({
     queryKey: ['player-shots'],
     queryFn: playerPortalAPI.getMyShots,
+    staleTime: 30 * 60 * 1000,
   });
   const { data: gpsData } = useQuery({
     queryKey: ['player-gps'],
     queryFn: playerPortalAPI.getMyGPS,
+    staleTime: 30 * 60 * 1000,
   });
   const { data: attData } = useQuery<AttendanceSummary>({
     queryKey: ['player-attendance'],
     queryFn: playerPortalAPI.getMyAttendance,
+    staleTime: 30 * 60 * 1000,
   });
 
   if (matchLoading || shotLoading) return <LoadingState />;
@@ -694,11 +698,13 @@ function GPSTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['player-gps'],
     queryFn: playerPortalAPI.getMyGPS,
+    staleTime: 30 * 60 * 1000,
   });
   const { data: workloadData } = useQuery({
     queryKey: ['player-workload'],
     queryFn: playerPortalAPI.getMyWorkload,
     retry: 1,
+    staleTime: 30 * 60 * 1000,
   });
 
   if (isLoading) return <LoadingState />;
@@ -924,6 +930,7 @@ function FitnessTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['player-fitness'],
     queryFn: playerPortalAPI.getMyFitness,
+    staleTime: 30 * 60 * 1000,
   });
 
   if (isLoading) return <LoadingState />;
@@ -1186,12 +1193,14 @@ function HeadToHeadOverlay({ onClose }: { onClose: () => void }) {
   const { data: rosterData } = useQuery({
     queryKey: ['player-roster'],
     queryFn: playerPortalAPI.getRoster,
+    staleTime: 30 * 60 * 1000,
   });
 
   const { data: h2hData, isLoading: h2hLoading } = useQuery({
     queryKey: ['player-h2h', selectedPlayer],
     queryFn: () => playerPortalAPI.getHeadToHead(selectedPlayer!),
     enabled: !!selectedPlayer,
+    staleTime: 30 * 60 * 1000,
   });
 
   const roster = rosterData?.players || [];

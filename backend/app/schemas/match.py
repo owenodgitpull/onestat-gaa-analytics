@@ -256,3 +256,7 @@ class MatchStatsResponse(BaseModel):
     opponent_black_cards: int = 0
     opponent_red_cards: int
 
+    # Ball recovery time (avg minutes to win back possession after losing it)
+    team_ball_recovery_avg_min: Optional[float] = None
+    opponent_ball_recovery_avg_min: Optional[float] = None
+

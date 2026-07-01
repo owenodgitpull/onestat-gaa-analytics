@@ -3332,6 +3332,13 @@ export default function MatchRecording() {
                     { label: 'Accuracy', left: `${stats.accuracy}%`, right: `${stats.shots.opponent > 0 ? (stats.scores.opponent / stats.shots.opponent * 100).toFixed(1) : '0.0'}%`, leftVal: Number(stats.accuracy), rightVal: stats.shots.opponent > 0 ? stats.scores.opponent / stats.shots.opponent * 100 : 0 },
                     { label: 'Conversion', left: `${stats.conversionRate}%`, right: `${(stats.scores.opponent + stats.wides.opponent) > 0 ? ((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1) : '0.0'}%`, leftVal: Number(stats.conversionRate), rightVal: (stats.scores.opponent + stats.wides.opponent) > 0 ? (stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100 : 0 },
                     { label: 'Turnovers Won', left: stats.turnovers.won, right: stats.turnovers.lost, leftVal: stats.turnovers.won, rightVal: stats.turnovers.lost },
+                    ...((matchStats?.team_ball_recovery_avg_min != null || matchStats?.opponent_ball_recovery_avg_min != null) ? [{
+                      label: 'Ball Recovery',
+                      left: matchStats?.team_ball_recovery_avg_min != null ? `${matchStats.team_ball_recovery_avg_min}m` : '–',
+                      right: matchStats?.opponent_ball_recovery_avg_min != null ? `${matchStats.opponent_ball_recovery_avg_min}m` : '–',
+                      leftVal: matchStats?.opponent_ball_recovery_avg_min ?? 0,
+                      rightVal: matchStats?.team_ball_recovery_avg_min ?? 0,
+                    }] : []),
                     { label: 'Unforced Errors', left: matchStats?.team_unforced_errors ?? 0, right: matchStats?.opponent_unforced_errors ?? 0, leftVal: matchStats?.opponent_unforced_errors ?? 0, rightVal: matchStats?.team_unforced_errors ?? 0 },
                     { label: 'Kickouts Won', left: `${stats.kickouts.teamWon}/${stats.kickouts.teamTotal}`, right: `${stats.kickouts.opponentWon}/${stats.kickouts.opponentTotal}`, leftVal: stats.kickouts.teamWon, rightVal: stats.kickouts.opponentWon },
                     { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
