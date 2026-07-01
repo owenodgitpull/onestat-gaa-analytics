@@ -261,6 +261,8 @@ export interface MatchStats {
   opponent_yellow_cards: number;
   opponent_black_cards: number;
   opponent_red_cards: number;
+  team_ball_recovery_avg_min?: number | null;
+  opponent_ball_recovery_avg_min?: number | null;
 }
 
 export interface PlayerMatchStats {
