@@ -2161,9 +2161,7 @@ class SeasonDashboardService:
         # Recent opp kickout win %
         r_opp_ko_won = sum(_rev(et, Team.OWN) for et in opp_ko_won_types)
         r_opp_ko_won += _rev(EventType.KICKOUT_WON, Team.OWN)
-        r_opp_ko_total = r_opp_ko_won + sum(
-            _rev(EventType.OPP_KICKOUT_WON, Team.OPPONENT),
-        )
+        r_opp_ko_total = r_opp_ko_won + _rev(EventType.OPP_KICKOUT_OPPOSITION_WON)
         recent_opp_kickout_win = round(r_opp_ko_won / r_opp_ko_total * 100, 1) if r_opp_ko_total > 0 else opp_kickout_win
 
         # --- Ball recovery time (avg minutes per match to win back possession) ---
