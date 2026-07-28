@@ -15,9 +15,11 @@ import {
 import { useMatch } from '../hooks/useMatches'
 import { usePlayers } from '../hooks/usePlayers'
 import { useClub } from '../contexts/ClubContext'
+import { useAuth } from '../contexts/AuthContext'
 import { api } from '../services/api'
 import StartingLineupModal, { type LineupEntry } from '../components/StartingLineupModal'
 import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '../components/WeatherPickerPopover'
+import { consumePendingTutorial } from '../components/MatchRecordingTutorial'
 
 type Mode = 'choose' | 'post-match'
 
@@ -27,6 +29,7 @@ export default function MatchSetup() {
   const { data: match, isLoading: matchLoading } = useMatch(matchId ?? null)
   const { data: players = [] } = usePlayers()
   const { club } = useClub()
+  const { user } = useAuth()
 
   const [mode, setMode] = useState<Mode>('choose')
 
@@ -208,18 +211,37 @@ export default function MatchSetup() {
       {mode === 'choose' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* Record Live */}
-          <button
-            onClick={() => navigate(`/match/${matchId}`)}
-            className="glass-card p-8 text-center hover:bg-white/10 transition-all group cursor-pointer"
-          >
-            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 flex items-center justify-center mx-auto mb-4 group-hover:bg-emerald-500/30 transition-colors">
-              <Play size={32} className="text-emerald-400" />
+          {user?.trial_expired ? (
+            <div className="glass-card p-8 text-center border border-amber-500/30 bg-amber-500/5">
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+                <Play size={32} className="text-amber-500/40" />
+              </div>
+              <h3 className="text-xl font-bold text-white/60 mb-2">Record Live</h3>
+              <p className="text-amber-400/80 text-sm mb-4">Your free trial has ended.</p>
+              <a
+                href="mailto:owen@onestat.ai?subject=onestat.ai subscription"
+                className="inline-block px-4 py-2 rounded-lg bg-amber-500 text-black text-sm font-bold hover:bg-amber-400 transition-colors"
+              >
+                Upgrade to continue recording
+              </a>
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Record Live</h3>
-            <p className="text-white/50 text-sm">
-              Track events in real-time during the match
-            </p>
-          </button>
+          ) : (
+            <button
+              onClick={() => {
+                const withTutorial = consumePendingTutorial()
+                navigate(withTutorial ? `/match/${matchId}?tutorial=1` : `/match/${matchId}`)
+              }}
+              className="glass-card p-8 text-center hover:bg-white/10 transition-all group cursor-pointer"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 flex items-center justify-center mx-auto mb-4 group-hover:bg-emerald-500/30 transition-colors">
+                <Play size={32} className="text-emerald-400" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Record Live</h3>
+              <p className="text-white/50 text-sm">
+                Track events in real-time during the match
+              </p>
+            </button>
+          )}
 
           {/* Post-Match Entry */}
           <button

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useAuth } from '../contexts/AuthContext'
+import { useFeatureAccess } from '../hooks/useFeatureAccess'
 import { useClub } from '../contexts/ClubContext'
 import { useState, useRef, useEffect } from 'react'
 import NewMatchModal from './NewMatchModal'
@@ -40,6 +41,7 @@ export default function Navigation() {
   const [showAIChat, setShowAIChat] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
+  const { hasAccess: hasProAccess } = useFeatureAccess('pro')
 
   // Close mobile menu on route change
   useEffect(() => { setShowMobileMenu(false) }, [location.pathname])
@@ -197,8 +199,8 @@ export default function Navigation() {
     { to: '/training', matchPath: '/training', label: 'Training', icon: Dumbbell },
     { to: '/fitness', matchPath: '/fitness', label: 'Fitness', icon: Activity, mobileOnly: true },
     { to: '/fixtures', matchPath: '/fixtures', label: 'Fixtures', icon: CalendarDays, mobileOnly: true },
-    { to: '/reports/season', matchPath: '/reports', label: 'Reports', icon: FileText, tour: 'nav-reports' },
-    { to: '/analyst', matchPath: '/analyst', label: 'Analyst', icon: MessageSquare, tour: 'nav-analyst' },
+    { to: '/reports/season', matchPath: '/reports', label: 'Reports', icon: FileText, tour: 'nav-reports', proOnly: true },
+    { to: '/analyst', matchPath: '/analyst', label: 'Analyst', icon: MessageSquare, tour: 'nav-analyst', proOnly: true },
   ]
 
   return (
@@ -236,18 +238,21 @@ export default function Navigation() {
 
           {/* Main Navigation Links — hidden on mobile, visible md+ */}
           <div className="hidden md:flex items-center h-full overflow-x-auto scrollbar-hide flex-1 min-w-0">
-            {NAV_LINKS.filter(l => !(l as any).mobileOnly).map(({ to, matchPath, label, tour }) => (
+            {NAV_LINKS.filter(l => !(l as any).mobileOnly).map(({ to, matchPath, label, tour, proOnly }) => (
               <Link
                 key={to}
                 to={to}
                 data-tour={tour}
-                className={`px-2 lg:px-4 text-xs lg:text-sm font-medium transition-all h-14 flex items-center border-b-2 whitespace-nowrap flex-shrink-0 ${
+                className={`px-2 lg:px-4 text-xs lg:text-sm font-medium transition-all h-14 flex items-center gap-1.5 border-b-2 whitespace-nowrap flex-shrink-0 ${
                   isActive(matchPath)
                     ? 'text-white border-emerald-400'
                     : 'text-white/70 border-transparent hover:text-white hover:border-white/20'
                 }`}
               >
                 {label.toUpperCase()}
+                {proOnly && !hasProAccess && (
+                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 leading-none">PRO</span>
+                )}
               </Link>
             ))}
           </div>
@@ -364,7 +369,7 @@ export default function Navigation() {
             }}
           >
             <div className="py-2 px-3">
-              {NAV_LINKS.map(({ to, matchPath, label, icon: Icon, tour }) => (
+              {NAV_LINKS.map(({ to, matchPath, label, icon: Icon, tour, proOnly }) => (
                 <Link
                   key={to}
                   to={to}
@@ -378,6 +383,9 @@ export default function Navigation() {
                 >
                   <Icon size={18} />
                   {label}
+                  {proOnly && !hasProAccess && (
+                    <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/30 leading-none">PRO</span>
+                  )}
                 </Link>
               ))}
               <hr className="my-2 border-white/10" />

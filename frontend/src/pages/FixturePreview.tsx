@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, Pencil, Users, ChevronDown, ChevronUp, Flag } from 'lucide-react'
+import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, Pencil, Users, ChevronDown, ChevronUp, Flag, GraduationCap } from 'lucide-react'
 import { api } from '../services/api'
 import EditFixtureModal from '../components/EditFixtureModal'
+import { hasPendingTutorial } from '../components/MatchRecordingTutorial'
 import type { Match, FormResult } from '../types'
 
 function FormBadge({ result }: { result: 'W' | 'L' | 'D' }) {
@@ -153,6 +154,7 @@ export default function FixturePreview() {
 
   const matchDate = new Date(match.match_date)
   const isPastScheduled = match.status === 'scheduled' && matchDate < new Date()
+  const tutorialPending = hasPendingTutorial()
 
   const venueBadge = (venue: string) => {
     const v = venue?.toLowerCase()
@@ -163,6 +165,23 @@ export default function FixturePreview() {
 
   return (
     <div className="space-y-6">
+      {/* Tutorial pending banner */}
+      {tutorialPending && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-purple-500/10 border border-purple-500/30">
+          <div className="flex items-center gap-2.5">
+            <GraduationCap size={16} className="text-purple-400 flex-shrink-0" />
+            <span className="text-sm text-purple-300 font-medium">Tutorial mode ready</span>
+            <span className="text-xs text-white/40 hidden sm:inline">— this match will be used for the interactive walkthrough</span>
+          </div>
+          <button
+            onClick={() => navigate(`/match/${match.id}/setup`)}
+            className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-purple-500/30 border border-purple-400/40 text-purple-200 text-xs font-semibold hover:bg-purple-500/50 transition-colors"
+          >
+            Start Tutorial
+          </button>
+        </div>
+      )}
+
       {/* Back + Header */}
       <div>
         <div className="flex items-center justify-between mb-4">

@@ -339,12 +339,14 @@ class MatchService:
             "team_wides": 0,
             "team_dropped_short": 0,
             "team_hit_post": 0,
+            "team_goal_chances": 0,
             "team_accuracy": 0.0,
             "opponent_total_shots": 0,
             "opponent_scores": 0,
             "opponent_wides": 0,
             "opponent_dropped_short": 0,
             "opponent_hit_post": 0,
+            "opponent_goal_chances": 0,
             "opponent_accuracy": 0.0,
             # Turnovers
             "team_turnovers_won": 0,
@@ -411,10 +413,18 @@ class MatchService:
                 stats["team_possession_percentage"] = round((team_events / total_events) * 100, 1) if total_events > 0 else 0.0
                 stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
         
+        _GOAL_CHANCE_TYPES = frozenset([
+            EventType.GOAL, EventType.PENALTY_GOAL,
+            EventType.SAVED, EventType.PENALTY_MISS, EventType.HIT_POST,
+        ])
+
         # Calculate event stats
         for event in events:
             team_prefix = "team" if event.team == Team.OWN else "opponent"
-            
+
+            if event.event_type in _GOAL_CHANCE_TYPES:
+                stats[f"{team_prefix}_goal_chances"] += 1
+
             # Scoring events (goals, points, 2-pointers from play or frees/45s)
             scoring_events = [
                 EventType.GOAL, EventType.POINT, EventType.TWO_POINT,

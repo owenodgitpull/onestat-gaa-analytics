@@ -2,6 +2,25 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { generateCodeVerifier, generateCodeChallenge } from '../lib/pkce';
 
 const COGNITO_DOMAIN = import.meta.env.VITE_COGNITO_DOMAIN;
+
+function mapApiUser(data: Record<string, unknown>): AuthUser {
+  return {
+    id: data.id as string,
+    email: data.email as string,
+    name: data.name as string,
+    club_id: (data.club_id as string) || null,
+    role: data.role as string,
+    player_id: (data.player_id as string) || null,
+    is_active: data.is_active as boolean,
+    onboarding_completed: (data.onboarding_completed as boolean) ?? true,
+    trial_ends_at: (data.trial_ends_at as string) ?? null,
+    trial_days_remaining: (data.trial_days_remaining as number) ?? null,
+    trial_expired: (data.trial_expired as boolean) ?? false,
+    subscription_tier: (data.subscription_tier as string) ?? null,
+    on_paid_plan: (data.on_paid_plan as boolean) ?? false,
+    effective_tier: (data.effective_tier as string) ?? null,
+  };
+}
 const COGNITO_CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID;
 const COGNITO_REDIRECT_URI = import.meta.env.VITE_COGNITO_REDIRECT_URI;
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
@@ -18,6 +37,13 @@ export interface AuthUser {
   player_id: string | null;
   is_active: boolean;
   onboarding_completed: boolean;
+  // Trial / subscription
+  trial_ends_at?: string | null;
+  trial_days_remaining?: number | null;
+  trial_expired?: boolean;
+  subscription_tier?: string | null;
+  on_paid_plan?: boolean;
+  effective_tier?: string | null; // 'club' | 'pro' | 'elite' | null (locked)
 }
 
 interface AuthContextType {
@@ -136,26 +162,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               const remainingSecs = Math.floor((expires_at - Date.now()) / 1000);
               scheduleRefresh(remainingSecs);
 
-              // Background verify: ensure cached role/player_id are still accurate
+              // Background verify: ensure cached role/player_id/trial are still accurate
               // (fixes iPad PWA showing stale role after resume)
               fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' })
                 .then(r => r.ok ? r.json() : null)
                 .then(data => {
                   if (cancelled || !data) return;
-                  const fresh: AuthUser = {
-                    id: data.id,
-                    email: data.email,
-                    name: data.name,
-                    club_id: data.club_id,
-                    role: data.role,
-                    player_id: data.player_id || null,
-                    is_active: data.is_active,
-                    onboarding_completed: data.onboarding_completed ?? true,
-                  };
+                  const fresh = mapApiUser(data);
                   // Only update if something actually changed
                   if (fresh.role !== storedUser.role ||
                       fresh.player_id !== storedUser.player_id ||
-                      fresh.club_id !== storedUser.club_id) {
+                      fresh.club_id !== storedUser.club_id ||
+                      fresh.trial_days_remaining !== storedUser.trial_days_remaining ||
+                      fresh.on_paid_plan !== storedUser.on_paid_plan) {
                     setUserState(fresh);
                     persistUser(fresh, remainingSecs);
                   }
@@ -208,16 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (cancelled) return;
           if (resp.ok) {
             const userData = await resp.json();
-            const authUser: AuthUser = {
-              id: userData.id,
-              email: userData.email,
-              name: userData.name,
-              club_id: userData.club_id,
-              role: userData.role,
-              player_id: userData.player_id || null,
-              is_active: userData.is_active,
-              onboarding_completed: userData.onboarding_completed ?? true,
-            };
+            const authUser = mapApiUser(userData);
             setUserState(authUser);
             persistUser(authUser, 3600);
             scheduleRefresh(3600);
@@ -244,16 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (cancelled) return;
               if (meResp.ok) {
                 const userData = await meResp.json();
-                const authUser: AuthUser = {
-                  id: userData.id,
-                  email: userData.email,
-                  name: userData.name,
-                  club_id: userData.club_id,
-                  role: userData.role,
-                  player_id: userData.player_id || null,
-                  is_active: userData.is_active,
-                  onboarding_completed: userData.onboarding_completed ?? true,
-                };
+                const authUser = mapApiUser(userData);
                 setUserState(authUser);
                 persistUser(authUser, data.expires_in || 3600);
                 scheduleRefresh(data.expires_in || 3600);
@@ -328,16 +329,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const data = await resp.json();
-    const authUser: AuthUser = {
-      id: data.user.id,
-      email: data.user.email,
-      name: data.user.name,
-      club_id: data.user.club_id,
-      role: data.user.role,
-      player_id: data.user.player_id || null,
-      is_active: data.user.is_active,
-      onboarding_completed: data.user.onboarding_completed ?? true,
-    };
+    const authUser = mapApiUser(data.user);
 
     setUserState(authUser);
     scheduleRefresh(data.expires_in || 3600);

@@ -19,6 +19,13 @@ class UserResponse(BaseModel):
     onboarding_completed: bool = True
     last_login_at: Optional[datetime] = None
     created_at: datetime
+    # Trial / subscription (computed by /me from the club record)
+    trial_ends_at: Optional[datetime] = None
+    trial_days_remaining: Optional[int] = None
+    trial_expired: bool = False
+    subscription_tier: Optional[str] = None
+    on_paid_plan: bool = False
+    effective_tier: Optional[str] = None  # 'club' | 'pro' | 'elite' | None (locked)
 
     class Config:
         from_attributes = True

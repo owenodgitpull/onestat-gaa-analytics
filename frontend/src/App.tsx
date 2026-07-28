@@ -28,6 +28,7 @@ import SelectPlayer from './pages/SelectPlayer'
 import PlayerDashboard from './pages/player/PlayerDashboard'
 import { lazy, Suspense } from 'react'
 import InstallBanner from './components/InstallBanner'
+import TrialBanner from './components/TrialBanner'
 
 const LeaderboardPage = lazy(() => import('./pages/player/LeaderboardPage'))
 const MyStatsPage = lazy(() => import('./pages/player/MyStatsPage'))
@@ -122,6 +123,7 @@ function App() {
                 <RequireAuth requiredRole="club_admin">
                   <ClubProvider>
                     <Navigation />
+                    <TrialBanner />
                     <main className="md:ml-14 px-4 py-6 overflow-x-hidden">
                       <div className="max-w-7xl mx-auto">
                         <Suspense fallback={<PlayerLoading />}>

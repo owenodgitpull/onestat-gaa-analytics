@@ -234,6 +234,13 @@ export function requestMatchTutorial() {
   } catch { /* noop */ }
 }
 
+/** Peek whether a tutorial is pending without consuming it */
+export function hasPendingTutorial(): boolean {
+  try {
+    return localStorage.getItem(PENDING_KEY) === '1'
+  } catch { return false }
+}
+
 /** Check and consume a pending tutorial request */
 export function consumePendingTutorial(): boolean {
   try {

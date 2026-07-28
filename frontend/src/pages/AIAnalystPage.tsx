@@ -6,6 +6,7 @@ import { renderAnalysisText } from '@/utils/renderAnalysisText'
 import DynamicChart from '@/components/DynamicChart'
 import DataTableCard from '@/components/DataTableCard'
 import ChatSessionSidebar from '@/components/ChatSessionSidebar'
+import FeatureGate from '@/components/FeatureGate'
 
 // Friendly labels for tool names shown during thinking phase
 const TOOL_LABELS: Record<string, string> = {
@@ -47,7 +48,7 @@ function getGreeting(): string {
   return 'Good evening'
 }
 
-export default function AIAnalystPage() {
+function AIAnalystPageInner() {
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>()
   const navigate = useNavigate()
 
@@ -606,5 +607,13 @@ export default function AIAnalystPage() {
         </div>
       </div>
     </>
+  )
+}
+
+export default function AIAnalystPage() {
+  return (
+    <FeatureGate tier="pro" featureName="AI Analyst">
+      <AIAnalystPageInner />
+    </FeatureGate>
   )
 }

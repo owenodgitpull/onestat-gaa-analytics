@@ -7,7 +7,7 @@ Handles club creation, player file parsing (CSV/XLSX), and bulk player creation.
 import csv
 import io
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
@@ -61,6 +61,7 @@ class OnboardingService:
             secondary_colour=data.secondary_colour,
             is_active=True,
             onboarding_completed=False,
+            trial_ends_at=datetime.utcnow() + timedelta(days=30),
         )
         db.add(club)
         await db.commit()

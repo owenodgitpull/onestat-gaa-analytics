@@ -57,6 +57,8 @@ import { calculateManOfMatch } from '../utils/motm'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
 import { getWeatherIcon, getWeatherLabel } from '../components/WeatherPickerPopover'
 import LoadingSkeleton from '../components/LoadingSkeleton'
+import FeatureGate from '../components/FeatureGate'
+import { useFeatureAccess } from '../hooks/useFeatureAccess'
 import type { MatchStats } from '../types'
 
 // Format GAA score as "G-PP" (e.g., "1-08")
@@ -101,6 +103,9 @@ export default function MatchResult() {
     enabled: !!gpsData && gpsData.length > 0,
     staleTime: 1000 * 60 * 30, // Cache for 30 mins
   })
+
+  const { hasAccess: hasProAccess } = useFeatureAccess('pro')
+  const { hasAccess: hasEliteAccess } = useFeatureAccess('elite')
 
   const { data: scoreOriginsData } = useQuery({
     queryKey: ['score-origins', matchId],
@@ -437,6 +442,7 @@ export default function MatchResult() {
         {/* No events indicator */}
         {!hasEvents && (
           <div className="mt-4 pt-4 border-t border-white/10">
+            {hasEliteAccess ? (
             <Link
               to={`/results/${matchId}/video`}
               className="flex items-center justify-center gap-3 px-6 py-4 rounded-xl text-white font-semibold text-lg transition-all hover:scale-[1.01] active:scale-[0.99]"
@@ -449,6 +455,11 @@ export default function MatchResult() {
               <Video size={22} />
               Start Video Analysis
             </Link>
+            ) : (
+              <FeatureGate tier="elite" featureName="Video Analysis" inline>
+                <span />
+              </FeatureGate>
+            )}
             <div className="flex items-center justify-center gap-2 mt-3 text-white/40 text-xs group relative">
               <Info size={14} />
               <span>No live events logged — stats and charts will populate from video analysis</span>
@@ -532,7 +543,7 @@ export default function MatchResult() {
                   </>
                 )}
               </>
-            ) : (
+            ) : hasProAccess ? (
               <button
                 onClick={() => setShowGpsUpload(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
@@ -540,6 +551,10 @@ export default function MatchResult() {
                 <Upload size={14} />
                 Upload GPS
               </button>
+            ) : (
+              <FeatureGate tier="pro" featureName="GPS Upload" inline>
+                <span />
+              </FeatureGate>
             )}
           </div>
         </div>
@@ -967,7 +982,13 @@ export default function MatchResult() {
       )}
 
       {/* Match Summary Section */}
-      {postMatchReport?.analysis ? (
+      {!hasProAccess ? (
+        <div className="mt-6">
+          <FeatureGate tier="pro" featureName="AI Match Analysis">
+            <div className="glass-card p-6 h-48" />
+          </FeatureGate>
+        </div>
+      ) : postMatchReport?.analysis ? (
         <div className="glass-card p-6 mt-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
@@ -1089,6 +1110,7 @@ function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; o
     { label: 'Poss. Count', left: stats.team_possession_count ?? 0, right: stats.opponent_possession_count ?? 0, leftVal: stats.team_possession_count ?? 0, rightVal: stats.opponent_possession_count ?? 0 },
     { label: 'Shots', left: stats.team_total_shots, right: stats.opponent_total_shots, leftVal: stats.team_total_shots, rightVal: stats.opponent_total_shots },
     { label: 'Scores', left: stats.team_scores, right: stats.opponent_scores, leftVal: stats.team_scores, rightVal: stats.opponent_scores },
+    { label: 'Goal Chances', left: stats.team_goal_chances ?? 0, right: stats.opponent_goal_chances ?? 0, leftVal: stats.team_goal_chances ?? 0, rightVal: stats.opponent_goal_chances ?? 0 },
     { label: 'Wides', left: stats.team_wides, right: stats.opponent_wides, leftVal: stats.opponent_wides, rightVal: stats.team_wides },
     { label: 'Dropped Short', left: stats.team_dropped_short ?? 0, right: stats.opponent_dropped_short ?? 0, leftVal: stats.opponent_dropped_short ?? 0, rightVal: stats.team_dropped_short ?? 0 },
     { label: 'Accuracy', left: `${Math.round(stats.team_accuracy)}%`, right: `${Math.round(stats.opponent_accuracy)}%`, leftVal: stats.team_accuracy, rightVal: stats.opponent_accuracy },

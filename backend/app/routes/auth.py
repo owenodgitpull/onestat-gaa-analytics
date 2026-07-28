@@ -12,6 +12,7 @@ import logging
 import os
 import secrets
 import string
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
@@ -388,9 +389,32 @@ async def get_me(
 
     response = UserResponse.model_validate(db_user)
     if db_user.club_id:
-        club_result = await db.execute(select(Club.onboarding_completed).where(Club.id == db_user.club_id))
-        onboarding_done = club_result.scalar_one_or_none()
-        response.onboarding_completed = bool(onboarding_done)
+        club_result = await db.execute(select(Club).where(Club.id == db_user.club_id))
+        club = club_result.scalar_one_or_none()
+        if club:
+            response.onboarding_completed = bool(club.onboarding_completed)
+            response.subscription_tier = club.subscription_tier
+            if club.subscription_tier:
+                # Paid plan — use their purchased tier
+                response.on_paid_plan = True
+                response.effective_tier = club.subscription_tier  # 'club' | 'pro' | 'elite'
+            elif club.trial_ends_at is None:
+                # Grandfathered club (no trial set) — full access
+                response.on_paid_plan = True
+                response.effective_tier = 'elite'
+            else:
+                now = datetime.utcnow()
+                delta = club.trial_ends_at - now
+                remaining = max(0, delta.days)
+                response.trial_ends_at = club.trial_ends_at
+                response.trial_days_remaining = remaining
+                response.trial_expired = now >= club.trial_ends_at
+                if now < club.trial_ends_at:
+                    # Active trial — full access so they can evaluate everything
+                    response.effective_tier = 'elite'
+                else:
+                    # Expired trial — locked (no effective_tier)
+                    response.effective_tier = None
     else:
         response.onboarding_completed = False
     return response

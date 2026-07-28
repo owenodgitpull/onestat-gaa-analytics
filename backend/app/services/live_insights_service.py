@@ -356,7 +356,7 @@ class LiveInsightsService:
             return insight
 
         except Exception as e:
-            logger.error(f"Failed to generate insight: {e}", exc_info=True)
+            logger.error(f"Failed to generate insight for match {match_id} trigger={trigger.value}: {type(e).__name__}: {e}", exc_info=True)
             # Create a fallback insight
             insight = LiveInsight(
                 match_id=match_id,

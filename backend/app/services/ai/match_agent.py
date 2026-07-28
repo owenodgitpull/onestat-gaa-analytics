@@ -10,6 +10,7 @@ Also contains:
 - analyze_match_gps: Standalone GPS performance analysis (single-shot)
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -154,13 +155,16 @@ Reference knowledge base context when relevant to a specific trigger.
 
         messages = [{"role": "user", "content": user_prompt}]
 
-        response = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=max_tokens,
-            system=cached_system,
-            tools=cached_live_tools,
-            messages=messages,
-        )
+        def _call_api(msgs):
+            return client.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=max_tokens,
+                system=cached_system,
+                tools=cached_live_tools,
+                messages=msgs,
+            )
+
+        response = await asyncio.to_thread(_call_api, messages)
 
         # Agentic tool loop — max 2 turns
         turns = 0
@@ -190,13 +194,7 @@ Reference knowledge base context when relevant to a specific trigger.
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
-            response = client.messages.create(
-                model="claude-haiku-4-5",
-                max_tokens=max_tokens,
-                system=cached_system,
-                tools=cached_live_tools,
-                messages=messages,
-            )
+            response = await asyncio.to_thread(_call_api, messages)
 
         # Extract final text
         final_text = ""

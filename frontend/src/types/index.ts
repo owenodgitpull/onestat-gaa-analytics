@@ -235,12 +235,14 @@ export interface MatchStats {
   team_scores: number;
   team_wides: number;
   team_dropped_short: number;
+  team_goal_chances?: number;
   team_accuracy: number;
   team_conversion_rate: number;
   opponent_total_shots: number;
   opponent_scores: number;
   opponent_wides: number;
   opponent_dropped_short: number;
+  opponent_goal_chances?: number;
   opponent_accuracy: number;
   opponent_conversion_rate: number;
   team_turnovers_won: number;

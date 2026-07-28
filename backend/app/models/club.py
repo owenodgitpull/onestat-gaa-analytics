@@ -6,7 +6,7 @@ Each club is a tenant in the system. All root models
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import Column, String, Boolean, DateTime, JSON, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from app.database import Base
@@ -47,6 +47,10 @@ class Club(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     onboarding_completed = Column(Boolean, default=False, nullable=False)
     default_half_duration = Column(Integer, default=30, nullable=False)
+    # Billing: NULL trial_ends_at = grandfathered (no restrictions). Set on new club creation.
+    trial_ends_at = Column(DateTime, nullable=True)
+    # 'club', 'pro', 'elite' = paid plan. NULL = on trial.
+    subscription_tier = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     def __repr__(self) -> str:

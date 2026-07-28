@@ -222,12 +222,14 @@ class MatchStatsResponse(BaseModel):
     team_scores: int
     team_wides: int
     team_dropped_short: int = 0
+    team_goal_chances: int = 0
     team_accuracy: float
 
     opponent_total_shots: int
     opponent_scores: int
     opponent_wides: int
     opponent_dropped_short: int = 0
+    opponent_goal_chances: int = 0
     opponent_accuracy: float
     
     # Turnover stats
