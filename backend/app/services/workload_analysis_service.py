@@ -633,13 +633,14 @@ Be concise and actionable. Reference GAA-specific training practices when releva
                 "created_at": alert.created_at.isoformat()
             })
 
-        # Get latest workload snapshots for club players (last 30 days to catch stale data)
+        # TODO: reset to 30 days before releasing to customers — extended for demo
+        # Get latest workload snapshots for club players (extended window catches historical data)
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        thirty_days_ago = today - timedelta(days=30)
+        snapshot_cutoff = today - timedelta(days=365)
 
         snapshot_query = (
             select(PlayerWorkloadSnapshot)
-            .where(PlayerWorkloadSnapshot.snapshot_date >= thirty_days_ago)
+            .where(PlayerWorkloadSnapshot.snapshot_date >= snapshot_cutoff)
             .order_by(PlayerWorkloadSnapshot.player_id, desc(PlayerWorkloadSnapshot.snapshot_date))
         )
         if club_player_ids is not None:
