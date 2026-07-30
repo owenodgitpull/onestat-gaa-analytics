@@ -648,20 +648,33 @@ Be concise and actionable. Reference GAA-specific training practices when releva
         result = await db.execute(snapshot_query)
         snapshots = result.scalars().all()
 
-        # Get latest snapshot per player
-        player_workloads = {}
+        # Get best snapshot per player: prefer most recent with real load data,
+        # fall back to most recent regardless (snapshots ordered desc by date).
+        # TODO: reset window to 30 days before customer rollout (see cutoff above)
+        player_best: dict = {}   # pid -> best candidate snapshot
+        player_fallback: dict = {}  # pid -> most-recent snapshot (may be zero)
+
         for snapshot in snapshots:
             pid = str(snapshot.player_id)
-            if pid not in player_workloads:
-                player_workloads[pid] = {
-                    "player_id": pid,
-                    "player_name": snapshot.player.name if snapshot.player else "Unknown",
-                    "acwr": snapshot.acwr,
-                    "acute_load": snapshot.acute_load_7d,
-                    "chronic_load": snapshot.chronic_load_28d,
-                    "today_load": snapshot.total_load,
-                    "status": WorkloadAnalysisService._get_acwr_status(snapshot.acwr)
-                }
+            if pid not in player_fallback:
+                player_fallback[pid] = snapshot
+            has_data = (snapshot.total_load or 0) > 0 or snapshot.acwr is not None
+            if has_data and pid not in player_best:
+                player_best[pid] = snapshot
+
+        player_workloads = {}
+        all_pids = set(player_fallback) | set(player_best)
+        for pid in all_pids:
+            snapshot = player_best.get(pid) or player_fallback[pid]
+            player_workloads[pid] = {
+                "player_id": pid,
+                "player_name": snapshot.player.name if snapshot.player else "Unknown",
+                "acwr": snapshot.acwr,
+                "acute_load": snapshot.acute_load_7d,
+                "chronic_load": snapshot.chronic_load_28d,
+                "today_load": snapshot.total_load,
+                "status": WorkloadAnalysisService._get_acwr_status(snapshot.acwr)
+            }
 
         return {
             "alerts": by_severity,
