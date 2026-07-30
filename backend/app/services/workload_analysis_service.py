@@ -633,47 +633,84 @@ Be concise and actionable. Reference GAA-specific training practices when releva
                 "created_at": alert.created_at.isoformat()
             })
 
-        # TODO: reset to 30 days before releasing to customers — extended for demo
-        # Get latest workload snapshots for club players (extended window catches historical data)
-        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        snapshot_cutoff = today - timedelta(days=365)
+        # Compute ACWR live from raw GPS data, anchored to each player's most recent
+        # GPS session. Snapshots were written as stubs without GPS values, so we go
+        # straight to the source tables.  No date cutoff — show real numbers from
+        # whenever the data was actually recorded.
+        from collections import defaultdict
 
-        snapshot_query = (
-            select(PlayerWorkloadSnapshot)
-            .where(PlayerWorkloadSnapshot.snapshot_date >= snapshot_cutoff)
-            .order_by(PlayerWorkloadSnapshot.player_id, desc(PlayerWorkloadSnapshot.snapshot_date))
+        # --- Match GPS ---
+        match_gps_q = (
+            select(MatchGPSData.player_id, MatchGPSData.total_distance_m,
+                   MatchGPSData.player_load, Match.match_date)
+            .join(Match, MatchGPSData.match_id == Match.id)
+            .where(Match.status == MatchStatus.COMPLETED)
         )
         if club_player_ids is not None:
-            snapshot_query = snapshot_query.where(PlayerWorkloadSnapshot.player_id.in_(club_player_ids))
-        result = await db.execute(snapshot_query)
-        snapshots = result.scalars().all()
+            match_gps_q = match_gps_q.where(MatchGPSData.player_id.in_(club_player_ids))
+        match_gps_rows = (await db.execute(match_gps_q)).all()
 
-        # Get best snapshot per player: prefer most recent with real load data,
-        # fall back to most recent regardless (snapshots ordered desc by date).
-        # TODO: reset window to 30 days before customer rollout (see cutoff above)
-        player_best: dict = {}   # pid -> best candidate snapshot
-        player_fallback: dict = {}  # pid -> most-recent snapshot (may be zero)
+        # --- Training GPS ---
+        train_gps_q = (
+            select(TrainingGPSData.player_id, TrainingGPSData.total_distance_m,
+                   TrainingGPSData.player_load, TrainingSession.session_date)
+            .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
+        )
+        if club_player_ids is not None:
+            train_gps_q = train_gps_q.where(TrainingGPSData.player_id.in_(club_player_ids))
+        train_gps_rows = (await db.execute(train_gps_q)).all()
 
-        for snapshot in snapshots:
-            pid = str(snapshot.player_id)
-            if pid not in player_fallback:
-                player_fallback[pid] = snapshot
-            has_data = (snapshot.total_load or 0) > 0 or snapshot.acwr is not None
-            if has_data and pid not in player_best:
-                player_best[pid] = snapshot
+        # Build per-player list of (datetime, load)
+        raw_loads: dict = defaultdict(list)
+        for pid, dist, load, match_date in match_gps_rows:
+            w = float(load or 0) or float(dist or 0) / 100
+            if w > 0:
+                raw_loads[pid].append((match_date, w))
+        for pid, dist, load, sess_date in train_gps_rows:
+            w = float(load or 0) or float(dist or 0) / 100
+            if w > 0:
+                dt = datetime.combine(sess_date, datetime.min.time()) if hasattr(sess_date, "date") else sess_date
+                raw_loads[pid].append((dt, w))
 
+        # Player name lookup
+        name_q = select(Player.id, Player.name)
+        if club_player_ids is not None:
+            name_q = name_q.where(Player.id.in_(club_player_ids))
+        name_rows = (await db.execute(name_q)).all()
+        name_lookup = {str(r.id): r.name for r in name_rows}
+
+        # Compute ACWR anchored to each player's last GPS session date
         player_workloads = {}
-        all_pids = set(player_fallback) | set(player_best)
-        for pid in all_pids:
-            snapshot = player_best.get(pid) or player_fallback[pid]
-            player_workloads[pid] = {
-                "player_id": pid,
-                "player_name": snapshot.player.name if snapshot.player else "Unknown",
-                "acwr": snapshot.acwr,
-                "acute_load": snapshot.acute_load_7d,
-                "chronic_load": snapshot.chronic_load_28d,
-                "today_load": snapshot.total_load,
-                "status": WorkloadAnalysisService._get_acwr_status(snapshot.acwr)
+        for pid, sessions in raw_loads.items():
+            pid_str = str(pid)
+            sessions_sorted = sorted(sessions, key=lambda x: x[0])
+            anchor = sessions_sorted[-1][0]  # most recent session date
+
+            acute_cutoff = anchor - timedelta(days=7)
+            chronic_cutoff = anchor - timedelta(days=28)
+
+            chronic_sessions = [(d, w) for d, w in sessions_sorted if d >= chronic_cutoff]
+            acute_sessions = [(d, w) for d, w in chronic_sessions if d >= acute_cutoff]
+            older_sessions = [(d, w) for d, w in chronic_sessions if d < acute_cutoff]
+
+            acute_total = sum(w for _, w in acute_sessions)
+            # Standard 4-week denominator
+            chronic_weekly_avg = sum(w for _, w in chronic_sessions) / 4
+
+            if older_sessions and chronic_weekly_avg > 0:
+                acwr = round(acute_total / chronic_weekly_avg, 2)
+            else:
+                acwr = None
+
+            player_workloads[pid_str] = {
+                "player_id": pid_str,
+                "player_name": name_lookup.get(pid_str, "Unknown"),
+                "acwr": acwr,
+                "acute_load": round(acute_total, 1),
+                "chronic_load": round(chronic_weekly_avg, 1),
+                "today_load": round(sessions_sorted[-1][1], 1),
+                "status": WorkloadAnalysisService._get_acwr_status(acwr),
+                "last_session": anchor.date().isoformat() if hasattr(anchor, "date") else str(anchor)[:10],
             }
 
         return {

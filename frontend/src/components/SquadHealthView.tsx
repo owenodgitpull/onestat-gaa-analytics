@@ -374,7 +374,9 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
                     </div>
                   </div>
                   <div>
-                    <div className="text-white/40 text-xs">Today Load</div>
+                    <div className="text-white/40 text-xs">
+                      {(player as any).last_session ? `Load (${(player as any).last_session})` : 'Last Load'}
+                    </div>
                     <div className="font-bold text-white">
                       {player.today_load}
                     </div>
