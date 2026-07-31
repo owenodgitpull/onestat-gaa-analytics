@@ -1517,7 +1517,17 @@ class PlayerFormMatchRow(BaseModel):
     score_contribution: int
     turnovers_won: int
     turnovers_lost: int
+    blocks: int
+    interceptions: int
+    tackles_won: int
+    fouls_won: int
+    fouls_committed: int
+    kickouts_won: int
+    wides: int
     gps_distance_km: Optional[float]
+    gps_hsr_m: Optional[float]
+    gps_sprint_count: Optional[int]
+    gps_max_speed_ms: Optional[float]
 
 
 class PlayerFormRadar(BaseModel):
@@ -1526,11 +1536,61 @@ class PlayerFormRadar(BaseModel):
     workload: float
     attendance: float
     fitness: float
+    kickouts: float
     scoring_squad_avg: float
     defence_squad_avg: float
     workload_squad_avg: float
     attendance_squad_avg: float
     fitness_squad_avg: float
+    kickouts_squad_avg: float
+
+
+class PlayerSeasonTotals(BaseModel):
+    appearances: int
+    total_goals: int
+    total_points: int
+    total_two_pointers: int
+    total_score_contribution: int
+    avg_score_per_match: float
+    win_rate_pct: float
+    # Kickouts
+    own_kickouts_won: int
+    own_kickouts_lost: int
+    opp_kickouts_won: int
+    opp_kickouts_lost: int
+    total_kickouts_won: int
+    # Defensive
+    total_turnovers_won: int
+    total_turnovers_lost: int
+    total_tackles_won: int
+    total_blocks: int
+    total_interceptions: int
+    # Shooting
+    total_shots: int
+    shooting_accuracy_pct: float
+    total_wides: int
+    shots_saved: int
+    # Set pieces
+    frees_scored: int
+    frees_missed: int
+    free_accuracy_pct: float
+    fouls_won: int
+    fouls_committed: int
+    # Cards
+    yellow_cards: int
+    black_cards: int
+    red_cards: int
+    # GPS season averages
+    gps_matches: int
+    avg_distance_km: Optional[float]
+    avg_hsr_m: Optional[float]
+    avg_sprint_count: Optional[float]
+    avg_max_speed_ms: Optional[float]
+    # Squad rank (1 = top, None = not enough data)
+    rank_score_total: Optional[int]
+    rank_kickouts_won: Optional[int]
+    rank_turnovers_won: Optional[int]
+    rank_distance: Optional[int]
 
 
 class PlayerFormData(BaseModel):
@@ -1542,6 +1602,7 @@ class PlayerFormData(BaseModel):
     radar: PlayerFormRadar
     match_ready: bool
     attendance_rate_pct: float
+    season: PlayerSeasonTotals
 
 
 @router.get("/player-form/{player_id}", response_model=PlayerFormData)
@@ -1550,7 +1611,7 @@ async def get_player_form(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Per-player form report with last 5 matches and radar data."""
+    """Per-player form report — full season stats, kickouts, defensive actions, GPS, squad ranks."""
     from uuid import UUID as _UUID
     from app.models.match_gps import MatchGPSData
     from app.models.attendance import Attendance, AttendanceStatus, TrainingSession
@@ -1567,7 +1628,7 @@ async def get_player_form(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Player not found")
 
-    # Get completed matches
+    # ── Completed matches for this club ─────────────────────────────────────
     matches_result = await db.execute(
         select(Match).where(
             and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == user.club_id)
@@ -1577,37 +1638,23 @@ async def get_player_form(
     match_ids = [m.id for m in matches]
     matches_map = {m.id: m for m in matches}
 
-    # Get player events
+    # ── All own-team events for this player ─────────────────────────────────
     player_events_result = await db.execute(
         select(MatchEvent).where(
-            and_(MatchEvent.match_id.in_(match_ids), MatchEvent.player_id == player_uuid, MatchEvent.team == Team.OWN)
+            and_(MatchEvent.match_id.in_(match_ids), MatchEvent.player_id == player_uuid)
         )
     )
     player_events = player_events_result.scalars().all()
 
-    # Aggregate per match
-    scoring_event_types = {
-        EventType.GOAL, EventType.PENALTY_GOAL, EventType.POINT, EventType.POINT_FREE,
-        EventType.FORTY_FIVE, EventType.TWO_POINT, EventType.TWO_POINT_FREE,
-    }
+    # ── All own-team events for squad (for squad averages & rankings) ────────
+    all_events_result = await db.execute(
+        select(MatchEvent).where(
+            and_(MatchEvent.match_id.in_(match_ids), MatchEvent.team == Team.OWN)
+        )
+    )
+    all_own_events = all_events_result.scalars().all()
 
-    per_match: dict = {}
-    for e in player_events:
-        mid = e.match_id
-        if mid not in per_match:
-            per_match[mid] = {"goals": 0, "points": 0, "two_pointers": 0, "to_won": 0, "to_lost": 0}
-        if e.event_type in {EventType.GOAL, EventType.PENALTY_GOAL}:
-            per_match[mid]["goals"] += 1
-        elif e.event_type in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}:
-            per_match[mid]["points"] += 1
-        elif e.event_type in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}:
-            per_match[mid]["two_pointers"] += 1
-        elif e.event_type == EventType.TURNOVER_WON:
-            per_match[mid]["to_won"] += 1
-        elif e.event_type == EventType.TURNOVER_LOST:
-            per_match[mid]["to_lost"] += 1
-
-    # GPS per match
+    # ── GPS per match ────────────────────────────────────────────────────────
     gps_result = await db.execute(
         select(MatchGPSData).where(
             and_(MatchGPSData.player_id == player_uuid, MatchGPSData.match_id.in_(match_ids))
@@ -1615,7 +1662,13 @@ async def get_player_form(
     )
     gps_rows = {g.match_id: g for g in gps_result.scalars().all()}
 
-    # Attendance rate (last 8 weeks)
+    # All GPS for squad (for rankings)
+    all_gps_result = await db.execute(
+        select(MatchGPSData).where(MatchGPSData.match_id.in_(match_ids))
+    )
+    all_gps = all_gps_result.scalars().all()
+
+    # ── Attendance rate (last 8 weeks) ───────────────────────────────────────
     from datetime import datetime as _dt, timedelta as _td
     eight_weeks_ago = _dt.utcnow().date() - _td(weeks=8)
     sessions_result = await db.execute(
@@ -1636,11 +1689,191 @@ async def get_player_form(
         present = sum(1 for a in att_records if a.status in {AttendanceStatus.PRESENT, AttendanceStatus.LATE})
         att_rate = round(present / len(session_ids) * 100, 1) if session_ids else 0.0
 
-    # Build last_5_matches
-    participated_match_ids = sorted(per_match.keys(), key=lambda mid: matches_map[mid].match_date if mid in matches_map else "", reverse=True)
-    last_5_ids = participated_match_ids[:5]
+    # ── Per-match aggregation (player) ───────────────────────────────────────
+    scoring_types = {EventType.GOAL, EventType.PENALTY_GOAL, EventType.POINT, EventType.POINT_FREE,
+                     EventType.FORTY_FIVE, EventType.TWO_POINT, EventType.TWO_POINT_FREE}
+    shot_types = scoring_types | {EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT,
+                                   EventType.SAVED, EventType.HIT_POST, EventType.FORTY_FIVE_MISSED,
+                                   EventType.PENALTY_MISS}
+    kickout_won_types = {EventType.KICKOUT_WON, EventType.OWN_KICKOUT_WON,
+                         EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON,
+                         EventType.OPP_KICKOUT_WON_BREAK}
+    own_kickout_won_types = {EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK}
+    own_kickout_lost_types = {EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK}
+    opp_kickout_won_types = {EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK}
+    opp_kickout_lost_types = {EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK}
+
+    def _empty_match_bucket():
+        return {
+            "goals": 0, "points": 0, "two_pointers": 0,
+            "to_won": 0, "to_lost": 0,
+            "blocks": 0, "interceptions": 0, "tackles_won": 0,
+            "fouls_won": 0, "fouls_committed": 0,
+            "own_ko_won": 0, "own_ko_lost": 0,
+            "opp_ko_won": 0, "opp_ko_lost": 0,
+            "wides": 0, "shots_saved": 0, "total_shots": 0,
+            "frees_scored": 0, "frees_missed": 0,
+            "yellow_cards": 0, "black_cards": 0, "red_cards": 0,
+        }
+
+    per_match: dict = {}
+    for e in player_events:
+        mid = e.match_id
+        if mid not in per_match:
+            per_match[mid] = _empty_match_bucket()
+        s = per_match[mid]
+        et = e.event_type
+        if et in {EventType.GOAL, EventType.PENALTY_GOAL}:
+            s["goals"] += 1; s["total_shots"] += 1; s["frees_scored"] += (1 if et == EventType.PENALTY_GOAL else 0)
+        elif et in {EventType.POINT, EventType.FORTY_FIVE}:
+            s["points"] += 1; s["total_shots"] += 1
+        elif et == EventType.POINT_FREE:
+            s["points"] += 1; s["total_shots"] += 1; s["frees_scored"] += 1
+        elif et == EventType.TWO_POINT:
+            s["two_pointers"] += 1; s["total_shots"] += 1
+        elif et == EventType.TWO_POINT_FREE:
+            s["two_pointers"] += 1; s["total_shots"] += 1; s["frees_scored"] += 1
+        elif et in {EventType.WIDE, EventType.SHORT, EventType.HIT_POST}:
+            s["wides"] += 1; s["total_shots"] += 1
+        elif et in {EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED}:
+            s["wides"] += 1; s["total_shots"] += 1; s["frees_missed"] += 1
+        elif et == EventType.SAVED:
+            s["shots_saved"] += 1; s["total_shots"] += 1
+        elif et == EventType.PENALTY_MISS:
+            s["frees_missed"] += 1; s["total_shots"] += 1
+        elif et == EventType.TURNOVER_WON:
+            s["to_won"] += 1
+        elif et == EventType.TURNOVER_LOST:
+            s["to_lost"] += 1
+        elif et == EventType.TACKLE_WON:
+            s["tackles_won"] += 1
+        elif et == EventType.BLOCK:
+            s["blocks"] += 1
+        elif et == EventType.INTERCEPTION:
+            s["interceptions"] += 1
+        elif et == EventType.FOUL_WON:
+            s["fouls_won"] += 1
+        elif et == EventType.FOUL_COMMITTED:
+            s["fouls_committed"] += 1
+        elif et in own_kickout_won_types:
+            s["own_ko_won"] += 1
+        elif et in own_kickout_lost_types:
+            s["own_ko_lost"] += 1
+        elif et in opp_kickout_won_types:
+            s["opp_ko_won"] += 1
+        elif et in opp_kickout_lost_types:
+            s["opp_ko_lost"] += 1
+        elif et == EventType.YELLOW_CARD:
+            s["yellow_cards"] += 1
+        elif et == EventType.BLACK_CARD:
+            s["black_cards"] += 1
+        elif et == EventType.RED_CARD:
+            s["red_cards"] += 1
+
+    # ── Season totals (player) ───────────────────────────────────────────────
+    participated_match_ids = sorted(
+        per_match.keys(),
+        key=lambda mid: matches_map[mid].match_date if mid in matches_map else "",
+        reverse=True
+    )
+    appearances = len(participated_match_ids)
+
+    def _sum(key): return sum(per_match[mid][key] for mid in participated_match_ids)
+
+    total_goals = _sum("goals")
+    total_points = _sum("points")
+    total_two_pointers = _sum("two_pointers")
+    total_score = total_goals * 3 + total_points + total_two_pointers * 2
+    avg_score = round(total_score / appearances, 2) if appearances else 0.0
+    wins = sum(1 for mid in participated_match_ids if mid in matches_map and matches_map[mid].team_total_score > matches_map[mid].opponent_total_score)
+    win_rate = round(wins / appearances * 100, 1) if appearances else 0.0
+    own_ko_won = _sum("own_ko_won"); own_ko_lost = _sum("own_ko_lost")
+    opp_ko_won = _sum("opp_ko_won"); opp_ko_lost = _sum("opp_ko_lost")
+    total_ko_won = own_ko_won + opp_ko_won
+    total_to_won = _sum("to_won"); total_to_lost = _sum("to_lost")
+    total_tackles = _sum("tackles_won"); total_blocks = _sum("blocks"); total_intercepts = _sum("interceptions")
+    total_shots = _sum("total_shots"); total_wides = _sum("wides"); total_saves = _sum("shots_saved")
+    shoot_pct = round((total_score / total_shots) * 100, 1) if total_shots else 0.0
+    frees_scored = _sum("frees_scored"); frees_missed = _sum("frees_missed")
+    free_acc = round(frees_scored / (frees_scored + frees_missed) * 100, 1) if (frees_scored + frees_missed) else 0.0
+    fouls_won = _sum("fouls_won"); fouls_committed = _sum("fouls_committed")
+    yellows = _sum("yellow_cards"); blacks = _sum("black_cards"); reds = _sum("red_cards")
+
+    # GPS season averages (player)
+    player_gps_list = [gps_rows[mid] for mid in participated_match_ids if mid in gps_rows]
+    gps_matches = len(player_gps_list)
+    avg_dist = round(sum(g.total_distance_m for g in player_gps_list if g.total_distance_m) / gps_matches / 1000, 2) if gps_matches else None
+    avg_hsr = round(sum(g.high_speed_running_m for g in player_gps_list if g.high_speed_running_m) / gps_matches, 0) if gps_matches else None
+    avg_sprints = round(sum(g.sprint_count for g in player_gps_list if g.sprint_count) / gps_matches, 1) if gps_matches else None
+    avg_max_speed = round(sum(g.max_speed_ms for g in player_gps_list if g.max_speed_ms) / gps_matches, 2) if gps_matches else None
+
+    # ── Squad-level aggregates (for rankings) ────────────────────────────────
+    # Score totals per player across season
+    squad_scores: dict = {}
+    squad_ko_won: dict = {}
+    squad_to_won: dict = {}
+    for e in all_own_events:
+        pid = e.player_id
+        if not pid:
+            continue
+        pid = pid
+        if pid not in squad_scores:
+            squad_scores[pid] = 0; squad_ko_won[pid] = 0; squad_to_won[pid] = 0
+        et = e.event_type
+        if et in {EventType.GOAL, EventType.PENALTY_GOAL}:
+            squad_scores[pid] += 3
+        elif et in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}:
+            squad_scores[pid] += 1
+        elif et in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}:
+            squad_scores[pid] += 2
+        if et in kickout_won_types:
+            squad_ko_won[pid] += 1
+        if et == EventType.TURNOVER_WON:
+            squad_to_won[pid] += 1
+
+    def _rank(lookup: dict, player_id, higher_is_better=True) -> int | None:
+        if not lookup:
+            return None
+        player_val = lookup.get(player_id, 0)
+        sorted_vals = sorted(lookup.values(), reverse=higher_is_better)
+        try:
+            return sorted_vals.index(player_val) + 1
+        except ValueError:
+            return None
+
+    squad_gps_dist: dict = {}
+    for g in all_gps:
+        pid = g.player_id
+        if g.total_distance_m:
+            squad_gps_dist.setdefault(pid, []).append(g.total_distance_m)
+    squad_gps_avg = {pid: sum(vals) / len(vals) for pid, vals in squad_gps_dist.items()}
+
+    rank_score = _rank(squad_scores, player_uuid)
+    rank_ko = _rank(squad_ko_won, player_uuid)
+    rank_to = _rank(squad_to_won, player_uuid)
+    rank_dist = _rank(squad_gps_avg, player_uuid)
+
+    season = PlayerSeasonTotals(
+        appearances=appearances,
+        total_goals=total_goals, total_points=total_points, total_two_pointers=total_two_pointers,
+        total_score_contribution=total_score, avg_score_per_match=avg_score, win_rate_pct=win_rate,
+        own_kickouts_won=own_ko_won, own_kickouts_lost=own_ko_lost,
+        opp_kickouts_won=opp_ko_won, opp_kickouts_lost=opp_ko_lost, total_kickouts_won=total_ko_won,
+        total_turnovers_won=total_to_won, total_turnovers_lost=total_to_lost,
+        total_tackles_won=total_tackles, total_blocks=total_blocks, total_interceptions=total_intercepts,
+        total_shots=total_shots, shooting_accuracy_pct=shoot_pct, total_wides=total_wides, shots_saved=total_saves,
+        frees_scored=frees_scored, frees_missed=frees_missed, free_accuracy_pct=free_acc,
+        fouls_won=fouls_won, fouls_committed=fouls_committed,
+        yellow_cards=yellows, black_cards=blacks, red_cards=reds,
+        gps_matches=gps_matches, avg_distance_km=avg_dist, avg_hsr_m=avg_hsr,
+        avg_sprint_count=avg_sprints, avg_max_speed_ms=avg_max_speed,
+        rank_score_total=rank_score, rank_kickouts_won=rank_ko,
+        rank_turnovers_won=rank_to, rank_distance=rank_dist,
+    )
+
+    # ── Last 5 match rows ────────────────────────────────────────────────────
     last_5_rows = []
-    for mid in last_5_ids:
+    for mid in participated_match_ids[:5]:
         m = matches_map.get(mid)
         if not m:
             continue
@@ -1654,90 +1887,62 @@ async def get_player_form(
             result="W" if m.team_total_score > m.opponent_total_score else ("L" if m.team_total_score < m.opponent_total_score else "D"),
             team_score=f"{m.team_goals}-{m.team_points:02d}",
             opp_score=f"{m.opponent_goals}-{m.opponent_points:02d}",
-            goals=s["goals"],
-            points=s["points"],
-            two_pointers=s["two_pointers"],
+            goals=s["goals"], points=s["points"], two_pointers=s["two_pointers"],
             score_contribution=contribution,
-            turnovers_won=s["to_won"],
-            turnovers_lost=s["to_lost"],
+            turnovers_won=s["to_won"], turnovers_lost=s["to_lost"],
+            blocks=s["blocks"], interceptions=s["interceptions"], tackles_won=s["tackles_won"],
+            fouls_won=s["fouls_won"], fouls_committed=s["fouls_committed"],
+            kickouts_won=s["own_ko_won"] + s["opp_ko_won"],
+            wides=s["wides"],
             gps_distance_km=round(gps.total_distance_m / 1000, 2) if gps and gps.total_distance_m else None,
+            gps_hsr_m=round(gps.high_speed_running_m, 0) if gps and gps.high_speed_running_m else None,
+            gps_sprint_count=gps.sprint_count if gps else None,
+            gps_max_speed_ms=round(gps.max_speed_ms, 2) if gps and gps.max_speed_ms else None,
         ))
 
-    # Form trend: compare avg score from last 3 vs previous 2
-    scores_all = [per_match[mid]["goals"] * 3 + per_match[mid]["points"] + per_match[mid]["two_pointers"] * 2 for mid in participated_match_ids[:5]]
+    # ── Form trend ───────────────────────────────────────────────────────────
+    scores_recent = [per_match[mid]["goals"] * 3 + per_match[mid]["points"] + per_match[mid]["two_pointers"] * 2
+                     for mid in participated_match_ids[:5]]
     form_trend = "stable"
-    if len(scores_all) >= 3:
-        recent_avg = sum(scores_all[:3]) / 3
-        older_avg = sum(scores_all[3:]) / len(scores_all[3:]) if scores_all[3:] else recent_avg
+    if len(scores_recent) >= 3:
+        recent_avg = sum(scores_recent[:3]) / 3
+        older_avg = sum(scores_recent[3:]) / len(scores_recent[3:]) if scores_recent[3:] else recent_avg
         if recent_avg > older_avg + 0.5:
             form_trend = "up"
         elif recent_avg < older_avg - 0.5:
             form_trend = "down"
 
-    # Radar: per-player averages vs squad averages (simplified from available data)
-    player_score_avg = sum(scores_all) / len(scores_all) if scores_all else 0.0
-    # Squad avg scoring (per match)
-    all_events_result = await db.execute(
-        select(MatchEvent).where(
-            and_(MatchEvent.match_id.in_(match_ids), MatchEvent.team == Team.OWN)
-        )
-    )
-    all_own_events = all_events_result.scalars().all()
-
-    # Count unique players with scoring events
-    all_scorers: dict = {}
-    for e in all_own_events:
-        if e.event_type in scoring_event_types and e.player_id:
-            pid = e.player_id
-            if pid not in all_scorers:
-                all_scorers[pid] = 0
-            if e.event_type in {EventType.GOAL, EventType.PENALTY_GOAL}:
-                all_scorers[pid] += 3
-            elif e.event_type in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}:
-                all_scorers[pid] += 1
-            elif e.event_type in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}:
-                all_scorers[pid] += 2
-
-    squad_score_avg = sum(all_scorers.values()) / len(all_scorers) if all_scorers else 1.0
-
-    # Defence: turnovers won
-    player_def = sum(per_match[mid]["to_won"] for mid in participated_match_ids[:5]) / max(len(participated_match_ids[:5]), 1)
-    squad_def_total = sum(1 for e in all_own_events if e.event_type == EventType.TURNOVER_WON)
-    squad_def_avg = squad_def_total / max(len(all_scorers), 1)
-
-    # GPS workload
-    player_gps_vals = [gps_rows[mid].total_distance_m for mid in participated_match_ids[:5] if mid in gps_rows and gps_rows[mid].total_distance_m]
+    # ── Radar (6 axes) ───────────────────────────────────────────────────────
+    squad_score_avg = sum(squad_scores.values()) / len(squad_scores) if squad_scores else 1.0
+    squad_def_avg = sum(squad_to_won.values()) / len(squad_to_won) if squad_to_won else 1.0
+    squad_ko_avg = sum(squad_ko_won.values()) / len(squad_ko_won) if squad_ko_won else 1.0
+    player_gps_vals = [gps_rows[mid].total_distance_m for mid in participated_match_ids[:5]
+                       if mid in gps_rows and gps_rows[mid].total_distance_m]
     player_workload = sum(player_gps_vals) / len(player_gps_vals) / 1000 if player_gps_vals else 0.0
-
-    # Squad GPS avg
-    all_gps_result = await db.execute(
-        select(MatchGPSData).where(MatchGPSData.match_id.in_(match_ids))
-    )
-    all_gps = all_gps_result.scalars().all()
     gps_distances = [g.total_distance_m / 1000 for g in all_gps if g.total_distance_m]
     squad_workload = sum(gps_distances) / len(gps_distances) if gps_distances else player_workload or 8.0
 
-    # Normalise radar values to 0-100 scale
     def norm(val: float, avg: float) -> float:
         if avg == 0:
             return 50.0
         return min(100.0, round(val / avg * 50, 1))
 
+    player_score_avg = sum(scores_recent) / len(scores_recent) if scores_recent else 0.0
+    player_def_avg = total_to_won / max(appearances, 1)
+    player_ko_avg = total_ko_won / max(appearances, 1)
+
     radar = PlayerFormRadar(
         scoring=norm(player_score_avg, squad_score_avg),
-        defence=norm(player_def, max(squad_def_avg, 0.1)),
+        defence=norm(player_def_avg, max(squad_def_avg, 0.1)),
         workload=norm(player_workload, squad_workload),
         attendance=att_rate,
-        fitness=50.0,  # placeholder
-        scoring_squad_avg=50.0,
-        defence_squad_avg=50.0,
-        workload_squad_avg=50.0,
-        attendance_squad_avg=70.0,
-        fitness_squad_avg=50.0,
+        fitness=50.0,
+        kickouts=norm(player_ko_avg, max(squad_ko_avg, 0.1)),
+        scoring_squad_avg=50.0, defence_squad_avg=50.0, workload_squad_avg=50.0,
+        attendance_squad_avg=70.0, fitness_squad_avg=50.0, kickouts_squad_avg=50.0,
     )
 
-    match_ready = att_rate >= 50 and (per_match.get(participated_match_ids[0]) is not None if participated_match_ids else False)
-
+    match_ready = att_rate >= 50 and bool(participated_match_ids)
     pos = player.position if isinstance(player.position, str) else (player.position.value if hasattr(player.position, 'value') else str(player.position))
 
     return PlayerFormData(
@@ -1749,6 +1954,7 @@ async def get_player_form(
         radar=radar,
         match_ready=match_ready,
         attendance_rate_pct=att_rate,
+        season=season,
     )
 
 
