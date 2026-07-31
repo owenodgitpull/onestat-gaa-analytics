@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, Cell,
+  Legend, ResponsiveContainer, Cell, ReferenceLine,
 } from 'recharts'
 import { Trophy, TrendingUp, Home, Plane, Download } from 'lucide-react'
 import type { Match } from '@/types'
@@ -92,6 +92,19 @@ export default function SeasonProgressReport({ matches, dashboardData }: Props) 
       }
     })
   }, [completed])
+
+  // Score differential per match
+  const differentialData = useMemo(() =>
+    completed.map((m) => {
+      const diff = totalScore(m.team_goals, m.team_points) - totalScore(m.opponent_goals, m.opponent_points)
+      return {
+        label: `${m.opponent.substring(0, 8)} (${matchLabel(m)})`,
+        diff,
+        color: diff > 0 ? '#34d399' : diff < 0 ? '#f87171' : '#94a3b8',
+      }
+    }),
+    [completed]
+  )
 
   // Home vs away stats
   const homeMatches = completed.filter((m) => m.is_home)
@@ -194,6 +207,29 @@ export default function SeasonProgressReport({ matches, dashboardData }: Props) 
             <Bar dataKey="conceded" name="Conceded" fill="#f87171" radius={[2, 2, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Score differential (margins) */}
+      <div className="glass-card p-5">
+        <h3 className="text-sm font-semibold text-white/60 uppercase tracking-widest mb-4">Score Margin Per Match</h3>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={differentialData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+            <XAxis dataKey="label" stroke="rgba(255,255,255,0.3)" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={48} />
+            <YAxis stroke="rgba(255,255,255,0.3)" tick={{ fontSize: 11 }} />
+            <Tooltip
+              contentStyle={{ background: '#1e293b', border: 'none', color: '#fff', fontSize: 12 }}
+              formatter={(val: number) => [`${val > 0 ? '+' : ''}${val} pts`, 'Margin']}
+            />
+            <ReferenceLine y={0} stroke="rgba(255,255,255,0.3)" />
+            <Bar dataKey="diff" name="Margin" radius={[2, 2, 0, 0]}>
+              {differentialData.map((entry, i) => (
+                <Cell key={i} fill={entry.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        <p className="text-white/30 text-xs text-center mt-1">Green = win margin, Red = defeat margin (in points)</p>
       </div>
 
       {/* Points per game trend */}

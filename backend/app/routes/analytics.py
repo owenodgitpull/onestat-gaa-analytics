@@ -2128,6 +2128,15 @@ class KickoutMatchRow(BaseModel):
     opp_won_pct: float
 
 
+class KickoutPlayerRow(BaseModel):
+    player_id: str
+    player_name: str
+    kickouts_won: int
+    own_kickouts_won: int
+    opp_kickouts_won: int
+    matches: int
+
+
 class KickoutSummaryData(BaseModel):
     per_match: List[KickoutMatchRow]
     season_own_won_pct: float
@@ -2135,6 +2144,7 @@ class KickoutSummaryData(BaseModel):
     best_own_match: Optional[str]
     worst_own_match: Optional[str]
     correlation_note: str
+    player_leaderboard: List[KickoutPlayerRow] = []
 
 
 @router.get("/kickout-summary", response_model=KickoutSummaryData)
@@ -2163,20 +2173,31 @@ async def get_kickout_summary(
     opp_kickout_won_types = {EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK}
     opp_kickout_lost_types = {EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK}
 
+    all_ko_types = (
+        list(kickout_won_types) + list(kickout_lost_types) +
+        list(opp_kickout_won_types) + list(opp_kickout_lost_types)
+    )
     events_result = await db.execute(
         select(MatchEvent).where(
             and_(
                 MatchEvent.match_id.in_(match_ids),
-                MatchEvent.event_type.in_(
-                    list(kickout_won_types) + list(kickout_lost_types) +
-                    list(opp_kickout_won_types) + list(opp_kickout_lost_types)
-                )
+                MatchEvent.event_type.in_(all_ko_types)
             )
         )
     )
     events = events_result.scalars().all()
 
+    # Player leaderboard — who's winning the most kickouts
+    player_ko: dict = {}
+    all_player_ids = list({e.player_id for e in events if e.player_id})
+    player_name_map: dict = {}
+    if all_player_ids:
+        pn_result = await db.execute(select(Player).where(Player.id.in_(all_player_ids)))
+        for p in pn_result.scalars():
+            player_name_map[p.id] = p.name
+
     ko_stats: dict = {}
+    player_match_tracker: dict = {}  # pid -> set of match_ids for "appearances"
     for e in events:
         mid = e.match_id
         if mid not in ko_stats:
@@ -2184,11 +2205,23 @@ async def get_kickout_summary(
         if e.event_type in kickout_won_types:
             ko_stats[mid]["own_won"] += 1
             ko_stats[mid]["own_total"] += 1
+            if e.player_id:
+                pid = str(e.player_id)
+                if pid not in player_ko:
+                    player_ko[pid] = {"own_won": 0, "opp_won": 0}
+                player_ko[pid]["own_won"] += 1
+                player_match_tracker.setdefault(pid, set()).add(mid)
         elif e.event_type in kickout_lost_types:
             ko_stats[mid]["own_total"] += 1
         elif e.event_type in opp_kickout_won_types:
             ko_stats[mid]["opp_won"] += 1
             ko_stats[mid]["opp_total"] += 1
+            if e.player_id:
+                pid = str(e.player_id)
+                if pid not in player_ko:
+                    player_ko[pid] = {"own_won": 0, "opp_won": 0}
+                player_ko[pid]["opp_won"] += 1
+                player_match_tracker.setdefault(pid, set()).add(mid)
         elif e.event_type in opp_kickout_lost_types:
             ko_stats[mid]["opp_total"] += 1
 
@@ -2236,6 +2269,26 @@ async def get_kickout_summary(
     else:
         correlation_note = "Insufficient match data for correlation."
 
+    # Build player kickout leaderboard
+    player_leaderboard = []
+    from uuid import UUID as _PUID
+    for pid_str, ko in player_ko.items():
+        total_won = ko["own_won"] + ko["opp_won"]
+        try:
+            p_uuid = _PUID(pid_str)
+            pname = player_name_map.get(p_uuid, "Unknown")
+        except Exception:
+            pname = "Unknown"
+        player_leaderboard.append(KickoutPlayerRow(
+            player_id=pid_str,
+            player_name=pname,
+            kickouts_won=total_won,
+            own_kickouts_won=ko["own_won"],
+            opp_kickouts_won=ko["opp_won"],
+            matches=len(player_match_tracker.get(pid_str, set())),
+        ))
+    player_leaderboard.sort(key=lambda x: x.kickouts_won, reverse=True)
+
     return KickoutSummaryData(
         per_match=per_match_out,
         season_own_won_pct=round(total_own_won / total_own * 100, 1) if total_own > 0 else 0,
@@ -2243,6 +2296,7 @@ async def get_kickout_summary(
         best_own_match=best_match.opponent if best_match else None,
         worst_own_match=worst_match.opponent if worst_match else None,
         correlation_note=correlation_note,
+        player_leaderboard=player_leaderboard,
     )
 
 
@@ -2264,7 +2318,9 @@ class TrainingLoadPlayerRow(BaseModel):
     high_speed_running_m: Optional[float]
     sprint_count: Optional[int]
     dynamic_stress_load: Optional[float]
+    max_speed_kmh: Optional[float]
     sessions_attended: int
+    attendance_rank: Optional[int] = None
 
 
 class TrainingLoadData(BaseModel):
@@ -2364,7 +2420,7 @@ async def get_training_load(
     for g in gps_rows:
         pid = str(g.player_id)
         if pid not in player_gps:
-            player_gps[pid] = {"distance": [], "hsr": [], "sprints": [], "dsl": [], "sessions": 0}
+            player_gps[pid] = {"distance": [], "hsr": [], "sprints": [], "dsl": [], "max_speed": [], "sessions": 0}
         player_gps[pid]["sessions"] += 1
         if g.total_distance_m:
             player_gps[pid]["distance"].append(g.total_distance_m / 1000)
@@ -2374,10 +2430,21 @@ async def get_training_load(
             player_gps[pid]["sprints"].append(g.sprint_count)
         if g.dynamic_stress_load:
             player_gps[pid]["dsl"].append(g.dynamic_stress_load)
+        if g.max_speed_ms:
+            player_gps[pid]["max_speed"].append(g.max_speed_ms * 3.6)
 
+    # Build player loads and attendance ranking
+    att_sessions_by_player: dict = {}
+    for a in all_attendance:
+        from app.models.attendance import AttendanceStatus as _AS
+        if a.status in {_AS.PRESENT, _AS.LATE}:
+            att_sessions_by_player[str(a.player_id)] = att_sessions_by_player.get(str(a.player_id), 0) + 1
+
+    all_tracked_pids = set(player_gps.keys()) | set(att_sessions_by_player.keys())
     player_loads = []
     from uuid import UUID as _UUID
-    for pid, g in player_gps.items():
+    for pid in all_tracked_pids:
+        g = player_gps.get(pid, {"distance": [], "hsr": [], "sprints": [], "dsl": [], "max_speed": [], "sessions": 0})
         try:
             pname = player_map.get(_UUID(pid), "Unknown")
         except Exception:
@@ -2389,9 +2456,13 @@ async def get_training_load(
             high_speed_running_m=round(sum(g["hsr"]), 1) if g["hsr"] else None,
             sprint_count=sum(g["sprints"]) if g["sprints"] else None,
             dynamic_stress_load=round(sum(g["dsl"]), 1) if g["dsl"] else None,
-            sessions_attended=g["sessions"],
+            max_speed_kmh=round(max(g["max_speed"]), 1) if g["max_speed"] else None,
+            sessions_attended=att_sessions_by_player.get(pid, g["sessions"]),
         ))
-    player_loads.sort(key=lambda x: x.total_distance_km or 0, reverse=True)
+    # Sort by sessions attended desc, then distance
+    player_loads.sort(key=lambda x: (x.sessions_attended, x.total_distance_km or 0), reverse=True)
+    for rank, pl in enumerate(player_loads, 1):
+        pl.attendance_rank = rank
 
     return TrainingLoadData(
         sessions=sessions_out,

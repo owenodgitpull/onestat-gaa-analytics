@@ -21,6 +21,15 @@ interface KickoutMatchRow {
   opp_won_pct: number
 }
 
+interface KickoutPlayerRow {
+  player_id: string
+  player_name: string
+  kickouts_won: number
+  own_kickouts_won: number
+  opp_kickouts_won: number
+  matches: number
+}
+
 interface KickoutSummaryData {
   per_match: KickoutMatchRow[]
   season_own_won_pct: number
@@ -28,6 +37,7 @@ interface KickoutSummaryData {
   best_own_match: string | null
   worst_own_match: string | null
   correlation_note: string
+  player_leaderboard: KickoutPlayerRow[]
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -184,6 +194,48 @@ export default function KickoutAnalysisReport() {
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Player leaderboard */}
+      {data.player_leaderboard.length > 0 && (
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-semibold text-white/60 uppercase tracking-widest mb-4">Player Kickout Leaderboard — Season</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-white/40 text-xs uppercase">
+                  <th className="text-left py-2">Rank</th>
+                  <th className="text-left py-2">Player</th>
+                  <th className="text-right py-2">Total Won</th>
+                  <th className="text-right py-2">Own K/O</th>
+                  <th className="text-right py-2">Opp K/O</th>
+                  <th className="text-right py-2">Matches</th>
+                  <th className="text-right py-2">Per Match</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.player_leaderboard.map((p, i) => {
+                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
+                  return (
+                    <tr key={p.player_id} className="border-t border-white/5">
+                      <td className="py-2 text-white/50 text-xs w-8">
+                        {medal ?? <span className="text-white/40">#{i + 1}</span>}
+                      </td>
+                      <td className="py-2 text-white font-medium">{p.player_name}</td>
+                      <td className={`py-2 text-right font-bold ${i === 0 ? 'text-emerald-400' : 'text-white'}`}>{p.kickouts_won}</td>
+                      <td className="py-2 text-right text-white/70">{p.own_kickouts_won}</td>
+                      <td className="py-2 text-right text-blue-400">{p.opp_kickouts_won}</td>
+                      <td className="py-2 text-right text-white/50">{p.matches}</td>
+                      <td className="py-2 text-right text-white/60">
+                        {p.matches > 0 ? (p.kickouts_won / p.matches).toFixed(1) : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Match table */}
       <div className="glass-card p-5">

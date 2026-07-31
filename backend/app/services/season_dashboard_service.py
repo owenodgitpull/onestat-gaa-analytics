@@ -2667,8 +2667,15 @@ async def _get_cached_kpi_insights(db: AsyncSession, kpi_data: dict, fixture_con
     cache = cache_result.scalar_one_or_none()
 
     if cache and cache.data_fingerprint == fingerprint and cache.cached_result:
-        logger.info(f"KPI insights cache HIT (fingerprint={fingerprint[:12]}...)")
-        return cache.cached_result
+        # Check all current card keys are covered — a new card added from library won't be
+        current_keys = {c["key"] for c in kpi_data.get("cards", [])}
+        cached_keys = set(cache.cached_result.keys())
+        missing_keys = current_keys - cached_keys
+        if not missing_keys:
+            logger.info(f"KPI insights cache HIT (fingerprint={fingerprint[:12]}...)")
+            return cache.cached_result
+        logger.info(f"KPI insights cache PARTIAL MISS — new cards {missing_keys} not in cache, regenerating")
+
 
     # Cache miss — generate via Season Agent
     logger.info(f"KPI insights cache MISS (fingerprint={fingerprint[:12]}...) — calling Season Agent")

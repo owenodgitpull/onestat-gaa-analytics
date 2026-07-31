@@ -23,7 +23,9 @@ interface TrainingLoadPlayerRow {
   high_speed_running_m: number | null
   sprint_count: number | null
   dynamic_stress_load: number | null
+  max_speed_kmh: number | null
   sessions_attended: number
+  attendance_rank: number | null
 }
 
 interface TrainingLoadData {
@@ -223,25 +225,33 @@ export default function TrainingLoadReport() {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-white/40 text-xs uppercase">
+                          <th className="text-left py-2">Rank</th>
                           <th className="text-left py-2">Player</th>
                           <th className="text-right py-2">Sessions</th>
-                          <th className="text-right py-2">Total Dist (km)</th>
+                          <th className="text-right py-2">Dist (km)</th>
                           <th className="text-right py-2">HSR (m)</th>
                           <th className="text-right py-2">Sprints</th>
+                          <th className="text-right py-2">Top Speed</th>
                           <th className="text-right py-2">DSL</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {data.player_loads.map((p) => (
-                          <tr key={p.player_id} className="border-t border-white/5">
-                            <td className="py-2 text-white">{p.player_name}</td>
-                            <td className="py-2 text-right text-white/60">{p.sessions_attended}</td>
-                            <td className="py-2 text-right text-white/80">{p.total_distance_km ?? '—'}</td>
-                            <td className="py-2 text-right text-white/80">{p.high_speed_running_m ? Math.round(p.high_speed_running_m) : '—'}</td>
-                            <td className="py-2 text-right text-white/80">{p.sprint_count ?? '—'}</td>
-                            <td className="py-2 text-right text-white/80">{p.dynamic_stress_load ?? '—'}</td>
-                          </tr>
-                        ))}
+                        {data.player_loads.map((p) => {
+                          const rank = p.attendance_rank
+                          const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`
+                          return (
+                            <tr key={p.player_id} className="border-t border-white/5">
+                              <td className="py-2 text-white/50 text-xs">{medal}</td>
+                              <td className="py-2 text-white">{p.player_name}</td>
+                              <td className={`py-2 text-right font-medium ${rank === 1 ? 'text-emerald-400' : 'text-white/60'}`}>{p.sessions_attended}</td>
+                              <td className="py-2 text-right text-white/80">{p.total_distance_km ?? '—'}</td>
+                              <td className="py-2 text-right text-white/80">{p.high_speed_running_m ? Math.round(p.high_speed_running_m) : '—'}</td>
+                              <td className="py-2 text-right text-white/80">{p.sprint_count ?? '—'}</td>
+                              <td className="py-2 text-right text-amber-400">{p.max_speed_kmh ? `${p.max_speed_kmh} km/h` : '—'}</td>
+                              <td className="py-2 text-right text-white/80">{p.dynamic_stress_load ?? '—'}</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
