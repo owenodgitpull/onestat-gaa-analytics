@@ -42,7 +42,7 @@ function renderTable(tableLines: string[], key: string): JSX.Element {
   }
 
   function cellStyle(
-    value: string,
+    _value: string,
     colIdx: number,
     rowCells: string[]
   ): string {
