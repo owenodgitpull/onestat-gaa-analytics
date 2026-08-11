@@ -52,6 +52,9 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
+      // Data doesn't change second-to-second — avoid a full refetch every
+      // time a user navigates back to a page they just visited.
+      staleTime: 60_000,
     },
   },
 })

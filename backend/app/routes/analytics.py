@@ -4,9 +4,10 @@ API routes for Season Analytics and Dashboard data.
 Aggregates data across all matches for dashboard visualizations.
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, case, and_
+from sqlalchemy.orm import lazyload
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -516,6 +517,13 @@ async def get_dashboard_data(
                 Match.club_id == user.club_id,
                 event_count > 0,
             )
+        ).options(
+            lazyload(Match.events),
+            lazyload(Match.possession_events),
+            lazyload(Match.player_stats),
+            lazyload(Match.lineup),
+            lazyload(Match.gps_data),
+            lazyload(Match.video_sessions),
         ).order_by(Match.match_date.desc())
     )
     matches = matches_result.scalars().all()
@@ -555,7 +563,9 @@ async def get_dashboard_data(
 
     if match_ids:
         events_result = await db.execute(
-            select(MatchEvent).where(MatchEvent.match_id.in_(match_ids))
+            select(MatchEvent)
+            .where(MatchEvent.match_id.in_(match_ids))
+            .options(lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player))
         )
         all_events = events_result.scalars().all()
     else:
@@ -1024,6 +1034,7 @@ async def get_player_shot_events(
 
 @router.get("/season-dashboard", response_model=SeasonDashboardData)
 async def get_season_dashboard(
+    background_tasks: BackgroundTasks,
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1035,7 +1046,7 @@ async def get_season_dashboard(
     """
     from app.services.season_dashboard_service import SeasonDashboardService
 
-    data = await SeasonDashboardService.get_all(db, user.club_id)
+    data = await SeasonDashboardService.get_all(db, user.club_id, background_tasks=background_tasks)
 
     td = data["territory_distribution"]
     kpi_raw = data.get("kpi_cards")

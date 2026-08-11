@@ -178,8 +178,8 @@ export default function PossessionSelectionModal({
               <div className="inline-flex p-2 rounded-full bg-emerald-600/30 mb-2">
                 <Users size={28} className="text-emerald-300" />
               </div>
-              <h2 className="text-2xl md:text-3xl font-bold text-white mb-1">Who Has Possession?</h2>
-              <p className="text-white/70 text-sm">Select which team won the throw-in</p>
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-1">Who Won Throw In?</h2>
+              <p className="text-white/70 text-sm">As soon as you choose a team, possession and the clock will start</p>
             </div>
 
             {/* Team Selection */}
@@ -238,19 +238,6 @@ export default function PossessionSelectionModal({
                   ← Back to direction selection
                 </button>
               )}
-            </div>
-
-            {/* Visual Pitch Reminder — compact */}
-            <div className="px-4 md:px-6 pb-3 md:pb-4">
-              <MiniPitch
-                direction={attackingRight ? 'right' : 'left'}
-                homeTeam={homeTeam}
-              />
-              <div className="p-2 mt-1.5 rounded-lg bg-emerald-600/10 border border-emerald-500/30">
-                <p className="text-xs text-white/70 text-center">
-                  {homeTeam} attacking {attackingRight ? 'left → right' : 'right → left'} this half
-                </p>
-              </div>
             </div>
           </>
         )}

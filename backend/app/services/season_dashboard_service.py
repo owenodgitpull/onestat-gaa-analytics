@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
+from sqlalchemy.orm import lazyload
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.possession_event import PossessionEvent, PossessionTeam
@@ -96,16 +97,34 @@ class SeasonDashboardService:
         ]
         if club_id:
             conditions.append(Match.club_id == club_id)
+        # Dashboard aggregations query events/gps/etc. directly via targeted
+        # queries — never through these relationships — so skip the model's
+        # default eager (selectin) loading here to avoid 6 redundant queries
+        # per call. Scoped to this query only; other pages keep eager loading.
         result = await db.execute(
-            select(Match).where(and_(*conditions)).order_by(Match.match_date.asc())
+            select(Match)
+            .where(and_(*conditions))
+            .options(
+                lazyload(Match.events),
+                lazyload(Match.possession_events),
+                lazyload(Match.player_stats),
+                lazyload(Match.lineup),
+                lazyload(Match.gps_data),
+                lazyload(Match.video_sessions),
+            )
+            .order_by(Match.match_date.asc())
         )
         return result.scalars().all()
 
     @staticmethod
-    async def get_all(db: AsyncSession, club_id=None) -> dict:
+    async def get_all(db: AsyncSession, club_id=None, background_tasks=None) -> dict:
         """
         Run all 5 aggregations concurrently, sharing the match list.
         Returns the complete season dashboard payload.
+
+        `background_tasks` (FastAPI BackgroundTasks, optional): when provided,
+        a KPI-insight cache miss regenerates in the background instead of
+        blocking this response on an LLM call.
         """
         matches = await SeasonDashboardService._get_completed_matches(db, club_id)
 
@@ -144,7 +163,7 @@ class SeasonDashboardService:
                 "opponent_shot_rate": funnel.get("opponent_shot_rate", 0),
                 "opponent_score_rate": funnel.get("opponent_score_rate", 0),
             }
-            insights = await _get_cached_kpi_insights(db, kpi, fixture_ctx, club_id)
+            insights = await _get_cached_kpi_insights(db, kpi, fixture_ctx, club_id, background_tasks=background_tasks)
             logger.info(f"KPI insights result: {len(insights)} keys returned: {list(insights.keys()) if insights else 'empty'}")
             if insights:
                 for card in kpi.get("cards", []):
@@ -375,7 +394,9 @@ class SeasonDashboardService:
             EventType.OPP_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
         ]
         events_result = await db.execute(
-            select(MatchEvent).where(
+            select(MatchEvent).options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player)
+            ).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.event_type.in_(kickout_types),
@@ -460,7 +481,9 @@ class SeasonDashboardService:
         match_ids = [m.id for m in matches]
 
         events_result = await db.execute(
-            select(MatchEvent).where(
+            select(MatchEvent).options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player)
+            ).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.team == Team.OWN,
@@ -684,7 +707,9 @@ class SeasonDashboardService:
         matches_map = {m.id: m for m in matches}
 
         events_result = await db.execute(
-            select(MatchEvent).where(
+            select(MatchEvent).options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player)
+            ).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.event_type.in_(ALL_SCORE_EVENTS),
@@ -787,7 +812,9 @@ class SeasonDashboardService:
         # Get all score events + dead ball misses
         all_types = ALL_SCORE_EVENTS + list(DEAD_BALL_MISSES)
         events_result = await db.execute(
-            select(MatchEvent).where(
+            select(MatchEvent).options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player)
+            ).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.event_type.in_(all_types),
@@ -886,7 +913,9 @@ class SeasonDashboardService:
         match_ids = [m.id for m in matches]
 
         events_result = await db.execute(
-            select(MatchEvent).where(
+            select(MatchEvent).options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player)
+            ).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.team == Team.OWN,
@@ -974,7 +1003,9 @@ class SeasonDashboardService:
 
         all_kickout_types = OWN_KICKOUT_TYPES + OPP_KICKOUT_TYPES
         events_result = await db.execute(
-            select(MatchEvent).where(
+            select(MatchEvent).options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player)
+            ).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.event_type.in_(all_kickout_types),
@@ -1337,7 +1368,9 @@ class SeasonDashboardService:
 
         # --- 1. Per-player scoring spikes (last match vs season avg) ---
         scoring_result = await db.execute(
-            select(MatchEvent).where(
+            select(MatchEvent).options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player)
+            ).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.team == Team.OWN,
@@ -1395,7 +1428,9 @@ class SeasonDashboardService:
 
         # --- 2. Per-player defensive action spike ---
         def_result = await db.execute(
-            select(MatchEvent).where(
+            select(MatchEvent).options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player)
+            ).where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.team == Team.OWN,
@@ -2647,10 +2682,19 @@ async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
     return hashlib.sha256(fingerprint_str.encode()).hexdigest()
 
 
-async def _get_cached_kpi_insights(db: AsyncSession, kpi_data: dict, fixture_context: str, club_id) -> dict:
+async def _get_cached_kpi_insights(
+    db: AsyncSession, kpi_data: dict, fixture_context: str, club_id, background_tasks=None
+) -> dict:
     """
     Check cache before calling AI for KPI insights.
-    Returns cached result if data hasn't changed, otherwise generates + caches.
+    Returns cached result if data hasn't changed.
+
+    On a cache miss: if `background_tasks` is provided (HTTP request context),
+    schedule regeneration to run AFTER the response is sent — never block the
+    dashboard on an LLM call. Returns stale cached insights if any exist
+    (better than nothing) while the fresh set regenerates in the background.
+    Falls back to the old blocking behavior when `background_tasks` is None
+    (e.g. a script or non-HTTP caller with no way to run work after a response).
     """
     from app.models.season_cache import SeasonCache
     from app.services.ai import generate_kpi_insights
@@ -2676,28 +2720,66 @@ async def _get_cached_kpi_insights(db: AsyncSession, kpi_data: dict, fixture_con
             return cache.cached_result
         logger.info(f"KPI insights cache PARTIAL MISS — new cards {missing_keys} not in cache, regenerating")
 
+    # Cache miss (or partial miss)
+    if background_tasks is not None:
+        logger.info(f"KPI insights cache MISS (fingerprint={fingerprint[:12]}...) — regenerating in background")
+        background_tasks.add_task(_regenerate_kpi_insights_task, kpi_data, fixture_context, club_id)
+        # Serve stale insights immediately if we have them; otherwise empty (frontend handles gracefully)
+        return cache.cached_result if (cache and cache.cached_result) else {}
 
-    # Cache miss — generate via Season Agent
-    logger.info(f"KPI insights cache MISS (fingerprint={fingerprint[:12]}...) — calling Season Agent")
+    # No background_tasks available — fall back to the old blocking behavior
+    logger.info(f"KPI insights cache MISS (fingerprint={fingerprint[:12]}...) — calling Season Agent (blocking)")
     insights = await generate_kpi_insights(db, kpi_data, fixture_context=fixture_context, club_id=club_id)
-
-    # Only cache non-empty successful results
-    if insights:
-        if cache:
-            cache.data_fingerprint = fingerprint
-            cache.cached_result = insights
-            cache.cached_at = datetime.utcnow()
-        else:
-            import uuid
-            new_cache = SeasonCache(
-                id=uuid.uuid4(),
-                club_id=club_id,
-                cache_type="kpi_insights",
-                data_fingerprint=fingerprint,
-                cached_result=insights,
-                cached_at=datetime.utcnow(),
-            )
-            db.add(new_cache)
-        await db.commit()
-
+    await _save_kpi_insights_cache(db, insights, fingerprint, club_id, existing_cache=cache)
     return insights
+
+
+async def _save_kpi_insights_cache(db: AsyncSession, insights: dict, fingerprint: str, club_id, existing_cache=None):
+    """Persist a freshly generated KPI insights dict to SeasonCache. Only caches non-empty results."""
+    from app.models.season_cache import SeasonCache
+
+    if not insights:
+        return
+    if existing_cache:
+        existing_cache.data_fingerprint = fingerprint
+        existing_cache.cached_result = insights
+        existing_cache.cached_at = datetime.utcnow()
+    else:
+        import uuid
+        new_cache = SeasonCache(
+            id=uuid.uuid4(),
+            club_id=club_id,
+            cache_type="kpi_insights",
+            data_fingerprint=fingerprint,
+            cached_result=insights,
+            cached_at=datetime.utcnow(),
+        )
+        db.add(new_cache)
+    await db.commit()
+
+
+async def _regenerate_kpi_insights_task(kpi_data: dict, fixture_context: str, club_id):
+    """
+    Background regeneration of KPI insights — runs after the HTTP response has
+    already been sent. Opens its own DB session since the request-scoped
+    session is closed by the time this runs.
+    """
+    from app.database import AsyncSessionLocal
+    from app.models.season_cache import SeasonCache
+    from app.services.ai import generate_kpi_insights
+
+    try:
+        async with AsyncSessionLocal() as db:
+            fingerprint = await _compute_data_fingerprint(db, club_id)
+            insights = await generate_kpi_insights(db, kpi_data, fixture_context=fixture_context, club_id=club_id)
+            if not insights:
+                return
+            cache_q = select(SeasonCache).where(SeasonCache.cache_type == "kpi_insights")
+            if club_id:
+                cache_q = cache_q.where(SeasonCache.club_id == club_id)
+            cache_result = await db.execute(cache_q)
+            existing_cache = cache_result.scalar_one_or_none()
+            await _save_kpi_insights_cache(db, insights, fingerprint, club_id, existing_cache=existing_cache)
+            logger.info(f"Background KPI insights regeneration complete for club {club_id}")
+    except Exception as e:
+        logger.warning(f"Background KPI insights regeneration failed: {e}", exc_info=True)
