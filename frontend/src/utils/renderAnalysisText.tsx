@@ -71,43 +71,45 @@ const components: Components = {
   hr: () => <hr className="border-white/10 my-3" />,
 
   // ── Table ────────────────────────────────────────────────────────────────────
+  // table-fixed + explicit column widths so all cells stay under their headers
   table: ({ children }) => (
     <div className="overflow-x-auto my-3 rounded-xl border border-white/10">
-      <table className="w-full text-sm border-collapse">{children}</table>
+      <table
+        className="w-full text-sm border-collapse table-fixed [&_th:first-child]:text-left [&_th:not(:first-child)]:text-right [&_td:first-child]:text-left [&_td:not(:first-child)]:text-right [&_td:not(:first-child)]:tabular-nums"
+      >
+        {children}
+      </table>
     </div>
   ),
   thead: ({ children }) => (
     <thead className="border-b border-white/15 bg-white/5">{children}</thead>
   ),
   tbody: ({ children }) => <tbody>{children}</tbody>,
-  tr: ({ children, ...props }) => {
-    // @ts-expect-error - isHeader from thead context
-    const isHeader = props.node?.parentNode?.tagName === 'thead'
-    return (
-      <tr className={`border-b border-white/5 transition-colors hover:bg-white/[0.04] ${!isHeader ? 'even:bg-white/[0.02]' : ''}`}>
-        {children}
-      </tr>
-    )
-  },
-  th: ({ children }) => (
-    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-white/50 first:text-left [&:not(:first-child)]:text-right">
+  tr: ({ children }) => (
+    <tr className="border-b border-white/5 transition-colors hover:bg-white/[0.04] even:bg-white/[0.02]">
       {children}
-    </th>
+    </tr>
   ),
-  td: ({ children }) => {
-    // Try to detect if this cell has a numeric value to right-align it
-    const textContent = typeof children === 'string'
-      ? children
-      : Array.isArray(children)
-        ? children.join('')
-        : String(children ?? '')
-    const isNumeric = /^[+\-]?[\d.,% \/]+$/.test(textContent.trim())
+  th: ({ children, style }) => {
+    // Give the first (metric) column more room; split remainder equally
+    const extraStyle = style ?? {}
     return (
-      <td className={`px-4 py-2.5 text-white/80 ${isNumeric ? 'text-right tabular-nums font-medium' : 'text-left'}`}>
+      <th
+        className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-white/50 first:w-[38%]"
+        style={extraStyle}
+      >
         {children}
-      </td>
+      </th>
     )
   },
+  td: ({ children, style }) => (
+    <td
+      className="px-4 py-2.5 text-white/80 break-words"
+      style={style ?? {}}
+    >
+      {children}
+    </td>
+  ),
 
   // Blockquote
   blockquote: ({ children }) => (
