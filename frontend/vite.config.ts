@@ -22,8 +22,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Split heavy, rarely-changing vendor libs into their own cacheable
-        // chunks instead of one large main bundle (was 1.8MB+ uncompressed).
+        // Split a few heavy, self-contained, leaf UI libs into their own
+        // cacheable chunks. Deliberately conservative: an earlier attempt
+        // that also split out react/react-router/markdown produced circular
+        // chunk warnings from Rollup (risk of "cannot access before
+        // initialization" at runtime) — reverted those groupings and left
+        // everything else to Rollup's own automatic (cycle-free) chunking.
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
           // html2canvas / jspdf are dynamically import()'d only when a report
@@ -33,19 +37,7 @@ export default defineConfig({
           if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts'
           if (id.includes('@dnd-kit')) return 'vendor-dnd'
           if (id.includes('lucide-react')) return 'vendor-icons'
-          if (id.includes('framer-motion')) return 'vendor-motion'
-          if (
-            id.includes('react-markdown') || id.includes('remark') ||
-            id.includes('micromark') || id.includes('mdast') ||
-            id.includes('unist') || id.includes('hast') || id.includes('vfile') ||
-            id.includes('property-information') || id.includes('space-separated-tokens') ||
-            id.includes('comma-separated-tokens')
-          ) return 'vendor-markdown'
-          if (
-            id.includes('/react-dom/') || id.includes('/react/') ||
-            id.includes('react-router') || id.includes('scheduler')
-          ) return 'vendor-react'
-          return 'vendor'
+          return undefined
         },
       },
     },
