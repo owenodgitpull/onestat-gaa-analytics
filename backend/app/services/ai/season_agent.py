@@ -16,12 +16,13 @@ Uses the same tools as the Match Agent but with season-specific system prompts.
 import re
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
-from app.models.match import MatchStatus
+from app.models.match import Match, MatchStatus
+from app.models.attendance import TrainingSession
 from app.services.ai._shared import (
     client, GAA_ESSENTIALS, execute_tool,
     get_tools_subset, get_fixture_context,
@@ -861,6 +862,67 @@ class SeasonAgent:
     # -------------------------------------------------------------------------
 
     @staticmethod
+    async def _weekly_brief_freshness(db: AsyncSession, club_id) -> dict:
+        """
+        Compute days-since-last-match / days-since-last-training deterministically
+        in Python — LLMs reason unreliably about elapsed time, and without this the
+        agent would happily describe a match from months ago as "this week's" game.
+        Two indexed single-row lookups (club_id, date desc limit 1) — cheap even
+        under concurrent dashboard load.
+        """
+        today = date.today()
+
+        last_match_row = (await db.execute(
+            select(Match.match_date, Match.opponent, Match.team_goals, Match.team_points,
+                   Match.opponent_goals, Match.opponent_points)
+            .where(Match.club_id == club_id, Match.status == MatchStatus.COMPLETED, Match.is_deleted == False)
+            .order_by(Match.match_date.desc())
+            .limit(1)
+        )).first()
+
+        last_training_row = (await db.execute(
+            select(TrainingSession.session_date, TrainingSession.session_type)
+            .where(TrainingSession.club_id == club_id)
+            .order_by(TrainingSession.session_date.desc())
+            .limit(1)
+        )).first()
+
+        freshness = {"today_date": today.isoformat()}
+
+        if last_match_row:
+            match_date, opponent, tg, tp, og, op = last_match_row
+            freshness["days_since_last_match"] = (today - match_date.date()).days
+            freshness["last_match_date"] = match_date.date().isoformat()
+            freshness["last_match_opponent"] = opponent
+            freshness["last_match_score"] = f"{tg}-{tp:02d} to {og}-{op:02d}"
+        else:
+            freshness["days_since_last_match"] = None
+
+        if last_training_row:
+            session_date, session_type = last_training_row
+            freshness["days_since_last_training"] = (today - session_date).days
+            freshness["last_training_date"] = session_date.isoformat()
+            freshness["last_training_type"] = session_type.value if hasattr(session_type, "value") else str(session_type)
+        else:
+            freshness["days_since_last_training"] = None
+
+        return freshness
+
+    @staticmethod
+    async def _weekly_brief_fingerprint(db: AsyncSession, club_id) -> str:
+        """
+        Data fingerprint + a daily bucket. The plain data fingerprint never
+        changes while a club goes quiet (no new match/GPS/training), which
+        left a stale brief — generated back when the last match "was the
+        weekend" — cached and served unchanged for months. Adding today's
+        date forces a same-day-cheap, once-a-day regeneration so the
+        freshness wording in the brief stays accurate even with zero new data.
+        """
+        from app.services.season_dashboard_service import _compute_data_fingerprint
+        data_fingerprint = await _compute_data_fingerprint(db, club_id)
+        return f"{data_fingerprint}|day:{date.today().isoformat()}"
+
+    @staticmethod
     async def generate_weekly_brief(db: AsyncSession, club_id=None, force_refresh: bool = False) -> dict:
         """Generate a weekly team brief with form, physical state, and tactical insights."""
         from app.models.season_cache import SeasonCache
@@ -868,8 +930,7 @@ class SeasonAgent:
         # Check cache unless force_refresh
         if club_id and not force_refresh:
             try:
-                from app.services.season_dashboard_service import _compute_data_fingerprint
-                fingerprint = await _compute_data_fingerprint(db, club_id)
+                fingerprint = await SeasonAgent._weekly_brief_fingerprint(db, club_id)
                 cache_result = await db.execute(
                     select(SeasonCache).where(
                         SeasonCache.cache_type == "weekly_brief",
@@ -889,6 +950,8 @@ class SeasonAgent:
 
         try:
             context = {}
+            if club_id:
+                context.update(await SeasonAgent._weekly_brief_freshness(db, club_id))
             result = await SeasonAgent.analyze_season(
                 db, "weekly_brief", context, club_id=club_id,
                 model="claude-sonnet-4-6", max_turns=5,
@@ -909,8 +972,7 @@ class SeasonAgent:
             if club_id and brief:
                 try:
                     if fingerprint is None:
-                        from app.services.season_dashboard_service import _compute_data_fingerprint
-                        fingerprint = await _compute_data_fingerprint(db, club_id)
+                        fingerprint = await SeasonAgent._weekly_brief_fingerprint(db, club_id)
 
                     if cache is None:
                         cache_result = await db.execute(
@@ -1423,10 +1485,39 @@ Return ONLY 1-2 sentences of prose. No bullet points, no JSON, no headers.
 """
 
     elif task == "weekly_brief":
+        days_since_match = context.get("days_since_last_match")
+        days_since_training = context.get("days_since_last_training")
+        freshness_lines = [f"- Today's date: {context.get('today_date', 'unknown')}"]
+        if days_since_match is None:
+            freshness_lines.append("- No completed matches on record for this club.")
+        else:
+            freshness_lines.append(
+                f"- Days since last completed match: {days_since_match} "
+                f"(vs {context.get('last_match_opponent', 'opponent')} on {context.get('last_match_date', '?')}, "
+                f"score {context.get('last_match_score', '?')})"
+            )
+        if days_since_training is None:
+            freshness_lines.append("- No training sessions on record for this club.")
+        else:
+            freshness_lines.append(
+                f"- Days since last training/gym session: {days_since_training} "
+                f"({context.get('last_training_type', 'session')} on {context.get('last_training_date', '?')})"
+            )
+        freshness_block = "\n".join(freshness_lines)
+
         base += f"""
 ## Task: Weekly Team Brief
 
 Generate a comprehensive weekly brief for the coaching staff. Use the available tools to gather data about recent matches, training, GPS loads, and upcoming fixtures.
+
+## Data Freshness (ground truth — computed in code, trust this over anything a tool implies)
+{freshness_block}
+
+CRITICAL — do not present stale data as current:
+- If days since last match is None or > 14, there has NOT been a recent match. Do NOT write form_watch or the headline as if a match just happened. Instead, explicitly say there has been no match recently (state how long — weeks or months — and name the last opponent/date/score if one exists), and do not fabricate "this week's" narrative around it.
+- When there is no recent match, base "form_watch" and the headline on recent TRAINING data instead, if a training/gym session exists within the last {10} days. Reference actual session data (GPS load, attendance) rather than match form.
+- If there is ALSO no recent training session (days_since_last_training is None or > 10), say so plainly in the headline/summary (e.g. "No match or training activity logged recently") instead of inventing content to fill the section.
+- Never imply a match or session happened "this week" unless the freshness data above confirms it did.
 
 {GAA_ESSENTIALS}
 
@@ -1490,7 +1581,8 @@ def _build_season_user_message(task: str, context: dict) -> str:
         return f"Summarize this training session (ID: {session_id}). Use get_training_session_gps to fetch the data."
     elif task == "weekly_brief":
         return (
-            "Generate the weekly brief. "
+            "Generate the weekly brief. First check the Data Freshness block in the system prompt — "
+            "if there's been no match or training recently, say so plainly instead of describing old data as current. "
             "1) Call get_team_season_stats first — it returns per-match results with actual scores AND season totals. "
             "Use the match_results array for individual game scores; do NOT use season_scoring_totals as a match score. "
             "2) Call get_match_summary with the most recent match_id for detailed stats (possession, turnovers, shots). "
