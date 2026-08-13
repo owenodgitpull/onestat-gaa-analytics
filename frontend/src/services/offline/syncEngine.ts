@@ -14,8 +14,8 @@
 import {
   getPendingItems,
   updateOutboxStatus,
+  incrementOutboxRetry,
   markLocalEventSynced,
-  deleteOutboxItem,
   type OutboxItem,
 } from './offlineDb'
 import { isOnline, subscribe as subscribeNetwork } from './networkStatus'
@@ -163,6 +163,7 @@ async function processItem(item: OutboxItem): Promise<boolean> {
       const errBody = await response.text().catch(() => `HTTP ${response.status}`)
       console.error(`[Sync] 4xx error for ${item.method} ${endpoint}: ${response.status}`, errBody)
       await updateOutboxStatus(item.id, 'pending', `${response.status}: ${errBody.slice(0, 200)}`)
+      await incrementOutboxRetry(item.id)
       syncState.lastSyncError = `${response.status}: ${errBody.slice(0, 100)}`
       return false // Retry later
     }
@@ -170,12 +171,14 @@ async function processItem(item: OutboxItem): Promise<boolean> {
     // 5xx — server error, retry
     const errText = await response.text().catch(() => `HTTP ${response.status}`)
     await updateOutboxStatus(item.id, 'pending', errText)
+    await incrementOutboxRetry(item.id)
     syncState.lastSyncError = errText
     return false
   } catch (err: unknown) {
     // Network error or timeout — mark pending for retry
     const msg = err instanceof Error ? err.message : 'Network error'
     await updateOutboxStatus(item.id, 'pending', msg)
+    await incrementOutboxRetry(item.id)
     syncState.lastSyncError = msg
     return false
   }
@@ -188,8 +191,6 @@ async function runSyncLoop() {
   emitSync()
 
   try {
-    let consecutiveFailures = 0
-
     while (true) {
       if (!isOnline()) break
 
@@ -199,27 +200,33 @@ async function runSyncLoop() {
 
       if (pending.length === 0) break
 
-      // Process items that are ready (not exceeding retry limits)
-      const item = pending[0]
-      if (!item.id) break
+      // Walk the FULL pending list in order (oldest first) instead of
+      // retrying only pending[0] forever — a single permanently-failing
+      // item must not block every event queued behind it.
+      let progressed = false
 
-      // Auto-purge items that exceeded retry limit — don't leave them stuck
-      if (item.retryCount >= MAX_RETRIES) {
-        await deleteOutboxItem(item.id)
-        continue
+      for (const item of pending) {
+        if (!isOnline()) break
+        if (!item.id) continue
+
+        // Stop auto-retrying items that have exceeded the retry limit, but
+        // NEVER silently delete match-recording data — mark it 'failed' so
+        // it's visible/inspectable instead of vanishing.
+        if (item.retryCount >= MAX_RETRIES) {
+          if (item.status !== 'failed') {
+            await updateOutboxStatus(item.id, 'failed', item.lastError || 'Max retries exceeded')
+            console.error(`[Sync] Giving up on item ${item.id} (${item.endpoint}) after ${MAX_RETRIES} retries`)
+          }
+          continue
+        }
+
+        const success = await processItem(item)
+        if (success) progressed = true
       }
 
-      const success = await processItem(item)
-
-      if (success) {
-        consecutiveFailures = 0
-      } else {
-        consecutiveFailures++
-        // Back off after consecutive failures
-        if (consecutiveFailures >= 3) {
-          const delay = backoffDelay(consecutiveFailures - 3)
-          await new Promise(resolve => setTimeout(resolve, delay))
-        }
+      if (!progressed) {
+        // Nothing in this pass got through — back off before trying the whole set again
+        await new Promise(resolve => setTimeout(resolve, backoffDelay(1)))
       }
     }
   } finally {

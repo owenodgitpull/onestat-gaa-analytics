@@ -32,6 +32,25 @@ function now(): string {
   return new Date().toISOString()
 }
 
+/**
+ * Direct "try server first" fetches previously had no timeout — a hung
+ * request (dead socket, cold-starting backend) would leave the await
+ * pending forever, so the offline-queue fallback below it never ran and
+ * the tap appeared to do nothing at all. Bound every direct attempt so a
+ * hang always falls through to the outbox within a few seconds.
+ */
+const DIRECT_FETCH_TIMEOUT_MS = 8000
+
+async function fetchWithTimeout(url: string, opts: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), DIRECT_FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...opts, signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 async function enqueueAndSync(
   matchId: string,
   endpoint: string,
@@ -142,7 +161,7 @@ export const offlineMatchEvents = {
     if (isOnline()) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetch(`${baseUrl}/match-events/`, {
+        const response = await fetchWithTimeout(`${baseUrl}/match-events/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -225,7 +244,7 @@ export const offlineMatchEvents = {
     if (isOnline()) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetch(`${baseUrl}/match-events/quick-score`, {
+        const response = await fetchWithTimeout(`${baseUrl}/match-events/quick-score`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -301,7 +320,7 @@ export const offlineMatchEvents = {
     if (isOnline()) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetch(`${baseUrl}/match-events/${eventId}`, {
+        const response = await fetchWithTimeout(`${baseUrl}/match-events/${eventId}`, {
           method: 'DELETE',
           credentials: 'include',
         })
@@ -342,7 +361,7 @@ export const offlinePossession = {
     if (isOnline()) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetch(`${baseUrl}/possession-events/`, {
+        const response = await fetchWithTimeout(`${baseUrl}/possession-events/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -394,7 +413,7 @@ export const offlinePossession = {
     if (isOnline()) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetch(`${baseUrl}/possession-events/bulk`, {
+        const response = await fetchWithTimeout(`${baseUrl}/possession-events/bulk`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -437,7 +456,7 @@ export const offlinePlayerMovement = {
     if (isOnline()) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetch(`${baseUrl}/player-movement/carrier-segments`, {
+        const response = await fetchWithTimeout(`${baseUrl}/player-movement/carrier-segments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -484,7 +503,7 @@ export const offlinePlayerMovement = {
     if (isOnline() && !segmentId.startsWith('local-')) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetch(`${baseUrl}/player-movement/carrier-segments/${segmentId}`, {
+        const response = await fetchWithTimeout(`${baseUrl}/player-movement/carrier-segments/${segmentId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -515,7 +534,7 @@ export const offlinePlayerMovement = {
     if (isOnline() && !segmentId.startsWith('local-')) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetch(`${baseUrl}/player-movement/carrier-segments/${segmentId}/path-points`, {
+        const response = await fetchWithTimeout(`${baseUrl}/player-movement/carrier-segments/${segmentId}/path-points`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',

@@ -160,6 +160,16 @@ export async function updateOutboxStatus(
   await db.put('outbox', item)
 }
 
+/** Bump retry count on a genuine send failure (item stays 'pending' so it's retried). */
+export async function incrementOutboxRetry(id: number): Promise<number> {
+  const db = await getDb()
+  const item = await db.get('outbox', id)
+  if (!item) return 0
+  item.retryCount += 1
+  await db.put('outbox', item)
+  return item.retryCount
+}
+
 export async function getOutboxItem(id: number): Promise<OutboxItem | undefined> {
   const db = await getDb()
   return db.get('outbox', id)
