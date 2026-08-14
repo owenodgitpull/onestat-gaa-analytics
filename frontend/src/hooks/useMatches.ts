@@ -32,13 +32,33 @@ export function useMatches() {
 }
 
 /**
- * Get a single match by ID
+ * Get a single match by ID.
+ *
+ * Pass `live: true` while actively recording a match. The scoreboard reads
+ * team_points/opponent_points straight off this query, but event-tagging
+ * mutations only apply an optimistic client-side increment to this cache —
+ * they never invalidate it (see useRecordEvent). Any drift between that
+ * optimistic value and server truth (a duplicate tag, a delete racing a
+ * still-queued create, a sync retry) then sits there indefinitely, because
+ * the global staleTime (60s, set for dashboard performance) means nothing
+ * re-fetches until a refocus/remount — previously only a full page reload
+ * forced a fresh read. `live` overrides that with a 15s poll plus refetch
+ * on focus/mount so the scoreboard self-corrects without user intervention.
  */
-export function useMatch(matchId: string | null) {
+export function useMatch(matchId: string | null, opts?: { live?: boolean }) {
+  const live = opts?.live ?? false
   return useQuery({
     queryKey: matchKeys.detail(matchId!),
     queryFn: () => api.matches.getById(matchId!),
     enabled: !!matchId,
+    ...(live
+      ? {
+          staleTime: 0,
+          refetchInterval: 15_000,
+          refetchOnWindowFocus: true,
+          refetchOnMount: 'always' as const,
+        }
+      : {}),
   });
 }
 

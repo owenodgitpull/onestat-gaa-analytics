@@ -104,7 +104,7 @@ export default function MatchRecording() {
   const { club } = useClub()
 
   // Fetch data from backend
-  const { data: match, isLoading: matchLoading } = useMatch(matchId)
+  const { data: match, isLoading: matchLoading } = useMatch(matchId, { live: true })
   const { data: matchStats, isLoading: statsLoading } = useMatchStats(matchId, undefined, true)
   const { data: players = [] } = usePlayers()
   const [matchLineup, setMatchLineup] = useState<any[]>([])
@@ -2311,8 +2311,26 @@ export default function MatchRecording() {
       return
     }
 
-    // Block recovery prompt — ask who recovered after a block
+    // Own team made the block — record it (this path was previously a dead end:
+    // it set up the recovery prompt but never actually persisted the block event,
+    // so player/team selected here was silently discarded and the block never
+    // appeared anywhere). Then prompt who recovered.
     if (event.eventType === EventType.BLOCK) {
+      try {
+        await recordEvent.mutateAsync({
+          match_id: matchId,
+          player_id: player.id,
+          event_type: mapEventTypeToBackend(event.eventType),
+          minute: capturedMinute,
+          half: capturedHalf,
+          x_coord: event.position.x,
+          y_coord: event.position.y,
+          is_home_team: true,
+        })
+      } catch (err) {
+        console.error('Failed to record block event:', err)
+      }
+      setLastEventType(String(event.eventType).toLowerCase())
       setPendingBlockRecovery({ position: event.position })
       return // Wait for recovery decision
     }
