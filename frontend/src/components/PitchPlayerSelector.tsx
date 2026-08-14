@@ -21,7 +21,13 @@ interface PitchPlayerSelectorProps {
   teamSecondaryColor?: string
   attackingRight?: boolean
   readOnly?: boolean  // View-only mode — shows lineup without player selection
+  /** Current ball position (screen-space %, same frame as the main recording pitch) —
+   *  when provided, the 5 players nearest the ball are visually promoted so the likely
+   *  receiver/defender doesn't require scanning the full row of circles. */
+  ballPosition?: { x: number; y: number } | null
 }
+
+const LIKELY_COUNT = 5
 
 // Standard GAA formation: 1-3-3-2-3-3 (15 players)
 const FORMATION_POSITIONS = [
@@ -84,6 +90,7 @@ export default function PitchPlayerSelector({
   teamSecondaryColor = '#FFFFFF',
   attackingRight = true,
   readOnly = false,
+  ballPosition = null,
 }: PitchPlayerSelectorProps) {
   const [animateIn, setAnimateIn] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
@@ -135,6 +142,23 @@ export default function PitchPlayerSelector({
 
     return result
   }, [matchLineup, players])
+
+  // Rank on-field players by screen-space distance from the ball — the same
+  // frame the ball marker already renders in (attackingRight flip applied
+  // here to match how these circles are actually displayed below).
+  const likelyPlayerIds = useMemo(() => {
+    if (!ballPosition || playerPositions.length === 0) return new Set<string>()
+    const ranked = playerPositions
+      .map(item => {
+        const sx = attackingRight ? item.x : 100 - item.x
+        const sy = item.y
+        const dist = Math.hypot(sx - ballPosition.x, sy - ballPosition.y)
+        return { id: item.player.id, dist }
+      })
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, LIKELY_COUNT)
+    return new Set(ranked.map(r => r.id))
+  }, [playerPositions, ballPosition, attackingRight])
 
   // Animate in when opening
   useEffect(() => {
@@ -212,10 +236,36 @@ export default function PitchPlayerSelector({
           </svg>
         </div>
 
-        {/* Player circles */}
+        {/* Ball marker — anchors the "nearest man" ranking below */}
+        {ballPosition && !readOnly && (
+          <div
+            className="absolute rounded-full transition-opacity duration-300"
+            style={{
+              left: `${ballPosition.x}%`,
+              top: `${ballPosition.y}%`,
+              width: 22,
+              height: 22,
+              transform: 'translate(-50%, -50%)',
+              background: 'radial-gradient(circle at 35% 30%, #fffef5, #e7dcc0 55%, #b7a878 100%)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.5), 0 0 0 5px rgba(16,185,129,0.22)',
+              opacity: animateIn && !animateOut ? 1 : 0,
+              zIndex: 1,
+            }}
+          />
+        )}
+
+        {/* Player circles — the 5 nearest the ball are bigger, brighter, and animate in first */}
         {playerPositions.map((item, index) => {
           const isSelected = selectedPlayerId === item.player.id
-          const delay = index * 30 // Stagger entrance by 30ms each
+          const isLikely = likelyPlayerIds.has(item.player.id)
+          const hasRanking = likelyPlayerIds.size > 0
+          // Likely picks bloom in first (0-120ms), the rest follow after —
+          // reinforces "look here first" without hiding anyone.
+          const delay = hasRanking
+            ? (isLikely ? index * 25 : 150 + index * 15)
+            : index * 30
+          const circleSize = hasRanking ? (isLikely ? 'w-16 h-16' : 'w-11 h-11') : 'w-14 h-14'
+          const restOpacity = hasRanking && !isLikely ? 0.55 : 1
 
           return (
             <button
@@ -224,7 +274,8 @@ export default function PitchPlayerSelector({
               style={{
                 left: `${attackingRight ? item.x : 100 - item.x}%`,
                 top: `${item.y}%`,
-                opacity: animateOut ? (isSelected ? 1 : 0) : (animateIn ? 1 : 0),
+                zIndex: isLikely ? 3 : 2,
+                opacity: animateOut ? (isSelected ? 1 : 0) : (animateIn ? restOpacity : 0),
                 transform: `translate(-50%, -50%) scale(${
                   animateOut
                     ? (isSelected ? 1.3 : 0.5)
@@ -236,28 +287,32 @@ export default function PitchPlayerSelector({
             >
               {/* Jersey circle */}
               <div
-                className={`w-14 h-14 rounded-full flex flex-col items-center justify-center shadow-lg ring-2 transition-transform active:scale-90 ${
+                className={`${circleSize} rounded-full flex flex-col items-center justify-center shadow-lg ring-2 transition-transform active:scale-90 ${
                   isSelected ? 'scale-110' : 'hover:ring-4 hover:scale-105'
                 }`}
                 style={{
                   backgroundColor: teamPrimaryColor,
                   color: teamSecondaryColor,
-                  '--tw-ring-color': teamSecondaryColor,
+                  '--tw-ring-color': isLikely ? '#6ee7b7' : teamSecondaryColor,
                   boxShadow: isSelected
                     ? `0 0 20px ${teamPrimaryColor}80`
+                    : isLikely
+                    ? `0 0 16px ${teamPrimaryColor}90, 0 4px 12px rgba(0,0,0,0.4)`
                     : `0 4px 12px rgba(0,0,0,0.4)`,
                 } as React.CSSProperties}
               >
                 {item.jerseyNumber != null ? (
-                  <span className="font-bold text-lg">{item.jerseyNumber}</span>
+                  <span className={isLikely ? 'font-bold text-xl' : 'font-bold text-sm'}>{item.jerseyNumber}</span>
                 ) : (
-                  <span className="font-bold text-xs leading-tight">{item.label}</span>
+                  <span className={isLikely ? 'font-bold text-sm leading-tight' : 'font-bold text-[10px] leading-tight'}>{item.label}</span>
                 )}
               </div>
 
-              {/* Player name */}
+              {/* Player name — always shown for likely picks, only on hover-equivalent size for the rest */}
               <span
-                className="mt-1 text-xs font-semibold text-white bg-black/70 px-2 py-0.5 rounded whitespace-nowrap max-w-[80px] truncate"
+                className={`mt-1 font-semibold text-white bg-black/70 px-2 py-0.5 rounded whitespace-nowrap max-w-[80px] truncate ${
+                  isLikely ? 'text-xs' : 'text-[10px]'
+                }`}
               >
                 {surname(item.player.name)}
               </span>

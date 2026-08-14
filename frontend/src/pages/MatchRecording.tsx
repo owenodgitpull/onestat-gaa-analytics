@@ -3610,6 +3610,7 @@ export default function MatchRecording() {
             teamPrimaryColor={club?.primary_colour || '#10B981'}
             teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
             attackingRight={teamAttackingRight}
+            ballPosition={pendingEvent?.position ?? ballPosition}
           />
         ) : (
           <PlayerSelectionModal
