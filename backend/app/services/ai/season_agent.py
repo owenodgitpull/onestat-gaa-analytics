@@ -1398,7 +1398,7 @@ Write exactly 2-3 sentences of flowing prose as a GAA journalist.
 1. First use search_players to find the player, then use get_player_season_stats with their UUID to get scoring/defence stats.
 2. Use get_player_gps_stats to check for GPS trends.
 3. Use get_attendance_data with the player_id to check training attendance.
-4. Write a narrative using the player's first name ({first_name}).
+4. This is shown to {first_name} themselves in their player portal — address them directly in SECOND PERSON ("You've been excellent...", "Your distance covered..."), never third person or their name as the subject (not "{first_name} has been...").
 5. Be specific with numbers and mention month names where relevant.
 6. Highlight their best performances and trajectory.
 7. Be encouraging but grounded in data.
@@ -1424,6 +1424,7 @@ Generate 3-5 personalized insight bullets for a player.
 5. Highlight strengths, areas for improvement, and comparisons.
 6. Be encouraging but honest. Use concrete numbers.
 7. If the player has 2+ unforced errors per game, flag this as an area to reduce.
+8. This is shown to the player themselves in their player portal — address them directly in SECOND PERSON ("You've been excellent in distance covered...", "Your unforced errors are up..."), never third person or their name as the subject.
 
 Player ID: {player_id}
 
