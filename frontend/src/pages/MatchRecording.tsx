@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
+import BallCarrierPicker from '@/components/BallCarrierPicker'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
 import PossessionSelectionModal from '@/components/PossessionSelectionModal'
@@ -3088,6 +3089,18 @@ export default function MatchRecording() {
                     setBallTrail(prev => [...prev.slice(-49), { x: pos.x, y: pos.y }])
                   }}
                   carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
+                  ballAnchoredOverlay={
+                    (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick ? (
+                      <BallCarrierPicker
+                        players={jerseyStripPlayers}
+                        activeCarrierId={activeCarrierId}
+                        onSelect={handleCarrierSelect}
+                        attackingRight={teamAttackingRight}
+                        teamPrimaryColor={club?.primary_colour || '#10B981'}
+                        teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                      />
+                    ) : undefined
+                  }
                   svgOverlay={
                     (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>

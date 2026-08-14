@@ -33,6 +33,13 @@ interface GAAPitchProps {
   onDragUpdate?: (position: BallPosition) => void
   /** Optional overlay rendered inside SVG via foreignObject — always relative to pitch graphic */
   svgOverlay?: React.ReactNode
+  /**
+   * Optional overlay anchored to the ball's current position — rendered in a
+   * local 900x900 box centered on the ball (ball = 50%/50% of that box), so
+   * children can be positioned with simple percentage offsets from the ball
+   * regardless of where it currently sits on the pitch.
+   */
+  ballAnchoredOverlay?: React.ReactNode
   /** Show gradient border around the pitch edge inside the SVG */
   gradientBorder?: boolean
   /** Active ball carrier jersey number — renders badge on ball icon */
@@ -98,6 +105,7 @@ export default function GAAPitch({
   onDragPath,
   onDragUpdate,
   svgOverlay,
+  ballAnchoredOverlay,
   gradientBorder = false,
   carrierJerseyNumber,
 }: GAAPitchProps) {
@@ -490,6 +498,21 @@ export default function GAAPitch({
               </g>
             )}
           </g>
+        )}
+
+        {/* Ball-anchored overlay (e.g. carrier picker) — local 900x900 box centered on the ball */}
+        {ballAnchoredOverlay && displayPosition && (
+          <foreignObject
+            x={toSvgX(displayPosition.x) - 450}
+            y={toSvgY(displayPosition.y) - 450}
+            width="900"
+            height="900"
+            style={{ overflow: 'visible', pointerEvents: 'none' }}
+          >
+            <div style={{ width: '100%', height: '100%', position: 'relative', pointerEvents: 'none' }}>
+              {ballAnchoredOverlay}
+            </div>
+          </foreignObject>
         )}
 
         {/* Zone labels (if showZones) */}
