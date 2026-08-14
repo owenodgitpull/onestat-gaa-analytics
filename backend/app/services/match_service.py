@@ -524,11 +524,20 @@ class MatchService:
 
         # Ball recovery time — avg minutes to win ball back after a loss event
         _BALL_LOSS = frozenset([EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR])
+        # "Own" kickout-won variants (OWN_KICKOUT_WON, OPP_KICKOUT_WON, etc.) are
+        # only ever tagged team=OWN in this app's event model — when the
+        # opposition wins a kickout back, it's tagged with the mirrored
+        # _OPPOSITION_WON variants instead. Without those in this set, the
+        # opponent side of the per-team filter below could never match a
+        # kickout recovery at all, so opponent recovery time was almost
+        # always None ("–" on screen) regardless of what actually happened.
         _BALL_RECOVERY = frozenset([
             EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON,
             EventType.OWN_KICKOUT_WON, EventType.OPP_KICKOUT_WON,
             EventType.KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
             EventType.OPP_KICKOUT_WON_BREAK,
+            EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+            EventType.OPP_KICKOUT_OPPOSITION_WON, EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK,
             EventType.GOAL, EventType.POINT, EventType.POINT_FREE,
             EventType.TWO_POINT, EventType.TWO_POINT_FREE,
             EventType.FORTY_FIVE, EventType.PENALTY_GOAL,

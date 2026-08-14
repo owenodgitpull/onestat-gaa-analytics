@@ -159,6 +159,7 @@ export default function MatchRecording() {
   const [manualEntryDefaultType, setManualEntryDefaultType] = useState<EventType | undefined>(undefined)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
   const [isSubModalOpen, setIsSubModalOpen] = useState(false)
+  const [isViewLineupOpen, setIsViewLineupOpen] = useState(false)
   const [startingLineup, setStartingLineup] = useState<Record<string, LineupEntry>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
   const [teamAttackingRight, setTeamAttackingRight] = useState<boolean>(true) // true = attacking towards x=100
@@ -2922,20 +2923,27 @@ export default function MatchRecording() {
               </div>
 
               {/* Center: Score */}
-              <div className="flex items-center justify-center space-x-4 text-center">
-                <div>
-                  <div className="text-4xl font-bold text-white">
-                    {matchDisplay.score.team.goals}-{String(matchDisplay.score.team.points).padStart(2, '0')}
+              <div className="flex flex-col items-center justify-center gap-1.5">
+                <div className="flex items-center justify-center space-x-4 text-center">
+                  <div>
+                    <div className="text-4xl font-bold text-white">
+                      {matchDisplay.score.team.goals}-{String(matchDisplay.score.team.points).padStart(2, '0')}
+                    </div>
+                    <div className="text-white/60 text-xs mt-1">{clubName}</div>
                   </div>
-                  <div className="text-white/60 text-xs mt-1">{clubName}</div>
-                </div>
-                <div className="text-xl text-white/40">vs</div>
-                <div>
-                  <div className="text-4xl font-bold text-white/80">
-                    {matchDisplay.score.opponent.goals}-{String(matchDisplay.score.opponent.points).padStart(2, '0')}
+                  <div className="text-xl text-white/40">vs</div>
+                  <div>
+                    <div className="text-4xl font-bold text-white/80">
+                      {matchDisplay.score.opponent.goals}-{String(matchDisplay.score.opponent.points).padStart(2, '0')}
+                    </div>
+                    <div className="text-white/60 text-xs mt-1">{matchDisplay.opponent}</div>
                   </div>
-                  <div className="text-white/60 text-xs mt-1">{matchDisplay.opponent}</div>
                 </div>
+                {matchPhase === 'half_time' && (
+                  <span className="px-3 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold tracking-wider">
+                    HALF TIME
+                  </span>
+                )}
               </div>
 
               {/* Right: Quick Stats & Actions */}
@@ -2961,13 +2969,23 @@ export default function MatchRecording() {
                     </button>
                   )}
                   {(matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') && matchLineup.length > 0 && (
-                    <button
-                      className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
-                      onClick={() => setIsSubModalOpen(true)}
-                    >
-                      <Users size={14} />
-                      <span>Sub</span>
-                    </button>
+                    <>
+                      <button
+                        className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
+                        onClick={() => setIsViewLineupOpen(true)}
+                        title="View current on-field lineup"
+                      >
+                        <Users size={14} />
+                        <span>Lineup</span>
+                      </button>
+                      <button
+                        className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
+                        onClick={() => setIsSubModalOpen(true)}
+                      >
+                        <Users size={14} />
+                        <span>Sub</span>
+                      </button>
+                    </>
                   )}
                   {getPhaseButtonText() && (
                     matchPhase === 'half_time' ? (
@@ -3716,6 +3734,21 @@ export default function MatchRecording() {
         matchLineup={matchLineup}
         players={players}
         minute={minute}
+      />
+
+      {/* View current on-field lineup — read-only, same formation view used for player selection */}
+      <PitchPlayerSelector
+        isOpen={isViewLineupOpen}
+        onClose={() => setIsViewLineupOpen(false)}
+        onSelectPlayer={() => {}}
+        eventType=""
+        team="own"
+        players={players}
+        matchLineup={matchLineup}
+        teamPrimaryColor={club?.primary_colour || '#10B981'}
+        teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+        attackingRight={teamAttackingRight}
+        readOnly
       />
 
       {/* Starting Lineup Modal */}

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 const toSvgX = (pct: number) => (pct / 100) * 1960 + 183
 const toSvgY = (pct: number) => (pct / 100) * 1167 + 123
@@ -20,14 +20,64 @@ const ZONES: Zone[] = [
 ]
 
 const WON_TYPES  = new Set(['turnover_won','interception','block','tackle_won'])
-const LOST_TYPES = new Set(['turnover_lost','our_unforced_error'])
+// Was ['turnover_lost','our_unforced_error'] — the real event_type for an
+// unforced error is 'unforced_error' (team is a separate column), so that
+// half of "lost" bubbles never matched anything and unforced errors never
+// showed on the map at all, even though they correctly counted in the
+// Turnover Causes pills below (which check the right value).
+const LOST_TYPES = new Set(['turnover_lost','unforced_error'])
 
 function isOwn(e: any) { return e.team === 'own' || e.is_home_team === true }
+
+type CauseKey = 'forced' | 'unforced' | 'blocked' | 'foul'
+
+const CAUSES: Record<CauseKey, { label: string; color: string; match: (e: any) => boolean }> = {
+  forced: {
+    label: 'Forced',
+    color: '#f43f5e', // rose — same as the default "lost" color
+    match: (e) => e.event_type === 'turnover_lost' && isOwn(e),
+  },
+  unforced: {
+    label: 'Unforced',
+    color: '#f59e0b', // amber
+    match: (e) => e.event_type === 'unforced_error' && isOwn(e),
+  },
+  blocked: {
+    label: 'Blocked',
+    color: '#a78bfa', // violet
+    match: (e) => e.event_type === 'block' && !isOwn(e), // opposition blocked us
+  },
+  foul: {
+    label: 'Foul',
+    color: '#fb923c', // orange
+    match: (e) => e.event_type === 'foul_committed' && isOwn(e),
+  },
+}
 
 interface Props { events: any[]; teamName: string }
 
 export default function TurnoverMap({ events, teamName }: Props) {
+  // Which turnover cause is highlighted — null shows the default won/lost view.
+  const [selectedCause, setSelectedCause] = useState<CauseKey | null>(null)
+
   const data = useMemo(() => {
+    // A selected cause replaces the default won/lost split with just that
+    // cause's events. Blocked events are tagged to the opposition (they made
+    // the block against us), so this has to run against the full events list
+    // rather than the own-team-only list the default view uses.
+    if (selectedCause) {
+      const matcher = CAUSES[selectedCause].match
+      const matched = events.filter(matcher)
+      return ZONES.map(zone => {
+        const inZone = matched.filter(e => {
+          const x = e.pitch_x, y = e.pitch_y
+          if (x == null || y == null) return false
+          return x >= zone.xMin && x < zone.xMax && y >= zone.yMin && y < zone.yMax
+        })
+        return { ...zone, won: 0, lost: inZone.length, total: inZone.length }
+      })
+    }
+
     const ownEvents = events.filter(isOwn)
 
     // Mirror own-team events that appear in wrong half due to second-half
@@ -48,13 +98,14 @@ export default function TurnoverMap({ events, teamName }: Props) {
       const lost = inZone.filter(e => LOST_TYPES.has(e.event_type)).length
       return { ...zone, won, lost, total: won + lost }
     })
-  }, [events])
+  }, [events, selectedCause])
 
   const maxTotal = Math.max(...data.map(d => d.total), 1)
   const getR = (n: number) => n === 0 ? 0 : 55 + (n / maxTotal) * 110
 
   const totalWon  = data.reduce((s, d) => s + d.won, 0)
   const totalLost = data.reduce((s, d) => s + d.lost, 0)
+  const lostColor = selectedCause ? CAUSES[selectedCause].color : '#f43f5e'
 
   return (
     <div className="glass-card p-4 flex flex-col gap-3 h-full">
@@ -62,16 +113,29 @@ export default function TurnoverMap({ events, teamName }: Props) {
         <div>
           <h3 className="text-sm font-bold text-white">Possession Battle Map</h3>
           <p className="text-xs text-white/40 mt-0.5">
-            {teamName.split(' ')[0]} — {totalWon} won · {totalLost} lost across the pitch
+            {selectedCause
+              ? <>Showing <span className="font-semibold" style={{ color: lostColor }}>{CAUSES[selectedCause].label}</span> only — {totalLost} across the pitch</>
+              : <>{teamName.split(' ')[0]} — {totalWon} won · {totalLost} lost across the pitch</>}
           </p>
         </div>
         <div className="flex gap-2 text-xs shrink-0">
-          <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Won
-          </span>
-          <span className="flex items-center gap-1 text-rose-400 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Lost
-          </span>
+          {selectedCause ? (
+            <button
+              onClick={() => setSelectedCause(null)}
+              className="text-white/50 hover:text-white transition-colors font-semibold"
+            >
+              Clear filter ×
+            </button>
+          ) : (
+            <>
+              <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Won
+              </span>
+              <span className="flex items-center gap-1 text-rose-400 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Lost
+              </span>
+            </>
+          )}
         </div>
       </div>
 
@@ -92,7 +156,7 @@ export default function TurnoverMap({ events, teamName }: Props) {
             const offset = Math.max(rWon, rLost, 55) + 20
             return (
               <g key={zone.id}>
-                {/* Won bubble */}
+                {/* Won bubble — hidden while a cause filter is active, all 4 causes are loss-side */}
                 {zone.won > 0 && (
                   <g>
                     <circle cx={zone.svgX - offset} cy={zone.svgY} r={rWon}
@@ -103,11 +167,11 @@ export default function TurnoverMap({ events, teamName }: Props) {
                     </text>
                   </g>
                 )}
-                {/* Lost bubble */}
+                {/* Lost bubble — recolored to the selected cause when filtered */}
                 {zone.lost > 0 && (
                   <g>
                     <circle cx={zone.svgX + offset} cy={zone.svgY} r={rLost}
-                      fill="#f43f5e" opacity={0.85} />
+                      fill={lostColor} opacity={0.85} />
                     <text x={zone.svgX + offset} y={zone.svgY + 26} textAnchor="middle"
                       fill="white" fontSize={72} fontWeight="bold" style={{ fontFamily: 'sans-serif' }}>
                       {zone.lost}
@@ -133,7 +197,7 @@ export default function TurnoverMap({ events, teamName }: Props) {
 
         {(totalWon + totalLost) === 0 && (
           <div className="absolute inset-0 flex items-center justify-center text-white/30 text-sm rounded-lg">
-            No turnover/block data with pitch coordinates yet
+            {selectedCause ? 'No events for this cause with pitch coordinates yet' : 'No turnover/block data with pitch coordinates yet'}
           </div>
         )}
       </div>
@@ -142,44 +206,58 @@ export default function TurnoverMap({ events, teamName }: Props) {
         Includes turnovers won/lost, blocks, interceptions, tackles · bubble size = volume
       </p>
 
-      <TurnoverCauses events={events} />
+      <TurnoverCauses events={events} selectedCause={selectedCause} onSelectCause={setSelectedCause} />
     </div>
   )
 }
 
-function TurnoverCauses({ events }: { events: any[] }) {
+function TurnoverCauses({
+  events,
+  selectedCause,
+  onSelectCause,
+}: {
+  events: any[]
+  selectedCause: CauseKey | null
+  onSelectCause: (key: CauseKey | null) => void
+}) {
   const causes = useMemo(() => {
-    let forced = 0, unforced = 0, blocked = 0, foul = 0
+    const counts: Record<CauseKey, number> = { forced: 0, unforced: 0, blocked: 0, foul: 0 }
     for (const e of events) {
-      const t = e.event_type
-      const team = e.team || (e.is_home_team ? 'own' : 'opponent')
-      if (t === 'turnover_lost' && team === 'own') forced++
-      else if (t === 'unforced_error' && team === 'own') unforced++
-      else if (t === 'block' && team === 'opponent') blocked++
-      else if (t === 'foul_committed' && team === 'own') foul++
+      for (const key of Object.keys(CAUSES) as CauseKey[]) {
+        if (CAUSES[key].match(e)) counts[key]++
+      }
     }
-    return { forced, unforced, blocked, foul }
+    return counts
   }, [events])
 
   const total = causes.forced + causes.unforced + causes.blocked + causes.foul
   if (total === 0) return null
 
-  const pills = [
-    { label: 'Forced', value: causes.forced },
-    { label: 'Unforced', value: causes.unforced },
-    { label: 'Blocked', value: causes.blocked },
-    { label: 'Foul', value: causes.foul },
-  ].filter(p => p.value > 0)
+  const pills = (Object.keys(CAUSES) as CauseKey[])
+    .map(key => ({ key, ...CAUSES[key], value: causes[key] }))
+    .filter(p => p.value > 0)
 
   return (
     <div>
-      <p className="text-xs text-white/40 font-medium mb-1.5">Turnover Causes</p>
+      <p className="text-xs text-white/40 font-medium mb-1.5">Turnover Causes — tap to highlight on the map</p>
       <div className="flex flex-wrap gap-2">
-        {pills.map(p => (
-          <span key={p.label} className="px-2.5 py-1 rounded-full bg-white/10 text-xs text-white/60">
-            {p.label}: <span className="text-white font-semibold">{p.value}</span>
-          </span>
-        ))}
+        {pills.map(p => {
+          const active = selectedCause === p.key
+          return (
+            <button
+              key={p.key}
+              onClick={() => onSelectCause(active ? null : p.key)}
+              className="px-2.5 py-1 rounded-full text-xs transition-all"
+              style={{
+                background: active ? `${p.color}33` : 'rgba(255,255,255,0.1)',
+                border: `1px solid ${active ? p.color : 'transparent'}`,
+                color: active ? '#fff' : 'rgba(255,255,255,0.6)',
+              }}
+            >
+              {p.label}: <span className="text-white font-semibold">{p.value}</span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
