@@ -25,7 +25,11 @@ const filterCategories: FilterCategory[] = [
   {
     id: 'turnovers',
     label: 'T/O',
-    eventTypes: ['turnover_won', 'turnover_lost', 'our_unforced_error', 'opp_unforced_error'],
+    // Was ['turnover_won', 'turnover_lost', 'our_unforced_error', 'opp_unforced_error'] —
+    // the real event_type for an unforced error is 'unforced_error' (team is a
+    // separate column), so every unforced error was silently excluded from
+    // this filter — turnover_won/turnover_lost were unaffected.
+    eventTypes: ['turnover_won', 'turnover_lost', 'unforced_error'],
     color: 'orange'
   },
   {
