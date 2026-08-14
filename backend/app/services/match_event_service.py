@@ -166,17 +166,28 @@ class MatchEventService:
         event = await MatchEventService.get_event(db, event_id)
         if not event:
             return False
-        
-        # Update player stats (remove this event's contribution)
+        match_id = event.match_id
+
+        # Update player stats (remove this event's contribution) — deltas a
+        # separate PlayerMatchStats row directly, not affected by event order.
         if event.player_id:
             await MatchEventService._update_player_stats(db, event, is_delete=True)
-        
-        # Recalculate match scores
-        await MatchEventService._recalculate_match_scores(db, event.match_id)
-        
+
+        # Delete BEFORE recalculating. _recalculate_match_scores runs its own
+        # fresh SELECT over match_events — if that query runs first, it still
+        # sees the row we're about to remove and bakes its score contribution
+        # into the "recalculated" total, which then survives the delete that
+        # follows. Concretely: tag a point, realize the ref brought it back
+        # for a free, delete the point and log the free instead — the delete's
+        # own recalc still counted the point, then the free's own create adds
+        # its point on top, and the scoreboard ends up one score ahead of the
+        # event log with nothing left to explain it. Deleting first (session
+        # autoflush makes the pending DELETE visible to the next query on this
+        # same transaction) means the recalc only ever sees what's really left.
         await db.delete(event)
+        await MatchEventService._recalculate_match_scores(db, match_id)
         await db.commit()
-        
+
         return True
     
     @staticmethod
