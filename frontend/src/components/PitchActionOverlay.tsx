@@ -1,7 +1,7 @@
 import { EventType } from '@/types'
 import {
   CheckCircle, XCircle, Zap, Flag,
-  Target, ArrowDownCircle, ArrowLeftRight, AlertTriangle,
+  Target, ArrowDownCircle, ArrowLeftRight, AlertTriangle, Move,
 } from 'lucide-react'
 
 type Variant = 'green' | 'red' | 'amber' | 'teal' | 'gray'
@@ -44,6 +44,9 @@ interface Props {
   onAction: (eventType: EventType) => void
   onCancelFree: () => void
   onCancelKickout: () => void
+  /** "Adjust Free Position" — hides this overlay momentarily so the pitch is
+   *  visible/draggable to correct where the free is actually being taken from. */
+  onAdjustFreePosition?: () => void
 }
 
 export default function PitchActionOverlay({
@@ -55,6 +58,7 @@ export default function PitchActionOverlay({
   onAction,
   onCancelFree,
   onCancelKickout,
+  onAdjustFreePosition,
 }: Props) {
   if (!awaitingKickout && !pendingFreeKick) return null
 
@@ -186,6 +190,15 @@ export default function PitchActionOverlay({
                   <ArrowLeftRight size={14} />
                   Short Pass — Play On
                 </button>
+                {onAdjustFreePosition && (
+                  <button
+                    onClick={onAdjustFreePosition}
+                    className={`col-span-2 py-2.5 rounded-xl border-2 font-semibold text-sm flex items-center justify-center gap-2 transition-all ${variantCls('gray')}`}
+                  >
+                    <Move size={14} />
+                    Adjust Free Position
+                  </button>
+                )}
               </>
             )}
           </div>

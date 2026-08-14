@@ -177,6 +177,13 @@ export default function MatchRecording() {
   }, [ballPosition.team])
 
   const [pendingFreeKick, setPendingFreeKick] = useState<{ position: BallPosition; player?: Player } | null>(null) // Track free kick state with optional player
+  // "Adjust Free Position" — temporarily hides the outcome overlay so the pitch
+  // is visible/draggable; handleBallMove already repositions pendingFreeKick
+  // while it's set, this just exposes that via the UI.
+  const [isAdjustingFreePosition, setIsAdjustingFreePosition] = useState(false)
+  useEffect(() => {
+    if (!pendingFreeKick) setIsAdjustingFreePosition(false)
+  }, [pendingFreeKick])
   const [pending45, setPending45] = useState<{ position: BallPosition } | null>(null) // Track 45 state
   const [selectingFoulPlayer, setSelectingFoulPlayer] = useState<boolean>(false) // True when selecting own player who fouled
   const [pendingFoul, setPendingFoul] = useState<'own' | 'opponent' | null>(null) // Track which team committed the foul
@@ -214,6 +221,37 @@ export default function MatchRecording() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [tutorialActive, setTutorialActive] = useState(false)
   const [lastEventType, setLastEventType] = useState<string | null>(null)
+
+  // Instant tap confirmation — fires synchronously on tap, before any network
+  // call, so the user never has to wonder whether it registered. Also guards
+  // against the same quick action firing twice within a short window (a
+  // real double-tap, or a second tap fired because the first one gave no
+  // visible feedback in time).
+  const [actionToast, setActionToast] = useState<string | null>(null)
+  const actionToastTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const lastQuickActionRef = useRef<{ key: string; at: number } | null>(null)
+  const QUICK_ACTION_DEBOUNCE_MS = 1200
+
+  const flashActionToast = (label: string) => {
+    setActionToast(label)
+    if (actionToastTimeoutRef.current) clearTimeout(actionToastTimeoutRef.current)
+    actionToastTimeoutRef.current = setTimeout(() => setActionToast(null), 1100)
+  }
+
+  const formatActionLabel = (type: string): string =>
+    type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+
+  /** True (and records the tap) if this isn't a repeat of the same action within the debounce window. */
+  const shouldProceedWithQuickAction = (key: string): boolean => {
+    const now = Date.now()
+    const last = lastQuickActionRef.current
+    if (last && last.key === key && now - last.at < QUICK_ACTION_DEBOUNCE_MS) {
+      console.warn('Ignored duplicate quick action within debounce window:', key)
+      return false
+    }
+    lastQuickActionRef.current = { key, at: now }
+    return true
+  }
 
   // Black card sin bin timers
   const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
@@ -335,18 +373,22 @@ export default function MatchRecording() {
   // Track recent carrier selections (most recent first) for quick-pick shortcuts
   const [recentCarrierIds, setRecentCarrierIds] = useState<string[]>([])
 
-  const handleCarrierSelect = async (playerId: string, jerseyNumber: number | null) => {
+  const handleCarrierSelect = (playerId: string, jerseyNumber: number | null) => {
+    // Update the visible carrier (status label, jersey strip highlight) immediately —
+    // playerMovement.selectCarrier tracks start/end of the segment via its own
+    // internal ref, independently of this state, so there's no ordering
+    // requirement forcing it to go first. Previously this awaited the network
+    // call before updating anything visible, which made every carrier switch
+    // feel like it needed a second to register.
     if (activeCarrierId === playerId) {
-      // Deselect
-      await playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y)
       setActiveCarrierId(null)
     } else {
-      // Select new carrier
-      await playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y)
       setActiveCarrierId(playerId)
-      // Track recent carriers (keep last 10, most recent first)
       setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     }
+    playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y).catch(err => {
+      console.error('Failed to update carrier segment:', err)
+    })
   }
 
   // Formation snapshot state
@@ -2025,6 +2067,12 @@ export default function MatchRecording() {
       return
     }
 
+    // Ignore a repeat of the exact same tap within the debounce window, and
+    // give instant confirmation regardless of how long the network call takes.
+    const actionKey = `${eventType}:${isHomeTeam ? 'own' : 'opp'}`
+    if (!shouldProceedWithQuickAction(actionKey)) return
+    flashActionToast(formatActionLabel(String(eventType)))
+
     try {
       const backendEventType = mapEventTypeToBackend(eventType)
 
@@ -2836,6 +2884,19 @@ export default function MatchRecording() {
 
   return (
     <div className="min-h-screen pb-8">
+      {/* Instant tap confirmation — fixed so it's visible over both normal and fullscreen pitch */}
+      {actionToast && (
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-full text-sm font-bold text-white shadow-lg animate-fade-in pointer-events-none"
+          style={{
+            background: 'rgba(16,185,129,0.92)',
+            boxShadow: '0 6px 24px rgba(0,0,0,0.4)',
+          }}
+        >
+          ✓ {actionToast} logged
+        </div>
+      )}
+
       {/* Loading State - Only on initial load, not refetches */}
       {(matchLoading || statsLoading) && !match && (
         <div className="flex items-center justify-center min-h-[400px]">
@@ -3116,7 +3177,7 @@ export default function MatchRecording() {
                   ballPosition={ballPosition}
                   onBallMove={handleBallMove}
                   showZones={true}
-                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent) || !!pendingFreeKick}
+                  readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent) || (!!pendingFreeKick && !isAdjustingFreePosition)}
                   trail={ballTrail}
                   onTrailUpdate={setBallTrail}
                   onDragPath={handleDragPath}
@@ -3167,7 +3228,7 @@ export default function MatchRecording() {
                 {/* Action-required overlay — kickout & free kick */}
                 <PitchActionOverlay
                   awaitingKickout={awaitingKickout && !pendingKickoutEvent}
-                  pendingFreeKick={!!pendingFreeKick}
+                  pendingFreeKick={!!pendingFreeKick && !isAdjustingFreePosition}
                   pendingFoul={pendingFoul}
                   kickoutTab={activeKickoutTab}
                   isIn2PointZone={isIn2PointZone(
@@ -3180,7 +3241,32 @@ export default function MatchRecording() {
                   onAction={handleQuickAction}
                   onCancelFree={handleCancelFree}
                   onCancelKickout={handleCancelKickout}
+                  onAdjustFreePosition={() => setIsAdjustingFreePosition(true)}
                 />
+
+                {/* Adjust Free Position mode — overlay hidden, pitch is draggable */}
+                {!!pendingFreeKick && isAdjustingFreePosition && (
+                  <div className="absolute inset-x-3 top-3 z-20 animate-fade-in">
+                    <div
+                      className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
+                      style={{
+                        background: 'linear-gradient(90deg, rgba(6,182,212,0.25), rgba(59,130,246,0.12))',
+                        border: '1px solid rgba(6,182,212,0.4)',
+                        backdropFilter: 'blur(14px)',
+                        WebkitBackdropFilter: 'blur(14px)',
+                        boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
+                      }}
+                    >
+                      <span className="text-cyan-200 text-sm font-semibold">Drag the ball to the free's real spot</span>
+                      <button
+                        onClick={() => setIsAdjustingFreePosition(false)}
+                        className="text-xs font-bold px-3 py-1.5 rounded-lg bg-cyan-500/25 border border-cyan-400/50 text-cyan-200 hover:bg-cyan-500/35 transition-colors flex-shrink-0"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Kickout landing strip — floats at the bottom of pitch card */}
                 {!!pendingKickoutEvent && (
@@ -3851,7 +3937,7 @@ export default function MatchRecording() {
         onClose={() => setIsFullscreenPitch(false)}
         ballPosition={ballPosition}
         onBallMove={handleBallMove}
-        readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent) || !!pendingFreeKick}
+        readonly={matchPhase === 'not_started' || matchPhase === 'finished' || matchPhase === 'half_time' || (awaitingKickout && !pendingKickoutEvent) || (!!pendingFreeKick && !isAdjustingFreePosition)}
         trail={ballTrail}
         onTrailUpdate={setBallTrail}
         onDragPath={handleDragPath}
@@ -3909,7 +3995,7 @@ export default function MatchRecording() {
             : (teamAttackingRight ? 0 : 100)
           return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
         })()}
-        pendingFreeKick={!!pendingFreeKick}
+        pendingFreeKick={!!pendingFreeKick && !isAdjustingFreePosition}
         pendingFoul={pendingFoul}
         pendingBlockRecovery={!!pendingBlockRecovery}
         onBlockRecovery={handleBlockRecovery}
@@ -3918,6 +4004,9 @@ export default function MatchRecording() {
         onCancelFree={handleCancelFree}
         onCancel45={handleCancel45}
         onCancelKickout={handleCancelKickout}
+        isAdjustingFreePosition={isAdjustingFreePosition}
+        onAdjustFreePosition={() => setIsAdjustingFreePosition(true)}
+        onDoneAdjustingFreePosition={() => setIsAdjustingFreePosition(false)}
         activeCategory={activeKickoutTab}
         onCategoryChange={setActiveKickoutTab}
         awaitingKickout={awaitingKickout}

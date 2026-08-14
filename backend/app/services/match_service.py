@@ -407,9 +407,13 @@ class MatchService:
                 stats["team_possession_percentage"] = round((team_duration / total_duration) * 100, 1)
                 stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
             else:
-                # Fallback: if no durations yet, use event count (initial possession)
+                # Fallback: if no durations yet, use event count (initial possession).
+                # `team_count` here used to reference an undefined name — this branch
+                # would raise a NameError any time it was actually reached (all
+                # possession_events durations null/zero, e.g. right after the very
+                # first tap of a match) instead of returning a sane 0/0.
                 total_events = len(possession_events)
-                team_events = team_count
+                team_events = sum(1 for p in possession_events if _is_own_team(p))
                 stats["team_possession_percentage"] = round((team_events / total_events) * 100, 1) if total_events > 0 else 0.0
                 stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
         

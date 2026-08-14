@@ -91,39 +91,55 @@ class PossessionService:
         waypoints: list[dict],
     ) -> int:
         """
-        Bulk-insert possession waypoints from a drag path.
+        Bulk-insert possession waypoints (from a drag path, or from the
+        periodic ball-position tick that flushes every ~15s).
 
-        Processes sequentially to maintain duration-chaining with the
-        previous event.  Returns the count of created events.
+        Every waypoint in one call gets written to the database within
+        milliseconds of the others — a genuine 8-second tick interval or a
+        multi-second drag gesture both collapse to a near-zero created_at gap
+        by the time they're actually persisted. The old version chained
+        duration_seconds between EVERY consecutive waypoint, so nearly all of
+        them ended up recording ~0 seconds regardless of team, no matter how
+        much real time or motion they actually represented — the entire
+        possession-percentage stat was built on top of that.
+
+        Fix: only the boundary matters. The whole batch collectively spans
+        one real time window — from whatever the previous event was, up to
+        the last waypoint here — so only that single span gets a real
+        duration, attributed to the event that came before this batch.
+        Every waypoint inside the batch is just path detail with 0 duration
+        of its own; the final one stays open (duration_seconds=None) to be
+        closed out by whatever comes next. Returns the count of created events.
         """
-        # Get the most recent event for duration chaining
+        # The event whose duration will absorb this whole batch's real elapsed time
         result = await db.execute(
             select(PossessionEvent)
             .where(PossessionEvent.match_id == match_id)
             .order_by(PossessionEvent.created_at.desc())
             .limit(1)
         )
-        previous_event = result.scalar_one_or_none()
+        batch_anchor = result.scalar_one_or_none()
 
         count = 0
-        for wp in waypoints:
+        last_event = None
+        for i, wp in enumerate(waypoints):
+            is_last = i == len(waypoints) - 1
             new_event = PossessionEvent(
                 match_id=match_id,
                 team=team,
                 minute=minute,
                 pitch_x=wp["x"],
                 pitch_y=wp["y"],
-                duration_seconds=None,
+                duration_seconds=None if is_last else 0,
             )
             db.add(new_event)
             await db.flush()
-
-            if previous_event:
-                duration = (new_event.created_at - previous_event.created_at).total_seconds()
-                previous_event.duration_seconds = int(min(duration, MAX_POSSESSION_SECONDS))
-
-            previous_event = new_event
+            last_event = new_event
             count += 1
+
+        if batch_anchor and last_event:
+            duration = (last_event.created_at - batch_anchor.created_at).total_seconds()
+            batch_anchor.duration_seconds = int(min(duration, MAX_POSSESSION_SECONDS))
 
         await db.commit()
         return count

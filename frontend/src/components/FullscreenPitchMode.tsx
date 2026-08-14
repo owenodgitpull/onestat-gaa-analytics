@@ -56,6 +56,9 @@ interface FullscreenPitchModeProps {
   onCancelFree?: () => void
   onCancel45?: () => void
   onCancelKickout?: () => void
+  isAdjustingFreePosition?: boolean
+  onAdjustFreePosition?: () => void
+  onDoneAdjustingFreePosition?: () => void
   activeCategory?: string | null
   onCategoryChange?: (cat: string | null) => void
   awaitingKickout?: boolean
@@ -124,6 +127,9 @@ export default function FullscreenPitchMode({
   onCancelFree,
   onCancel45,
   onCancelKickout,
+  isAdjustingFreePosition = false,
+  onAdjustFreePosition,
+  onDoneAdjustingFreePosition,
   activeCategory,
   onCategoryChange,
   teamAttackingRight,
@@ -491,14 +497,39 @@ export default function FullscreenPitchMode({
         {/* Action-required overlay — kickout & free kick */}
         <PitchActionOverlay
           awaitingKickout={!!awaitingKickout && !pendingKickoutPosition}
-          pendingFreeKick={pendingFreeKick}
+          pendingFreeKick={pendingFreeKick && !isAdjustingFreePosition}
           pendingFoul={pendingFoul}
           kickoutTab={activeCategory ?? null}
           isIn2PointZone={isIn2PointZone}
           onAction={onActionSelect}
           onCancelFree={onCancelFree ?? (() => {})}
           onCancelKickout={onCancelKickout ?? (() => {})}
+          onAdjustFreePosition={onAdjustFreePosition}
         />
+
+        {/* Adjust Free Position mode — overlay hidden, pitch is draggable */}
+        {pendingFreeKick && isAdjustingFreePosition && (
+          <div className="absolute inset-x-3 top-3 z-20 animate-fade-in">
+            <div
+              className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
+              style={{
+                background: 'linear-gradient(90deg, rgba(6,182,212,0.25), rgba(59,130,246,0.12))',
+                border: '1px solid rgba(6,182,212,0.4)',
+                backdropFilter: 'blur(14px)',
+                WebkitBackdropFilter: 'blur(14px)',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
+              }}
+            >
+              <span className="text-cyan-200 text-sm font-semibold">Drag the ball to the free's real spot</span>
+              <button
+                onClick={onDoneAdjustingFreePosition}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-cyan-500/25 border border-cyan-400/50 text-cyan-200 hover:bg-cyan-500/35 transition-colors flex-shrink-0"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Kickout landing strip — floats at bottom of pitch, visible without blocking tap area */}
         {pendingKickoutPosition && (
