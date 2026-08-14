@@ -730,7 +730,7 @@ export default function MatchRecording() {
   const opponentKickoutRetention = totalOpponentKickouts > 0 ? ((opponentKickoutsWon / totalOpponentKickouts) * 100).toFixed(1) : '0.0'
 
   // Recent events - fetch from backend, display newest first
-  const { data: matchEventsData } = useMatchEvents(matchId)
+  const { data: matchEventsData } = useMatchEvents(matchId, { live: true })
   const allEvents = [...(matchEventsData?.events || [])].reverse()
   const [visibleEventCount, setVisibleEventCount] = useState(15)
 

@@ -32,12 +32,28 @@ export const possessionKeys = {
  * Get all match events for a specific match.
  * Server-first; errors are swallowed when offline (stale data stays).
  */
-export function useMatchEvents(matchId: string | null) {
+/**
+ * Pass `live: true` while actively recording. The events list only ever
+ * updates via the optimistic setQueryData appended by useRecordEvent's
+ * onSuccess — there's no periodic refetch (refetchInterval: 0) and it
+ * inherits the app-wide 60s staleTime, so if that optimistic append is ever
+ * skipped or overwritten by an in-flight fetch racing behind it, an event
+ * that's genuinely saved server-side can be permanently missing from the
+ * local list — the event map and events panel just never show it, on any
+ * filter, until a hard refresh. Confirmed live on a match where a
+ * turnover_lost was correctly saved (right coordinates, right team) but
+ * never appeared under any Event Map filter combination. Same class of bug
+ * as the scoreboard drift fixed earlier — see useMatch's `live` option.
+ */
+export function useMatchEvents(matchId: string | null, opts?: { live?: boolean }) {
+  const live = opts?.live ?? false
   return useQuery({
     queryKey: matchEventKeys.byMatch(matchId!),
     queryFn: () => api.matchEvents.getByMatch(matchId!),
     enabled: !!matchId,
-    refetchInterval: 0,
+    ...(live
+      ? { staleTime: 0, refetchInterval: 20_000, refetchOnWindowFocus: true, refetchOnMount: 'always' as const }
+      : { refetchInterval: 0 }),
     // Keep stale data when offline — don't clear cache on error
     retry: (failureCount, error) => {
       // Don't retry network errors (offline) — just keep stale data
