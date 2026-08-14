@@ -7,7 +7,7 @@ Automatically updates match scores and player stats.
 
 from typing import List, Optional
 from uuid import UUID
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.match import Match
 from app.models.match_event import MatchEvent, EventType, Team
@@ -181,7 +181,19 @@ class MatchEventService:
     
     @staticmethod
     async def _update_match_scores(db: AsyncSession, event: MatchEvent):
-        """Update match scores based on event."""
+        """
+        Update match scores based on event.
+
+        Uses an atomic `col = col + N` UPDATE rather than read-modify-write on
+        a loaded ORM object. Two events on the same match landing close
+        together (e.g. the sync engine draining a backlog after a spotty
+        connection) can otherwise interleave between the SELECT and the
+        commit on this async session, silently dropping one increment while
+        the event itself still gets persisted correctly — the scoreboard
+        field then permanently disagrees with the event log with no
+        corresponding row to explain the gap. Confirmed twice in production
+        on the same match. The atomic form can't lose an update that way.
+        """
         scoring_events = [
             EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
             EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE,
@@ -190,30 +202,28 @@ class MatchEventService:
         if event.event_type not in scoring_events:
             return
 
-        # Get match
-        result = await db.execute(
-            select(Match).where(Match.id == event.match_id)
-        )
-        match = result.scalar_one_or_none()
-        if not match:
-            return
-
-        # Update scores
         if event.team == Team.OWN:
             if event.event_type in [EventType.GOAL, EventType.PENALTY_GOAL]:
-                match.team_goals += 1
+                values = {"team_goals": Match.team_goals + 1}
             elif event.event_type in [EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE]:
-                match.team_points += 1  # 45s always count as 1 point
+                values = {"team_points": Match.team_points + 1}  # 45s always count as 1 point
             elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
-                match.team_points += 2
+                values = {"team_points": Match.team_points + 2}
+            else:
+                return
         else:
             if event.event_type in [EventType.GOAL, EventType.PENALTY_GOAL]:
-                match.opponent_goals += 1
+                values = {"opponent_goals": Match.opponent_goals + 1}
             elif event.event_type in [EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE]:
-                match.opponent_points += 1  # 45s always count as 1 point
+                values = {"opponent_points": Match.opponent_points + 1}  # 45s always count as 1 point
             elif event.event_type in [EventType.TWO_POINT, EventType.TWO_POINT_FREE]:
-                match.opponent_points += 2
+                values = {"opponent_points": Match.opponent_points + 2}
+            else:
+                return
 
+        await db.execute(
+            update(Match).where(Match.id == event.match_id).values(**values)
+        )
         await db.flush()
 
     @staticmethod
