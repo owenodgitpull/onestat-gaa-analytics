@@ -1,17 +1,19 @@
 import { useState } from 'react'
-import { Settings as SettingsIcon, BookOpen, Users, Bell, Building2, ScrollText } from 'lucide-react'
+import { Settings as SettingsIcon, BookOpen, Users, Bell, Building2, ScrollText, Eye } from 'lucide-react'
 import ClubProfileSettings from '../components/settings/ClubProfileSettings'
 import KnowledgeBaseSettings from '../components/settings/KnowledgeBaseSettings'
 import UserManagementSettings from '../components/settings/UserManagementSettings'
 import NotificationSettings from '../components/settings/NotificationSettings'
 import TeamManagementSettings from '../components/settings/TeamManagementSettings'
 import AuditLogSettings from '../components/settings/AuditLogSettings'
+import PlayerPreviewSettings from '../components/settings/PlayerPreviewSettings'
 
 const TABS = [
   { id: 'profile', label: 'Team Profile', icon: SettingsIcon },
   { id: 'teams', label: 'Teams', icon: Building2 },
   { id: 'knowledge', label: 'Knowledge', icon: BookOpen },
   { id: 'users', label: 'Users', icon: Users },
+  { id: 'preview', label: 'Player Preview', icon: Eye },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'audit', label: 'Audit', icon: ScrollText },
 ] as const
@@ -50,6 +52,7 @@ export default function Settings() {
         {activeTab === 'teams' && <TeamManagementSettings />}
         {activeTab === 'knowledge' && <KnowledgeBaseSettings />}
         {activeTab === 'users' && <UserManagementSettings />}
+        {activeTab === 'preview' && <PlayerPreviewSettings />}
         {activeTab === 'notifications' && <NotificationSettings />}
         {activeTab === 'audit' && <AuditLogSettings />}
       </div>

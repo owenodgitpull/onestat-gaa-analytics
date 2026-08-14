@@ -985,6 +985,12 @@ async def log_sleep(
     """
     from app.models.sleep_log import SleepLog
 
+    if user.is_preview:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Preview mode is read-only.",
+        )
+
     player = await _get_player_for_user(db, user)
     today = date.today()
 

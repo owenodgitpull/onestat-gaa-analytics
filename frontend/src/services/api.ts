@@ -38,6 +38,18 @@ export async function fetchAPI<T>(
     'Content-Type': 'application/json',
   };
 
+  // Admin "preview as player" — attach the target player id so player-portal
+  // reads resolve to them instead of the admin's own (usually absent) player
+  // link. Scoped to player-portal endpoints only; harmless elsewhere since the
+  // backend ignores the header outside that dependency, but no reason to send
+  // it more broadly.
+  if (endpoint.startsWith('/player-portal')) {
+    const previewPlayerId = sessionStorage.getItem('gaa_preview_player_id');
+    if (previewPlayerId) {
+      defaultHeaders['X-Preview-Player-Id'] = previewPlayerId;
+    }
+  }
+
   try {
     const response = await fetch(url, {
       ...options,

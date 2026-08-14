@@ -46,6 +46,14 @@ export interface AuthUser {
   effective_tier?: string | null; // 'club' | 'pro' | 'elite' | null (locked)
 }
 
+export interface PreviewPlayer {
+  id: string;
+  name: string;
+}
+
+const PREVIEW_ID_KEY = 'gaa_preview_player_id';
+const PREVIEW_NAME_KEY = 'gaa_preview_player_name';
+
 interface AuthContextType {
   user: AuthUser | null;
   isAuthenticated: boolean;
@@ -54,6 +62,9 @@ interface AuthContextType {
   logout: () => Promise<void>;
   exchangeCode: (code: string, inviteCode?: string) => Promise<void>;
   setUser: (user: AuthUser) => void;
+  previewPlayer: PreviewPlayer | null;
+  startPreview: (player: PreviewPlayer) => void;
+  exitPreview: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -64,6 +75,9 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
   exchangeCode: async () => {},
   setUser: () => {},
+  previewPlayer: null,
+  startPreview: () => {},
+  exitPreview: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -71,6 +85,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const refreshRetryCount = useRef(0);
+
+  const [previewPlayer, setPreviewPlayer] = useState<PreviewPlayer | null>(() => {
+    const id = sessionStorage.getItem(PREVIEW_ID_KEY);
+    const name = sessionStorage.getItem(PREVIEW_NAME_KEY);
+    return id && name ? { id, name } : null;
+  });
+
+  const startPreview = useCallback((player: PreviewPlayer) => {
+    sessionStorage.setItem(PREVIEW_ID_KEY, player.id);
+    sessionStorage.setItem(PREVIEW_NAME_KEY, player.name);
+    setPreviewPlayer(player);
+  }, []);
+
+  const exitPreview = useCallback(() => {
+    sessionStorage.removeItem(PREVIEW_ID_KEY);
+    sessionStorage.removeItem(PREVIEW_NAME_KEY);
+    setPreviewPlayer(null);
+  }, []);
 
   const isAuthenticated = !!user;
 
@@ -340,6 +372,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Clear local state immediately
     setUserState(null);
     sessionStorage.removeItem(USER_STORAGE_KEY);
+    sessionStorage.removeItem(PREVIEW_ID_KEY);
+    sessionStorage.removeItem(PREVIEW_NAME_KEY);
+    setPreviewPlayer(null);
     if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current);
 
     // MUST await backend logout so httpOnly cookies are cleared before redirect.
@@ -371,6 +406,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         exchangeCode,
         setUser,
+        previewPlayer,
+        startPreview,
+        exitPreview,
       }}
     >
       {children}

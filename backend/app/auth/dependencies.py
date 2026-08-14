@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.cognito import verify_cognito_token
 from app.database import get_db
 from app.models.user import User
+from app.models.player import Player
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,11 @@ class AuthenticatedUser:
     role: str
     user_id: UUID
     player_id: Optional[UUID] = None
+    # True when player_id was substituted via admin "preview as player" — the
+    # real authenticated identity is still the admin in club_id/role/user_id,
+    # only player_id is swapped so player-portal reads resolve to the preview
+    # target. Never set except by the club_admin preview-header path below.
+    is_preview: bool = False
 
 
 async def get_current_user(
@@ -114,7 +120,7 @@ async def get_current_user(
     request.state.user_name = user.name
     request.state.club_id = user.club_id
 
-    return AuthenticatedUser(
+    result_user = AuthenticatedUser(
         cognito_sub=cognito_sub,
         email=user.email,
         club_id=user.club_id,
@@ -122,6 +128,40 @@ async def get_current_user(
         user_id=user.id,
         player_id=user.player_id,
     )
+
+    # Admin "preview as player" — lets a club_admin view the player portal for
+    # any player in their own club without a real Cognito login as that player
+    # (the alternative people previously resorted to: editing a player's own
+    # invite email to sign in as them, which is exactly the incident this
+    # replaces). Only ever overrides player_id; club_id/role/user_id stay the
+    # admin's real identity, and is_preview lets routes block writes.
+    preview_player_id = request.headers.get("x-preview-player-id")
+    if preview_player_id:
+        if user.role != "club_admin" or not user.club_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only club admins can preview the player portal.",
+            )
+        try:
+            preview_uuid = UUID(preview_player_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid preview player id.",
+            )
+        preview_result = await db.execute(
+            select(Player).where(Player.id == preview_uuid)
+        )
+        preview_player = preview_result.scalar_one_or_none()
+        if not preview_player or preview_player.club_id != user.club_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Player not found in your club.",
+            )
+        result_user.player_id = preview_player.id
+        result_user.is_preview = True
+
+    return result_user
 
 
 def require_role(*allowed_roles: str):

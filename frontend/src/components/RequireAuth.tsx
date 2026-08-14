@@ -8,7 +8,7 @@ interface RequireAuthProps {
 }
 
 export default function RequireAuth({ children, requiredRole }: RequireAuthProps) {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, previewPlayer } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -49,9 +49,11 @@ export default function RequireAuth({ children, requiredRole }: RequireAuthProps
     return <Navigate to="/player" replace />;
   }
 
-  // Auto-redirect: admins hitting player portal routes → dashboard
-  // Only match /player and /player/* (NOT /players, /players/:id, etc.)
-  if (user?.role !== 'player' && isPlayerPortalRoute) {
+  // Auto-redirect: admins hitting player portal routes → dashboard.
+  // Exception: an admin with an active "preview as player" session is meant
+  // to be here — that's the whole point of the feature.
+  const isAdminPreviewing = user?.role === 'club_admin' && !!previewPlayer;
+  if (user?.role !== 'player' && isPlayerPortalRoute && !isAdminPreviewing) {
     return <Navigate to="/" replace />;
   }
 

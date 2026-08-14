@@ -29,6 +29,7 @@ import PlayerDashboard from './pages/player/PlayerDashboard'
 import { lazy, Suspense } from 'react'
 import InstallBanner from './components/InstallBanner'
 import TrialBanner from './components/TrialBanner'
+import PlayerPreviewBanner from './components/PlayerPreviewBanner'
 
 const LeaderboardPage = lazy(() => import('./pages/player/LeaderboardPage'))
 const MyStatsPage = lazy(() => import('./pages/player/MyStatsPage'))
@@ -105,6 +106,7 @@ function App() {
               <Route path="/player/*" element={
                 <RequireAuth>
                   <ClubProvider>
+                    <PlayerPreviewBanner />
                     <main className="px-4 pt-8 pb-24 max-w-lg mx-auto safe-area-top">
                       <Suspense fallback={<PlayerLoading />}>
                         <Routes>
