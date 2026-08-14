@@ -59,6 +59,7 @@ import {
   Users,
   HelpCircle,
   Pencil,
+  CircleSlash,
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -182,6 +183,13 @@ export default function MatchRecording() {
   const [isWeatherPickerOpen, setIsWeatherPickerOpen] = useState(false)
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
   const [isStopped, setIsStopped] = useState(false)
+  // Dead ball / stoppage — ball isn't anyone's, but unlike isStopped the clock
+  // keeps running (real GAA club matches don't stop the clock for stoppages;
+  // the ref just plays discretionary added time). Blocks ball movement and
+  // possession tracking the same way isStopped does, without freezing the timer.
+  const [isDeadBall, setIsDeadBall] = useState(false)
+  const [isClockEditorOpen, setIsClockEditorOpen] = useState(false)
+  const [clockEditorDraft, setClockEditorDraft] = useState({ minute: 0, seconds: 0 })
   const [showExtendedStats, setShowExtendedStats] = useState(false)
   // Set to true by crash-restore when the match was stopped — forces match data effect to re-sync time from server
   const [forceServerTimeSync, setForceServerTimeSync] = useState(false)
@@ -622,7 +630,7 @@ export default function MatchRecording() {
   const possTickBufferRef = useRef<Array<{ x: number; y: number; team: 'own' | 'opponent'; minute: number }>>([])
 
   useEffect(() => {
-    const isPlaying = (matchPhase === 'first_half' || matchPhase === 'second_half') && !isStopped && !awaitingKickout && !pendingFreeKick
+    const isPlaying = (matchPhase === 'first_half' || matchPhase === 'second_half') && !isStopped && !isDeadBall && !awaitingKickout && !pendingFreeKick
     if (!isPlaying || !matchId) return
 
     // Accumulate a waypoint every 8s
@@ -670,7 +678,7 @@ export default function MatchRecording() {
       clearInterval(tick)
       clearInterval(flush)
     }
-  }, [matchPhase, isStopped, awaitingKickout, pendingFreeKick, matchId])
+  }, [matchPhase, isStopped, isDeadBall, awaitingKickout, pendingFreeKick, matchId])
 
   // Haptic pulse when action is required (kickout or free kick pending)
   useEffect(() => {
@@ -1247,9 +1255,9 @@ export default function MatchRecording() {
       return
     }
 
-    // Block ball movement during stoppage
-    if (isStopped) {
-      console.log('Ball movement blocked - stoppage in progress')
+    // Block ball movement during stoppage (paused) or dead ball (nobody has it)
+    if (isStopped || isDeadBall) {
+      console.log('Ball movement blocked - stoppage or dead ball in progress')
       return
     }
 
@@ -1306,7 +1314,7 @@ export default function MatchRecording() {
 
   // Batch-record drag waypoints as possession events (single bulk request on drag-end)
   const handleDragPath = (waypoints: Array<{ x: number; y: number }>) => {
-    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || isStopped) return
+    if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || isStopped || isDeadBall) return
     const team = ballPosition.team === PossessionTeam.OWN ? 'own' : 'opponent'
     api.possession.bulkCreate({
       match_id: matchId,
@@ -2627,22 +2635,84 @@ export default function MatchRecording() {
         console.error('Failed to persist stoppage:', err)
       }
     } else {
-      // Resume: adjust started_at to account for stoppage duration, restore running phase
+      // Resume: adjust the START TIMESTAMP FOR THE CURRENT HALF to account for
+      // stoppage duration, restore running phase. Must target started_at in the
+      // first half but second_half_started_at in the second half — the resync
+      // effect derives elapsed time from second_half_started_at once in the
+      // second half, so writing started_at there would silently do nothing and
+      // the clock would jump back to its pre-stoppage value on next resync.
       setIsStopped(false)
       const halfStr = currentHalf === 1 ? 'first_half' : 'second_half'
-      const newStartedAt = new Date(Date.now() - elapsed * 1000).toISOString()
+      // Second half elapsed is measured from second_half_started_at alone (see
+      // the resync effect: `mins = 30 + elapsed since second_half_started_at`),
+      // so the timestamp only needs to encode time-into-the-half, not hdm + that.
+      const hdm = match?.half_duration_mins || 30
+      const elapsedForTimestamp = currentHalf === 2 ? Math.max(0, elapsed - hdm * 60) : elapsed
+      const newStartedAt = new Date(Date.now() - elapsedForTimestamp * 1000).toISOString()
+      const startedAtField = currentHalf === 1 ? 'started_at' : 'second_half_started_at'
       // Optimistically update cache so a concurrent refetch doesn't re-trigger stopped detection
       queryClient.setQueryData(['matches', matchId], (old: any) =>
-        old ? { ...old, current_phase: halfStr, started_at: newStartedAt } : old
+        old ? { ...old, current_phase: halfStr, [startedAtField]: newStartedAt } : old
       )
       try {
         await api.matches.update(matchId, {
           current_phase: halfStr,
-          started_at: newStartedAt,
+          [startedAtField]: newStartedAt,
         } as any)
       } catch (err) {
         console.error('Failed to persist resume:', err)
       }
+    }
+  }
+
+  // Toggle dead ball — ball isn't anyone's possession, but unlike Stoppage the
+  // clock keeps running (matches real GAA club-match timekeeping). Nothing to
+  // persist server-side since it never touches the timer.
+  const handleToggleDeadBall = () => {
+    setIsDeadBall(prev => !prev)
+  }
+
+  // Manually correct the match clock. Branches on whether the clock is
+  // currently frozen (isStopped) or running, and which half we're in, mirroring
+  // handleToggleStoppage's approach to keeping the server's timer source of
+  // truth (current_phase checkpoint, or started_at/second_half_started_at)
+  // consistent with what's shown on screen.
+  const handleManualClockEdit = async (newMinute: number, newSeconds: number) => {
+    if (!matchId) return
+    const targetTotal = newMinute * 60 + newSeconds
+    setMinute(newMinute)
+    setSeconds(newSeconds)
+    setIsClockEditorOpen(false)
+
+    const halfStr = currentHalf === 1 ? 'first_half' : 'second_half'
+
+    if (isStopped) {
+      // Clock is frozen — just rewrite the checkpoint the server holds.
+      const phaseStr = `stopped_${halfStr}:${targetTotal}`
+      queryClient.setQueryData(['matches', matchId], (old: any) =>
+        old ? { ...old, current_phase: phaseStr } : old
+      )
+      try {
+        await api.matches.update(matchId, { current_phase: phaseStr } as any)
+      } catch (err) {
+        console.error('Failed to persist manual clock edit:', err)
+      }
+      return
+    }
+
+    // Clock is running — shift the relevant start timestamp so elapsed-time
+    // derivation lands on the target value (same trick as resume-from-stoppage).
+    const hdm = match?.half_duration_mins || 30
+    const elapsedForTimestamp = currentHalf === 2 ? Math.max(0, targetTotal - hdm * 60) : targetTotal
+    const newStartedAt = new Date(Date.now() - elapsedForTimestamp * 1000).toISOString()
+    const startedAtField = currentHalf === 1 ? 'started_at' : 'second_half_started_at'
+    queryClient.setQueryData(['matches', matchId], (old: any) =>
+      old ? { ...old, [startedAtField]: newStartedAt } : old
+    )
+    try {
+      await api.matches.update(matchId, { [startedAtField]: newStartedAt } as any)
+    } catch (err) {
+      console.error('Failed to persist manual clock edit:', err)
     }
   }
 
@@ -2804,14 +2874,25 @@ export default function MatchRecording() {
                 </div>
                 {matchPhase !== 'not_started' && (
                   <div className="flex items-center gap-2">
-                    <div className={`inline-flex items-center space-x-3 px-4 py-2 rounded-xl ${
-                      isStopped
-                        ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40'
-                        : 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30 animate-pulse'
-                    }`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (matchPhase === 'first_half' || matchPhase === 'second_half') {
+                          setClockEditorDraft({ minute, seconds })
+                          setIsClockEditorOpen(true)
+                        }
+                      }}
+                      disabled={matchPhase !== 'first_half' && matchPhase !== 'second_half'}
+                      title={matchPhase === 'first_half' || matchPhase === 'second_half' ? 'Tap to correct the clock' : undefined}
+                      className={`inline-flex items-center space-x-3 px-4 py-2 rounded-xl ${
+                        isStopped
+                          ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/40'
+                          : 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30 animate-pulse'
+                      }`}
+                    >
                       {isStopped ? <Pause size={20} className="text-amber-400" /> : <Clock size={20} className="text-emerald-400" />}
                       <span className="font-mono text-2xl font-bold text-white">{formatTime()}</span>
-                    </div>
+                    </button>
                     {IS_DEV_SPEED && (
                       <span className="px-2 py-1 text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg">
                         {DEV_SPEED_MULTIPLIER}x
@@ -3108,6 +3189,18 @@ export default function MatchRecording() {
                       title={isStopped ? 'Resume play' : 'Stoppage'}
                     >
                       {isStopped ? <Play size={16} /> : <Pause size={16} />}
+                    </button>
+                    <button
+                      data-tour="dead-ball-btn"
+                      onClick={handleToggleDeadBall}
+                      className={`p-2 rounded-xl border-2 transition-all ${
+                        isDeadBall
+                          ? 'bg-sky-500/20 border-sky-500/40 text-sky-400'
+                          : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
+                      }`}
+                      title={isDeadBall ? 'Ball back in play' : 'Dead ball — clock keeps running'}
+                    >
+                      <CircleSlash size={16} />
                     </button>
                     <FormationSnapshotButton
                       onClick={() => setIsSnapshotMode(true)}
@@ -3610,6 +3703,83 @@ export default function MatchRecording() {
         currentTemperature={temperatureCelsius}
       />
 
+      {/* Manual clock correction */}
+      {isClockEditorOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-white/15 p-5 space-y-5">
+            <div>
+              <h3 className="text-white font-bold text-lg">Correct match clock</h3>
+              <p className="text-white/50 text-xs mt-1">
+                Are you sure? This only changes what the clock shows from now on — it won't renumber events you've already tagged.
+              </p>
+            </div>
+
+            <div className="text-center">
+              <span className="font-mono text-4xl font-bold text-white">
+                {clockEditorDraft.minute}:{clockEditorDraft.seconds.toString().padStart(2, '0')}
+              </span>
+            </div>
+
+            <div>
+              <input
+                type="range"
+                min={0}
+                max={(match?.half_duration_mins || 30) * 2 + 10}
+                step={1}
+                value={clockEditorDraft.minute}
+                onChange={(e) => setClockEditorDraft(prev => ({ ...prev, minute: parseInt(e.target.value, 10) }))}
+                className="w-full accent-emerald-500"
+              />
+              <div className="flex justify-between text-[10px] text-white/40 mt-1">
+                <span>0</span>
+                <span>{(match?.half_duration_mins || 30) * 2 + 10} min</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 justify-center">
+              <label className="flex flex-col items-center gap-1">
+                <span className="text-[10px] uppercase tracking-wide text-white/40">Min</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={140}
+                  value={clockEditorDraft.minute}
+                  onChange={(e) => setClockEditorDraft(prev => ({ ...prev, minute: Math.max(0, parseInt(e.target.value, 10) || 0) }))}
+                  className="w-20 text-center font-mono text-lg bg-white/10 border border-white/20 rounded-lg py-1.5 text-white"
+                />
+              </label>
+              <span className="text-white/40 text-2xl mt-4">:</span>
+              <label className="flex flex-col items-center gap-1">
+                <span className="text-[10px] uppercase tracking-wide text-white/40">Sec</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={clockEditorDraft.seconds}
+                  onChange={(e) => setClockEditorDraft(prev => ({ ...prev, seconds: Math.min(59, Math.max(0, parseInt(e.target.value, 10) || 0)) }))}
+                  className="w-20 text-center font-mono text-lg bg-white/10 border border-white/20 rounded-lg py-1.5 text-white"
+                />
+              </label>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setIsClockEditorOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-white/10 border border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleManualClockEdit(clockEditorDraft.minute, clockEditorDraft.seconds)}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 transition-all font-semibold"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Fullscreen Pitch Mode */}
       <FullscreenPitchMode
         isOpen={isFullscreenPitch}
@@ -3710,6 +3880,8 @@ export default function MatchRecording() {
         onRemoveBlackCard={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))}
         isStopped={isStopped}
         onToggleStoppage={handleToggleStoppage}
+        isDeadBall={isDeadBall}
+        onToggleDeadBall={handleToggleDeadBall}
         onSubstitution={() => {
           setManualEntryDefaultType(EventType.SUBSTITUTION)
           setIsManualEntryOpen(true)

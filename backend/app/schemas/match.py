@@ -77,8 +77,9 @@ class MatchUpdate(BaseModel):
     # Live match state — used to persist stoppage/resume across page refreshes
     current_phase: Optional[str] = Field(None, description="e.g. first_half, stopped_first_half:734, half_time, second_half")
     started_at: Optional[datetime] = None
+    second_half_started_at: Optional[datetime] = None
 
-    @field_validator('match_date', 'started_at', mode='before')
+    @field_validator('match_date', 'started_at', 'second_half_started_at', mode='before')
     @classmethod
     def remove_timezone(cls, v):
         """Remove timezone info to match database TIMESTAMP WITHOUT TIME ZONE."""

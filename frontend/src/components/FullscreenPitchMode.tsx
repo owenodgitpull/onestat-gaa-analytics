@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import GAAPitch from '@/components/GAAPitch'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
-import { Clock, Minimize2, ArrowLeftRight, Pause, Play, ArrowUpDown } from 'lucide-react'
+import { Clock, Minimize2, ArrowLeftRight, Pause, Play, ArrowUpDown, CircleSlash } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import PitchActionOverlay from '@/components/PitchActionOverlay'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
@@ -76,6 +76,8 @@ interface FullscreenPitchModeProps {
   carrierJerseyNumber?: number | null
   isStopped?: boolean
   onToggleStoppage?: () => void
+  isDeadBall?: boolean
+  onToggleDeadBall?: () => void
   onSubstitution?: () => void
   teamPrimaryColor?: string
   teamSecondaryColor?: string
@@ -139,6 +141,8 @@ export default function FullscreenPitchMode({
   carrierJerseyNumber,
   isStopped = false,
   onToggleStoppage,
+  isDeadBall = false,
+  onToggleDeadBall,
   onSubstitution,
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
@@ -257,6 +261,20 @@ export default function FullscreenPitchMode({
                 title={isStopped ? 'Resume play' : 'Stoppage'}
               >
                 {isStopped ? <Play size={16} /> : <Pause size={16} />}
+              </button>
+            )}
+            {onToggleDeadBall && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+              <button
+                onClick={onToggleDeadBall}
+                className="p-2 rounded-xl border border-white/15 transition-all"
+                style={{
+                  background: isDeadBall ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.1)',
+                  borderColor: isDeadBall ? 'rgba(56,189,248,0.6)' : 'rgba(255,255,255,0.15)',
+                  color: isDeadBall ? '#38bdf8' : 'rgba(255,255,255,0.7)',
+                }}
+                title={isDeadBall ? 'Ball back in play' : 'Dead ball — clock keeps running'}
+              >
+                <CircleSlash size={16} />
               </button>
             )}
             {onSwapPossession && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
@@ -382,6 +400,22 @@ export default function FullscreenPitchMode({
               className="px-4 py-1.5 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-sm font-semibold hover:bg-white/20 transition-all flex items-center gap-1.5"
             >
               <Play size={14} /> Resume
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Dead ball banner — hidden in phone landscape */}
+      {!isPhoneLandscape && isDeadBall && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+        <div className="flex-shrink-0 backdrop-blur-xl bg-sky-500/10 border-b border-sky-500/30 px-4 py-2 flex items-center justify-center gap-3">
+          <CircleSlash size={14} className="text-sky-400" />
+          <span className="text-sm font-semibold text-sky-300">Dead ball — clock still running</span>
+          {onToggleDeadBall && (
+            <button
+              onClick={onToggleDeadBall}
+              className="px-4 py-1.5 rounded-xl backdrop-blur-xl bg-white/10 border border-emerald-500/40 text-emerald-300 text-sm font-semibold hover:bg-white/20 transition-all"
+            >
+              Back in play
             </button>
           )}
         </div>
