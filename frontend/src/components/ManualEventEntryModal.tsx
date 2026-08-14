@@ -14,6 +14,10 @@ interface MatchLineupEntry {
   player_jersey_number: number | null
 }
 
+function isKickoutType(eventType: EventType): boolean {
+  return String(eventType).toUpperCase().includes('KICKOUT')
+}
+
 interface ManualEventEntryModalProps {
   isOpen: boolean
   onClose: () => void
@@ -123,32 +127,35 @@ export default function ManualEventEntryModal({
         </div>
 
         <div className="space-y-6">
-          {/* Team Selection */}
-          <div>
-            <label className="block text-white/80 font-semibold mb-2">Team</label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setTeam(PossessionTeam.OWN)}
-                className={`p-4 rounded-xl font-semibold transition-all border-2 ${
-                  team === PossessionTeam.OWN
-                    ? 'bg-emerald-600 text-white border-emerald-400 ring-2 ring-emerald-400/30 scale-[1.02]'
-                    : 'bg-white/5 text-white/30 border-white/10'
-                }`}
-              >
-                {clubName}
-              </button>
-              <button
-                onClick={() => setTeam(PossessionTeam.OPPONENT)}
-                className={`p-4 rounded-xl font-semibold transition-all border-2 ${
-                  team === PossessionTeam.OPPONENT
-                    ? 'bg-red-600 text-white border-red-400 ring-2 ring-red-400/30 scale-[1.02]'
-                    : 'bg-white/5 text-white/30 border-white/10'
-                }`}
-              >
-                {opponentName}
-              </button>
+          {/* Team Selection — not shown for kickouts, where the event type itself
+              (e.g. "Our Kickout — Opposition Won") already says who gets credit */}
+          {!isKickoutType(eventType) && (
+            <div>
+              <label className="block text-white/80 font-semibold mb-2">Team</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setTeam(PossessionTeam.OWN)}
+                  className={`p-4 rounded-xl font-semibold transition-all border-2 ${
+                    team === PossessionTeam.OWN
+                      ? 'bg-emerald-600 text-white border-emerald-400 ring-2 ring-emerald-400/30 scale-[1.02]'
+                      : 'bg-white/5 text-white/30 border-white/10'
+                  }`}
+                >
+                  {clubName}
+                </button>
+                <button
+                  onClick={() => setTeam(PossessionTeam.OPPONENT)}
+                  className={`p-4 rounded-xl font-semibold transition-all border-2 ${
+                    team === PossessionTeam.OPPONENT
+                      ? 'bg-red-600 text-white border-red-400 ring-2 ring-red-400/30 scale-[1.02]'
+                      : 'bg-white/5 text-white/30 border-white/10'
+                  }`}
+                >
+                  {opponentName}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Event Type */}
           <div>
@@ -191,7 +198,24 @@ export default function ManualEventEntryModal({
               <optgroup label="Substitutions" className="bg-slate-800 text-white">
                 <option value={EventType.SUBSTITUTION} className="bg-slate-800 text-white">Substitution</option>
               </optgroup>
+              <optgroup label="Kickouts" className="bg-slate-800 text-white">
+                <option value={EventType.OWN_KICKOUT_WON} className="bg-slate-800 text-white">Our Kickout — We Won</option>
+                <option value={EventType.OWN_KICKOUT_OPPOSITION_WON} className="bg-slate-800 text-white">Our Kickout — Opposition Won</option>
+                <option value={EventType.OWN_KICKOUT_WON_BREAK} className="bg-slate-800 text-white">Our Kickout — We Won Break</option>
+                <option value={EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK} className="bg-slate-800 text-white">Our Kickout — Opposition Won Break</option>
+                <option value={EventType.OWN_KICKOUT_SIDELINE} className="bg-slate-800 text-white">Our Kickout — Over Sideline</option>
+                <option value={EventType.OPP_KICKOUT_WON} className="bg-slate-800 text-white">{opponentName} Kickout — We Won</option>
+                <option value={EventType.OPP_KICKOUT_OPPOSITION_WON} className="bg-slate-800 text-white">{opponentName} Kickout — Opposition Won</option>
+                <option value={EventType.OPP_KICKOUT_WON_BREAK} className="bg-slate-800 text-white">{opponentName} Kickout — We Won Break</option>
+                <option value={EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK} className="bg-slate-800 text-white">{opponentName} Kickout — Opposition Won Break</option>
+                <option value={EventType.OPP_KICKOUT_SIDELINE} className="bg-slate-800 text-white">{opponentName} Kickout — Over Sideline</option>
+              </optgroup>
             </select>
+            {isKickoutType(eventType) && (
+              <p className="text-xs text-emerald-400/80 mt-2">
+                After you add this, tap the pitch to mark where it was won — same as the normal kickout flow.
+              </p>
+            )}
           </div>
 
           {/* Player Selection (conditional) */}
@@ -240,9 +264,11 @@ export default function ManualEventEntryModal({
                 </select>
               </div>
             </>
-          ) : requiresPlayer && team === PossessionTeam.OWN ? (
+          ) : requiresPlayer && (team === PossessionTeam.OWN || isKickoutType(eventType)) ? (
             <div>
-              <label className="block text-white/80 font-semibold mb-2">Player</label>
+              <label className="block text-white/80 font-semibold mb-2">
+                Player {isKickoutType(eventType) && <span className="font-normal text-white/40">(optional)</span>}
+              </label>
               <select
                 value={playerId}
                 onChange={(e) => setPlayerId(e.target.value)}

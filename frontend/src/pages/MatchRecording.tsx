@@ -1670,6 +1670,24 @@ export default function MatchRecording() {
     try {
       const isHomeTeam = data.team === PossessionTeam.OWN
 
+      // Kickouts don't get recorded immediately — same as the quick-action kickout
+      // buttons, they need a pitch position. Hand off to the existing
+      // pendingKickoutEvent flow (resolved by the next tap on the pitch in
+      // handleBallMove) instead of writing the event here.
+      if (String(data.eventType).toUpperCase().includes('KICKOUT')) {
+        const eventStr = String(data.eventType).toUpperCase()
+        const isTeamWon = eventStr.includes('_WON') && !eventStr.includes('OPPOSITION_WON')
+        const isOppositionWon = eventStr.includes('OPPOSITION_WON') || eventStr.includes('KICKOUT_SIDELINE')
+        const kickoutIsHomeTeam = isTeamWon ? true : isOppositionWon ? false : isHomeTeam
+        setPendingKickoutEvent({
+          eventType: data.eventType,
+          isHomeTeam: kickoutIsHomeTeam,
+          playerId: data.playerId || undefined,
+        })
+        setAwaitingKickout(false)
+        return
+      }
+
       // For substitutions, record event and update field status
       if (data.eventType === EventType.SUBSTITUTION && data.playerId && data.playerComingOn) {
         const playerOff = players.find(p => p.id === data.playerId)
