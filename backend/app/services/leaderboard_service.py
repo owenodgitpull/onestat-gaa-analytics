@@ -5,14 +5,18 @@ Computes 8 competitive leaderboard categories for the Player Portal.
 All methods are static, following the SeasonDashboardService pattern.
 """
 
+from datetime import datetime
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, case, or_
+from sqlalchemy.orm import lazyload
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.match_gps import MatchGPSData
+from app.models.match_lineup import MatchLineup
 from app.models.player import Player
 from app.models.attendance import Attendance, AttendanceStatus, TrainingSession
+from app.models.ball_carrier_segment import BallCarrierSegment
 
 # Try importing TrainingGPSData for speed demon cross-source
 try:
@@ -60,6 +64,24 @@ DEFENSIVE_EVENTS = [
     EventType.BLOCK, EventType.INTERCEPTION, EventType.TURNOVER_WON, EventType.TACKLE_WON,
 ]
 
+# Same threshold MatchResult.tsx uses to flag a GPS max-speed reading as a
+# likely sensor spike rather than a real achievement (GPS_SPIKE_THRESHOLD_MS
+# there) — kept in sync so "genuine top speed" means the same thing on the
+# leaderboard as it does on the match page. Readings above this are excluded
+# from Speed Demon entirely, so a player's leaderboard entry is their best
+# *plausible* reading, not whatever their highest sensor glitch happened to be.
+# 10.6 m/s ≈ 38 km/h — typical GAA match max is around 8.3-10.0 m/s.
+GPS_SPIKE_THRESHOLD_MS = 10.6
+
+# Any kickout won by an own-team player, whether it was our own restart or the
+# opposition's, clean or off a break — shared between the Match Log stat and
+# the "Kickout Kings" leaderboard so both count the exact same thing.
+KICKOUT_WON_TYPES = [
+    EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
+    EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_WON_BREAK,
+    EventType.KICKOUT_WON, EventType.BREAKING_BALL_WON,
+]
+
 
 def _score_value(event_type: EventType) -> int:
     """Points value of a scoring event for Top Scorer leaderboard."""
@@ -77,6 +99,8 @@ class LeaderboardService:
 
     @staticmethod
     async def _get_club_matches(db: AsyncSession, club_id: UUID) -> list:
+        # Same overfetch fix as _compute_all_rankings_fresh — callers of this
+        # helper use match.id/match_date, never the relationships.
         result = await db.execute(
             select(Match).where(
                 and_(
@@ -84,6 +108,13 @@ class LeaderboardService:
                     Match.status == MatchStatus.COMPLETED,
                     Match.is_deleted.is_(False),
                 )
+            ).options(
+                lazyload(Match.events),
+                lazyload(Match.possession_events),
+                lazyload(Match.player_stats),
+                lazyload(Match.lineup),
+                lazyload(Match.gps_data),
+                lazyload(Match.video_sessions),
             ).order_by(Match.match_date.asc())
         )
         return result.scalars().all()
@@ -234,15 +265,15 @@ class LeaderboardService:
             pid = str(e.player_id)
             if pid not in players:
                 continue
-            d = stats.setdefault(pid, {"blocks": 0, "interceptions": 0, "turnovers_won": 0, "tackles": 0})
+            d = stats.setdefault(pid, {"blocks": 0, "interceptions": 0, "turnovers_won": 0})
             if e.event_type == EventType.BLOCK:
                 d["blocks"] += 1
             elif e.event_type == EventType.INTERCEPTION:
                 d["interceptions"] += 1
             elif e.event_type == EventType.TURNOVER_WON:
                 d["turnovers_won"] += 1
-            elif e.event_type == EventType.TACKLE_WON:
-                d["tackles"] += 1
+            # TACKLE_WON is deliberately not tallied here — tackles were
+            # removed from The Wall's scoring and detail line.
 
         ranked = sorted(
             stats.items(),
@@ -255,7 +286,7 @@ class LeaderboardService:
                 "player_id": pid,
                 "player_name": players[pid].name,
                 "value": sum(d.values()),
-                "detail": f"{d['blocks']}B {d['interceptions']}I {d['tackles']}T {d['turnovers_won']}TO",
+                "detail": f"{d['blocks']}B {d['interceptions']}I {d['turnovers_won']}TO",
             }
             for i, (pid, d) in enumerate(ranked)
         ]
@@ -272,15 +303,26 @@ class LeaderboardService:
         match_ids = [m.id for m in matches]
         players = await LeaderboardService._get_club_players(db, club_id)
 
+        # Joined to MatchLineup.is_on_field so an unused substitute's GPS
+        # device — which keeps recording during warm-up even though they
+        # never took the field — can't inflate their average. Only matches
+        # where the player actually started or came on count.
         result = await db.execute(
             select(
                 MatchGPSData.player_id,
                 func.avg(MatchGPSData.total_distance_m).label("avg_dist"),
                 func.count(MatchGPSData.id).label("match_count"),
+            ).select_from(MatchGPSData).join(
+                MatchLineup,
+                and_(
+                    MatchLineup.match_id == MatchGPSData.match_id,
+                    MatchLineup.player_id == MatchGPSData.player_id,
+                ),
             ).where(
                 and_(
                     MatchGPSData.match_id.in_(match_ids),
                     MatchGPSData.total_distance_m.isnot(None),
+                    MatchLineup.is_on_field.is_(True),
                 )
             ).group_by(MatchGPSData.player_id)
         )
@@ -318,15 +360,29 @@ class LeaderboardService:
         match_ids = [m.id for m in matches]
         players = await LeaderboardService._get_club_players(db, club_id)
 
-        # Match GPS max speed
+        # Match GPS max speed — readings above GPS_SPIKE_THRESHOLD_MS are
+        # excluded outright (same threshold MatchResult.tsx flags as a likely
+        # sensor spike), so a player's entry is their best genuine reading,
+        # not a glitch. This naturally surfaces their next-highest real speed
+        # for anyone whose true max got thrown out. Also joined to
+        # MatchLineup.is_on_field, same reason as Workhorse/Sprint King — an
+        # unused substitute's bench/warm-up GPS session shouldn't count.
         result = await db.execute(
             select(
                 MatchGPSData.player_id,
                 func.max(MatchGPSData.max_speed_ms).label("top_speed"),
+            ).select_from(MatchGPSData).join(
+                MatchLineup,
+                and_(
+                    MatchLineup.match_id == MatchGPSData.match_id,
+                    MatchLineup.player_id == MatchGPSData.player_id,
+                ),
             ).where(
                 and_(
                     MatchGPSData.match_id.in_(match_ids),
                     MatchGPSData.max_speed_ms.isnot(None),
+                    MatchGPSData.max_speed_ms <= GPS_SPIKE_THRESHOLD_MS,
+                    MatchLineup.is_on_field.is_(True),
                 )
             ).group_by(MatchGPSData.player_id)
         )
@@ -348,6 +404,7 @@ class LeaderboardService:
                         and_(
                             TrainingGPSData.player_id.in_(player_ids),
                             TrainingGPSData.max_speed_ms.isnot(None),
+                            TrainingGPSData.max_speed_ms <= GPS_SPIKE_THRESHOLD_MS,
                         )
                     ).group_by(TrainingGPSData.player_id)
                 )
@@ -365,8 +422,7 @@ class LeaderboardService:
                 "rank": i + 1,
                 "player_id": pid,
                 "player_name": players[pid].name,
-                "value": round(speed * 3.6, 1),
-                "detail": f"{round(speed, 2)} m/s",
+                "value": round(speed, 2),
             }
             for i, (pid, speed) in enumerate(ranked)
         ]
@@ -383,15 +439,24 @@ class LeaderboardService:
         match_ids = [m.id for m in matches]
         players = await LeaderboardService._get_club_players(db, club_id)
 
+        # Joined to MatchLineup.is_on_field for the same reason as Workhorse —
+        # an unused substitute's bench/warm-up GPS session shouldn't count.
         result = await db.execute(
             select(
                 MatchGPSData.player_id,
                 func.avg(MatchGPSData.sprint_count).label("avg_sprints"),
                 func.count(MatchGPSData.id).label("match_count"),
+            ).select_from(MatchGPSData).join(
+                MatchLineup,
+                and_(
+                    MatchLineup.match_id == MatchGPSData.match_id,
+                    MatchLineup.player_id == MatchGPSData.player_id,
+                ),
             ).where(
                 and_(
                     MatchGPSData.match_id.in_(match_ids),
                     MatchGPSData.sprint_count.isnot(None),
+                    MatchLineup.is_on_field.is_(True),
                 )
             ).group_by(MatchGPSData.player_id)
         )
@@ -443,22 +508,31 @@ class LeaderboardService:
         )
         records = att_result.scalars().all()
 
-        player_att: dict[str, dict] = {}
+        # Denominator is total_sessions (every training session the CLUB held),
+        # the same number for every player — not how many Attendance rows
+        # happen to exist for that individual player. A coach who only logs a
+        # row when someone actually shows up (no explicit "absent" row for
+        # the sessions they missed) previously made a player's own row-count
+        # both the numerator source AND the denominator, so anyone who only
+        # ever had a handful of sessions recorded showed 100% regardless of
+        # how many club sessions they'd actually missed — e.g. 2/2, 10/10.
+        # Comparing everyone against the same real total is the whole point
+        # of a ladder.
+        player_present: dict[str, int] = {}
+        seen_players: set[str] = set()
         for r in records:
             pid = str(r.player_id)
             if pid not in players:
                 continue
-            d = player_att.setdefault(pid, {"present": 0, "total": 0})
-            d["total"] += 1
+            seen_players.add(pid)
             if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
-                d["present"] += 1
+                player_present[pid] = player_present.get(pid, 0) + 1
 
         data = []
-        for pid, d in player_att.items():
-            if d["total"] == 0:
-                continue
-            rate = round(d["present"] / d["total"] * 100, 1)
-            data.append((pid, rate, d["present"], d["total"]))
+        for pid in seen_players:
+            present = player_present.get(pid, 0)
+            rate = round(present / total_sessions * 100, 1)
+            data.append((pid, rate, present, total_sessions))
 
         data.sort(key=lambda x: x[1], reverse=True)
         return [
@@ -520,6 +594,53 @@ class LeaderboardService:
         ]
 
     # ------------------------------------------------------------------
+    # 9. Kickout King (kickouts won — clean or off a break, ours or theirs)
+    # ------------------------------------------------------------------
+    @staticmethod
+    async def kickout_king(db: AsyncSession, club_id: UUID) -> list[dict]:
+        matches = await LeaderboardService._get_club_matches(db, club_id)
+        if not matches:
+            return []
+
+        match_ids = [m.id for m in matches]
+        players = await LeaderboardService._get_club_players(db, club_id)
+
+        result = await db.execute(
+            select(MatchEvent).where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.event_type.in_(KICKOUT_WON_TYPES),
+                    MatchEvent.player_id.isnot(None),
+                )
+            )
+        )
+        events = result.scalars().all()
+
+        counts: dict[str, dict] = {}
+        for e in events:
+            pid = str(e.player_id)
+            if pid not in players:
+                continue
+            d = counts.setdefault(pid, {"clean": 0, "break": 0})
+            if e.event_type in (EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON_BREAK, EventType.BREAKING_BALL_WON):
+                d["break"] += 1
+            else:
+                d["clean"] += 1
+
+        ranked = sorted(counts.items(), key=lambda x: x[1]["clean"] + x[1]["break"], reverse=True)
+        return [
+            {
+                "rank": i + 1,
+                "player_id": pid,
+                "player_name": players[pid].name,
+                "value": d["clean"] + d["break"],
+                "detail": f"{d['clean']} clean, {d['break']} break",
+            }
+            for i, (pid, d) in enumerate(ranked)
+        ]
+
+    # ------------------------------------------------------------------
     # All categories
     # ------------------------------------------------------------------
 
@@ -546,7 +667,7 @@ class LeaderboardService:
         },
         "speed_demon": {
             "display_name": "Speed Demon",
-            "unit": "km/h",
+            "unit": "m/s",
             "method": "speed_demon",
         },
         "sprint_king": {
@@ -564,17 +685,111 @@ class LeaderboardService:
             "unit": "pts",
             "method": "motm_points",
         },
+        "kickout_king": {
+            "display_name": "Kickout Kings",
+            "unit": "won",
+            "method": "kickout_king",
+        },
+        # Possessions (ball-carrier segments) + passes made (segments ended
+        # by 'pass'), combined and averaged per match. Only populated for
+        # matches recorded with Tier 1 ball-carrier tracking active — a
+        # player with zero tracked matches simply doesn't appear, same as
+        # Workhorse/Speed Demon/Sprint King not showing untracked GPS players.
+        "orchestrator": {
+            "display_name": "Orchestrator",
+            "unit": "touches/match",
+            "method": "orchestrator",
+        },
     }
 
     @staticmethod
     async def get_all_leaderboards(
         db: AsyncSession, club_id: UUID, player_id: UUID | None = None
     ) -> list[dict]:
-        """Compute all 8 leaderboards in ~7 DB queries (was 24+)."""
+        """Build top-3/context-window previews for the portal home screen.
+
+        The expensive part (scanning every match/event/GPS/attendance row and
+        ranking all 8 categories) is cached and shared with get_single_leaderboard
+        via _compute_all_rankings — this just does the cheap per-viewer slicing.
+        """
+        all_rankings = await LeaderboardService._compute_all_rankings(db, club_id)
+        pid_str = str(player_id) if player_id else None
+        return [
+            _build_context(key, meta, all_rankings.get(key, []), pid_str)
+            for key, meta in LeaderboardService.CATEGORIES.items()
+        ]
+
+    @staticmethod
+    async def _compute_all_rankings(db: AsyncSession, club_id: UUID) -> dict[str, list[dict]]:
+        """Compute all 8 leaderboards in ~7 DB queries (was 24+), cached per club.
+
+        Standings only change when a match/GPS/training result is recorded, so
+        this is gated by the same data-fingerprint pattern used for SeasonCache
+        elsewhere — a fresh full-squad scan only runs when something actually
+        changed, instead of on every leaderboard view/tab-switch for every player.
+        """
+        from sqlalchemy import select as _select
+        from app.models.season_cache import SeasonCache
+        from app.services.season_dashboard_service import _compute_data_fingerprint
+
+        fingerprint = await _compute_data_fingerprint(db, club_id)
+        # Include the category set in the cache key so adding/removing/renaming
+        # a leaderboard category (a code change) invalidates old cached blobs
+        # automatically — the data fingerprint alone doesn't change just because
+        # the code changed, which silently served a stale 8-category cache
+        # missing "kickout_king" the first time this was deployed. Python's
+        # built-in hash() is randomized per-process (PYTHONHASHSEED), so a
+        # real digest is used instead of hash() to stay stable across restarts.
+        # LEADERBOARD_SCHEMA_VERSION bumps for a shape/unit change within an
+        # existing category (e.g. speed_demon switching from km/h back to
+        # m/s) — the category *names* wouldn't change, so categories_sig alone
+        # wouldn't catch it and old cached blobs would keep serving km/h values.
+        import hashlib as _hashlib
+        LEADERBOARD_SCHEMA_VERSION = "v2"
+        categories_sig = ",".join(sorted(LeaderboardService.CATEGORIES.keys())) + f"|{LEADERBOARD_SCHEMA_VERSION}"
+        categories_hash = _hashlib.md5(categories_sig.encode()).hexdigest()[:8]
+        cache_type = f"leaderboard_rankings_{categories_hash}"
+
+        cache_result = await db.execute(
+            _select(SeasonCache).where(
+                SeasonCache.club_id == club_id,
+                SeasonCache.cache_type == cache_type,
+            )
+        )
+        cache = cache_result.scalar_one_or_none()
+        if cache and cache.data_fingerprint == fingerprint and cache.cached_result is not None:
+            return cache.cached_result
+
+        all_rankings = await LeaderboardService._compute_all_rankings_fresh(db, club_id)
+
+        if cache:
+            cache.cached_result = all_rankings
+            cache.data_fingerprint = fingerprint
+            cache.cached_at = datetime.utcnow()
+        else:
+            db.add(SeasonCache(
+                club_id=club_id,
+                cache_type=cache_type,
+                data_fingerprint=fingerprint,
+                cached_result=all_rankings,
+            ))
+        await db.commit()
+
+        return all_rankings
+
+    @staticmethod
+    async def _compute_all_rankings_fresh(db: AsyncSession, club_id: UUID) -> dict[str, list[dict]]:
+        """The actual full-squad scan — only called on a cache miss."""
         import asyncio
         from uuid import UUID as _UUID
 
         # --- 1. Fetch matches ---
+        # Only match.id is used below (per-category queries re-fetch events
+        # directly by match_id) — skip the model's default eager (selectin)
+        # loading of events/possession_events/player_stats/lineup/gps_data/
+        # video_sessions, same fix already applied in
+        # season_dashboard_service.py's _get_completed_matches for the same
+        # reason (6 redundant queries per call otherwise).
         matches_result = await db.execute(
             select(Match).where(
                 and_(
@@ -582,14 +797,18 @@ class LeaderboardService:
                     Match.status == MatchStatus.COMPLETED,
                     Match.is_deleted.is_(False),
                 )
+            ).options(
+                lazyload(Match.events),
+                lazyload(Match.possession_events),
+                lazyload(Match.player_stats),
+                lazyload(Match.lineup),
+                lazyload(Match.gps_data),
+                lazyload(Match.video_sessions),
             )
         )
         matches = matches_result.scalars().all()
         if not matches:
-            return [
-                _build_context(key, meta, [], str(player_id) if player_id else None)
-                for key, meta in LeaderboardService.CATEGORIES.items()
-            ]
+            return {key: [] for key in LeaderboardService.CATEGORIES}
 
         match_ids = [m.id for m in matches]
 
@@ -601,7 +820,7 @@ class LeaderboardService:
 
         # Union of all event types needed across all categories
         all_needed_types = list(
-            set(SCORING_EVENTS) | set(SHOT_EVENTS) | set(DEFENSIVE_EVENTS) | set(MOTM_WEIGHTS.keys())
+            set(SCORING_EVENTS) | set(SHOT_EVENTS) | set(DEFENSIVE_EVENTS) | set(MOTM_WEIGHTS.keys()) | set(KICKOUT_WON_TYPES)
         )
 
         # --- 3. Fetch all match events in one query ---
@@ -617,23 +836,57 @@ class LeaderboardService:
         )
         all_events = events_result.scalars().all()
 
-        # --- 4. GPS aggregates (distance + max speed + sprints) in one query ---
+        # --- 4. GPS aggregates (distance + sprints) — joined to MatchLineup
+        # so an unused substitute's bench/warm-up GPS session (device stays
+        # on even though they never took the field) can't inflate Workhorse
+        # or Sprint King. Top speed is deliberately NOT pulled from this same
+        # query — a spike reading needs to be dropped from the max-speed calc
+        # without also throwing away that row's otherwise-valid distance/
+        # sprint numbers, so it gets its own query below. ---
         gps_result = await db.execute(
             select(
                 MatchGPSData.player_id,
                 func.avg(MatchGPSData.total_distance_m).label("avg_dist"),
-                func.max(MatchGPSData.max_speed_ms).label("top_speed"),
                 func.avg(MatchGPSData.sprint_count).label("avg_sprints"),
                 func.count(MatchGPSData.id).label("match_count"),
+            ).select_from(MatchGPSData).join(
+                MatchLineup,
+                and_(
+                    MatchLineup.match_id == MatchGPSData.match_id,
+                    MatchLineup.player_id == MatchGPSData.player_id,
+                ),
             ).where(
-                and_(MatchGPSData.match_id.in_(match_ids))
+                and_(
+                    MatchGPSData.match_id.in_(match_ids),
+                    MatchLineup.is_on_field.is_(True),
+                )
             ).group_by(MatchGPSData.player_id)
         )
         gps_rows = gps_result.all()
 
-        # --- 5. Training GPS max speed (optional) ---
+        # --- 5. Match + training GPS max speed (optional), spike-filtered
+        # and joined to MatchLineup.is_on_field (unused subs excluded) ---
+        speed_result = await db.execute(
+            select(
+                MatchGPSData.player_id,
+                func.max(MatchGPSData.max_speed_ms).label("top_speed"),
+            ).select_from(MatchGPSData).join(
+                MatchLineup,
+                and_(
+                    MatchLineup.match_id == MatchGPSData.match_id,
+                    MatchLineup.player_id == MatchGPSData.player_id,
+                ),
+            ).where(
+                and_(
+                    MatchGPSData.match_id.in_(match_ids),
+                    MatchGPSData.max_speed_ms.isnot(None),
+                    MatchGPSData.max_speed_ms <= GPS_SPIKE_THRESHOLD_MS,
+                    MatchLineup.is_on_field.is_(True),
+                )
+            ).group_by(MatchGPSData.player_id)
+        )
         speed_map: dict[str, float] = {}
-        for row in gps_rows:
+        for row in speed_result:
             pid = str(row.player_id)
             if pid in players and row.top_speed is not None:
                 speed_map[pid] = float(row.top_speed)
@@ -649,6 +902,7 @@ class LeaderboardService:
                         and_(
                             TrainingGPSData.player_id.in_(player_ids_list),
                             TrainingGPSData.max_speed_ms.isnot(None),
+                            TrainingGPSData.max_speed_ms <= GPS_SPIKE_THRESHOLD_MS,
                         )
                     ).group_by(TrainingGPSData.player_id)
                 )
@@ -659,12 +913,35 @@ class LeaderboardService:
             except Exception:
                 pass
 
+        # --- 5b. Ball-carrier segments (possessions + passes) for Orchestrator ---
+        # Only own-team, player-attributed segments — opponent carriers (if
+        # ever tagged) and unattributed segments don't belong on a squad
+        # leaderboard, same filtering convention as the event queries above.
+        carrier_result = await db.execute(
+            select(
+                BallCarrierSegment.player_id,
+                BallCarrierSegment.match_id,
+                BallCarrierSegment.ended_by,
+            ).where(
+                and_(
+                    BallCarrierSegment.match_id.in_(match_ids),
+                    BallCarrierSegment.team == 'own',
+                    BallCarrierSegment.player_id.isnot(None),
+                )
+            )
+        )
+        carrier_rows = carrier_result.all()
+
         # --- 6. Training sessions + 7. Attendance in two queries ---
         sessions_result = await db.execute(
             select(TrainingSession.id).where(TrainingSession.club_id == club_id)
         )
         session_ids = [r[0] for r in sessions_result.all()]
 
+        total_sessions = len(session_ids)
+        # Denominator is total_sessions (every session the club held) for
+        # every player, not each player's own Attendance-row count — see the
+        # matching comment in the standalone iron_man() above for why.
         att_by_player: dict[str, dict] = {}
         if session_ids:
             att_result = await db.execute(
@@ -674,8 +951,7 @@ class LeaderboardService:
                 pid = str(r.player_id)
                 if pid not in players:
                     continue
-                d = att_by_player.setdefault(pid, {"present": 0, "total": 0})
-                d["total"] += 1
+                d = att_by_player.setdefault(pid, {"present": 0, "total": total_sessions})
                 if r.status in (AttendanceStatus.PRESENT, AttendanceStatus.LATE):
                     d["present"] += 1
 
@@ -742,20 +1018,20 @@ class LeaderboardService:
             pid = str(e.player_id)
             if pid not in players:
                 continue
-            d = defensive_stats.setdefault(pid, {"blocks": 0, "interceptions": 0, "turnovers_won": 0, "tackles": 0})
+            d = defensive_stats.setdefault(pid, {"blocks": 0, "interceptions": 0, "turnovers_won": 0})
             if e.event_type == EventType.BLOCK:
                 d["blocks"] += 1
             elif e.event_type == EventType.INTERCEPTION:
                 d["interceptions"] += 1
             elif e.event_type == EventType.TURNOVER_WON:
                 d["turnovers_won"] += 1
-            elif e.event_type == EventType.TACKLE_WON:
-                d["tackles"] += 1
+            # TACKLE_WON is deliberately not tallied here — tackles were
+            # removed from The Wall's scoring and detail line.
         the_wall_ranked = sorted(defensive_stats.items(), key=lambda x: sum(x[1].values()), reverse=True)
         the_wall = [
             {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
              "value": sum(d.values()),
-             "detail": f"{d['blocks']}B {d['interceptions']}I {d['tackles']}T {d['turnovers_won']}TO"}
+             "detail": f"{d['blocks']}B {d['interceptions']}I {d['turnovers_won']}TO"}
             for i, (pid, d) in enumerate(the_wall_ranked)
         ]
 
@@ -778,7 +1054,7 @@ class LeaderboardService:
         speed_ranked = sorted(speed_map.items(), key=lambda x: x[1], reverse=True)
         speed_demon = [
             {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
-             "value": round(spd * 3.6, 1), "detail": f"{round(spd, 2)} m/s"}
+             "value": round(spd, 2)}
             for i, (pid, spd) in enumerate(speed_ranked)
         ]
 
@@ -830,7 +1106,61 @@ class LeaderboardService:
             for i, (pid, val) in enumerate(motm_ranked)
         ]
 
-        all_rankings = {
+        # 9. Kickout King
+        kickout_counts: dict[str, dict] = {}
+        kickout_break_types = (EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON_BREAK, EventType.BREAKING_BALL_WON)
+        for e in all_events:
+            if e.event_type not in KICKOUT_WON_TYPES:
+                continue
+            pid = str(e.player_id)
+            if pid not in players:
+                continue
+            d = kickout_counts.setdefault(pid, {"clean": 0, "break": 0})
+            if e.event_type in kickout_break_types:
+                d["break"] += 1
+            else:
+                d["clean"] += 1
+        kickout_ranked = sorted(kickout_counts.items(), key=lambda x: x[1]["clean"] + x[1]["break"], reverse=True)
+        kickout_king = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": d["clean"] + d["break"], "detail": f"{d['clean']} clean, {d['break']} break"}
+            for i, (pid, d) in enumerate(kickout_ranked)
+        ]
+
+        # 10. Orchestrator (possessions + passes made, combined, avg/match)
+        # Each BallCarrierSegment row is one possession spell; a segment
+        # that ended_by == 'pass' also counts as a completed pass. Both are
+        # tallied per player PER MATCH first, then averaged across matches —
+        # same "average of per-match totals" shape as Workhorse/Sprint King —
+        # so a player who's only had carrier tracking on for 2 matches isn't
+        # penalised against one tracked for 10.
+        orch_by_player: dict[str, dict[str, dict]] = {}
+        for pid_raw, mid_raw, ended_by in carrier_rows:
+            pid = str(pid_raw)
+            if pid not in players:
+                continue
+            mid = str(mid_raw)
+            per_match = orch_by_player.setdefault(pid, {})
+            d = per_match.setdefault(mid, {"poss": 0, "passes": 0})
+            d["poss"] += 1
+            if ended_by == "pass":
+                d["passes"] += 1
+
+        orchestrator_data = []
+        for pid, by_match in orch_by_player.items():
+            match_count = len(by_match)
+            avg_poss = round(sum(d["poss"] for d in by_match.values()) / match_count, 1)
+            avg_passes = round(sum(d["passes"] for d in by_match.values()) / match_count, 1)
+            combined = round(avg_poss + avg_passes, 1)
+            orchestrator_data.append((pid, combined, avg_poss, avg_passes, match_count))
+        orchestrator_data.sort(key=lambda x: x[1], reverse=True)
+        orchestrator = [
+            {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
+             "value": combined, "detail": f"{avg_poss} poss + {avg_passes} pass /match · {mc} matches"}
+            for i, (pid, combined, avg_poss, avg_passes, mc) in enumerate(orchestrator_data)
+        ]
+
+        return {
             "top_scorer": top_scorer,
             "clinical_rating": clinical_rating,
             "the_wall": the_wall,
@@ -839,24 +1169,28 @@ class LeaderboardService:
             "sprint_king": sprint_king,
             "iron_man": iron_man,
             "motm_points": motm_points,
+            "kickout_king": kickout_king,
+            "orchestrator": orchestrator,
         }
-
-        pid_str = str(player_id) if player_id else None
-        return [
-            _build_context(key, meta, all_rankings[key], pid_str)
-            for key, meta in LeaderboardService.CATEGORIES.items()
-        ]
 
     @staticmethod
     async def get_single_leaderboard(
         db: AsyncSession, club_id: UUID, category: str
     ) -> list[dict]:
-        """Return full ranking for one category."""
-        meta = LeaderboardService.CATEGORIES.get(category)
-        if not meta:
+        """
+        Return full ranking for one category.
+
+        Previously called its own standalone per-category method, which redid
+        the ENTIRE squad-wide matches/events/GPS/attendance scan independently
+        of get_all_leaderboards (used for the portal home screen) — meaning
+        every tab tap recomputed a ranking that had usually already been
+        computed once already, for every player, on every visit. Now shares
+        the same cached _compute_all_rankings() result as get_all_leaderboards.
+        """
+        if category not in LeaderboardService.CATEGORIES:
             return []
-        method = getattr(LeaderboardService, meta["method"])
-        return await method(db, club_id)
+        all_rankings = await LeaderboardService._compute_all_rankings(db, club_id)
+        return all_rankings.get(category, [])
 
 
 # ------------------------------------------------------------------

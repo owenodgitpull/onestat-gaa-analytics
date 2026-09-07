@@ -2,9 +2,17 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { playerPortalAPI, type PlayerDashboard as DashboardData } from '../../services/playerPortalApi';
 import { Link } from 'react-router-dom';
-import { Trophy, Target, Crosshair, Zap, TrendingUp, ChevronRight, Bell, X, Info } from 'lucide-react';
+import { Trophy, Target, Crosshair, Zap, TrendingUp, ChevronRight, Bell, X, Info, Share2 } from 'lucide-react';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
 import PlayerHeader from '../../components/PlayerHeader';
+
+function getInitials(name?: string): string {
+  if (!name) return '?'
+  const parts = name.trim().split(/\s+/)
+  return parts.length === 1
+    ? parts[0].slice(0, 2).toUpperCase()
+    : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
 
 const CATEGORY_ICONS: Record<string, typeof Trophy> = {
   top_scorer: Trophy,
@@ -15,6 +23,7 @@ const CATEGORY_ICONS: Record<string, typeof Trophy> = {
   sprint_king: Zap,
   iron_man: TrendingUp,
   motm_points: Trophy,
+  orchestrator: Share2,
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -26,6 +35,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   sprint_king: 'from-emerald-500/20 to-cyan-500/15 border-emerald-500/30',
   iron_man: 'from-teal-500/20 to-emerald-500/15 border-teal-500/30',
   motm_points: 'from-yellow-500/20 to-amber-500/15 border-yellow-500/30',
+  orchestrator: 'from-violet-500/20 to-purple-500/15 border-violet-500/30',
 };
 
 const PUSH_PROMPT_DISMISSED_KEY = 'gaa-push-prompt-dismissed';
@@ -138,7 +148,7 @@ export default function PlayerDashboard() {
         <div className="relative">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-emerald-500/30">
-              {data.jersey_number || '#'}
+              {getInitials(data.player_name)}
             </div>
             <div>
               <h1 className="text-xl font-bold text-white">{data.player_name}</h1>
