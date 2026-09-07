@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import {
   FileText, Calendar, User, Shield, Activity, BarChart3,
   Footprints, Target, AlertTriangle, ArrowLeft,
@@ -8,16 +8,17 @@ import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { api } from '@/services/api'
 import type { Match, Player } from '@/types'
 import type { DashboardData } from '@/services/api'
+import { lazyWithRetry } from '@/utils/lazyWithRetry'
 
 // Lazy-load each report component to keep initial bundle small
-const MatchDayReport = lazy(() => import('@/components/reports/MatchDayReport'))
-const PlayerFormReport = lazy(() => import('@/components/reports/PlayerFormReport'))
-const OppositionScoutReport = lazy(() => import('@/components/reports/OppositionScoutReport'))
-const SquadFitnessReport = lazy(() => import('@/components/reports/SquadFitnessReport'))
-const SeasonProgressReport = lazy(() => import('@/components/reports/SeasonProgressReport'))
-const KickoutAnalysisReport = lazy(() => import('@/components/reports/KickoutAnalysisReport'))
-const TrainingLoadReport = lazy(() => import('@/components/reports/TrainingLoadReport'))
-const DisciplineReport = lazy(() => import('@/components/reports/DisciplineReport'))
+const MatchDayReport = lazyWithRetry(() => import('@/components/reports/MatchDayReport'))
+const PlayerFormReport = lazyWithRetry(() => import('@/components/reports/PlayerFormReport'))
+const OppositionScoutReport = lazyWithRetry(() => import('@/components/reports/OppositionScoutReport'))
+const SquadFitnessReport = lazyWithRetry(() => import('@/components/reports/SquadFitnessReport'))
+const SeasonProgressReport = lazyWithRetry(() => import('@/components/reports/SeasonProgressReport'))
+const KickoutAnalysisReport = lazyWithRetry(() => import('@/components/reports/KickoutAnalysisReport'))
+const TrainingLoadReport = lazyWithRetry(() => import('@/components/reports/TrainingLoadReport'))
+const DisciplineReport = lazyWithRetry(() => import('@/components/reports/DisciplineReport'))
 
 // ─── Report definitions ───────────────────────────────────────────────────────
 

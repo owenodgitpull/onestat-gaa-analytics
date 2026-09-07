@@ -58,6 +58,8 @@ class MatchGPSDataResponse(MatchGPSDataBase):
     id: UUID
     match_id: UUID
     player_name: Optional[str] = None
+    opponent: Optional[str] = None
+    match_date: Optional[datetime] = None
     created_at: datetime
 
     class Config:

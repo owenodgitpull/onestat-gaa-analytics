@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { api, TopScorer, fetchAPI } from '@/services/api'
 import { usePlayers } from '@/hooks/usePlayers'
+import { useAuth } from '@/contexts/AuthContext'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import AddPlayerModal from '@/components/AddPlayerModal'
 
@@ -50,6 +51,7 @@ const positionMapping: Record<string, string> = {
 
 export default function Players() {
   const navigate = useNavigate()
+  const { canEdit } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
   const [positionFilter, setPositionFilter] = useState('all')
   const [inviteCode, setInviteCode] = useState<string | null>(null)
@@ -251,14 +253,16 @@ export default function Players() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all"
-            style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
-          >
-            <UserPlus size={16} />
-            <span className="hidden sm:inline">Player</span>
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all"
+              style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+            >
+              <UserPlus size={16} />
+              <span className="hidden sm:inline">Player</span>
+            </button>
+          )}
           <button
             onClick={toggleCompareMode}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all ${
@@ -425,13 +429,19 @@ export default function Players() {
                   <h3 className="font-semibold text-white">{player.name}</h3>
                   <div className="flex items-center gap-2">
                     {editingPositionId === player.id ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+                      <div
+                        className="flex items-center gap-1"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation() }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onTouchEnd={(e) => e.stopPropagation()}
+                      >
                         <select
                           id={`pos-select-${player.id}`}
                           className="mt-0.5 px-2 py-1 rounded bg-white/10 border border-white/20 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                           defaultValue={player.position || ''}
                           autoFocus
                           onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => e.stopPropagation()}
                         >
                           <option value="" className="bg-slate-800">Select position</option>
                           {POSITIONS.map(pos => (
@@ -559,7 +569,7 @@ export default function Players() {
                 }`}>
                   {player.active ? 'Active' : 'Inactive'}
                 </div>
-                {!compareMode && (
+                {!compareMode && canEdit && (
                   <div className="relative">
                     <button
                       onClick={(e) => {

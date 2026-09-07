@@ -35,6 +35,22 @@ class MatchStatus(enum.Enum):
     CANCELLED = "cancelled"  # Cancelled
 
 
+# Fixed dropdown of stage values (not free text — see Match.stage below).
+# Kept as a plain ordered list rather than an enum column: a coach picking
+# the wrong one is a UI mistake to fix by re-picking, not a data-integrity
+# problem worth a migration to correct, and league fixtures legitimately
+# have no stage at all (nullable).
+MATCH_STAGE_OPTIONS = [
+    "Preliminary Round",
+    *[f"Round {i}" for i in range(1, 16)],  # league fixtures run a round per matchday, up to ~15 in a season
+    "Group Stage",
+    "Last 16",
+    "Quarter-Final",
+    "Semi-Final",
+    "Final",
+]
+
+
 class WeatherCondition(enum.Enum):
     """Weather conditions during the match."""
     SUNNY = "sunny"
@@ -95,6 +111,11 @@ class Match(Base):
     
     # Competition and referee (populated by fixture scraping or manual entry)
     competition: Column[Optional[str]] = Column(String(200), nullable=True)
+    # Round/knockout stage within the competition (e.g. "Round 1",
+    # "Quarter-Final") — kept separate from `competition` so a championship
+    # stays one filterable identity across all its rounds instead of each
+    # round being its own distinct competition string.
+    stage: Column[Optional[str]] = Column(String(50), nullable=True)
     referee: Column[Optional[str]] = Column(String(200), nullable=True)
 
     # Optional notes
@@ -107,14 +128,26 @@ class Match(Base):
     opposition_briefing: Column[Optional[str]] = Column(Text, nullable=True)
 
     # Weather and pitch conditions (for pattern analysis)
+    # weather_condition (singular) stays populated as the first entry of
+    # weather_conditions below — kept in sync server-side purely so the
+    # several existing single-icon weather badges around the app (Navigation,
+    # match report, live recording badges) keep working unchanged. Any NEW
+    # weather-aware code should read weather_conditions, not this field.
     weather_condition: Column[Optional[WeatherCondition]] = Column(Enum(WeatherCondition), nullable=True)
+    # Full set of conditions logged for the match (e.g. ["windy", "light_rain"])
+    # — real weather is combinatorial, so this is a list rather than adding an
+    # ever-growing set of named combo values to the WeatherCondition enum.
+    weather_conditions: Column[Optional[list]] = Column(JSON, nullable=True)
     pitch_condition: Column[Optional[PitchCondition]] = Column(Enum(PitchCondition), nullable=True)
     temperature_celsius: Column[Optional[int]] = Column(Integer, nullable=True)  # Temperature in Celsius
     wind_speed_kmh: Column[Optional[int]] = Column(Integer, nullable=True)  # Wind speed in km/h
 
-    # Strip colours (hex, e.g. "#FF0000")
+    # Strip colours (hex, e.g. "#FF0000"). Secondary is the trim/hoop colour —
+    # optional, many jerseys are a single solid colour and don't need one.
     team_strip_colour: Column[Optional[str]] = Column(String(7), nullable=True)
+    team_strip_secondary_colour: Column[Optional[str]] = Column(String(7), nullable=True)
     opponent_strip_colour: Column[Optional[str]] = Column(String(7), nullable=True)
+    opponent_strip_secondary_colour: Column[Optional[str]] = Column(String(7), nullable=True)
 
     # AI-generated post-match analysis (generated when match completes)
     ai_analysis: Column[Optional[str]] = Column(Text, nullable=True)
@@ -124,8 +157,19 @@ class Match(Base):
     ai_analysis_version: Column[int] = Column(Integer, default=1, nullable=False)
     gps_analysis_included: Column[bool] = Column(Boolean, default=False, nullable=False)
 
+    # Simple Scoring — when False, this match was recorded tap-only (no
+    # continuous ball-drag tracking), so it has no territorial possession
+    # or ball-carry/passing data. Shot maps, kickout charts, scoring
+    # timeline and season stats are unaffected.
+    precise_tracking_enabled: Column[bool] = Column(Boolean, default=True, nullable=False, server_default='true')
+
     # Chart insights (cached from analyze_match to avoid separate LLM call)
     chart_insights = Column(JSON, nullable=True)
+
+    # GPS insights cache (avoids re-calling the LLM on every match-result page load)
+    gps_insights = Column(JSON, nullable=True)
+    gps_insights_fingerprint: Column[Optional[str]] = Column(String(64), nullable=True)
+    gps_insights_generated_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
 
     # Half duration in minutes (30 for clubs, 35 for inter-county)
     half_duration_mins: Column[int] = Column(Integer, default=30, nullable=False)

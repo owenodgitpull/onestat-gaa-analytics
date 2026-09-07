@@ -530,6 +530,55 @@ def _generate_invite_code() -> str:
     return ''.join(secrets.choice(alphabet) for _ in range(8))
 
 
+@router.post("/preview-player/{player_id}")
+async def start_player_preview(
+    player_id: UUID,
+    request: Request,
+    user: AuthenticatedUser = Depends(require_role("club_admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Called when an admin starts "Preview as Player" — audit trail only.
+    Authorization for the preview itself happens per-request via the
+    X-Preview-Player-Id header, checked in get_current_user; this endpoint
+    just verifies the player belongs to the admin's club and records who
+    previewed as whom, so it shows up in Settings > Audit Log.
+    """
+    player_result = await db.execute(
+        select(Player).where(Player.id == player_id, Player.club_id == user.club_id)
+    )
+    player = player_result.scalar_one_or_none()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    admin_result = await db.execute(select(User).where(User.id == user.user_id))
+    admin = admin_result.scalar_one_or_none()
+
+    try:
+        ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        if not ip:
+            ip = request.client.host if request.client else None
+        async with async_session_maker() as audit_db:
+            audit_db.add(AuditLog(
+                club_id=user.club_id,
+                user_id=user.user_id,
+                user_email=admin.email if admin else user.email,
+                user_name=admin.name if admin else None,
+                action="previewed_as_player",
+                resource_type="player",
+                resource_id=str(player_id),
+                detail={"player_name": player.name},
+                http_method="POST",
+                endpoint=str(request.url.path),
+                ip_address=ip,
+            ))
+            await audit_db.commit()
+    except Exception as e:
+        logger.warning(f"Preview audit log write failed: {e}")
+
+    return {"status": "ok", "player_name": player.name}
+
+
 @router.post("/invite-code/generate")
 @limiter.limit("10/minute")
 async def generate_invite_code(

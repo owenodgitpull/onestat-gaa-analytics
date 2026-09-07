@@ -14,6 +14,7 @@ from typing import Optional
 from uuid import UUID
 from sqlalchemy import select, delete, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 import logging
 
 from app.database import get_db, async_session_maker
@@ -191,8 +192,9 @@ async def confirm_upload(
     if doc.processing_status != "pending":
         raise HTTPException(status_code=400, detail="Document already confirmed")
 
-    # Verify file exists in R2
-    if not doc.r2_key or not storage.file_exists(doc.r2_key, club_id=str(user.club_id)):
+    # Verify file exists in R2 — offloaded to a thread since StorageService
+    # is plain synchronous boto3 and would otherwise block the event loop.
+    if not doc.r2_key or not await asyncio.to_thread(storage.file_exists, doc.r2_key, club_id=str(user.club_id)):
         raise HTTPException(status_code=400, detail="File not found in storage. Please re-upload.")
 
     doc.processing_status = "processing"
@@ -230,9 +232,9 @@ async def delete_document(
     if doc.is_default:
         raise HTTPException(status_code=403, detail="Cannot delete default documents")
 
-    # Delete R2 file
+    # Delete R2 file — offloaded to a thread (synchronous boto3 call).
     if doc.r2_key:
-        storage.delete_file(doc.r2_key, club_id=str(user.club_id))
+        await asyncio.to_thread(storage.delete_file, doc.r2_key, club_id=str(user.club_id))
 
     # Delete chunks
     await db.execute(
@@ -267,8 +269,10 @@ async def _process_document_background(
             if not doc:
                 return
 
-            # Download file from R2
-            file_bytes = storage.download_file(r2_key)
+            # Download file from R2 — offloaded to a thread. `add_task`
+            # background work still runs on the same event loop, so a
+            # synchronous R2 call here would stall every other request too.
+            file_bytes = await asyncio.to_thread(storage.download_file, r2_key)
             if not file_bytes:
                 doc.processing_status = "failed"
                 doc.processing_error = "Failed to download file from storage"
@@ -377,8 +381,8 @@ async def seed_default_documents(
     and triggers background RAG processing.
     Admin-only, idempotent (skips files already seeded).
     """
-    # List files in the defaults folder
-    files = storage.list_files(prefix=DEFAULT_DOCS_R2_PREFIX)
+    # List files in the defaults folder — offloaded to a thread (synchronous boto3 call).
+    files = await asyncio.to_thread(storage.list_files, prefix=DEFAULT_DOCS_R2_PREFIX)
     if not files:
         raise HTTPException(status_code=404, detail="No files found in defaults folder")
 
@@ -459,8 +463,10 @@ async def _process_default_document_background(
             if not doc:
                 return
 
-            # Download directly — no club_id validation for default docs
-            file_bytes = storage.download_file(r2_key)
+            # Download directly — no club_id validation for default docs.
+            # Offloaded to a thread (synchronous boto3 call, still on the
+            # event loop even though this runs via background_tasks).
+            file_bytes = await asyncio.to_thread(storage.download_file, r2_key)
             if not file_bytes:
                 doc.processing_status = "failed"
                 doc.processing_error = "Failed to download file from storage"

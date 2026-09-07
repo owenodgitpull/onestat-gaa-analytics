@@ -138,6 +138,7 @@ export function useCreateMatch() {
       weather_condition?: string | null;
       temperature_celsius?: number | null;
       competition?: string | null;
+      stage?: string | null;
       referee?: string | null;
       half_duration_mins?: number;
     }) => api.matches.create(data),

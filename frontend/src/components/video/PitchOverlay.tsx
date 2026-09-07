@@ -11,6 +11,7 @@
 import { useRef, useCallback } from 'react'
 import { type PitchZone, TWO_POINTER_ZONES } from './PitchZoneSelector'
 import { xyToZone } from './PitchZoneSelector'
+import { PITCH, toSvg, fromSvg } from '@/utils/pitchGeometry'
 
 const ZONE_LABELS: Record<PitchZone, string> = {
   DEF_LEFT: 'DEF L', DEF_CENTRE: 'DEF', DEF_RIGHT: 'DEF R',
@@ -47,26 +48,6 @@ const ZONE_DEFS: ZoneDef[] = [
   { id: 'SQ_CENTRE',  xMin: 83, xMax: 100, yMin: 33, yMax: 67 },
   { id: 'SQ_RIGHT',   xMin: 83, xMax: 100, yMin: 67, yMax: 100 },
 ]
-
-const PITCH = {
-  svgW: 2332,
-  svgH: 1446,
-  left: 183,
-  top: 123,
-  playW: 1960,
-  playH: 1167,
-}
-
-const toSvg = (xPct: number, yPct: number) => ({
-  x: PITCH.left + (xPct / 100) * PITCH.playW,
-  y: PITCH.top + (yPct / 100) * PITCH.playH,
-})
-
-/** Convert SVG coordinates to pitch percentage (0-100), clamped. */
-const fromSvg = (svgX: number, svgY: number) => ({
-  x: Math.max(0, Math.min(100, ((svgX - PITCH.left) / PITCH.playW) * 100)),
-  y: Math.max(0, Math.min(100, ((svgY - PITCH.top) / PITCH.playH) * 100)),
-})
 
 interface PitchOverlayProps {
   eventLabel: string

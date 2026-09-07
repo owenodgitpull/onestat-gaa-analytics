@@ -1,11 +1,12 @@
 /**
- * OppositionScorerStrip — Inline strip shown after opponent scores.
+ * OppositionScorerStrip — centered overlay shown after the opponent scores.
  *
- * Shows opposition roster names as tappable pills with a prominent Skip button.
- * Auto-dismisses after selection or skip.
+ * Blocks the recording flow until resolved (the event isn't written to the DB
+ * until select/skip fires), so it uses the same centered, unmissable overlay
+ * treatment as the kickout/free-kick modals — not an easy-to-miss inline strip.
  */
 
-import { SkipForward } from 'lucide-react'
+import { AlertTriangle, SkipForward } from 'lucide-react'
 
 interface OppositionScorerStripProps {
   players: string[]
@@ -23,28 +24,63 @@ export default function OppositionScorerStrip({ players, onSelect, onSkip, event
   const label = eventType === 'goal' ? 'Who scored the goal?' : 'Who scored?'
 
   return (
-    <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl px-3 py-2 animate-fade-in">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-semibold text-orange-300">{label}</span>
-        <button
-          onClick={onSkip}
-          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white/60 hover:text-white text-xs font-medium transition-all"
+    <>
+      <style>{`
+        @keyframes _ossi { from{opacity:0} to{opacity:1} }
+        @keyframes _ossc { from{opacity:0;transform:scale(.9) translateY(14px)} to{opacity:1;transform:scale(1) translateY(0)} }
+      `}</style>
+
+      <div
+        className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl overflow-hidden"
+        style={{ animation: '_ossi .15s ease-out both' }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(5px)', WebkitBackdropFilter: 'blur(5px)' }}
+        />
+
+        <div
+          className="relative z-10 w-full mx-4 rounded-2xl overflow-hidden"
+          style={{
+            maxWidth: 340,
+            background: 'linear-gradient(145deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.05) 55%, rgba(255,255,255,0.09) 100%)',
+            border: '1px solid rgba(255,255,255,0.22)',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.06), inset 0 1px 0 rgba(255,255,255,0.20)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            animation: '_ossc .22s cubic-bezier(.34,1.56,.64,1) both',
+          }}
         >
-          <SkipForward size={12} />
-          Skip
-        </button>
-      </div>
-      <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
-        {players.map((name) => (
-          <button
-            key={name}
-            onClick={() => onSelect(name)}
-            className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-orange-500/20 border border-orange-400/30 text-orange-200 text-xs font-semibold hover:bg-orange-500/35 hover:border-orange-400/50 transition-all active:scale-95"
+          <div
+            className="px-4 py-3 flex items-center justify-between border-b border-orange-500/20"
+            style={{ background: 'linear-gradient(90deg, rgba(249,115,22,0.22), rgba(234,88,12,0.10))' }}
           >
-            {surname(name)}
-          </button>
-        ))}
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle size={14} className="text-orange-400" />
+              <span className="text-sm font-bold text-orange-300">{label}</span>
+            </div>
+            <button
+              onClick={onSkip}
+              className="flex items-center gap-1 text-[11px] text-white/40 hover:text-white/70 px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
+            >
+              <SkipForward size={11} />
+              Skip
+            </button>
+          </div>
+
+          <div className="p-3 grid grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto">
+            {players.map((name) => (
+              <button
+                key={name}
+                onClick={() => onSelect(name)}
+                className="py-3.5 rounded-xl border-2 font-semibold text-sm bg-orange-500/20 border-orange-400/40 text-orange-200 hover:bg-orange-500/30 hover:border-orange-400/60 active:scale-[0.96] transition-all"
+              >
+                {surname(name)}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }

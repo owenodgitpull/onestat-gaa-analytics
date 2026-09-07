@@ -201,3 +201,23 @@ def require_admin(user: AuthenticatedUser = Depends(get_current_user)) -> Authen
             detail="Admin access required.",
         )
     return user
+
+
+def require_admin_or_viewer(user: AuthenticatedUser = Depends(get_current_user)) -> AuthenticatedUser:
+    """Dependency: require club_admin or read-only viewer role + club_id.
+
+    Use this on GET (read) routes only — it grants viewers the same access as
+    admins for reading data, but every write route must keep using
+    require_admin so viewers can never create/edit/delete anything.
+    """
+    if not user.club_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No club associated with your account.",
+        )
+    if user.role not in ("club_admin", "viewer"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or viewer access required.",
+        )
+    return user

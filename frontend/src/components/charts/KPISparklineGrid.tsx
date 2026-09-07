@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, MoveHorizontal } from 'lucide-react'
 import type { KPISparklineGridData, KPISparklineRow } from '@/services/api'
 
 interface Props {
@@ -89,6 +89,11 @@ export default function KPISparklineGrid({ data }: Props) {
           KPI Dashboard
         </h3>
         <span className="text-xs text-white/40">{data.rows.length} metrics</span>
+      </div>
+
+      <div className="flex md:hidden items-center gap-1.5 text-[11px] text-white/40 mb-2">
+        <MoveHorizontal size={12} />
+        Swipe to see more
       </div>
 
       <div className="flex-1 overflow-x-auto min-h-0">

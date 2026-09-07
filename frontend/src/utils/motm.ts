@@ -101,7 +101,7 @@ export function calculateManOfMatch(
         playerScores[pid].breakdown.interceptions++
         break
       case 'turnover_lost':
-      case 'our_unforced_error':
+      case 'unforced_error':
         playerScores[pid].score -= 1
         playerScores[pid].breakdown.turnoversLost++
         break

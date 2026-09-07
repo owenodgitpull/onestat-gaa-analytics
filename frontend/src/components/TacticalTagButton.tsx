@@ -5,7 +5,8 @@
  * Formation Change, and custom text.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { Tag } from 'lucide-react'
 
 const QUICK_TAGS = [
@@ -27,13 +28,32 @@ export default function TacticalTagButton({
 }: TacticalTagButtonProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [customText, setCustomText] = useState('')
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // The button lives inside a horizontally-scrolling toolbar row
+  // (`overflow-x-auto`), which — per the CSS overflow spec — forces
+  // `overflow-y` to also clip once any overflow axis isn't `visible`. That
+  // silently hid this dropdown (it rendered, just invisibly clipped by the
+  // toolbar's bounds) rather than actually doing nothing. Portal it to
+  // <body> and position it by the button's own screen coordinates instead,
+  // so it's never subject to an ancestor's overflow/clipping.
+  useLayoutEffect(() => {
+    if (!isOpen || !buttonRef.current) return
+    const rect = buttonRef.current.getBoundingClientRect()
+    setMenuPos({ top: rect.top - 8, left: rect.right })
+  }, [isOpen])
 
   // Close on outside click
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        buttonRef.current && !buttonRef.current.contains(target)
+      ) {
         setIsOpen(false)
       }
     }
@@ -55,8 +75,9 @@ export default function TacticalTagButton({
   }
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative">
       <button
+        ref={buttonRef}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
         className={`
@@ -76,8 +97,12 @@ export default function TacticalTagButton({
         )}
       </button>
 
-      {isOpen && (
-        <div className="absolute bottom-full mb-2 right-0 w-56 bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl z-50 overflow-hidden">
+      {isOpen && menuPos && createPortal(
+        <div
+          ref={dropdownRef}
+          className="fixed w-56 bg-slate-900/95 backdrop-blur-xl border border-white/15 rounded-xl shadow-2xl z-[100] overflow-hidden"
+          style={{ top: menuPos.top, left: menuPos.left, transform: 'translate(-100%, -100%)' }}
+        >
           <div className="p-2 space-y-1">
             {QUICK_TAGS.map(tag => (
               <button
@@ -109,7 +134,8 @@ export default function TacticalTagButton({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

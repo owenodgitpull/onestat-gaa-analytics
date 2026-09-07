@@ -9,13 +9,14 @@ from datetime import datetime, time as dt_time
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.database import get_db, async_session_maker
 from app.models.club import Club
 from app.models.match import Match, MatchStatus, MatchVenue
+from app.models.match_event import MatchEvent
 from app.schemas.match import MatchResponse
 from app.services.fixture_scraper import FixtureScraperService, _normalize_team
 
@@ -30,7 +31,7 @@ def _format_gaa_score(goals: int, points: int) -> str:
 
 @router.get("/")
 async def list_fixtures(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """List upcoming fixtures (scheduled + in-progress matches, ordered by date ASC)."""
@@ -52,7 +53,7 @@ async def list_fixtures(
 @router.get("/{match_id}/preview")
 async def fixture_preview(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Fixture preview: match details + our recent form + opponent form + last meeting."""
@@ -105,6 +106,14 @@ async def fixture_preview(
     club = club_result.scalar_one_or_none()
     club_county = club.county if club else None
 
+    # Whether any events have already been logged for this match — used by the
+    # frontend to avoid showing "Log Match Events" (implying a fresh start) on
+    # a match that's already been recorded but never marked completed
+    has_events_result = await db.execute(
+        select(exists().where(MatchEvent.match_id == match_id))
+    )
+    has_events = bool(has_events_result.scalar())
+
     return {
         "match": MatchResponse.model_validate(match),
         "our_form": our_form,
@@ -112,6 +121,7 @@ async def fixture_preview(
         "last_meeting": last_meeting,
         "club_county": club_county,
         "ai_opponent_form": match.ai_opponent_form,
+        "has_events": has_events,
     }
 
 
@@ -244,18 +254,54 @@ Rules:
 
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-haiku-4-5",
             max_tokens=600,
             messages=[{"role": "user", "content": prompt}]
         )
         text = response.content[0].text.strip()
         arr_match = re.search(r'\[.*\]', text, re.DOTALL)
-        if arr_match:
-            return json.loads(arr_match.group())
-        return []
+        if not arr_match:
+            return []
+        results = json.loads(arr_match.group())
+
+        # Recompute W/L/D deterministically from the scores rather than
+        # trusting Haiku's own arithmetic — a scraped-and-summarised result
+        # (e.g. "0-19" vs "2-13", both 19 total) got called a win instead of
+        # a draw, because the model was asked to both extract the score AND
+        # judge the outcome from it in one step. Extraction from messy web
+        # text still needs the model; the W/L/D judgement itself is a plain
+        # arithmetic comparison once the score strings exist, so do that in
+        # Python where it can't be wrong.
+        for r in results:
+            for_total = _parse_gaa_score(r.get("score_for"))
+            against_total = _parse_gaa_score(r.get("score_against"))
+            if for_total is not None and against_total is not None:
+                if for_total > against_total:
+                    r["result"] = "W"
+                elif for_total < against_total:
+                    r["result"] = "L"
+                else:
+                    r["result"] = "D"
+            # else: leave whatever Haiku returned — better than nothing if the score didn't parse
+
+        return results
     except Exception as e:
         logger.warning(f"AI opponent form parse failed: {e}")
         return []
+
+
+def _parse_gaa_score(score: str | None) -> int | None:
+    """Parse a GAA scoreline like "1-12" (1 goal, 12 points) into total
+    points (goals*3 + points). Returns None if it doesn't look like a valid
+    GAA score, so callers can fall back gracefully instead of miscounting."""
+    import re
+    if not score or not isinstance(score, str):
+        return None
+    m = re.match(r'^\s*(\d+)\s*-\s*(\d+)\s*$', score.strip())
+    if not m:
+        return None
+    goals, points = int(m.group(1)), int(m.group(2))
+    return goals * 3 + points
 
 
 @router.post("/{match_id}/opponent-form/fetch")
@@ -898,7 +944,7 @@ async def _import_csv(content: bytes, club_id: UUID, db: AsyncSession) -> dict:
 @router.get("/opponent/{name}/form")
 async def opponent_form(
     name: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get an opponent's recent results from scraped data."""

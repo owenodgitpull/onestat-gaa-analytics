@@ -19,6 +19,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import asyncio
 import logging
 import os
 
@@ -29,7 +30,7 @@ from app.database import engine, Base, get_db
 from app.routes import players
 from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, fitness_tests, club, onboarding, player_portal, notifications
 from app.routes import auth as auth_routes
-from app.routes import video_analysis, video_events, fixtures, club_members, player_movement, match_prep, organizations, invitations, playbook_push, tactical_analysis, audit_log
+from app.routes import video_analysis, video_events, fixtures, club_members, player_movement, match_prep, organizations, invitations, playbook_push, tactical_analysis, audit_log, match_voice_notes
 from app.routes import match_analytics
 from app.routes import cron as cron_routes
 
@@ -200,8 +201,19 @@ async def health_check():
     """
     db_status = "unknown"
     try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+        # Bounded independently of Fly's own healthcheck timeout (10s in
+        # fly.toml). Without this, if the connection pool is exhausted,
+        # engine.connect() blocks waiting for a free slot for up to
+        # SQLAlchemy's pool_timeout (default 30s) — longer than Fly will
+        # wait for a response at all. Fly then sees a timed-out health
+        # check (not the graceful "degraded" 200 below) and restarts the
+        # machine, which is the opposite of what the "always return 200"
+        # comment below is trying to guarantee. Capping the probe well
+        # under Fly's 10s window means this endpoint always answers in
+        # time regardless of what's happening to the pool.
+        async with asyncio.timeout(5):
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
         db_status = "connected"
     except Exception as e:
         logger.warning(f"Health check DB probe failed: {str(e)}")
@@ -249,6 +261,7 @@ app.include_router(playbook_push.router, prefix="/api/v1/playbook", tags=["Playb
 app.include_router(tactical_analysis.router, prefix="/api/v1/tactical", tags=["Tactical Analysis"])
 app.include_router(audit_log.router, prefix="/api/v1/audit-log", tags=["Audit Log"])
 app.include_router(match_analytics.router, prefix="/api/v1/match-analytics", tags=["Match Analytics"])
+app.include_router(match_voice_notes.router, prefix="/api/v1/match-voice-notes", tags=["Match Voice Notes"])
 app.include_router(cron_routes.router, prefix="/api/v1/cron", tags=["Cron"])
 
 

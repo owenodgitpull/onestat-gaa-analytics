@@ -17,7 +17,7 @@ from pathlib import Path
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
@@ -161,7 +161,7 @@ async def get_context(
 
 @router.get("/stats", response_model=StatsResponse)
 async def get_rag_stats(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """

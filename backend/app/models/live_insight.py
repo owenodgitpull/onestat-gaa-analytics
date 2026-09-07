@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
 import enum
@@ -53,6 +53,13 @@ class LiveInsight(Base):
 
     # Optional context about what triggered it
     trigger_context: Column[Optional[str]] = Column(String, nullable=True)  # e.g., "Dungloe 3 scores without reply"
+
+    # Player+concern combos this insight actually named, with the count in
+    # effect at the time — e.g. [{"player_id": "...", "player_name": "Darren
+    # Curran", "concern": "turnovers_lost", "count": 2}]. Lets the next
+    # interval check suppress re-raising the same concern unless the count
+    # has since gone up. See live_insights_service._compute_concern_snapshot.
+    flagged_concerns: Column[Optional[list]] = Column(JSON, nullable=True)
 
     # Timestamp
     created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)

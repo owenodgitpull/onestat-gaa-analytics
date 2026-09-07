@@ -704,7 +704,8 @@ class LeaderboardService:
 
     @staticmethod
     async def get_all_leaderboards(
-        db: AsyncSession, club_id: UUID, player_id: UUID | None = None
+        db: AsyncSession, club_id: UUID, player_id: UUID | None = None,
+        competition: str | None = None, last_n: int | None = None,
     ) -> list[dict]:
         """Build top-3/context-window previews for the portal home screen.
 
@@ -712,7 +713,7 @@ class LeaderboardService:
         ranking all 8 categories) is cached and shared with get_single_leaderboard
         via _compute_all_rankings — this just does the cheap per-viewer slicing.
         """
-        all_rankings = await LeaderboardService._compute_all_rankings(db, club_id)
+        all_rankings = await LeaderboardService._compute_all_rankings(db, club_id, competition, last_n)
         pid_str = str(player_id) if player_id else None
         return [
             _build_context(key, meta, all_rankings.get(key, []), pid_str)
@@ -720,14 +721,26 @@ class LeaderboardService:
         ]
 
     @staticmethod
-    async def _compute_all_rankings(db: AsyncSession, club_id: UUID) -> dict[str, list[dict]]:
+    async def _compute_all_rankings(
+        db: AsyncSession, club_id: UUID,
+        competition: str | None = None, last_n: int | None = None,
+    ) -> dict[str, list[dict]]:
         """Compute all 8 leaderboards in ~7 DB queries (was 24+), cached per club.
 
         Standings only change when a match/GPS/training result is recorded, so
         this is gated by the same data-fingerprint pattern used for SeasonCache
         elsewhere — a fresh full-squad scan only runs when something actually
         changed, instead of on every leaderboard view/tab-switch for every player.
+
+        A competition/last_n filter bypasses this cache entirely and always
+        computes fresh — filtered views are a small subset of the unfiltered
+        one (cheaper to compute, not more expensive) and are used far less
+        often than the default all-matches view, so caching every distinct
+        filter combination isn't worth the cache-key complexity it'd need.
         """
+        if competition or last_n:
+            return await LeaderboardService._compute_all_rankings_fresh(db, club_id, competition, last_n)
+
         from sqlalchemy import select as _select
         from app.models.season_cache import SeasonCache
         from app.services.season_dashboard_service import _compute_data_fingerprint
@@ -778,7 +791,10 @@ class LeaderboardService:
         return all_rankings
 
     @staticmethod
-    async def _compute_all_rankings_fresh(db: AsyncSession, club_id: UUID) -> dict[str, list[dict]]:
+    async def _compute_all_rankings_fresh(
+        db: AsyncSession, club_id: UUID,
+        competition: str | None = None, last_n: int | None = None,
+    ) -> dict[str, list[dict]]:
         """The actual full-squad scan — only called on a cache miss."""
         import asyncio
         from uuid import UUID as _UUID
@@ -790,14 +806,16 @@ class LeaderboardService:
         # video_sessions, same fix already applied in
         # season_dashboard_service.py's _get_completed_matches for the same
         # reason (6 redundant queries per call otherwise).
+        _conditions = [
+            Match.club_id == club_id,
+            Match.status == MatchStatus.COMPLETED,
+            Match.is_deleted.is_(False),
+        ]
+        if competition:
+            _conditions.append(Match.competition.ilike(f"%{competition}%"))
         matches_result = await db.execute(
-            select(Match).where(
-                and_(
-                    Match.club_id == club_id,
-                    Match.status == MatchStatus.COMPLETED,
-                    Match.is_deleted.is_(False),
-                )
-            ).options(
+            select(Match).where(and_(*_conditions))
+            .options(
                 lazyload(Match.events),
                 lazyload(Match.possession_events),
                 lazyload(Match.player_stats),
@@ -805,8 +823,15 @@ class LeaderboardService:
                 lazyload(Match.gps_data),
                 lazyload(Match.video_sessions),
             )
+            .order_by(Match.match_date.asc())
         )
         matches = matches_result.scalars().all()
+        if last_n:
+            # Sliced in Python rather than a SQL LIMIT — matches are already
+            # fetched ascending by date for the trend logic elsewhere, and
+            # "last N" wants descending, so this keeps that ordering intact
+            # for anything that relies on it while still narrowing the set.
+            matches = matches[-last_n:]
         if not matches:
             return {key: [] for key in LeaderboardService.CATEGORIES}
 
@@ -1175,7 +1200,8 @@ class LeaderboardService:
 
     @staticmethod
     async def get_single_leaderboard(
-        db: AsyncSession, club_id: UUID, category: str
+        db: AsyncSession, club_id: UUID, category: str,
+        competition: str | None = None, last_n: int | None = None,
     ) -> list[dict]:
         """
         Return full ranking for one category.
@@ -1189,7 +1215,7 @@ class LeaderboardService:
         """
         if category not in LeaderboardService.CATEGORIES:
             return []
-        all_rankings = await LeaderboardService._compute_all_rankings(db, club_id)
+        all_rankings = await LeaderboardService._compute_all_rankings(db, club_id, competition, last_n)
         return all_rankings.get(category, [])
 
 

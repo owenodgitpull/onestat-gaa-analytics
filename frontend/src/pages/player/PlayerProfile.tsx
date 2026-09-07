@@ -6,6 +6,14 @@ import PlayerHeader from '../../components/PlayerHeader';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 
+function getInitials(name?: string): string {
+  if (!name) return ''
+  const parts = name.trim().split(/\s+/)
+  return parts.length === 1
+    ? parts[0].slice(0, 2).toUpperCase()
+    : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
 export default function PlayerProfile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -45,7 +53,7 @@ export default function PlayerProfile() {
         }}
       >
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg">
-          {dashboard?.jersey_number || <User size={28} />}
+          {getInitials(dashboard?.player_name || user?.name) || <User size={28} />}
         </div>
         <div>
           <h2 className="text-lg font-bold text-white">{dashboard?.player_name || user?.name || 'Player'}</h2>

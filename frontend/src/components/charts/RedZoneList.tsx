@@ -1,9 +1,20 @@
-import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 import type { RedZonePlayer } from '@/services/api'
 
 interface RedZoneListProps {
   data: RedZonePlayer[]
 }
+
+// Shown on both the empty and populated states so it's visible regardless of
+// whether anyone's currently flagged — this is match-day GPS only (this
+// match's distance/DSL vs the player's own last few matches), a different
+// signal from the ACWR-based status on Squad Health (which blends training +
+// match load over 7/28 days). The two can disagree without either being
+// wrong: a big single-match spike here doesn't necessarily mean overall
+// training+match balance is off, and vice versa.
+const EXPLAINER =
+  'Match-day GPS only — flags a match that spiked well above this player’s own recent match average. ' +
+  'This is a different signal from the training+match ACWR status on Squad Health, so the two can disagree without either being wrong.'
 
 export default function RedZoneList({ data }: RedZoneListProps) {
   if (data.length === 0) {
@@ -13,6 +24,7 @@ export default function RedZoneList({ data }: RedZoneListProps) {
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <AlertTriangle size={18} className="text-amber-400" />
             Red Zone Players
+            <span title={EXPLAINER}><Info size={14} className="text-white/30" /></span>
           </h3>
         </div>
         <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -34,11 +46,15 @@ export default function RedZoneList({ data }: RedZoneListProps) {
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <AlertTriangle size={18} className="text-red-400" />
           Red Zone Players
+          <span title={EXPLAINER}><Info size={14} className="text-white/30" /></span>
         </h3>
         <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full">
           {data.length} flagged
         </span>
       </div>
+      <p className="text-white/40 text-xs -mt-2 mb-4">
+        Match-day GPS only, vs each player's own recent matches — a different signal from Squad Health's training+match status.
+      </p>
 
       <div className="space-y-3">
         {data.map((player) => (

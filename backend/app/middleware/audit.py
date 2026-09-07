@@ -32,6 +32,7 @@ SKIP_PATTERNS = [
     r"^/api/v1/auth/token",              # Token exchange (logged separately as login)
     r"^/api/v1/auth/refresh",            # Token refresh — not meaningful
     r"^/api/v1/auth/me$",               # Profile check — GET-like
+    r"^/api/v1/auth/preview-player",     # Logged separately as "previewed_as_player" (richer detail)
     r"^/api/v1/notifications/subscribe", # Push subscription — internal
     # ---- Live match recording (high-frequency, excluded to protect DB pool) ----
     r"^/api/v1/possession-events",       # Fires every 1-2s during play — NOT audited

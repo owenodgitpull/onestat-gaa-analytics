@@ -40,7 +40,6 @@ export default function SubstitutionModal({
 }: SubstitutionModalProps) {
   const [playerOffId, setPlayerOffId] = useState<string | null>(null)
   const [playerOnId, setPlayerOnId] = useState<string | null>(null)
-  const [confirming, setConfirming] = useState(false)
   const { club } = useClub()
   const jerseyBg = club?.primary_colour || '#10B981'
   const jerseyText = club?.secondary_colour || '#FFFFFF'
@@ -58,17 +57,19 @@ export default function SubstitutionModal({
     onClose()
   }
 
-  const handleConfirm = async () => {
-    if (!playerOffId || !playerOnId || confirming) return
-    setConfirming(true)
-    try {
-      await onConfirm(playerOffId, playerOnId)
-      setPlayerOffId(null)
-      setPlayerOnId(null)
-      onClose()
-    } finally {
-      setConfirming(false)
-    }
+  const handleConfirm = () => {
+    if (!playerOffId || !playerOnId) return
+    // Close immediately — a coach mid-match needs to get straight back to
+    // recording, not wait on the substitution event + lineup network round
+    // trips to finish first. onConfirm still does that work, just no
+    // longer blocks this modal; the parent applies an optimistic lineup
+    // update so the on-field roster reflects the sub instantly regardless.
+    const offId = playerOffId
+    const onId = playerOnId
+    setPlayerOffId(null)
+    setPlayerOnId(null)
+    onClose()
+    onConfirm(offId, onId).catch(err => console.error('Substitution failed to sync:', err))
   }
 
   return (
@@ -180,10 +181,10 @@ export default function SubstitutionModal({
 
         <button
           onClick={handleConfirm}
-          disabled={!playerOffId || !playerOnId || confirming}
+          disabled={!playerOffId || !playerOnId}
           className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 shadow-lg disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]"
         >
-          {confirming ? 'Confirming…' : 'Confirm Substitution'}
+          Confirm Substitution
         </button>
       </div>
     </div>

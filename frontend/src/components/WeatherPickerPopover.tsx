@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer } from 'lucide-react'
+import { X, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer, Check, StickyNote } from 'lucide-react'
 
 const WEATHER_OPTIONS = [
   { value: 'sunny', label: 'Sunny', icon: Sun },
@@ -13,6 +13,11 @@ const WEATHER_OPTIONS = [
   { value: 'foggy', label: 'Foggy', icon: CloudFog },
 ] as const
 
+// A match's weather can be more than one condition at once (windy AND
+// raining) — getWeatherIcon/getWeatherLabel still take a single value each,
+// used for the "primary" condition badges dotted around the app, so callers
+// showing the full picture should map over match.weather_conditions
+// themselves and use these per-condition, not try to pass a combined string.
 export function getWeatherIcon(condition: string | null | undefined) {
   if (!condition) return Cloud
   const normalised = condition.toLowerCase()
@@ -30,31 +35,39 @@ export function getWeatherLabel(condition: string | null | undefined) {
 interface WeatherPickerPopoverProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (condition: string | null, temperature: number | null) => void
-  currentCondition: string | null
+  onSave: (conditions: string[], temperature: number | null, notes: string | null) => void
+  currentConditions: string[]
   currentTemperature: number | null
+  currentNotes?: string | null
 }
 
 export default function WeatherPickerPopover({
   isOpen,
   onClose,
   onSave,
-  currentCondition,
+  currentConditions,
   currentTemperature,
+  currentNotes,
 }: WeatherPickerPopoverProps) {
-  const [condition, setCondition] = useState<string | null>(currentCondition)
+  const [conditions, setConditions] = useState<string[]>(currentConditions)
   const [temperature, setTemperature] = useState(currentTemperature !== null ? String(currentTemperature) : '')
+  const [notes, setNotes] = useState(currentNotes ?? '')
 
   // Sync internal state when props change (e.g. match data loads after initial render)
   useEffect(() => {
-    setCondition(currentCondition)
+    setConditions(currentConditions)
     setTemperature(currentTemperature !== null ? String(currentTemperature) : '')
-  }, [currentCondition, currentTemperature])
+    setNotes(currentNotes ?? '')
+  }, [currentConditions, currentTemperature, currentNotes])
 
   if (!isOpen) return null
 
+  const toggleCondition = (value: string) => {
+    setConditions(prev => prev.includes(value) ? prev.filter(c => c !== value) : [...prev, value])
+  }
+
   const handleSave = () => {
-    onSave(condition, temperature ? parseFloat(temperature) : null)
+    onSave(conditions, temperature ? parseFloat(temperature) : null, notes.trim() ? notes.trim() : null)
     onClose()
   }
 
@@ -67,29 +80,39 @@ export default function WeatherPickerPopover({
       <div className="relative w-full max-w-xs bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <h3 className="text-sm font-semibold text-white">Update Weather</h3>
+          <h3 className="text-sm font-semibold text-white">Match Conditions</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/10 transition-colors">
             <X size={16} className="text-white/60" />
           </button>
         </div>
 
         <div className="p-4 space-y-4">
-          {/* Weather grid */}
-          <div className="grid grid-cols-4 gap-2">
-            {WEATHER_OPTIONS.map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                onClick={() => setCondition(condition === value ? null : value)}
-                className={`p-2.5 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
-                  condition === value
-                    ? 'border-emerald-500 bg-emerald-500/20'
-                    : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
-                }`}
-              >
-                <Icon size={18} className={condition === value ? 'text-emerald-400' : 'text-white/60'} />
-                <div className="text-[9px] font-medium text-white leading-tight">{label}</div>
-              </button>
-            ))}
+          <div>
+            <p className="text-[11px] text-white/50 mb-2">Weather — select all that apply</p>
+            <div className="grid grid-cols-4 gap-2">
+              {WEATHER_OPTIONS.map(({ value, label, icon: Icon }) => {
+                const selected = conditions.includes(value)
+                return (
+                  <button
+                    key={value}
+                    onClick={() => toggleCondition(value)}
+                    className={`relative p-2.5 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
+                      selected
+                        ? 'border-emerald-500 bg-emerald-500/20'
+                        : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {selected && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
+                        <Check size={10} className="text-[#0a1a10]" strokeWidth={3} />
+                      </span>
+                    )}
+                    <Icon size={18} className={selected ? 'text-emerald-400' : 'text-white/60'} />
+                    <div className="text-[9px] font-medium text-white leading-tight">{label}</div>
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           {/* Temperature input */}
@@ -106,6 +129,23 @@ export default function WeatherPickerPopover({
               step="1"
             />
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 text-xs">°C</span>
+          </div>
+
+          {/* Match notes — free text the AI match report factors in as
+              colour/context (e.g. "wind favoured Termon in the first half"),
+              not something with its own structured field. */}
+          <div>
+            <label className="flex items-center gap-1.5 text-[11px] text-white/50 mb-1.5">
+              <StickyNote size={11} /> Notes for AI report (optional)
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Wind favoured Termon in the first half"
+              rows={2}
+              maxLength={1000}
+              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 text-xs resize-none"
+            />
           </div>
 
           {/* Actions */}

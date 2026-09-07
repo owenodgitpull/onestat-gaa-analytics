@@ -7,6 +7,7 @@ then confirms completion. No multi-GB proxying through Fly.io.
 
 import asyncio
 import logging
+import math
 from uuid import UUID
 import json
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -15,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match import Match
 from app.models.match_lineup import MatchLineup
 from app.models.club import Club
@@ -25,6 +26,7 @@ from app.schemas.video_analysis import (
     VideoUploadInitiateRequest,
     VideoUploadInitiateResponse,
     VideoUploadCompleteRequest,
+    VideoUploadAbortRequest,
     SetHalftimeRequest,
     VideoSessionResponse,
     VideoSessionListResponse,
@@ -34,6 +36,13 @@ from app.schemas.video_analysis import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# A single presigned PUT tops out at 5GiB — an R2/S3 platform limit, not an
+# app choice. Above that we switch to multipart (chunked transfer of the same
+# one video). MAX_UPLOAD_BYTES is our own ceiling on top of that.
+SINGLE_PUT_MAX_BYTES = 5 * 1024 ** 3
+MULTIPART_PART_SIZE_BYTES = 100 * 1024 ** 2
+MAX_UPLOAD_BYTES = 30 * 1024 ** 3
 
 # ── In-memory progress queues for SSE streaming ──────────────────────────
 # Background task pushes events → SSE endpoint reads them.
@@ -96,8 +105,64 @@ async def initiate_video_upload(
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    # Generate presigned upload URL
+    if body.file_size_bytes and body.file_size_bytes > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 ** 3)}GB upload limit",
+        )
+
     filename = f"match_{match_id}_half{body.half or 0}.mp4"
+    use_multipart = bool(body.file_size_bytes) and body.file_size_bytes > SINGLE_PUT_MAX_BYTES
+
+    if use_multipart:
+        # create_multipart_upload hits R2 over the network — offloaded to a
+        # thread. generate_presigned_part_urls below is pure local crypto
+        # (no network call) so it doesn't need offloading.
+        created = await asyncio.to_thread(
+            storage.create_multipart_upload,
+            folder="video",
+            filename=filename,
+            content_type=body.content_type,
+            club_id=str(user.club_id),
+        )
+        if not created:
+            raise HTTPException(status_code=503, detail="Storage service not available")
+
+        total_parts = math.ceil(body.file_size_bytes / MULTIPART_PART_SIZE_BYTES)
+        part_urls = storage.generate_presigned_part_urls(
+            created["key"], created["upload_id"], total_parts, expires_in=14400,
+        )
+        if not part_urls:
+            await asyncio.to_thread(storage.abort_multipart_upload, created["key"], created["upload_id"])
+            raise HTTPException(status_code=503, detail="Storage service not available")
+
+        session = VideoSession(
+            match_id=match_id,
+            club_id=user.club_id,
+            title=body.title,
+            half=body.half,
+            video_r2_key=created["key"],
+            video_size_bytes=body.file_size_bytes,
+            status="uploading",
+        )
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+
+        logger.info(
+            f"Multipart video upload initiated: session={session.id}, match={match_id}, parts={total_parts}"
+        )
+
+        return VideoUploadInitiateResponse(
+            session_id=session.id,
+            r2_key=created["key"],
+            is_multipart=True,
+            upload_id=created["upload_id"],
+            part_size_bytes=MULTIPART_PART_SIZE_BYTES,
+            part_urls=part_urls,
+        )
+
+    # Generate presigned upload URL
     presigned = storage.generate_presigned_upload_url(
         folder="video",
         filename=filename,
@@ -128,6 +193,7 @@ async def initiate_video_upload(
         session_id=session.id,
         upload_url=presigned["upload_url"],
         r2_key=presigned["key"],
+        is_multipart=False,
     )
 
 
@@ -152,6 +218,16 @@ async def complete_video_upload(
     if session.status != "uploading":
         raise HTTPException(status_code=400, detail=f"Session status is '{session.status}', expected 'uploading'")
 
+    if body.upload_id and body.parts:
+        ok = await asyncio.to_thread(
+            storage.complete_multipart_upload,
+            session.video_r2_key,
+            body.upload_id,
+            [{"PartNumber": p.part_number, "ETag": p.etag} for p in body.parts],
+        )
+        if not ok:
+            raise HTTPException(status_code=502, detail="Failed to finalize multipart upload in storage")
+
     # Update session
     session.status = "uploaded"
     if body.video_duration_ms:
@@ -166,10 +242,36 @@ async def complete_video_upload(
     return _session_to_response(session)
 
 
+@router.post("/session/{session_id}/upload-abort-multipart")
+async def abort_video_upload(
+    session_id: UUID,
+    body: VideoUploadAbortRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancel an in-progress multipart upload and remove the pending session."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    await asyncio.to_thread(storage.abort_multipart_upload, session.video_r2_key, body.upload_id)
+    await db.delete(session)
+    await db.commit()
+
+    logger.info(f"Multipart video upload aborted: session={session_id}")
+    return {"status": "aborted"}
+
+
 @router.get("/sessions/{match_id}", response_model=VideoSessionListResponse)
 async def list_video_sessions(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """List all video sessions for a match."""
@@ -189,7 +291,7 @@ async def list_video_sessions(
 @router.get("/session/{session_id}", response_model=VideoSessionResponse)
 async def get_video_session(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get video session details with presigned download URL for playback."""
@@ -228,9 +330,9 @@ async def delete_video_session(
     if not session:
         raise HTTPException(status_code=404, detail="Video session not found")
 
-    # Delete video from R2
+    # Delete video from R2 — offloaded to a thread (synchronous boto3 call).
     if session.video_r2_key:
-        storage.delete_file(session.video_r2_key, club_id=str(user.club_id))
+        await asyncio.to_thread(storage.delete_file, session.video_r2_key, club_id=str(user.club_id))
 
     await db.delete(session)
     await db.commit()
@@ -630,7 +732,7 @@ async def save_ball_samples(
 @router.get("/session/{session_id}/ball-samples")
 async def get_ball_samples(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Retrieve all ball position samples for a video session."""
@@ -724,7 +826,7 @@ async def keyframe_analyze_video(
 @router.get("/session/{session_id}/analysis-progress")
 async def analysis_progress_sse(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
 ):
     """
     SSE stream of analysis progress for a running background task.
@@ -850,7 +952,9 @@ async def _build_match_context(db, match_id: UUID) -> dict | None:
             "our_team": (club.short_name or club.name) if club else "Team A",
             "opponent": match.opponent or "Team B",
             "our_colour": match.team_strip_colour or (club.primary_colour if club else None),
+            "our_secondary_colour": match.team_strip_secondary_colour or (club.secondary_colour if club else None),
             "opp_colour": match.opponent_strip_colour,
+            "opp_secondary_colour": match.opponent_strip_secondary_colour,
             "venue": match.venue.value.upper() if match.venue else None,
             "final_score_team": f"{match.team_goals}-{match.team_points:02d}" if match.team_goals is not None else None,
             "final_score_opponent": f"{match.opponent_goals}-{match.opponent_points:02d}" if match.opponent_goals is not None else None,

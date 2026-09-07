@@ -28,7 +28,8 @@ export default function ShotOutcomeChart({ events, opponent, insight, insightLoa
         case 'two_point':
         case 'two_point_free': outcomes.Points++; break
         case 'wide':
-        case 'wide_free': outcomes.Wides++; break
+        case 'wide_free':
+        case 'forty_five_missed': outcomes.Wides++; break
         case 'short': outcomes.Shorts++; break
         case 'saved': outcomes.Saved++; break
         case 'hit_post': outcomes['Hit Post']++; break

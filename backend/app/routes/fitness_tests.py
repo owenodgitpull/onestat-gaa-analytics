@@ -18,7 +18,7 @@ from datetime import date
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.fitness_test import FitnessTest
 from app.models.player import Player
 from app.schemas.fitness_test import (
@@ -222,7 +222,7 @@ async def list_fitness_tests(
     date_from: Optional[date] = Query(None, description="Filter tests from this date"),
     date_to: Optional[date] = Query(None, description="Filter tests to this date"),
     limit: int = Query(100, ge=1, le=500),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """List fitness tests with optional filters."""
@@ -248,7 +248,7 @@ async def list_fitness_tests(
 @router.get("/{test_id}", response_model=FitnessTestResponse)
 async def get_fitness_test(
     test_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single fitness test by ID."""
@@ -322,7 +322,7 @@ async def delete_fitness_test(
 async def get_player_fitness_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get fitness test history for a player."""
@@ -343,7 +343,7 @@ async def get_player_fitness_history(
 @router.get("/player/{player_id}/latest", response_model=Optional[FitnessTestResponse])
 async def get_player_latest_test(
     player_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the most recent fitness test for a player."""
@@ -367,7 +367,7 @@ async def get_player_latest_test(
 @router.get("/player/{player_id}/comparison", response_model=Optional[FitnessTestComparison])
 async def get_player_test_comparison(
     player_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Compare a player's latest test to their previous test."""
@@ -460,7 +460,7 @@ async def get_player_test_comparison(
 
 @router.get("/squad/sessions")
 async def get_test_sessions(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get list of test sessions (distinct dates) with player count."""
@@ -485,7 +485,7 @@ async def get_test_sessions(
 
 @router.get("/squad/latest", response_model=list[FitnessTestResponse])
 async def get_squad_latest_tests(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the latest fitness test for each player."""
@@ -514,7 +514,7 @@ async def get_squad_latest_tests(
 
 @router.get("/squad/summary", response_model=SquadFitnessSummary)
 async def get_squad_fitness_summary(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get aggregated squad fitness metrics and overview."""
@@ -648,7 +648,7 @@ async def get_squad_fitness_summary(
 
 @router.get("/squad/cards", response_model=list[PlayerFitnessCard])
 async def get_squad_fitness_cards(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get fitness status cards for all active players."""

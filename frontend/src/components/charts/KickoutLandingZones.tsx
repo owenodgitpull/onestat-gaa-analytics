@@ -31,7 +31,12 @@ function toSvg(xPct: number, yPct: number) {
 const HALF_VIEW = `0 0 ${PITCH.svgW} ${PITCH.svgH}`
 
 // 9 zones mapped to pitch coordinates (0-100 system)
-// GAA pitch ~145m: our 20m=14%, our 45m=31%, midfield=50%, opp 45m=69%, opp 20m=86%
+// GAA pitch ~145m: our 20m=14%, our 45m=31%, midfield=50%, opp 45m=69%, opp 20m=86%.
+// Same formula MatchRecording.tsx's live commentary uses (field-verified
+// against real matches) and matches the pitch-svg.svg artwork's own drawn
+// 45m/20m markings almost pixel-for-pixel — an earlier pass briefly switched
+// this to a 130m-derived scale based on the artwork's decorative 2pt arc
+// curve, which turned out to be ambiguous evidence; reverted back to 145m.
 // Short = our 20m to our 45m (14–31%), Mid = our 45m to opp 45m (31–69%), Long = beyond opp 45m (69–100%)
 // Events inside our 20m (<14%) are not assigned to any zone — kickouts can't legally land there
 const ZONE_DEFS = [

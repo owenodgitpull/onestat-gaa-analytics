@@ -13,6 +13,7 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID
+import asyncio
 import json
 import logging
 import base64
@@ -20,7 +21,7 @@ import os
 import re
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.tactical_snapshot import TacticalAnalysisSnapshot
 
 logger = logging.getLogger(__name__)
@@ -133,7 +134,10 @@ Only return the JSON array, no other text."""
                 media_type = parts[0].split(":")[1].split(";")[0]
                 frame_data = parts[1]
 
-        response = client.messages.create(
+        # Offloaded to a thread — synchronous Anthropic SDK call would
+        # otherwise block the whole event loop for the round-trip.
+        response = await asyncio.to_thread(
+            client.messages.create,
             model="claude-sonnet-4-20250514",
             max_tokens=2000,
             messages=[{
@@ -201,7 +205,7 @@ async def save_snapshot(
 @router.get("/snapshots")
 async def list_snapshots(
     match_id: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """List tactical snapshots for a match."""
@@ -217,7 +221,7 @@ async def list_snapshots(
 @router.get("/snapshots/{snapshot_id}", response_model=SnapshotResponse)
 async def get_snapshot(
     snapshot_id: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific tactical snapshot."""

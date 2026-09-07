@@ -38,6 +38,13 @@ export default function RequireAuth({ children, requiredRole }: RequireAuthProps
     }
   }
 
+  // Read-only viewers never see Settings (Club Profile, Knowledge Base,
+  // Audit Log, User Management) — everything else in the admin app is
+  // readable for them, this is the one page that's fully off-limits.
+  if (user?.role === 'viewer' && location.pathname.startsWith('/settings')) {
+    return <Navigate to="/" replace />;
+  }
+
   // Auto-redirect: players hitting admin routes → /player portal
   // /player and /player/* are player portal routes; /players/* are admin routes
   // Exempt /select-player (new players need to pick their name before entering portal)

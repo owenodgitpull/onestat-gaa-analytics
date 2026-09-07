@@ -1,7 +1,7 @@
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
-from app.models.match import Match
+from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent
 from app.models.possession_event import PossessionEvent
 
@@ -190,7 +190,14 @@ async def get_attack_efficiency(db: AsyncSession, match_id: UUID, club_id: UUID)
     own_shots = sum(1 for row in shot_events if _team_val(row[1]) == 'own')
     opp_shots = sum(1 for row in shot_events if _team_val(row[1]) == 'opponent')
 
-    if not poss_events:
+    # Simple Scoring's "Possession Changed" button records possession events
+    # with no coordinates (pitch_x IS NULL) — that's "no usable location data"
+    # for attack-detection purposes, same as having zero possession events at
+    # all, so it should fall into the same estimated-from-shots branch below
+    # rather than feeding _count_attacks a list of unusable rows.
+    has_usable_possession_coords = any(row[2] is not None for row in poss_events)
+
+    if not poss_events or not has_usable_possession_coords:
         own_attacks = max(1, round(own_shots * 1.5))
         opp_attacks = max(1, round(opp_shots * 1.5))
         return {
@@ -290,12 +297,21 @@ async def _compute_match_stats(db: AsyncSession, m_id: UUID) -> dict:
                 turnovers_won += 1
             if et == 'turnover_lost':
                 turnovers_lost += 1
-            if et in _KICKOUT_WON_TYPES:
-                kickouts_won += 1
-            if et in _KICKOUT_ALL_TYPES:
-                kickouts_total += 1
         else:
             conceded += _score_points(et)
+
+        # Kickout retention must be decoded from the event_type NAME
+        # ("own_kickout_*" = our own restart), never from the `team` column —
+        # a kickout the opposition wins back is tagged team='opponent' (they
+        # gained possession), even though it's still OUR restart. Gating this
+        # on `team == 'own'` above meant every lost kickout was silently
+        # dropped from kickouts_total (only the wins are ever tagged 'own'),
+        # so retention always came out at 100%. match_service.py's sidebar
+        # stats already decode kickouts this same way, correctly.
+        if et in _KICKOUT_WON_TYPES:
+            kickouts_won += 1
+        if et in _KICKOUT_ALL_TYPES:
+            kickouts_total += 1
 
     return {
         'scores': float(scores),
@@ -311,7 +327,7 @@ async def _compute_match_stats(db: AsyncSession, m_id: UUID) -> dict:
 async def get_season_benchmark(db: AsyncSession, match_id: UUID, club_id: UUID) -> dict:
     matches_result = await db.execute(
         select(Match.id, Match.opponent, Match.match_date)
-        .where(and_(Match.club_id == club_id, Match.status == 'completed'))
+        .where(and_(Match.club_id == club_id, Match.status == MatchStatus.COMPLETED))
         .order_by(Match.match_date.asc())
     )
     completed_matches = matches_result.all()
@@ -320,10 +336,20 @@ async def get_season_benchmark(db: AsyncSession, match_id: UUID, club_id: UUID) 
         'scores': 0.0, 'conceded': 0.0, 'shots': 0.0, 'wides': 0.0,
         'turnovers_won': 0.0, 'turnovers_lost': 0.0, 'kickout_retention_pct': 0.0,
     }
+    stat_keys = ['scores', 'conceded', 'shots', 'wides', 'turnovers_won', 'turnovers_lost', 'kickout_retention_pct']
+
+    # Compute "current" directly from match_id's own events, independent of
+    # completed_matches below. The old version only ever set `current` from
+    # a row found inside completed_matches — so a match still IN_PROGRESS
+    # (checked at half-time, say) was always excluded by the COMPLETED
+    # filter and silently showed as all-zero here, even with real events
+    # already logged. Confirmed live 2026-09-07.
+    current_stats = await _compute_match_stats(db, match_id)
+    current = {k: current_stats[k] for k in stat_keys}
 
     if not completed_matches:
         return {
-            'current': empty_stats,
+            'current': current,
             'season_avg': empty_stats,
             'match_count': 0,
             'trend': [],
@@ -340,15 +366,11 @@ async def get_season_benchmark(db: AsyncSession, match_id: UUID, club_id: UUID) 
         })
 
     match_count = len(all_stats)
-    stat_keys = ['scores', 'conceded', 'shots', 'wides', 'turnovers_won', 'turnovers_lost', 'kickout_retention_pct']
 
     season_avg = {
         k: round(sum(s[k] for s in all_stats) / match_count, 1)
         for k in stat_keys
     }
-
-    current_row = next((s for s in all_stats if s['match_id'] == str(match_id)), None)
-    current = {k: current_row[k] for k in stat_keys} if current_row else empty_stats
 
     trend = [dict(s) for s in all_stats[-3:]]
 

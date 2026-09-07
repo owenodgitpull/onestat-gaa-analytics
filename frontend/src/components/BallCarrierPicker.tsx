@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
-import { Users } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import type { JerseyPlayer } from './JerseyNumberStrip'
+import { rankLikelyReceivers, rankAlternativeReceivers } from '@/utils/likelyReceivers'
 
 interface BallCarrierPickerProps {
   players: JerseyPlayer[]
@@ -10,35 +10,59 @@ interface BallCarrierPickerProps {
   teamPrimaryColor?: string
   teamSecondaryColor?: string
   disabled?: boolean
+  /** Ball's own SVG coordinates (already toSvgX/toSvgY'd by the caller) — this
+   * renders as pure SVG nested inside the ball's own <g>, in the same render
+   * pass as the ball marker itself, so it's physically impossible for it to
+   * lag or drift from the ball. */
+  ballSvgX: number
+  ballSvgY: number
+  /** Ball's raw pitch-% position (0-100) — used to rank likely receivers by
+   * actual proximity to the ball, not a fixed pitch-center bias. */
+  ballPctX: number
+  ballPctY: number
+  /** Players recently on the ball — biases ranking toward them (see
+   * rankLikelyReceivers). Optional so existing callers keep compiling. */
+  recentCarrierIds?: string[]
+  /** Fires whenever the radial opens/closes — lets the caller hide the
+   * separate pitch-spread receiver dots while the radial is open, since
+   * showing both "likely receiver" indicators at once is redundant. */
+  onOpenChange?: (open: boolean) => void
 }
 
 const LIKELY_COUNT = 5
-
-/** Same formation slots as PitchPlayerSelector, kept local to avoid a cross-file dependency for 15 constants. */
-const FORMATION_XY: Record<string, { x: number; y: number }> = {
-  'gk': { x: 7, y: 50 },
-  'fb-left': { x: 20, y: 18 }, 'fb-center': { x: 20, y: 50 }, 'fb-right': { x: 20, y: 82 },
-  'hb-left': { x: 35, y: 18 }, 'hb-center': { x: 35, y: 50 }, 'hb-right': { x: 35, y: 82 },
-  'mf-left': { x: 50, y: 35 }, 'mf-right': { x: 50, y: 65 },
-  'hf-left': { x: 65, y: 18 }, 'hf-center': { x: 65, y: 50 }, 'hf-right': { x: 65, y: 82 },
-  'ff-left': { x: 80, y: 18 }, 'ff-center': { x: 80, y: 50 }, 'ff-right': { x: 80, y: 82 },
-}
 
 function surname(name: string) {
   const parts = name.trim().split(' ')
   return parts[parts.length - 1] || name
 }
 
+// Icon sits diagonally up-right of the ball, far enough out that it never
+// reads as "part of" the ball, connected by a thin line so it still reads as
+// attached to it. Trebled from the original offset per user feedback, then
+// pulled back in 40% once that proved too far — this is now a single tap
+// that opens the radial (a press-and-hold gesture triggered the browser's
+// long-press context menu on tablets).
+const ICON_DIST = 148
+const ICON_ANGLE = -45 * (Math.PI / 180)
+const ICON_DX = Math.cos(ICON_ANGLE) * ICON_DIST
+const ICON_DY = Math.sin(ICON_ANGLE) * ICON_DIST
+const ICON_R = 40
+
+// Radial chip layout — bumped up again, spaced further out from the icon.
+const CHIP_RADIUS = 215
+const CHIP_R = 58
+
 /**
- * Persistent icon anchored to the ball (rendered inside GAAPitch's
- * ballAnchoredOverlay slot — a foreignObject in the pitch's own 2332x1446
- * SVG viewBox, so every size here is in SVG user units, not CSS px. They
- * get scaled down by the same factor as the rest of the pitch graphic, which
- * is why the numbers below look huge for what's meant to end up ~50-60px on
- * screen). Ball = 50%/50% of this component's local box. Tap the icon and
- * the likeliest 5 receivers — ranked by formation-slot distance from the
- * ball — bloom out in an arc. JerseyNumberStrip remains below as the full
- * squad fallback; this is the fast path for the common case.
+ * Tap-to-open carrier picker. A single tap on the persistent icon opens the
+ * radial; tap a chip to select. Deliberately NOT a press-and-hold gesture —
+ * on tablets, holding a touch point fires the browser's native long-press
+ * context menu before our own handler ever gets a chance to run, so any
+ * hold-based interaction is unreliable there.
+ *
+ * The radial deliberately shows a DIFFERENT set of players than the pitch's
+ * own lit-up nearest-to-ball dots (PitchReceiverDots) — it's meant to be the
+ * quick route to someone who *isn't* already one tap away on the pitch, not
+ * a second way to reach the same 5 names. See rankAlternativeReceivers.
  */
 export default function BallCarrierPicker({
   players,
@@ -48,140 +72,180 @@ export default function BallCarrierPicker({
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
   disabled = false,
+  ballSvgX,
+  ballSvgY,
+  ballPctX,
+  ballPctY,
+  recentCarrierIds = [],
+  onOpenChange,
 }: BallCarrierPickerProps) {
   const [open, setOpen] = useState(false)
 
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [open, onOpenChange])
+
   const onField = useMemo(() => players.filter(p => p.isOnField), [players])
 
-  const ranked = useMemo(() => {
-    // Ball sits at the center of this local box (50%, 50%) by construction —
-    // rank each on-field player by distance from that center in the same
-    // screen-space frame their formation slot renders in.
-    return onField
-      .map(p => {
-        const slot = FORMATION_XY[p.positionId || ''] || { x: 50, y: 50 }
-        const sx = attackingRight ? slot.x : 100 - slot.x
-        const sy = slot.y
-        const dist = Math.hypot(sx - 50, sy - 50)
-        return { player: p, dist }
-      })
-      .sort((a, b) => a.dist - b.dist)
+  // The radial is meant to be a quick way to reach someone who ISN'T already
+  // lit up as one of the nearest-to-ball pitch dots — showing the same 5
+  // names again would make it pointless. So: first work out who the dots are
+  // currently highlighting (identical call PitchReceiverDots makes), then
+  // rank everyone else with rankAlternativeReceivers, which favours recent
+  // ball-carriers and wing-back/wing-forward "runner" positions over pure
+  // proximity — the players a nearest-to-ball snapshot can't see coming.
+  const alreadyLitIds = useMemo(
+    () => new Set(
+      rankLikelyReceivers(players, attackingRight, ballPctX, ballPctY, { activeCarrierId, recentCarrierIds })
+        .slice(0, LIKELY_COUNT)
+        .map(r => r.player.playerId)
+    ),
+    [players, attackingRight, ballPctX, ballPctY, activeCarrierId, recentCarrierIds]
+  )
+
+  const ranked = useMemo(
+    () => rankAlternativeReceivers(players, attackingRight, ballPctX, ballPctY, {
+      activeCarrierId, recentCarrierIds, excludeIds: [...alreadyLitIds],
+    })
       .slice(0, LIKELY_COUNT)
-      .map(r => r.player)
-  }, [onField, attackingRight])
+      .map(r => r.player),
+    [players, attackingRight, ballPctX, ballPctY, activeCarrierId, recentCarrierIds, alreadyLitIds]
+  )
 
   if (onField.length === 0) return null
 
+  const iconX = ballSvgX + ICON_DX
+  const iconY = ballSvgY + ICON_DY
+
   const chipPos = (index: number, count: number) => {
-    // Bloom in an upward-biased arc so chips stay clear of the ball icon
-    // itself and lean toward open pitch rather than off the edge.
     const spread = 150
     const startAngle = -90 - spread / 2
     const step = count > 1 ? spread / (count - 1) : 0
     const angle = (startAngle + step * index) * (Math.PI / 180)
-    const dist = 21 // % of local box
-    const x = 50 + Math.cos(angle) * dist
-    const y = 50 + Math.sin(angle) * dist
-    return { left: `${Math.max(8, Math.min(92, x))}%`, top: `${Math.max(8, Math.min(92, y))}%` }
+    return { x: iconX + Math.cos(angle) * CHIP_RADIUS, y: iconY + Math.sin(angle) * CHIP_RADIUS }
+  }
+
+  const chips = ranked.map((p, i) => ({ player: p, pos: chipPos(i, ranked.length) }))
+
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation()
+
+  // Selection lives on pointerUp, not click. The pitch's own "tap ahead of
+  // the ball to pass there" gesture is wired to onPointerUp on the <svg>
+  // root, and pointerup bubbles independently of the synthesized click
+  // event — stopping propagation on pointerDown alone (to block the ball's
+  // own drag-start) was NOT enough, the pointerUp was still reaching the
+  // pitch handler underneath and moving the ball to wherever this icon sits.
+  // Acting directly on pointerUp (and stopping it here) closes that hole.
+  const handleIconPointerUp = (e: React.PointerEvent) => {
+    stop(e)
+    if (disabled) return
+    setOpen(o => !o)
+  }
+
+  const handleChipPointerUp = (e: React.PointerEvent, player: JerseyPlayer) => {
+    stop(e)
+    onSelect(player.playerId, player.jerseyNumber)
+    setOpen(false)
+  }
+
+  const handleBackdropDown = (e: React.PointerEvent) => {
+    stop(e)
+    setOpen(false)
   }
 
   return (
     <>
-      {/* Persistent icon, offset from the ball so it doesn't sit under it */}
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); if (!disabled) setOpen(o => !o) }}
-        disabled={disabled}
-        aria-label={open ? 'Close carrier picker' : 'Pick who has the ball'}
-        style={{
-          position: 'absolute',
-          left: '59%',
-          top: '28%',
-          transform: `translate(-50%, -50%) scale(${open ? 1.08 : 1})`,
-          width: 260, height: 260,
-          borderRadius: '50%',
-          background: open ? teamPrimaryColor : 'rgba(10,18,15,0.85)',
-          border: `14px solid ${open ? teamSecondaryColor : 'rgba(255,255,255,0.55)'}`,
-          color: '#fff',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: disabled ? 'default' : 'pointer',
-          pointerEvents: 'auto',
-          boxShadow: '0 6px 40px rgba(0,0,0,0.55)',
-          transition: 'transform 0.15s ease, background 0.15s ease',
-          zIndex: 8,
-        }}
+      {/* Tap-away backdrop — covers the whole pitch so any tap outside the
+          icon/chips closes the radial without falling through to the ball's
+          own drag handler. */}
+      {open && (
+        <rect
+          x={-2000} y={-2000} width={6000} height={6000}
+          fill="transparent"
+          onPointerDown={handleBackdropDown}
+          onPointerUp={stop}
+        />
+      )}
+
+      {/* Connecting line — reads as "attached to the ball", not a floating button */}
+      <line
+        x1={ballSvgX + Math.cos(ICON_ANGLE) * 26}
+        y1={ballSvgY + Math.sin(ICON_ANGLE) * 26}
+        x2={iconX - Math.cos(ICON_ANGLE) * (ICON_R - 4)}
+        y2={iconY - Math.sin(ICON_ANGLE) * (ICON_R - 4)}
+        stroke="rgba(255,255,255,0.55)"
+        strokeWidth="2.5"
+      />
+
+      {/* Persistent icon — single tap opens/closes the radial */}
+      <g
+        onPointerDown={stop}
+        onPointerUp={handleIconPointerUp}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ cursor: disabled ? 'default' : 'pointer', touchAction: 'none' }}
       >
-        <Users size={110} strokeWidth={2.4} />
-      </button>
+        <circle
+          cx={iconX} cy={iconY} r={ICON_R}
+          fill={open ? teamPrimaryColor : 'rgba(10,18,15,0.9)'}
+          stroke={open ? teamSecondaryColor : 'rgba(255,255,255,0.65)'}
+          strokeWidth="3"
+        />
+        {/* Simple two-head "people" glyph — plain SVG shapes, no icon font/nested svg */}
+        <circle cx={iconX - 10} cy={iconY - 4.5} r="7.2" fill="#fff" />
+        <circle cx={iconX + 10} cy={iconY - 4.5} r="7.2" fill="#fff" />
+        <path
+          d={`M ${iconX - 21} ${iconY + 17} Q ${iconX - 21} ${iconY} ${iconX - 10} ${iconY} Q ${iconX} ${iconY} ${iconX} ${iconY + 13}`}
+          fill="#fff"
+        />
+        <path
+          d={`M ${iconX + 21} ${iconY + 17} Q ${iconX + 21} ${iconY} ${iconX + 10} ${iconY} Q ${iconX} ${iconY} ${iconX} ${iconY + 13}`}
+          fill="#fff"
+        />
+      </g>
 
       {open && (
         <>
-          {/* Tap-away backdrop, invisible, just closes the bloom */}
-          <div
-            style={{ position: 'fixed', inset: 0, pointerEvents: 'auto', zIndex: 6 }}
-            onClick={() => setOpen(false)}
-          />
-          {ranked.map((p, i) => {
-            const pos = chipPos(i, ranked.length)
-            const isActive = p.playerId === activeCarrierId
-            const hasJersey = p.jerseyNumber != null
+          {chips.map((c) => {
+            const isActive = c.player.playerId === activeCarrierId
+            const hasJersey = c.player.jerseyNumber != null
             return (
-              <button
-                key={p.playerId}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onSelect(p.playerId, p.jerseyNumber)
-                  setOpen(false)
-                }}
-                style={{
-                  position: 'absolute',
-                  left: pos.left,
-                  top: pos.top,
-                  transform: 'translate(-50%, -50%)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
-                  pointerEvents: 'auto',
-                  zIndex: 7,
-                  animation: `bcpBloom 0.22s cubic-bezier(.2,.9,.3,1.3) ${i * 35}ms backwards`,
-                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                }}
+              <g
+                key={c.player.playerId}
+                onPointerDown={stop}
+                onPointerUp={(e) => handleChipPointerUp(e, c.player)}
+                onContextMenu={(e) => e.preventDefault()}
+                style={{ cursor: 'pointer', touchAction: 'none' }}
               >
-                <div
-                  style={{
-                    width: 320, height: 320, borderRadius: '50%',
-                    background: teamPrimaryColor,
-                    border: `16px solid ${isActive ? '#6ee7b7' : teamSecondaryColor}`,
-                    boxShadow: isActive
-                      ? `0 0 0 20px rgba(110,231,183,0.3), 0 6px 40px rgba(0,0,0,0.55)`
-                      : `0 6px 40px rgba(0,0,0,0.55)`,
-                    color: '#fff',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontWeight: 800, fontSize: hasJersey ? 120 : 78,
-                    lineHeight: 1,
-                  }}
+                <circle
+                  cx={c.pos.x} cy={c.pos.y} r={CHIP_R}
+                  fill={teamPrimaryColor}
+                  stroke={isActive ? '#6ee7b7' : teamSecondaryColor}
+                  strokeWidth={isActive ? 4 : 2.5}
+                />
+                <text
+                  x={c.pos.x} y={c.pos.y}
+                  textAnchor="middle" dominantBaseline="central"
+                  fill="#fff"
+                  fontWeight="800" fontSize={hasJersey ? 34 : 24}
                 >
-                  {hasJersey ? p.jerseyNumber : (p.positionLabel || '?')}
-                </div>
-                <span
-                  style={{
-                    fontSize: 70, fontWeight: 700, color: '#fff',
-                    background: 'rgba(0,0,0,0.78)', padding: '8px 34px', borderRadius: 999,
-                    whiteSpace: 'nowrap', maxWidth: 640, overflow: 'hidden', textOverflow: 'ellipsis',
-                  }}
+                  {hasJersey ? c.player.jerseyNumber : (c.player.positionLabel || '?')}
+                </text>
+                <rect
+                  x={c.pos.x - 64} y={c.pos.y + CHIP_R + 7} width="128" height="29" rx="14.5"
+                  fill="rgba(0,0,0,0.82)"
+                />
+                <text
+                  x={c.pos.x} y={c.pos.y + CHIP_R + 22}
+                  textAnchor="middle" dominantBaseline="central"
+                  fill="#fff" fontWeight="700" fontSize="18"
                 >
-                  {surname(p.playerName)}
-                </span>
-              </button>
+                  {surname(c.player.playerName)}
+                </text>
+              </g>
             )
           })}
         </>
       )}
-      <style>{`
-        @keyframes bcpBloom {
-          from { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
-          to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-        }
-      `}</style>
     </>
   )
 }

@@ -76,3 +76,11 @@ paths_temp.json
 player data resources/
 
 .vercel
+
+# Local-only artifacts — not meant for version control
+backend/local_backup.dump
+backend/fix_timer.py
+/package.json
+/package-lock.json
+frontend/public/Claude outputs/
+frontend/src/components/requirements.litcoffee

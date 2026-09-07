@@ -11,6 +11,7 @@ import {
   Minus,
   Plus,
   Loader2,
+  Smartphone,
 } from 'lucide-react'
 import { useMatch } from '../hooks/useMatches'
 import { usePlayers } from '../hooks/usePlayers'
@@ -20,6 +21,7 @@ import { api } from '../services/api'
 import StartingLineupModal, { type LineupEntry } from '../components/StartingLineupModal'
 import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '../components/WeatherPickerPopover'
 import { consumePendingTutorial } from '../components/MatchRecordingTutorial'
+import SimpleScoringConfirmModal from '../components/SimpleScoringConfirmModal'
 
 type Mode = 'choose' | 'post-match'
 
@@ -41,9 +43,11 @@ export default function MatchSetup() {
   const [oppTwoPointers, setOppTwoPointers] = useState(0)
   const [oppPoints, setOppPoints] = useState(0)
 
-  // Strip colours
+  // Strip colours — secondary (trim/hoop) is optional, many jerseys are one solid colour
   const [teamColour, setTeamColour] = useState('#10B981')
+  const [teamTrimColour, setTeamTrimColour] = useState<string | null>(null)
   const [oppColour, setOppColour] = useState('#FFFFFF')
+  const [oppTrimColour, setOppTrimColour] = useState<string | null>(null)
 
   // Lineup
   const [showLineupModal, setShowLineupModal] = useState(false)
@@ -51,18 +55,25 @@ export default function MatchSetup() {
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
 
   // Weather
-  const [weatherCondition, setWeatherCondition] = useState<string | null>(null)
+  const [weatherConditions, setWeatherConditions] = useState<string[]>([])
   const [temperature, setTemperature] = useState<number | null>(null)
+  const [matchNotes, setMatchNotes] = useState<string | null>(null)
   const [showWeatherPicker, setShowWeatherPicker] = useState(false)
 
   // Submission
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Default team colour from club
+  // Simple Scoring (tap-only, no tablet needed)
+  const [showSimpleScoringConfirm, setShowSimpleScoringConfirm] = useState(false)
+
+  // Default team colours from club
   useEffect(() => {
     if (club?.primary_colour) {
       setTeamColour(club.primary_colour)
+    }
+    if (club?.secondary_colour) {
+      setTeamTrimColour(club.secondary_colour)
     }
   }, [club])
 
@@ -118,9 +129,12 @@ export default function MatchSetup() {
       // 1. Save strip colours + weather
       await api.matches.update(matchId, {
         team_strip_colour: teamColour,
+        team_strip_secondary_colour: teamTrimColour,
         opponent_strip_colour: oppColour,
-        weather_condition: weatherCondition,
+        opponent_strip_secondary_colour: oppTrimColour,
+        weather_conditions: weatherConditions,
         temperature_celsius: temperature,
+        notes: matchNotes,
       } as any)
 
       // 2. Save score (aggregate two-pointers into points: each 2-ptr = 2 points)
@@ -153,6 +167,19 @@ export default function MatchSetup() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleUseSimpleScoring = async () => {
+    if (!matchId) return
+    try {
+      await api.matches.update(matchId, { precise_tracking_enabled: false })
+    } catch (err) {
+      console.error('Failed to enable Simple Scoring:', err)
+    }
+    // Simple Scoring gets no tutorial for now — same navigate pattern as
+    // "Record Live", just without the ?tutorial=1 query param.
+    consumePendingTutorial()
+    navigate(`/match/${matchId}`)
   }
 
   if (matchLoading) {
@@ -259,6 +286,18 @@ export default function MatchSetup() {
         </div>
       )}
 
+      {mode === 'choose' && !user?.trial_expired && (
+        <div className="flex justify-center">
+          <button
+            onClick={() => setShowSimpleScoringConfirm(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white/80 active:scale-95 text-xs font-medium transition-all"
+          >
+            <Smartphone size={13} />
+            Recording without a tablet? Use simple scoring instead
+          </button>
+        </div>
+      )}
+
       {/* Mode: Post-Match Form */}
       {mode === 'post-match' && (
         <div className="space-y-6">
@@ -316,9 +355,21 @@ export default function MatchSetup() {
           <div className="glass-card p-6">
             <h3 className="text-lg font-bold text-white mb-4">Strip Colours</h3>
             <div className="flex items-center gap-8 justify-center">
-              <ColourPicker label={clubName} colour={teamColour} borderColour={club?.secondary_colour} onChange={setTeamColour} />
+              <ColourPicker
+                label={clubName}
+                colour={teamColour}
+                onChange={setTeamColour}
+                trimColour={teamTrimColour}
+                onTrimChange={setTeamTrimColour}
+              />
               <span className="text-white/20 text-sm">vs</span>
-              <ColourPicker label={match.opponent} colour={oppColour} onChange={setOppColour} />
+              <ColourPicker
+                label={match.opponent}
+                colour={oppColour}
+                onChange={setOppColour}
+                trimColour={oppTrimColour}
+                onTrimChange={setOppTrimColour}
+              />
             </div>
           </div>
 
@@ -328,33 +379,44 @@ export default function MatchSetup() {
               <div>
                 <h3 className="text-lg font-bold text-white">Weather</h3>
                 <p className="text-white/40 text-sm mt-0.5">
-                  {weatherCondition ? (
-                    <span className="flex items-center gap-1.5">
-                      {(() => { const Icon = getWeatherIcon(weatherCondition); return <Icon size={14} /> })()}
-                      {getWeatherLabel(weatherCondition)}
-                      {temperature != null && ` · ${temperature}°C`}
+                  {weatherConditions.length > 0 ? (
+                    <span className="flex items-center gap-2 flex-wrap">
+                      {weatherConditions.map(c => {
+                        const Icon = getWeatherIcon(c)
+                        return (
+                          <span key={c} className="flex items-center gap-1">
+                            <Icon size={14} /> {getWeatherLabel(c)}
+                          </span>
+                        )
+                      })}
+                      {temperature != null && <span>· {temperature}°C</span>}
                     </span>
                   ) : 'Optional — tap to set conditions'}
                 </p>
+                {matchNotes && (
+                  <p className="text-white/30 text-xs mt-1 italic">"{matchNotes}"</p>
+                )}
               </div>
               <button
                 onClick={() => setShowWeatherPicker(true)}
                 className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-semibold text-sm transition-all"
               >
-                {weatherCondition ? 'Change' : 'Set Weather'}
+                {weatherConditions.length > 0 ? 'Change' : 'Set Weather'}
               </button>
             </div>
           </div>
           <WeatherPickerPopover
             isOpen={showWeatherPicker}
             onClose={() => setShowWeatherPicker(false)}
-            onSave={(condition: string | null, temp: number | null) => {
-              setWeatherCondition(condition)
+            onSave={(conditions, temp, notes) => {
+              setWeatherConditions(conditions)
               setTemperature(temp)
+              setMatchNotes(notes)
               setShowWeatherPicker(false)
             }}
-            currentCondition={weatherCondition}
+            currentConditions={weatherConditions}
             currentTemperature={temperature}
+            currentNotes={matchNotes}
           />
 
           {/* Lineup */}
@@ -426,6 +488,13 @@ export default function MatchSetup() {
         players={players}
         lastMatchLineup={lastMatchLineup}
       />
+
+      {/* Simple Scoring confirmation */}
+      <SimpleScoringConfirmModal
+        isOpen={showSimpleScoringConfirm}
+        onClose={() => setShowSimpleScoringConfirm(false)}
+        onConfirm={handleUseSimpleScoring}
+      />
     </div>
   )
 }
@@ -470,30 +539,76 @@ function ScoreInput({
 function ColourPicker({
   label,
   colour,
-  borderColour,
   onChange,
+  trimColour,
+  onTrimChange,
 }: {
   label: string
   colour: string
-  borderColour?: string | null
   onChange: (c: string) => void
+  /** Trim/hoop colour — optional, many jerseys are one solid colour so this can be unset. */
+  trimColour?: string | null
+  onTrimChange?: (c: string | null) => void
 }) {
   return (
     <div className="flex flex-col items-center gap-2">
       <span className="text-white/60 text-sm font-semibold truncate max-w-[100px]">{label}</span>
-      <label className="relative cursor-pointer group">
-        <div
-          className="w-12 h-12 rounded-full border-[3px] group-hover:brightness-110 transition-all shadow-lg"
-          style={{ backgroundColor: colour, borderColor: borderColour || 'rgba(255,255,255,0.25)' }}
-        />
-        <input
-          type="color"
-          value={colour}
-          onChange={e => onChange(e.target.value)}
-          className="absolute inset-0 opacity-0 cursor-pointer"
-        />
-      </label>
-      <span className="text-white/30 text-xs font-mono">{colour}</span>
+      <div className="flex items-end gap-3">
+        {/* Primary colour */}
+        <div className="flex flex-col items-center gap-1">
+          <label className="relative cursor-pointer group">
+            <div
+              className="w-12 h-12 rounded-full border-[3px] group-hover:brightness-110 transition-all shadow-lg"
+              style={{ backgroundColor: colour, borderColor: 'rgba(255,255,255,0.25)' }}
+            />
+            <input
+              type="color"
+              value={colour}
+              onChange={e => onChange(e.target.value)}
+              className="absolute inset-0 opacity-0 cursor-pointer"
+            />
+          </label>
+          <span className="text-white/30 text-[10px] font-mono">{colour}</span>
+        </div>
+
+        {/* Trim colour — optional, shown as a small "+" until set */}
+        {onTrimChange && (
+          <div className="flex flex-col items-center gap-1">
+            {trimColour ? (
+              <label className="relative cursor-pointer group">
+                <div
+                  className="w-8 h-8 rounded-full border-2 group-hover:brightness-110 transition-all shadow-lg"
+                  style={{ backgroundColor: trimColour, borderColor: 'rgba(255,255,255,0.25)' }}
+                />
+                <input
+                  type="color"
+                  value={trimColour}
+                  onChange={e => onTrimChange(e.target.value)}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); onTrimChange(null) }}
+                  title="Remove trim colour"
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-800 border border-white/20 text-white/50 hover:text-white hover:bg-slate-700 flex items-center justify-center text-[9px] leading-none"
+                >
+                  ×
+                </button>
+              </label>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onTrimChange('#FFFFFF')}
+                title="Add a trim/hoop colour"
+                className="w-8 h-8 rounded-full border-2 border-dashed border-white/25 hover:border-white/50 text-white/30 hover:text-white/60 flex items-center justify-center text-sm transition-colors"
+              >
+                +
+              </button>
+            )}
+            <span className="text-white/20 text-[10px]">Trim</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -1,0 +1,37 @@
+ Video as an alternative input path, not a parallel system                                                                                                                                                                                                               
+  The key insight is that MatchEvent is already the single source of truth — every chart, stat, possession %, AI report, everything    reads from that table. Video tagging should just be another way to populate it.                                                                                                                                                                                         
+  Two paths, same destination:
+
+  Path A: Manual Recording ──→ MatchEvent table ──→ Stats/Charts/Reports
+  Path B: Video Upload + Tag ──→ VideoEvent (staging) ──→ Sync ──→ MatchEvent table ──→ Stats/Charts/Reports
+
+  After video events sync to MatchEvent, everything works automatically — possession funnel, territory charts, kickout analysis,     
+  scoring timeline, AI match report. Zero new analytics code needed.
+
+  What needs to change
+
+  Right now the "Sync to Match" is a dumb copy. It should be smarter:
+
+  1. Smart merge when both exist — If someone did manual recording AND uploads video later, the sync should:
+  - Match events by (minute ± 1, event type, team) to detect duplicates
+  - For duplicates: prefer the video event (has pitch zone, video timestamp — richer data)
+  - For events only in manual: keep them
+  - For events only in video: add them
+  - Show a quick review: "Found 45 events from video. 32 match your manual recording (will be enriched). 13 new events discovered."  
+
+  2. Auto re-run AI analysis after sync — Same pattern as GPS upload. After sync completes, trigger analyze_match() which regenerates
+   the post-match report with the fuller dataset. The MatchResult page report updates automatically.
+
+  3. Video report on tagging page becomes a preview — Useful during tagging to sanity-check your work, but the definitive report     
+  lives on MatchResult after sync.
+
+  The user experience
+
+  - Video-only user: Upload video → tag events → sync → MatchResult page has full analytics
+  - Manual-only user: Record live → MatchResult page has full analytics (no change)
+  - Both: Record live → upload video after → sync merges intelligently → richer analytics with video-discovered events filling gaps  
+
+  This means the MatchResult page is always the single destination for the complete picture, regardless of input method.
+
+  Want me to implement the smart merge + auto re-analysis now? It's mostly changes to the sync-to-match endpoint and wiring up the   
+  existing analyze_match call after sync.

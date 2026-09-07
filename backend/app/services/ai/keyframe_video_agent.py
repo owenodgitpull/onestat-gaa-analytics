@@ -150,10 +150,20 @@ def _build_batch_prompt(
         our_colour = match_context.get("our_colour", "unknown")
         opp_colour = match_context.get("opp_colour", "unknown")
         venue = match_context.get("venue", "NEUTRAL")
+
+        # Secondary/trim colour is optional (many jerseys are one solid
+        # colour) — only mentioned when actually set, since many GAA jerseys
+        # are dominated by a trim/hoop colour that's more visually distinct
+        # than the primary and worth giving the model explicitly.
+        def _describe_jersey(primary: str, secondary: Optional[str]) -> str:
+            return f"{primary} with {secondary} trim" if secondary else primary
+
+        our_jersey = _describe_jersey(our_colour, match_context.get("our_secondary_colour"))
+        opp_jersey = _describe_jersey(opp_colour, match_context.get("opp_secondary_colour"))
         parts.append(
             f"=== TEAM IDENTIFICATION ===\n"
-            f"team_a = {our_team} (jersey colour: {our_colour}) | "
-            f"team_b = {opponent} (jersey colour: {opp_colour}) | "
+            f"team_a = {our_team} (jersey colour: {our_jersey}) | "
+            f"team_b = {opponent} (jersey colour: {opp_jersey}) | "
             f"Venue: {venue}"
         )
     else:

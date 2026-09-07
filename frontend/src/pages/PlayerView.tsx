@@ -6,6 +6,7 @@
 import { useState, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { parseLocalDate } from '@/utils/dateUtils'
 import {
   User,
   Trophy,
@@ -14,6 +15,7 @@ import {
   Activity,
   TrendingUp,
   ChevronLeft,
+  ChevronRight,
   Dumbbell,
   Zap,
   Heart,
@@ -49,7 +51,13 @@ import {
 } from 'recharts'
 
 import { api } from '../services/api'
+import type { FitnessTestComparison } from '../services/api'
 import LoadingSkeleton from '../components/LoadingSkeleton'
+import PlayerPhysicalTrend from '../components/charts/PlayerPhysicalTrend'
+import PlayerFatigueSignature from '../components/charts/PlayerFatigueSignature'
+import PlayerSleepTrend from '../components/charts/PlayerSleepTrend'
+import PlayerDisciplineTrend from '../components/charts/PlayerDisciplineTrend'
+import PlayerPositionalBenchmark from '../components/charts/PlayerPositionalBenchmark'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -118,6 +126,67 @@ interface ShotEvent {
   half: number
 }
 
+interface QuarterBucket {
+  quarter: string
+  work_rate_count: number
+  errors_count: number
+  work_rate_per_match: number
+  errors_per_match: number
+}
+
+interface PlayerQuarterProfile {
+  matches_included: number
+  quarters: QuarterBucket[]
+  note: string
+}
+
+interface SleepLogEntry {
+  date: string
+  hours_slept: number
+  quality: number | null
+}
+
+interface PlayerSleepHistory {
+  player_id: string
+  entries: SleepLogEntry[]
+  avg_hours: number | null
+  avg_quality: number | null
+  nights_below_7hrs: number
+}
+
+interface DisciplineMatchPoint {
+  match_id: string
+  opponent: string
+  match_date: string
+  turnovers_won: number
+  turnovers_lost: number
+  unforced_errors: number
+}
+
+interface PlayerDisciplineTrendData {
+  player_id: string
+  matches: DisciplineMatchPoint[]
+}
+
+interface PositionalBenchmarkStats {
+  matches_played: number
+  scoring_per_match: number
+  turnovers_won_per_match: number
+  turnovers_lost_per_match: number
+  blocks_per_match: number
+  assists_per_match: number
+  shooting_accuracy_pct: number | null
+}
+
+interface PlayerPositionalBenchmarkData {
+  player_id: string
+  position: string | null
+  peer_count: number
+  player_stats?: PositionalBenchmarkStats | null
+  position_avg?: PositionalBenchmarkStats | null
+  message?: string | null
+}
+
 // API functions
 const fetchPlayer = async (id: string): Promise<Player> => {
   const res = await fetch(`${API_BASE}/players/${id}`, { credentials: 'include' })
@@ -148,6 +217,30 @@ const fetchPlayerGPSData = async (id: string): Promise<GPSDataPoint[]> => {
 const fetchPlayerShotEvents = async (id: string): Promise<ShotEvent[]> => {
   const res = await fetch(`${API_BASE}/analytics/player/${id}/shot-events`, { credentials: 'include' })
   if (!res.ok) return []
+  return res.json()
+}
+
+const fetchPlayerQuarterProfile = async (id: string): Promise<PlayerQuarterProfile | null> => {
+  const res = await fetch(`${API_BASE}/analytics/player/${id}/quarter-profile`, { credentials: 'include' })
+  if (!res.ok) return null
+  return res.json()
+}
+
+const fetchPlayerSleepHistory = async (id: string): Promise<PlayerSleepHistory | null> => {
+  const res = await fetch(`${API_BASE}/analytics/player/${id}/sleep-history`, { credentials: 'include' })
+  if (!res.ok) return null
+  return res.json()
+}
+
+const fetchPlayerDisciplineTrend = async (id: string): Promise<PlayerDisciplineTrendData | null> => {
+  const res = await fetch(`${API_BASE}/analytics/player/${id}/discipline-trend`, { credentials: 'include' })
+  if (!res.ok) return null
+  return res.json()
+}
+
+const fetchPlayerPositionalBenchmark = async (id: string): Promise<PlayerPositionalBenchmarkData | null> => {
+  const res = await fetch(`${API_BASE}/analytics/player/${id}/positional-benchmark`, { credentials: 'include' })
+  if (!res.ok) return null
   return res.json()
 }
 
@@ -386,17 +479,23 @@ function FitnessMetricCard({
 
   const getChangeIndicator = () => {
     if (!comparison || comparison.change_pct === null) return null
+    const isFlat = Math.abs(comparison.change_pct) < 0.5
     const isImprovement = lowerIsBetter
       ? comparison.change_pct < 0
       : comparison.change_pct > 0
+    const pillColor = isFlat
+      ? 'bg-white/10 text-white/50'
+      : isImprovement
+        ? 'bg-emerald-500/20 text-emerald-400'
+        : 'bg-red-500/20 text-red-400'
     return (
-      <div className={`flex items-center gap-1 text-xs ${isImprovement ? 'text-emerald-400' : 'text-red-400'}`}>
-        {comparison.change_pct > 0 ? (
-          <ArrowUp size={12} />
-        ) : comparison.change_pct < 0 ? (
-          <ArrowDown size={12} />
-        ) : (
+      <div className={`flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded-md ${pillColor}`}>
+        {isFlat ? (
           <Minus size={12} />
+        ) : comparison.change_pct > 0 ? (
+          <ArrowUp size={12} />
+        ) : (
+          <ArrowDown size={12} />
         )}
         <span>{Math.abs(comparison.change_pct).toFixed(1)}%</span>
       </div>
@@ -421,6 +520,38 @@ function FitnessMetricCard({
       )}
     </div>
   )
+}
+
+// Direction of "improvement" per fitness metric — lower time = better for
+// sprint/Bronco, higher = better for everything else tracked here. Weight is
+// deliberately excluded: a change in either direction isn't inherently good
+// or bad, so it shouldn't count toward an "improved" or "declined" tally.
+const FITNESS_METRIC_DIRECTION: Record<string, 'higher' | 'lower'> = {
+  cmj_cm: 'higher',
+  squat_jump_cm: 'higher',
+  eur: 'higher',
+  sprint_0_10m_sec: 'lower',
+  bronco_test_min: 'lower',
+  press_ups_60s: 'higher',
+  pull_ups_60s: 'higher',
+}
+
+function computeTestingTrendSummary(
+  comparison: FitnessTestComparison | null | undefined
+): { improved: number; declined: number; flat: number; total: number; previousDate: string } | null {
+  if (!comparison?.previous_test) return null
+  let improved = 0, declined = 0, flat = 0
+  for (const [key, direction] of Object.entries(FITNESS_METRIC_DIRECTION)) {
+    const change = comparison.changes?.[key]
+    if (!change || change.change_pct === null) continue
+    if (Math.abs(change.change_pct) < 0.5) { flat++; continue }
+    const isImprovement = direction === 'lower' ? change.change_pct < 0 : change.change_pct > 0
+    if (isImprovement) improved++
+    else declined++
+  }
+  const total = improved + declined + flat
+  if (total === 0) return null
+  return { improved, declined, flat, total, previousDate: comparison.previous_test.test_date }
 }
 
 // Computed insight generators — no AI calls, data-driven
@@ -510,6 +641,30 @@ export default function PlayerView() {
     enabled: !!playerId
   })
 
+  const { data: quarterProfile } = useQuery({
+    queryKey: ['player-quarter-profile', playerId],
+    queryFn: () => fetchPlayerQuarterProfile(playerId!),
+    enabled: !!playerId
+  })
+
+  const { data: sleepHistory } = useQuery({
+    queryKey: ['player-sleep-history', playerId],
+    queryFn: () => fetchPlayerSleepHistory(playerId!),
+    enabled: !!playerId
+  })
+
+  const { data: disciplineTrend } = useQuery({
+    queryKey: ['player-discipline-trend', playerId],
+    queryFn: () => fetchPlayerDisciplineTrend(playerId!),
+    enabled: !!playerId
+  })
+
+  const { data: positionalBenchmark } = useQuery({
+    queryKey: ['player-positional-benchmark', playerId],
+    queryFn: () => fetchPlayerPositionalBenchmark(playerId!),
+    enabled: !!playerId
+  })
+
   // Fitness test queries
   const { data: latestFitnessTest } = useQuery({
     queryKey: ['player-fitness-latest', playerId],
@@ -532,7 +687,7 @@ export default function PlayerView() {
   // Match GPS history
   const { data: matchGpsHistory } = useQuery({
     queryKey: ['player-match-gps', playerId],
-    queryFn: () => api.matchGps.getPlayerMatchHistory(playerId!, 10),
+    queryFn: () => api.matchGps.getPlayerMatchHistory(playerId!, 50),
     enabled: !!playerId
   })
 
@@ -589,7 +744,7 @@ export default function PlayerView() {
     const speed = d.max_speed_ms || 0
     return speed > max ? speed : max
   }, 0) || 0) || 0
-  const maxSpeedKmh = maxSpeedMs > 0 ? (maxSpeedMs * 3.6).toFixed(1) : '-'
+  const maxSpeedDisplay = maxSpeedMs > 0 ? maxSpeedMs.toFixed(2) : '-'
 
   // Performance DNA radar data
   const radarData = matchesPlayed > 0 ? (() => {
@@ -657,13 +812,16 @@ export default function PlayerView() {
         </Link>
         <div className="flex items-center gap-4 flex-1">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center text-3xl font-bold text-white">
-            {player.jersey_number || player.name.charAt(0)}
+            {player.name.charAt(0)}
           </div>
           <div>
             <h1 className="text-3xl font-bold text-white">{player.name}</h1>
             <div className="flex items-center gap-3 text-white/60">
               <span className="capitalize">{(player.position || 'unknown').replace(/_/g, ' ')}</span>
-              {player.jersey_number && <span>#{player.jersey_number}</span>}
+              {/* No jersey number here — GAA squad numbers aren't held by a
+                  player for a season, they're assigned per match lineup, so
+                  a single static number on a player's profile is meaningless
+                  (and was showing stale/wrong values). */}
               <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                 player.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
               }`}>
@@ -725,7 +883,7 @@ export default function PlayerView() {
           theWall={theWall}
           totalBlocks={totalBlocks}
           totalInterceptions={totalInterceptions}
-          maxSpeedKmh={maxSpeedKmh}
+          maxSpeedDisplay={maxSpeedDisplay}
           cleanPlayPct={cleanPlayPct}
           cleanPlayMatches={cleanPlayMatches}
           radarData={radarData}
@@ -781,6 +939,10 @@ export default function PlayerView() {
           gpsData={gpsData || []}
           matchGpsHistory={matchGpsHistory || []}
           intensityData={intensityData}
+          quarterProfile={quarterProfile}
+          sleepHistory={sleepHistory}
+          disciplineTrend={disciplineTrend}
+          positionalBenchmark={positionalBenchmark}
         />
       )}
 
@@ -807,6 +969,39 @@ export default function PlayerView() {
                     </Link>
                   </div>
                 </div>
+
+                {(() => {
+                  const trend = computeTestingTrendSummary(fitnessComparison)
+                  if (!trend) return null
+                  // Tailwind's JIT scanner only picks up class names that appear as
+                  // complete literal strings in source — a `bg-${tone}-500/10`
+                  // template would silently produce no styling at all, so each
+                  // tone gets its own fully-written-out class string instead.
+                  const isImproving = trend.improved > trend.declined
+                  const isDeclining = trend.declined > trend.improved
+                  const wrapperClass = isImproving
+                    ? 'mb-4 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25'
+                    : isDeclining
+                      ? 'mb-4 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25'
+                      : 'mb-4 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10'
+                  const iconClass = isImproving ? 'text-emerald-400 flex-shrink-0' : isDeclining ? 'text-amber-400 flex-shrink-0' : 'text-white/50 flex-shrink-0'
+                  const labelClass = isImproving ? 'text-sm font-semibold text-emerald-400' : isDeclining ? 'text-sm font-semibold text-amber-400' : 'text-sm font-semibold text-white/70'
+                  const TrendIcon = isImproving ? ArrowUp : isDeclining ? ArrowDown : Minus
+                  return (
+                    <div className={wrapperClass}>
+                      <TrendIcon size={16} className={iconClass} />
+                      <span className={labelClass}>
+                        {trend.improved} of {trend.total} tracked metric{trend.total !== 1 ? 's' : ''} improved
+                      </span>
+                      <span className="text-xs text-white/40">
+                        since {new Date(trend.previousDate).toLocaleDateString()}
+                        {trend.declined > 0 && ` · ${trend.declined} declined`}
+                        {trend.flat > 0 && ` · ${trend.flat} unchanged`}
+                      </span>
+                    </div>
+                  )
+                })()}
+
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <FitnessMetricCard label="CMJ" value={latestFitnessTest.cmj_cm} unit="cm" benchmark={{ good: 35, excellent: 45 }} comparison={fitnessComparison?.changes?.cmj_cm} />
                   <FitnessMetricCard label="Squat Jump" value={latestFitnessTest.squat_jump_cm} unit="cm" comparison={fitnessComparison?.changes?.squat_jump_cm} />
@@ -1042,7 +1237,7 @@ function OverviewTab({
   clinicalRating, totalScores, totalShots,
   restartKing, totalKickoutsWon, totalFreesWon,
   theWall, totalBlocks, totalInterceptions,
-  maxSpeedKmh, cleanPlayPct, cleanPlayMatches,
+  maxSpeedDisplay, cleanPlayPct, cleanPlayMatches,
   radarData, matchImpactData, donutData, defensiveTotal,
 }: {
   player: Player
@@ -1062,7 +1257,7 @@ function OverviewTab({
   theWall: string
   totalBlocks: number
   totalInterceptions: number
-  maxSpeedKmh: string
+  maxSpeedDisplay: string
   cleanPlayPct: number
   cleanPlayMatches: number
   radarData: { axis: string; value: number }[]
@@ -1099,7 +1294,7 @@ function OverviewTab({
           <KpiCard label="Clinical Rating" value={`${clinicalRating}%`} subtitle={`${totalScores} scores from ${totalShots} shots`} icon={Target} gradient="from-emerald-600 to-teal-600" />
           <KpiCard label="Restart King" value={restartKing} subtitle={`${totalKickoutsWon} kickouts + ${totalFreesWon} frees won`} icon={Trophy} gradient="from-amber-600 to-orange-600" />
           <KpiCard label="The Wall" value={`${theWall}/game`} subtitle={`${totalBlocks} blocks + ${totalInterceptions} intercepts`} icon={Shield} gradient="from-emerald-600 to-cyan-600" />
-          <KpiCard label="Speed Attainment" value={maxSpeedKmh === '-' ? '-' : `${maxSpeedKmh} km/h`} subtitle="Peak speed from GPS" icon={Zap} gradient="from-cyan-600 to-blue-600" />
+          <KpiCard label="Speed Attainment" value={maxSpeedDisplay === '-' ? '-' : `${maxSpeedDisplay} m/s`} subtitle="Peak speed from GPS" icon={Zap} gradient="from-cyan-600 to-blue-600" />
           <KpiCard label="Clean Play" value={`${cleanPlayPct}%`} subtitle={`${cleanPlayMatches}/${matchesPlayed} matches card-free`} icon={CheckCircle} gradient="from-cyan-600 to-blue-600" />
           <KpiCard label="Attendance" value={`${attendanceStats?.attendance_rate || 0}%`} subtitle={`${attendanceStats?.present_count || 0} of ${attendanceStats?.total_sessions || 0} sessions`} icon={Calendar} gradient="from-pink-600 to-rose-600" />
         </div>
@@ -1217,14 +1412,53 @@ function OverviewTab({
 // ============================================================================
 // Performance Tab — extracted so AI insight hooks run at top level
 // ============================================================================
+const GPS_PAGE_SIZE = 5
+
+function GpsHistoryPager({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (page: number) => void }) {
+  if (totalPages <= 1) return null
+  return (
+    <div className="flex items-center justify-center gap-3 mt-4 pt-4 border-t border-white/10">
+      <button
+        onClick={() => onChange(Math.max(0, page - 1))}
+        disabled={page === 0}
+        className="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10 border border-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <ChevronLeft size={16} />
+      </button>
+      <span className="text-xs text-white/50 font-medium">Page {page + 1} of {totalPages}</span>
+      <button
+        onClick={() => onChange(Math.min(totalPages - 1, page + 1))}
+        disabled={page >= totalPages - 1}
+        className="p-1.5 rounded-lg bg-white/5 text-white/60 hover:text-white hover:bg-white/10 border border-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <ChevronRight size={16} />
+      </button>
+    </div>
+  )
+}
+
 function PerformanceTab({
-  gpsData, matchGpsHistory, intensityData,
+  gpsData, matchGpsHistory, intensityData, quarterProfile, sleepHistory, disciplineTrend, positionalBenchmark,
 }: {
   gpsData: GPSDataPoint[]
   matchGpsHistory: any[]
   intensityData: { name: string; intensity: number; workload: number }[]
+  quarterProfile: PlayerQuarterProfile | null | undefined
+  sleepHistory: PlayerSleepHistory | null | undefined
+  disciplineTrend: PlayerDisciplineTrendData | null | undefined
+  positionalBenchmark: PlayerPositionalBenchmarkData | null | undefined
 }) {
   const intensityInsightText = computeIntensityInsight(intensityData)
+
+  // Both lists can grow unbounded over a season (training GPS especially),
+  // so they're paginated client-side rather than rendering every session —
+  // otherwise this tab gets long and janky to scroll on a full season's data.
+  const [trainingPage, setTrainingPage] = useState(0)
+  const [matchPage, setMatchPage] = useState(0)
+  const trainingPageCount = Math.max(1, Math.ceil(gpsData.length / GPS_PAGE_SIZE))
+  const matchPageCount = Math.max(1, Math.ceil(matchGpsHistory.length / GPS_PAGE_SIZE))
+  const pagedTraining = gpsData.slice(trainingPage * GPS_PAGE_SIZE, (trainingPage + 1) * GPS_PAGE_SIZE)
+  const pagedMatches = matchGpsHistory.slice(matchPage * GPS_PAGE_SIZE, (matchPage + 1) * GPS_PAGE_SIZE)
 
   return (
     <div className="space-y-6">
@@ -1257,6 +1491,23 @@ function PerformanceTab({
         <ChartInsight insight={intensityInsightText} />
       </div>
 
+      {/* Season Physical Trend + Fatigue Signature */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <PlayerPhysicalTrend matchGpsHistory={matchGpsHistory} />
+        <PlayerFatigueSignature profile={quarterProfile} />
+      </div>
+
+      {/* Sleep & Recovery — own row, only shown once a player has actually logged something (self-reported via the portal, so most players will have none for a while) */}
+      {sleepHistory && sleepHistory.entries.length > 0 && (
+        <PlayerSleepTrend history={sleepHistory} />
+      )}
+
+      {/* Ball Security + Positional Benchmark */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <PlayerDisciplineTrend data={disciplineTrend} />
+        <PlayerPositionalBenchmark data={positionalBenchmark} />
+      </div>
+
       {/* Training GPS Data */}
       <div className="glass-card p-6">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
@@ -1264,19 +1515,22 @@ function PerformanceTab({
           Training GPS History
         </h3>
         {gpsData.length > 0 ? (
-          <div className="space-y-3">
-            {gpsData.map((data, i) => (
-              <div key={i} className="p-4 rounded-xl bg-white/5">
-                <div className="text-sm text-white/60 mb-2">{new Date(data.session_date).toLocaleDateString()}</div>
-                <div className="grid grid-cols-4 gap-4">
-                  <div><div className="text-xs text-white/50">Distance</div><div className="text-lg font-bold text-white">{data.total_distance_m ? `${(data.total_distance_m / 1000).toFixed(1)}km` : '-'}</div></div>
-                  <div><div className="text-xs text-white/50">Max Speed</div><div className="text-lg font-bold text-white">{data.max_speed_ms ? `${data.max_speed_ms.toFixed(1)} m/s` : '-'}</div></div>
-                  <div><div className="text-xs text-white/50">Sprints</div><div className="text-lg font-bold text-white">{data.sprint_count ?? '-'}</div></div>
-                  <div><div className="text-xs text-white/50">Load</div><div className="text-lg font-bold text-white">{data.dynamic_stress_load ? data.dynamic_stress_load.toFixed(0) : '-'}</div></div>
+          <>
+            <div className="space-y-3">
+              {pagedTraining.map((data, i) => (
+                <div key={i} className="p-4 rounded-xl bg-white/5">
+                  <div className="text-sm text-white/60 mb-2">{parseLocalDate(data.session_date).toLocaleDateString()}</div>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div><div className="text-xs text-white/50">Distance</div><div className="text-lg font-bold text-white">{data.total_distance_m ? `${(data.total_distance_m / 1000).toFixed(1)}km` : '-'}</div></div>
+                    <div><div className="text-xs text-white/50">Max Speed</div><div className="text-lg font-bold text-white">{data.max_speed_ms ? `${data.max_speed_ms.toFixed(1)} m/s` : '-'}</div></div>
+                    <div><div className="text-xs text-white/50">Sprints</div><div className="text-lg font-bold text-white">{data.sprint_count ?? '-'}</div></div>
+                    <div><div className="text-xs text-white/50">Load</div><div className="text-lg font-bold text-white">{data.dynamic_stress_load ? data.dynamic_stress_load.toFixed(0) : '-'}</div></div>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <GpsHistoryPager page={trainingPage} totalPages={trainingPageCount} onChange={setTrainingPage} />
+          </>
         ) : (
           <div className="text-center text-white/40 py-8">No training GPS data recorded yet</div>
         )}
@@ -1289,24 +1543,27 @@ function PerformanceTab({
           Match GPS History
         </h3>
         {matchGpsHistory.length > 0 ? (
-          <div className="space-y-3">
-            {matchGpsHistory.map((data, i) => (
-              <div key={i} className="p-4 rounded-xl bg-white/5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-white/60">{new Date(data.created_at).toLocaleDateString()}</span>
-                  {data.playing_minutes && (
-                    <span className="text-xs px-2 py-1 rounded bg-emerald-500/20 text-emerald-400">{data.playing_minutes} mins played</span>
-                  )}
+          <>
+            <div className="space-y-3">
+              {pagedMatches.map((data, i) => (
+                <div key={i} className="p-4 rounded-xl bg-white/5">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-white/60">{new Date(data.created_at).toLocaleDateString()}</span>
+                    {data.playing_minutes && (
+                      <span className="text-xs px-2 py-1 rounded bg-emerald-500/20 text-emerald-400">{data.playing_minutes} mins played</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div><div className="text-xs text-white/50">Distance</div><div className="text-lg font-bold text-white">{data.total_distance_m ? `${(data.total_distance_m / 1000).toFixed(1)}km` : '-'}</div></div>
+                    <div><div className="text-xs text-white/50">Max Speed</div><div className="text-lg font-bold text-white">{data.max_speed_ms ? `${data.max_speed_ms.toFixed(1)} m/s` : '-'}</div></div>
+                    <div><div className="text-xs text-white/50">Sprints</div><div className="text-lg font-bold text-white">{data.sprint_count ?? '-'}</div></div>
+                    <div><div className="text-xs text-white/50">HSR</div><div className="text-lg font-bold text-white">{data.high_speed_running_m ? `${(data.high_speed_running_m / 1000).toFixed(2)}km` : '-'}</div></div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-4 gap-4">
-                  <div><div className="text-xs text-white/50">Distance</div><div className="text-lg font-bold text-white">{data.total_distance_m ? `${(data.total_distance_m / 1000).toFixed(1)}km` : '-'}</div></div>
-                  <div><div className="text-xs text-white/50">Max Speed</div><div className="text-lg font-bold text-white">{data.max_speed_ms ? `${data.max_speed_ms.toFixed(1)} m/s` : '-'}</div></div>
-                  <div><div className="text-xs text-white/50">Sprints</div><div className="text-lg font-bold text-white">{data.sprint_count ?? '-'}</div></div>
-                  <div><div className="text-xs text-white/50">HSR</div><div className="text-lg font-bold text-white">{data.high_speed_running_m ? `${(data.high_speed_running_m / 1000).toFixed(2)}km` : '-'}</div></div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <GpsHistoryPager page={matchPage} totalPages={matchPageCount} onChange={setMatchPage} />
+          </>
         ) : (
           <div className="text-center text-white/40 py-8">No match GPS data recorded yet</div>
         )}

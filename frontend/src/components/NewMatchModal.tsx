@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Home, Bus, Globe, Circle, Calendar, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer, CalendarCheck, Link2 } from 'lucide-react'
-import { api } from '@/services/api'
+import { X, Home, Bus, Globe, Circle, Calendar, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer, CalendarCheck, Link2, Trophy } from 'lucide-react'
+import { api, MATCH_STAGE_OPTIONS } from '@/services/api'
 import type { Match } from '@/types'
 
 const WEATHER_OPTIONS = [
@@ -24,6 +24,8 @@ interface NewMatchModalProps {
     matchDate: Date
     weather_condition?: string | null
     temperature_celsius?: number | null
+    competition?: string | null
+    stage?: string | null
     fixtureId?: string
   }) => void
 }
@@ -37,9 +39,12 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
   })
   const [weatherCondition, setWeatherCondition] = useState<string | null>(null)
   const [temperature, setTemperature] = useState('')
+  const [competition, setCompetition] = useState('')
+  const [stage, setStage] = useState('')
   const [errors, setErrors] = useState<{ opponent?: string; matchDate?: string }>({})
   const [fixtures, setFixtures] = useState<Match[]>([])
   const [linkedFixture, setLinkedFixture] = useState<Match | null>(null)
+  const [competitionOptions, setCompetitionOptions] = useState<string[]>([])
 
   // Fetch linkable fixtures when modal opens (scheduled only, within last 60 days or future)
   useEffect(() => {
@@ -56,6 +61,16 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
         setFixtures(linkable)
       })
       .catch(() => {})
+  }, [isOpen])
+
+  // Competition names already used on this club's matches — feeds the
+  // Competition field's <datalist> autocomplete below, so entries stay
+  // consistent (e.g. always "Donegal Senior Championship") instead of
+  // drifting into slightly different spellings match to match. Still a
+  // free-text input underneath, so a genuinely new competition can be typed.
+  useEffect(() => {
+    if (!isOpen) return
+    api.matches.getCompetitions().then(setCompetitionOptions)
   }, [isOpen])
 
   // Find matching fixture based on opponent name or date
@@ -100,6 +115,8 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
       home: 'home', away: 'away', neutral: 'neutral',
     }
     setVenue(venueMap[fixture.venue] || 'home')
+    setCompetition(fixture.competition || '')
+    setStage(fixture.stage || '')
     setLinkedFixture(fixture)
     setErrors({})
   }
@@ -130,6 +147,8 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
       matchDate: new Date(matchDate),
       weather_condition: weatherCondition,
       temperature_celsius: temperature ? parseFloat(temperature) : null,
+      competition: competition.trim() || null,
+      stage: stage || null,
       fixtureId: linkedFixture?.id,
     })
 
@@ -142,6 +161,8 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
     setMatchDate(new Date().toISOString().split('T')[0])
     setWeatherCondition(null)
     setTemperature('')
+    setCompetition('')
+    setStage('')
     setErrors({})
     setLinkedFixture(null)
   }
@@ -314,6 +335,47 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
                 <div className="text-sm font-medium text-white">Neutral</div>
               </button>
             </div>
+          </div>
+
+          {/* Competition */}
+          <div>
+            <label htmlFor="match-comp" className="block text-sm font-medium text-white mb-2">
+              Competition <span className="text-white/40 text-xs font-normal">(optional)</span>
+            </label>
+            <div className="relative">
+              <input
+                id="match-comp"
+                type="text"
+                list="competition-options"
+                value={competition}
+                onChange={(e) => setCompetition(e.target.value)}
+                placeholder="e.g. Donegal Senior Championship"
+                className="w-full px-4 py-3 pl-10 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-transparent transition-all"
+              />
+              <datalist id="competition-options">
+                {competitionOptions.map(c => <option key={c} value={c} />)}
+              </datalist>
+              <Trophy size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+            </div>
+            <p className="text-white/30 text-xs mt-1.5">Just the competition name — round/stage has its own field below.</p>
+          </div>
+
+          {/* Stage */}
+          <div>
+            <label htmlFor="match-stage" className="block text-sm font-medium text-white mb-2">
+              Stage <span className="text-white/40 text-xs font-normal">(optional)</span>
+            </label>
+            <select
+              id="match-stage"
+              value={stage}
+              onChange={(e) => setStage(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-transparent transition-all"
+            >
+              <option value="" className="bg-slate-900">— None —</option>
+              {MATCH_STAGE_OPTIONS.map(s => (
+                <option key={s} value={s} className="bg-slate-900">{s}</option>
+              ))}
+            </select>
           </div>
 
           {/* Weather Condition */}

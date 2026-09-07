@@ -8,7 +8,7 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, X, Video, AlertCircle, Loader2, CheckCircle } from 'lucide-react'
-import { videoSessionsAPI } from '../services/videoApi'
+import { videoSessionsAPI, type MultipartPartInfo } from '../services/videoApi'
 import {
   useInitiateVideoUpload,
   useCompleteVideoUpload,
@@ -20,10 +20,45 @@ interface VideoUploadModalProps {
   matchId: string
 }
 
-const MAX_FILE_SIZE_GB = 5
+const MAX_FILE_SIZE_GB = 30
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_GB * 1024 * 1024 * 1024
 
 type UploadStatus = 'idle' | 'initiating' | 'uploading' | 'completing' | 'success' | 'error'
+
+/** Upload a File in sequential chunks, one per presigned part URL, tracking
+ * combined progress across all parts. Returns the part number + ETag list
+ * needed to complete the multipart upload. */
+async function uploadInParts(
+  file: File,
+  partUrls: string[],
+  partSizeBytes: number,
+  onProgress: (percent: number) => void
+): Promise<MultipartPartInfo[]> {
+  const parts: MultipartPartInfo[] = []
+  const perPartLoaded = new Array(partUrls.length).fill(0)
+
+  const reportProgress = () => {
+    const loaded = perPartLoaded.reduce((sum, n) => sum + n, 0)
+    onProgress(Math.round((loaded / file.size) * 100))
+  }
+
+  for (let i = 0; i < partUrls.length; i++) {
+    const start = i * partSizeBytes
+    const end = Math.min(start + partSizeBytes, file.size)
+    const chunk = file.slice(start, end)
+
+    const etag = await videoSessionsAPI.uploadPart(partUrls[i], chunk, (loaded) => {
+      perPartLoaded[i] = loaded
+      reportProgress()
+    })
+
+    perPartLoaded[i] = chunk.size
+    reportProgress()
+    parts.push({ part_number: i + 1, etag })
+  }
+
+  return parts
+}
 
 export default function VideoUploadModal({ isOpen, onClose, matchId }: VideoUploadModalProps) {
   const navigate = useNavigate()
@@ -81,13 +116,36 @@ export default function VideoUploadModal({ isOpen, onClose, matchId }: VideoUplo
       setSessionId(initResult.session_id)
       setStatus('uploading')
 
-      // Step 2: Upload directly to R2 via presigned URL
-      await videoSessionsAPI.uploadToR2(
-        initResult.upload_url,
-        file,
-        file.type || 'video/mp4',
-        (percent) => setProgress(percent)
-      )
+      let parts: MultipartPartInfo[] | undefined
+
+      if (initResult.is_multipart && initResult.part_urls && initResult.part_size_bytes) {
+        // Step 2 (large files): upload in chunks — same one file, transferred
+        // as separate parts because a single PUT can't exceed R2's 5GiB cap.
+        try {
+          parts = await uploadInParts(
+            file,
+            initResult.part_urls,
+            initResult.part_size_bytes,
+            (percent) => setProgress(percent)
+          )
+        } catch (uploadErr) {
+          // Best-effort cleanup so the abandoned parts don't linger in R2
+          if (initResult.upload_id) {
+            videoSessionsAPI.abortMultipartUpload(initResult.session_id, initResult.upload_id).catch(() => {})
+          }
+          throw uploadErr
+        }
+      } else if (initResult.upload_url) {
+        // Step 2 (smaller files): single presigned PUT
+        await videoSessionsAPI.uploadToR2(
+          initResult.upload_url,
+          file,
+          file.type || 'video/mp4',
+          (percent) => setProgress(percent)
+        )
+      } else {
+        throw new Error('Upload could not be initiated (no upload URL returned)')
+      }
 
       setStatus('completing')
 
@@ -96,6 +154,8 @@ export default function VideoUploadModal({ isOpen, onClose, matchId }: VideoUplo
         sessionId: initResult.session_id,
         matchId,
         sizeBytes: file.size,
+        uploadId: initResult.is_multipart ? initResult.upload_id : undefined,
+        parts,
       })
 
       setStatus('success')

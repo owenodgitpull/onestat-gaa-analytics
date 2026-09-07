@@ -245,7 +245,21 @@ export default function ExtendedStatsModal({ events, opponent, teamName, onClose
     if (existing) existing.score += val
     else scorerMap.set(key, { name, score: val, breakdown: '' })
   }
-  const topScorers = [...scorerMap.values()].sort((a, b) => b.score - a.score).slice(0, 3)
+  // Group every scorer onto one row per score value instead of a fixed
+  // top-3 cutoff — a 3-name cap silently dropped a real scorer whenever a
+  // tie pushed them past position 3 (confirmed live 2026-09-07: Dylan
+  // Sweeney's point was correctly recorded but never shown, since he tied
+  // Conor Greene for 3rd and only one of them fit the slice). Tied players
+  // now share one line, comma-separated, e.g. "Conor Greene, Dylan Sweeney".
+  const scoreGroups = new Map<number, string[]>()
+  for (const s of scorerMap.values()) {
+    const names = scoreGroups.get(s.score) ?? []
+    names.push(s.name)
+    scoreGroups.set(s.score, names)
+  }
+  const topScorers = [...scoreGroups.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([score, names]) => ({ name: names.join(', '), score }))
 
   const abbr = (name: string) => name.length > 16 ? name.split(' ').map((w, i) => i === 0 ? w[0] + '.' : w).join(' ') : name
 

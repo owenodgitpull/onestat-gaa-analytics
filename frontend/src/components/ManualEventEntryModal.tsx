@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Player, EventType, PossessionTeam } from '@/types'
 import { useClubName } from '@/contexts/ClubContext'
+import SearchablePlayerSelect from './SearchablePlayerSelect'
 
 interface MatchLineupEntry {
   id: string
@@ -175,6 +176,8 @@ export default function ManualEventEntryModal({
                 <option value={EventType.WIDE_FREE} className="bg-slate-800 text-white">Wide (Free)</option>
                 <option value={EventType.SHORT} className="bg-slate-800 text-white">Short</option>
                 <option value={EventType.SAVED} className="bg-slate-800 text-white">Saved</option>
+                <option value={EventType.FORTY_FIVE} className="bg-slate-800 text-white">45 (Scored)</option>
+                <option value={EventType.FORTY_FIVE_MISSED} className="bg-slate-800 text-white">45 (Missed)</option>
               </optgroup>
               <optgroup label="Turnovers" className="bg-slate-800 text-white">
                 <option value={EventType.TURNOVER_WON} className="bg-slate-800 text-white">Turnover Won</option>
@@ -224,44 +227,36 @@ export default function ManualEventEntryModal({
               {/* Player Coming Off */}
               <div>
                 <label className="block text-white/80 font-semibold mb-2">Player Coming Off (On Field)</label>
-                <select
+                <SearchablePlayerSelect
                   value={playerId}
-                  onChange={(e) => setPlayerId(e.target.value)}
-                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="" className="bg-slate-800 text-white">Select player...</option>
-                  {getPlayersOnField().map((player) => {
+                  onChange={setPlayerId}
+                  players={getPlayersOnField().map((player) => {
                     const lineupEntry = matchLineup.find(l => l.player_id === player.id)
-                    const jerseyNum = lineupEntry?.player_jersey_number ?? player.jersey_number
-                    return (
-                      <option key={player.id} value={player.id} className="bg-slate-800 text-white">
-                        {jerseyNum ? `#${jerseyNum} ` : ''}{player.name}
-                      </option>
-                    )
+                    return {
+                      id: player.id,
+                      name: player.name,
+                      jerseyNumber: lineupEntry?.player_jersey_number ?? player.jersey_number,
+                    }
                   })}
-                </select>
+                />
               </div>
 
               {/* Player Coming On */}
               <div>
                 <label className="block text-white/80 font-semibold mb-2">Player Coming On (On Bench)</label>
-                <select
+                <SearchablePlayerSelect
                   value={playerComingOn}
-                  onChange={(e) => setPlayerComingOn(e.target.value)}
+                  onChange={setPlayerComingOn}
                   disabled={!playerId}
-                  className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="" className="bg-slate-800 text-white">Select player...</option>
-                  {getPlayersOnBench().map((player) => {
+                  players={getPlayersOnBench().map((player) => {
                     const lineupEntry = matchLineup.find(l => l.player_id === player.id)
-                    const jerseyNum = lineupEntry?.player_jersey_number ?? player.jersey_number
-                    return (
-                      <option key={player.id} value={player.id} className="bg-slate-800 text-white">
-                        {jerseyNum ? `#${jerseyNum} ` : ''}{player.name}
-                      </option>
-                    )
+                    return {
+                      id: player.id,
+                      name: player.name,
+                      jerseyNumber: lineupEntry?.player_jersey_number ?? player.jersey_number,
+                    }
                   })}
-                </select>
+                />
               </div>
             </>
           ) : requiresPlayer && (team === PossessionTeam.OWN || isKickoutType(eventType)) ? (
@@ -269,18 +264,15 @@ export default function ManualEventEntryModal({
               <label className="block text-white/80 font-semibold mb-2">
                 Player {isKickoutType(eventType) && <span className="font-normal text-white/40">(optional)</span>}
               </label>
-              <select
+              <SearchablePlayerSelect
                 value={playerId}
-                onChange={(e) => setPlayerId(e.target.value)}
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
-              >
-                <option value="" className="bg-slate-800 text-white">Select player...</option>
-                {players.filter(p => p.active).map((player) => (
-                  <option key={player.id} value={player.id} className="bg-slate-800 text-white">
-                    {player.jersey_number ? `#${player.jersey_number} ` : ''}{player.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setPlayerId}
+                players={players.filter(p => p.active).map((player) => ({
+                  id: player.id,
+                  name: player.name,
+                  jerseyNumber: player.jersey_number,
+                }))}
+              />
             </div>
           ) : null}
 

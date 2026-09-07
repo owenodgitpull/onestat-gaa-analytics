@@ -63,7 +63,7 @@ export default function ScoreMomentumChart({ data }: Props) {
 
   return (
     <div className="glass-card p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
         <h3 className="text-xl font-bold flex items-center gap-2 text-white">
           <TrendingUp size={20} />
           Score Momentum
@@ -100,6 +100,9 @@ export default function ScoreMomentumChart({ data }: Props) {
           </select>
         </div>
       </div>
+      <p className="text-white/40 text-xs mb-3">
+        Running score difference by the minute — above the line is ahead, below is behind.
+      </p>
 
       {/* Chart */}
       <div className="flex-1 min-h-0">

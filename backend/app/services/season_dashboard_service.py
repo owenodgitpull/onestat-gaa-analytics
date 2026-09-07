@@ -9,9 +9,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, desc
 from sqlalchemy.orm import lazyload
-from app.models.match import Match, MatchStatus
+from app.models.match import Match, MatchStatus, MATCH_STAGE_OPTIONS
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.models.match_gps import MatchGPSData
@@ -77,12 +77,27 @@ class SeasonDashboardService:
     """Static methods for season dashboard data aggregation."""
 
     @staticmethod
-    async def _get_completed_matches(db: AsyncSession, club_id=None):
+    async def _get_completed_matches(db: AsyncSession, club_id=None, competition=None, last_n=None, stage=None):
         """Get all completed, non-deleted matches that have at least one
         recorded event, ordered by date, filtered by club.
 
         Matches with zero events (result-only, still being tagged) are
         excluded so dashboards never show misleading zeros.
+
+        `competition`, if given, is an ilike substring match against
+        Match.competition — same pattern already used for this filter
+        elsewhere (get_squad_season_stats etc. in ai/_shared.py).
+        `stage`, if given, is an EXACT match against Match.stage (it's a
+        fixed dropdown value on the frontend, not free text, so exact
+        equality is correct and cheaper than ilike).
+        `last_n`, if given, keeps only the N most recent matches (applied
+        after the competition/stage filters, so "last 5 championship
+        matches" composes correctly rather than "last 5 matches, then
+        filtered"). Sliced in Python rather than via SQL LIMIT because the
+        ordering needed downstream (ascending, for trend/timeline charts)
+        is the opposite of "most recent N" (which wants descending) — for a
+        season's worth of matches (dozens, not thousands) slicing the
+        already-fetched list is simpler than a second query.
         """
         event_count = (
             select(func.count(MatchEvent.id))
@@ -97,6 +112,10 @@ class SeasonDashboardService:
         ]
         if club_id:
             conditions.append(Match.club_id == club_id)
+        if competition:
+            conditions.append(Match.competition.ilike(f"%{competition}%"))
+        if stage:
+            conditions.append(Match.stage == stage)
         # Dashboard aggregations query events/gps/etc. directly via targeted
         # queries — never through these relationships — so skip the model's
         # default eager (selectin) loading here to avoid 6 redundant queries
@@ -114,22 +133,141 @@ class SeasonDashboardService:
             )
             .order_by(Match.match_date.asc())
         )
-        return result.scalars().all()
+        matches = result.scalars().all()
+        if last_n:
+            matches = matches[-last_n:]
+        return matches
 
     @staticmethod
-    async def get_all(db: AsyncSession, club_id=None, background_tasks=None) -> dict:
+    async def _get_available_competitions(db: AsyncSession, club_id=None) -> list:
+        """Distinct competition names across every completed match for this
+        club (unfiltered) — powers the filter dropdown so its options don't
+        shrink to whatever the current filter already narrowed down to."""
+        conditions = [
+            Match.status == MatchStatus.COMPLETED,
+            Match.is_deleted.is_(False),
+            Match.competition.isnot(None),
+            Match.competition != "",
+        ]
+        if club_id:
+            conditions.append(Match.club_id == club_id)
+        result = await db.execute(
+            select(Match.competition).where(and_(*conditions)).distinct()
+        )
+        return sorted(row[0] for row in result.all())
+
+    @staticmethod
+    async def _get_available_stages(db: AsyncSession, club_id=None) -> list:
+        """Distinct stage values actually used across this club's completed
+        matches (unfiltered) — same rationale as _get_available_competitions.
+        A stage only shows up here once at least one match has been tagged
+        with it, so the dropdown never offers an option that returns zero
+        matches."""
+        conditions = [
+            Match.status == MatchStatus.COMPLETED,
+            Match.is_deleted.is_(False),
+            Match.stage.isnot(None),
+            Match.stage != "",
+        ]
+        if club_id:
+            conditions.append(Match.club_id == club_id)
+        result = await db.execute(
+            select(Match.stage).where(and_(*conditions)).distinct()
+        )
+        values = {row[0] for row in result.all()}
+        # Sort by the standard stage progression where possible, unknown
+        # values (a coach who typed something outside MATCH_STAGE_OPTIONS
+        # before this became a fixed dropdown) fall back to alphabetical at
+        # the end rather than being dropped.
+        order = {name: i for i, name in enumerate(MATCH_STAGE_OPTIONS)}
+        return sorted(values, key=lambda v: (order.get(v, len(order)), v))
+
+    # Bump this when the shape/set of aggregations in _get_all_fresh changes —
+    # the data fingerprint alone doesn't change just because the code did, so
+    # without a version signature a deploy could silently keep serving an
+    # old-shaped cached payload (the leaderboard cache hit exactly this bug
+    # once, see the comment in _compute_all_rankings for the story).
+    SEASON_DASHBOARD_CACHE_VERSION = "v2"  # bumped: added attacking_thirds field
+
+    @staticmethod
+    async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
+        """
+        Cached wrapper around _get_all_fresh — same data-fingerprint pattern
+        as LeaderboardService._compute_all_rankings. This page runs ~58 DB
+        queries across 11 aggregations; before this cache, every single
+        dashboard view or filter change re-ran all of them from scratch, even
+        when nothing had changed since the last view (the common case).
+        """
+        from sqlalchemy import select as _select
+        from app.models.season_cache import SeasonCache
+        import hashlib as _hashlib
+
+        fingerprint = await _compute_data_fingerprint(db, club_id)
+        # Cache is keyed per filter combination too — a filtered view (single
+        # competition, last-N, stage) has a different match set and therefore
+        # a genuinely different payload, not just a different fingerprint.
+        filter_sig = f"{competition or ''}|{last_n or ''}|{stage or ''}"
+        filter_hash = _hashlib.md5(filter_sig.encode()).hexdigest()[:8]
+        cache_type = f"season_dash_{SeasonDashboardService.SEASON_DASHBOARD_CACHE_VERSION}_{filter_hash}"
+
+        cache_result = await db.execute(
+            _select(SeasonCache).where(
+                SeasonCache.club_id == club_id,
+                SeasonCache.cache_type == cache_type,
+            )
+        )
+        cache = cache_result.scalar_one_or_none()
+        if cache and cache.data_fingerprint == fingerprint and cache.cached_result is not None:
+            return cache.cached_result
+
+        result = await SeasonDashboardService._get_all_fresh(
+            db, club_id, background_tasks, competition, last_n, stage
+        )
+
+        if cache:
+            cache.cached_result = result
+            cache.data_fingerprint = fingerprint
+            cache.cached_at = datetime.utcnow()
+        else:
+            db.add(SeasonCache(
+                club_id=club_id,
+                cache_type=cache_type,
+                data_fingerprint=fingerprint,
+                cached_result=result,
+            ))
+        await db.commit()
+
+        return result
+
+    @staticmethod
+    async def _get_all_fresh(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
         """
         Run all 5 aggregations concurrently, sharing the match list.
-        Returns the complete season dashboard payload.
+        Returns the complete season dashboard payload. Only called on a
+        get_all() cache miss.
 
         `background_tasks` (FastAPI BackgroundTasks, optional): when provided,
         a KPI-insight cache miss regenerates in the background instead of
         blocking this response on an LLM call.
+
+        `competition`/`stage`/`last_n`: optional filters, see
+        `_get_completed_matches`. When any is set, the AI-generated KPI
+        insight text is skipped rather than served from cache — that cache
+        is keyed on overall club data state, not on which filter is active,
+        so a cache hit could show insight text describing the unfiltered
+        season while the numbers next to it are for a single competition.
+        Skipping is a clean tradeoff: the numeric cards and every chart
+        still respect the filter immediately, only the italic AI blurb
+        goes quiet.
         """
-        matches = await SeasonDashboardService._get_completed_matches(db, club_id)
+        matches = await SeasonDashboardService._get_completed_matches(db, club_id, competition, last_n, stage)
+        available_competitions = await SeasonDashboardService._get_available_competitions(db, club_id)
+        available_stages = await SeasonDashboardService._get_available_stages(db, club_id)
+        is_filtered = bool(competition or last_n or stage)
 
         (funnel, kickouts, turnovers, red_zone, radar, territory,
-         score_timeline, dead_ball, def_zones, kickout_zones, season_hmld) = await asyncio.gather(
+         score_timeline, dead_ball, def_zones, kickout_zones, season_hmld,
+         attacking_thirds) = await asyncio.gather(
             SeasonDashboardService._possession_funnel(db, matches),
             SeasonDashboardService._kickout_trends(db, matches),
             SeasonDashboardService._turnover_source_leaderboard(db, matches),
@@ -141,7 +279,10 @@ class SeasonDashboardService:
             SeasonDashboardService._defensive_action_zones(db, matches),
             SeasonDashboardService._kickout_landing_zones(db, matches),
             SeasonDashboardService._season_hmld_chart(db, matches),
+            SeasonDashboardService._attacking_thirds(db, matches),
         )
+
+        expected_points_season = await SeasonDashboardService._season_expected_points(db, matches)
 
         kpi = await SeasonDashboardService._kpi_cards(db, matches, funnel)
 
@@ -150,28 +291,31 @@ class SeasonDashboardService:
             db, matches, funnel, kickouts, territory
         )
 
-        # Generate dynamic AI insights for KPI cards (cached — only regenerate when data changes)
-        try:
-            from app.services.ai import generate_kpi_insights, get_fixture_context
-            fixture_ctx = await get_fixture_context(db, club_id=club_id)
-            # Include possession funnel rates so AI can generate a funnel insight
-            kpi["funnel_summary"] = {
-                "attack_rate": funnel.get("attack_rate", 0),
-                "shot_rate": funnel.get("shot_rate", 0),
-                "score_rate": funnel.get("score_rate", 0),
-                "opponent_attack_rate": funnel.get("opponent_attack_rate", 0),
-                "opponent_shot_rate": funnel.get("opponent_shot_rate", 0),
-                "opponent_score_rate": funnel.get("opponent_score_rate", 0),
-            }
-            insights = await _get_cached_kpi_insights(db, kpi, fixture_ctx, club_id, background_tasks=background_tasks)
-            logger.info(f"KPI insights result: {len(insights)} keys returned: {list(insights.keys()) if insights else 'empty'}")
-            if insights:
-                for card in kpi.get("cards", []):
-                    card["insight"] = insights.get(card["key"], "")
-                if insights.get("possession_funnel"):
-                    funnel["insight"] = insights["possession_funnel"]
-        except Exception as e:
-            logger.warning(f"KPI insights generation failed: {e}", exc_info=True)
+        # Generate dynamic AI insights for KPI cards (cached — only regenerate
+        # when data changes). Skipped entirely for a filtered view — see the
+        # `is_filtered` note in this method's docstring.
+        if not is_filtered:
+            try:
+                from app.services.ai import generate_kpi_insights, get_fixture_context
+                fixture_ctx = await get_fixture_context(db, club_id=club_id)
+                # Include possession funnel rates so AI can generate a funnel insight
+                kpi["funnel_summary"] = {
+                    "attack_rate": funnel.get("attack_rate", 0),
+                    "shot_rate": funnel.get("shot_rate", 0),
+                    "score_rate": funnel.get("score_rate", 0),
+                    "opponent_attack_rate": funnel.get("opponent_attack_rate", 0),
+                    "opponent_shot_rate": funnel.get("opponent_shot_rate", 0),
+                    "opponent_score_rate": funnel.get("opponent_score_rate", 0),
+                }
+                insights = await _get_cached_kpi_insights(db, kpi, fixture_ctx, club_id, background_tasks=background_tasks)
+                logger.info(f"KPI insights result: {len(insights)} keys returned: {list(insights.keys()) if insights else 'empty'}")
+                if insights:
+                    for card in kpi.get("cards", []):
+                        card["insight"] = insights.get(card["key"], "")
+                    if insights.get("possession_funnel"):
+                        funnel["insight"] = insights["possession_funnel"]
+            except Exception as e:
+                logger.warning(f"KPI insights generation failed: {e}", exc_info=True)
 
         return {
             "possession_funnel": funnel,
@@ -187,11 +331,145 @@ class SeasonDashboardService:
             "kickout_landing_zones": kickout_zones,
             "kpi_sparkline_grid": kpi_sparkline,
             "season_hmld": season_hmld,
+            "attacking_thirds": attacking_thirds,
+            "available_competitions": available_competitions,
+            "available_stages": available_stages,
+            "matches_in_view": len(matches),
+            "expected_points_season": expected_points_season,
         }
 
     # ------------------------------------------------------------------
     # Individual aggregations (take pre-fetched matches)
     # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _season_expected_points(db: AsyncSession, matches: list) -> dict:
+        """
+        Season-long Expected Points: cumulative team xP vs actual across every
+        coded match, plus a per-player leaderboard of who's over/under-
+        performing the shot quality of their chances.
+
+        Fetches every shot across every match in ONE query and scores them
+        with the (cached) shot-quality model in Python — matches every other
+        aggregation in this file. An earlier version called
+        compute_match_expected_points() once per match, each doing its own
+        DB round trip; that N+1 pattern added ~8s to the season dashboard on
+        just 12 matches and only gets worse as more get coded, which is what
+        left the season xP card stuck on "loading" after it was added to the
+        dashboard.
+        """
+        empty = {
+            "season_team_expected_points": 0.0, "season_team_actual_points": 0,
+            "season_opponent_expected_points": 0.0, "season_opponent_actual_points": 0,
+            "per_match": [], "players": [],
+        }
+        if not matches:
+            return empty
+
+        from app.services.expected_points_service import (
+            ALL_SHOT_TYPES, build_shot_quality_model, expected_points_for_shot,
+        )
+
+        model = await build_shot_quality_model(db)
+        match_ids = [m.id for m in matches]
+        match_by_id = {m.id: m for m in matches}
+
+        result = await db.execute(
+            select(MatchEvent).where(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.event_type.in_(list(ALL_SHOT_TYPES)),
+                MatchEvent.pitch_x.isnot(None),
+                MatchEvent.pitch_y.isnot(None),
+            )
+        )
+        all_events = result.scalars().all()
+
+        player_ids = {e.player_id for e in all_events if e.player_id}
+        players_map = {}
+        if player_ids:
+            pr = await db.execute(select(Player).where(Player.id.in_(player_ids)))
+            players_map = {p.id: p.name for p in pr.scalars().all()}
+
+        per_match_totals: dict = {
+            mid: {"team_xp": 0.0, "team_actual": 0, "opp_xp": 0.0, "opp_actual": 0}
+            for mid in match_ids
+        }
+        player_totals: dict = {}
+        season_team_xp = season_opp_xp = 0.0
+        season_team_actual = season_opp_actual = 0
+
+        for e in all_events:
+            match = match_by_id.get(e.match_id)
+            if not match:
+                continue
+            try:
+                shot = expected_points_for_shot(
+                    e.pitch_x, e.pitch_y, e.event_type, e.team,
+                    match.attacking_right_first_half, e.half, model,
+                    e.minute, match.half_duration_mins,
+                )
+            except Exception as ex:
+                logger.warning(f"Season xP: failed scoring event {e.id}: {ex}")
+                continue
+            actual_pts = shot["point_value"] if shot["made"] else 0
+            mt = per_match_totals[e.match_id]
+
+            if e.team == Team.OWN:
+                mt["team_xp"] += shot["xp"]
+                mt["team_actual"] += actual_pts
+                season_team_xp += shot["xp"]
+                season_team_actual += actual_pts
+
+                if e.player_id:
+                    pid = str(e.player_id)
+                    if pid not in player_totals:
+                        player_totals[pid] = {
+                            "player_id": pid, "player_name": players_map.get(e.player_id, "Unassigned"),
+                            "shots": 0, "total_pts": 0, "expected_points": 0.0,
+                        }
+                    t = player_totals[pid]
+                    t["shots"] += 1
+                    t["expected_points"] += shot["xp"]
+                    if shot["made"]:
+                        t["total_pts"] += shot["point_value"]
+            else:
+                mt["opp_xp"] += shot["xp"]
+                mt["opp_actual"] += actual_pts
+                season_opp_xp += shot["xp"]
+                season_opp_actual += actual_pts
+
+        per_match = [
+            {
+                "match_id": str(m.id),
+                "opponent": m.opponent,
+                "match_date": m.match_date.isoformat() if m.match_date else None,
+                "team_expected_points": round(per_match_totals[m.id]["team_xp"], 2),
+                "team_actual_points": per_match_totals[m.id]["team_actual"],
+                "opponent_expected_points": round(per_match_totals[m.id]["opp_xp"], 2),
+                "opponent_actual_points": per_match_totals[m.id]["opp_actual"],
+            }
+            for m in matches
+        ]
+
+        players = []
+        for t in player_totals.values():
+            t["expected_points"] = round(t["expected_points"], 2)
+            t["under_over"] = round(t["total_pts"] - t["expected_points"], 2)
+            players.append(t)
+        # Only rank players with a meaningful sample — a 1-shot outlier
+        # shouldn't top a season leaderboard (same small-sample lesson learned
+        # from the per-match report, where a 2-carry average was mistakenly
+        # presented as a settled tendency).
+        ranked = sorted([p for p in players if p["shots"] >= 5], key=lambda p: -p["under_over"])
+
+        return {
+            "season_team_expected_points": round(season_team_xp, 2),
+            "season_team_actual_points": season_team_actual,
+            "season_opponent_expected_points": round(season_opp_xp, 2),
+            "season_opponent_actual_points": season_opp_actual,
+            "per_match": per_match,
+            "players": ranked,
+        }
 
     @staticmethod
     async def _possession_funnel(db: AsyncSession, matches: list) -> dict:
@@ -208,9 +486,18 @@ class SeasonDashboardService:
             "per_match": [],
             "attack_rate": 0, "shot_rate": 0, "score_rate": 0,
             "opponent_attack_rate": 0, "opponent_shot_rate": 0, "opponent_score_rate": 0,
+            "excluded_match_count": 0,
         }
         if not matches:
             return empty
+
+        # Simple Scoring matches have no continuous possession tracking, so
+        # they can't contribute a possession funnel — exclude them from the
+        # calculation but surface how many were skipped.
+        excluded_match_count = sum(1 for m in matches if m.precise_tracking_enabled is False)
+        matches = [m for m in matches if m.precise_tracking_enabled is not False]
+        if not matches:
+            return {**empty, "excluded_match_count": excluded_match_count}
 
         match_ids = [m.id for m in matches]
         matches_map = {m.id: m for m in matches}
@@ -373,6 +660,7 @@ class SeasonDashboardService:
             "opponent_attack_rate": rate(o_att, o_poss),
             "opponent_shot_rate": rate(o_sh, o_att),
             "opponent_score_rate": rate(o_sc, o_sh),
+            "excluded_match_count": excluded_match_count,
         }
 
     @staticmethod
@@ -731,7 +1019,7 @@ class SeasonDashboardService:
 
             timeline = []
             cumulative_diff = 0
-            last_own_minute = 0
+            last_own_minute = None
 
             for e in match_events:
                 value = SCORE_VALUE.get(e.event_type, 0)
@@ -740,9 +1028,15 @@ class SeasonDashboardService:
 
                 if e.team == Team.OWN:
                     cumulative_diff += value
-                    # Track drought
-                    gap = minute - last_own_minute
-                    droughts.append(gap)
+                    # Track drought — only the gap BETWEEN two scores counts.
+                    # last_own_minute starts as None so the very first score
+                    # of the match (kickoff -> first score) is never recorded
+                    # as a "drought" — a slow start isn't a scoreless stretch,
+                    # and counting it inflated the season's longest-drought
+                    # figure with something that isn't really a drought.
+                    if last_own_minute is not None:
+                        gap = minute - last_own_minute
+                        droughts.append(gap)
                     last_own_minute = minute
                     # Final 10 minutes
                     if minute >= 60:
@@ -1249,19 +1543,29 @@ class SeasonDashboardService:
             return values
 
         def trend(values):
-            """Calculate trend from last 3 values vs season avg."""
+            """
+            Last match vs season avg — the same two numbers already shown in
+            the adjacent columns, so the arrow always agrees with what's on
+            screen. Previously compared a last-3-matches average against a
+            season average that includes those same matches: early in a
+            season (a handful of matches total) that recent window is most
+            of the season average by construction, so the two numbers were
+            almost never more than 1-2% apart and the arrow showed "stable"
+            for almost every KPI regardless of how the sparkline actually
+            moved — confirmed on real data where Attack Rate rose from 34%
+            to 50% and still showed a flat arrow.
+            """
             nums = [v["value"] for v in values]
             if len(nums) < 2:
                 return "stable"
             season_avg = sum(nums) / len(nums) if nums else 0
-            recent = nums[-3:] if len(nums) >= 3 else nums
-            recent_avg = sum(recent) / len(recent)
+            last = nums[-1]
             if season_avg == 0:
                 return "stable"
-            pct_change = (recent_avg - season_avg) / abs(season_avg) * 100
-            if pct_change > 2:
+            pct_change = (last - season_avg) / abs(season_avg) * 100
+            if pct_change > 5:
                 return "up"
-            elif pct_change < -2:
+            elif pct_change < -5:
                 return "down"
             return "stable"
 
@@ -1572,9 +1876,17 @@ class SeasonDashboardService:
             "opponent_pcts": {"defensive": 0, "midfield": 0, "attacking": 0},
             "per_match": [],
             "possession_pct": 50.0,
+            "excluded_match_count": 0,
         }
         if not matches:
             return empty
+
+        # Simple Scoring matches have no territorial possession tracking —
+        # exclude them from the calculation but surface how many were skipped.
+        excluded_match_count = sum(1 for m in matches if m.precise_tracking_enabled is False)
+        matches = [m for m in matches if m.precise_tracking_enabled is not False]
+        if not matches:
+            return {**empty, "excluded_match_count": excluded_match_count}
 
         match_ids = [m.id for m in matches]
         matches_map = {m.id: m for m in matches}
@@ -1680,6 +1992,195 @@ class SeasonDashboardService:
             "opponent_pcts": calc_pcts(opp_zones),
             "per_match": per_match,
             "possession_pct": round(team_count / total_all * 100, 1) if total_all > 0 else 50.0,
+            "excluded_match_count": excluded_match_count,
+        }
+
+    @staticmethod
+    async def _attacking_thirds(db: AsyncSession, matches: list) -> dict:
+        """
+        Attacking thirds: of a team's possession INSIDE their attacking third
+        (effective_x >= 65, same boundary _territory_distribution uses), what
+        % flows through the Left / Centre / Right channel — the "attacking
+        thirds against" chart Sky Sports runs, adapted to a GAA pitch.
+
+        Channels are by raw pitch_y (0 = left sideline, 100 = right sideline)
+        with NO mirroring by half — this deliberately matches the convention
+        ShootingEfficiencyHeatmap's Left/Centre/Right zones already use
+        (shotLocations only normalises x, never y), so "Left" here means the
+        same physical channel a user already reads as "Left" on that chart.
+
+        The % figure per channel (season_pcts/opponent_pcts) is possession
+        volume — how much attacking-third play flows through each channel.
+        The colour intensity (season_threat/opponent_threat) is a SEPARATE,
+        deliberately different signal: actual scoring output per channel
+        (scores, falling back to shot attempts, falling back to volume if
+        there's no shot data at all) — see calc_threat() below. A channel
+        can be heavily used but rarely convert, or lightly used but lethal;
+        conflating the two into one number would hide exactly that.
+
+        Same possession-event data source and same Simple Scoring exclusion
+        as _territory_distribution — this is genuinely location-based and
+        cannot be derived from a discrete tap-only event.
+        """
+        empty_channels = {"left": 0, "centre": 0, "right": 0}
+        empty = {
+            "season_totals": dict(empty_channels),
+            "season_pcts": dict(empty_channels),
+            "opponent_totals": dict(empty_channels),
+            "opponent_pcts": dict(empty_channels),
+            "season_threat": dict(empty_channels),
+            "opponent_threat": dict(empty_channels),
+            "season_threat_basis": "volume",
+            "opponent_threat_basis": "volume",
+            "per_match": [],
+            "excluded_match_count": 0,
+        }
+        if not matches:
+            return empty
+
+        excluded_match_count = sum(1 for m in matches if m.precise_tracking_enabled is False)
+        matches = [m for m in matches if m.precise_tracking_enabled is not False]
+        if not matches:
+            return {**empty, "excluded_match_count": excluded_match_count}
+
+        match_ids = [m.id for m in matches]
+        matches_map = {m.id: m for m in matches}
+
+        poss_result = await db.execute(
+            select(PossessionEvent).where(
+                PossessionEvent.match_id.in_(match_ids),
+            ).order_by(PossessionEvent.minute.asc(), PossessionEvent.created_at.asc())
+        )
+        all_poss = poss_result.scalars().all()
+
+        def channel_for(y: float) -> str:
+            if y < 33.33:
+                return "left"
+            if y < 66.67:
+                return "centre"
+            return "right"
+
+        team_channels = {"left": 0, "centre": 0, "right": 0}
+        opp_channels = {"left": 0, "centre": 0, "right": 0}
+        match_team: dict = {}
+        match_opp: dict = {}
+
+        for pe in all_poss:
+            x = pe.pitch_x
+            y = pe.pitch_y
+            if x is None or y is None:
+                continue
+
+            mid = pe.match_id
+            duration = pe.duration_seconds if pe.duration_seconds else 1
+
+            match = matches_map.get(mid)
+            is_first_half = (pe.minute or 0) <= (match.half_duration_mins or 30) if match else True
+            atk_right_1h = match.attacking_right_first_half if match else None
+            own_attacking_right = (atk_right_1h if is_first_half else not atk_right_1h) if atk_right_1h is not None else True
+
+            if pe.team == PossessionTeam.OWN.value:
+                effective_x = x if own_attacking_right else 100 - x
+            else:
+                opp_attacking_right = not own_attacking_right
+                effective_x = x if opp_attacking_right else 100 - x
+
+            if effective_x < 65:
+                continue  # only attacking-third possession counts toward channel share
+
+            channel = channel_for(y)
+
+            if pe.team == PossessionTeam.OWN.value:
+                team_channels[channel] += duration
+                match_team.setdefault(mid, {"left": 0, "centre": 0, "right": 0})
+                match_team[mid][channel] += duration
+            elif pe.team == PossessionTeam.OPPONENT.value:
+                opp_channels[channel] += duration
+                match_opp.setdefault(mid, {"left": 0, "centre": 0, "right": 0})
+                match_opp[mid][channel] += duration
+
+        def calc_pcts(channels: dict) -> dict:
+            total = sum(channels.values())
+            if total == 0:
+                return {"left": 0, "centre": 0, "right": 0}
+            return {
+                "left": round(channels["left"] / total * 100, 1),
+                "centre": round(channels["centre"] / total * 100, 1),
+                "right": round(channels["right"] / total * 100, 1),
+            }
+
+        per_match = []
+        for m in matches:
+            mid = m.id
+            d_c = match_team.get(mid, {"left": 0, "centre": 0, "right": 0})
+            o_c = match_opp.get(mid, {"left": 0, "centre": 0, "right": 0})
+            if sum(d_c.values()) + sum(o_c.values()) == 0:
+                continue
+            per_match.append({
+                "match_id": str(mid),
+                "opponent": m.opponent or "Unknown",
+                "date": m.match_date.isoformat() if m.match_date else "",
+                "team_pcts": calc_pcts(d_c),
+                "opponent_pcts": calc_pcts(o_c),
+            })
+
+        # ── Threat colour: driven by actual scoring output per channel, not
+        # possession volume. Prefers scores; falls back to shot attempts if a
+        # side hasn't scored yet; falls back to the volume split above if
+        # there's no shot-location data at all (e.g. very early season).
+        # channel_for() buckets by the same raw pitch_y as above — shots
+        # aren't gated by effective_x since a shot attempt is inherently an
+        # attacking-third event already (matches ShootingEfficiencyHeatmap's
+        # own convention of not re-filtering shot locations by zone).
+        shots_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.pitch_y)
+            .where(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.event_type.in_(SHOT_EVENTS),
+                MatchEvent.pitch_y.isnot(None),
+            )
+        )
+        team_shots = {"left": 0, "centre": 0, "right": 0}
+        team_scores = {"left": 0, "centre": 0, "right": 0}
+        opp_shots = {"left": 0, "centre": 0, "right": 0}
+        opp_scores = {"left": 0, "centre": 0, "right": 0}
+        for mid, team, event_type, y in shots_result.all():
+            channel = channel_for(y)
+            is_score = event_type in SCORE_EVENTS
+            if team == Team.OWN:
+                team_shots[channel] += 1
+                if is_score:
+                    team_scores[channel] += 1
+            else:
+                opp_shots[channel] += 1
+                if is_score:
+                    opp_scores[channel] += 1
+
+        def calc_threat(shots: dict, scores: dict, volume_pcts: dict):
+            score_total = sum(scores.values())
+            if score_total > 0:
+                return calc_pcts(scores), "scores"
+            shot_total = sum(shots.values())
+            if shot_total > 0:
+                return calc_pcts(shots), "shots"
+            return volume_pcts, "volume"
+
+        season_pcts = calc_pcts(team_channels)
+        opponent_pcts = calc_pcts(opp_channels)
+        season_threat, season_threat_basis = calc_threat(team_shots, team_scores, season_pcts)
+        opponent_threat, opponent_threat_basis = calc_threat(opp_shots, opp_scores, opponent_pcts)
+
+        return {
+            "season_totals": team_channels,
+            "season_pcts": season_pcts,
+            "opponent_totals": opp_channels,
+            "opponent_pcts": opponent_pcts,
+            "season_threat": season_threat,
+            "opponent_threat": opponent_threat,
+            "season_threat_basis": season_threat_basis,
+            "opponent_threat_basis": opponent_threat_basis,
+            "per_match": per_match,
+            "excluded_match_count": excluded_match_count,
         }
 
     # ------------------------------------------------------------------
@@ -2678,6 +3179,22 @@ async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
     latest_training = (await db.execute(latest_training_q)).scalar()
     parts.append(f"latest_training:{latest_training}")
 
+    # Next scheduled fixture — without this, adding/editing/removing an
+    # upcoming fixture never changes the fingerprint (none of the fields above
+    # are fixture-related), so a cached weekly brief/KPI/dashboard generated
+    # before a fixture was added kept being served with "no fixture" shown,
+    # sometimes for a full day until the daily-bucket refresh happened to
+    # also pick it up.
+    next_fixture_q = select(Match.id, Match.match_date).where(
+        Match.status == MatchStatus.SCHEDULED,
+        Match.is_deleted.is_(False),
+    )
+    if club_id:
+        next_fixture_q = next_fixture_q.where(Match.club_id == club_id)
+    next_fixture_q = next_fixture_q.order_by(Match.match_date.asc()).limit(1)
+    next_fixture = (await db.execute(next_fixture_q)).first()
+    parts.append(f"next_fixture:{next_fixture[0] if next_fixture else None}:{next_fixture[1] if next_fixture else None}")
+
     fingerprint_str = "|".join(parts)
     return hashlib.sha256(fingerprint_str.encode()).hexdigest()
 
@@ -2701,14 +3218,23 @@ async def _get_cached_kpi_insights(
 
     fingerprint = await _compute_data_fingerprint(db, club_id)
 
-    # Check cache
+    # Check cache. club_id should always be a real value in production (every
+    # HTTP caller has one via auth) — the (club_id, cache_type) pair is
+    # unique-constrained at the DB level, so scalar_one_or_none() is normally
+    # safe. But `club_id` is optional on this function's signature for
+    # non-HTTP callers (scripts, tests), and skipping the club_id filter
+    # entirely means the query matches every club's "kpi_insights" row at
+    # once — .scalar_one_or_none() then raises MultipleResultsFound the
+    # moment more than one club has ever generated insights. Order-by +
+    # first() is robust either way and costs nothing in the normal case.
     cache_q = select(SeasonCache).where(
         SeasonCache.cache_type == "kpi_insights",
     )
     if club_id:
         cache_q = cache_q.where(SeasonCache.club_id == club_id)
+    cache_q = cache_q.order_by(desc(SeasonCache.cached_at))
     cache_result = await db.execute(cache_q)
-    cache = cache_result.scalar_one_or_none()
+    cache = cache_result.scalars().first()
 
     if cache and cache.data_fingerprint == fingerprint and cache.cached_result:
         # Check all current card keys are covered — a new card added from library won't be
@@ -2777,8 +3303,9 @@ async def _regenerate_kpi_insights_task(kpi_data: dict, fixture_context: str, cl
             cache_q = select(SeasonCache).where(SeasonCache.cache_type == "kpi_insights")
             if club_id:
                 cache_q = cache_q.where(SeasonCache.club_id == club_id)
+            cache_q = cache_q.order_by(desc(SeasonCache.cached_at))
             cache_result = await db.execute(cache_q)
-            existing_cache = cache_result.scalar_one_or_none()
+            existing_cache = cache_result.scalars().first()
             await _save_kpi_insights_cache(db, insights, fingerprint, club_id, existing_cache=existing_cache)
             logger.info(f"Background KPI insights regeneration complete for club {club_id}")
     except Exception as e:

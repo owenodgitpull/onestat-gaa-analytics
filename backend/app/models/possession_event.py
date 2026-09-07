@@ -50,8 +50,12 @@ class PossessionEvent(Base):
     # Pitch coordinates (0-100 scale for percentage positioning)
     # x: 0 = Dungloe goal line, 100 = Opponent goal line
     # y: 0 = Left sideline, 100 = Right sideline (50 = center)
-    pitch_x: Column[float] = Column(Float, nullable=False)
-    pitch_y: Column[float] = Column(Float, nullable=False)
+    # Nullable: Simple Scoring's "Possession Changed" button records a
+    # possession change with no location step, so these events carry no
+    # coordinates — team + duration_seconds are still valid and drive
+    # possession % as normal, just not territorial breakdowns.
+    pitch_x: Column[Optional[float]] = Column(Float, nullable=True)
+    pitch_y: Column[Optional[float]] = Column(Float, nullable=True)
     
     # Duration (seconds) - how long ball stayed in this position
     # Calculated from time between this event and next event
@@ -67,7 +71,8 @@ class PossessionEvent(Base):
     match = relationship("Match", back_populates="possession_events")
 
     def __repr__(self):
-        return f"<PossessionEvent(id={self.id}, team='{self.team.value}', x={self.pitch_x:.1f}, y={self.pitch_y:.1f})>"
+        coords = f"x={self.pitch_x:.1f}, y={self.pitch_y:.1f}" if self.pitch_x is not None and self.pitch_y is not None else "no coords (Simple Scoring)"
+        return f"<PossessionEvent(id={self.id}, team='{self.team}', {coords})>"
 
     @property
     def zone_name(self) -> str:
@@ -87,6 +92,10 @@ class PossessionEvent(Base):
         - Center (y: 33-67)
         - Right (y: 67-100)
         """
+        # No coordinates (Simple Scoring possession-change events) — nothing to zone.
+        if self.pitch_x is None or self.pitch_y is None:
+            return "Unknown"
+
         # Determine horizontal zone (pitch-area coords: 0=goal, 100=opposite goal)
         if self.pitch_x <= 5:
             h_zone = "Own Goal Area"
@@ -120,6 +129,9 @@ class PossessionEvent(Base):
         - For team attacking toward x=100: x < 60 (40m+ from opponent goal)
         - For team attacking toward x=0: x > 40 (40m+ from own goal)
         """
+        if self.pitch_x is None:
+            return False
+
         # 2-point zone: outside both 40m arcs (pitch-area ~28% to ~72%)
         return 28 <= self.pitch_x <= 72
 

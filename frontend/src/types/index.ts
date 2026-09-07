@@ -71,13 +71,16 @@ export interface Match {
   is_home: boolean;
   status: string;
   competition?: string | null;
+  stage?: string | null;
   referee?: string | null;
   team_goals: number;
   team_points: number;
   opponent_goals: number;
   opponent_points: number;
   weather_condition?: string | null;
+  weather_conditions?: string[] | null;
   temperature_celsius?: number | null;
+  notes?: string | null;
   started_at: string | null;
   completed_at: string | null;
   current_phase?: string | null;
@@ -86,10 +89,13 @@ export interface Match {
   half_duration_mins?: number;
   opposition_roster?: string[] | null;
   team_strip_colour?: string | null;
+  team_strip_secondary_colour?: string | null;
   opponent_strip_colour?: string | null;
+  opponent_strip_secondary_colour?: string | null;
   has_gps?: boolean;
   has_video?: boolean;
   has_events?: boolean;
+  precise_tracking_enabled: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -123,6 +129,7 @@ export interface FixturePreview {
   } | null
   club_county: string | null
   ai_opponent_form: AIOpponentForm | null
+  has_events: boolean
 }
 
 export enum MatchVenue {
@@ -165,6 +172,8 @@ export enum EventType {
   POINT_FREE = 'point_free',
   TWO_POINT_FREE = 'two_point_free',
   WIDE_FREE = 'wide_free',
+  FREE_SHORT_PASS = 'free_short_pass',  // Free played short/quick instead of a shot at goal
+  FREE_HIGH_BALL = 'free_high_ball',  // Free played long/high (contestable ball) instead of a shot at goal
   FORTY_FIVE = 'forty_five',  // 45m free scored - always 1 point
   FORTY_FIVE_MISSED = 'forty_five_missed',  // 45m free missed
   // Penalty
@@ -231,6 +240,8 @@ export interface MatchStats {
   opponent_possession_percentage: number;
   team_possession_count: number;
   opponent_possession_count: number;
+  team_poss_converted_to_shots_pct?: number;
+  opponent_poss_converted_to_shots_pct?: number;
   team_total_shots: number;
   team_scores: number;
   team_wides: number;

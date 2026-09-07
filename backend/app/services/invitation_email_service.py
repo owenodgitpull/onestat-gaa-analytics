@@ -2,6 +2,7 @@
 Invitation email service — sends branded HTML emails via AWS SES.
 """
 
+import asyncio
 import logging
 import boto3
 from botocore.exceptions import ClientError
@@ -137,7 +138,23 @@ def _build_text_email(
     )
 
 
-def send_invitation_email(
+def _send_ses_email_sync(settings, invitee_email: str, club_name: str, text_body: str, html_body: str) -> None:
+    """Synchronous SES client creation + send — run inside a thread by the caller."""
+    ses = boto3.client("ses", region_name=settings.ses_region)
+    ses.send_email(
+        Source=f"OneStat Analytics <{settings.ses_sender_email}>",
+        Destination={"ToAddresses": [invitee_email]},
+        Message={
+            "Subject": {"Data": f"You've been invited to {club_name} on OneStat"},
+            "Body": {
+                "Text": {"Data": text_body},
+                "Html": {"Data": html_body},
+            },
+        },
+    )
+
+
+async def send_invitation_email(
     invitee_email: str,
     inviter_name: str,
     club_name: str,
@@ -152,17 +169,11 @@ def send_invitation_email(
     text_body = _build_text_email(inviter_name, club_name, invite_url, role)
 
     try:
-        ses = boto3.client("ses", region_name=settings.ses_region)
-        ses.send_email(
-            Source=f"OneStat Analytics <{settings.ses_sender_email}>",
-            Destination={"ToAddresses": [invitee_email]},
-            Message={
-                "Subject": {"Data": f"You've been invited to {club_name} on OneStat"},
-                "Body": {
-                    "Text": {"Data": text_body},
-                    "Html": {"Data": html_body},
-                },
-            },
+        # Offloaded to a thread — boto3 client creation + ses.send_email are
+        # both synchronous network calls that would otherwise block the
+        # whole event loop for the round-trip.
+        await asyncio.to_thread(
+            _send_ses_email_sync, settings, invitee_email, club_name, text_body, html_body
         )
         logger.info(f"Invitation email sent to {invitee_email} for {club_name}")
     except ClientError as e:

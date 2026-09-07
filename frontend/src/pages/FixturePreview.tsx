@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, Pencil, Users, ChevronDown, ChevronUp, Flag, GraduationCap } from 'lucide-react'
+import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, ClipboardCheck, Pencil, Users, ChevronDown, ChevronUp, Flag, GraduationCap } from 'lucide-react'
 import { api } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 import EditFixtureModal from '../components/EditFixtureModal'
 import { hasPendingTutorial } from '../components/MatchRecordingTutorial'
 import type { Match, FormResult } from '../types'
@@ -15,7 +16,7 @@ function FormBadge({ result }: { result: 'W' | 'L' | 'D' }) {
     D: 'bg-amber-500 text-white',
   }
   return (
-    <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${colors[result]}`}>
+    <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold flex-shrink-0 ${colors[result]}`}>
       {result}
     </span>
   )
@@ -30,24 +31,20 @@ function FormRow({ results }: { results: FormResult[] }) {
     )
   }
 
+  // Badge sits in the same row as the match it belongs to (left-most, before
+  // the date) — a separate badge row above the list left it ambiguous which
+  // badge lined up with which row, especially once row counts didn't match
+  // (e.g. only 2 results loaded so far vs 5 badges).
   return (
-    <div>
-      {/* Form badges */}
-      <div className="flex items-center gap-2 mb-3 justify-center">
-        {results.map((r, i) => (
-          <FormBadge key={i} result={r.result} />
-        ))}
-      </div>
-      {/* Detail list */}
-      <div className="space-y-1.5">
-        {results.map((r, i) => (
-          <div key={i} className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-white/[0.03]">
-            <span className="text-white/40">{format(new Date(r.date), 'd MMM')}</span>
-            <span className="text-white/70 truncate mx-2 flex-1 text-center">{r.opponent_faced}</span>
-            <span className="text-white/60 font-mono">{r.score_for} - {r.score_against}</span>
-          </div>
-        ))}
-      </div>
+    <div className="space-y-1.5">
+      {results.map((r, i) => (
+        <div key={i} className="flex items-center gap-2 text-xs px-2 py-1.5 rounded bg-white/[0.03]">
+          <FormBadge result={r.result} />
+          <span className="text-white/40 flex-shrink-0">{format(new Date(r.date), 'd MMM')}</span>
+          <span className="text-white/70 truncate mx-2 flex-1 text-center">{r.opponent_faced}</span>
+          <span className="text-white/60 font-mono flex-shrink-0">{r.score_for} - {r.score_against}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -55,6 +52,7 @@ function FormRow({ results }: { results: FormResult[] }) {
 export default function FixturePreview() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
+  const { canEdit } = useAuth()
   const queryClient = useQueryClient()
   const [editingFixture, setEditingFixture] = useState<Match | null>(null)
   const [rosterExpanded, setRosterExpanded] = useState(false)
@@ -144,7 +142,7 @@ export default function FixturePreview() {
     )
   }
 
-  const { match, our_form, last_meeting } = data
+  const { match, our_form, last_meeting, has_events } = data
 
   // If match is already completed, redirect to the result page
   if (match.status === 'completed') {
@@ -166,7 +164,7 @@ export default function FixturePreview() {
   return (
     <div className="space-y-6">
       {/* Tutorial pending banner */}
-      {tutorialPending && (
+      {tutorialPending && canEdit && (
         <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-purple-500/10 border border-purple-500/30">
           <div className="flex items-center gap-2.5">
             <GraduationCap size={16} className="text-purple-400 flex-shrink-0" />
@@ -208,7 +206,16 @@ export default function FixturePreview() {
               <Users size={14} />
               Opposition Players
             </button>
-            {isPastScheduled && (
+            {match.status === 'scheduled' && canEdit && (
+              <button
+                onClick={() => navigate(`/match-prep/${match.id}`)}
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-medium text-cyan-300 hover:text-cyan-200 transition-all bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/15"
+              >
+                <ClipboardCheck size={14} />
+                Match Prep
+              </button>
+            )}
+            {isPastScheduled && canEdit && (
               <button
                 onClick={() => navigate(`/match/${match.id}/setup`)}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -219,7 +226,7 @@ export default function FixturePreview() {
                 }}
               >
                 <ClipboardList size={16} />
-                Log Match Events
+                {has_events ? 'View Match Data' : 'Log Match Events'}
               </button>
             )}
           </div>
@@ -251,7 +258,7 @@ export default function FixturePreview() {
             {match.competition && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400">
                 <Trophy size={12} />
-                {match.competition}
+                {match.competition}{match.stage ? ` · ${match.stage}` : ''}
               </div>
             )}
             {match.referee && (
@@ -413,7 +420,7 @@ export default function FixturePreview() {
           {match.competition && (
             <div>
               <p className="text-white/40 text-xs mb-0.5">Competition</p>
-              <p className="text-white/80">{match.competition}</p>
+              <p className="text-white/80">{match.competition}{match.stage ? ` · ${match.stage}` : ''}</p>
             </div>
           )}
           {match.referee && (

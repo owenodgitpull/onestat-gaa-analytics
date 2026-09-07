@@ -71,21 +71,22 @@ export default function ScoringZoneMap({ events, teamName, opponent }: Props) {
       const misses = inZone.filter(e => MISS_TYPES.has(e.event_type)).length
       const total  = scores + misses
 
-      // Position bubble at actual centroid of shot events, not geometric zone centre
-      const shotEvents = inZone.filter(e => SCORE_TYPES.has(e.event_type) || MISS_TYPES.has(e.event_type))
-      const centroidSvgX = shotEvents.length > 0
-        ? toSvgX(shotEvents.reduce((s, e) => s + (e.pitch_x as number), 0) / shotEvents.length)
-        : zone.svgX
-      const centroidSvgY = shotEvents.length > 0
-        ? toSvgY(shotEvents.reduce((s, e) => s + (e.pitch_y as number), 0) / shotEvents.length)
-        : zone.svgY
-
-      return { ...zone, scores, total, svgX: centroidSvgX, svgY: centroidSvgY }
+      // Bubble sits at the zone's own fixed grid position (zone.svgX/svgY),
+      // NOT the centroid of its actual shots. Real shots tend to cluster
+      // tightly near goal regardless of which of the 6 zones they're
+      // classified into, so a centroid-based position let two zones' bubbles
+      // land almost on top of each other — exactly the "can't read the one
+      // behind it" overlap this was rewritten to fix. The fixed 2x3 grid
+      // guarantees every zone gets its own clear slot.
+      return { ...zone, scores, total }
     })
   }, [events, view])
 
   const maxTotal = Math.max(...data.map(d => d.total), 1)
-  const getR = (n: number) => n === 0 ? 0 : 60 + (n / maxTotal) * 120
+  // Capped lower than before (was 60-180) so neighbouring bands — especially
+  // the 3 stacked vertically in each column — keep a visible gap between
+  // bubbles even when both are near max shot volume.
+  const getR = (n: number) => n === 0 ? 0 : 55 + (n / maxTotal) * 95
   const totalShots  = data.reduce((s, d) => s + d.total, 0)
   const totalScores = data.reduce((s, d) => s + d.scores, 0)
 
@@ -128,15 +129,18 @@ export default function ScoringZoneMap({ events, teamName, opponent }: Props) {
               stroke="rgba(255,255,255,0.15)" strokeWidth={4} strokeDasharray="20 12" />
           ))}
 
-          {/* Zone bubbles */}
-          {data.map(zone => {
+          {/* Zone bubbles — biggest first so a smaller-volume neighbour never
+              gets painted over (and hidden) by a bigger one drawn later; a
+              dark stroke on every circle keeps the boundary readable even
+              where two bubbles' edges do still touch. */}
+          {[...data].sort((a, b) => b.total - a.total).map(zone => {
             const r = getR(zone.total)
             if (r === 0) return null
             const color = zoneColor(zone.scores, zone.total)
             const pct = Math.round((zone.scores / zone.total) * 100)
             return (
               <g key={zone.id}>
-                <circle cx={zone.svgX} cy={zone.svgY} r={r} fill={color} opacity={0.85} />
+                <circle cx={zone.svgX} cy={zone.svgY} r={r} fill={color} opacity={0.9} stroke="rgba(15,23,20,0.55)" strokeWidth={5} />
                 <text x={zone.svgX} y={zone.svgY + 20} textAnchor="middle"
                   fill="white" fontSize={72} fontWeight="bold" style={{ fontFamily: 'sans-serif' }}>
                   {pct}%

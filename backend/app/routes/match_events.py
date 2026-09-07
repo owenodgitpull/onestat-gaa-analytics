@@ -10,7 +10,7 @@ from sqlalchemy import select, and_
 from typing import List, Optional
 from uuid import UUID
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match import Match
 from app.models.match_event import MatchEvent, EventType, Team
 from app.schemas.match_event import (
@@ -62,6 +62,7 @@ async def create_event(
             response.is_in_two_point_zone = existing.is_in_two_point_zone
             response.player_name = existing.player.name if existing.player else None
             response.assist_player_name = existing.assist_player.name if existing.assist_player else None
+            response.kickout_target_player_name = existing.kickout_target_player.name if existing.kickout_target_player else None
             return response
 
     event = await MatchEventService.create_event(db, event_data)
@@ -73,6 +74,7 @@ async def create_event(
     response.is_in_two_point_zone = event.is_in_two_point_zone
     response.player_name = event.player.name if event.player else None
     response.assist_player_name = event.assist_player.name if event.assist_player else None
+    response.kickout_target_player_name = event.kickout_target_player.name if event.kickout_target_player else None
 
     return response
 
@@ -111,6 +113,7 @@ async def quick_score(
     response.is_in_two_point_zone = event.is_in_two_point_zone
     response.player_name = event.player.name if event.player else None
     response.assist_player_name = event.assist_player.name if event.assist_player else None
+    response.kickout_target_player_name = event.kickout_target_player.name if event.kickout_target_player else None
     
     return response
 
@@ -146,6 +149,7 @@ async def quick_event(
     response.is_in_two_point_zone = event.is_in_two_point_zone
     response.player_name = event.player.name if event.player else None
     response.assist_player_name = event.assist_player.name if event.assist_player else None
+    response.kickout_target_player_name = event.kickout_target_player.name if event.kickout_target_player else None
     
     return response
 
@@ -157,7 +161,7 @@ async def list_match_events(
     limit: int = Query(500, ge=1, le=1000),
     event_type: Optional[EventType] = Query(None, description="Filter by event type"),
     team: Optional[Team] = Query(None, description="Filter by team"),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -179,6 +183,7 @@ async def list_match_events(
         response.is_in_two_point_zone = event.is_in_two_point_zone
         response.player_name = event.player.name if event.player else None
         response.assist_player_name = event.assist_player.name if event.assist_player else None
+        response.kickout_target_player_name = event.kickout_target_player.name if event.kickout_target_player else None
         event_responses.append(response)
     
     return MatchEventListResponse(
@@ -192,7 +197,7 @@ async def list_match_events(
 @router.get("/{event_id}", response_model=MatchEventResponse)
 async def get_event(
     event_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific event by ID."""
@@ -209,6 +214,7 @@ async def get_event(
     response.is_in_two_point_zone = event.is_in_two_point_zone
     response.player_name = event.player.name if event.player else None
     response.assist_player_name = event.assist_player.name if event.assist_player else None
+    response.kickout_target_player_name = event.kickout_target_player.name if event.kickout_target_player else None
     
     return response
 
@@ -238,6 +244,7 @@ async def update_event(
     response.is_in_two_point_zone = event.is_in_two_point_zone
     response.player_name = event.player.name if event.player else None
     response.assist_player_name = event.assist_player.name if event.assist_player else None
+    response.kickout_target_player_name = event.kickout_target_player.name if event.kickout_target_player else None
     
     return response
 

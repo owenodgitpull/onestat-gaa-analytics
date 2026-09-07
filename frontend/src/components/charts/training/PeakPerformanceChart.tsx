@@ -10,6 +10,7 @@ import {
   Legend,
 } from 'recharts'
 import type { PeakPerformancePoint } from '@/services/api'
+import { parseLocalDate } from '@/utils/dateUtils'
 
 interface Props {
   data: PeakPerformancePoint[]
@@ -18,7 +19,7 @@ interface Props {
 export default function PeakPerformanceChart({ data }: Props) {
   const formatted = data.map(d => ({
     ...d,
-    label: new Date(d.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+    label: parseLocalDate(d.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
   }))
 
   const CustomTooltip = ({ active, payload, label }: any) => {

@@ -174,25 +174,56 @@ export interface BallPositionSampleData {
 // Video Session API
 // ============================================================================
 
+export interface MultipartPartInfo {
+  part_number: number;
+  etag: string;
+}
+
+export interface VideoUploadInitiateResult {
+  session_id: string;
+  r2_key: string;
+  is_multipart: boolean;
+  upload_url?: string;
+  upload_id?: string;
+  part_size_bytes?: number;
+  part_urls?: string[];
+}
+
 export const videoSessionsAPI = {
-  /** Initiate video upload — returns presigned PUT URL for direct R2 upload. */
+  /**
+   * Initiate video upload. Returns either a single presigned PUT URL
+   * (files <= 5GB) or a set of part URLs for multipart upload (larger
+   * files — a single presigned PUT can't exceed R2/S3's 5GiB cap).
+   */
   initiateUpload: (
     matchId: string,
     data: { title: string; half?: number; content_type?: string; file_size_bytes?: number }
   ) =>
-    fetchAPI<{ session_id: string; upload_url: string; r2_key: string }>(
+    fetchAPI<VideoUploadInitiateResult>(
       `/video/upload/initiate?match_id=${matchId}`,
       { method: 'POST', body: JSON.stringify(data) }
     ),
 
-  /** Confirm upload is complete. */
+  /** Confirm upload is complete. Pass upload_id + parts to finalize a multipart upload. */
   completeUpload: (
     sessionId: string,
-    data?: { video_duration_ms?: number; video_size_bytes?: number }
+    data?: {
+      video_duration_ms?: number;
+      video_size_bytes?: number;
+      upload_id?: string;
+      parts?: MultipartPartInfo[];
+    }
   ) =>
     fetchAPI<VideoSession>(
       `/video/session/${sessionId}/upload-complete`,
       { method: 'POST', body: JSON.stringify(data || {}) }
+    ),
+
+  /** Cancel an in-progress multipart upload. */
+  abortMultipartUpload: (sessionId: string, uploadId: string) =>
+    fetchAPI<{ status: string }>(
+      `/video/session/${sessionId}/upload-abort-multipart`,
+      { method: 'POST', body: JSON.stringify({ upload_id: uploadId }) }
     ),
 
   /** List video sessions for a match. */
@@ -368,6 +399,44 @@ export const videoSessionsAPI = {
       xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
 
       xhr.send(file);
+    });
+  },
+
+  /**
+   * Upload one part of a multipart upload directly to R2, returning the
+   * ETag R2 assigns it — required to complete the multipart upload.
+   * (R2 must expose the ETag header via CORS for this to be readable.)
+   */
+  uploadPart: (
+    uploadUrl: string,
+    chunk: Blob,
+    onProgress?: (loaded: number) => void
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl, true);
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (onProgress) onProgress(e.loaded);
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const etag = xhr.getResponseHeader('ETag');
+          if (!etag) {
+            reject(new Error('Upload part succeeded but no ETag was returned (check R2 CORS expose-headers config)'));
+            return;
+          }
+          resolve(etag);
+        } else {
+          reject(new Error(`Part upload failed: ${xhr.status} ${xhr.statusText}`));
+        }
+      });
+
+      xhr.addEventListener('error', () => reject(new Error('Part upload network error')));
+      xhr.addEventListener('abort', () => reject(new Error('Part upload aborted')));
+
+      xhr.send(chunk);
     });
   },
 };

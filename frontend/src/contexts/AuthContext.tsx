@@ -65,6 +65,10 @@ interface AuthContextType {
   previewPlayer: PreviewPlayer | null;
   startPreview: (player: PreviewPlayer) => void;
   exitPreview: () => void;
+  /** Read-only staff — can see everything an admin sees but can't create/edit/delete. */
+  isViewer: boolean;
+  /** False for viewers (and for players, who have no admin-side write access at all). */
+  canEdit: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -78,6 +82,8 @@ const AuthContext = createContext<AuthContextType>({
   previewPlayer: null,
   startPreview: () => {},
   exitPreview: () => {},
+  isViewer: false,
+  canEdit: true,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -96,6 +102,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionStorage.setItem(PREVIEW_ID_KEY, player.id);
     sessionStorage.setItem(PREVIEW_NAME_KEY, player.name);
     setPreviewPlayer(player);
+    // Fire-and-forget audit record — don't block the preview UI on it
+    fetch(`${API_BASE_URL}/auth/preview-player/${player.id}`, {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {});
   }, []);
 
   const exitPreview = useCallback(() => {
@@ -105,6 +116,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isAuthenticated = !!user;
+  const isViewer = user?.role === 'viewer';
+  const canEdit = user?.role === 'club_admin';
 
   // Persist user info to sessionStorage (NOT tokens)
   const persistUser = useCallback((u: AuthUser, expiresIn: number) => {
@@ -224,9 +237,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               if (resp.ok) {
                 refreshRetryCount.current = 0;
                 const data = await resp.json();
-                setUserState(storedUser);
+                // A successful cookie refresh says nothing about whether the
+                // CACHED user object is still accurate — role/club_id/
+                // onboarding state can all change server-side (e.g. an
+                // admin reset). Re-fetch /auth/me for current truth instead
+                // of trusting storedUser; only fall back to the cache if
+                // /auth/me itself fails (keeps the outage-resilience this
+                // branch exists for).
+                let freshUser = storedUser;
+                try {
+                  const meResp = await fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' });
+                  if (cancelled) return;
+                  if (meResp.ok) {
+                    freshUser = mapApiUser(await meResp.json());
+                  }
+                } catch {
+                  // /auth/me network failure — fall back to cached user below
+                }
+                setUserState(freshUser);
                 scheduleRefresh(data.expires_in || 3600);
-                persistUser(storedUser, data.expires_in || 3600);
+                persistUser(freshUser, data.expires_in || 3600);
               } else if (resp.status === 401 || resp.status === 403) {
                 // Genuine auth rejection — clear session
                 setUserState(null);
@@ -409,6 +439,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         previewPlayer,
         startPreview,
         exitPreview,
+        isViewer,
+        canEdit,
       }}
     >
       {children}

@@ -58,14 +58,28 @@ async function enqueueAndSync(
   body: Record<string, unknown>,
   category: OutboxCategory,
   tempSegmentId?: string,
+  // Callers that already minted a clientEventId for their own bookkeeping
+  // (e.g. offlineMatchEvents.create writes a putLocalEvent row under it
+  // before this runs) must pass it here so the outbox item — and the
+  // client_event_id actually POSTed to the server — use that SAME id.
+  // Previously this always minted its own fresh id and silently overwrote
+  // whatever the caller had put in `body`, so a caller's separately-stored
+  // local record was keyed under an id the server never saw. That broke
+  // markLocalEventSynced (it looks the local row up by the id the server
+  // DID see) — the local row stayed "pending" forever, and the next page
+  // refresh's resyncLocalEvents dutifully "recovered" it by resubmitting
+  // it under yet another fresh id, creating a genuine duplicate event on
+  // the server. Confirmed live 2026-09-07: every event recorded before a
+  // mid-match refresh got re-logged a second time this way.
+  clientEventId?: string,
 ): Promise<string> {
-  const clientEventId = uuid()
+  const id = clientEventId ?? uuid()
   await enqueueOutbox({
-    clientEventId,
+    clientEventId: id,
     matchId,
     endpoint,
     method,
-    body: { ...body, client_event_id: clientEventId },
+    body: { ...body, client_event_id: id },
     status: 'pending',
     createdAt: Date.now(),
     retryCount: 0,
@@ -74,7 +88,7 @@ async function enqueueAndSync(
     tempSegmentId,
   })
   triggerSync()
-  return clientEventId
+  return id
 }
 
 // ── Match Creation (try-online, fallback-local) ─────────────────────────
@@ -127,12 +141,14 @@ export const offlineMatch = {
 
 export const offlineMatchEvents = {
   /**
-   * Record a match event — POST directly to server when online.
-   * Falls back to IndexedDB outbox only when offline.
+   * Record a match event — always queues in IndexedDB first and syncs to
+   * the server in the background, online or not. See the comment inline
+   * below for why this must never block on a direct fetch.
    */
   create: async (data: {
     match_id: string
     player_id?: string
+    kickout_target_player_id?: string
     event_type: string
     minute: number
     half: number
@@ -157,48 +173,25 @@ export const offlineMatchEvents = {
       ...(sub_type ? { sub_type } : {}),
     }
 
-    // Try server first when online
-    if (isOnline()) {
-      try {
-        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetchWithTimeout(`${baseUrl}/match-events/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
-        })
-
-        if (response.ok) {
-          const serverEvent = await response.json()
-          return {
-            id: serverEvent.id,
-            match_id: data.match_id,
-            player_id: (data.player_id as unknown as number) || null,
-            event_type: data.event_type,
-            minute: data.minute,
-            half: data.half,
-            pitch_x: x_coord || null,
-            pitch_y: y_coord || null,
-            is_home_team: data.is_home_team,
-            notes: data.notes || null,
-            created_at: serverEvent.created_at || now(),
-          }
-        }
-        // Server returned error — fall through to offline path
-        console.warn(`[MatchEvents] Server returned ${response.status}, falling back to offline`)
-      } catch (err) {
-        // Network error — fall through to offline path
-        console.warn('[MatchEvents] Network error, falling back to offline', err)
-      }
-    }
-
-    // Offline fallback — queue in IndexedDB
+    // Always queue locally first and let the sync engine push it in the
+    // background (debounced ~300ms). A "try server first, await the
+    // response" branch used to live here — on a real stadium connection
+    // that's "online" (navigator.onLine === true) but slow/high-latency,
+    // that blocking fetch could take up to DIRECT_FETCH_TIMEOUT_MS (8s)
+    // before ever falling back to this same offline path, which is why
+    // score/wide taps and the kickout prompt that follows them could lag
+    // by seconds on match day. Queueing immediately makes every tap resolve
+    // in the time it takes to write to IndexedDB (milliseconds) regardless
+    // of connection quality, while still syncing to the server within
+    // ~300ms-2s when the network cooperates.
     await enqueueAndSync(
       data.match_id,
       '/match-events/',
       'POST',
       body,
       'event',
+      undefined,
+      clientEventId,
     )
 
     await putLocalEvent({
@@ -345,8 +338,12 @@ export const offlinePossession = {
     minute: number
     half: number
     is_home_team: boolean
-    x_coord: number
-    y_coord: number
+    // Optional: Simple Scoring's "Possession Changed" button records a
+    // possession change with no location step — pitch_x/pitch_y go through
+    // as null in that case (still a valid PossessionEvent — team + duration
+    // drive possession %, just no territorial breakdown).
+    x_coord?: number | null
+    y_coord?: number | null
   }): Promise<PossessionEvent> => {
     const team = data.is_home_team ? 'own' : 'opponent'
     const body = {
@@ -452,30 +449,27 @@ export const offlinePlayerMovement = {
   }): Promise<{ id: string; [key: string]: unknown }> => {
     const clientEventId = uuid()
 
-    // Try server first when online
-    if (isOnline()) {
-      try {
-        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetchWithTimeout(`${baseUrl}/player-movement/carrier-segments`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ ...data, client_event_id: clientEventId }),
-        })
-        if (response.ok) {
-          const serverData = await response.json()
-          return serverData
-        }
-      } catch { /* fall through */ }
-    }
-
-    // Offline fallback
+    // Always queue locally first (see the matching comment in
+    // offlineMatchEvents.create above) — a blocking "try server first"
+    // fetch here previously delayed every possession-swap / carrier-close
+    // by up to DIRECT_FETCH_TIMEOUT_MS on a slow-but-online connection,
+    // since onPossessionSwap awaits endSegment which awaits this call.
     const tempSegmentId = `local-${clientEventId}`
+    // client_segment_id (distinct from client_event_id, which enqueueAndSync
+    // overwrites with its own outbox-tracking UUID below) is how the sync
+    // engine's processItem() learns which local temp ID this segment should
+    // resolve to once the server confirms — see the matching read of
+    // body.client_segment_id in syncEngine.ts. Without this, the temp ID
+    // mapping is never registered, endCarrierSegment/appendPathPoints calls
+    // for this segment can never resolve past "local-...", and their queued
+    // updates sit in 'pending' forever — silently losing every carrier's end
+    // position and ended_by reason. Confirmed broken (mapping never written)
+    // even before this file stopped racing a direct fetch against the queue.
     await enqueueAndSync(
       data.match_id,
       '/player-movement/carrier-segments',
       'POST',
-      { ...data, client_event_id: tempSegmentId },
+      { ...data, client_event_id: tempSegmentId, client_segment_id: tempSegmentId },
       'carrier',
     )
 
@@ -499,21 +493,7 @@ export const offlinePlayerMovement = {
     segmentId: string,
     data: { end_x?: number; end_y?: number; ended_by?: string },
   ): Promise<void> => {
-    // Try server first
-    if (isOnline() && !segmentId.startsWith('local-')) {
-      try {
-        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetchWithTimeout(`${baseUrl}/player-movement/carrier-segments/${segmentId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(data),
-        })
-        if (response.ok) return
-      } catch { /* fall through */ }
-    }
-
-    // Offline fallback
+    // Always queue locally first — see comment in startCarrierSegment above.
     const realId = resolveTempId(segmentId)
     const isTemp = segmentId.startsWith('local-')
     await enqueueAndSync(
@@ -530,21 +510,7 @@ export const offlinePlayerMovement = {
     segmentId: string,
     points: Array<{ x: number; y: number }>,
   ): Promise<void> => {
-    // Try server first
-    if (isOnline() && !segmentId.startsWith('local-')) {
-      try {
-        const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-        const response = await fetchWithTimeout(`${baseUrl}/player-movement/carrier-segments/${segmentId}/path-points`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ points }),
-        })
-        if (response.ok) return
-      } catch { /* fall through */ }
-    }
-
-    // Offline fallback
+    // Always queue locally first — see comment in startCarrierSegment above.
     const realId = resolveTempId(segmentId)
     const isTemp = segmentId.startsWith('local-')
     await enqueueAndSync(

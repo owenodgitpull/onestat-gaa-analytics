@@ -63,9 +63,19 @@ function AIAnalystPageInner() {
   const [isActive, setIsActive] = useState(false)
   const [mobileView, setMobileView] = useState<'chat' | 'viz'>('chat')
 
-  // Session state
+  // Session state.
+  // currentSessionId deliberately does NOT initialize from urlSessionId — if
+  // it did, a page load/refresh straight onto /analyst/:sessionId would see
+  // currentSessionId already "equal" to urlSessionId on the very first render,
+  // which fails the effect below's `urlSessionId !== currentSessionId` guard
+  // and skips loadSession entirely. The page would then silently stay on the
+  // (default isActive=false) welcome screen despite a valid session sitting
+  // in the URL — and because the URL secretly already matches that session,
+  // clicking that exact same session again in the sidebar navigates to a URL
+  // that hasn't changed, so nothing re-triggers either. Starting undefined
+  // guarantees the mount-time mismatch is real and loadSession actually runs.
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
-  const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(urlSessionId)
+  const [currentSessionId, setCurrentSessionId] = useState<string | undefined>(undefined)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sessionLoading, setSessionLoading] = useState(false)
 
@@ -378,19 +388,19 @@ function AIAnalystPageInner() {
         </button>
       </div>
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 space-y-4">
         {messages.map((msg, i) => (
           <div
             key={i}
-            className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex gap-2 sm:gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             {msg.role === 'assistant' && (
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
-                <Bot size={14} className="text-white" />
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+                <Bot size={13} className="text-white" />
               </div>
             )}
             <div
-              className={`max-w-[85%] p-3 rounded-2xl ${
+              className={`max-w-[92%] sm:max-w-[85%] p-3 rounded-2xl ${
                 msg.role === 'user'
                   ? 'backdrop-blur-xl border border-emerald-400/20 text-white rounded-br-sm'
                   : 'glass-card text-white rounded-bl-sm'
@@ -444,11 +454,11 @@ function AIAnalystPageInner() {
 
         {/* Streaming text */}
         {isStreaming && streamingContent && (
-          <div className="flex gap-3 justify-start">
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
-              <Bot size={14} className="text-white" />
+          <div className="flex gap-2 sm:gap-3 justify-start">
+            <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
+              <Bot size={13} className="text-white" />
             </div>
-            <div className="max-w-[85%] p-3 rounded-2xl glass-card text-white rounded-bl-sm">
+            <div className="max-w-[92%] sm:max-w-[85%] p-3 rounded-2xl glass-card text-white rounded-bl-sm">
               <div className="text-sm">
                 {renderAnalysisText(streamingContent)}
                 <span className="inline-block w-0.5 h-4 bg-emerald-400 animate-pulse ml-0.5 align-text-bottom" />

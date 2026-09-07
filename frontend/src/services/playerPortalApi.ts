@@ -1,6 +1,54 @@
 import { fetchAPI } from './api';
+import type { MatchGPSData, KickoutTrendMatch, KickoutLandingZonesData } from './api';
 
 // ---- Types ----
+
+export interface QuarterBucket {
+  quarter: string;
+  work_rate_count: number;
+  errors_count: number;
+  work_rate_per_match: number;
+  errors_per_match: number;
+}
+
+export interface QuarterProfile {
+  matches_included: number;
+  quarters: QuarterBucket[];
+  note: string;
+}
+
+export interface DisciplineMatchPoint {
+  match_id: string;
+  opponent: string;
+  match_date: string;
+  turnovers_won: number;
+  turnovers_lost: number;
+  unforced_errors: number;
+}
+
+export interface DisciplineTrend {
+  player_id: string;
+  matches: DisciplineMatchPoint[];
+}
+
+export interface PositionalBenchmarkStats {
+  matches_played: number;
+  scoring_per_match: number;
+  turnovers_won_per_match: number;
+  turnovers_lost_per_match: number;
+  blocks_per_match: number;
+  assists_per_match: number;
+  shooting_accuracy_pct: number | null;
+}
+
+export interface PositionalBenchmark {
+  player_id: string;
+  position: string | null;
+  peer_count: number;
+  player_stats?: PositionalBenchmarkStats | null;
+  position_avg?: PositionalBenchmarkStats | null;
+  message?: string | null;
+}
 
 export interface LeaderboardEntry {
   rank: number;
@@ -19,6 +67,20 @@ export interface LeaderboardContext {
   total_players: number;
   top_3: LeaderboardEntry[];
   context_window: LeaderboardEntry[];
+}
+
+export interface LeaderboardFilter {
+  competition?: string | null;
+  lastN?: number | null;
+}
+
+function leaderboardFilterQS(filter?: LeaderboardFilter): string {
+  if (!filter) return '';
+  const params = new URLSearchParams();
+  if (filter.competition) params.set('competition', filter.competition);
+  if (filter.lastN) params.set('last_n', String(filter.lastN));
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
 }
 
 export interface RecentFormMatch {
@@ -78,6 +140,8 @@ export interface PlayerMatchStatRow {
   turnovers_lost: number;
   blocks: number;
   interceptions: number;
+  fouls_committed: number;
+  kickouts_won: number;
   total_score_value: number;
 }
 
@@ -194,7 +258,7 @@ export interface HeadToHeadPlayerStats {
   matches_played: number;
   avg_distance_km: number | null;
   avg_sprints: number | null;
-  avg_max_speed_kmh: number | null;
+  avg_max_speed_ms: number | null;
   attendance_rate: number | null;
 }
 
@@ -227,13 +291,16 @@ export interface SleepHistory {
 
 export const playerPortalAPI = {
   // Leaderboards
-  getAllLeaderboards: () =>
-    fetchAPI<{ leaderboards: LeaderboardContext[] }>('/player-portal/leaderboards'),
+  getAllLeaderboards: (filter?: LeaderboardFilter) =>
+    fetchAPI<{ leaderboards: LeaderboardContext[] }>(`/player-portal/leaderboards${leaderboardFilterQS(filter)}`),
 
-  getSingleLeaderboard: (category: string) =>
+  getSingleLeaderboard: (category: string, filter?: LeaderboardFilter) =>
     fetchAPI<{ category: string; display_name: string; unit: string; ranking: LeaderboardEntry[] }>(
-      `/player-portal/leaderboards/${category}`
+      `/player-portal/leaderboards/${category}${leaderboardFilterQS(filter)}`
     ),
+
+  getCompetitions: () =>
+    fetchAPI<string[]>('/player-portal/competitions'),
 
   // Dashboard
   getMyDashboard: () =>
@@ -257,6 +324,24 @@ export const playerPortalAPI = {
 
   getMyWorkload: () =>
     fetchAPI<{ workload_entries: WorkloadEntry[] }>('/player-portal/my-stats/workload'),
+
+  getMyMatchGpsHistory: () =>
+    fetchAPI<MatchGPSData[]>('/player-portal/my-stats/match-gps-history'),
+
+  getMyQuarterProfile: () =>
+    fetchAPI<QuarterProfile>('/player-portal/my-stats/quarter-profile'),
+
+  getMyDisciplineTrend: () =>
+    fetchAPI<DisciplineTrend>('/player-portal/my-stats/discipline-trend'),
+
+  getMyKickoutOutcomes: () =>
+    fetchAPI<KickoutTrendMatch[]>('/player-portal/my-stats/kickout-outcomes'),
+
+  getMyKickoutZones: () =>
+    fetchAPI<KickoutLandingZonesData>('/player-portal/my-stats/kickout-zones'),
+
+  getMyPositionalBenchmark: () =>
+    fetchAPI<PositionalBenchmark>('/player-portal/my-stats/positional-benchmark'),
 
   getMyAIInsights: () =>
     fetchAPI<AIInsight>('/player-portal/my-stats/ai-insights'),

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { Calendar, Users, Activity, Download } from 'lucide-react'
+import { Calendar, Users, Activity, Download, Loader2 } from 'lucide-react'
 import { fetchAPI } from '@/services/api'
+import { parseLocalDate } from '@/utils/dateUtils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ interface TrainingLoadPlayerRow {
   high_speed_running_m: number | null
   sprint_count: number | null
   dynamic_stress_load: number | null
-  max_speed_kmh: number | null
+  max_speed_ms: number | null
   sessions_attended: number
   attendance_rank: number | null
 }
@@ -68,9 +69,11 @@ export default function TrainingLoadReport() {
   const [data, setData] = useState<TrainingLoadData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   const handleExport = async () => {
     if (!reportRef.current) return
+    setIsExporting(true)
     try {
       const html2canvas = (await import('html2canvas')).default
       const { jsPDF } = await import('jspdf')
@@ -89,6 +92,8 @@ export default function TrainingLoadReport() {
       pdf.save(`training-load-report-${dateFrom}-to-${dateTo}.pdf`)
     } catch {
       alert('Export failed. Please try again.')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -106,7 +111,7 @@ export default function TrainingLoadReport() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const attendanceChartData = (data?.sessions ?? []).map((s) => ({
-    label: new Date(s.session_date).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric' }),
+    label: parseLocalDate(s.session_date).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric' }),
     type: s.session_type,
     present: s.present_count,
     absent: s.total_invited - s.present_count,
@@ -144,10 +149,11 @@ export default function TrainingLoadReport() {
         </button>
         <button
           onClick={handleExport}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm font-medium transition-colors ml-auto"
+          disabled={isExporting}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm font-medium transition-colors ml-auto disabled:opacity-50"
         >
-          <Download size={14} />
-          Export PDF
+          {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          {isExporting ? 'Exporting...' : 'Export PDF'}
         </button>
       </div>
 
@@ -174,7 +180,7 @@ export default function TrainingLoadReport() {
                     <div key={s.session_id} className="p-3 rounded-lg bg-white/5">
                       <div className="flex items-center gap-3 mb-2">
                         <span className="text-white/50 text-xs w-24">
-                          {new Date(s.session_date).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })}
+                          {parseLocalDate(s.session_date).toLocaleDateString('en-IE', { weekday: 'short', day: 'numeric', month: 'short' })}
                         </span>
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${sessionTypeBadge(s.session_type)}`}>
                           {s.session_type}
@@ -247,7 +253,7 @@ export default function TrainingLoadReport() {
                               <td className="py-2 text-right text-white/80">{p.total_distance_km ?? '—'}</td>
                               <td className="py-2 text-right text-white/80">{p.high_speed_running_m ? Math.round(p.high_speed_running_m) : '—'}</td>
                               <td className="py-2 text-right text-white/80">{p.sprint_count ?? '—'}</td>
-                              <td className="py-2 text-right text-amber-400">{p.max_speed_kmh ? `${p.max_speed_kmh} km/h` : '—'}</td>
+                              <td className="py-2 text-right text-amber-400">{p.max_speed_ms ? `${p.max_speed_ms} m/s` : '—'}</td>
                               <td className="py-2 text-right text-white/80">{p.dynamic_stress_load ?? '—'}</td>
                             </tr>
                           )

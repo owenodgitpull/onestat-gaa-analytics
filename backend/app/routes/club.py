@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from uuid import UUID
+import asyncio
 
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin, require_club
@@ -89,7 +90,12 @@ async def upload_club_logo(
     ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "png"
 
     from app.services.storage_service import storage
-    r2_key = storage.upload_bytes(
+    # Offloaded to a thread — StorageService is a plain synchronous boto3
+    # wrapper, so calling it directly here would block the whole event loop
+    # for the R2 network round-trip (same pattern already used for
+    # storage.download_file_to_path in video_analysis.py).
+    r2_key = await asyncio.to_thread(
+        storage.upload_bytes,
         data=file_bytes,
         folder="logos",
         filename=f"club-logo.{ext}",

@@ -38,6 +38,11 @@ export default function PossessionTerritoryChart({
     refetchInterval: pollInterval || false,
   })
 
+  // Real possession data (continuous drag tracking) vs Simple Scoring
+  // matches, which have no possession events at all — used below to gate
+  // the possession bar instead of falling back to a fake 50/50 split.
+  const usePossession = !!possessionEvents && possessionEvents.length > 0
+
   const territory = useMemo(() => {
     const zones = {
       own: { defensive: 0, midfield: 0, attacking: 0 },
@@ -56,7 +61,6 @@ export default function PossessionTerritoryChart({
       return teamAttackingRight ? px : 100 - px
     }
 
-    const usePossession = possessionEvents && possessionEvents.length > 0
     const sourceData = usePossession ? possessionEvents : events
 
     sourceData.forEach((e: any) => {
@@ -100,7 +104,7 @@ export default function PossessionTerritoryChart({
     }
   }, [possessionEvents, events, selectedHalf])
 
-  const ownPosPct = Math.round(stats?.team_possession_percentage || 50)
+  const ownPosPct = Math.round(stats?.team_possession_percentage ?? 0)
   const possession = { own: ownPosPct, opponent: 100 - ownPosPct }
   const currentTerritory = territory[selectedTeam]
   const teamColor = selectedTeam === 'own' ? '#84cc16' : '#f97316'
@@ -180,19 +184,25 @@ export default function PossessionTerritoryChart({
         </div>
       </div>
 
-      <div className="mt-4 pt-3 border-t border-white/10">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-lime-400 font-semibold w-10">{Math.round(possession.own)}%</span>
-          <div className="flex-1 h-2 rounded-full overflow-hidden flex bg-white/10">
-            <div className="bg-lime-500 transition-all" style={{ width: `${possession.own}%` }} />
-            <div className="bg-orange-500 transition-all" style={{ width: `${possession.opponent}%` }} />
+      {usePossession ? (
+        <div className="mt-4 pt-3 border-t border-white/10">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-lime-400 font-semibold w-10">{Math.round(possession.own)}%</span>
+            <div className="flex-1 h-2 rounded-full overflow-hidden flex bg-white/10">
+              <div className="bg-lime-500 transition-all" style={{ width: `${possession.own}%` }} />
+              <div className="bg-orange-500 transition-all" style={{ width: `${possession.opponent}%` }} />
+            </div>
+            <span className="text-orange-400 font-semibold w-10 text-right">{Math.round(possession.opponent)}%</span>
           </div>
-          <span className="text-orange-400 font-semibold w-10 text-right">{Math.round(possession.opponent)}%</span>
+          <div className="flex justify-between text-[10px] text-white/40 mt-1 px-10">
+            <span>Possession</span>
+          </div>
         </div>
-        <div className="flex justify-between text-[10px] text-white/40 mt-1 px-10">
-          <span>Possession</span>
+      ) : (
+        <div className="mt-4 pt-3 border-t border-white/10 text-center text-white/40 text-xs py-1">
+          No possession data recorded
         </div>
-      </div>
+      )}
 
       {insight ? (
         <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-orange-600/15 to-amber-600/15 border border-orange-500/30">

@@ -1,9 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Trophy, BarChart3, UserCircle, ClipboardList } from 'lucide-react';
+import { Home, Trophy, BarChart3, UserCircle, ClipboardList, Dumbbell } from 'lucide-react';
 
 const tabs = [
   { icon: Home, label: 'Dashboard', path: '/player' },
   { icon: Trophy, label: 'Leaderboards', path: '/player/leaderboards' },
+  { icon: Dumbbell, label: 'Training', path: '/player/training' },
   { icon: ClipboardList, label: 'Playbook', path: '/player/playbooks' },
   { icon: BarChart3, label: 'My Stats', path: '/player/stats' },
   { icon: UserCircle, label: 'Profile', path: '/player/profile' },
@@ -26,7 +27,7 @@ export default function PlayerNavigation() {
         boxShadow: '0 -4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)',
       }}
     >
-      <div className="flex items-center justify-around h-16 px-2 max-w-lg mx-auto">
+      <div className="flex items-center justify-around h-16 px-1 sm:px-2 max-w-lg mx-auto">
         {tabs.map((tab) => {
           const active = isActive(tab.path);
           return (
@@ -37,16 +38,19 @@ export default function PlayerNavigation() {
                 active ? 'text-orange-400' : 'text-white/40'
               }`}
             >
+              {/* 6 tabs now share this bar (was 5) — sized down on narrow
+                  phones only so nothing crowds; sm: and up match the
+                  original sizing exactly. */}
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center mb-0.5 transition-all ${
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center mb-0.5 transition-all ${
                   active
                     ? 'bg-orange-500/15 shadow-lg shadow-orange-500/20'
                     : ''
                 }`}
               >
-                <tab.icon size={22} strokeWidth={active ? 2.5 : 1.5} />
+                <tab.icon size={20} strokeWidth={active ? 2.5 : 1.5} />
               </div>
-              <span className={`text-[10px] font-medium ${active ? 'text-orange-400' : 'text-white/40'}`}>
+              <span className={`text-[9px] sm:text-[10px] font-medium ${active ? 'text-orange-400' : 'text-white/40'}`}>
                 {tab.label}
               </span>
             </Link>

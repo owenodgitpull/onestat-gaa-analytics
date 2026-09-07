@@ -86,7 +86,7 @@ export default function Navigation() {
     return false
   }
 
-  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date; weather_condition?: string | null; temperature_celsius?: number | null; fixtureId?: string }) => {
+  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date; weather_condition?: string | null; temperature_celsius?: number | null; competition?: string | null; stage?: string | null; fixtureId?: string }) => {
     // If linked to an existing fixture, go straight to setup
     if (data.fixtureId) {
       setIsNewMatchModalOpen(false)
@@ -103,6 +103,8 @@ export default function Navigation() {
         notes: null,
         weather_condition: data.weather_condition,
         temperature_celsius: data.temperature_celsius,
+        competition: data.competition,
+        stage: data.stage,
       })
       setIsNewMatchModalOpen(false)
       navigate(`/match/${match.id}/setup`)
@@ -269,15 +271,17 @@ export default function Navigation() {
             </button>
 
             {/* New Match Button */}
-            <button
-              onClick={() => setIsNewMatchModalOpen(true)}
-              disabled={isCreatingMatch}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all disabled:opacity-50"
-              style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
-            >
-              <PlusCircle size={16} className={isCreatingMatch ? 'animate-spin' : ''} />
-              <span className="hidden sm:inline">{isCreatingMatch ? 'Creating...' : 'New Match'}</span>
-            </button>
+            {user?.role !== 'viewer' && (
+              <button
+                onClick={() => setIsNewMatchModalOpen(true)}
+                disabled={isCreatingMatch}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all disabled:opacity-50"
+                style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+              >
+                <PlusCircle size={16} className={isCreatingMatch ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">{isCreatingMatch ? 'Creating...' : 'New Match'}</span>
+              </button>
+            )}
 
             {/* Profile Dropdown */}
             <div className="relative">
@@ -332,14 +336,16 @@ export default function Navigation() {
                         </div>
                       </div>
                     )}
-                    <button
-                      onClick={() => { setShowProfileMenu(false); navigate('/settings'); }}
-                      data-tour="nav-settings"
-                      className="w-full px-4 py-2 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white flex items-center gap-2"
-                    >
-                      <Settings size={16} />
-                      Settings
-                    </button>
+                    {user?.role !== 'viewer' && (
+                      <button
+                        onClick={() => { setShowProfileMenu(false); navigate('/settings'); }}
+                        data-tour="nav-settings"
+                        className="w-full px-4 py-2 text-left text-sm text-white/70 hover:bg-white/5 hover:text-white flex items-center gap-2"
+                      >
+                        <Settings size={16} />
+                        Settings
+                      </button>
+                    )}
                     <hr className="my-1 border-white/10" />
                     <button
                       onClick={() => logout()}
@@ -388,19 +394,23 @@ export default function Navigation() {
                   )}
                 </Link>
               ))}
-              <hr className="my-2 border-white/10" />
-              <Link
-                to="/settings"
-                onClick={() => setShowMobileMenu(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  isActive('/settings')
-                    ? 'text-emerald-400 bg-emerald-500/10'
-                    : 'text-white/70 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Settings size={18} />
-                Settings
-              </Link>
+              {user?.role !== 'viewer' && (
+                <>
+                  <hr className="my-2 border-white/10" />
+                  <Link
+                    to="/settings"
+                    onClick={() => setShowMobileMenu(false)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                      isActive('/settings')
+                        ? 'text-emerald-400 bg-emerald-500/10'
+                        : 'text-white/70 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <Settings size={18} />
+                    Settings
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </>

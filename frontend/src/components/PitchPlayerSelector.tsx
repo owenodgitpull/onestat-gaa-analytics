@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import type { Player } from '../types'
+import type { JerseyPlayer } from './JerseyNumberStrip'
+import { rankLikelyReceivers } from '@/utils/likelyReceivers'
 
 interface PitchPlayerSelectorProps {
   isOpen: boolean
@@ -25,6 +27,10 @@ interface PitchPlayerSelectorProps {
    *  when provided, the 5 players nearest the ball are visually promoted so the likely
    *  receiver/defender doesn't require scanning the full row of circles. */
   ballPosition?: { x: number; y: number } | null
+  /** Player ID of the last tracked ball carrier — on scoring events, this player
+   *  gets a distinct gold "Last carrier" highlight as a selection hint. It's a
+   *  suggestion only: tapping any other player works exactly the same. */
+  suggestedPlayerId?: string | null
 }
 
 const LIKELY_COUNT = 5
@@ -91,6 +97,7 @@ export default function PitchPlayerSelector({
   attackingRight = true,
   readOnly = false,
   ballPosition = null,
+  suggestedPlayerId = null,
 }: PitchPlayerSelectorProps) {
   const [animateIn, setAnimateIn] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
@@ -143,22 +150,32 @@ export default function PitchPlayerSelector({
     return result
   }, [matchLineup, players])
 
+  // Kickouts are excluded from ball-proximity ranking — the winner of a
+  // kickout (or its break) isn't predictably near where the ball marker is
+  // recorded (a midfielder can spring from distance to win a break), so
+  // biasing the display toward "nearby" players was actively misleading
+  // here, unlike turnovers/fouls/etc where it's a genuinely useful cue.
+  const isKickoutEvent = eventType.toLowerCase().includes('kickout')
+
   // Rank on-field players by screen-space distance from the ball — the same
-  // frame the ball marker already renders in (attackingRight flip applied
-  // here to match how these circles are actually displayed below).
+  // shared ranking BallCarrierPicker/PitchReceiverDots use (attackingRight
+  // flip applied inside it to match how these circles are actually displayed
+  // below); kickout exclusion is preserved via the excludeRanking option.
   const likelyPlayerIds = useMemo(() => {
     if (!ballPosition || playerPositions.length === 0) return new Set<string>()
-    const ranked = playerPositions
-      .map(item => {
-        const sx = attackingRight ? item.x : 100 - item.x
-        const sy = item.y
-        const dist = Math.hypot(sx - ballPosition.x, sy - ballPosition.y)
-        return { id: item.player.id, dist }
-      })
-      .sort((a, b) => a.dist - b.dist)
-      .slice(0, LIKELY_COUNT)
-    return new Set(ranked.map(r => r.id))
-  }, [playerPositions, ballPosition, attackingRight])
+    const asJerseyPlayers: JerseyPlayer[] = playerPositions.map(item => ({
+      playerId: item.player.id,
+      jerseyNumber: item.jerseyNumber,
+      playerName: item.player.name,
+      isOnField: true,
+      positionLabel: item.label,
+      positionId: item.id,
+    }))
+    const ranked = rankLikelyReceivers(asJerseyPlayers, attackingRight, ballPosition.x, ballPosition.y, {
+      excludeRanking: isKickoutEvent,
+    }).slice(0, LIKELY_COUNT)
+    return new Set(ranked.map(r => r.player.playerId))
+  }, [playerPositions, ballPosition, attackingRight, isKickoutEvent])
 
   // Animate in when opening
   useEffect(() => {
@@ -180,6 +197,13 @@ export default function PitchPlayerSelector({
   const eventInfo = EVENT_LABELS[eventType] || { title: 'Select Player', color: 'text-white' }
 
   const handleSelect = (player: Player) => {
+    // Guard against a double-fire — nothing here disables the player circles
+    // the instant one is tapped, and onSelectPlayer fires synchronously
+    // (before the unmount animation even starts), so a real double-tap (or a
+    // touch bouncing on a slower device) could call this twice and log the
+    // same event twice. Confirmed live: a Block needing player selection got
+    // recorded twice this way.
+    if (selectedPlayerId) return
     setSelectedPlayerId(player.id)
     setAnimateOut(true)
     // Fire callback immediately — parent will close/unmount us
@@ -258,14 +282,19 @@ export default function PitchPlayerSelector({
         {playerPositions.map((item, index) => {
           const isSelected = selectedPlayerId === item.player.id
           const isLikely = likelyPlayerIds.has(item.player.id)
-          const hasRanking = likelyPlayerIds.size > 0
-          // Likely picks bloom in first (0-120ms), the rest follow after —
+          const isSuggested = !!suggestedPlayerId && suggestedPlayerId === item.player.id
+          const isPromoted = isLikely || isSuggested
+          const hasRanking = likelyPlayerIds.size > 0 || isSuggested
+          // Likely/suggested picks bloom in first (0-120ms), the rest follow after —
           // reinforces "look here first" without hiding anyone.
           const delay = hasRanking
-            ? (isLikely ? index * 25 : 150 + index * 15)
+            ? (isPromoted ? index * 25 : 150 + index * 15)
             : index * 30
-          const circleSize = hasRanking ? (isLikely ? 'w-16 h-16' : 'w-11 h-11') : 'w-14 h-14'
-          const restOpacity = hasRanking && !isLikely ? 0.55 : 1
+          const circleSize = hasRanking ? (isPromoted ? 'w-16 h-16' : 'w-11 h-11') : 'w-14 h-14'
+          const restOpacity = hasRanking && !isPromoted ? 0.55 : 1
+          // Gold takes priority over the "near the ball" green when a player
+          // is both — the tracked carrier is a stronger signal than proximity.
+          const ringColor = isSuggested ? '#fbbf24' : isLikely ? '#6ee7b7' : teamSecondaryColor
 
           return (
             <button
@@ -274,7 +303,7 @@ export default function PitchPlayerSelector({
               style={{
                 left: `${attackingRight ? item.x : 100 - item.x}%`,
                 top: `${item.y}%`,
-                zIndex: isLikely ? 3 : 2,
+                zIndex: isSuggested ? 4 : isLikely ? 3 : 2,
                 opacity: animateOut ? (isSelected ? 1 : 0) : (animateIn ? restOpacity : 0),
                 transform: `translate(-50%, -50%) scale(${
                   animateOut
@@ -285,33 +314,51 @@ export default function PitchPlayerSelector({
               }}
               onClick={() => readOnly ? onClose() : handleSelect(item.player)}
             >
+              {/* "Last carrier" badge — the hint itself, not a lock: any other
+                  player is still one tap away. */}
+              {isSuggested && !isSelected && (
+                <span className="mb-0.5 text-[9px] font-bold text-black bg-amber-400 px-1.5 py-0.5 rounded-full whitespace-nowrap shadow">
+                  Last carrier
+                </span>
+              )}
+
               {/* Jersey circle */}
               <div
-                className={`${circleSize} rounded-full flex flex-col items-center justify-center shadow-lg ring-2 transition-transform active:scale-90 ${
-                  isSelected ? 'scale-110' : 'hover:ring-4 hover:scale-105'
+                className={`${circleSize} rounded-full flex flex-col items-center justify-center shadow-lg transition-transform active:scale-90 ${
+                  isSelected ? 'scale-110' : 'hover:scale-105'
                 }`}
                 style={{
                   backgroundColor: teamPrimaryColor,
                   color: teamSecondaryColor,
-                  '--tw-ring-color': isLikely ? '#6ee7b7' : teamSecondaryColor,
+                  // A literal border, not Tailwind's `ring` utility — ring
+                  // renders via `box-shadow`, which the glow effect below
+                  // also sets inline; inline `boxShadow` fully replaces the
+                  // whole property (same specificity battle a class can't
+                  // win), so the ring was being silently wiped out every
+                  // time and never actually visible. border is a separate
+                  // property, so both render together — same pattern
+                  // JerseyNumberStrip.tsx already uses successfully.
+                  border: `${isSuggested ? 3 : 2}px solid ${ringColor}`,
                   boxShadow: isSelected
                     ? `0 0 20px ${teamPrimaryColor}80`
+                    : isSuggested
+                    ? `0 0 18px rgba(251,191,36,0.75), 0 4px 12px rgba(0,0,0,0.4)`
                     : isLikely
                     ? `0 0 16px ${teamPrimaryColor}90, 0 4px 12px rgba(0,0,0,0.4)`
                     : `0 4px 12px rgba(0,0,0,0.4)`,
-                } as React.CSSProperties}
+                }}
               >
                 {item.jerseyNumber != null ? (
-                  <span className={isLikely ? 'font-bold text-xl' : 'font-bold text-sm'}>{item.jerseyNumber}</span>
+                  <span className={isPromoted ? 'font-bold text-xl' : 'font-bold text-sm'}>{item.jerseyNumber}</span>
                 ) : (
-                  <span className={isLikely ? 'font-bold text-sm leading-tight' : 'font-bold text-[10px] leading-tight'}>{item.label}</span>
+                  <span className={isPromoted ? 'font-bold text-sm leading-tight' : 'font-bold text-[10px] leading-tight'}>{item.label}</span>
                 )}
               </div>
 
-              {/* Player name — always shown for likely picks, only on hover-equivalent size for the rest */}
+              {/* Player name — always shown for likely/suggested picks, only on hover-equivalent size for the rest */}
               <span
                 className={`mt-1 font-semibold text-white bg-black/70 px-2 py-0.5 rounded whitespace-nowrap max-w-[80px] truncate ${
-                  isLikely ? 'text-xs' : 'text-[10px]'
+                  isPromoted ? 'text-xs' : 'text-[10px]'
                 }`}
               >
                 {surname(item.player.name)}

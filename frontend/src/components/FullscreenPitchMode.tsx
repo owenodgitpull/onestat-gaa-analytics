@@ -1,11 +1,14 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
 import GAAPitch from '@/components/GAAPitch'
+import BallCarrierPicker from '@/components/BallCarrierPicker'
+import PitchReceiverDots from '@/components/PitchReceiverDots'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
-import { Clock, Minimize2, ArrowLeftRight, Pause, Play, ArrowUpDown, CircleSlash } from 'lucide-react'
+import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import PitchActionOverlay from '@/components/PitchActionOverlay'
-import JerseyNumberStrip from '@/components/JerseyNumberStrip'
+import JerseyNumberStrip, { getPositionLine, type JerseyPlayer } from '@/components/JerseyNumberStrip'
+import CarrierSideColumn from '@/components/CarrierSideColumn'
 import OppositionScorerStrip from '@/components/OppositionScorerStrip'
 import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
 import { useClubName } from '@/contexts/ClubContext'
@@ -21,6 +24,8 @@ interface FullscreenPitchModeProps {
   onDragPath?: (waypoints: Array<{ x: number; y: number }>) => void
   matchPhase: string
   minute: number
+  /** Configured half length — the injury-time banner and auto-freeze both key off this, not a hardcoded 30. */
+  halfDurationMins?: number
   seconds: number
   teamGoals: number
   teamPoints: number
@@ -51,8 +56,22 @@ interface FullscreenPitchModeProps {
   pendingFoul: 'own' | 'opponent' | null
   pendingBlockRecovery?: boolean
   onBlockRecovery?: (weRecovered: boolean) => void
+  onBlockResultSideline?: () => void
+  onBlockResultFortyFive?: () => void
+  pendingSidelineDecision?: boolean
+  onSidelineDecision?: (weWonIt: boolean) => void
   pending45: boolean
   pendingKickoutPosition: boolean
+  pendingKickoutEventType?: string
+  pendingKickoutTargetPlayerId?: string
+  /** True while the pending kickout is specifically "went out over the sideline" */
+  highlightSidelines?: boolean
+  /** Pitch-% x of the 45m line to highlight, or null when no 45 is pending — see GAAPitch */
+  highlight45LineX?: number | null
+  /** True once "45 Scored"/"45 Missed" has been picked and we're waiting on a tap for the line position */
+  pendingFortyFivePosition?: boolean
+  onCancelFortyFivePosition?: () => void
+  onSelectKickoutTarget?: (playerId: string) => void
   onCancelFree?: () => void
   onCancel45?: () => void
   onCancelKickout?: () => void
@@ -62,10 +81,16 @@ interface FullscreenPitchModeProps {
   activeCategory?: string | null
   onCategoryChange?: (cat: string | null) => void
   awaitingKickout?: boolean
+  /** Owned by MatchRecording.tsx, not local state here — so minimising
+   *  survives opening/closing fullscreen and both views always agree. */
+  kickoutBannerMinimised?: boolean
+  onMinimizeKickout?: () => void
+  onRestoreKickout?: () => void
   teamAttackingRight: boolean
   statusText: string
   statusAccent: string
   onSwapPossession?: () => void
+  onManualEntry?: () => void
   selectingFoulPlayer?: boolean
   onStartSecondHalf?: () => void
   onEndFirstHalf?: () => void
@@ -73,9 +98,12 @@ interface FullscreenPitchModeProps {
   fullTimeReached?: boolean
   blackCardTimers?: BlackCardEntry[]
   onRemoveBlackCard?: (id: string) => void
-  jerseyStripPlayers?: Array<{ playerId: string; jerseyNumber: number | null; playerName: string; isOnField: boolean; positionLabel?: string }>
+  jerseyStripPlayers?: Array<{ playerId: string; jerseyNumber: number | null; playerName: string; isOnField: boolean; positionLabel?: string; positionId?: string }>
   activeCarrierId?: string | null
   onCarrierSelect?: (playerId: string, jerseyNumber: number | null) => void
+  /** Players recently on the ball — passed through to BallCarrierPicker /
+   * PitchReceiverDots (recency bias) and used to group the side columns. */
+  recentCarrierIds?: string[]
   carrierJerseyNumber?: number | null
   isStopped?: boolean
   onToggleStoppage?: () => void
@@ -102,6 +130,7 @@ export default function FullscreenPitchMode({
   onDragPath,
   matchPhase,
   minute,
+  halfDurationMins = 30,
   seconds,
   teamGoals,
   teamPoints,
@@ -121,8 +150,19 @@ export default function FullscreenPitchMode({
   pendingFoul,
   pendingBlockRecovery = false,
   onBlockRecovery,
+  onBlockResultSideline,
+  onBlockResultFortyFive,
+  pendingSidelineDecision = false,
+  onSidelineDecision,
   pending45,
   pendingKickoutPosition,
+  pendingKickoutEventType,
+  pendingKickoutTargetPlayerId,
+  highlightSidelines = false,
+  highlight45LineX = null,
+  pendingFortyFivePosition = false,
+  onCancelFortyFivePosition,
+  onSelectKickoutTarget,
   awaitingKickout,
   onCancelFree,
   onCancel45,
@@ -132,9 +172,13 @@ export default function FullscreenPitchMode({
   onDoneAdjustingFreePosition,
   activeCategory,
   onCategoryChange,
+  kickoutBannerMinimised = false,
+  onMinimizeKickout,
+  onRestoreKickout,
   teamAttackingRight,
   statusText,
   onSwapPossession,
+  onManualEntry,
   onStartSecondHalf,
   onEndFirstHalf,
   onEndMatch,
@@ -144,12 +188,12 @@ export default function FullscreenPitchMode({
   jerseyStripPlayers = [],
   activeCarrierId = null,
   onCarrierSelect,
+  recentCarrierIds = [],
   carrierJerseyNumber,
   isStopped = false,
   onToggleStoppage,
   isDeadBall = false,
   onToggleDeadBall,
-  onSubstitution,
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
   pendingOpponentScore,
@@ -163,12 +207,43 @@ export default function FullscreenPitchMode({
   const [tickerIndex, setTickerIndex] = useState(0)
   const prevOverflowRef = useRef('')
   const [isPhoneLandscape, setIsPhoneLandscape] = useState(false)
+  const [isCarrierRadialOpen, setIsCarrierRadialOpen] = useState(false)
 
   // Detect phone landscape: landscape orientation + short viewport height (phone, not tablet/desktop)
   useEffect(() => {
     const mq = window.matchMedia('(orientation: landscape) and (max-height: 500px)')
     setIsPhoneLandscape(mq.matches)
     const handler = (e: MediaQueryListEvent) => setIsPhoneLandscape(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // The side carrier columns need real spare width beside a height-driven
+  // 16:10 pitch — on a squarer-aspect display (iPad Pro-style ~4:3 landscape,
+  // ratio ~1.33) the pitch alone already claims nearly the full width,
+  // leaving the columns nowhere to go. Widescreen laptops (~16:9-16:10,
+  // ratio 1.6+) have real spare width and keep the side columns. Below the
+  // threshold, fall back to the same bottom-attached strip normal
+  // (non-fullscreen) mode already uses.
+  const [useBottomCarrierStrip, setUseBottomCarrierStrip] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-aspect-ratio: 3/2)')
+    setUseBottomCarrierStrip(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setUseBottomCarrierStrip(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // Portrait isn't supported at all — the pitch never fits into view
+  // correctly. Rather than build full portrait support before release,
+  // block interaction with a clear rotate prompt (+ an escape hatch back to
+  // normal mode, which does support both orientations) whenever the device
+  // is rotated while fullscreen is open.
+  const [isPortrait, setIsPortrait] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: portrait)')
+    setIsPortrait(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsPortrait(e.matches)
     mq.addEventListener('change', handler)
     return () => mq.removeEventListener('change', handler)
   }, [])
@@ -229,6 +304,36 @@ export default function FullscreenPitchMode({
     return () => clearInterval(interval)
   }, [isOpen, tickerItems.length])
 
+  // Split on-field players into the two side columns that flank the pitch:
+  // left gets GK/FB/HB (lines 0-2), right gets HF/FF (lines 4-5), and MF
+  // (line 3) splits one player to each side (mf-right goes right, everything
+  // else in that line — mf-left or unlabelled MF — goes left) to keep both
+  // columns roughly balanced.
+  const { leftColumnPlayers, rightColumnPlayers } = useMemo(() => {
+    const onField = (jerseyStripPlayers as JerseyPlayer[]).filter(p => p.isOnField)
+    const left: JerseyPlayer[] = []
+    const right: JerseyPlayer[] = []
+    for (const p of onField) {
+      const line = getPositionLine(p.positionId)
+      if (line <= 2) left.push(p)
+      else if (line >= 4) right.push(p)
+      else if (p.positionId === 'mf-right') right.push(p)
+      else left.push(p)
+    }
+    const byLineThenNumber = (a: JerseyPlayer, b: JerseyPlayer) => {
+      const lineA = getPositionLine(a.positionId)
+      const lineB = getPositionLine(b.positionId)
+      if (lineA !== lineB) return lineA - lineB
+      if (a.jerseyNumber != null && b.jerseyNumber != null) return a.jerseyNumber - b.jerseyNumber
+      if (a.jerseyNumber != null) return -1
+      if (b.jerseyNumber != null) return 1
+      return a.playerName.localeCompare(b.playerName)
+    }
+    left.sort(byLineThenNumber)
+    right.sort(byLineThenNumber)
+    return { leftColumnPlayers: left, rightColumnPlayers: right }
+  }, [jerseyStripPlayers])
+
   if (!isOpen) return null
 
   const formatTime = `${minute}:${seconds.toString().padStart(2, '0')}`
@@ -247,10 +352,10 @@ export default function FullscreenPitchMode({
       {!isPhoneLandscape && (
         <div className="flex-shrink-0 grid grid-cols-3 items-center px-3 py-2 backdrop-blur-xl bg-white/5 border-b border-white/10">
           {/* Left — Exit + Pause + Network Status */}
-          <div className="flex justify-start items-center gap-2">
+          <div className="flex justify-start items-center gap-1.5 flex-nowrap overflow-x-auto min-w-0 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white transition-all"
+              className="flex-shrink-0 p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white transition-all"
               title="Exit fullscreen (Esc)"
             >
               <Minimize2 size={16} />
@@ -258,47 +363,61 @@ export default function FullscreenPitchMode({
             {onToggleStoppage && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
               <button
                 onClick={onToggleStoppage}
-                className="p-2 rounded-xl border border-white/15 transition-all"
+                className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all"
                 style={{
                   background: isStopped ? 'rgba(245,158,11,0.3)' : 'rgba(255,255,255,0.1)',
                   borderColor: isStopped ? 'rgba(245,158,11,0.6)' : 'rgba(255,255,255,0.15)',
                   color: isStopped ? '#fbbf24' : 'rgba(255,255,255,0.7)',
                 }}
-                title={isStopped ? 'Resume play' : 'Stoppage'}
+                title={isStopped ? 'Resume play — clock was frozen' : 'Stoppage — freezes the clock (injury, sideline delay, etc.)'}
               >
                 {isStopped ? <Play size={16} /> : <Pause size={16} />}
+                <span>{isStopped ? 'Resume' : 'Stoppage'}</span>
               </button>
             )}
             {onToggleDeadBall && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
               <button
                 onClick={onToggleDeadBall}
-                className="p-2 rounded-xl border border-white/15 transition-all"
+                className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all"
                 style={{
                   background: isDeadBall ? 'rgba(56,189,248,0.3)' : 'rgba(255,255,255,0.1)',
                   borderColor: isDeadBall ? 'rgba(56,189,248,0.6)' : 'rgba(255,255,255,0.15)',
                   color: isDeadBall ? '#38bdf8' : 'rgba(255,255,255,0.7)',
                 }}
-                title={isDeadBall ? 'Ball back in play' : 'Dead ball — clock keeps running'}
+                title={isDeadBall ? 'Ball back in play' : 'Dead ball — clock keeps running (unlike Stoppage)'}
               >
                 <CircleSlash size={16} />
+                <span>{isDeadBall ? 'Ball Live' : 'Dead Ball'}</span>
+              </button>
+            )}
+            {kickoutBannerMinimised && (awaitingKickout || pendingKickoutPosition) && onRestoreKickout && (
+              <button
+                onClick={onRestoreKickout}
+                className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 hover:bg-amber-500/30 text-xs font-semibold transition-all animate-fade-in"
+                title="Resume the kickout prompt"
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                <span>Kickout pending</span>
               </button>
             )}
             {onSwapPossession && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
               <button
                 onClick={onSwapPossession}
-                className="p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white/70 hover:text-white transition-all"
-                title="Swap possession"
+                className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white/70 hover:text-white text-xs font-semibold transition-all"
+                title="Swap possession — flip which team has the ball"
               >
                 <ArrowLeftRight size={16} />
+                <span>Possession</span>
               </button>
             )}
-            {onSubstitution && (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') && (
+            {onManualEntry && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
               <button
-                onClick={onSubstitution}
-                className="p-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white/70 hover:text-white transition-all"
-                title="Substitution"
+                onClick={onManualEntry}
+                className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white/70 hover:text-white text-xs font-semibold transition-all"
+                title="Manual Event Entry — log something not covered by the quick-action buttons"
               >
-                <ArrowUpDown size={16} />
+                <Plus size={16} />
+                <span>Event</span>
               </button>
             )}
             <NetworkStatusIndicator compact />
@@ -363,8 +482,14 @@ export default function FullscreenPitchMode({
         </div>
       )}
 
-      {/* Injury time — hidden in phone landscape */}
-      {!isPhoneLandscape && matchPhase === 'first_half' && minute >= 30 && (
+      {/* Injury time — hidden in phone landscape (compact stand-in above).
+          Keyed off the match's actual configured half length, not a
+          hardcoded 30 — a club running shorter halves (e.g. underage, or a
+          quick tutorial-recording test) would have the clock auto-freeze at
+          their real half_duration_mins while this banner never appeared
+          (still waiting for minute 30), leaving the freeze with no visible
+          explanation at all. */}
+      {!isPhoneLandscape && matchPhase === 'first_half' && minute >= halfDurationMins && (
         <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-b border-amber-500/20 px-4 py-2.5 flex items-center justify-center gap-4">
           <Clock size={14} className="text-amber-400" />
           <span className="text-sm font-medium text-white/90">Injury time</span>
@@ -434,8 +559,37 @@ export default function FullscreenPitchMode({
         </div>
       )}
 
-      {/* Pitch — fills all remaining space (in landscape, controls overlay on pitch) */}
-      <div className="flex-1 relative overflow-hidden min-h-0 flex items-center justify-center">
+      {/* Pitch — fills all remaining space (in landscape, controls overlay on pitch).
+          The two carrier side columns are flex siblings of the pitch's own
+          relative wrapper below, so the pitch shrinks to make room for them
+          in what was previously empty gutter space, while everything that
+          overlays the pitch itself (kickout/free banners, toast, etc.) stays
+          scoped to that inner wrapper and keeps aligning to the pitch only —
+          not the full width including the side columns. */}
+      <div className="flex-1 relative overflow-hidden min-h-0 flex items-center justify-center gap-3 px-1.5">
+        {!useBottomCarrierStrip && !pendingOpponentScore && !isPhoneLandscape && !actionsDisabled && onCarrierSelect && leftColumnPlayers.length > 0 && (
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="text-[9px] text-white/40 font-semibold uppercase tracking-wider">Carrier</span>
+            <CarrierSideColumn
+              players={leftColumnPlayers}
+              activeCarrierId={activeCarrierId}
+              onCarrierSelect={onCarrierSelect}
+              disabled={actionsDisabled}
+              teamPrimaryColor={teamPrimaryColor}
+              teamSecondaryColor={teamSecondaryColor}
+            />
+          </div>
+        )}
+
+        {/* Sized to exactly match the pitch's own rendered box (same
+            aspect-[16/10] the pitch uses, computed from height) rather than
+            flex-1 — flex-1 let this wrapper claim all leftover row width and
+            then centered the (narrower) pitch inside itself, leaving a gap
+            between the pitch's actual edge and the carrier columns sitting
+            at the wrapper's outer edge instead of the pitch's. Now this
+            wrapper's boundary IS the pitch's edge, so `gap-3` above is the
+            true, exact distance from pitch to carriers. */}
+        <div className="relative h-full aspect-[16/10] flex items-center justify-center">
         {/* Phone landscape: floating scoreboard overlay on pitch */}
         {isPhoneLandscape && (
           <div className="absolute top-1 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 backdrop-blur-xl bg-black/60 border border-white/15 rounded-xl px-3 py-1">
@@ -452,6 +606,20 @@ export default function FullscreenPitchMode({
               <span className="font-mono text-xs font-bold text-white">{formatTime}</span>
             </div>
             <span className="text-sm font-black text-white/70">{opponentGoals}-{String(opponentPoints).padStart(2, '0')}</span>
+            {/* Compact stand-in for the full-width Stoppage/Injury-time
+                banners below, which are hidden in this narrow layout —phone
+                landscape was otherwise the one mode where the clock could
+                silently auto-freeze at half time with zero explanation,
+                reading exactly like an accidental Stoppage tap. */}
+            {isStopped && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+              <div className="flex items-center gap-1 bg-amber-500/25 border border-amber-400/40 rounded px-1.5 py-0.5" title="Timer paused — tap Stoppage to resume, or Half Time if the half is over">
+                <Pause size={9} className="text-amber-300" />
+                <span className="text-[10px] font-bold text-amber-200">Paused</span>
+              </div>
+            )}
+            {!isStopped && matchPhase === 'first_half' && minute >= halfDurationMins && (
+              <span className="text-[10px] font-bold text-amber-300 whitespace-nowrap">Injury time</span>
+            )}
             <NetworkStatusIndicator compact />
           </div>
         )}
@@ -460,12 +628,52 @@ export default function FullscreenPitchMode({
           onBallMove={onBallMove}
           showZones={true}
           readonly={readonly}
-          containerClassName="w-full max-h-full aspect-[16/10]"
+          containerClassName="w-full h-full"
           gradientBorder
           trail={trail}
           onTrailUpdate={onTrailUpdate}
           onDragPath={onDragPath}
           carrierJerseyNumber={carrierJerseyNumber}
+          highlightSidelines={highlightSidelines}
+          highlight45LineX={highlight45LineX}
+          ballAnchoredOverlay={
+            (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN
+              ? (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
+                <BallCarrierPicker
+                  players={jerseyStripPlayers}
+                  activeCarrierId={activeCarrierId ?? null}
+                  onSelect={onCarrierSelect}
+                  attackingRight={teamAttackingRight}
+                  teamPrimaryColor={teamPrimaryColor}
+                  teamSecondaryColor={teamSecondaryColor}
+                  ballSvgX={ballSvgX}
+                  ballSvgY={ballSvgY}
+                  ballPctX={ballPctX}
+                  ballPctY={ballPctY}
+                  recentCarrierIds={recentCarrierIds}
+                  onOpenChange={setIsCarrierRadialOpen}
+                />
+              )
+              : undefined
+          }
+          pitchOverlay={
+            (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN
+              ? (ballPctX, ballPctY) => (
+                <PitchReceiverDots
+                  players={jerseyStripPlayers}
+                  activeCarrierId={activeCarrierId ?? null}
+                  onSelect={onCarrierSelect}
+                  attackingRight={teamAttackingRight}
+                  teamPrimaryColor={teamPrimaryColor}
+                  teamSecondaryColor={teamSecondaryColor}
+                  disabled={isCarrierRadialOpen}
+                  ballPctX={ballPctX}
+                  ballPctY={ballPctY}
+                  recentCarrierIds={recentCarrierIds}
+                />
+              )
+              : undefined
+          }
           svgOverlay={
             (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -496,7 +704,7 @@ export default function FullscreenPitchMode({
 
         {/* Action-required overlay — kickout & free kick */}
         <PitchActionOverlay
-          awaitingKickout={!!awaitingKickout && !pendingKickoutPosition}
+          awaitingKickout={!!awaitingKickout && !pendingKickoutPosition && !kickoutBannerMinimised}
           pendingFreeKick={pendingFreeKick && !isAdjustingFreePosition}
           pendingFoul={pendingFoul}
           kickoutTab={activeCategory ?? null}
@@ -505,7 +713,19 @@ export default function FullscreenPitchMode({
           onCancelFree={onCancelFree ?? (() => {})}
           onCancelKickout={onCancelKickout ?? (() => {})}
           onAdjustFreePosition={onAdjustFreePosition}
+          onMinimize={onMinimizeKickout}
         />
+
+        {/* Opposition scorer selector — centered overlay, same treatment as the
+            kickout/free-kick modal above, since this also blocks the flow until resolved */}
+        {pendingOpponentScore && onOpponentScorerSelect && onOpponentScorerSkip && (
+          <OppositionScorerStrip
+            players={oppositionRoster}
+            onSelect={onOpponentScorerSelect}
+            onSkip={onOpponentScorerSkip}
+            eventType={String(pendingOpponentScore.eventType).toLowerCase()}
+          />
+        )}
 
         {/* Adjust Free Position mode — overlay hidden, pitch is draggable */}
         {pendingFreeKick && isAdjustingFreePosition && (
@@ -531,9 +751,12 @@ export default function FullscreenPitchMode({
           </div>
         )}
 
-        {/* Kickout landing strip — floats at bottom of pitch, visible without blocking tap area */}
-        {pendingKickoutPosition && (
-          <div className="absolute inset-x-3 bottom-3 z-20 animate-fade-in">
+        {/* Kickout landing strip — floats at bottom of pitch normally, but a
+            sideline kickout needs the touchline itself tappable, which this
+            banner would otherwise sit right on top of — moved to the top
+            for that case (same slot the free-kick-adjust banner uses). */}
+        {pendingKickoutPosition && !kickoutBannerMinimised && (
+          <div className={`absolute inset-x-3 z-20 animate-fade-in space-y-1.5 ${highlightSidelines ? 'top-3' : 'bottom-3'}`}>
             <div
               className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
               style={{
@@ -549,9 +772,77 @@ export default function FullscreenPitchMode({
                 <span className="text-amber-200 text-sm font-bold">Tap landing position</span>
                 <span className="text-amber-300/60 text-xs hidden sm:block">tap the pitch to mark where the ball lands</span>
               </div>
-              {onCancelKickout && (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {onMinimizeKickout && (
+                  <button
+                    onClick={onMinimizeKickout}
+                    title="Minimise — log a sub, card, or correction first"
+                    className="text-amber-400/60 hover:text-amber-300 p-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                  >
+                    <Minus size={13} />
+                  </button>
+                )}
+                {onCancelKickout && (
+                  <button
+                    onClick={onCancelKickout}
+                    className="text-amber-400/60 hover:text-amber-300 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* Optional "aimed for" jersey tap — own kickouts only. Purely
+                additive: tapping the pitch above always completes the
+                kickout regardless of whether a target was tapped here. */}
+            {String(pendingKickoutEventType || '').toLowerCase().startsWith('own_kickout') && onSelectKickoutTarget && jerseyStripPlayers.filter(p => p.isOnField).length > 0 && (
+              <div
+                className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 overflow-x-auto no-scrollbar"
+                style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+              >
+                <span className="text-white/40 text-[10px] font-semibold flex-shrink-0 pr-0.5">Aimed for (optional):</span>
+                {jerseyStripPlayers.filter(p => p.isOnField).sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99)).map(p => (
+                  <button
+                    key={p.playerId}
+                    onClick={() => onSelectKickoutTarget(p.playerId)}
+                    className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-all ${
+                      pendingKickoutTargetPlayerId === p.playerId
+                        ? 'bg-amber-400 text-black scale-110'
+                        : 'bg-white/10 text-white/60 hover:bg-white/20'
+                    }`}
+                  >
+                    {p.jerseyNumber ?? '?'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 45 line strip — same slot/style as the kickout landing strip
+            above (only one of the two is ever pending at once). Outcome
+            (Scored/Missed) is already picked; this is purely "where on the
+            45m line", which GAAPitch highlights for exactly this reason. */}
+        {pendingFortyFivePosition && (
+          <div className="absolute inset-x-3 bottom-3 z-20 animate-fade-in">
+            <div
+              className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
+              style={{
+                background: 'linear-gradient(90deg, rgba(245,158,11,0.22), rgba(234,179,8,0.10))',
+                border: '1px solid rgba(245,158,11,0.38)',
+                backdropFilter: 'blur(14px)',
+                WebkitBackdropFilter: 'blur(14px)',
+                boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                <span className="text-amber-200 text-sm font-bold">Tap the 45m line</span>
+                <span className="text-amber-300/60 text-xs hidden sm:block">level with where it went out — left or right of the posts</span>
+              </div>
+              {onCancelFortyFivePosition && (
                 <button
-                  onClick={onCancelKickout}
+                  onClick={onCancelFortyFivePosition}
                   className="text-amber-400/60 hover:text-amber-300 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors flex-shrink-0"
                 >
                   Cancel
@@ -571,35 +862,46 @@ export default function FullscreenPitchMode({
             {toastText}
           </div>
         </div>
+
+        {/* Narrow-aspect fallback: bottom-attached carrier strip, same
+            treatment as normal (non-fullscreen) mode, for displays too
+            square (e.g. iPad Pro landscape) for the side columns to fit
+            beside a height-driven pitch. Suppressed while the kickout-
+            landing banner is showing, same reasoning as normal mode: at
+            that point you're tapping a landing spot, not picking a carrier. */}
+        {useBottomCarrierStrip && !pendingOpponentScore && !isPhoneLandscape && !actionsDisabled && onCarrierSelect &&
+          jerseyStripPlayers.length > 0 && !(pendingKickoutPosition && !kickoutBannerMinimised) && (
+          <div className="absolute bottom-2 left-2 right-2 z-10">
+            <div className="text-center text-[9px] text-white/40 font-semibold uppercase tracking-wider mb-1">
+              Switch Carrier
+            </div>
+            <JerseyNumberStrip
+              players={jerseyStripPlayers}
+              activeCarrierId={activeCarrierId ?? null}
+              currentPossession={currentPossession}
+              onCarrierSelect={onCarrierSelect}
+              teamPrimaryColor={teamPrimaryColor}
+              teamSecondaryColor={teamSecondaryColor}
+              attackingRight={teamAttackingRight}
+            />
+          </div>
+        )}
+        </div>
+
+        {!useBottomCarrierStrip && !pendingOpponentScore && !isPhoneLandscape && !actionsDisabled && onCarrierSelect && rightColumnPlayers.length > 0 && (
+          <div className="flex flex-col items-center gap-1.5">
+            <span className="text-[9px] text-white/40 font-semibold uppercase tracking-wider">Carrier</span>
+            <CarrierSideColumn
+              players={rightColumnPlayers}
+              activeCarrierId={activeCarrierId}
+              onCarrierSelect={onCarrierSelect}
+              disabled={actionsDisabled}
+              teamPrimaryColor={teamPrimaryColor}
+              teamSecondaryColor={teamSecondaryColor}
+            />
+          </div>
+        )}
       </div>
-
-      {/* Opposition scorer strip */}
-      {pendingOpponentScore && onOpponentScorerSelect && onOpponentScorerSkip && (
-        <div className="flex-shrink-0 px-3 py-1">
-          <OppositionScorerStrip
-            players={oppositionRoster}
-            onSelect={onOpponentScorerSelect}
-            onSkip={onOpponentScorerSkip}
-            eventType={String(pendingOpponentScore.eventType).toLowerCase()}
-          />
-        </div>
-      )}
-
-      {/* Jersey Number Strip — hidden when opposition scorer strip showing or phone landscape */}
-      {!pendingOpponentScore && !isPhoneLandscape && jerseyStripPlayers.length > 0 && onCarrierSelect && !actionsDisabled && (
-        <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-2 flex justify-center">
-          <JerseyNumberStrip
-            players={jerseyStripPlayers}
-            activeCarrierId={activeCarrierId}
-            currentPossession={currentPossession}
-            onCarrierSelect={onCarrierSelect}
-            disabled={actionsDisabled}
-            teamPrimaryColor={teamPrimaryColor}
-            teamSecondaryColor={teamSecondaryColor}
-            attackingRight={teamAttackingRight}
-          />
-        </div>
-      )}
 
       {/* Bottom — CategorizedActionButtons (same layout in both orientations) */}
       <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-3 py-2">
@@ -619,15 +921,42 @@ export default function FullscreenPitchMode({
             pendingFoul={pendingFoul}
             pendingBlockRecovery={pendingBlockRecovery}
             onBlockRecovery={onBlockRecovery}
+            onBlockResultSideline={onBlockResultSideline}
+            onBlockResultFortyFive={onBlockResultFortyFive}
+            pendingSidelineDecision={pendingSidelineDecision}
+            onSidelineDecision={onSidelineDecision}
             pending45={pending45}
             pendingKickoutPosition={pendingKickoutPosition}
-            awaitingKickout={awaitingKickout}
+            pendingFortyFivePosition={pendingFortyFivePosition}
+            awaitingKickout={awaitingKickout && !kickoutBannerMinimised}
             onCancelFree={onCancelFree}
             onCancel45={onCancel45}
             onCancelKickout={onCancelKickout}
+            onCancelFortyFivePosition={onCancelFortyFivePosition}
           />
         </div>
       </div>
+
+      {isPortrait && (
+        <div
+          className="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-5 px-8 text-center"
+          style={{ background: 'rgba(7,12,24,0.97)', backdropFilter: 'blur(8px)' }}
+        >
+          <RotateCw size={48} className="text-emerald-400 animate-pulse" />
+          <div>
+            <h2 className="text-xl font-bold text-white mb-2">Rotate your device</h2>
+            <p className="text-sm text-white/60 max-w-xs">
+              Fullscreen mode needs landscape orientation to show the pitch properly.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="mt-2 px-5 py-2.5 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white text-sm font-semibold transition-all"
+          >
+            Exit Fullscreen
+          </button>
+        </div>
+      )}
 
       <style>{`
         @keyframes fadeSlideIn {

@@ -17,13 +17,16 @@ class MatchBase(BaseModel):
     match_date: datetime = Field(..., description="Date and time of the match")
     venue: MatchVenue = Field(..., description="Match venue (home/away/neutral)")
     competition: Optional[str] = Field(None, max_length=200, description="Competition name")
+    stage: Optional[str] = Field(None, max_length=50, description="Round/knockout stage within the competition, e.g. Round 1, Quarter-Final")
     referee: Optional[str] = Field(None, max_length=200, description="Referee name")
     notes: Optional[str] = Field(None, max_length=1000, description="Optional match notes")
     tactical_notes: Optional[str] = Field(None, max_length=5000, description="Tactical notes for match day reference")
     half_duration_mins: Optional[int] = Field(30, ge=25, le=40, description="Minutes per half (30 for clubs, 35 for inter-county)")
+    precise_tracking_enabled: bool = Field(True, description="False = Simple Scoring (tap-only, no territorial possession or ball-carry data)")
 
     # Weather and pitch conditions (optional, for pattern analysis)
-    weather_condition: Optional[WeatherCondition] = Field(None, description="Weather during match")
+    weather_condition: Optional[WeatherCondition] = Field(None, description="Weather during match (legacy single value — auto-synced from weather_conditions[0])")
+    weather_conditions: Optional[List[WeatherCondition]] = Field(None, description="Full set of weather conditions logged for the match, e.g. [windy, light_rain]")
     pitch_condition: Optional[PitchCondition] = Field(None, description="Pitch/ground condition")
     temperature_celsius: Optional[int] = Field(None, ge=-20, le=45, description="Temperature in Celsius")
     wind_speed_kmh: Optional[int] = Field(None, ge=0, le=150, description="Wind speed in km/h")
@@ -59,20 +62,29 @@ class MatchUpdate(BaseModel):
     opponent_goals: Optional[int] = Field(None, ge=0)
     opponent_points: Optional[int] = Field(None, ge=0)
     competition: Optional[str] = Field(None, max_length=200)
+    stage: Optional[str] = Field(None, max_length=50)
     referee: Optional[str] = Field(None, max_length=200)
     notes: Optional[str] = Field(None, max_length=1000)
     tactical_notes: Optional[str] = Field(None, max_length=5000)
     half_duration_mins: Optional[int] = Field(None, ge=25, le=40)
+    # NOTE: MatchUpdate does not inherit MatchBase, so precise_tracking_enabled
+    # must be declared here explicitly too — the "Use Simple Scoring" button
+    # PUTs this field via api.matches.update() and would otherwise be silently
+    # dropped by the update endpoint.
+    precise_tracking_enabled: Optional[bool] = Field(None, description="False = Simple Scoring (tap-only, no territorial possession or ball-carry data)")
 
     # Weather and pitch conditions
     weather_condition: Optional[WeatherCondition] = None
+    weather_conditions: Optional[List[WeatherCondition]] = Field(None, description="Full set of weather conditions logged for the match")
     pitch_condition: Optional[PitchCondition] = None
     temperature_celsius: Optional[int] = Field(None, ge=-20, le=45)
     wind_speed_kmh: Optional[int] = Field(None, ge=0, le=150)
 
-    # Strip colours
+    # Strip colours (secondary = trim/hoop colour, optional)
     team_strip_colour: Optional[str] = Field(None, max_length=7)
+    team_strip_secondary_colour: Optional[str] = Field(None, max_length=7)
     opponent_strip_colour: Optional[str] = Field(None, max_length=7)
+    opponent_strip_secondary_colour: Optional[str] = Field(None, max_length=7)
 
     # Live match state — used to persist stoppage/resume across page refreshes
     current_phase: Optional[str] = Field(None, description="e.g. first_half, stopped_first_half:734, half_time, second_half")
@@ -108,17 +120,21 @@ class MatchResponse(MatchBase):
 
     # Competition and referee
     competition: Optional[str] = Field(None, description="Competition name")
+    stage: Optional[str] = Field(None, description="Round/knockout stage within the competition")
     referee: Optional[str] = Field(None, description="Referee name")
 
     # Weather/pitch (inherited from MatchBase but explicitly listed for clarity)
     weather_condition: Optional[WeatherCondition] = None
+    weather_conditions: Optional[List[WeatherCondition]] = None
     pitch_condition: Optional[PitchCondition] = None
     temperature_celsius: Optional[int] = None
     wind_speed_kmh: Optional[int] = None
 
-    # Strip colours
+    # Strip colours (secondary = trim/hoop colour, optional)
     team_strip_colour: Optional[str] = Field(None, description="Team strip colour hex")
+    team_strip_secondary_colour: Optional[str] = Field(None, description="Team trim colour hex")
     opponent_strip_colour: Optional[str] = Field(None, description="Opponent strip colour hex")
+    opponent_strip_secondary_colour: Optional[str] = Field(None, description="Opponent trim colour hex")
 
     # Tactical notes
     tactical_notes: Optional[str] = Field(None, description="Tactical notes for match day reference")
@@ -217,7 +233,9 @@ class MatchStatsResponse(BaseModel):
     opponent_possession_percentage: float
     team_possession_count: int = 0
     opponent_possession_count: int = 0
-    
+    team_poss_converted_to_shots_pct: float = 0.0
+    opponent_poss_converted_to_shots_pct: float = 0.0
+
     # Shot stats
     team_total_shots: int
     team_scores: int

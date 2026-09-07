@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CheckCircle, AlertCircle, XCircle, Download } from 'lucide-react'
+import { CheckCircle, AlertCircle, XCircle, Download, Loader2 } from 'lucide-react'
 import { api } from '@/services/api'
 import type { SquadHealthSummary, PlayerFitnessCard } from '@/services/api'
 import type { Player } from '@/types'
@@ -43,9 +43,11 @@ export default function SquadFitnessReport({ players }: Props) {
   const [fitnessCards, setFitnessCards] = useState<PlayerFitnessCard[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   const handleExport = async () => {
     if (!reportRef.current) return
+    setIsExporting(true)
     try {
       const html2canvas = (await import('html2canvas')).default
       const { jsPDF } = await import('jspdf')
@@ -64,6 +66,8 @@ export default function SquadFitnessReport({ players }: Props) {
       pdf.save(`squad-fitness-report.pdf`)
     } catch {
       alert('Export failed. Please try again.')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -111,10 +115,11 @@ export default function SquadFitnessReport({ players }: Props) {
       <div className="flex justify-end">
         <button
           onClick={handleExport}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm font-medium transition-colors"
+          disabled={isExporting}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm font-medium transition-colors disabled:opacity-50"
         >
-          <Download size={14} />
-          Export PDF
+          {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          {isExporting ? 'Exporting...' : 'Export PDF'}
         </button>
       </div>
 

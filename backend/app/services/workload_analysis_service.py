@@ -80,7 +80,7 @@ class WorkloadAnalysisService:
         await WorkloadAnalysisService._update_workload_snapshot(db, player_id, for_date=for_date)
 
         # Calculate metrics
-        metrics = await WorkloadAnalysisService._calculate_workload_metrics(db, player_id)
+        metrics = await WorkloadAnalysisService._calculate_workload_metrics(db, player_id, player.club_id)
 
         # Detect risks and generate alerts
         alerts = await WorkloadAnalysisService._detect_risks_and_alert(
@@ -331,7 +331,8 @@ class WorkloadAnalysisService:
     @staticmethod
     async def _calculate_workload_metrics(
         db: AsyncSession,
-        player_id: UUID
+        player_id: UUID,
+        club_id: Optional[UUID] = None
     ) -> Dict[str, Any]:
         """Calculate comprehensive workload metrics for a player."""
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -362,25 +363,36 @@ class WorkloadAnalysisService:
             else:
                 break
 
-        # Calculate attendance rate
+        # Calculate attendance rate (last 14 days, this player's club only).
+        # Previously: present_count had no date filter at all (counted PRESENT
+        # rows for the player's entire history, not just the last 14 days), and
+        # total_sessions had no club filter (counted every club's sessions on
+        # the platform, not just this player's) — on a multi-club deployment
+        # that silently mixed an all-time numerator with a cross-club
+        # denominator, producing an attendance rate with no real meaning.
+        fourteen_days_ago_date = fourteen_days_ago.date()
         attendance_result = await db.execute(
-            select(func.count(Attendance.id)).where(
+            select(func.count(Attendance.id))
+            .join(TrainingSession, Attendance.session_id == TrainingSession.id)
+            .where(
                 and_(
                     Attendance.player_id == player_id,
-                    Attendance.status == AttendanceStatus.PRESENT
+                    Attendance.status == AttendanceStatus.PRESENT,
+                    TrainingSession.session_date >= fourteen_days_ago_date,
                 )
             )
         )
         present_count = attendance_result.scalar() or 0
 
-        total_sessions_result = await db.execute(
-            select(func.count(TrainingSession.id)).where(
-                TrainingSession.session_date >= fourteen_days_ago
-            )
+        total_sessions_q = select(func.count(TrainingSession.id)).where(
+            TrainingSession.session_date >= fourteen_days_ago_date
         )
-        total_sessions = total_sessions_result.scalar() or 1
+        if club_id:
+            total_sessions_q = total_sessions_q.where(TrainingSession.club_id == club_id)
+        total_sessions_result = await db.execute(total_sessions_q)
+        total_sessions = total_sessions_result.scalar() or 0
 
-        attendance_rate = present_count / max(total_sessions, 1)
+        attendance_rate = (present_count / total_sessions) if total_sessions > 0 else 1.0
 
         # Calculate load trend (is load increasing or decreasing?)
         if len(snapshots) >= 7:
@@ -571,7 +583,12 @@ Return a JSON object with:
 
 Be concise and actionable. Reference GAA-specific training practices when relevant."""
 
-        response = client.messages.create(
+        # Offloaded to a thread — this is called once per player in
+        # trigger_analysis_for_all_players's loop, so an unwrapped blocking
+        # call here can chain up to ~30 sequential event-loop stalls for one
+        # squad-wide health check.
+        response = await asyncio.to_thread(
+            client.messages.create,
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}]
@@ -669,7 +686,15 @@ Be concise and actionable. Reference GAA-specific training practices when releva
         for pid, dist, load, sess_date in train_gps_rows:
             w = float(load or 0) or float(dist or 0) / 100
             if w > 0:
-                dt = datetime.combine(sess_date, datetime.min.time()) if hasattr(sess_date, "date") else sess_date
+                # TrainingSession.session_date is a plain Date column (no time
+                # component) while Match.match_date above is a full DateTime —
+                # mixing the two unconverted in the same sort key throws
+                # "can't compare datetime.datetime to datetime.date" the moment
+                # a player has both match and training GPS data. The old check
+                # (`hasattr(sess_date, "date")`) was backwards: a plain `date`
+                # object doesn't have a `.date()` method, only `datetime` does,
+                # so it was skipping conversion on exactly the values that needed it.
+                dt = sess_date if isinstance(sess_date, datetime) else datetime.combine(sess_date, datetime.min.time())
                 raw_loads[pid].append((dt, w))
 
         # Player name lookup
@@ -679,15 +704,27 @@ Be concise and actionable. Reference GAA-specific training practices when releva
         name_rows = (await db.execute(name_q)).all()
         name_lookup = {str(r.id): r.name for r in name_rows}
 
-        # Compute ACWR anchored to each player's last GPS session date
+        # Compute ACWR anchored to "now" — matches the AI chat's
+        # get_workload_risk_assessment tool (_shared.py), which was anchored
+        # to real time rather than each player's last GPS session. The two
+        # disagreed whenever a player had a recent data gap: anchoring to
+        # their last session backfilled the acute window from whatever data
+        # existed, however old, which could show a healthy-looking ACWR for
+        # a player who simply hasn't trained/uploaded in a while — exactly
+        # the case this metric exists to catch. Anchoring to "now" means a
+        # real gap correctly shows up as a dropping acute load instead of
+        # being masked. `last_session` is kept as separate display metadata
+        # (so the UI can still show "last recorded: 9 days ago") but no
+        # longer drives which window of data counts as acute vs chronic.
+        now = datetime.utcnow()
+        acute_cutoff = now - timedelta(days=7)
+        chronic_cutoff = now - timedelta(days=28)
+
         player_workloads = {}
         for pid, sessions in raw_loads.items():
             pid_str = str(pid)
             sessions_sorted = sorted(sessions, key=lambda x: x[0])
-            anchor = sessions_sorted[-1][0]  # most recent session date
-
-            acute_cutoff = anchor - timedelta(days=7)
-            chronic_cutoff = anchor - timedelta(days=28)
+            last_session_date = sessions_sorted[-1][0]  # display only, not the ACWR anchor
 
             chronic_sessions = [(d, w) for d, w in sessions_sorted if d >= chronic_cutoff]
             acute_sessions = [(d, w) for d, w in chronic_sessions if d >= acute_cutoff]
@@ -710,7 +747,7 @@ Be concise and actionable. Reference GAA-specific training practices when releva
                 "chronic_load": round(chronic_weekly_avg, 1),
                 "today_load": round(sessions_sorted[-1][1], 1),
                 "status": WorkloadAnalysisService._get_acwr_status(acwr),
-                "last_session": anchor.date().isoformat() if hasattr(anchor, "date") else str(anchor)[:10],
+                "last_session": last_session_date.date().isoformat() if hasattr(last_session_date, "date") else str(last_session_date)[:10],
             }
 
         return {

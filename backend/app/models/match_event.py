@@ -67,6 +67,8 @@ class EventType(enum.Enum):
     POINT_FREE = "point_free"  # Point scored from free kick
     TWO_POINT_FREE = "two_point_free"  # 2-pointer scored from free kick
     WIDE_FREE = "wide_free"  # Free kick went wide
+    FREE_SHORT_PASS = "free_short_pass"  # Free played short/quick instead of a shot at goal
+    FREE_HIGH_BALL = "free_high_ball"  # Free played long/high (contestable ball) instead of a shot at goal
     FORTY_FIVE = "forty_five"  # 45m free kick scored (always 1 point)
     FORTY_FIVE_MISSED = "forty_five_missed"  # 45m free kick missed
     PENALTY_GOAL = "penalty_goal"  # Penalty scored (counts as goal = 3 points)
@@ -110,6 +112,11 @@ class MatchEvent(Base):
     match_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True)
     player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)
     assist_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Who a kickout was aimed at — distinct from player_id (who ended up winning it,
+    # which may differ on a break). Only meaningful on own_kickout_* events; optional,
+    # captured via a non-blocking jersey tap during live recording (never required —
+    # the pitch-position tap alone is always sufficient to complete a kickout event).
+    kickout_target_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Event details
     # Use values_callable to ensure SQLAlchemy uses enum VALUES (lowercase) not NAMES (uppercase)
@@ -154,6 +161,7 @@ class MatchEvent(Base):
     match = relationship("Match", back_populates="events")
     player = relationship("Player", foreign_keys=[player_id], lazy="selectin")
     assist_player = relationship("Player", foreign_keys=[assist_player_id], lazy="selectin")
+    kickout_target_player = relationship("Player", foreign_keys=[kickout_target_player_id], lazy="selectin")
 
     def __repr__(self):
         player_name = self.player.name if self.player else "Unknown"

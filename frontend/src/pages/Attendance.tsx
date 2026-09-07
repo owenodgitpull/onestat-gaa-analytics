@@ -13,6 +13,7 @@ import {
   AlertCircle,
   RefreshCw,
   ChevronRight,
+  ChevronLeft,
   Trash2,
   Upload,
   Dumbbell,
@@ -31,6 +32,7 @@ import api from '../services/api'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import ConfirmationModal from '../components/ConfirmationModal'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
+import { parseLocalDate, formatSessionDateLabel } from '../utils/dateUtils'
 import type { LeaderboardPlayer } from '../services/api'
 import PeakPerformanceChart from '../components/charts/training/PeakPerformanceChart'
 import SpeedZoneChart from '../components/charts/training/SpeedZoneChart'
@@ -88,8 +90,11 @@ interface GPSPlayerData {
 }
 
 // API functions
-const fetchSessions = async (): Promise<TrainingSession[]> => {
-  const res = await fetch(`${API_BASE}/attendance/sessions?limit=50`, { credentials: 'include' })
+const SESSIONS_PAGE_SIZE = 10
+
+const fetchSessions = async (page: number): Promise<TrainingSession[]> => {
+  const offset = (page - 1) * SESSIONS_PAGE_SIZE
+  const res = await fetch(`${API_BASE}/attendance/sessions?limit=${SESSIONS_PAGE_SIZE}&offset=${offset}`, { credentials: 'include' })
   if (!res.ok) throw new Error('Failed to fetch sessions')
   return res.json()
 }
@@ -480,7 +485,7 @@ function SessionDetailModal({ session, onClose }: {
               {session.session_type.charAt(0).toUpperCase() + session.session_type.slice(1)} Session
             </h2>
             <p className="text-white/60 text-sm">
-              {new Date(session.session_date).toLocaleDateString('en-GB')} - {new Date(session.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {parseLocalDate(session.session_date).toLocaleDateString('en-GB')} - {parseLocalDate(session.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
           </div>
           <button onClick={onClose} className="text-white/60 hover:text-white">
@@ -805,10 +810,22 @@ export default function Attendance() {
   })
   const aiSummary = aiSummaryData?.summary ? aiSummaryData : null
 
+  const [sessionsPage, setSessionsPage] = useState(1)
+
   const { data: sessions, isLoading, refetch } = useQuery({
-    queryKey: ['sessions'],
-    queryFn: fetchSessions
+    queryKey: ['sessions', sessionsPage],
+    queryFn: () => fetchSessions(sessionsPage),
+    placeholderData: (prev) => prev,
   })
+  const hasNextSessionsPage = (sessions?.length ?? 0) === SESSIONS_PAGE_SIZE
+
+  // If a delete leaves the current page empty (e.g. deleting the only
+  // session on the last page), step back rather than showing a dead end.
+  useEffect(() => {
+    if (sessions && sessions.length === 0 && sessionsPage > 1) {
+      setSessionsPage(p => Math.max(1, p - 1))
+    }
+  }, [sessions, sessionsPage])
 
   const { data: selectedSession } = useQuery({
     queryKey: ['session', selectedSessionId],
@@ -852,6 +869,7 @@ export default function Attendance() {
     try {
       const session = await createMutation.mutateAsync(data)
       setAiSummaryGenerating(true)
+      setSessionsPage(1) // new session sorts to the top — jump back to page 1 so it's visible
 
       if (gpsFile && session?.id) {
         await uploadGpsFile(session.id, gpsFile)
@@ -986,7 +1004,7 @@ export default function Attendance() {
                   <div className="text-sm leading-relaxed">{renderAnalysisText(aiSummary!.summary!)}</div>
                   {aiSummary!.session_date && (
                     <p className="text-xs text-white/40 mt-1">
-                      {new Date(aiSummary!.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {formatSessionDateLabel(aiSummary!.session_date)}
                     </p>
                   )}
                 </>
@@ -1010,7 +1028,7 @@ export default function Attendance() {
             <div className="flex items-center gap-2">
               {kpiView === 'last-session' && sessions?.[0] && (
                 <span className="text-xs text-white/40 mr-2">
-                  {new Date(sessions[0].session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  {parseLocalDate(sessions[0].session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </span>
               )}
               <div className="flex rounded-lg overflow-hidden border border-white/10">
@@ -1191,7 +1209,7 @@ export default function Attendance() {
       )}
 
       {/* Sessions List */}
-      {sessions && sessions.length > 0 ? (
+      {sessions && (sessions.length > 0 || sessionsPage > 1) ? (
         <div className="space-y-3">
           {sessions.map(session => (
             <div
@@ -1217,7 +1235,7 @@ export default function Attendance() {
                       {session.session_type.charAt(0).toUpperCase() + session.session_type.slice(1)} Session
                     </h3>
                     <p className="text-sm text-white/60">
-                      {new Date(session.session_date).toLocaleDateString()} • {session.start_time || 'Time TBD'}
+                      {parseLocalDate(session.session_date).toLocaleDateString()} • {session.start_time || 'Time TBD'}
                     </p>
                     {session.location && (
                       <p className="text-xs text-white/40">{session.location}</p>
@@ -1246,6 +1264,31 @@ export default function Attendance() {
               </div>
             </div>
           ))}
+
+          {/* Pagination — session count isn't fetched separately, so "next"
+              is inferred from a full page (fewer than a full page means
+              we've reached the end); simple and avoids an extra request. */}
+          {(sessionsPage > 1 || hasNextSessionsPage) && (
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => setSessionsPage(p => Math.max(1, p - 1))}
+                disabled={sessionsPage === 1}
+                className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="text-sm text-white/50">Page {sessionsPage}</span>
+              <button
+                onClick={() => setSessionsPage(p => p + 1)}
+                disabled={!hasNextSessionsPage}
+                className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                aria-label="Next page"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="glass-card p-12 text-center">

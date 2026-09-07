@@ -11,6 +11,7 @@ Functions:
 - _get_data_summary: Quick summary of available data
 """
 
+import asyncio
 import re
 import json
 import logging
@@ -116,6 +117,7 @@ Coordinates: x 0-100 (0=own goal, 100=opponent goal), y 0-100 (0=left sideline, 
 3. Use ONLY these hex colors: #10b981 (emerald), #06b6d4 (cyan), #f59e0b (amber), #F97316 (orange), #14b8a6 (teal). Never use red.
 4. Generate an insight based on patterns in the data
 5. Keep data arrays under 50 items for performance
+6. CRITICAL — every data point MUST be derived from the `data` dict (iterate over data["matches"]/data["events"]/data["players"]). NEVER write a literal opponent name, match date, score, or any other value directly into your code unless you first confirmed it by reading it out of `data`. If `data["matches"]` has 4 matches, the chart must have at most 4 data points for a per-match breakdown — padding it out with plausible-looking extra matches/opponents that aren't in `data` is fabrication, not visualization, and is a serious error even if it makes the chart look fuller or more complete.
 
 Write ONLY the Python code to transform this data. The code will be exec'd and must set
 a variable called `chart_output` with the final JSON dict.
@@ -124,7 +126,12 @@ a variable called `chart_output` with the final JSON dict.
     # Get the raw data to pass to the code
     raw_data = await _get_raw_data_for_charts(db, club_id=club_id)
 
-    response = client.messages.create(
+    # Offloaded to a thread — this is a synchronous SDK call, and calling it
+    # directly inside an async route would block the whole single-worker
+    # event loop for the entire round-trip, same class of bug already fixed
+    # tonight in season_agent.py/chat_agent.py/match_agent.py but missed here.
+    response = await asyncio.to_thread(
+        client.messages.create,
         model="claude-sonnet-4-6",
         max_tokens=2000,
         system=system_prompt,

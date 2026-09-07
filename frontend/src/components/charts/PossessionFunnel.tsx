@@ -14,12 +14,26 @@ import type { PossessionFunnelData } from '@/services/api'
 interface PossessionFunnelProps {
   data: PossessionFunnelData
   insight?: string
+  matchesInView?: number
 }
 
 const OWN_COLORS = ['#10b981', '#06b6d4', '#10b981', '#34d399']
 const OPP_COLORS = ['#f97316', '#fb923c', '#ef4444', '#f87171']
 
-export default function PossessionFunnel({ data, insight }: PossessionFunnelProps) {
+// Shown below the header whenever one or more matches in the current filter
+// scope were recorded with Simple Scoring (tap-only, no continuous ball
+// tracking) — those matches are excluded from this chart's calculation
+// entirely, so the count here explains any "missing" matches vs other charts.
+function ExcludedMatchesNote({ excludedCount, totalInView }: { excludedCount: number; totalInView: number }) {
+  if (!excludedCount) return null
+  return (
+    <p className="text-white/40 text-xs -mt-2 mb-4">
+      {excludedCount} of {totalInView} games did not have precise location tracking on, so the possession breakdown cannot be derived for these.
+    </p>
+  )
+}
+
+export default function PossessionFunnel({ data, insight, matchesInView = 0 }: PossessionFunnelProps) {
   const clubName = useClubName()
   const [showOpponent, setShowOpponent] = useState(false)
 
@@ -78,6 +92,7 @@ export default function PossessionFunnel({ data, insight }: PossessionFunnelProp
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Possession Funnel</h3>
         </div>
+        <ExcludedMatchesNote excludedCount={data.excluded_match_count ?? 0} totalInView={matchesInView} />
         <div className="h-[200px] flex items-center justify-center text-white/40">
           No possession data recorded yet
         </div>
@@ -115,6 +130,8 @@ export default function PossessionFunnel({ data, insight }: PossessionFunnelProp
           </div>
         </div>
       </div>
+
+      <ExcludedMatchesNote excludedCount={data.excluded_match_count ?? 0} totalInView={matchesInView} />
 
       {/* Chart */}
       <ResponsiveContainer width="100%" height={200}>

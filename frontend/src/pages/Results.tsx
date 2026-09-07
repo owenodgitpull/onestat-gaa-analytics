@@ -3,8 +3,8 @@
  * Shows list of completed matches with search, filters, and lazy loading
  */
 
-import { useState, useMemo, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Trophy, Calendar, MapPin, ChevronRight, RefreshCw,
   Activity, Video, ClipboardList, Search, X, ChevronDown,
@@ -13,6 +13,7 @@ import {
 import { useMatches } from '../hooks/useMatches'
 import { useClubName } from '../contexts/ClubContext'
 import LoadingSkeleton from '../components/LoadingSkeleton'
+import { api } from '../services/api'
 import type { Match } from '../types'
 
 const PAGE_SIZE = 12
@@ -75,6 +76,17 @@ type VenueFilter = 'all' | 'home' | 'away' | 'neutral'
 export default function Results() {
   const { data: matches, isLoading, error, refetch } = useMatches()
   const clubName = useClubName()
+  const navigate = useNavigate()
+
+  // Same "next match → prep" quick-access shown on the Dashboard — added here
+  // too since Matches (this page) is where a coach naturally lands after
+  // reviewing results and looking to plan ahead for the next fixture.
+  const [nextMatch, setNextMatch] = useState<Match | null>(null)
+  const [liveMatch, setLiveMatch] = useState<Match | null>(null)
+  useEffect(() => {
+    api.matches.getInProgress().then(setLiveMatch).catch(() => {})
+    api.matches.getNextScheduled().then(setNextMatch).catch(() => {})
+  }, [])
 
   const [search, setSearch] = useState('')
   const [resultFilter, setResultFilter] = useState<ResultFilter>('all')
@@ -181,9 +193,41 @@ export default function Results() {
             </p>
           </div>
         </div>
-        <button onClick={() => refetch()} className="btn-glass p-2" title="Refresh">
-          <RefreshCw size={16} />
-        </button>
+        <div className="flex items-center gap-2">
+          {liveMatch ? (
+            <div
+              onClick={() => navigate(`/match/${liveMatch.id}`)}
+              className="glass-card-live cursor-pointer"
+            >
+              <div className="glass-card-live-inner px-4 py-2 flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-red-400">Live</span>
+                </div>
+                <span className="text-sm font-bold text-white whitespace-nowrap">vs {liveMatch.opponent}</span>
+                <ChevronRight size={16} className="text-white/40" />
+              </div>
+            </div>
+          ) : nextMatch ? (
+            <div
+              onClick={() => navigate(`/match-prep/${nextMatch.id}`)}
+              className="bg-gradient-to-r from-emerald-600/20 to-cyan-600/20 rounded-xl px-4 py-2 cursor-pointer hover:from-emerald-600/30 hover:to-cyan-600/30 border border-emerald-500/30 hover:border-emerald-500/50 transition-all flex items-center gap-2 group"
+            >
+              <Calendar size={14} className="text-emerald-400 flex-shrink-0" />
+              <span className="text-xs text-emerald-400/80 font-semibold uppercase tracking-wide">Next</span>
+              <span className="text-sm font-bold text-white whitespace-nowrap">
+                {nextMatch.opponent} ({nextMatch.venue === 'home' ? 'H' : nextMatch.venue === 'away' ? 'A' : 'N'})
+              </span>
+              <ChevronRight size={16} className="text-emerald-400/60 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
+            </div>
+          ) : null}
+          <button onClick={() => refetch()} className="btn-glass p-2" title="Refresh">
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Search + Filter Bar */}
@@ -391,7 +435,7 @@ export default function Results() {
                   {match.competition && (
                     <div className="mt-3 pt-3 border-t border-white/5">
                       <span className="text-[10px] text-white/40 bg-white/5 px-2 py-0.5 rounded">
-                        {match.competition}
+                        {match.competition}{match.stage ? ` · ${match.stage}` : ''}
                       </span>
                     </div>
                   )}

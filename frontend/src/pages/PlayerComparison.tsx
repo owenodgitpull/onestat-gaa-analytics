@@ -34,7 +34,7 @@ const H2H_STATS: { key: keyof ComparisonPlayerStats; label: string; format?: (v:
   { key: 'turnovers_won', label: 'Turnovers Won' },
   { key: 'avg_distance_km', label: 'Avg Distance', format: v => v != null ? `${v} km` : '—' },
   { key: 'avg_sprints', label: 'Avg Sprints', format: v => v != null ? `${v}` : '—' },
-  { key: 'avg_max_speed_kmh', label: 'Top Speed', format: v => v != null ? `${v} km/h` : '—' },
+  { key: 'avg_max_speed_ms', label: 'Top Speed', format: v => v != null ? `${v} m/s` : '—' },
   { key: 'attendance_rate', label: 'Attendance', format: v => v != null ? `${v}%` : '—' },
 ]
 

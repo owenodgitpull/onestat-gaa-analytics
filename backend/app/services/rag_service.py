@@ -11,6 +11,7 @@ Multi-tenant: all queries are scoped to club_id OR shared defaults (club_id=NULL
 import re
 import logging
 import hashlib
+import asyncio
 from typing import List, Optional, Dict, Any, Tuple
 from pathlib import Path
 from collections import Counter
@@ -415,8 +416,19 @@ class RAGService:
         """
         from app.services.knowledge_base_service import get_knowledge_base
 
-        kb = get_knowledge_base()
-        kb.load_documents()
+        def _load_kb_sync():
+            # KnowledgeBaseService is a fully synchronous class (PDF parsing
+            # via fitz is CPU-bound, and image-based PDFs fall back to a
+            # blocking Claude Vision call in _extract_with_vision). Its only
+            # entry point is this method, so rather than threading `async`
+            # through the whole class (load_documents -> _load_pdf ->
+            # _extract_with_vision, most of it dead/unused elsewhere), both
+            # calls are dispatched together as one thread-offloaded unit.
+            kb = get_knowledge_base()
+            kb.load_documents()
+            return kb
+
+        kb = await asyncio.to_thread(_load_kb_sync)
 
         results = {
             "processed": [],

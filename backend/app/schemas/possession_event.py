@@ -14,8 +14,11 @@ from app.models.possession_event import PossessionTeam
 class PossessionEventBase(BaseModel):
     """Base schema for PossessionEvent data."""
     team: PossessionTeam = Field(..., description="Which team has possession")
-    pitch_x: float = Field(..., ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
-    pitch_y: float = Field(..., ge=0, le=100, description="Y coordinate (0=left, 100=right)")
+    # Optional: Simple Scoring's "Possession Changed" button records a team +
+    # duration possession change with no location step, so coordinates may
+    # be absent — possession % still works, territorial breakdowns don't.
+    pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
+    pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
     minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match")
 
 

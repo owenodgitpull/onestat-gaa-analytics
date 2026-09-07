@@ -40,6 +40,7 @@ import InsightAlertsPanel from '@/components/InsightAlertsPanel'
 import AiInsightsSection from '@/components/charts/AiInsightsSection'
 import MyChartsSection from '@/components/dashboard/MyChartsSection'
 import SortableSection from '@/components/dashboard/SortableSection'
+import SeasonFilterBar from '@/components/dashboard/SeasonFilterBar'
 import { useDashboardLayout } from '@/hooks/useDashboardLayout'
 import type { ChartRenderProps } from '@/config/chartRegistry'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem } from '@/services/api'
@@ -86,6 +87,10 @@ export default function AnalyticsDashboard() {
   const navigate = useNavigate()
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [seasonDashboard, setSeasonDashboard] = useState<SeasonDashboardData | null>(null)
+  const [competitionFilter, setCompetitionFilter] = useState<string>('')
+  const [stageFilter, setStageFilter] = useState<string>('')
+  const [lastNFilter, setLastNFilter] = useState<number | null>(null)
+  const [filtersLoading, setFiltersLoading] = useState(false)
   const [aiCharts, setAiCharts] = useState<AIChartSpec[]>([])
   const [aiChartsSummary, setAiChartsSummary] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -161,7 +166,10 @@ export default function AnalyticsDashboard() {
     try {
       const [data, seasonData] = await Promise.all([
         api.analytics.getDashboard(),
-        api.analytics.getSeasonDashboard().catch(() => null),
+        api.analytics.getSeasonDashboard({ competition: competitionFilter || undefined, stage: stageFilter || undefined, lastN: lastNFilter || undefined }).catch((err) => {
+          console.error('Season dashboard fetch failed:', err)
+          return null
+        }),
       ])
       setDashboardData(data)
       setSeasonDashboard(seasonData)
@@ -172,6 +180,25 @@ export default function AnalyticsDashboard() {
       setLoading(false)
     }
   }
+
+  // Re-fetch just the season dashboard when the competition/stage/last-N
+  // filters change — a lighter refresh than fetchDashboard (which also
+  // reloads the base dashboard data and shows the full-page skeleton).
+  const applySeasonFilters = useCallback(async (competition: string, stage: string, lastN: number | null) => {
+    setFiltersLoading(true)
+    try {
+      const seasonData = await api.analytics.getSeasonDashboard({
+        competition: competition || undefined,
+        stage: stage || undefined,
+        lastN: lastN || undefined,
+      })
+      setSeasonDashboard(seasonData)
+    } catch (err) {
+      console.error('Failed to apply season dashboard filters:', err)
+    } finally {
+      setFiltersLoading(false)
+    }
+  }, [])
 
   const fetchAICharts = useCallback(async (forceRefresh = false) => {
     if (forceRefresh && regenLimitReached) return
@@ -552,9 +579,9 @@ export default function AnalyticsDashboard() {
         (seasonDashboard?.possession_funnel?.season_totals?.possessions ?? 0) === 0 ? (
           <div className="glass-card p-10 text-center max-w-lg mx-auto">
             <Sparkles size={36} className="text-cyan-400/60 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-white mb-2">AI Insights Coming Soon</h3>
+            <h3 className="text-lg font-semibold text-white mb-2">No Match Data Yet</h3>
             <p className="text-white/50 text-sm">
-              Tag match events via live recording or video analysis to unlock AI-powered charts, trend analysis, and tactical recommendations.
+              AI-powered charts, trend analysis, and tactical recommendations will appear here once you tag match events via live recording or video analysis.
             </p>
           </div>
         ) : <AiInsightsSection
@@ -586,14 +613,33 @@ export default function AnalyticsDashboard() {
             <TrendingUp size={24} className="text-white" />
             <span className="text-white">Season Overview</span>
           </h2>
-          <button
-            data-tour="kpi-library-btn"
-            onClick={() => setKpiLibraryOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 hover:text-white text-xs font-medium transition-colors"
-          >
-            <LayoutGrid size={14} />
-            KPI Library
-          </button>
+          <div className="flex items-center gap-2">
+            {seasonDashboard && season_summary.matches_played > 0 && (
+              <SeasonFilterBar
+                availableCompetitions={seasonDashboard.available_competitions}
+                availableStages={seasonDashboard.available_stages}
+                competition={competitionFilter}
+                stage={stageFilter}
+                lastN={lastNFilter}
+                matchesInView={seasonDashboard.matches_in_view}
+                loading={filtersLoading}
+                onChange={({ competition, stage, lastN }) => {
+                  setCompetitionFilter(competition)
+                  setStageFilter(stage)
+                  setLastNFilter(lastN)
+                  applySeasonFilters(competition, stage, lastN)
+                }}
+              />
+            )}
+            <button
+              data-tour="kpi-library-btn"
+              onClick={() => setKpiLibraryOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 hover:text-white text-xs font-medium transition-colors"
+            >
+              <LayoutGrid size={14} />
+              KPI Library
+            </button>
+          </div>
         </div>
         {seasonDashboard?.kpi_cards ? (
           <>

@@ -1,7 +1,7 @@
 import { EventType } from '@/types'
 import {
   CheckCircle, XCircle, Zap, Flag,
-  Target, ArrowDownCircle, ArrowLeftRight, AlertTriangle, Move,
+  Target, ArrowDownCircle, ArrowLeftRight, ArrowUpCircle, AlertTriangle, Move, Minus,
 } from 'lucide-react'
 
 type Variant = 'green' | 'red' | 'amber' | 'teal' | 'gray'
@@ -47,6 +47,10 @@ interface Props {
   /** "Adjust Free Position" — hides this overlay momentarily so the pitch is
    *  visible/draggable to correct where the free is actually being taken from. */
   onAdjustFreePosition?: () => void
+  /** Kickout-selection state only — collapses this overlay into a small pill
+   *  elsewhere so the user can log a sub/card/correction without it in the
+   *  way. Not offered for the free-kick outcome picker (out of scope here). */
+  onMinimize?: () => void
 }
 
 export default function PitchActionOverlay({
@@ -59,6 +63,7 @@ export default function PitchActionOverlay({
   onCancelFree,
   onCancelKickout,
   onAdjustFreePosition,
+  onMinimize,
 }: Props) {
   if (!awaitingKickout && !pendingFreeKick) return null
 
@@ -117,12 +122,23 @@ export default function PitchActionOverlay({
                 <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                 <span className="text-sm font-bold text-amber-300">Awaiting {kickoutTitle}</span>
               </div>
-              <button
-                onClick={onCancelKickout}
-                className="text-[11px] text-white/40 hover:text-white/70 px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
-              >
-                Cancel
-              </button>
+              <div className="flex items-center gap-1.5">
+                {onMinimize && (
+                  <button
+                    onClick={onMinimize}
+                    title="Minimise — log a sub, card, or correction first"
+                    className="text-white/40 hover:text-white/70 p-1 rounded bg-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <Minus size={13} />
+                  </button>
+                )}
+                <button
+                  onClick={onCancelKickout}
+                  className="text-[11px] text-white/40 hover:text-white/70 px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : (
             <div
@@ -184,11 +200,18 @@ export default function PitchActionOverlay({
                   )
                 })}
                 <button
-                  onClick={onCancelFree}
-                  className={`col-span-2 py-2.5 rounded-xl border-2 font-semibold text-sm flex items-center justify-center gap-2 transition-all ${variantCls('teal')}`}
+                  onClick={() => onAction(EventType.FREE_SHORT_PASS)}
+                  className={`py-2.5 rounded-xl border-2 font-semibold text-sm flex items-center justify-center gap-2 transition-all ${variantCls('teal')}`}
                 >
                   <ArrowLeftRight size={14} />
-                  Short Pass — Play On
+                  Short Pass
+                </button>
+                <button
+                  onClick={() => onAction(EventType.FREE_HIGH_BALL)}
+                  className={`py-2.5 rounded-xl border-2 font-semibold text-sm flex items-center justify-center gap-2 transition-all ${variantCls('teal')}`}
+                >
+                  <ArrowUpCircle size={14} />
+                  High Ball
                 </button>
                 {onAdjustFreePosition && (
                   <button

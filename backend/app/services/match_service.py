@@ -11,13 +11,29 @@ import logging
 import asyncio
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.match import Match, MatchStatus, MatchVenue
+from sqlalchemy.orm import lazyload
+from app.models.match import Match, MatchStatus, MatchVenue, WeatherCondition
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.models.player_match_stats import PlayerMatchStats
 from app.schemas.match import MatchCreate, MatchUpdate
 
 logger = logging.getLogger(__name__)
+
+# Match.events/.possession_events/.player_stats/.lineup/.gps_data/.video_sessions
+# all default to lazy="selectin" (eager). list_matches/get_match never touch
+# these relationships directly (routes/matches.py resolves has_gps/has_video/
+# has_events via lightweight targeted queries instead — see that file), so
+# suppress the eager load here to avoid fetching every event/GPS/lineup row
+# for every match just to list/fetch match summaries.
+_NO_EAGER_MATCH_RELATIONSHIPS = (
+    lazyload(Match.events),
+    lazyload(Match.possession_events),
+    lazyload(Match.player_stats),
+    lazyload(Match.lineup),
+    lazyload(Match.gps_data),
+    lazyload(Match.video_sessions),
+)
 
 
 class MatchService:
@@ -45,12 +61,19 @@ class MatchService:
             club_id=club_id,
         )
         # Optional fields from the create schema
-        if match_data.weather_condition is not None:
+        if match_data.weather_conditions is not None:
+            match_kwargs['weather_conditions'] = [w.value for w in match_data.weather_conditions]
+            # weather_condition (singular) auto-synced from the first entry —
+            # see the model's own comment for why this stays populated.
+            match_kwargs['weather_condition'] = match_data.weather_conditions[0] if match_data.weather_conditions else None
+        elif match_data.weather_condition is not None:
             match_kwargs['weather_condition'] = match_data.weather_condition
         if match_data.temperature_celsius is not None:
             match_kwargs['temperature_celsius'] = match_data.temperature_celsius
         if match_data.competition is not None:
             match_kwargs['competition'] = match_data.competition
+        if match_data.stage is not None:
+            match_kwargs['stage'] = match_data.stage
         if match_data.referee is not None:
             match_kwargs['referee'] = match_data.referee
         if match_data.pitch_condition is not None:
@@ -78,7 +101,9 @@ class MatchService:
         conditions = [Match.id == match_id, Match.is_deleted.is_(False)]
         if club_id is not None:
             conditions.append(Match.club_id == club_id)
-        result = await db.execute(select(Match).where(and_(*conditions)))
+        result = await db.execute(
+            select(Match).where(and_(*conditions)).options(*_NO_EAGER_MATCH_RELATIONSHIPS)
+        )
         return result.scalar_one_or_none()
     
     @staticmethod
@@ -90,6 +115,7 @@ class MatchService:
         venue: Optional[MatchVenue] = None,
         club_id=None,
         sort_asc: bool = False,
+        upcoming_only: bool = False,
     ) -> tuple[List[Match], int]:
         """
         List matches with filtering and pagination.
@@ -101,11 +127,19 @@ class MatchService:
         conditions = [Match.is_deleted.is_(False)]
         if club_id:
             conditions.append(Match.club_id == club_id)
-        
+
         if status:
             conditions.append(Match.status == status)
         if venue:
             conditions.append(Match.venue == venue)
+        if upcoming_only:
+            # "Next fixture" queries need this filtered server-side, not just
+            # sorted+limited then filtered client-side — a club can accumulate
+            # old "scheduled" fixtures that were never marked completed/cancelled
+            # (e.g. imported season fixture lists left unreconciled against the
+            # matches actually recorded), and a small limit() can get entirely
+            # swallowed by that backlog before a real upcoming match is reached.
+            conditions.append(Match.match_date >= datetime.utcnow())
         
         # Get total count
         count_result = await db.execute(
@@ -118,6 +152,7 @@ class MatchService:
         result = await db.execute(
             select(Match)
             .where(and_(*conditions))
+            .options(*_NO_EAGER_MATCH_RELATIONSHIPS)
             .order_by(order)
             .offset(skip)
             .limit(limit)
@@ -141,13 +176,29 @@ class MatchService:
         # Update fields
         update_data = match_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
+            if field == 'weather_conditions':
+                # This is a JSON column, not a SQLAlchemy Enum column like
+                # weather_condition — it's serialized with plain json.dumps,
+                # which can't handle raw WeatherCondition enum members
+                # (json.dumps(WeatherCondition.WINDY) raises TypeError since
+                # the enum isn't a str subclass), so store .value strings.
+                value = [w.value for w in value] if value else value
             setattr(match, field, value)
-        
+
+        # weather_condition (singular) auto-synced from weather_conditions[0]
+        # whenever the plural field was actually part of this update — see
+        # the model's own comment for why the singular field is kept at all.
+        # Not just "always resync from whatever's on the row", since a caller
+        # updating something unrelated (e.g. just notes) shouldn't silently
+        # touch weather_condition based on stale/prior weather_conditions.
+        if 'weather_conditions' in update_data:
+            match.weather_condition = WeatherCondition(match.weather_conditions[0]) if match.weather_conditions else None
+
         await db.commit()
         await db.refresh(match)
-        
+
         return match
-    
+
     @staticmethod
     async def start_match(
         db: AsyncSession,
@@ -333,6 +384,8 @@ class MatchService:
             "opponent_possession_percentage": 0.0,
             "team_possession_count": 0,
             "opponent_possession_count": 0,
+            "team_poss_converted_to_shots_pct": 0.0,
+            "opponent_poss_converted_to_shots_pct": 0.0,
             # Shots
             "team_total_shots": 0,
             "team_scores": 0,
@@ -525,6 +578,14 @@ class MatchService:
             on_target_attempts = scores + wides
             if on_target_attempts > 0:
                 stats[f"{team_prefix}_accuracy"] = (scores / on_target_attempts) * 100
+
+        # Possession converted to shots: what share of a team's possessions
+        # actually produced a shot, vs. breaking down before one was taken.
+        for team_prefix in ["team", "opponent"]:
+            poss_count = stats[f"{team_prefix}_possession_count"]
+            shots = stats[f"{team_prefix}_total_shots"]
+            if poss_count > 0:
+                stats[f"{team_prefix}_poss_converted_to_shots_pct"] = round((shots / poss_count) * 100, 1)
 
         # Ball recovery time — avg minutes to win ball back after a loss event
         _BALL_LOSS = frozenset([EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR])

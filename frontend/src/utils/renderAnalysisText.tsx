@@ -95,7 +95,7 @@ const components: Components = {
     const extraStyle = style ?? {}
     return (
       <th
-        className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-white/50 first:w-[38%]"
+        className="px-2 py-2 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-white/50 first:w-[38%]"
         style={extraStyle}
       >
         {children}
@@ -104,7 +104,7 @@ const components: Components = {
   },
   td: ({ children, style }) => (
     <td
-      className="px-4 py-2.5 text-white/80 break-words"
+      className="px-2 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm text-white/80 break-words"
       style={style ?? {}}
     >
       {children}

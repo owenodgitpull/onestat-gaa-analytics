@@ -17,6 +17,7 @@ class MatchEventBase(BaseModel):
     team: Team = Field(..., description="Which team (own/opponent)")
     player_id: Optional[UUID] = Field(None, description="Player who performed the action")
     assist_player_id: Optional[UUID] = Field(None, description="Player who assisted (for scores)")
+    kickout_target_player_id: Optional[UUID] = Field(None, description="Player a kickout was aimed at (own_kickout_* events only)")
     minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match (0-120)")
     pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
@@ -73,6 +74,20 @@ class MatchEventCreate(MatchEventBase):
                 raise ValueError('Assists can only be recorded for scoring events')
         return v
 
+    @validator('kickout_target_player_id')
+    def validate_kickout_target(cls, v, values):
+        """Ensure a kickout target is only provided on our own kickout events."""
+        if v is not None:
+            event_type = values.get('event_type')
+            own_kickout_events = [
+                EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
+                EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+                EventType.OWN_KICKOUT_SIDELINE,
+            ]
+            if event_type not in own_kickout_events:
+                raise ValueError('kickout_target_player_id can only be recorded on own_kickout_* events')
+        return v
+
 
 class MatchEventUpdate(BaseModel):
     """Schema for updating an existing match event."""
@@ -80,6 +95,7 @@ class MatchEventUpdate(BaseModel):
     team: Optional[Team] = None
     player_id: Optional[UUID] = None
     assist_player_id: Optional[UUID] = None
+    kickout_target_player_id: Optional[UUID] = None
     minute: Optional[int] = Field(None, ge=0, le=120)
     pitch_x: Optional[float] = Field(None, ge=0, le=100)
     pitch_y: Optional[float] = Field(None, ge=0, le=100)
@@ -100,6 +116,7 @@ class MatchEventResponse(MatchEventBase):
     # Player details (if available)
     player_name: Optional[str] = Field(None, description="Name of player")
     assist_player_name: Optional[str] = Field(None, description="Name of assist player")
+    kickout_target_player_name: Optional[str] = Field(None, description="Name of player a kickout was aimed at")
 
     class Config:
         from_attributes = True

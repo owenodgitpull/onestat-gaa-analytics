@@ -35,13 +35,13 @@ require_admin = require_role("club_admin")
 
 
 class RoleChangeRequest(BaseModel):
-    role: str  # "club_admin" or "player"
+    role: str  # "club_admin", "player", or "viewer"
 
 
 class InviteAdminRequest(BaseModel):
     email: str
     name: str
-    role: str = "club_admin"  # "club_admin" or "player"
+    role: str = "club_admin"  # "club_admin", "player", or "viewer"
 
 
 @router.get("/members")
@@ -86,8 +86,8 @@ async def change_role(
     if member_id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
 
-    if body.role not in ("club_admin", "player"):
-        raise HTTPException(status_code=400, detail="Role must be 'club_admin' or 'player'")
+    if body.role not in ("club_admin", "player", "viewer"):
+        raise HTTPException(status_code=400, detail="Role must be 'club_admin', 'player', or 'viewer'")
 
     # Find member via membership
     mem_result = await db.execute(
@@ -202,7 +202,7 @@ async def invite_admin(
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email address")
 
-    role = body.role if body.role in ("club_admin", "player") else "club_admin"
+    role = body.role if body.role in ("club_admin", "player", "viewer") else "club_admin"
 
     # Check if already a member of this club
     existing_result = await db.execute(
@@ -254,7 +254,7 @@ async def invite_admin(
     # Send branded invitation email via SES
     try:
         from app.services.invitation_email_service import send_invitation_email
-        send_invitation_email(
+        await send_invitation_email(
             invitee_email=email,
             inviter_name=inviter.name,
             club_name=club.name,
@@ -335,7 +335,7 @@ async def resend_invitation(
 
     try:
         from app.services.invitation_email_service import send_invitation_email
-        send_invitation_email(
+        await send_invitation_email(
             invitee_email=invitation.invitee_email,
             inviter_name=inviter.name,
             club_name=club.name,

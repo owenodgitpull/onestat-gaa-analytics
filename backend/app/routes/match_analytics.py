@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from uuid import UUID
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match import Match
 from app.services.match_analytics_service import (
     get_score_origins,
@@ -24,7 +24,7 @@ async def _verify_match_club(db: AsyncSession, match_id: UUID, club_id: UUID):
 @router.get("/{match_id}/score-origins")
 async def score_origins(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     await _verify_match_club(db, match_id, user.club_id)
@@ -34,7 +34,7 @@ async def score_origins(
 @router.get("/{match_id}/scoreable-frees")
 async def scoreable_frees(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     await _verify_match_club(db, match_id, user.club_id)
@@ -44,7 +44,7 @@ async def scoreable_frees(
 @router.get("/{match_id}/attack-efficiency")
 async def attack_efficiency(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     await _verify_match_club(db, match_id, user.club_id)
@@ -54,7 +54,7 @@ async def attack_efficiency(
 @router.get("/{match_id}/vs-season")
 async def vs_season(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     await _verify_match_club(db, match_id, user.club_id)

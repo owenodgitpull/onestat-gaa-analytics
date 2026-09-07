@@ -50,6 +50,8 @@ class MatchAgent:
         match_id,
         recent_events: list,
         trigger: str = "interval",
+        previous_insights: list = None,
+        already_flagged_note: str = "",
     ) -> str:
         """
         Agentic live match insight.
@@ -83,6 +85,23 @@ class MatchAgent:
         if tactical_notes:
             tactical_section = f"\n## Manager's Tactical Notes (PRE-MATCH PLAN — reference these when making suggestions)\n{tactical_notes}\n"
 
+        # Build recent-insights section so the model doesn't re-raise the same
+        # player concern fresh every 5 minutes just because their cumulative
+        # stat total is still the worst on the pitch — it needs to know what
+        # it already said.
+        previous_insights_section = ""
+        if previous_insights:
+            numbered = "\n".join(f"{i+1}. {text}" for i, text in enumerate(previous_insights))
+            previous_insights_section = f"""
+## Insights You Already Gave This Match (most recent first)
+{numbered}
+
+REPEAT RULE: If the same player/concern above is still the top issue in the current snapshot, do NOT present it again as if it's new. Either:
+(a) move on to the next most pressing thing in the snapshot, or
+(b) briefly acknowledge it's a repeat — e.g. "Karl again — still needs pulling aside" or "As mentioned, still no change from [player]."
+Never repeat the exact same observation worded as a fresh discovery.
+"""
+
         system_prompt = f"""You are a GAA sideline analyst providing LIVE match insights for {club_name}.
 CRITICAL OUTPUT RULE: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). Be punchy and actionable — this displays in a small sidebar widget. No bullet points, no headers, no lists.
 
@@ -92,6 +111,8 @@ CRITICAL OUTPUT RULE: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 wo
 ## Knowledge Base Context (GPS benchmarks, tactical patterns, rules)
 {kb_context}
 {tactical_section}
+{previous_insights_section}
+{already_flagged_note}
 ## Current Match ID
 {match_id}
 
@@ -105,14 +126,14 @@ STEP 1 — ALWAYS call get_live_match_stats(match_id) first. It returns:
 - Per-player table (who has errors/turnovers/wides/fouls/cards/score) sorted by concerns
 - Kickout battle (our retention % + their kickout win % by us)
 - Scoring run / drought detection
-- Sin-bin risk list (2+ fouls)
+- Discipline watch (4+ fouls — a lot for one match, worth flagging, but NOT an automatic card: GAA has no rule tying foul count to a booking or dismissal, that's entirely referee discretion)
 
 STEP 2 — Use that data to NAME SPECIFIC PLAYERS in your insight. Examples of good output:
 - "Gallagher has 2 unforced errors (stray_pass) — give him a word at the next water break."
 - "O'Donnell leads with 3 turnovers won — keep him at the breakdown."
 - "Two wides from Breslin — he's rushing shots; tell him to steady before pulling."
 - "We're 0/4 on their kickouts — push up on the short kickout, they're targeting #6."
-- "McCarthy on 2 fouls — pull him for 5 minutes before he's sin-binned."
+- "McCarthy's picked up 4 fouls — worth a quiet word, referee's clearly watching him now."
 
 STEP 3 — Only call get_match_events if you need event-level detail the snapshot doesn't cover (e.g. exact kickout zone targeting, the minute sequence of a scoring run, or to check ball-carrier patterns).
 
@@ -121,7 +142,7 @@ TRIGGERS TO WATCH — check the snapshot for these:
 - 10+ min scoring drought → name who has been wasting possession (wides/errors)
 - Kickout retention < 50% → call it out, suggest a tactical adjustment
 - Their kickout win < 35% → note we're winning their restarts, press it
-- Any player: 2+ fouls → flag sin-bin risk by name
+- Any player: 4+ fouls → note it as a discipline watch by name (NOT "one more and he's off" — no such rule exists; it's a referee-discretion flag, nothing more)
 - Any player: 2+ unforced errors → name them and the error sub-type (stray_pass, overcarry, etc.)
 
 Reference knowledge base context when relevant to a specific trigger.
@@ -250,8 +271,8 @@ INSTRUCTIONS:
 5. Reference knowledge base context: compare to tactical documents, GPS benchmarks, and rules when available.
 6. Be specific — cite player names, minutes, and events from the tool results.
 7. Be constructive but honest about weaknesses.
-7a. NEVER analyse or mention players who did not play in this match. Only discuss players with match events or GPS data in the tool results. Do not speculate about players absent from the data.
-7a2. PLAYER-LEVEL DETAIL — REQUIRED: The get_match_summary response includes a "player_breakdown" list — use it to name specific players in your analysis. For each player with unforced_errors > 0, name them AND their error sub-type (e.g. "Gallagher had 2 unforced errors — both stray passes in the midfield third"). For players with turnovers_won >= 2, highlight them by name in Top Performers. For players with fouls_committed >= 2, note the sin-bin risk. For players with wides >= 2, name them in shooting analysis. Do NOT describe error/turnover patterns without naming the players responsible.
+7a. NEVER analyse or mention players who did not play in this match. Only discuss players with match events, or players present in get_match_gps's "players" list — that list already excludes unused subs (bench players whose GPS device recorded warm-up/bench activity but who never came on), so GPS data existing is NOT proof a player featured. Do not speculate about players absent from the data. If get_match_gps returns a non-empty "bench_players_not_used" list, you may add ONE short footnote sentence at the very end of the GPS section acknowledging a standout among them (e.g. "Note: [Name] logged strong bench-session output (Xkm) despite not featuring") — but never fold them into Top Performers, stats, or any analysis of the match itself.
+7a2. PLAYER-LEVEL DETAIL — REQUIRED: The get_match_summary response includes a "player_breakdown" list — use it to name specific players in your analysis. For each player with unforced_errors > 0, name them AND their error sub-type (e.g. "Gallagher had 2 unforced errors — both stray passes in the midfield third"). For players with turnovers_won >= 2, highlight them by name in Top Performers. For players with fouls_committed >= 4, note it as a discipline watch (referee-discretion flag — GAA has no rule tying a foul tally to a card, so never phrase this as an automatic sin-bin). For players with wides >= 2, name them in shooting analysis. Do NOT describe error/turnover patterns without naming the players responsible.
 7b. SPATIAL ANALYSIS — REQUIRED: The get_match_events tool returns a zone_summary block. You MUST use it to make specific territorial observations in your Tactical Analysis section. For example:
     - Scoring: "X scored Y/Z shots from the inside-45 left channel (N%) — their most productive zone"
     - Shooting wastage: "0 conversions from outside-45 right — avoid speculative shots from there"
@@ -259,15 +280,20 @@ INSTRUCTIONS:
     Always name the specific zone (e.g. "inside-45 center", "defensive left channel", "midfield right") not vague references to "certain areas".
 7c. BALL CARRY & PASSING ANALYSIS — REQUIRED: Use the get_ball_carrier_data tool results as follows:
     - In Top Performers: cite each key player's carry count, passes made/received, and primary carry zones. e.g. "carried 9 times (primarily midfield-right), made 6 passes — the main distributor in the recorded data".
-    - In Tactical Analysis: reference chain effectiveness (scoring vs turnover chain ratio), top passing connections, territory progression (forward/lateral/backward ratio), and tempo.
+    - In Tactical Analysis: reference chain effectiveness (scoring vs turnover chain ratio), top passing connections, and tempo. If pass_territory_progression is present, its forward/lateral/backward counts are ONLY about passing transitions between carries (read its "note" field) — never state these numbers as "X forward carries" or as a team-wide carry total. To describe forward-carrying as a team pattern, summarise the spread of avg_gain_x across carrier_stats instead (e.g. "most carriers made positive ground, led by X and Y").
     - In player event analysis: use player_consequences data to state consequences explicitly. e.g. "lost possession 3 times in the defensive third — 2 of those turnovers led directly to opposition scores within 3 minutes". Name the zone where each turnover occurred.
-    - avg_gain_x > 0 means forward-carrying player; < 0 means backward/recycling role. Use this to describe each player's carrying style.
+    - avg_gain_x_metres > 0 means forward-carrying player; < 0 means backward/recycling role. ALWAYS use avg_gain_x_metres (already converted to real metres) when stating a distance — avg_gain_x is the raw 0-100 pitch-length percentage and reading it out as if it were metres understates real distance by roughly 30%.
+    - Carry-based averages (avg_gain_x_metres, carry zones, etc.) are noisy on a handful of carries. Below 4 carries, don't present the average as a settled tendency — name the actual carry count alongside it instead, e.g. "carried twice, gaining ~30m on one of them" rather than "averaged 30m per carry", so a single big carry isn't read as a repeated pattern.
     - Respect the data_confidence tier: if "low" only make individual observations; if "medium" add qualifiers like "from the possessions logged"; if "high" state patterns with confidence.
 7d. RESULT CONTEXT — REQUIRED: Always frame individual stats and sub-stats relative to the final scoreline and margin of defeat/victory.
     - In a heavy defeat (losing by 10+ points or 2+ goals), do NOT label individual positive stats (e.g. turnovers won, passes completed) as "excellent" or "dominant" in isolation. Acknowledge the positive but contextualise it honestly — e.g. "Won the turnover battle (+4) but could not convert that pressure into scores" or "Efficient in possession but the scoreboard told a different story".
     - Never describe a score as "crucial" or "vital" if the game was already a lost cause at that moment (score margin ≥ 10 points with ≤ 10 minutes remaining). Use "consolation" or "late" instead.
     - Similarly, in a comfortable win, don't overstate small defensive lapses as alarming — frame them proportionally.
     - Always check the final score from get_match_summary FIRST so every narrative judgement (excellent/poor/crucial/irrelevant) is grounded in the actual result.
+7e. POSITION CONTEXT — REQUIRED: Check the "position" field in player_breakdown before judging any player's output, and apply the standard for THAT position, not a generic outfield one.
+    - Goalkeepers: NEVER criticise a goalkeeper for lacking scores "from play" or having a low scoring return — that is not their job. If a goalkeeper scored via frees/45s (player_breakdown will show a "scoring_note" of "all from frees/45s — none from open play" on their entry), treat that as a genuine, valued contribution and praise the free-taking, not a shortfall to fix. Never suggest a goalkeeper "work on adding scores from play" or similar.
+    - More generally: don't hold a defender to a forward's scoring expectations, or a forward to a defender's tackle-count expectations. Judge each player against what their position is actually asked to do.
+8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>
    {{"possession": "Brief insight about possession and territory patterns", "scoring": "Brief insight about when scoring happened", "shooting": "Brief insight about shot selection and efficiency"}}
@@ -293,9 +319,10 @@ INSTRUCTIONS:
 
         # Initial call with tools
         logger.info(f"Calling Claude with match_id={match_id}, user_message={user_message[:100]}...")
-        response = client.messages.create(
+        response = await asyncio.to_thread(
+            client.messages.create,
             model="claude-sonnet-4-6",
-            max_tokens=4096,
+            max_tokens=8192,
             system=cached_system,
             tools=cached_tools,
             messages=messages,
@@ -329,19 +356,39 @@ INSTRUCTIONS:
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
-            response = client.messages.create(
+            response = await asyncio.to_thread(
+                client.messages.create,
                 model="claude-sonnet-4-6",
-                max_tokens=4096,
+                max_tokens=8192,
                 system=cached_system,
                 tools=cached_tools,
                 messages=messages,
             )
 
         # Extract final text response
-        final_text = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                final_text += block.text
+        final_text = "".join(block.text for block in response.content if hasattr(block, "text"))
+
+        # A long, event-heavy report (lots of GPS/ball-carry detail) can hit the
+        # output token cap mid-sentence. Rather than silently truncating, ask the
+        # model to pick up exactly where it left off, up to a few times.
+        continuation_rounds = 0
+        while response.stop_reason == "max_tokens" and continuation_rounds < 3:
+            logger.warning(f"Post-match report hit max_tokens, requesting continuation (round {continuation_rounds + 1})")
+            messages.append({"role": "assistant", "content": final_text})
+            messages.append({
+                "role": "user",
+                "content": "Continue exactly where you left off. Do not repeat any text already written, do not restart the report, and do not add any preamble — just continue the sentence or section that was cut off.",
+            })
+            response = await asyncio.to_thread(
+                client.messages.create,
+                model="claude-sonnet-4-6",
+                max_tokens=8192,
+                system=cached_system,
+                tools=cached_tools,
+                messages=messages,
+            )
+            final_text += "".join(block.text for block in response.content if hasattr(block, "text"))
+            continuation_rounds += 1
 
         return final_text
 
@@ -370,6 +417,13 @@ INSTRUCTIONS:
 
         if not match:
             raise ValueError(f"Match {match_id} not found")
+
+        # Simple Scoring matches have no ball-carry/passing data (tap-only
+        # recording, no continuous drag tracking) — force the existing
+        # exclude_ball_carry prompt-injection path regardless of what the
+        # caller passed in.
+        if match.precise_tracking_enabled is False:
+            exclude_ball_carry = True
 
         # Get club name for personalised prompts
         report_club_name, _ = await get_club_context(db, match.club_id)
@@ -422,17 +476,238 @@ INSTRUCTIONS:
 
         ball_carry_note = "\n\nIMPORTANT: Do NOT use the get_ball_carrier_data tool — ball carry data has been excluded from this report by the analyst. Do not mention passes, carries, or ball-carrying chains." if exclude_ball_carry else ""
 
+        # Score-swing fact, computed deterministically rather than asked of
+        # the model — a report described a match as "held on comfortably in
+        # the last 10 minutes" when the real story was an 8-point deficit
+        # overcome to win. Reconstructing a minute-by-minute margin from a
+        # long raw event list is exactly the kind of arithmetic the model
+        # has gotten wrong elsewhere tonight (see the 2-pointer score-string
+        # bug), so the swing is computed here in Python and handed over as
+        # a ready fact instead of trusted to agentic recall.
+        momentum_hint = ""
+        try:
+            from app.models.match_event import MatchEvent, EventType, Team as EventTeam
+            score_value = {
+                EventType.GOAL: 3, EventType.PENALTY_GOAL: 3,
+                EventType.POINT: 1, EventType.POINT_FREE: 1, EventType.FORTY_FIVE: 1,
+                EventType.TWO_POINT: 2, EventType.TWO_POINT_FREE: 2,
+            }
+            swing_result = await db.execute(
+                select(MatchEvent.minute, MatchEvent.half, MatchEvent.team, MatchEvent.event_type)
+                .where(MatchEvent.match_id == match_uuid, MatchEvent.event_type.in_(list(score_value.keys())))
+                .order_by(MatchEvent.minute)
+            )
+            half_dur = match.half_duration_mins or 30
+            diff = 0
+            min_diff = 0
+            min_diff_minute = 0
+            min_diff_is_first_half = True
+            max_diff = 0
+            max_diff_minute = 0
+            ht_diff = 0  # score diff at the last first-half event — the TRUE half-time gap
+            for row in swing_result.all():
+                # `half` is frequently unset on older events — fall back to minute
+                # vs. half length, same heuristic used elsewhere (expected_points_service,
+                # PathsTakenChart) for this exact gap.
+                is_first_half = row.half == 1 if row.half is not None else row.minute < half_dur
+                value = score_value.get(row.event_type, 0)
+                diff += value if row.team == EventTeam.OWN else -value
+                if is_first_half:
+                    ht_diff = diff
+                if diff < min_diff:
+                    min_diff, min_diff_minute, min_diff_is_first_half = diff, row.minute, is_first_half
+                if diff > max_diff:
+                    max_diff, max_diff_minute = diff, row.minute
+            final_diff = diff
+            # Only worth calling out as a genuine swing if the deficit was
+            # real (4+ points) and the team pulled back to at least level —
+            # avoids flagging routine early-match noise.
+            if min_diff <= -4 and final_diff > min_diff + 3:
+                # Deepest deficit and the half-time score can be different moments
+                # (a team can be down less at the whistle than they get shortly
+                # after the restart) — a report once conflated the two, describing
+                # a deficit reached two minutes into the second half as "at the
+                # break". State both explicitly so the model can't blur them.
+                if min_diff_is_first_half or min_diff == ht_diff:
+                    deficit_timing = f"at half-time (minute {min_diff_minute})"
+                else:
+                    deficit_timing = (
+                        f"NOT at half-time — the half-time gap was {abs(ht_diff)} points, and the deficit "
+                        f"grew to {abs(min_diff)} points shortly after the restart, at minute {min_diff_minute}"
+                    )
+                momentum_hint = (
+                    f"\n\nMOMENTUM FACT (computed from the raw event log, trust this over any other "
+                    f"read of the scoreline): {report_club_name} were down by {abs(min_diff)} points "
+                    f"at their deepest point, which occurred {deficit_timing}. The match finished at a "
+                    f"margin of {final_diff:+d} points. This was a genuine comeback, not a comfortable "
+                    f"lead held onto — the Match Summary and any late-game narrative MUST reflect that "
+                    f"{report_club_name} clawed back from {abs(min_diff)} down, not that they controlled "
+                    f"the closing stages throughout. Be precise about WHEN the deepest deficit "
+                    f"occurred — do not say 'at the break' unless it genuinely was at half-time."
+                )
+        except Exception as e:
+            logger.warning(f"Momentum swing calculation failed for match {match_id}: {e}")
+
+        weather_hint = ""
+        notable_weather_values = {"heavy_rain", "light_rain", "windy", "foggy", "cold"}
+        # weather_conditions (plural) is the current source of truth — a
+        # match can genuinely be both windy and rainy at once. Falls back to
+        # the legacy single weather_condition for matches recorded before
+        # multi-select existed.
+        conditions_list = match.weather_conditions or ([match.weather_condition.value] if match.weather_condition else [])
+        notable_conditions = [c for c in conditions_list if c in notable_weather_values]
+        if notable_conditions:
+            readable = " and ".join(c.replace('_', ' ') for c in notable_conditions)
+            weather_hint = f"\n\nWeather was {readable} — worth a brief mention if it plausibly affected the game (kicking, handling, visibility), but don't dwell on it."
+        elif match.temperature_celsius is not None and (match.temperature_celsius >= 24 or match.temperature_celsius <= 4):
+            weather_hint = f"\n\nTemperature was {match.temperature_celsius}°C ({'hot' if match.temperature_celsius >= 24 else 'cold'}) — worth a brief mention if it plausibly affected conditioning/intensity, but don't dwell on it."
+
+        # Coach's own free-text note (e.g. "wind favoured Termon in the first
+        # half") — genuinely useful tactical colour that has no structured
+        # field to live in, but explicitly flagged as the coach's own account
+        # rather than something computed, so the model doesn't treat it as
+        # more authoritative than the actual event log/scoreline.
+        notes_hint = ""
+        if match.notes and match.notes.strip():
+            notes_hint = f"\n\nCOACH'S OWN NOTE about this match (their words, not a computed fact — factor it in as context, don't let it override what the event log/scoreline actually shows): \"{match.notes.strip()}\""
+
+        # Lineup-change facts — computed deterministically (same rationale as
+        # momentum_hint above: this is arithmetic/lookup, not something to
+        # trust to agentic recall). Flags three things by comparing this
+        # match's starting XV — INCLUDING which position_id each player
+        # started in, not just whether they started — against every earlier
+        # completed match this season for the club:
+        #   1. a starter making their first-ever start of the season
+        #   2. a starter playing a position CATEGORY they've never started
+        #      in before this season (goalkeeper only, for now — e.g. an
+        #      outfield player's first start in goals; a full-back's first
+        #      week at half-forward isn't the same kind of story and would
+        #      just be noise)
+        #   3. a player who started every prior match ("ever-present") but
+        #      isn't starting today
+        # Position category is read from THIS match's own MatchLineup
+        # (position_id), never Player.position — that field is a season
+        # default and can be plain wrong for a player covering a different
+        # role for one game (see get_recent_lineup_history's docstring for
+        # the same caveat). The model is asked to name each change and give
+        # a one-line verdict in light of the actual result — it is NOT told
+        # WHY a player was left out (injury/rest/tactical), since that's
+        # not in the data and must never be guessed at.
+        lineup_hint = ""
+        try:
+            from app.models.match_lineup import MatchLineup
+            from app.models.match import MatchStatus
+            from app.models.player import Player as _Player
+
+            _POSITION_ID_CATEGORY = {
+                'gk': 'goalkeeper',
+                'fb-left': 'defender', 'fb-center': 'defender', 'fb-right': 'defender',
+                'hb-left': 'defender', 'hb-center': 'defender', 'hb-right': 'defender',
+                'mf-left': 'midfielder', 'mf-right': 'midfielder',
+                'hf-left': 'forward', 'hf-center': 'forward', 'hf-right': 'forward',
+                'ff-left': 'forward', 'ff-center': 'forward', 'ff-right': 'forward',
+            }
+
+            this_lineup_result = await db.execute(
+                select(MatchLineup.player_id, MatchLineup.is_substitute, MatchLineup.position_id)
+                .where(MatchLineup.match_id == match_uuid)
+            )
+            this_lineup_rows = this_lineup_result.all()
+            this_starters = {row.player_id: row.position_id for row in this_lineup_rows if not row.is_substitute}
+
+            if this_starters:
+                prior_matches_result = await db.execute(
+                    select(Match.id).where(
+                        Match.club_id == match.club_id,
+                        Match.status == MatchStatus.COMPLETED,
+                        Match.id != match_uuid,
+                        Match.match_date < match.match_date,
+                    )
+                )
+                prior_match_ids = [row[0] for row in prior_matches_result.all()]
+
+                if prior_match_ids:
+                    prior_lineup_result = await db.execute(
+                        select(MatchLineup.player_id, MatchLineup.match_id, MatchLineup.is_substitute, MatchLineup.position_id)
+                        .where(MatchLineup.match_id.in_(prior_match_ids))
+                    )
+                    starts_by_player: dict = {}       # player_id -> set of match_ids started
+                    categories_by_player: dict = {}   # player_id -> set of position categories started in
+                    for row in prior_lineup_result.all():
+                        if not row.is_substitute:
+                            starts_by_player.setdefault(row.player_id, set()).add(row.match_id)
+                            _cat = _POSITION_ID_CATEGORY.get(row.position_id)
+                            if _cat:
+                                categories_by_player.setdefault(row.player_id, set()).add(_cat)
+
+                    total_prior = len(prior_match_ids)
+                    relevant_ids = set(this_starters.keys()) | set(starts_by_player.keys())
+                    players_result = await db.execute(
+                        select(_Player.id, _Player.name).where(_Player.id.in_(relevant_ids))
+                    )
+                    player_names = {p.id: p.name for p in players_result.all()}
+
+                    first_starts = []       # true first start of the season, any role
+                    first_goals_starts = [] # started before, but never in goal until today
+                    for pid, position_id in this_starters.items():
+                        if pid not in player_names:
+                            continue
+                        name = player_names[pid]
+                        prior_starts = starts_by_player.get(pid, set())
+                        if len(prior_starts) == 0:
+                            first_starts.append(name)
+                        elif position_id == 'gk' and 'goalkeeper' not in categories_by_player.get(pid, set()):
+                            first_goals_starts.append(name)
+
+                    left_out = [
+                        (player_names[pid], len(matches)) for pid, matches in starts_by_player.items()
+                        if pid not in this_starters and len(matches) == total_prior and pid in player_names
+                    ]
+
+                    if first_starts or first_goals_starts or left_out:
+                        lines = []
+                        if first_starts:
+                            lines.append("First start of the season: " + "; ".join(first_starts))
+                        if first_goals_starts:
+                            lines.append("First start IN GOALS this season (has started before, but never as goalkeeper): " + "; ".join(first_goals_starts))
+                        if left_out:
+                            lines.append("Ever-present all season until today, not in the starting team: " + "; ".join(
+                                f"{name} — started all {n} prior completed matches" for name, n in left_out
+                            ))
+                        lineup_hint = (
+                            "\n\nLINEUP CONTEXT (computed from lineup history, trust this over any other read):\n"
+                            + "\n".join(lines)
+                            + "\nMention this where it fits naturally (Match Summary or Top Performers) — name the change in one clause, "
+                            "then give a one-sentence verdict on whether it looks like it paid off, based on how that player (or whoever "
+                            "took their place) actually performed today and the final result. Do not speculate on WHY a player was left "
+                            "out or moved position (injury, rest, tactical) — you don't have that information, only the fact and today's evidence."
+                        )
+        except Exception as e:
+            logger.warning(f"Lineup context computation failed for match {match_id}: {e}")
+
         analysis = await MatchAgent.analyze_match(db, match_id,
-            f"""Generate a detailed post-match report including:{ball_carry_note}
+            f"""Generate a detailed post-match report including, IN THIS EXACT ORDER — always start with Match Summary, never lead with any other section:{ball_carry_note}
             1. Match Summary (2-3 sentences)
             2. Key Statistics
-            3. Top Performers (with ratings 1-10) — include each key player's carries, passes made/received, and primary carry zones from ball carrier data. For players who lost possession, state how many turnovers led to opposition scores and in which zone.
-            4. Tactical Analysis — include ball carry chain effectiveness, top passing connections, territory progression, and possession tempo from ball carrier data.
-            5. {"GPS & Physical Performance Analysis" if has_gps_data else "Ball Carrying & Possession Patterns — detail which players drove play forward (high avg_gain_x), who recycled possession, and whether scoring chains were direct (≤3 carriers) or buildup (4+ carriers)."}
+            3. Top Performers (with ratings 1-10) — include each key player's carries, passes made/received, and primary carry zones from ball carrier data. For players who lost possession, state how many turnovers led to opposition scores and in which zone. Goals/points from get_match_events may include an "assist" field — when present, credit the assisting player by name (e.g. "Bonner's goal, set up by Greene's fisted knockdown").{" GPS IS REQUIRED HERE, NOT OPTIONAL: call get_match_gps and, for every single player written up in this section, work their GPS figures (distance covered, and sprint count or max speed where notable) directly into their own write-up — never leave it for the separate GPS section to cover instead. A player profiled here with no GPS line is a mistake, not a stylistic choice, unless get_match_gps genuinely has no record for them (e.g. they were an unused substitute, which shouldn't be in Top Performers anyway)." if has_gps_data else ""}
+            4. Tactical Analysis — include ball carry chain effectiveness, territory progression, and possession tempo from ball carrier data. Mention the most productive passing connection (the pair who linked up most/best) in a sentence or two of prose — e.g. "Sweeney and Bonner linked up well down the right, combining for three scoring chains." Do NOT render passing connections as a table.
+            5. {"GPS & Physical Performance Analysis" if has_gps_data else "Ball Carrying & Possession Patterns — detail which players drove play forward (covered the most ground per carry), who recycled possession, and whether scoring chains were direct (≤3 carriers) or buildup (4+ carriers)."}
             6. {"Ball Carrying & Possession Patterns — detail which players drove play forward, who recycled possession, and whether scoring chains were direct or buildup." if has_gps_data else "Areas for Improvement"}
             7. {"Areas for Improvement" if has_gps_data else "Training Recommendations"}
             8. {"Training Recommendations" if has_gps_data else ""}
-            9. Man of the Match — pick the single best {report_club_name} player considering scoring, workrate, ball carrying/distribution{", GPS data," if has_gps_data else ","} and overall impact. Write it as a section header exactly like: **Man of the Match: Player Name** followed by a 1-2 sentence justification.{gps_hint}
+            9. Man of the Match — pick the single best {report_club_name} player considering scoring, workrate, ball carrying/distribution{", GPS data," if has_gps_data else ","} and overall impact. Write it as a section header exactly like: **Man of the Match: Player Name** followed by a 1-2 sentence justification.{gps_hint}{momentum_hint}{weather_hint}{lineup_hint}{notes_hint}
+
+            POSSESSION LANGUAGE — calibrate to the actual percentage, don't default to strong language:
+            - Below 50%: "{report_club_name} had less of the ball" / "lost the possession battle"
+            - 50-60%: "{report_club_name} had more of the ball" / "edged the possession battle" — NOT "controlled" or "dominated"
+            - Over 60%: "{report_club_name} controlled possession" / "dominated the ball" is fair to say
+            Never round up — 59% is "more of the ball", not "controlled".
+
+            PLAIN LANGUAGE FOR BALL-CARRYING DATA — never write a raw field/variable name into the report (e.g. avg_gain_x, carry_count, x_delta). Translate every metric into what a player or supporter would actually say:
+            - avg_gain_x_metres / territory gained → "X metres gained per carry" or "drove the ball forward X metres on average". NEVER use the raw avg_gain_x field for a metres figure — it's a 0-100 pitch-length percentage, not metres, and reading it out directly understates real distance by roughly 30%.
+            - carry_count → "X carries" / "carried the ball X times"
+            - passes made/received → "X passes" (not "pass_count" or similar)
+            If you're ever unsure what a tool field means in plain terms, describe the underlying action (who had the ball, how far it went, who it went to) rather than quoting the field name.
 
             Format your response as structured sections. {"Pay special attention to the GPS data and ensure it is discussed thoroughly." if has_gps_data else ""}"""
         )
@@ -442,6 +717,20 @@ INSTRUCTIONS:
 
         # Strip the <chart_insights> block from the displayed analysis
         clean_analysis = re.sub(r'\s*<chart_insights>[\s\S]*?</chart_insights>\s*', '', analysis).strip()
+
+        # Defensive: strip a leaked "narrating my own process" preamble if the
+        # model wrote one anyway despite the system prompt instruction against it
+        # (e.g. "Now I have all the data needed. Let me compile the report.").
+        narration_pattern = re.compile(
+            r'^(now i have|let me (compile|write|put together|draft|now)|'
+            r'i(?:\'ve| have) (?:now )?(?:got|gathered|reviewed) (?:all )?(?:the )?(?:data|information)|'
+            r'based on (?:the|this) data,? (?:i|let)|'
+            r'with (?:all )?(?:the )?data (?:gathered|in hand))',
+            re.IGNORECASE,
+        )
+        first_para, sep, rest = clean_analysis.partition('\n\n')
+        if rest and len(first_para) < 300 and narration_pattern.match(first_para.strip()):
+            clean_analysis = rest.strip()
 
         # Persist the analysis to the database
         match.ai_analysis = clean_analysis
@@ -510,6 +799,20 @@ INSTRUCTIONS:
             "total_team_hmld_km": round(total_hmld / 1000, 1),
         }
 
+        # Unused subs are excluded from every stat/alert/average above, but the
+        # manager still wants a passing acknowledgement if one of them clearly
+        # put in real work pre-match — kept as a small, separate, clearly-labeled
+        # list so the model can't accidentally fold them into match analysis.
+        unused_subs = [p for p in gps_data if p.get("status") == "unused_substitute"]
+        if unused_subs:
+            gps_summary["bench_players_not_used"] = [
+                {
+                    "name": p.get("player_name", "Unknown"),
+                    "total_distance_m": p.get("total_distance_m", 0),
+                }
+                for p in sorted(unused_subs, key=lambda p: p.get("total_distance_m", 0) or 0, reverse=True)
+            ]
+
         for p in active_data:
             is_gk = p.get("position", "").lower() == "goalkeeper"
             was_subbed = p.get("subbed_off_minute") is not None
@@ -521,7 +824,7 @@ INSTRUCTIONS:
                 "high_speed_running_m": p.get("high_speed_running_m", 0),
                 "sprint_distance_m": p.get("sprint_distance_m", 0),
                 "hml_distance_m": p.get("hml_distance_m", 0),
-                "max_speed_kmh": round((p.get("max_speed_ms", 0) or 0) * 3.6, 1),
+                "max_speed_ms": round(p.get("max_speed_ms", 0) or 0, 2),
                 "sprint_count": p.get("sprint_count", 0),
                 "player_load": p.get("player_load", 0),
                 "playing_minutes": p.get("playing_minutes", 0),
@@ -572,13 +875,15 @@ Provide your analysis as a JSON object with this EXACT structure:
         "full_recovery_needed": ["Player names who need 72+ hours"],
         "light_session_only": ["Player names who should do light work"],
         "normal_training": ["Player names cleared for normal training"]
-    }}
+    }},
+
+    "unused_sub_footnote": "Optional. Omit this field entirely unless a bench player in bench_players_not_used clearly logged notable work (e.g. warm-up effort). One short sentence max, must make clear this is pre-match/bench activity, NOT match involvement — e.g. 'X logged the most bench-session distance among unused subs (Ykm) in the warm-up.'"
 }}
 
 ANALYSIS GUIDELINES:
-- Players with status "unused_substitute" wore a GPS device on the bench but never played — COMPLETELY IGNORE them in all analysis, alerts, and averages
+- Players with status "unused_substitute" (listed separately under bench_players_not_used, if present) never played — they must NEVER appear in alerts, patterns, top_performers, or averages. The only place they may ever be mentioned is the single optional unused_sub_footnote field, and only when their bench-session output is genuinely notable.
 - NEVER flag the goalkeeper for low distance/activity — GKs typically cover 2-4km which is normal
-- Any max_speed_kmh above 38 km/h should be treated as a likely GPS spike/sensor error — do not cite it as a genuine achievement or use it for recovery recommendations
+- Any max_speed_ms above 10.6 m/s should be treated as a likely GPS spike/sensor error — do not cite it as a genuine achievement or use it for recovery recommendations
 - Players with a "subbed_off_minute" were DEFINITELY substituted — state as fact, do NOT say "possible tactical substitution". Evaluate their output relative to minutes played
 - Use positions for distance expectations: Midfielders 9-12km, Forwards/Defenders 7-10km, Goalkeeper 2-4km
 - Only flag outfield players who played the full match and are significantly below position benchmarks
@@ -593,7 +898,8 @@ ANALYSIS GUIDELINES:
 Return ONLY the JSON object, no other text."""
 
         try:
-            response = client.messages.create(
+            response = await asyncio.to_thread(
+                client.messages.create,
                 model="claude-sonnet-4-6",
                 max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
@@ -667,7 +973,8 @@ Respond in this exact JSON format (no markdown):
     "shooting": "1-2 sentences about shot selection and efficiency using {club_name}/{opponent} names"
 }}"""
 
-            response = client.messages.create(
+            response = await asyncio.to_thread(
+                client.messages.create,
                 model="claude-sonnet-4-6",
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],

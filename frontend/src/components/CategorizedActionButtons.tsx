@@ -32,13 +32,23 @@ interface CategorizedActionButtonsProps {
   pendingFoul?: 'own' | 'opponent' | null  // Track which team fouled
   pendingBlockRecovery?: boolean  // Waiting for block recovery decision
   onBlockRecovery?: (weRecovered: boolean) => void
+  // A blocked shot doesn't always end in a clean recovery — it can deflect
+  // out over the sideline, or (deflecting behind the end line) draw a 45.
+  // Both skip straight into their own normal flow from here rather than
+  // forcing "They Recovered" as an awkward stand-in for "it went out".
+  onBlockResultSideline?: () => void
+  onBlockResultFortyFive?: () => void
+  pendingSidelineDecision?: boolean  // Waiting for "who's in possession" after a sideline ball
+  onSidelineDecision?: (weWonIt: boolean) => void
   pending45?: boolean
   pendingKickoutPosition?: boolean  // Waiting for user to click pitch for kickout position
+  pendingFortyFivePosition?: boolean  // "45 Scored"/"45 Missed" picked, waiting for a tap on the 45m line
   awaitingKickout?: boolean  // Score just happened, kickout expected next
   isInPenaltyArea?: boolean  // Ball is near opponent's goal (inside 13m line)
   onCancelFree?: () => void
   onCancel45?: () => void
   onCancelKickout?: () => void
+  onCancelFortyFivePosition?: () => void
 }
 
 const categories = [
@@ -125,13 +135,19 @@ export default function CategorizedActionButtons({
   pendingFoul = null,
   pendingBlockRecovery = false,
   onBlockRecovery,
+  onBlockResultSideline,
+  onBlockResultFortyFive,
+  pendingSidelineDecision = false,
+  onSidelineDecision,
   pending45 = false,
   pendingKickoutPosition = false,
+  pendingFortyFivePosition = false,
   awaitingKickout = false,
   isInPenaltyArea: _isInPenaltyArea = false,
   onCancelFree,
   onCancel45,
-  onCancelKickout
+  onCancelKickout,
+  onCancelFortyFivePosition
 }: CategorizedActionButtonsProps) {
   const [internalActiveCategory, setInternalActiveCategory] = useState('scoring')
   const [showFoulSelection, setShowFoulSelection] = useState(false)
@@ -195,6 +211,22 @@ export default function CategorizedActionButtons({
         EventType.OUR_UNFORCED_ERROR // We can't error if opponent has ball
       ].includes(eventType)
     }
+  }
+
+  // Same possession logic as isButtonDisabled, but for the 4 Turnovers-tab
+  // buttons that are never just "unlikely right now" — they're flat-out
+  // impossible given who has the ball (can't win a turnover we already have,
+  // can't lose one we don't). Those used to render disabled-but-visible,
+  // which meant they still ate up horizontal scroll space next to Opp
+  // Unforced Error / Interception / Sideline Ball. Hiding them outright
+  // removes that noise; they reappear the instant currentPossession flips
+  // back, same as the disabled state did.
+  const isButtonHiddenForPossession = (eventType: EventType): boolean => {
+    const hasPossession = currentPossession === PossessionTeam.OWN
+    if (hasPossession) {
+      return eventType === EventType.TURNOVER_WON || eventType === EventType.OPP_UNFORCED_ERROR
+    }
+    return eventType === EventType.TURNOVER_LOST || eventType === EventType.OUR_UNFORCED_ERROR
   }
 
   // Show foul team selection
@@ -291,6 +323,42 @@ export default function CategorizedActionButtons({
     )
   }
 
+  // Waiting for a tap on the 45m line — outcome (Scored/Missed) is already
+  // picked, this is purely "where on the line".
+  if (pendingFortyFivePosition) {
+    return (
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-amber-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="px-3 py-2 bg-gradient-to-r from-amber-600/30 to-orange-600/30 border-b border-amber-500/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Flag size={16} className="text-amber-400" />
+              <span className="text-sm font-semibold text-amber-300">Select 45 Position</span>
+            </div>
+            <button
+              onClick={onCancelFortyFivePosition}
+              className="text-xs text-white/60 hover:text-white px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+
+        <div className="p-4 flex items-center justify-center space-x-3">
+          <Flag size={20} className="text-amber-400 animate-pulse" />
+          <p className="text-white font-medium">
+            Tap the 45m line, level with where it went out
+          </p>
+        </div>
+
+        <div className="px-3 py-2 bg-white/5 border-t border-white/10">
+          <p className="text-xs text-white/50 text-center">
+            The highlighted line is where a 45 is always taken from — left or right of the posts, whichever side the ball actually went out
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   // Show 45 options menu
   if (pending45) {
     return (
@@ -356,18 +424,65 @@ export default function CategorizedActionButtons({
             <span className="text-sm font-semibold text-purple-300">Block — Who Recovered?</span>
           </div>
         </div>
-        <div className="p-3 flex gap-2">
+        <div className="p-3 grid grid-cols-2 gap-2">
           <button
             onClick={() => onBlockRecovery(true)}
-            className="flex-1 py-3 rounded-xl bg-emerald-500/20 border-2 border-emerald-400/30 text-emerald-200 text-sm font-bold hover:bg-emerald-500/35 hover:border-emerald-400/50 transition-all active:scale-95"
+            className="py-3 rounded-xl bg-emerald-500/20 border-2 border-emerald-400/30 text-emerald-200 text-sm font-bold hover:bg-emerald-500/35 hover:border-emerald-400/50 transition-all active:scale-95"
           >
             We Recovered
           </button>
           <button
             onClick={() => onBlockRecovery(false)}
-            className="flex-1 py-3 rounded-xl bg-orange-500/20 border-2 border-orange-400/30 text-orange-200 text-sm font-bold hover:bg-orange-500/35 hover:border-orange-400/50 transition-all active:scale-95"
+            className="py-3 rounded-xl bg-orange-500/20 border-2 border-orange-400/30 text-orange-200 text-sm font-bold hover:bg-orange-500/35 hover:border-orange-400/50 transition-all active:scale-95"
           >
             They Recovered
+          </button>
+          {onBlockResultSideline && (
+            <button
+              onClick={onBlockResultSideline}
+              className="py-2.5 rounded-xl bg-sky-500/15 border-2 border-sky-400/30 text-sky-200 text-xs font-bold hover:bg-sky-500/30 hover:border-sky-400/50 transition-all active:scale-95"
+            >
+              Sideline Ball
+            </button>
+          )}
+          {onBlockResultFortyFive && (
+            <button
+              onClick={onBlockResultFortyFive}
+              className="py-2.5 rounded-xl bg-amber-500/15 border-2 border-amber-400/30 text-amber-200 text-xs font-bold hover:bg-amber-500/30 hover:border-amber-400/50 transition-all active:scale-95"
+            >
+              45
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Sideline ball panel — who's in possession now? A sideline ball can go
+  // either way regardless of who last had it (a contested 50/50, a
+  // deliberate defensive clearance, etc.), so this asks directly instead of
+  // guessing from whatever the ball's last-known team happened to be.
+  if (pendingSidelineDecision && onSidelineDecision) {
+    return (
+      <div className={`bg-slate-900 backdrop-blur-xl border-2 border-sky-500/50 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="px-3 py-2 bg-gradient-to-r from-sky-600/30 to-cyan-600/30 border-b border-sky-500/30">
+          <div className="flex items-center space-x-2">
+            <Flag size={16} className="text-sky-400" />
+            <span className="text-sm font-semibold text-sky-300">Sideline Ball — Who's In Possession?</span>
+          </div>
+        </div>
+        <div className="p-3 flex gap-2">
+          <button
+            onClick={() => onSidelineDecision(true)}
+            className="flex-1 py-3 rounded-xl bg-emerald-500/20 border-2 border-emerald-400/30 text-emerald-200 text-sm font-bold hover:bg-emerald-500/35 hover:border-emerald-400/50 transition-all active:scale-95"
+          >
+            We Have It
+          </button>
+          <button
+            onClick={() => onSidelineDecision(false)}
+            className="flex-1 py-3 rounded-xl bg-orange-500/20 border-2 border-orange-400/30 text-orange-200 text-sm font-bold hover:bg-orange-500/35 hover:border-orange-400/50 transition-all active:scale-95"
+          >
+            They Have It
           </button>
         </div>
       </div>
@@ -438,7 +553,7 @@ export default function CategorizedActionButtons({
     <div data-tour="action-category-tabs" className={`bg-slate-900 backdrop-blur-xl border border-white/20 rounded-xl shadow-2xl overflow-hidden ${disabled ? 'opacity-50 pointer-events-none' : ''}`}>
       {/* Action Buttons */}
       <div data-tour="scoring-buttons" className="p-2 flex flex-nowrap gap-1 justify-start min-h-[48px] overflow-x-auto">
-        {currentCategory?.buttons.map((button) => {
+        {currentCategory?.buttons.filter((button) => !isButtonHiddenForPossession(button.eventType)).map((button) => {
           const Icon = button.icon
           const isContextDisabled = isButtonDisabled(button.eventType)
           const isDisabled = disabled || isContextDisabled

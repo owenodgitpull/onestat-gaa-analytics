@@ -13,6 +13,7 @@ const ACTION_COLORS: Record<string, string> = {
   pushed: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
   viewed: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
   log_in: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  previewed_as_player: 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20',
   log_out: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   logout: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
   invited_player: 'bg-teal-500/10 text-teal-400 border-teal-500/20',
@@ -250,6 +251,9 @@ export default function AuditLogSettings() {
                   </span>
                   {log.resource_type && (
                     <span className="text-xs text-white/40">{formatResource(log.resource_type)}</span>
+                  )}
+                  {log.detail && typeof log.detail.player_name === 'string' && (
+                    <span className="text-xs text-white/50">— {log.detail.player_name}</span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5">

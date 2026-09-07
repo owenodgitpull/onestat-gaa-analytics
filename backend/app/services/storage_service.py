@@ -76,15 +76,21 @@ class StorageService:
             logger.warning("R2 Storage not configured - file uploads will be disabled")
 
     def _ensure_cors(self):
-        """Set CORS on the R2 bucket so presigned URLs work with crossOrigin='anonymous'."""
+        """Set CORS on the R2 bucket so presigned URLs work with crossOrigin='anonymous'.
+
+        PUT is required for direct browser uploads (single presigned PUT and
+        multipart part uploads); ExposeHeaders/ETag is required so the browser
+        can read each part's ETag to complete a multipart upload.
+        """
         try:
             self.client.put_bucket_cors(
                 Bucket=self.bucket_name,
                 CORSConfiguration={
                     'CORSRules': [{
                         'AllowedOrigins': ['*'],
-                        'AllowedMethods': ['GET', 'HEAD'],
+                        'AllowedMethods': ['GET', 'HEAD', 'PUT'],
                         'AllowedHeaders': ['*'],
+                        'ExposeHeaders': ['ETag'],
                         'MaxAgeSeconds': 86400,
                     }]
                 }
@@ -248,6 +254,99 @@ class StorageService:
         except ClientError as e:
             logger.error(f"Failed to generate presigned upload URL: {e}")
             return None
+
+    # ------------------------------------------------------------------
+    # Multipart upload (for files over the 5GiB single-PUT cap)
+    # ------------------------------------------------------------------
+
+    def create_multipart_upload(
+        self,
+        folder: str,
+        filename: str,
+        content_type: str = "video/mp4",
+        club_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Start a multipart upload. A single presigned PUT tops out at 5GiB
+        (an R2/S3 platform limit, not ours) — multipart splits the transfer
+        into parts uploaded separately, then R2 reassembles them into one
+        object, so playback afterwards is the same single video either way."""
+        if not self.is_configured:
+            logger.error("R2 not configured - cannot create multipart upload")
+            return None
+
+        try:
+            key = self._generate_key(folder, filename, club_id=club_id)
+            response = self.client.create_multipart_upload(
+                Bucket=self.bucket_name,
+                Key=key,
+                ContentType=content_type,
+            )
+            return {"key": key, "upload_id": response["UploadId"]}
+        except ClientError as e:
+            logger.error(f"Failed to create multipart upload: {e}")
+            return None
+
+    def generate_presigned_part_urls(
+        self,
+        key: str,
+        upload_id: str,
+        total_parts: int,
+        expires_in: int = 14400,
+    ) -> Optional[list]:
+        """Generate one presigned PUT URL per part. Index 0 = part number 1."""
+        if not self.is_configured:
+            return None
+
+        try:
+            return [
+                self.client.generate_presigned_url(
+                    'upload_part',
+                    Params={
+                        'Bucket': self.bucket_name,
+                        'Key': key,
+                        'UploadId': upload_id,
+                        'PartNumber': part_number,
+                    },
+                    ExpiresIn=expires_in,
+                )
+                for part_number in range(1, total_parts + 1)
+            ]
+        except ClientError as e:
+            logger.error(f"Failed to generate presigned part URLs: {e}")
+            return None
+
+    def complete_multipart_upload(self, key: str, upload_id: str, parts: list) -> bool:
+        """Finish a multipart upload. `parts` = [{"PartNumber": int, "ETag": str}, ...]."""
+        if not self.is_configured:
+            return False
+
+        try:
+            sorted_parts = sorted(parts, key=lambda p: p["PartNumber"])
+            self.client.complete_multipart_upload(
+                Bucket=self.bucket_name,
+                Key=key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": sorted_parts},
+            )
+            logger.info(f"Completed multipart upload: {key} ({len(parts)} parts)")
+            return True
+        except ClientError as e:
+            logger.error(f"Failed to complete multipart upload: {e}")
+            return False
+
+    def abort_multipart_upload(self, key: str, upload_id: str) -> bool:
+        """Cancel an in-progress multipart upload and free the uploaded parts."""
+        if not self.is_configured:
+            return False
+
+        try:
+            self.client.abort_multipart_upload(
+                Bucket=self.bucket_name, Key=key, UploadId=upload_id,
+            )
+            return True
+        except ClientError as e:
+            logger.error(f"Failed to abort multipart upload: {e}")
+            return False
 
     def generate_presigned_download_url(
         self,

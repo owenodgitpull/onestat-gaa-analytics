@@ -1,6 +1,11 @@
 /* Service Worker for OneStat — Push Notifications + Offline Asset Caching */
 
-const CACHE_NAME = 'onestat-v2';
+// Bumped so every already-installed service worker purges its old cached
+// chunk/index.html entries on next activation — this is the SW-side half of
+// fixing the "blank screen after a deploy" bug (see lazyWithRetry.ts for the
+// app-side half). A stale cache entry for an old-hashed JS chunk could keep
+// serving it from cache-first even after the server no longer has it.
+const CACHE_NAME = 'onestat-v3';
 
 // ── Asset Caching (app shell loads offline) ──────────────────────────────
 

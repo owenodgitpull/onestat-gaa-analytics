@@ -21,6 +21,7 @@ import { api } from '@/services/api'
 import type { PlayerWorkload, SetPieceRoutine, ManMarkingAssignment, SleepFlag } from '@/services/api'
 import type { Match, Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
+import { useAuth } from '@/contexts/AuthContext'
 import OppositionBriefing from '@/components/OppositionBriefing'
 import ManMarkingPanel from '@/components/ManMarkingPanel'
 import SetPieceEditor from '@/components/SetPieceEditor'
@@ -149,6 +150,7 @@ export default function MatchPrep() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
   const { club } = useClub()
+  const { canEdit } = useAuth()
   const jerseyBg = club?.primary_colour || '#10B981'
   const jerseyText = club?.secondary_colour || '#FFFFFF'
 
@@ -302,6 +304,32 @@ export default function MatchPrep() {
       })
   }, [players, selectedIds])
 
+  // Players offered in the picker when a filled slot is selected — unlike
+  // availablePlayers (which is only for filling an EMPTY slot), this
+  // includes players already on the bench or starting elsewhere, since
+  // tapping any of them here should swap them into the selected slot. Each
+  // gets a status tag so it's clear who's coming from where.
+  const swapCandidates = useMemo(() => {
+    if (!selectedPitchPos) return []
+    const currentPlayerId = lineup[selectedPitchPos]?.playerId
+    return players
+      .filter(p => p.active && p.id !== currentPlayerId)
+      .map(p => {
+        const positionId = Object.entries(lineup).find(([, e]) => e.playerId === p.id)?.[0]
+        const status = !positionId
+          ? null
+          : FORMATION_POSITIONS.some(fp => fp.id === positionId) ? 'Starting' : 'Bench'
+        return { player: p, status }
+      })
+      .sort((a, b) => {
+        const posOrder: Record<string, number> = { goalkeeper: 0, defender: 1, midfielder: 2, forward: 3 }
+        const aOrder = posOrder[a.player.position] ?? 4
+        const bOrder = posOrder[b.player.position] ?? 4
+        if (aOrder !== bOrder) return aOrder - bOrder
+        return a.player.name.localeCompare(b.player.name)
+      })
+  }, [players, lineup, selectedPitchPos])
+
   const selectedCount = Object.keys(lineup).length
   const startingCount = FORMATION_POSITIONS.filter(p => !!lineup[p.id]).length
 
@@ -383,6 +411,7 @@ export default function MatchPrep() {
 
   const handlePlayerSelect = (playerId: string) => {
     if (selectingPosition) {
+      // Filling an empty slot
       setLineup(prev => ({
         ...prev,
         [selectingPosition]: {
@@ -392,7 +421,37 @@ export default function MatchPrep() {
       }))
       setSelectingPosition(null)
       setSaved(false)
+      return
     }
+
+    if (!selectedPitchPos) return
+
+    // A filled slot is selected — tapping ANY player in the list (starting,
+    // on the bench, or not selected at all) brings them into that slot.
+    // If they're already placed somewhere else in the lineup, this is a
+    // swap (both positions change); if they're not placed anywhere, this is
+    // a straight replace (the outgoing player drops back to the available
+    // pool). Previously this only handled the "not placed anywhere" case,
+    // so the list only ever showed truly-available players and tapping a
+    // bench player here did nothing — the only way to bring a bench player
+    // in was the fiddly tap-the-tiny-marker-on-pitch swap gesture.
+    const positionId = selectedPitchPos
+    const theirPositionId = Object.entries(lineup).find(([, e]) => e.playerId === playerId)?.[0]
+
+    setLineup(prev => {
+      const myEntry = prev[positionId]
+      if (!myEntry) return prev
+      const next = { ...prev }
+      if (theirPositionId) {
+        next[theirPositionId] = { playerId: myEntry.playerId, jerseyNumber: prev[theirPositionId]?.jerseyNumber ?? null }
+        next[positionId] = { playerId, jerseyNumber: prev[positionId]?.jerseyNumber ?? null }
+      } else {
+        next[positionId] = { playerId, jerseyNumber: prev[positionId]?.jerseyNumber ?? defaultJerseyFor(positionId, prev) }
+      }
+      return next
+    })
+    setSelectedPitchPos(null)
+    setSaved(false)
   }
 
   const handleJerseyChange = (positionId: string, value: string) => {
@@ -617,22 +676,26 @@ export default function MatchPrep() {
                 Saved
               </span>
             )}
-            <button
-              onClick={handleSave}
-              disabled={saving || selectedCount === 0}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
-              <Save size={14} />
-              Save
-            </button>
-            <button
-              onClick={handleSaveAndStart}
-              disabled={saving || startingCount < 15}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-            >
-              <Play size={14} />
-              Save & Start
-            </button>
+            {canEdit && (
+              <>
+                <button
+                  onClick={handleSave}
+                  disabled={saving || selectedCount === 0}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  <Save size={14} />
+                  Save
+                </button>
+                <button
+                  onClick={handleSaveAndStart}
+                  disabled={saving || startingCount < 15}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  <Play size={14} />
+                  Save & Start
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -679,6 +742,9 @@ export default function MatchPrep() {
                     style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
                     onClick={() => handlePositionClick(pos.id)}
                   >
+                    {isSelected && (
+                      <span className="absolute inset-0 rounded-full ring-4 ring-amber-400 animate-ping" />
+                    )}
                     <div
                       className={`w-8 h-8 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-[10px] sm:text-sm transition-all ring-2 ${
                         player
@@ -711,54 +777,6 @@ export default function MatchPrep() {
                 )
               })}
 
-              {/* Action strip — when a position is selected */}
-              {selectedPitchPos && !selectingPosition && (() => {
-                const entry = lineup[selectedPitchPos]
-                const player = entry ? playerMap.get(entry.playerId) : null
-                if (!player) return null
-                const isStarting = FORMATION_POSITIONS.some(p => p.id === selectedPitchPos)
-                const hasBenchSlot = SUBSTITUTE_POSITIONS.some(s => !lineup[s.id])
-                const hasStartSlot = FORMATION_POSITIONS.some(p => !lineup[p.id])
-                return (
-                  <div className="absolute inset-x-2 bottom-2 z-10">
-                    <div className="flex items-center justify-between gap-1.5 rounded-xl px-3 py-2"
-                      style={{
-                        background: 'linear-gradient(90deg, rgba(245,158,11,0.22), rgba(234,179,8,0.10))',
-                        border: '1px solid rgba(245,158,11,0.40)',
-                        backdropFilter: 'blur(14px)',
-                        WebkitBackdropFilter: 'blur(14px)',
-                      }}
-                    >
-                      <span className="text-amber-200 text-xs font-bold truncate flex-1 mr-1">
-                        {displaySurname(player.name)}
-                      </span>
-                      <div className="flex gap-1.5 flex-shrink-0">
-                        {isStarting && hasBenchSlot && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleMoveToBench(selectedPitchPos) }}
-                            className="text-[10px] px-2 py-1 rounded-lg bg-purple-500/20 border border-purple-400/30 text-purple-300 hover:bg-purple-500/30 transition-colors"
-                          >→ Bench</button>
-                        )}
-                        {!isStarting && hasStartSlot && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleMoveToStarting(selectedPitchPos) }}
-                            className="text-[10px] px-2 py-1 rounded-lg bg-blue-500/20 border border-blue-400/30 text-blue-300 hover:bg-blue-500/30 transition-colors"
-                          >← Start</button>
-                        )}
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDirectRemove(selectedPitchPos) }}
-                          className="text-[10px] px-2 py-1 rounded-lg bg-red-500/20 border border-red-400/30 text-red-300 hover:bg-red-500/30 transition-colors"
-                        >Remove</button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setSelectedPitchPos(null) }}
-                          className="text-[10px] px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:bg-white/10 transition-colors"
-                        >✕</button>
-                      </div>
-                    </div>
-                    <p className="text-center text-[9px] text-white/30 mt-0.5">or tap another position to swap</p>
-                  </div>
-                )
-              })()}
             </div>
 
             {/* Substitutes */}
@@ -776,11 +794,15 @@ export default function MatchPrep() {
                     className="cursor-pointer flex flex-col items-center"
                     onClick={() => handlePositionClick(pos.id)}
                   >
-                    <div
-                      className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[9px] sm:text-xs transition-all ring-2 ${
-                        player
-                          ? `shadow-lg ${isSelected ? 'scale-125' : 'hover:scale-105'}`
-                          : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
+                    <div className="relative">
+                      {isSelected && (
+                        <span className="absolute inset-0 rounded-full ring-4 ring-amber-400 animate-ping" />
+                      )}
+                      <div
+                        className={`w-7 h-7 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-bold text-[9px] sm:text-xs transition-all ring-2 ${
+                          player
+                            ? `shadow-lg ${isSelected ? 'scale-125' : 'hover:scale-105'}`
+                            : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110 ring-white/30'
                       }`}
                       style={player ? {
                         backgroundColor: jerseyBg, color: jerseyText,
@@ -789,6 +811,7 @@ export default function MatchPrep() {
                       } as React.CSSProperties : undefined}
                     >
                       {player ? (entry?.jerseyNumber ?? `S${index + 1}`) : `S${index + 1}`}
+                      </div>
                     </div>
                     {player && (
                       <div className="mt-1.5">
@@ -817,24 +840,62 @@ export default function MatchPrep() {
 
         {/* Player Picker Panel (right column) */}
         <div className="glass-card p-4 max-h-[80vh] overflow-y-auto">
-          {selectingPosition ? (
+          {(selectingPosition || selectedPitchPos) ? (
             <>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-white">
-                  Select for {
-                    FORMATION_POSITIONS.find(p => p.id === selectingPosition)?.label ||
-                    `Sub ${selectingPosition.replace('sub-', '')}`
-                  }
+                  {selectingPosition ? (
+                    <>Select for {
+                      FORMATION_POSITIONS.find(p => p.id === selectingPosition)?.label ||
+                      `Sub ${selectingPosition.replace('sub-', '')}`
+                    }</>
+                  ) : (
+                    <>Replace {(() => {
+                      const entry = selectedPitchPos ? lineup[selectedPitchPos] : null
+                      const p = entry ? playerMap.get(entry.playerId) : null
+                      return p ? displaySurname(p.name) : ''
+                    })()}</>
+                  )}
                 </h3>
                 <button
-                  onClick={() => setSelectingPosition(null)}
+                  onClick={() => { setSelectingPosition(null); setSelectedPitchPos(null) }}
                   className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-white hover:bg-white/10 transition-all"
                 >
                   <X size={16} />
                 </button>
               </div>
+
+              {/* Quick actions for the selected slot — lives in this side
+                  panel (not floating over the pitch/subs) so it's always in
+                  a predictable, never-overlapping spot. */}
+              {selectedPitchPos && (() => {
+                const isStarting = FORMATION_POSITIONS.some(p => p.id === selectedPitchPos)
+                const hasBenchSlot = SUBSTITUTE_POSITIONS.some(s => !lineup[s.id])
+                const hasStartSlot = FORMATION_POSITIONS.some(p => !lineup[p.id])
+                return (
+                  <div className="flex gap-1.5 mb-3">
+                    {isStarting && hasBenchSlot && (
+                      <button
+                        onClick={() => handleMoveToBench(selectedPitchPos)}
+                        className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg bg-purple-500/20 border border-purple-400/30 text-purple-300 hover:bg-purple-500/30 transition-colors"
+                      >→ Bench</button>
+                    )}
+                    {!isStarting && hasStartSlot && (
+                      <button
+                        onClick={() => handleMoveToStarting(selectedPitchPos)}
+                        className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg bg-blue-500/20 border border-blue-400/30 text-blue-300 hover:bg-blue-500/30 transition-colors"
+                      >← Start</button>
+                    )}
+                    <button
+                      onClick={() => handleDirectRemove(selectedPitchPos)}
+                      className="flex-1 text-xs font-semibold px-2 py-1.5 rounded-lg bg-red-500/20 border border-red-400/30 text-red-300 hover:bg-red-500/30 transition-colors"
+                    >Remove</button>
+                  </div>
+                )
+              })()}
+
               <div className="space-y-1.5">
-                {availablePlayers.map(player => {
+                {(selectingPosition ? availablePlayers.map(player => ({ player, status: null as string | null })) : swapCandidates).map(({ player, status }) => {
                   const wl = workloadMap.get(player.id)
                   const sf = sleepFlagMap.get(player.id)
                   const isUnavailable = player.status === 'injured' || player.status === 'suspended'
@@ -862,9 +923,15 @@ export default function MatchPrep() {
                             </span>
                           )}
                         </div>
-                        {isUnavailable && (
+                        {isUnavailable ? (
                           <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-semibold">
                             {player.status}
+                          </span>
+                        ) : status && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                            status === 'Starting' ? 'bg-blue-500/20 text-blue-300' : 'bg-purple-500/20 text-purple-300'
+                          }`}>
+                            {status}
                           </span>
                         )}
                       </div>

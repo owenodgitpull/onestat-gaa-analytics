@@ -13,12 +13,28 @@ import {
 import {
   Crosshair, Activity, Shield, CalendarCheck, Sparkles, Flame,
   Trophy, X, Search, ArrowLeftRight, Target, BookOpen, Check, ChevronDown, Moon,
+  MoveHorizontal, Hand,
 } from 'lucide-react';
 import ChartZoomModal from '../../components/ChartZoomModal';
 import SleepTracker from '../../components/player/SleepTracker';
+import PlayerPhysicalTrend from '../../components/charts/PlayerPhysicalTrend';
+import PlayerFatigueSignature from '../../components/charts/PlayerFatigueSignature';
+import PlayerDisciplineTrend from '../../components/charts/PlayerDisciplineTrend';
+import PlayerPositionalBenchmark from '../../components/charts/PlayerPositionalBenchmark';
+import KickoutTrend from '../../components/charts/KickoutTrend';
+import KickoutLandingZones from '../../components/charts/KickoutLandingZones';
+
+function getInitials(name?: string): string {
+  if (!name) return '?'
+  const parts = name.trim().split(/\s+/)
+  return parts.length === 1
+    ? parts[0].slice(0, 2).toUpperCase()
+    : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
 
 const TABS = [
   { key: 'scoring', label: 'Scoring', icon: Crosshair },
+  { key: 'goalkeeping', label: 'Goalkeeping', icon: Hand },
   { key: 'gps', label: 'GPS', icon: Activity },
   { key: 'fitness', label: 'Fitness', icon: Activity },
   { key: 'defence', label: 'Defence', icon: Shield },
@@ -35,6 +51,14 @@ export default function MyStatsPage() {
   const [activeTab, setActiveTab] = useState('scoring');
   const [showH2H, setShowH2H] = useState(false);
   const { club, logoUrl } = useClub();
+
+  const { data: dashboard } = useQuery({
+    queryKey: ['player-dashboard'],
+    queryFn: playerPortalAPI.getMyDashboard,
+    staleTime: 30 * 60 * 1000,
+  });
+  const isGoalkeeper = dashboard?.position === 'goalkeeper';
+  const tabs = TABS.filter((tab) => tab.key !== 'goalkeeping' || isGoalkeeper);
 
   return (
     <div className="space-y-5 pb-4">
@@ -83,7 +107,7 @@ export default function MyStatsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-        {TABS.map((tab) => {
+        {tabs.map((tab) => {
           const active = tab.key === activeTab;
           return (
             <button
@@ -103,6 +127,7 @@ export default function MyStatsPage() {
       </div>
 
       {activeTab === 'scoring' && <ScoringTab />}
+      {activeTab === 'goalkeeping' && isGoalkeeper && <GoalkeepingTab />}
       {activeTab === 'gps' && <GPSTab />}
       {activeTab === 'fitness' && <FitnessTab />}
       {activeTab === 'defence' && <DefenceTab />}
@@ -263,6 +288,10 @@ function ScoringTab() {
 
       {/* Match Log */}
       <ChartCard title="Match Log">
+        <div className="flex md:hidden items-center gap-1.5 text-[11px] text-white/40 mb-2">
+          <MoveHorizontal size={12} />
+          Swipe to see more
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -272,17 +301,29 @@ function ScoringTab() {
                 <th className="text-center px-1">P</th>
                 <th className="text-center px-1">2pt</th>
                 <th className="text-center px-1">W</th>
+                <th className="text-center px-1" title="Turnovers won">TW</th>
+                <th className="text-center px-1" title="Turnovers lost">TL</th>
+                <th className="text-center px-1" title="Blocks">Blk</th>
+                <th className="text-center px-1" title="Interceptions">Int</th>
+                <th className="text-center px-1" title="Fouls committed">Fls</th>
+                <th className="text-center px-1" title="Kickouts won">KO</th>
                 <th className="text-center px-1">Total</th>
               </tr>
             </thead>
             <tbody>
               {matches.slice(0, 10).map((m) => (
                 <tr key={m.match_id} className="border-b border-white/5">
-                  <td className="py-2 pr-2 text-white/70">{m.opponent}</td>
+                  <td className="py-2 pr-2 text-white/70 whitespace-nowrap">{m.opponent}</td>
                   <td className="text-center text-amber-400 font-medium">{m.goals || '-'}</td>
                   <td className="text-center text-emerald-400">{m.points || '-'}</td>
                   <td className="text-center text-cyan-400">{m.two_pointers || '-'}</td>
                   <td className="text-center text-red-400/60">{m.wides || '-'}</td>
+                  <td className="text-center text-blue-400">{m.turnovers_won || '-'}</td>
+                  <td className="text-center text-pink-400/70">{m.turnovers_lost || '-'}</td>
+                  <td className="text-center text-violet-400">{m.blocks || '-'}</td>
+                  <td className="text-center text-violet-400">{m.interceptions || '-'}</td>
+                  <td className="text-center text-orange-400/70">{m.fouls_committed || '-'}</td>
+                  <td className="text-center text-cyan-400">{m.kickouts_won || '-'}</td>
                   <td className="text-center text-white font-bold">{m.total_score_value}</td>
                 </tr>
               ))}
@@ -290,6 +331,71 @@ function ScoringTab() {
           </table>
         </div>
       </ChartCard>
+    </div>
+  );
+}
+
+// ---- Goalkeeping Tab (only shown to players whose position is goalkeeper) ----
+function GoalkeepingTab() {
+  const { data: matchData, isLoading: matchLoading } = useQuery({
+    queryKey: ['player-match-stats'],
+    queryFn: playerPortalAPI.getMyMatchStats,
+    staleTime: 30 * 60 * 1000,
+  });
+  const { data: kickoutTrends, isLoading: kickoutLoading } = useQuery({
+    queryKey: ['player-kickout-outcomes'],
+    queryFn: playerPortalAPI.getMyKickoutOutcomes,
+    staleTime: 30 * 60 * 1000,
+  });
+  const { data: kickoutZones, isLoading: zonesLoading } = useQuery({
+    queryKey: ['player-kickout-zones'],
+    queryFn: playerPortalAPI.getMyKickoutZones,
+    staleTime: 30 * 60 * 1000,
+  });
+
+  if (matchLoading || kickoutLoading || zonesLoading) return <LoadingState />;
+
+  const matches = matchData?.matches || [];
+  const kickouts = kickoutTrends || [];
+
+  if (matches.length === 0 && kickouts.length === 0) {
+    return <EmptyState message="No goalkeeping data available yet." />;
+  }
+
+  const trendData = [...matches].reverse().map((m) => ({
+    opponent: m.opponent.slice(0, 8),
+    frees: m.frees,
+    interceptions: m.interceptions,
+  }));
+
+  const totalFrees = matches.reduce((s, m) => s + m.frees, 0);
+  const totalInterceptions = matches.reduce((s, m) => s + m.interceptions, 0);
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-3">
+        <MiniStatCard label="Frees Scored" value={totalFrees} />
+        <MiniStatCard label="Interceptions" value={totalInterceptions} />
+      </div>
+
+      <KickoutTrend data={kickouts} />
+
+      {kickoutZones && <KickoutLandingZones data={kickoutZones} />}
+
+      {trendData.length > 1 && (
+        <ChartCard title="Frees & Interceptions" subtitle="Per match">
+          <ResponsiveContainer width="100%" height={200}>
+            <ComposedChart data={trendData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="opponent" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} />
+              <YAxis tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} />
+              <Tooltip {...TOOLTIP_STYLE} />
+              <Bar dataKey="frees" fill="#a855f7" name="Frees Scored" radius={[4, 4, 0, 0]} />
+              <Line type="monotone" dataKey="interceptions" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} name="Interceptions" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
     </div>
   );
 }
@@ -352,7 +458,9 @@ function SeasonStoryCard() {
 }
 
 // ---- Challenges Card ----
-function ChallengesCard() {
+// Exported so TrainingPage can reuse it as-is — it's already generic
+// (reads whatever /my-stats/challenges returns, not match-specific).
+export function ChallengesCard() {
   const { data, isLoading } = useQuery({
     queryKey: ['player-challenges'],
     queryFn: playerPortalAPI.getMyChallenges,
@@ -706,6 +814,21 @@ function GPSTab() {
     retry: 1,
     staleTime: 30 * 60 * 1000,
   });
+  const { data: matchGpsHistory } = useQuery({
+    queryKey: ['player-match-gps-history'],
+    queryFn: playerPortalAPI.getMyMatchGpsHistory,
+    staleTime: 30 * 60 * 1000,
+  });
+  const { data: quarterProfile } = useQuery({
+    queryKey: ['player-quarter-profile'],
+    queryFn: playerPortalAPI.getMyQuarterProfile,
+    staleTime: 30 * 60 * 1000,
+  });
+  const { data: positionalBenchmark } = useQuery({
+    queryKey: ['player-positional-benchmark'],
+    queryFn: playerPortalAPI.getMyPositionalBenchmark,
+    staleTime: 30 * 60 * 1000,
+  });
 
   if (isLoading) return <LoadingState />;
 
@@ -721,7 +844,7 @@ function GPSTab() {
   const sprintSpeedData = matchEntries.map((e) => ({
     label: e.opponent_or_label.slice(0, 8),
     sprints: e.sprint_count || 0,
-    speed: e.max_speed_ms ? +(e.max_speed_ms * 3.6).toFixed(1) : 0,
+    speed: e.max_speed_ms ? +e.max_speed_ms.toFixed(2) : 0,
   }));
 
   // Distance & HSR
@@ -793,7 +916,7 @@ function GPSTab() {
             <ProgressMetric label="Distance" current={latest.total_distance_m} avg={seasonAvg.distance} format="km" divisor={1000} />
             <ProgressMetric label="HSR" current={latest.high_speed_running_m} avg={seasonAvg.hsr} format="m" />
             <ProgressMetric label="Sprints" current={latest.sprint_count} avg={seasonAvg.sprints} format="" />
-            <ProgressMetric label="Max Speed" current={latest.max_speed_ms ? latest.max_speed_ms * 3.6 : null} avg={seasonAvg.speed} format="km/h" />
+            <ProgressMetric label="Max Speed" current={latest.max_speed_ms} avg={seasonAvg.speed} format="m/s" />
           </div>
         </ChartCard>
       )}
@@ -809,7 +932,7 @@ function GPSTab() {
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: 'rgba(255,255,255,0.4)' }} />
               <Tooltip {...TOOLTIP_STYLE} />
               <Bar yAxisId="left" dataKey="sprints" fill="#06b6d4" name="Sprints" radius={[4, 4, 0, 0]} />
-              <Line yAxisId="right" type="monotone" dataKey="speed" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="Max Speed (km/h)" />
+              <Line yAxisId="right" type="monotone" dataKey="speed" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} name="Max Speed (m/s)" />
             </ComposedChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -874,6 +997,15 @@ function GPSTab() {
           <LatestGPSCard entry={latest} />
         </ChartCard>
       )}
+
+      {/* Season Physical Trend + Fatigue Signature */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <PlayerPhysicalTrend matchGpsHistory={matchGpsHistory || []} />
+        <PlayerFatigueSignature profile={quarterProfile} />
+      </div>
+
+      {/* Positional Benchmark */}
+      <PlayerPositionalBenchmark data={positionalBenchmark} />
     </div>
   );
 }
@@ -909,7 +1041,7 @@ function LatestGPSCard({ entry }: { entry: GPSEntry }) {
     { label: 'Distance', value: entry.total_distance_m ? `${(entry.total_distance_m / 1000).toFixed(1)} km` : '—' },
     { label: 'HSR', value: entry.high_speed_running_m ? `${entry.high_speed_running_m.toFixed(0)} m` : '—' },
     { label: 'Sprints', value: entry.sprint_count?.toString() || '—' },
-    { label: 'Max Speed', value: entry.max_speed_ms ? `${(entry.max_speed_ms * 3.6).toFixed(1)} km/h` : '—' },
+    { label: 'Max Speed', value: entry.max_speed_ms ? `${entry.max_speed_ms.toFixed(2)} m/s` : '—' },
     { label: 'DSL', value: entry.dynamic_stress_load?.toFixed(1) || '—' },
     { label: 'Minutes', value: entry.playing_minutes?.toString() || '—' },
   ];
@@ -1030,6 +1162,11 @@ function DefenceTab() {
     queryKey: ['player-match-stats'],
     queryFn: playerPortalAPI.getMyMatchStats,
   });
+  const { data: disciplineTrend } = useQuery({
+    queryKey: ['player-discipline-trend'],
+    queryFn: playerPortalAPI.getMyDisciplineTrend,
+    staleTime: 30 * 60 * 1000,
+  });
 
   if (isLoading) return <LoadingState />;
 
@@ -1094,6 +1231,9 @@ function DefenceTab() {
           </ResponsiveContainer>
         </ChartCard>
       )}
+
+      {/* Ball Security */}
+      <PlayerDisciplineTrend data={disciplineTrend} />
     </div>
   );
 }
@@ -1240,7 +1380,7 @@ function HeadToHeadOverlay({ onClose }: { onClose: () => void }) {
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-all text-left"
                 >
                   <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold text-white/60">
-                    {p.jersey_number || '#'}
+                    {getInitials(p.name)}
                   </div>
                   <div>
                     <div className="text-sm text-white">{p.name}</div>
@@ -1285,7 +1425,7 @@ function HeadToHeadOverlay({ onClose }: { onClose: () => void }) {
               <H2HBar label="TO Won" myVal={h2hData.me.turnovers_won} theirVal={h2hData.them.turnovers_won} unit="" />
               <H2HBar label="Avg Distance" myVal={h2hData.me.avg_distance_km} theirVal={h2hData.them.avg_distance_km} unit="km" />
               <H2HBar label="Avg Sprints" myVal={h2hData.me.avg_sprints} theirVal={h2hData.them.avg_sprints} unit="" />
-              <H2HBar label="Top Speed" myVal={h2hData.me.avg_max_speed_kmh} theirVal={h2hData.them.avg_max_speed_kmh} unit="km/h" />
+              <H2HBar label="Top Speed" myVal={h2hData.me.avg_max_speed_ms} theirVal={h2hData.them.avg_max_speed_ms} unit="m/s" />
               <H2HBar label="Attendance" myVal={h2hData.me.attendance_rate} theirVal={h2hData.them.attendance_rate} unit="%" />
             </div>
           </>
@@ -1348,7 +1488,7 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle?: st
   );
 }
 
-function MiniStatCard({ label, value }: { label: string; value: string | number }) {
+export function MiniStatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div
       className="rounded-xl px-3 py-3 text-center"
@@ -1470,7 +1610,7 @@ function computeGPSPBs(matchEntries: GPSEntry[]) {
     (e.max_speed_ms || 0) > (best.max_speed_ms || 0) ? e : best
   , matchEntries[0]);
   if (maxSpeed.max_speed_ms) {
-    pbs.push({ label: 'Top Speed', value: `${(maxSpeed.max_speed_ms * 3.6).toFixed(1)}km/h`, opponent: maxSpeed.opponent_or_label });
+    pbs.push({ label: 'Top Speed', value: `${maxSpeed.max_speed_ms.toFixed(2)}m/s`, opponent: maxSpeed.opponent_or_label });
   }
 
   return pbs;
@@ -1482,7 +1622,7 @@ function computeSeasonAverages(matchEntries: GPSEntry[]) {
   const dists = matchEntries.map(e => e.total_distance_m || 0);
   const hsrs = matchEntries.map(e => e.high_speed_running_m || 0);
   const sprints = matchEntries.map(e => e.sprint_count || 0);
-  const speeds = matchEntries.filter(e => e.max_speed_ms).map(e => e.max_speed_ms! * 3.6);
+  const speeds = matchEntries.filter(e => e.max_speed_ms).map(e => e.max_speed_ms!);
 
   return {
     distance: dists.reduce((a, b) => a + b, 0) / dists.length / 1000,

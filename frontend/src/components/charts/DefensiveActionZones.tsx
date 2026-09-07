@@ -28,13 +28,24 @@ const ACTION_COLORS: Record<string, string> = {
   turnover_won: '#ef4444',
 }
 
+// Each third (DEF/MID/ATK) gets its own border colour — chosen to stay
+// clear of every other colour already on this chart (the green density
+// fill, and the blue/amber/red action-type markers) so the grid reads
+// immediately regardless of how much data is in a given zone, and so the
+// DEF/MID/ATK % pills below can be colour-matched back to the pitch.
+const THIRD_COLORS: Record<string, string> = {
+  DEF: '#22d3ee', // cyan
+  MID: '#a78bfa', // violet
+  ATK: '#fb7185', // rose
+}
+
 const ZONE_DEFS = [
-  { id: 'DEF_LEFT', xMin: 0, xMax: 35, yMin: 0, yMax: 50, label: 'DEF L' },
-  { id: 'DEF_RIGHT', xMin: 0, xMax: 35, yMin: 50, yMax: 100, label: 'DEF R' },
-  { id: 'MID_LEFT', xMin: 35, xMax: 65, yMin: 0, yMax: 50, label: 'MID L' },
-  { id: 'MID_RIGHT', xMin: 35, xMax: 65, yMin: 50, yMax: 100, label: 'MID R' },
-  { id: 'ATK_LEFT', xMin: 65, xMax: 100, yMin: 0, yMax: 50, label: 'ATK L' },
-  { id: 'ATK_RIGHT', xMin: 65, xMax: 100, yMin: 50, yMax: 100, label: 'ATK R' },
+  { id: 'DEF_LEFT', xMin: 0, xMax: 35, yMin: 0, yMax: 50, label: 'DEF L', third: 'DEF' },
+  { id: 'DEF_RIGHT', xMin: 0, xMax: 35, yMin: 50, yMax: 100, label: 'DEF R', third: 'DEF' },
+  { id: 'MID_LEFT', xMin: 35, xMax: 65, yMin: 0, yMax: 50, label: 'MID L', third: 'MID' },
+  { id: 'MID_RIGHT', xMin: 35, xMax: 65, yMin: 50, yMax: 100, label: 'MID R', third: 'MID' },
+  { id: 'ATK_LEFT', xMin: 65, xMax: 100, yMin: 0, yMax: 50, label: 'ATK L', third: 'ATK' },
+  { id: 'ATK_RIGHT', xMin: 65, xMax: 100, yMin: 50, yMax: 100, label: 'ATK R', third: 'ATK' },
 ]
 
 export default function DefensiveActionZones({ data }: Props) {
@@ -130,17 +141,20 @@ export default function DefensiveActionZones({ data }: Props) {
             const w = br.x - tl.x
             const h = br.y - tl.y
 
+            const thirdColor = THIRD_COLORS[zone.third]
+
             return (
               <g key={zone.id}>
                 <rect
                   x={tl.x} y={tl.y} width={w} height={h}
                   fill={`rgba(16, 185, 129, ${opacity})`}
-                  stroke="rgba(255,255,255,0.15)"
-                  strokeWidth="2"
+                  stroke={thirdColor}
+                  strokeWidth="5"
+                  strokeOpacity="0.75"
                 />
                 <text
                   x={tl.x + w / 2} y={tl.y + 50}
-                  textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="36"
+                  textAnchor="middle" fill={thirdColor} fontSize="36" fontWeight="bold"
                   style={{ textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}
                 >
                   {zone.label}
@@ -192,7 +206,11 @@ export default function DefensiveActionZones({ data }: Props) {
           Total: <span className="text-white font-medium">{totalActions}</span>
         </span>
         <span className="px-2.5 py-1 rounded-full bg-white/10 text-xs text-white/70">
-          DEF {defPct}% / MID {midPct}% / ATK {atkPct}%
+          <span style={{ color: THIRD_COLORS.DEF }} className="font-semibold">DEF {defPct}%</span>
+          {' / '}
+          <span style={{ color: THIRD_COLORS.MID }} className="font-semibold">MID {midPct}%</span>
+          {' / '}
+          <span style={{ color: THIRD_COLORS.ATK }} className="font-semibold">ATK {atkPct}%</span>
         </span>
       </div>
     </div>

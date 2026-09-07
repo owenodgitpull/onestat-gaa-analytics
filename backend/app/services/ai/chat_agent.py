@@ -6,8 +6,10 @@ Includes streaming variant for SSE responses.
 Supports prompt caching and sliding window with summary for long conversations.
 """
 
+import asyncio
 import json
 import logging
+import time
 from typing import AsyncGenerator, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -21,6 +23,82 @@ from app.services.rag_service import RAGService
 logger = logging.getLogger(__name__)
 
 SLIDING_WINDOW_SIZE = 10
+
+# A conversation was reported hanging forever with no response and nothing
+# ever persisted to chat_session_messages — traced to a misspelled opponent
+# name ("McCuamhills" for "MacCumhaills") sending Claude into a tool-use loop
+# with no exit condition other than Claude itself deciding to stop calling
+# tools, which it apparently never did. Two independent caps fix this:
+# MAX_TOOL_ITERATIONS bounds the loop itself, and CLAUDE_CALL_TIMEOUT_SECONDS
+# bounds each individual API call (the SDK's own default is ~10 minutes,
+# far too long for a chat UI where "never hang" was the explicit ask).
+MAX_TOOL_ITERATIONS = 8
+CLAUDE_CALL_TIMEOUT_SECONDS = 45
+FALLBACK_MESSAGE = (
+    "I wasn't able to pin that down after checking a few different angles — "
+    "could you double-check the spelling (e.g. of a team or player name) or "
+    "rephrase the question?"
+)
+
+# execute_tool() itself had no timeout at all — only the Claude API calls
+# either side of it did. A slow tool (web_search in particular: DDGS falls
+# back across several search engines internally with no timeout of its own)
+# could silently stall the SSE stream for a minute or more with zero bytes
+# sent to the browser, which is long enough to trip a proxy/browser idle-
+# connection timeout — the chat UI would show an error while this coroutine
+# kept running server-side and only finished (and got persisted) after the
+# connection was already gone, hence the "it errors, then the answer shows
+# up later after a reload" report. Timing the tool call out and feeding
+# Claude a "this tool timed out" result lets the turn finish and stream a
+# real answer either way, instead of leaving the request to hang or die.
+TOOL_EXECUTION_TIMEOUT_SECONDS = 30
+
+# Per-step timeouts (Claude call, tool call) bound each individual step, but
+# nothing bounded the WHOLE turn — a query needing 2-3 tool rounds (common:
+# search_players -> get_player_season_stats -> generate_chart, or an
+# opposition-briefing-style question that calls web_search more than once)
+# could legitimately run past a minute even with every step behaving. That's
+# long enough that something between the browser and this server (a proxy,
+# the browser's own connection handling, a flaky mobile network) eventually
+# gives up and the frontend shows "Failed to get response" or just hangs,
+# while this coroutine is still working correctly the whole time. Once
+# elapsed time crosses this budget, the loop stops requesting more tool
+# calls and forces one last text-only reply summarising whatever's already
+# been gathered, so the turn reliably finishes well inside a sane window
+# instead of gambling on how long an intermediary will tolerate the stream.
+TOTAL_STREAM_BUDGET_SECONDS = 35
+WRAPUP_CALL_TIMEOUT_SECONDS = 20
+TIMEOUT_FALLBACK_MESSAGE = (
+    "That took longer than expected to pull together — probably too much data for one turn. "
+    "Could you narrow it down (fewer players, a specific match, or a shorter time window) and ask again?"
+)
+
+
+async def _execute_tool_with_timeout(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None) -> str:
+    try:
+        return await asyncio.wait_for(
+            execute_tool(tool_name, tool_input, db, club_id=club_id),
+            timeout=TOOL_EXECUTION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(f"Tool '{tool_name}' timed out after {TOOL_EXECUTION_TIMEOUT_SECONDS}s")
+        return json.dumps({
+            "error": f"'{tool_name}' timed out — answer using whatever other data is already available "
+                     "rather than retrying this same tool call again this turn.",
+        })
+
+
+async def _create_with_timeout(timeout_seconds: int = CLAUDE_CALL_TIMEOUT_SECONDS, **kwargs):
+    """client.messages.create, off the event loop, with a hard timeout so a
+    stuck call can never hang the chat indefinitely. Callers with a
+    research-heavy tool loop (e.g. the opposition briefing, which fans a
+    single web_search call out across ~7 search engines and feeds all of it
+    back as tool-result context) can pass a longer timeout_seconds — the
+    default stays tight for the live chat UI, where "never hang" is the point."""
+    return await asyncio.wait_for(
+        asyncio.to_thread(client.messages.create, **kwargs),
+        timeout=timeout_seconds,
+    )
 
 
 async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_message: str, club_id=None) -> str:
@@ -95,8 +173,9 @@ INSTRUCTIONS:
 
     # Add new user message
     messages = conversation_history + [{"role": "user", "content": user_message}]
+    turn_start = time.monotonic()
 
-    response = client.messages.create(
+    response = await _create_with_timeout(
         model="claude-sonnet-4-6",
         max_tokens=2048,
         system=system_prompt,
@@ -104,8 +183,16 @@ INSTRUCTIONS:
         messages=messages
     )
 
-    # Process tool calls
+    # Process tool calls — capped so a model that never settles on a final
+    # answer (e.g. repeatedly retrying a misspelled/unmatchable name) can't
+    # loop forever.
+    iterations = 0
     while response.stop_reason == "tool_use":
+        iterations += 1
+        if iterations > MAX_TOOL_ITERATIONS:
+            logger.warning(f"chat_with_analyst: tool loop exceeded {MAX_TOOL_ITERATIONS} iterations, aborting")
+            return FALLBACK_MESSAGE
+
         tool_results = []
         # Convert content blocks to plain dicts to avoid Pydantic re-serialization issues
         assistant_content = [
@@ -113,19 +200,55 @@ INSTRUCTIONS:
             for block in response.content
         ]
 
+        budget_exceeded = False
         for block in response.content:
             if block.type == "tool_use":
-                tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
+                if budget_exceeded:
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps({"error": "Skipped — response time budget exceeded this turn."}),
+                    })
+                    continue
+                tool_result = await _execute_tool_with_timeout(block.name, block.input, db, club_id=club_id)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
                     "content": tool_result
                 })
+                if time.monotonic() - turn_start > TOTAL_STREAM_BUDGET_SECONDS:
+                    budget_exceeded = True
 
         messages.append({"role": "assistant", "content": assistant_content})
         messages.append({"role": "user", "content": tool_results})
 
-        response = client.messages.create(
+        elapsed = time.monotonic() - turn_start
+        if budget_exceeded or elapsed > TOTAL_STREAM_BUDGET_SECONDS:
+            logger.warning(
+                f"chat_with_analyst: time budget exceeded ({elapsed:.0f}s) after tool round "
+                f"{iterations} — forcing a text-only wrap-up"
+            )
+            messages.append({
+                "role": "user",
+                "content": (
+                    "(This is taking a while — give your best answer now using only the "
+                    "information already gathered above. Do not call any more tools.)"
+                ),
+            })
+            try:
+                response = await _create_with_timeout(
+                    timeout_seconds=WRAPUP_CALL_TIMEOUT_SECONDS,
+                    model="claude-sonnet-4-6",
+                    max_tokens=2048,
+                    system=system_prompt,
+                    messages=messages,
+                )
+            except Exception as wrapup_err:
+                logger.warning(f"chat_with_analyst: wrap-up call also failed: {wrapup_err}")
+                return TIMEOUT_FALLBACK_MESSAGE
+            break
+
+        response = await _create_with_timeout(
             model="claude-sonnet-4-6",
             max_tokens=2048,
             system=system_prompt,
@@ -139,7 +262,7 @@ INSTRUCTIONS:
         if hasattr(block, "text"):
             final_text += block.text
 
-    return final_text
+    return final_text or TIMEOUT_FALLBACK_MESSAGE
 
 
 async def _build_chat_system_prompt(
@@ -268,7 +391,7 @@ async def _maybe_summarize_and_trim(
             if isinstance(m.get('content'), str)
         )
 
-        response = client.messages.create(
+        response = await _create_with_timeout(
             model="claude-haiku-4-5",
             max_tokens=300,
             messages=[{
@@ -297,6 +420,7 @@ async def chat_with_analyst_stream(
     user_message: str,
     session_id: Optional[str] = None,
     club_id=None,
+    timeout_seconds: int = CLAUDE_CALL_TIMEOUT_SECONDS,
 ) -> AsyncGenerator[str, None]:
     """
     Streaming variant of chat_with_analyst.
@@ -325,9 +449,11 @@ async def chat_with_analyst_stream(
         messages = messages_to_use + [{"role": "user", "content": user_message}]
 
         cached_tools = get_cached_tools()
+        turn_start = time.monotonic()
 
         # Non-streaming tool loop phase
-        response = client.messages.create(
+        response = await _create_with_timeout(
+            timeout_seconds=timeout_seconds,
             model="claude-sonnet-4-6",
             max_tokens=2048,
             system=system_prompt,
@@ -335,7 +461,18 @@ async def chat_with_analyst_stream(
             messages=messages
         )
 
+        # Capped for the same reason as chat_with_analyst — without this, a
+        # model that never settles on a final answer left the chat hanging
+        # with nothing ever yielded and no assistant message ever persisted.
+        iterations = 0
         while response.stop_reason == "tool_use":
+            iterations += 1
+            if iterations > MAX_TOOL_ITERATIONS:
+                logger.warning(f"chat_with_analyst_stream: tool loop exceeded {MAX_TOOL_ITERATIONS} iterations (session {session_id})")
+                yield f"data: {json.dumps({'type': 'text', 'content': FALLBACK_MESSAGE})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
             tool_results = []
             # Convert content blocks to plain dicts to avoid Pydantic re-serialization issues
             assistant_content = [
@@ -343,10 +480,28 @@ async def chat_with_analyst_stream(
                 for block in response.content
             ]
 
+            # Checked BEFORE each individual tool call, not just once per round —
+            # a single Claude response can pack in a dozen-plus tool_use blocks
+            # (seen live: ~18 sequential get_player_season_stats calls for a
+            # "team of the season" question), and that alone can blow the whole
+            # budget within one round, before the between-rounds check below
+            # ever gets a chance to run. Once over budget, stop EXECUTING more
+            # tools but still provide a tool_result for every remaining
+            # tool_use block — Anthropic's API requires one-to-one correspondence,
+            # so skipping the entry entirely would make the next call malformed.
+            budget_exceeded = False
             for block in response.content:
                 if block.type == "tool_use":
+                    if budget_exceeded:
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": json.dumps({"error": "Skipped — response time budget exceeded this turn."}),
+                        })
+                        continue
+
                     yield f"data: {json.dumps({'type': 'thinking', 'tool': block.name})}\n\n"
-                    tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
+                    tool_result = await _execute_tool_with_timeout(block.name, block.input, db, club_id=club_id)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -354,7 +509,7 @@ async def chat_with_analyst_stream(
                     })
 
                     # Emit viz SSE events for chart/table tools
-                    if block.name in ("generate_chart", "get_pitch_paths"):
+                    if block.name in ("generate_chart", "get_pitch_paths", "display_starting_lineup"):
                         try:
                             parsed = json.loads(tool_result)
                             if parsed.get("success") and parsed.get("chart"):
@@ -368,10 +523,51 @@ async def chat_with_analyst_stream(
                         except (json.JSONDecodeError, TypeError):
                             pass
 
+                    if time.monotonic() - turn_start > TOTAL_STREAM_BUDGET_SECONDS:
+                        budget_exceeded = True
+
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
-            response = client.messages.create(
+            elapsed = time.monotonic() - turn_start
+            if budget_exceeded or elapsed > TOTAL_STREAM_BUDGET_SECONDS:
+                logger.warning(
+                    f"chat_with_analyst_stream: time budget exceeded ({elapsed:.0f}s) after "
+                    f"tool round {iterations} — forcing a text-only wrap-up (session {session_id})"
+                )
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "(This is taking a while — give your best answer now using only the "
+                        "information already gathered above. Do not call any more tools.)"
+                    ),
+                })
+                # The wrap-up call itself can still fail — a context swollen by a
+                # dozen-plus tool results can be too much for even a no-tools
+                # call to finish inside WRAPUP_CALL_TIMEOUT_SECONDS. That
+                # failure used to propagate all the way to the outer except
+                # block below with nothing yielded but an empty-message error
+                # event — no text, so nothing ever got persisted, and a page
+                # reload showed the question with no answer at all. Falling
+                # back to a plain apology here guarantees SOMETHING real is
+                # always yielded (and therefore saved) for this turn.
+                try:
+                    response = await _create_with_timeout(
+                        timeout_seconds=WRAPUP_CALL_TIMEOUT_SECONDS,
+                        model="claude-sonnet-4-6",
+                        max_tokens=2048,
+                        system=system_prompt,
+                        messages=messages,
+                    )
+                except Exception as wrapup_err:
+                    logger.warning(f"chat_with_analyst_stream: wrap-up call also failed: {wrapup_err} (session {session_id})")
+                    yield f"data: {json.dumps({'type': 'text', 'content': TIMEOUT_FALLBACK_MESSAGE})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+                break
+
+            response = await _create_with_timeout(
+                timeout_seconds=timeout_seconds,
                 model="claude-sonnet-4-6",
                 max_tokens=2048,
                 system=system_prompt,
@@ -384,6 +580,9 @@ async def chat_with_analyst_stream(
         for block in response.content:
             if hasattr(block, "text"):
                 final_text += block.text
+
+        if not final_text:
+            final_text = TIMEOUT_FALLBACK_MESSAGE
 
         # Chunk the text (~15 chars each) for typing effect
         chunk_size = 15

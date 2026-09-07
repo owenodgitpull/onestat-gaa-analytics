@@ -10,6 +10,7 @@ import {
   Label,
 } from 'recharts'
 import type { MonotonyPoint } from '@/services/api'
+import { parseLocalDate } from '@/utils/dateUtils'
 
 interface Props {
   data: MonotonyPoint[]
@@ -22,7 +23,7 @@ export default function MonotonyScatter({ data }: Props) {
     return (
       <div className="bg-slate-800 border border-white/20 rounded-lg p-3 shadow-xl">
         <p className="text-white font-medium mb-1">
-          {new Date(d.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+          {parseLocalDate(d.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
         </p>
         <p className="text-sm text-emerald-400">DSL: {d.avg_dsl}</p>
         <p className="text-sm text-amber-400">Duration: {d.avg_duration_mins} mins</p>

@@ -14,7 +14,7 @@ from datetime import datetime
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin, require_club
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer, require_club
 from app.models.set_piece_routine import SetPieceRoutine
 from app.models.playbook_push import PlaybookPush, PlaybookPushRecipient
 from app.models.player import Player
@@ -158,7 +158,7 @@ async def push_playbook(
 
 @router.get("/pushes")
 async def list_pushes(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """List all playbook pushes for the club."""

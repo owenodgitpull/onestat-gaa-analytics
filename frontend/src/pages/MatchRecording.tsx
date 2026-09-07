@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
 import BallCarrierPicker from '@/components/BallCarrierPicker'
+import PitchReceiverDots from '@/components/PitchReceiverDots'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
 import PossessionSelectionModal from '@/components/PossessionSelectionModal'
@@ -15,6 +16,7 @@ import LiveInsightDisplay from '@/components/LiveInsightDisplay'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '@/components/EventFilterToggles'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
 import PossessionTerritoryChart from '@/components/charts/PossessionTerritoryChart'
+import AttackingThirdsChart from '@/components/charts/AttackingThirdsChart'
 import ScoringTimeline from '@/components/charts/ScoringTimeline'
 import ShotOutcomeChart from '@/components/charts/ShotOutcomeChart'
 import PathsTakenChart from '@/components/charts/PathsTakenChart'
@@ -22,18 +24,25 @@ import MatchKickoutZones from '@/components/charts/MatchKickoutZones'
 import MatchKickoutOutcomes from '@/components/charts/MatchKickoutOutcomes'
 import ScoringZoneMap from '@/components/charts/ScoringZoneMap'
 import TurnoverMap from '@/components/charts/TurnoverMap'
+import ScoreOrigins from '@/components/charts/ScoreOrigins'
+import ScoreableFreesAnalysis from '@/components/charts/ScoreableFreesAnalysis'
+import AttackEfficiencyCard from '@/components/charts/AttackEfficiencyCard'
+import SeasonBenchmarkCard from '@/components/charts/SeasonBenchmarkCard'
+import KickoutSequence from '@/components/charts/KickoutSequence'
+import ShootingEfficiencyHeatmap from '@/components/charts/ShootingEfficiencyHeatmap'
 import FullscreenPitchMode from '@/components/FullscreenPitchMode'
 import PitchActionOverlay from '@/components/PitchActionOverlay'
 import JerseyNumberStrip from '@/components/JerseyNumberStrip'
 import FormationSnapshotButton from '@/components/FormationSnapshotButton'
 import FormationSnapshotMode from '@/components/FormationSnapshotMode'
 import TacticalTagButton from '@/components/TacticalTagButton'
+import VoiceNoteButton from '@/components/VoiceNoteButton'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import OppositionScorerStrip from '@/components/OppositionScorerStrip'
 import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '@/components/WeatherPickerPopover'
 import { BallPosition, PossessionTeam, EventType, Player, MatchEvent } from '@/types'
-import { useMatch, useMatchStats, useStartMatch, useCompleteMatch, useUpdateMatchPhase } from '@/hooks/useMatches'
-import { useRecordEvent, useMatchEvents, useDeleteEvent } from '@/hooks/useMatchEvents'
+import { useMatch, useMatchStats, useStartMatch, useCompleteMatch, useUpdateMatchPhase, matchKeys } from '@/hooks/useMatches'
+import { useRecordEvent, useMatchEvents, useDeleteEvent, matchEventKeys } from '@/hooks/useMatchEvents'
 import { useRecordPossession } from '@/hooks/usePossession'
 import { usePlayers } from '@/hooks/usePlayers'
 import { api } from '@/services/api'
@@ -61,6 +70,11 @@ import {
   HelpCircle,
   Pencil,
   CircleSlash,
+  LayoutDashboard,
+  X,
+  Minus,
+  Share2,
+  Loader2,
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -145,13 +159,44 @@ export default function MatchRecording() {
     eventType: EventType
     isHomeTeam: boolean
     playerId?: string
+    targetPlayerId?: string
   } | null>(null) // Kickout event waiting for position selection
+  // Collapses the "awaiting kickout" banner (both the pre-selection state and
+  // the "tap landing position" banner) into a small pill so the user can log
+  // a sub/card/correction without the banner in the way. Lives here (not in
+  // FullscreenPitchMode) so it's a single source of truth shared by both the
+  // normal and fullscreen views — reset below whenever a fresh kickout cycle
+  // starts so it can never stay stuck minimised into the next one.
+  const [kickoutBannerMinimised, setKickoutBannerMinimised] = useState(false)
+
+  // Optional, auto-dismissing "who assisted?" prompt shown briefly after an
+  // own-team GOAL/POINT/TWO_POINT is recorded. The score itself is already
+  // saved by the time this appears — tapping a jersey PATCHes assist_player_id
+  // onto that event; ignoring it (or the next kickout starting) just lets it
+  // fade with zero consequence. Never blocks recording the next kickout.
+  const [pendingAssist, setPendingAssist] = useState<{
+    eventId: string
+    scorerId: string
+    scorerName: string
+  } | null>(null)
+  const pendingAssistTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const PENDING_ASSIST_TIMEOUT_MS = 6000
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [editingEventId, setEditingEventId] = useState<number | null>(null) // event being player-edited
   const [editingEventType, setEditingEventType] = useState<string | null>(null) // event type for edit modal title
+  // Set only when the player picker was opened to complete a team swap
+  // (opponent score corrected to own team, or similar) rather than a plain
+  // "fix who scored" edit — tells handleEditPlayerSelected to also send the
+  // new team, and tells its Skip path to still commit the team change alone.
+  const [pendingTeamForEdit, setPendingTeamForEdit] = useState<'own' | 'opponent' | null>(null)
+  // Drives the small "what do you want to change?" card that opens instead
+  // of jumping straight to the player picker for kickout-sideline and
+  // scoring/shot events — see handleEditEventClick.
+  const [editChoice, setEditChoice] = useState<{ eventId: number; kind: 'sideline' | 'scoring'; currentTeam: 'own' | 'opponent' } | null>(null)
   const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition; isFreeKick?: boolean } | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState<{ position: BallPosition } | null>(null)
+  const [pendingSidelineDecision, setPendingSidelineDecision] = useState<{ position: BallPosition } | null>(null)
   const [resetting, setResetting] = useState(false)
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
@@ -185,12 +230,33 @@ export default function MatchRecording() {
     if (!pendingFreeKick) setIsAdjustingFreePosition(false)
   }, [pendingFreeKick])
   const [pending45, setPending45] = useState<{ position: BallPosition } | null>(null) // Track 45 state
+  // Set once "45 Scored"/"45 Missed" is picked — the actual kick is always
+  // taken from the 45m line, so this waits for a pitch tap (same pattern as
+  // pendingKickoutEvent) instead of trusting wherever the ball happened to
+  // be sitting when the "45" button was first tapped. handleBallMove resolves
+  // this and snaps the tapped x to the real 45m line — the tap only decides
+  // left/right (y).
+  const [pendingFortyFivePosition, setPendingFortyFivePosition] = useState<{ eventType: EventType; isHomeTeam: boolean } | null>(null)
   const [selectingFoulPlayer, setSelectingFoulPlayer] = useState<boolean>(false) // True when selecting own player who fouled
   const [pendingFoul, setPendingFoul] = useState<'own' | 'opponent' | null>(null) // Track which team committed the foul
   const [tacticalFoul, setTacticalFoul] = useState(false)
-  const [weatherOverride, setWeatherOverride] = useState<{ condition: string | null; temp: number | null } | null>(null)
+  const [weatherOverride, setWeatherOverride] = useState<{ conditions: string[]; temp: number | null; notes: string | null } | null>(null)
   const [isWeatherPickerOpen, setIsWeatherPickerOpen] = useState(false)
   const [isFullscreenPitch, setIsFullscreenPitch] = useState(false)
+  // Half-time view — a pure visual overlay (no recording state touched at
+  // all) that covers the touch pitch/carrier UI with the same stats/charts
+  // already rendered further down the page, so a manager can see everything
+  // at the break without the recording surface in the way. Purely additive:
+  // toggling it never unmounts the pitch, so it can't interfere with an
+  // in-progress recording.
+  const [showHalfTimeView, setShowHalfTimeView] = useState(false)
+  // Half-time "Share" button — captures the overlay's content to an image
+  // and hands it to the device's native share sheet. html2canvas is dynamic-
+  // imported only when this fires (same lazy pattern the PDF report exports
+  // already use), so it adds nothing to the recording page's own bundle or
+  // runtime — it can't slow down anything on the touch pitch.
+  const [isSharingHalfTime, setIsSharingHalfTime] = useState(false)
+  const halfTimeContentRef = useRef<HTMLDivElement>(null)
   const [isStopped, setIsStopped] = useState(false)
   // Dead ball / stoppage — ball isn't anyone's, but unlike isStopped the clock
   // keeps running (real GAA club matches don't stop the clock for stoppages;
@@ -354,6 +420,24 @@ export default function MatchRecording() {
     'ff-left': 'CF', 'ff-center': 'FF', 'ff-right': 'CF',
   }
 
+  // Same 15-slot layout as StartingLineupModal/MatchPrep's FORMATION_POSITIONS
+  // — reused here so a formation snapshot starts with players exactly where
+  // Select Lineup already put them, rather than an empty pitch the coach has
+  // to place from scratch. x assumes "attacking right"; flipped per-half below.
+  const FORMATION_POSITION_COORDS: Record<string, { x: number; y: number }> = {
+    'gk': { x: 7, y: 50 },
+    'fb-left': { x: 20, y: 18 }, 'fb-center': { x: 20, y: 50 }, 'fb-right': { x: 20, y: 82 },
+    'hb-left': { x: 35, y: 18 }, 'hb-center': { x: 35, y: 50 }, 'hb-right': { x: 35, y: 82 },
+    'mf-left': { x: 50, y: 35 }, 'mf-right': { x: 50, y: 65 },
+    'hf-left': { x: 65, y: 18 }, 'hf-center': { x: 65, y: 50 }, 'hf-right': { x: 65, y: 82 },
+    'ff-left': { x: 80, y: 18 }, 'ff-center': { x: 80, y: 50 }, 'ff-right': { x: 80, y: 82 },
+  }
+
+  // Whether the ball-carrier radial is currently open — hides the separate
+  // pitch-spread receiver dots while it's open, since showing both at once
+  // is redundant.
+  const [isCarrierRadialOpen, setIsCarrierRadialOpen] = useState(false)
+
   // Build jersey strip player list from lineup data
   const jerseyStripPlayers = useMemo(() => {
     if (!matchLineup.length) return []
@@ -369,6 +453,28 @@ export default function MatchRecording() {
       }
     })
   }, [matchLineup, players])
+
+  // Own-team players pre-placed at their actual lineup slot, for Formation
+  // Snapshot — the coach only needs to drag them to where they really are
+  // and tap around to mark opposition shape, not build the whole XV from
+  // scratch. FORMATION_POSITION_COORDS assumes attacking right; mirrored on
+  // x when the team is actually attacking left this half, so the snapshot
+  // always reflects which end is really being attacked right now.
+  const snapshotOwnPlayers = useMemo(() => {
+    return jerseyStripPlayers
+      .filter(p => p.isOnField)
+      .map(p => {
+        const base = FORMATION_POSITION_COORDS[p.positionId] || { x: 50, y: 50 }
+        const x = teamAttackingRight ? base.x : 100 - base.x
+        return {
+          playerId: p.playerId,
+          jerseyNumber: p.jerseyNumber,
+          playerName: p.playerName,
+          x,
+          y: base.y,
+        }
+      })
+  }, [jerseyStripPlayers, teamAttackingRight])
 
   // Track recent carrier selections (most recent first) for quick-pick shortcuts
   const [recentCarrierIds, setRecentCarrierIds] = useState<string[]>([])
@@ -399,7 +505,7 @@ export default function MatchRecording() {
   // Tactical tag state
   const [tacticalTagCount, setTacticalTagCount] = useState(0)
 
-  const handleFormationSave = async (positions: Array<{ playerId: string; jerseyNumber: number | null; x: number; y: number }>, label: string) => {
+  const handleFormationSave = async (positions: Array<{ playerId: string | null; jerseyNumber: number | null; team: 'own' | 'opponent'; x: number; y: number }>, label: string) => {
     if (!matchId) return
     try {
       await api.playerMovement.createSnapshot({
@@ -407,9 +513,15 @@ export default function MatchRecording() {
         half: currentHalf,
         minute,
         label,
+        // `positions` is a free-form JSON column — team is an additive field
+        // alongside the existing {player_id, jersey_number, x, y} shape, not
+        // a schema change. Opposition markers carry player_id/jersey_number
+        // null, same convention the old "unassigned" own-team markers used,
+        // now disambiguated by `team` instead of being indistinguishable.
         positions: positions.map(p => ({
-          player_id: p.playerId.startsWith('unassigned-') ? null : p.playerId,
+          player_id: p.playerId,
           jersey_number: p.jerseyNumber,
+          team: p.team,
           x: p.x,
           y: p.y,
         })),
@@ -435,6 +547,54 @@ export default function MatchRecording() {
       setTacticalTagCount(prev => prev + 1)
     } catch (err) {
       console.error('Failed to create tactical tag:', err)
+    }
+  }
+
+  // Half-time "Share" button. html2canvas is dynamic-imported here (same
+  // pattern as the report pages' PDF export) so it's never fetched or run
+  // during normal recording — only when a coach actually taps Share while
+  // the half-time overlay (itself opened on demand) is open.
+  const handleShareHalfTime = async () => {
+    if (!halfTimeContentRef.current || isSharingHalfTime) return
+    setIsSharingHalfTime(true)
+    try {
+      const html2canvas = (await import('html2canvas')).default
+      const canvas = await html2canvas(halfTimeContentRef.current, {
+        backgroundColor: '#060a14',
+        useCORS: true,
+        scale: 2,
+      })
+      const blob: Blob | null = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+      if (!blob) throw new Error('Failed to generate image')
+
+      const dateStr = new Date().toISOString().slice(0, 10)
+      const filename = `half-time-${(matchDisplay.opponent || 'match').toLowerCase().replace(/\s+/g, '-')}-${dateStr}.png`
+      const file = new File([blob], filename, { type: 'image/png' })
+      const shareText = `${clubName || 'Us'} ${teamGoals}-${String(teamPoints).padStart(2, '0')} : ${opponentGoals}-${String(opponentPoints).padStart(2, '0')} ${matchDisplay.opponent} — Half-Time`
+
+      if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Half-Time Stats', text: shareText })
+      } else {
+        // Desktop / unsupported browser fallback — download the image so it
+        // can be attached manually wherever the coach wants to send it.
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
+    } catch (err) {
+      // AbortError fires when the user just closes the native share sheet
+      // without picking anything — not a real failure, don't alarm them.
+      if ((err as any)?.name !== 'AbortError') {
+        console.error('Failed to share half-time view:', err)
+        setErrorAlert('Failed to create the share image. Please try again.')
+      }
+    } finally {
+      setIsSharingHalfTime(false)
     }
   }
 
@@ -530,19 +690,25 @@ export default function MatchRecording() {
 
   }, [match, forceServerTimeSync])
 
-  // Weather: use local override (optimistic) if set, otherwise fall back to match data
-  const weatherCondition = weatherOverride ? weatherOverride.condition : (match?.weather_condition ?? null)
+  // Weather: use local override (optimistic) if set, otherwise fall back to match data.
+  // weather_conditions (plural) is the source of truth; matches recorded
+  // before multi-select weather existed only have the legacy single field.
+  const weatherConditions = weatherOverride
+    ? weatherOverride.conditions
+    : (match?.weather_conditions ?? (match?.weather_condition ? [match.weather_condition] : []))
   const temperatureCelsius = weatherOverride ? weatherOverride.temp : (match?.temperature_celsius ?? null)
+  const matchNotesText = weatherOverride ? weatherOverride.notes : (match?.notes ?? null)
 
   // Save weather change to backend
-  const handleWeatherSave = async (condition: string | null, temp: number | null) => {
+  const handleWeatherSave = async (conditions: string[], temp: number | null, notes: string | null) => {
     // Set optimistic override immediately so UI updates
-    setWeatherOverride({ condition, temp })
+    setWeatherOverride({ conditions, temp, notes })
     if (matchId) {
       try {
         await api.matches.update(matchId, {
-          weather_condition: condition,
+          weather_conditions: conditions,
           temperature_celsius: temp,
+          notes,
         } as any)
         // Refetch match data, then clear override (server data now matches)
         await queryClient.invalidateQueries({ queryKey: ['matches', matchId] })
@@ -609,6 +775,30 @@ export default function MatchRecording() {
     loadLineup()
   }, [matchId])
 
+  // Periodic lineup refresh during live play — self-healing safety net.
+  // Substitutions update matchLineup imperatively (setMatchLineup right
+  // after the field-status PATCH calls), but that path is a plain fetch
+  // with no offline-first retry, unlike event recording. On a pitch with
+  // patchy signal, a transient failure there leaves the on-field/bench
+  // display stuck showing pre-substitution state indefinitely, with no
+  // automatic recovery — confirmed live where the database was correct but
+  // the pitch UI kept showing a subbed-off player as still on the field
+  // until the page was manually refreshed. Mirrors the same 20s poll
+  // already used for the live events list (useMatchEvents' `live: true`).
+  useEffect(() => {
+    const isLive = matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time'
+    if (!isLive || !matchId) return
+    const poll = setInterval(async () => {
+      try {
+        const lineup = await api.matchLineups.getLineup(matchId)
+        setMatchLineup(lineup)
+      } catch {
+        // Best-effort — keep showing whatever we last had, try again next tick
+      }
+    }, 20000)
+    return () => clearInterval(poll)
+  }, [matchId, matchPhase])
+
   // Load last match lineup for quick re-use
   useEffect(() => {
     const loadLastLineup = async () => {
@@ -672,6 +862,18 @@ export default function MatchRecording() {
   possTickBallRef.current = ballPosition
   possTickMinuteRef.current = minute
   const possTickBufferRef = useRef<Array<{ x: number; y: number; team: 'own' | 'opponent'; minute: number }>>([])
+  // Guards against overlapping flush() calls — a backgrounded/throttled tab
+  // can queue up several setInterval fires and then dispatch them back-to-
+  // back once foregrounded. Without this, concurrent bulk-create requests
+  // each independently read "the most recent possession event" (no row
+  // locking) and attribute their own elapsed time to it, so a burst of
+  // queued flushes compounds into wildly inflated possession durations —
+  // this produced a real ~28min own-possession over-count during a live
+  // match (traced and corrected in prod on 2026-08-17). Skipping a flush
+  // tick outright if the previous one hasn't finished is simpler and safer
+  // than trying to serialize/merge them — the buffer just carries over to
+  // the next tick.
+  const isFlushingRef = useRef(false)
 
   useEffect(() => {
     const isPlaying = (matchPhase === 'first_half' || matchPhase === 'second_half') && !isStopped && !isDeadBall && !awaitingKickout && !pendingFreeKick
@@ -691,8 +893,10 @@ export default function MatchRecording() {
 
     // Flush buffer as bulk POSTs every 15s — one request per distinct team
     const flush = setInterval(async () => {
+      if (isFlushingRef.current) return
       const batch = possTickBufferRef.current.splice(0)
       if (!batch.length) return
+      isFlushingRef.current = true
       const byTeam = new Map<'own' | 'opponent', typeof batch>()
       for (const w of batch) {
         if (!byTeam.has(w.team)) byTeam.set(w.team, [])
@@ -715,6 +919,8 @@ export default function MatchRecording() {
         }
       } catch {
         // Best-effort — drop buffer on failure
+      } finally {
+        isFlushingRef.current = false
       }
     }, 15000)
 
@@ -730,6 +936,15 @@ export default function MatchRecording() {
       navigator.vibrate(150)
     }
   }, [awaitingKickout, pendingFreeKick])
+
+  // Un-minimise the kickout banner the moment a fresh kickout cycle starts —
+  // otherwise a banner minimised on a previous kickout would silently stay
+  // hidden for the next one.
+  useEffect(() => {
+    if (awaitingKickout || pendingKickoutEvent) {
+      setKickoutBannerMinimised(false)
+    }
+  }, [awaitingKickout, pendingKickoutEvent])
 
   // Calculate real-time stats from backend - now using MatchStats directly
   // Backend calculates scores as (goals*3 + points), so we need to reverse-engineer for display
@@ -774,7 +989,111 @@ export default function MatchRecording() {
   // Recent events - fetch from backend, display newest first
   const { data: matchEventsData } = useMatchEvents(matchId, { live: true })
   const allEvents = [...(matchEventsData?.events || [])].reverse()
+
+  // Match-insight cards — same event-driven aggregations the post-match
+  // report uses (score origins, scoreable frees, attack efficiency, vs
+  // season average). None of these are gated on the match being completed
+  // server-side, so they're safe to surface live for a half-time view —
+  // unlike Expected Points, which the xP endpoint's own docstring flags as
+  // "post-match reporting only, never poll from live match tracking"
+  // (its shot-quality model rebuild is too heavy to run on a live cadence).
+  const hasTaggedEvents = (matchEventsData?.events?.length ?? 0) > 0
+  // refetchInterval keeps these live during the match — without it each one
+  // fetches once the moment hasTaggedEvents first flips true (i.e. right after
+  // the very first event of the match, when there's essentially no data yet),
+  // and since the cards below are only rendered `{data && (...)}`, an empty
+  // first response means the card just never appears again for the rest of
+  // the match — confirmed as the cause of charts missing data at half-time.
+  const { data: scoreOriginsData } = useQuery({
+    queryKey: ['score-origins', matchId],
+    queryFn: () => api.matchAnalytics.getScoreOrigins(matchId!),
+    enabled: !!matchId && hasTaggedEvents,
+    refetchInterval: 20_000,
+  })
+  const { data: scoreableFreesData } = useQuery({
+    queryKey: ['scoreable-frees', matchId],
+    queryFn: () => api.matchAnalytics.getScoreableFrees(matchId!),
+    enabled: !!matchId && hasTaggedEvents,
+    refetchInterval: 20_000,
+  })
+  const { data: attackEfficiencyData } = useQuery({
+    queryKey: ['attack-efficiency', matchId],
+    queryFn: () => api.matchAnalytics.getAttackEfficiency(matchId!),
+    enabled: !!matchId && hasTaggedEvents,
+    refetchInterval: 20_000,
+  })
+  const { data: seasonBenchmarkData } = useQuery({
+    queryKey: ['season-benchmark', matchId],
+    queryFn: () => api.matchAnalytics.getSeasonBenchmark(matchId!),
+    enabled: !!matchId,
+    refetchInterval: 20_000,
+  })
+
+  // Shot locations for the shooting-efficiency heatmap — same
+  // half-aware normalization ShootingEfficiencyHeatmap/PathsTakenChart
+  // already rely on elsewhere (getPitchArea, MatchResult.tsx), since which
+  // end a team is attacking flips at half-time.
+  const shotLocations = useMemo(() => {
+    const shotTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'wide', 'short', 'saved', 'point_free', 'two_point_free', 'wide_free', 'forty_five', 'forty_five_missed', 'penalty_miss'])
+    const scoreTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'])
+    const halfDuration = match?.half_duration_mins || 30
+    const attackingRightFirstHalf = match?.attacking_right_first_half ?? true
+    const normalizeX = (rawX: number, isOwn: boolean, minute: number | null | undefined): number => {
+      const isFirstHalf = (minute ?? 0) <= halfDuration
+      const teamAttackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
+      const attackingRight = isOwn ? teamAttackingRight : !teamAttackingRight
+      return attackingRight ? rawX : 100 - rawX
+    }
+    return (matchEventsData?.events || [])
+      .filter((e: any) => shotTypes.has(e.event_type) && e.pitch_x != null)
+      .map((e: any) => {
+        const isOwn = e.team === 'own' || e.is_home_team
+        return {
+          x: normalizeX(e.pitch_x as number, isOwn, e.minute),
+          y: e.pitch_y ?? 50,
+          event_type: e.event_type,
+          is_score: scoreTypes.has(e.event_type),
+          team: e.team || (e.is_home_team ? 'own' : 'opponent'),
+          match_id: e.match_id,
+        }
+      })
+  }, [matchEventsData, match?.half_duration_mins, match?.attacking_right_first_half])
   const [visibleEventCount, setVisibleEventCount] = useState(15)
+
+  // Scorers — per-player breakdown of own-team scores, GAA-style, updates live
+  const scorers = useMemo(() => {
+    const scoreTypes: Record<string, 'goal' | 'point' | 'two_point'> = {
+      goal: 'goal', penalty_goal: 'goal',
+      point: 'point', point_free: 'point', forty_five: 'point',
+      two_point: 'two_point', two_point_free: 'two_point',
+    }
+    const byPlayer: Record<string, { goals: number; points: number; twoPointers: number }> = {}
+    for (const e of allEvents as any[]) {
+      const team = e.team || (e.is_home_team ? 'own' : 'opponent')
+      if (team !== 'own' || !e.player_id) continue
+      const kind = scoreTypes[e.event_type]
+      if (!kind) continue
+      const pid = String(e.player_id)
+      if (!byPlayer[pid]) byPlayer[pid] = { goals: 0, points: 0, twoPointers: 0 }
+      if (kind === 'goal') byPlayer[pid].goals++
+      else if (kind === 'point') byPlayer[pid].points++
+      else byPlayer[pid].twoPointers++
+    }
+    return Object.entries(byPlayer)
+      .map(([pid, b]) => {
+        const player = players.find((p: any) => p.id === pid)
+        const pointsValue = b.points + b.twoPointers * 2
+        return {
+          playerId: pid,
+          name: player?.name || 'Unknown',
+          goals: b.goals,
+          pointsValue,
+          twoPointers: b.twoPointers,
+          totalValue: b.goals * 3 + pointsValue,
+        }
+      })
+      .sort((a, b) => b.totalValue - a.totalValue)
+  }, [allEvents, players])
 
   // Track players on yellow cards (for second yellow → automatic red)
   const yellowCardPlayerIds = useMemo(() => {
@@ -816,6 +1135,209 @@ export default function MatchRecording() {
       opponentTotal: totalOpponentKickouts
     }
   }
+
+  // The full set of match-insight charts — rendered in its normal spot in
+  // the page (below the pitch) when the half-time view is closed, and
+  // re-rendered *instead* inside the half-time overlay when it's open (see
+  // showHalfTimeView below). Kept as one value referenced from exactly one
+  // of those two places at a time, never both at once, so nothing here
+  // ever double-fetches.
+  // Memoized so the once-a-second match-clock tick (setSeconds, above) doesn't
+  // force React to rebuild this ~15-chart element tree on every single render
+  // of this giant component — it only needs to change when the data feeding
+  // the charts actually changes. This block renders on the normal recording
+  // page too (below the touch pitch), not just inside the half-time overlay,
+  // so an unmemoized rebuild here was previously happening every second
+  // during live recording, on top of the touch-pitch/action-button UI in the
+  // same render pass.
+  const matchInsightsCharts = useMemo(() => matchId && matchEventsData?.events && (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <ChartZoomModal title="Paths Taken">
+          <PathsTakenChart
+            matchId={matchId}
+            pollInterval={20000}
+          />
+        </ChartZoomModal>
+        <ChartZoomModal title="Possession & Territory">
+          <PossessionTerritoryChart
+            stats={matchStats}
+            events={matchEventsData.events}
+            matchId={matchId}
+            opponent={matchDisplay.opponent}
+            pollInterval={20000}
+            attackingRightFirstHalf={match?.attacking_right_first_half}
+            halfDurationMins={match?.half_duration_mins || 30}
+          />
+        </ChartZoomModal>
+      </div>
+      <div className="[&>div]:h-full [&_.glass-card]:h-full">
+        <ChartZoomModal title="Attacking Thirds">
+          <AttackingThirdsChart
+            matchId={matchId}
+            opponent={matchDisplay.opponent}
+            events={matchEventsData.events}
+            pollInterval={20000}
+            attackingRightFirstHalf={match?.attacking_right_first_half}
+            halfDurationMins={match?.half_duration_mins || 30}
+          />
+        </ChartZoomModal>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <ChartZoomModal title="Scoring Timeline">
+          <ScoringTimeline
+            events={matchEventsData.events}
+            opponent={matchDisplay.opponent}
+            teamName={clubName}
+          />
+        </ChartZoomModal>
+        <ChartZoomModal title="Shot Outcomes">
+          <ShotOutcomeChart
+            events={matchEventsData.events}
+            opponent={matchDisplay.opponent}
+          />
+        </ChartZoomModal>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+        <ChartZoomModal title="Kickout Zones">
+          <MatchKickoutZones events={matchEventsData.events} attackingRightFirstHalf={match?.attacking_right_first_half} teamName={clubName} opponentName={matchDisplay.opponent} />
+        </ChartZoomModal>
+        <ChartZoomModal title="Kickout Outcomes">
+          <MatchKickoutOutcomes events={matchEventsData.events} teamName={clubName} opponentName={matchDisplay.opponent} />
+        </ChartZoomModal>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+        <ChartZoomModal title="Scoring Zone Map">
+          <ScoringZoneMap events={matchEventsData.events} teamName={clubName || 'Us'} opponent={matchDisplay.opponent} />
+        </ChartZoomModal>
+        <ChartZoomModal title="Possession Battle Map">
+          <TurnoverMap events={matchEventsData.events} teamName={clubName || 'Us'} />
+        </ChartZoomModal>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+        <ChartZoomModal title="Shooting Efficiency">
+          <ShootingEfficiencyHeatmap shots={shotLocations} />
+        </ChartZoomModal>
+        {scoreOriginsData && (
+          <ChartZoomModal title="Score Origins">
+            <ScoreOrigins data={scoreOriginsData} teamName={clubName} opponentName={matchDisplay.opponent} />
+          </ChartZoomModal>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+        {scoreableFreesData && (
+          <ChartZoomModal title="Scoreable Frees">
+            <ScoreableFreesAnalysis data={scoreableFreesData} teamName={clubName} />
+          </ChartZoomModal>
+        )}
+        {attackEfficiencyData && (
+          <ChartZoomModal title="Attack Efficiency">
+            <AttackEfficiencyCard data={attackEfficiencyData} teamName={clubName} opponentName={matchDisplay.opponent} />
+          </ChartZoomModal>
+        )}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+        <ChartZoomModal title="Kickout Sequence">
+          <KickoutSequence events={matchEventsData.events} teamName={clubName} opponentName={matchDisplay.opponent} />
+        </ChartZoomModal>
+        {seasonBenchmarkData && (
+          <ChartZoomModal title="vs Season Average">
+            <SeasonBenchmarkCard data={seasonBenchmarkData} teamName={clubName} />
+          </ChartZoomModal>
+        )}
+      </div>
+    </>
+  ), [
+    matchId,
+    matchEventsData?.events,
+    matchStats,
+    clubName,
+    matchDisplay.opponent,
+    match?.attacking_right_first_half,
+    match?.half_duration_mins,
+    shotLocations,
+    scoreOriginsData,
+    scoreableFreesData,
+    attackEfficiencyData,
+    seasonBenchmarkData,
+  ])
+
+  // Head-to-head stat table — same numbers shown below the touch pitch during
+  // normal recording, also rendered inside the half-time overlay (see
+  // showHalfTimeView below) so a coach reading the half-time view actually
+  // sees the stat line, not just the charts. A plain const, not useMemo like
+  // matchInsightsCharts above — this is a ~15-row table, not a chart tree, so
+  // recomputing it every render (as it always has, inline) costs nothing.
+  const matchStatsPanel = (
+    <div className="glass-card p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
+          <Activity size={20} className="text-emerald-400" />
+          <span>Match Statistics</span>
+        </h3>
+        {allEvents.length > 0 && (
+          <button
+            onClick={() => setShowExtendedStats(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 hover:text-white text-xs font-medium transition-colors"
+          >
+            More Stats
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-white/[0.08] overflow-hidden" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)' }}>
+        {/* Header row */}
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 bg-white/[0.06] border-b border-white/[0.08]">
+          <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-wider">{clubName}</div>
+          <div className="min-w-[90px]" />
+          <div className="text-center text-xs font-bold text-white/50 uppercase tracking-wider">{matchDisplay.opponent}</div>
+        </div>
+
+        {[
+          { label: 'Possession', left: `${stats.possession.team}%`, right: `${stats.possession.opponent}%`, leftVal: stats.possession.team, rightVal: stats.possession.opponent },
+          { label: 'Poss. Count', left: matchStats?.team_possession_count ?? 0, right: matchStats?.opponent_possession_count ?? 0, leftVal: matchStats?.team_possession_count ?? 0, rightVal: matchStats?.opponent_possession_count ?? 0 },
+          { label: 'Shots', left: stats.shots.team, right: stats.shots.opponent, leftVal: stats.shots.team, rightVal: stats.shots.opponent },
+          { label: 'Scores', left: stats.scores.team, right: stats.scores.opponent, leftVal: stats.scores.team, rightVal: stats.scores.opponent },
+          { label: 'Goal Chances', left: matchStats?.team_goal_chances ?? 0, right: matchStats?.opponent_goal_chances ?? 0, leftVal: matchStats?.team_goal_chances ?? 0, rightVal: matchStats?.opponent_goal_chances ?? 0 },
+          { label: 'Wides', left: stats.wides.team, right: stats.wides.opponent, leftVal: stats.wides.opponent, rightVal: stats.wides.team },
+          { label: 'Accuracy', left: `${stats.accuracy}%`, right: `${stats.shots.opponent > 0 ? (stats.scores.opponent / stats.shots.opponent * 100).toFixed(1) : '0.0'}%`, leftVal: Number(stats.accuracy), rightVal: stats.shots.opponent > 0 ? stats.scores.opponent / stats.shots.opponent * 100 : 0 },
+          { label: 'Conversion', left: `${stats.conversionRate}%`, right: `${(stats.scores.opponent + stats.wides.opponent) > 0 ? ((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1) : '0.0'}%`, leftVal: Number(stats.conversionRate), rightVal: (stats.scores.opponent + stats.wides.opponent) > 0 ? (stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100 : 0 },
+          { label: 'Turnovers Won', left: stats.turnovers.won, right: stats.turnovers.lost, leftVal: stats.turnovers.won, rightVal: stats.turnovers.lost },
+          ...((matchStats?.team_ball_recovery_avg_min != null || matchStats?.opponent_ball_recovery_avg_min != null) ? [{
+            label: 'Ball Recovery',
+            left: matchStats?.team_ball_recovery_avg_min != null ? `${matchStats.team_ball_recovery_avg_min}m` : '–',
+            right: matchStats?.opponent_ball_recovery_avg_min != null ? `${matchStats.opponent_ball_recovery_avg_min}m` : '–',
+            leftVal: matchStats?.opponent_ball_recovery_avg_min ?? 0,
+            rightVal: matchStats?.team_ball_recovery_avg_min ?? 0,
+          }] : []),
+          { label: 'Unforced Errors', left: matchStats?.team_unforced_errors ?? 0, right: matchStats?.opponent_unforced_errors ?? 0, leftVal: matchStats?.opponent_unforced_errors ?? 0, rightVal: matchStats?.team_unforced_errors ?? 0 },
+          { label: 'Kickouts Won', left: `${stats.kickouts.teamWon}/${stats.kickouts.teamTotal}`, right: `${stats.kickouts.opponentWon}/${stats.kickouts.opponentTotal}`, leftVal: stats.kickouts.teamWon, rightVal: stats.kickouts.opponentWon },
+          { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
+          { label: 'Fouls', left: matchStats?.team_fouls || 0, right: matchStats?.opponent_fouls || 0, leftVal: matchStats?.opponent_fouls || 0, rightVal: matchStats?.team_fouls || 0 },
+          { label: '🟡 Yellow', left: matchStats?.team_yellow_cards || 0, right: matchStats?.opponent_yellow_cards || 0, leftVal: matchStats?.opponent_yellow_cards || 0, rightVal: matchStats?.team_yellow_cards || 0 },
+          ...((matchStats?.team_black_cards || 0) + (matchStats?.opponent_black_cards || 0) > 0 ? [{ label: '⬛ Black', left: matchStats?.team_black_cards || 0, right: matchStats?.opponent_black_cards || 0, leftVal: matchStats?.opponent_black_cards || 0, rightVal: matchStats?.team_black_cards || 0 }] : []),
+          ...((matchStats?.team_red_cards || 0) + (matchStats?.opponent_red_cards || 0) > 0 ? [{ label: '🔴 Red', left: matchStats?.team_red_cards || 0, right: matchStats?.opponent_red_cards || 0, leftVal: matchStats?.opponent_red_cards || 0, rightVal: matchStats?.team_red_cards || 0 }] : []),
+        ].map((row, idx) => {
+          const leftWins = row.leftVal > row.rightVal
+          const rightWins = row.rightVal > row.leftVal
+          return (
+            <div key={row.label} className={`grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 transition-colors hover:bg-white/[0.05] ${idx % 2 === 0 ? 'bg-white/[0.02]' : ''} ${idx > 0 ? 'border-t border-white/[0.05]' : ''}`}>
+              <div className={`text-center text-base font-bold ${leftWins ? 'text-emerald-400' : 'text-white/80'}`}>
+                {row.left}
+              </div>
+              <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[90px]">
+                {row.label}
+              </div>
+              <div className={`text-center text-base font-bold ${rightWins ? 'text-emerald-400' : 'text-white/80'}`}>
+                {row.right}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 
   // Event map filtered events (same logic as MatchResult)
   const filteredMapEvents = useMemo(() => {
@@ -1015,6 +1537,62 @@ export default function MatchRecording() {
     }
   }
 
+  // Kickout-sideline pairs — editing "which team" here means flipping BOTH
+  // the event_type (whose restart it was) and team together, since for this
+  // pair (unlike the WON/OPPOSITION_WON kickout family, deliberately left
+  // alone below) they move in lockstep: team is exactly the OWN_/OPP_ prefix.
+  const KICKOUT_SIDELINE_SWAP: Record<string, string> = {
+    own_kickout_sideline: 'opp_kickout_sideline',
+    opp_kickout_sideline: 'own_kickout_sideline',
+  }
+  // Every shot/scoring outcome — the category CategorizedActionButtons calls
+  // "Shooting". Team here is a plain field on the same event_type (a point is
+  // a point whoever scored it), so "change team" is just flipping `team`.
+  const SCORING_SHOT_EVENT_TYPES = new Set([
+    'goal', 'point', 'two_point', 'wide', 'saved', 'short', 'hit_post',
+    'point_free', 'two_point_free', 'wide_free', 'forty_five', 'forty_five_missed',
+    'penalty_goal', 'penalty_miss',
+  ])
+
+  // Shared PUT for any event edit (player, team, or both). One place to keep
+  // the optimistic-update/rollback and scoreboard refresh correct, instead of
+  // three separate fetches risking three different answers to "did the score
+  // update?". The backend recalculates team_goals/team_points/etc. from
+  // scratch on every event PUT — rather than re-deriving that delta here for
+  // every possible from/to team+event_type combination (error-prone, exactly
+  // the kind of mistake "needs more care" was about), this just invalidates
+  // the match query so the scoreboard refetches the authoritative total.
+  const putEventEdit = async (eventId: number, patch: Record<string, unknown>) => {
+    if (!matchId) return
+    const queryKey = matchEventKeys.byMatch(matchId)
+    const previous = queryClient.getQueryData(queryKey)
+    queryClient.setQueryData(queryKey, (old: any) => {
+      if (!old?.events) return old
+      return {
+        ...old,
+        events: old.events.map((e: any) => (e.id === eventId ? { ...e, ...patch } : e)),
+      }
+    })
+
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+      const res = await fetch(`${baseUrl}/match-events/${eventId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(patch),
+      })
+      if (!res.ok) throw new Error(`Server error ${res.status}`)
+      if ('team' in patch || 'event_type' in patch) {
+        queryClient.invalidateQueries({ queryKey: matchKeys.detail(matchId) })
+      }
+    } catch (err) {
+      queryClient.setQueryData(queryKey, previous)
+      console.error('Failed to update event:', err)
+      setErrorAlert('Failed to update event. Please try again.')
+    }
+  }
+
   // Open player picker to assign/change the player on an existing event
   const handleEditEventPlayer = (eventId: number) => {
     const event = allEvents.find(e => e.id === eventId)
@@ -1023,51 +1601,118 @@ export default function MatchRecording() {
     setIsPlayerModalOpen(true)
   }
 
+  // Pencil tap on an event in the Recent Events list. Kickout-sideline and
+  // scoring events get a small "what's wrong here?" choice instead of jumping
+  // straight to the player picker — for sideline kickouts there's no player
+  // to pick in the first place (the mistake is always "wrong team"), and for
+  // scores the actual reported mistake ("St Marys' point should have been
+  // ours") is a team fix, not a player fix, so the player picker alone was a
+  // dead end for exactly the case that prompted this. Everything else keeps
+  // the original one-tap-to-player-picker behaviour, unchanged.
+  const handleEditEventClick = (eventId: number) => {
+    const event = allEvents.find(e => e.id === eventId)
+    if (!event) return
+    const eventType = String(event.event_type)
+    const currentTeam: 'own' | 'opponent' = eventIsOwn(event) ? 'own' : 'opponent'
+
+    if (KICKOUT_SIDELINE_SWAP[eventType] || SCORING_SHOT_EVENT_TYPES.has(eventType)) {
+      setEditChoice({
+        eventId,
+        kind: KICKOUT_SIDELINE_SWAP[eventType] ? 'sideline' : 'scoring',
+        currentTeam,
+      })
+      return
+    }
+    handleEditEventPlayer(eventId)
+  }
+
+  // Kickout-sideline "swap to the other team" — event_type and team flip
+  // together (see KICKOUT_SIDELINE_SWAP above). No player involved either
+  // way, so this is the whole edit, no follow-up step.
+  const handleConfirmSidelineSwap = async () => {
+    if (!editChoice) return
+    const { eventId } = editChoice
+    const event = allEvents.find(e => e.id === eventId)
+    setEditChoice(null)
+    if (!event) return
+    const eventType = String(event.event_type)
+    const newEventType = KICKOUT_SIDELINE_SWAP[eventType]
+    if (!newEventType) return
+    const newTeam = eventIsOwn(event) ? 'opponent' : 'own'
+    await putEventEdit(eventId, { event_type: newEventType, team: newTeam })
+  }
+
+  // Scoring/shot "swap to the other team". Switching TO opponent clears
+  // player_id outright — opponent events never carry one of our players.
+  // Switching TO own team needs to know who actually took it, so this closes
+  // the choice card and chains straight into the normal player picker;
+  // handleEditPlayerSelected (and its Skip path) finish the job from there.
+  const handleSwapScoringTeam = async () => {
+    if (!editChoice) return
+    const { eventId, currentTeam } = editChoice
+    const targetTeam = currentTeam === 'own' ? 'opponent' : 'own'
+    const event = allEvents.find(e => e.id === eventId)
+    setEditChoice(null)
+
+    if (targetTeam === 'own') {
+      setPendingTeamForEdit('own')
+      setEditingEventId(eventId)
+      setEditingEventType(event?.event_type ?? null)
+      setIsPlayerModalOpen(true)
+      return
+    }
+    await putEventEdit(eventId, { team: 'opponent', player_id: null })
+  }
+
+  // Closes the edit-mode player picker. A plain player-only edit just
+  // cancels (unchanged from before). But if this picker was opened to finish
+  // a team swap (pendingTeamForEdit set) and the coach hits Skip because they
+  // don't know/care who exactly touched it, the team correction — the actual
+  // point of the edit — still goes through; only the player attribution is
+  // left blank, same spirit as "Skip Player" everywhere else in recording.
+  const handleEditPlayerModalClose = () => {
+    setIsPlayerModalOpen(false)
+    const targetEventId = editingEventId
+    const teamPatch = pendingTeamForEdit
+    setEditingEventId(null)
+    setEditingEventType(null)
+    setPendingTeamForEdit(null)
+    if (teamPatch && targetEventId !== null) {
+      putEventEdit(targetEventId, { team: teamPatch, player_id: null })
+    }
+  }
+
   // Called when a player is selected from the edit-event modal
   const handleEditPlayerSelected = async (player: Player) => {
     if (!matchId || editingEventId === null) return
     setIsPlayerModalOpen(false)
     const targetEventId = editingEventId
+    const teamPatch = pendingTeamForEdit
     setEditingEventId(null)
     setEditingEventType(null)
+    setPendingTeamForEdit(null)
 
-    // Optimistically update the cache so text changes immediately
-    const queryKey = ['match-events', matchId]
-    const previous = queryClient.getQueryData(queryKey)
-    queryClient.setQueryData(queryKey, (old: any) => {
-      if (!old?.events) return old
-      return {
-        ...old,
-        events: old.events.map((e: any) =>
-          e.id === targetEventId ? { ...e, player_id: player.id } : e
-        ),
-      }
-    })
+    await putEventEdit(targetEventId, teamPatch ? { player_id: player.id, team: teamPatch } : { player_id: player.id })
+  }
 
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-      const res = await fetch(`${baseUrl}/match-events/${targetEventId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ player_id: player.id }),
-      })
-      if (!res.ok) throw new Error(`Server error ${res.status}`)
-    } catch (err) {
-      // Roll back optimistic update
-      queryClient.setQueryData(queryKey, previous)
-      console.error('Failed to update event player:', err)
-      setErrorAlert('Failed to update player. Please try again.')
-    }
+  // Real API-fetched events carry `team: 'own'|'opponent'` (the actual backend
+  // field) — `is_home_team` only ever exists on a locally-synthesized event
+  // object from the moment it's first recorded, and stops being reliable the
+  // instant the next background refetch (every 20s while live) replaces it
+  // with the server's own shape. Anything reading "which team is this" must
+  // check `team` first and only fall back to `is_home_team` for that brief
+  // pre-refetch window — shared here so the event list's colour-coding and
+  // its description text can never quietly disagree with each other.
+  const eventIsOwn = (event: any): boolean => {
+    const eventTeam = event?.team
+    return eventTeam ? eventTeam === 'own' : !!event?.is_home_team
   }
 
   // Helper function to format event description
   const formatEventDescription = (event: MatchEvent): string => {
     const player = players.find(p => p.id === String(event.player_id))
     const teamName = match?.opponent || 'Opposition'
-    // Backend returns team as 'own' or 'opponent', fallback to is_home_team
-    const eventTeam = (event as any).team
-    const isOwn = eventTeam ? eventTeam === 'own' : event.is_home_team
+    const isOwn = eventIsOwn(event)
     // Get contextual area description based on which team the event is for
     const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, teamName)
     // For own team events, use player name; for opponent events, use team name
@@ -1118,6 +1763,16 @@ export default function MatchRecording() {
         return isOwn
           ? `${playerName} hit a wide from a free in ${area}`
           : `${teamName} hit a wide from a free in ${area}`
+
+      case 'free_short_pass':
+        return isOwn
+          ? `${playerName} played a free short in ${area}`
+          : `${teamName} played a free short in ${area}`
+
+      case 'free_high_ball':
+        return isOwn
+          ? `${playerName} played a free long/high into ${area}`
+          : `${teamName} played a free long/high into ${area}`
 
       case 'forty_five':
         return isOwn
@@ -1276,6 +1931,18 @@ export default function MatchRecording() {
   }
 
   const handleBallMove = async (newPosition: BallPosition) => {
+    // Check if there's a pending 45 waiting for its line position
+    if (pendingFortyFivePosition) {
+      const pending = pendingFortyFivePosition
+      setPendingFortyFivePosition(null)
+      try {
+        await recordFortyFiveAtPosition(pending, newPosition)
+      } catch (err) {
+        console.error('45 recording failed in handleBallMove:', err)
+      }
+      return
+    }
+
     // Check if there's a pending kickout event waiting for position
     if (pendingKickoutEvent) {
       // Capture and clear immediately — prevents a second pitch tap from firing
@@ -1359,6 +2026,15 @@ export default function MatchRecording() {
   // Batch-record drag waypoints as possession events (single bulk request on drag-end)
   const handleDragPath = (waypoints: Array<{ x: number; y: number }>) => {
     if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || isStopped || isDeadBall) return
+    // Dead-ball restarts in progress — a free kick being repositioned, a
+    // kickout whose landing spot hasn't been tapped yet, or a 45 whose line
+    // position hasn't been tapped yet — aren't open play, and shouldn't tick
+    // possession in either team's favour while waiting. handleBallMove
+    // already skips recording for the single tap/drag-release that resolves
+    // each of these; this is the equivalent guard for the continuous drag
+    // itself (a genuinely separate code path, bulk-recording waypoints as
+    // they happen, that handleBallMove's own guards never reach).
+    if (pendingFreeKick || pendingKickoutEvent || pendingFortyFivePosition) return
     const team = ballPosition.team === PossessionTeam.OWN ? 'own' : 'opponent'
     api.possession.bulkCreate({
       match_id: matchId,
@@ -1382,7 +2058,7 @@ export default function MatchRecording() {
 
   // Record a kickout event at the selected position
   const recordKickoutAtPosition = async (
-    kickout: { eventType: EventType; isHomeTeam: boolean; playerId?: string },
+    kickout: { eventType: EventType; isHomeTeam: boolean; playerId?: string; targetPlayerId?: string },
     position: BallPosition
   ) => {
     if (!matchId) return
@@ -1394,12 +2070,14 @@ export default function MatchRecording() {
         eventType: kickout.eventType,
         backendType: backendEventType,
         position,
-        playerId: kickout.playerId
+        playerId: kickout.playerId,
+        targetPlayerId: kickout.targetPlayerId,
       })
 
       await recordEvent.mutateAsync({
         match_id: matchId,
         player_id: kickout.playerId,
+        kickout_target_player_id: kickout.targetPlayerId,
         event_type: backendEventType,
         minute: minute,
         half: currentHalf,
@@ -1409,10 +2087,22 @@ export default function MatchRecording() {
         notes: undefined
       })
 
-      // Determine who won the kickout based on event type
+      // Determine who won the kickout based on event type.
+      // Sideline is its own case, not a "who won it" contest — the kicking
+      // team always loses possession (matches the OWN_KICKOUT_SIDELINE /
+      // OPP_KICKOUT_SIDELINE model comment). Checked first: eventTypeStr for
+      // a sideline event contains neither "_WON" nor "OPPOSITION_WON", so it
+      // used to fall through to the generic branch below and always resolve
+      // to OPPONENT regardless of which team actually kicked it out — right
+      // for OWN_KICKOUT_SIDELINE by coincidence, wrong for OPP_KICKOUT_SIDELINE.
       const eventTypeStr = String(kickout.eventType).toUpperCase()
-      const isTeamWon = eventTypeStr.includes('_WON') && !eventTypeStr.includes('OPPOSITION_WON')
-      const newTeam = isTeamWon ? PossessionTeam.OWN : PossessionTeam.OPPONENT
+      let newTeam: PossessionTeam
+      if (eventTypeStr.includes('KICKOUT_SIDELINE')) {
+        newTeam = eventTypeStr.startsWith('OWN_') ? PossessionTeam.OPPONENT : PossessionTeam.OWN
+      } else {
+        const isTeamWon = eventTypeStr.includes('_WON') && !eventTypeStr.includes('OPPOSITION_WON')
+        newTeam = isTeamWon ? PossessionTeam.OWN : PossessionTeam.OPPONENT
+      }
 
       // Update ball position to where kickout was won with correct team
       const newBallPosition = {
@@ -1428,12 +2118,12 @@ export default function MatchRecording() {
           match_id: matchId,
           x_coord: position.x,
           y_coord: position.y,
-          team: isTeamWon ? 'home' : 'away',
+          team: newTeam === PossessionTeam.OWN ? 'home' : 'away',
           timestamp: new Date(),
           minute: minute,
           half: currentHalf
         })
-        console.log('Kickout possession recorded:', isTeamWon ? 'Own team' : 'Opposition')
+        console.log('Kickout possession recorded:', newTeam === PossessionTeam.OWN ? 'Own team' : 'Opposition')
       } catch (error) {
         console.error('Failed to record kickout possession:', error)
       }
@@ -1508,6 +2198,8 @@ export default function MatchRecording() {
       'point_free': 'point_free',
       'two_point_free': 'two_point_free',
       'wide_free': 'wide_free',
+      'free_short_pass': 'free_short_pass',
+      'free_high_ball': 'free_high_ball',
 
       // 45s (ball went wide off defender)
       'forty_five': 'forty_five',  // 45 scored - always 1 point
@@ -1668,6 +2360,12 @@ export default function MatchRecording() {
 
   // Handle "45" button - opens 45 options menu (scored/missed)
   const handle45Click = () => {
+    // Snap the ball onto the 45m line right away — the moment "45" is
+    // pressed, not only after Scored/Missed is picked — so the user sees
+    // immediately where the kick is being placed instead of the ball just
+    // sitting wherever it happened to be. Team is whoever currently has
+    // possession, same as is45Result derives it later.
+    setBallPosition(prev => ({ ...prev, x: compute45LineX(prev.team === PossessionTeam.OWN) }))
     setPending45({ position: ballPosition })
     console.log('45 initiated at position:', ballPosition)
   }
@@ -1676,6 +2374,44 @@ export default function MatchRecording() {
   const handleCancel45 = () => {
     setPending45(null)
     console.log('45 cancelled')
+  }
+
+  // Cancel a pending 45 that's already past Scored/Missed and just waiting
+  // on a pitch tap for its line position.
+  const handleCancelFortyFivePosition = () => {
+    setPendingFortyFivePosition(null)
+    console.log('45 position selection cancelled')
+  }
+
+  // Resolve a pending 45 once the line has been tapped. A 45 is always taken
+  // from ON the 45m line — the tap only ever decides left/right (y), so x is
+  // snapped to the real line rather than trusting whatever the tap's x
+  // happened to be. 31/69 on the 0-100 pitch-% scale = 45m in from either
+  // goal on a 145m pitch (45/145 * 100 ≈ 31), same geometry ScoringZoneMap
+  // uses for its 45m zone divider. Which line depends on which team is
+  // actually taking the kick and which end they're currently attacking —
+  // pitch_x is a raw screen-relative coordinate (GAAPitch has no notion of
+  // "own"/"opponent" goal itself), same as every other pitch-tapped event,
+  // so this mirrors the exact ownGoalX/oppGoalX pattern used for kickouts.
+  const recordFortyFiveAtPosition = async (
+    pending: { eventType: EventType; isHomeTeam: boolean },
+    tappedPosition: BallPosition
+  ) => {
+    const { eventType, isHomeTeam } = pending
+    const snappedPosition: BallPosition = {
+      x: compute45LineX(isHomeTeam),
+      y: tappedPosition.y,
+      team: isHomeTeam ? PossessionTeam.OWN : PossessionTeam.OPPONENT,
+    }
+
+    if (isHomeTeam) {
+      // Own team 45 — ask which player takes it, same as any other own-team free
+      setPendingEvent({ eventType, team: 'own', position: snappedPosition })
+      setIsPlayerModalOpen(true)
+    } else {
+      // Opponent 45 — no player to attribute, record directly
+      await recordFreeKickResult(eventType, snappedPosition, false)
+    }
   }
 
   // Cancel pending kickout position selection
@@ -1695,6 +2431,23 @@ export default function MatchRecording() {
       }
     }
     console.log('Kickout cancelled, possession restored')
+  }
+
+  // Tap a jersey on the optional post-score assist prompt. Fire-and-forget,
+  // same as the rest of live recording — clear the UI immediately, PATCH in
+  // the background, and don't let a failed request leave the prompt stuck.
+  const handleAssistSelect = (assistPlayerId: string) => {
+    const assist = pendingAssist
+    if (!assist) return
+    if (pendingAssistTimeoutRef.current) clearTimeout(pendingAssistTimeoutRef.current)
+    setPendingAssist(null)
+
+    // Can't assist your own score
+    if (assistPlayerId === assist.scorerId) return
+
+    api.matchEvents.update(assist.eventId, { assist_player_id: assistPlayerId })
+      .then(() => flashActionToast('Assist'))
+      .catch((error) => console.error('Failed to record assist:', error))
   }
 
   // Handle manual event entry
@@ -1719,9 +2472,14 @@ export default function MatchRecording() {
       // handleBallMove) instead of writing the event here.
       if (String(data.eventType).toUpperCase().includes('KICKOUT')) {
         const eventStr = String(data.eventType).toUpperCase()
+        // Sideline is whose kickout it was (OWN_/OPP_ prefix), not a "who
+        // won it" contest — kept separate from the _WON/OPPOSITION_WON
+        // check below, which doesn't apply to it.
         const isTeamWon = eventStr.includes('_WON') && !eventStr.includes('OPPOSITION_WON')
-        const isOppositionWon = eventStr.includes('OPPOSITION_WON') || eventStr.includes('KICKOUT_SIDELINE')
-        const kickoutIsHomeTeam = isTeamWon ? true : isOppositionWon ? false : isHomeTeam
+        const isOppositionWon = eventStr.includes('OPPOSITION_WON')
+        const kickoutIsHomeTeam = eventStr.includes('KICKOUT_SIDELINE')
+          ? eventStr.startsWith('OWN_')
+          : isTeamWon ? true : isOppositionWon ? false : isHomeTeam
         setPendingKickoutEvent({
           eventType: data.eventType,
           isHomeTeam: kickoutIsHomeTeam,
@@ -1812,22 +2570,43 @@ export default function MatchRecording() {
     if (!matchId) return
     const playerOff = players.find(p => p.id === playerOffId)
     const playerOn = players.find(p => p.id === playerOnId)
-    await recordEvent.mutateAsync({
-      match_id: matchId,
-      player_id: playerOffId,
-      event_type: EventType.SUBSTITUTION,
-      minute,
-      half: currentHalf,
-      x_coord: ballPosition.x,
-      y_coord: ballPosition.y,
-      is_home_team: true,
-      notes: `${playerOff?.name ?? 'Player'} off, ${playerOn?.name ?? 'Player'} on`,
-    })
     const outgoing = matchLineup.find(l => l.player_id === playerOffId)
-    await api.matchLineups.updateFieldStatus(matchId, playerOffId)
-    await api.matchLineups.updateFieldStatus(matchId, playerOnId, outgoing?.position_id)
-    const refreshed = await api.matchLineups.getLineup(matchId)
-    setMatchLineup(refreshed)
+
+    // Optimistic update — SubstitutionModal now closes the instant this is
+    // called rather than waiting for it, so the on-field roster needs to
+    // reflect the sub immediately, not after 2 sequential network calls +
+    // a full lineup refetch (previously ~1-2s of the modal just sitting
+    // there before the coach could get back to recording).
+    setMatchLineup(prev => prev.map(l => {
+      if (l.player_id === playerOffId) return { ...l, is_on_field: false }
+      if (l.player_id === playerOnId) return { ...l, is_on_field: true, position_id: outgoing?.position_id ?? l.position_id }
+      return l
+    }))
+
+    try {
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        player_id: playerOffId,
+        event_type: EventType.SUBSTITUTION,
+        minute,
+        half: currentHalf,
+        x_coord: ballPosition.x,
+        y_coord: ballPosition.y,
+        is_home_team: true,
+        notes: `${playerOff?.name ?? 'Player'} off, ${playerOn?.name ?? 'Player'} on`,
+      })
+      await Promise.all([
+        api.matchLineups.updateFieldStatus(matchId, playerOffId),
+        api.matchLineups.updateFieldStatus(matchId, playerOnId, outgoing?.position_id),
+      ])
+      const refreshed = await api.matchLineups.getLineup(matchId)
+      setMatchLineup(refreshed)
+    } catch (err) {
+      // Optimistic update above already reflects the sub — a background
+      // sync failure here just means the server-side lineup may lag until
+      // the next natural refetch, not worth reverting mid-match over.
+      console.error('Failed to sync substitution:', err)
+    }
   }
 
   /** Handle discipline card events — opens player modal then records */
@@ -1840,6 +2619,15 @@ export default function MatchRecording() {
       position: ballPosition,
     })
     setIsPlayerModalOpen(true)
+  }
+
+  // Single source of truth for "which 45m line" — used to snap the ball
+  // there the instant a 45 is selected, to highlight the line, and to snap
+  // the final recorded position once tapped. All three call this so they
+  // can never drift out of sync with each other again.
+  const compute45LineX = (isHomeTeam: boolean): number => {
+    const kickingTeamAttacksRight = isHomeTeam ? teamAttackingRight : !teamAttackingRight
+    return kickingTeamAttacksRight ? 66 : 34
   }
 
   const handleQuickAction = (eventType: EventType) => {
@@ -1871,12 +2659,18 @@ export default function MatchRecording() {
     // "Opposition Won" → no player needed, is_home_team: false
 
     const isTeamWon = eventStr.includes('_WON') && !eventStr.includes('OPPOSITION_WON')
-    const isOppositionWon = eventStr.includes('OPPOSITION_WON') || eventStr.includes('KICKOUT_SIDELINE')
+    const isOppositionWon = eventStr.includes('OPPOSITION_WON')
 
     // Determine team based on event type
     let isHomeTeam: boolean
 
-    if (isTeamWon) {
+    if (eventStr.includes('KICKOUT_SIDELINE')) {
+      // Whose kickout it was (OWN_/OPP_ prefix), not a "who won it" contest —
+      // this used to fall into the isOppositionWon bucket below, which made
+      // OWN_KICKOUT_SIDELINE record as an opponent event and set the wrong
+      // possession outcome later in recordKickoutAtPosition.
+      isHomeTeam = eventStr.startsWith('OWN_')
+    } else if (isTeamWon) {
       // ANY "We Won" event → own team
       isHomeTeam = true
     } else if (isOppositionWon) {
@@ -1949,18 +2743,15 @@ export default function MatchRecording() {
         }
       }
     } else if (is45Result) {
-      if (isHomeTeam) {
-        // Own team 45 — ask which player takes it
-        setPendingEvent({
-          eventType: eventType as EventType,
-          team: 'own',
-          position: actionPosition
-        })
-        setIsPlayerModalOpen(true)
-      } else {
-        // Opponent 45 — no player selection, record directly
-        recordFreeKickResult(eventType, actionPosition, false)
-      }
+      // A 45 is always taken from the 45m line, not wherever the ball
+      // happened to be sitting when "45" was first tapped. Snap the ball
+      // marker onto the line right away, at its current left/right — instant
+      // visual confirmation of where the kick will be taken from, rather
+      // than just a highlighted zone with no marker on it. The user can then
+      // tap anywhere on the line to adjust left/right before it's recorded;
+      // handleBallMove resolves that tap and does the actual recording.
+      setBallPosition(prev => ({ ...prev, x: compute45LineX(isHomeTeam) }))
+      setPendingFortyFivePosition({ eventType: eventType as EventType, isHomeTeam })
     } else if (isOpponentActualScore && oppositionRoster.length > 0) {
       // Opponent scored and we have a roster — show opposition scorer strip
       setPendingOpponentScore({ eventType, position: actionPosition })
@@ -2104,6 +2895,16 @@ export default function MatchRecording() {
         return // Don't auto-switch tabs — wait for recovery decision
       }
 
+      // Sideline ball prompt — ask who's in possession, rather than
+      // inferring it from whichever team the ball happened to be marked as
+      // when the button was pressed (a 50/50 contested ball or a
+      // deliberate defensive clearance can go either way regardless of
+      // that).
+      if (eventType === EventType.SIDELINE_BALL) {
+        setPendingSidelineDecision({ position })
+        return
+      }
+
       // Auto-end carrier segment on terminal events
       if (activeCarrierId) {
         playerMovement.onTerminalEvent(String(eventType).toLowerCase(), position.x, position.y)
@@ -2154,7 +2955,7 @@ export default function MatchRecording() {
         // Note: Kickout events are handled via pendingKickoutEvent pattern
         const turnoverEventStr = String(eventType).toUpperCase()
 
-        if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'INTERCEPTION' || turnoverEventStr === 'SIDELINE_BALL') {
+        if (turnoverEventStr.includes('TURNOVER') || turnoverEventStr.includes('UNFORCED_ERROR') || turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'INTERCEPTION') {
           // Determine new possession based on event type
           let newTeam: PossessionTeam
           let newX = position.x
@@ -2195,9 +2996,6 @@ export default function MatchRecording() {
           } else if (turnoverEventStr.includes('OUR_UNFORCED_ERROR')) {
             // Our unforced error → Opponent gets possession
             newTeam = PossessionTeam.OPPONENT
-          } else if (turnoverEventStr === 'SIDELINE_BALL') {
-            // Team that put it out loses possession: other team gets sideline ball
-            newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.OWN
           } else {
             // Fallback (shouldn't reach here)
             newTeam = isHomeTeam ? PossessionTeam.OPPONENT : PossessionTeam.OWN
@@ -2289,6 +3087,67 @@ export default function MatchRecording() {
       setBallPosition(prev => ({ ...prev, team: PossessionTeam.OWN }))
     }
     setPendingBlockRecovery(null)
+  }
+
+  // Block deflected out over the sideline — not a clean recovery either way.
+  // Records the sideline_ball event at the block's own position (same as a
+  // normal sideline-ball tap would), then hands off to the same "who's in
+  // possession now" decision every sideline ball goes through.
+  const handleBlockResultSideline = async () => {
+    if (!pendingBlockRecovery || !matchId) return
+    const pos = pendingBlockRecovery.position
+    setPendingBlockRecovery(null)
+    try {
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        event_type: mapEventTypeToBackend(EventType.SIDELINE_BALL),
+        minute,
+        half: currentHalf,
+        x_coord: pos.x,
+        y_coord: pos.y,
+        is_home_team: pos.team === PossessionTeam.OWN,
+      })
+      setLastEventType(String(EventType.SIDELINE_BALL).toLowerCase())
+    } catch (err) {
+      console.error('Failed to record sideline ball after block:', err)
+    }
+    setPendingSidelineDecision({ position: pos })
+  }
+
+  // Block deflected behind the end line for a 45 — awarded to whoever was
+  // actually attacking (shooting) when the block happened, which is exactly
+  // what pendingBlockRecovery.position.team already holds (the ball's team
+  // at block time, untouched by the block itself). Hands off directly into
+  // the normal 45 flow (Scored/Missed, then tap the line) — handleQuickAction
+  // reads that same position.team to work out who the 45 belongs to.
+  const handleBlockResultFortyFive = () => {
+    if (!pendingBlockRecovery) return
+    const pos = pendingBlockRecovery.position
+    setPendingBlockRecovery(null)
+    // Snap the ball onto the 45m line immediately, same as tapping "45"
+    // from the Shooting tab does — don't leave it sitting at the block spot.
+    setBallPosition(prev => ({ ...prev, x: compute45LineX(pos.team === PossessionTeam.OWN) }))
+    setPending45({ position: pos })
+  }
+
+  // Handle sideline ball decision — who's in possession now?
+  const handleSidelineDecision = async (weWonIt: boolean) => {
+    if (!pendingSidelineDecision || !matchId) return
+    setBallPosition(prev => ({ ...prev, team: weWonIt ? PossessionTeam.OWN : PossessionTeam.OPPONENT }))
+    try {
+      await recordPossession.mutateAsync({
+        match_id: matchId,
+        x_coord: pendingSidelineDecision.position.x,
+        y_coord: pendingSidelineDecision.position.y,
+        team: weWonIt ? 'home' : 'away',
+        timestamp: new Date(),
+        minute: minute,
+        half: currentHalf,
+      })
+    } catch (error) {
+      console.error('Failed to record possession after sideline ball:', error)
+    }
+    setPendingSidelineDecision(null)
   }
 
   // Handle opposition scorer selection
@@ -2414,6 +3273,30 @@ export default function MatchRecording() {
     // Apply immediate UI state changes (ball position, tabs, kickout lock)
     const scoringEvents = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE, EventType.PENALTY_GOAL]
     const isScore = scoringEvents.includes(event.eventType as EventType)
+
+    // Guard against logging the same score twice — confirmed live on
+    // 2026-08-17 (twice in one match): a score is tapped, the recorder isn't
+    // fully sure it registered (no strong confirmation before this point),
+    // and the same player/event/minute gets logged again minutes later as a
+    // genuinely separate action, not a rapid double-tap a debounce would
+    // catch. Both real duplicates that night matched on player + event type
+    // + exact same minute, so that's the check — a confirm, not a hard
+    // block, since a genuine same-minute brace is rare but possible.
+    if (isScore) {
+      const backendType = mapEventTypeToBackend(event.eventType)
+      const alreadyLogged = allEvents.some((e: any) =>
+        e.player_id === player.id &&
+        e.event_type === backendType &&
+        e.minute === capturedMinute
+      )
+      if (alreadyLogged) {
+        const label = String(event.eventType).toLowerCase().replace(/_/g, ' ')
+        const confirmed = window.confirm(
+          `${player.name} already has a ${label} logged at minute ${capturedMinute}. Log another one?`
+        )
+        if (!confirmed) return
+      }
+    }
     const deadBallEvents = [EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED, EventType.PENALTY_MISS]
     const isDeadBall = deadBallEvents.includes(event.eventType as EventType)
 
@@ -2480,6 +3363,12 @@ export default function MatchRecording() {
     // Fire backend calls in background (non-blocking for instant feel)
     const backendEventType = mapEventTypeToBackend(event.eventType)
 
+    // Assist prompting only applies to own-team GOAL/POINT/TWO_POINT — matches
+    // the backend's own validator (assist_player_id is rejected on any other
+    // event type), so there's no point offering it elsewhere.
+    const assistEligible = event.team === 'own' &&
+      [EventType.GOAL, EventType.POINT, EventType.TWO_POINT].includes(event.eventType as EventType)
+
     recordEvent.mutateAsync({
       match_id: matchId,
       player_id: player.id,
@@ -2490,10 +3379,16 @@ export default function MatchRecording() {
       y_coord: event.position.y,
       is_home_team: event.team === 'own',
       notes: undefined
-    }).then(() => {
+    }).then((result) => {
       invalidateStats()
       setLastEventType(String(event.eventType).toLowerCase())
       console.log('Event recorded successfully!')
+
+      if (assistEligible && result?.id) {
+        if (pendingAssistTimeoutRef.current) clearTimeout(pendingAssistTimeoutRef.current)
+        setPendingAssist({ eventId: String(result.id), scorerId: player.id, scorerName: player.name })
+        pendingAssistTimeoutRef.current = setTimeout(() => setPendingAssist(null), PENDING_ASSIST_TIMEOUT_MS)
+      }
     }).catch((error) => {
       console.error('Failed to record event:', error)
     })
@@ -2871,6 +3766,41 @@ export default function MatchRecording() {
 
   const statusLabel = getStatusLabel()
 
+  // True while the pending kickout is specifically "went out over the
+  // sideline" — the pitch needs to highlight the touchlines themselves so
+  // the tappable strip isn't hidden/guessed at, unlike a normal kickout
+  // landing spot which can be anywhere on the pitch.
+  const sidelineTapPending = !!pendingKickoutEvent &&
+    String(pendingKickoutEvent.eventType).toLowerCase().includes('kickout_sideline')
+
+  // Which 45m line to highlight while pendingFortyFivePosition is waiting on
+  // a tap — same geometry as recordFortyFiveAtPosition, kept in sync so the
+  // highlighted line and the actually-recorded position always agree.
+  const fortyFiveLineX = pendingFortyFivePosition
+    ? compute45LineX(pendingFortyFivePosition.isHomeTeam)
+    : null
+
+  // On a score, highlight the last tracked ball carrier in the scorer-select
+  // UI as a hint (they're the likeliest scorer) — never a lock, any other
+  // player is still one tap away. Originally only the scoring outcomes
+  // (the backend's assist-eligible types plus frees/45s), which meant a
+  // miss — wide, short, saved, hit post — never got the same hint even
+  // though "who took the shot" is exactly as answerable from the active
+  // carrier for a miss as it is for a score. Broadened to every shot
+  // outcome (matches the SHOT_EVENTS set leaderboard_service.py uses) so
+  // the hint is consistent across every way a shot can end, not just the
+  // ones that go over the bar.
+  const SHOT_CARRIER_HINT_TYPES = [
+    EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
+    EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE,
+    EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT, EventType.SAVED,
+    EventType.HIT_POST, EventType.FORTY_FIVE_MISSED,
+    EventType.PENALTY_GOAL, EventType.PENALTY_MISS,
+  ]
+  const suggestedScorerId = pendingEvent && SHOT_CARRIER_HINT_TYPES.includes(pendingEvent.eventType as EventType)
+    ? activeCarrierId
+    : null
+
   // Tutorial match state for interactive walkthrough
   const tutorialMatchState = useMemo<TutorialMatchState>(() => ({
     matchPhase,
@@ -2894,6 +3824,43 @@ export default function MatchRecording() {
           }}
         >
           ✓ {actionToast} logged
+        </div>
+      )}
+
+      {/* Optional "who assisted?" prompt — fixed page-level so it shows over
+          both normal and fullscreen pitch, same as the toast above. Purely
+          additive: auto-dismisses on its own timeout, and skipping it has
+          zero effect on the already-recorded score. */}
+      {pendingAssist && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[200] animate-fade-in">
+          <div
+            className="flex items-center gap-2 rounded-2xl px-3 py-2 max-w-[92vw] overflow-x-auto no-scrollbar"
+            style={{
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(6,182,212,0.35)',
+              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              boxShadow: '0 6px 24px rgba(0,0,0,0.45)',
+            }}
+          >
+            <span className="text-cyan-300 text-xs font-bold flex-shrink-0">Assist? (optional)</span>
+            {jerseyStripPlayers.filter(p => p.isOnField && p.playerId !== pendingAssist.scorerId)
+              .sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99)).map(p => (
+                <button
+                  key={p.playerId}
+                  onClick={() => handleAssistSelect(p.playerId)}
+                  className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold bg-white/10 text-white/70 hover:bg-cyan-500/30 hover:text-white transition-all"
+                >
+                  {p.jerseyNumber ?? '?'}
+                </button>
+              ))}
+            <button
+              onClick={() => { if (pendingAssistTimeoutRef.current) clearTimeout(pendingAssistTimeoutRef.current); setPendingAssist(null) }}
+              className="flex-shrink-0 text-white/40 hover:text-white text-xs px-1.5"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -2944,9 +3911,11 @@ export default function MatchRecording() {
                     className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-all cursor-pointer"
                     title="Update weather"
                   >
-                    {(() => { const WeatherIcon = getWeatherIcon(weatherCondition); return <WeatherIcon size={13} className={weatherCondition ? 'text-white/70' : 'text-white/40'} />; })()}
-                    {weatherCondition && (
-                      <span className="text-[10px] text-white/60">{getWeatherLabel(weatherCondition)}</span>
+                    {(() => { const WeatherIcon = getWeatherIcon(weatherConditions[0]); return <WeatherIcon size={13} className={weatherConditions.length > 0 ? 'text-white/70' : 'text-white/40'} />; })()}
+                    {weatherConditions.length > 0 && (
+                      <span className="text-[10px] text-white/60">
+                        {weatherConditions.map(c => getWeatherLabel(c)).join(' + ')}
+                      </span>
                     )}
                     {temperatureCelsius !== null && (
                       <span className="text-[10px] text-white/60">{temperatureCelsius}°C</span>
@@ -3076,6 +4045,7 @@ export default function MatchRecording() {
                     <button
                       className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
                       onClick={() => setIsManualEntryOpen(true)}
+                      title="Manual Event Entry — log something not covered by the quick-action buttons"
                     >
                       <Plus size={14} />
                       <span>Event</span>
@@ -3086,7 +4056,7 @@ export default function MatchRecording() {
                       className={`px-4 py-2 rounded-xl font-medium transition-all text-sm backdrop-blur-md ${
                         !isEndButtonEnabled()
                           ? 'bg-white/10 text-white/40 border border-white/10 cursor-not-allowed'
-                          : (fullTimeReached || (matchPhase === 'first_half' && minute >= 30))
+                          : (fullTimeReached || (matchPhase === 'first_half' && minute >= (match?.half_duration_mins || 30)))
                             ? 'bg-white/15 text-white border border-amber-500/40 shadow-lg shadow-amber-500/10 ring-1 ring-amber-400/30'
                             : 'bg-white/10 text-white/80 border border-white/15 hover:bg-white/15 hover:text-white hover:border-white/25'
                       }`}
@@ -3106,6 +4076,27 @@ export default function MatchRecording() {
                 </div>
               </div>
             </div>
+
+            {/* Scorers — live, updates as events are logged. Lives inside the
+                same glass-card as the score (matches MatchResult.tsx's
+                layout) — previously this sat in its own block below the
+                closed header card, rendering above the pitch as a separate
+                floating section instead of inside the scoreline container. */}
+            {scorers.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="text-xs text-white/40 font-semibold uppercase tracking-wide mb-2">Scorers</div>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                  {scorers.map(s => (
+                    <div key={s.playerId} className="text-sm text-white/70 whitespace-nowrap">
+                      <span className="text-white font-medium">{s.name}</span>
+                      {' '}
+                      {s.goals}-{String(s.pointsValue).padStart(2, '0')}
+                      {s.twoPointers > 0 && <span className="text-cyan-400/80 text-xs"> (+{s.twoPointers}x2pt)</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col md:flex-row gap-6">
@@ -3142,35 +4133,6 @@ export default function MatchRecording() {
                 </div>
               )}
 
-              {/* Opposition scorer selector — shown when opponent scores and roster exists */}
-              {pendingOpponentScore && (
-                <div className="max-w-2xl mx-auto mb-2">
-                  <OppositionScorerStrip
-                    players={match?.opposition_roster || []}
-                    onSelect={handleOpponentScorerSelect}
-                    onSkip={handleOpponentScorerSkip}
-                    eventType={String(pendingOpponentScore.eventType).toLowerCase()}
-                  />
-                </div>
-              )}
-
-              {/* Jersey Number Strip for carrier tracking — hidden when opposition scorer strip is showing */}
-              {!pendingOpponentScore && jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                <div data-tour="jersey-strip" className="max-w-2xl mx-auto mb-1">
-                  <JerseyNumberStrip
-                    players={jerseyStripPlayers}
-                    activeCarrierId={activeCarrierId}
-                    currentPossession={ballPosition.team}
-                    onCarrierSelect={handleCarrierSelect}
-                    teamPrimaryColor={club?.primary_colour || '#10B981'}
-                    teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-                    currentHalf={currentHalf}
-                    attackingRight={teamAttackingRight}
-                    recentCarrierIds={recentCarrierIds}
-                  />
-                </div>
-              )}
-
               {/* Pitch */}
               <div data-tour="pitch-container" className="glass-card p-6 relative mb-4">
                 <GAAPitch
@@ -3186,17 +4148,45 @@ export default function MatchRecording() {
                     setBallTrail(prev => [...prev.slice(-49), { x: pos.x, y: pos.y }])
                   }}
                   carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
+                  highlightSidelines={sidelineTapPending}
+                  highlight45LineX={fortyFiveLineX}
                   ballAnchoredOverlay={
-                    (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick ? (
-                      <BallCarrierPicker
-                        players={jerseyStripPlayers}
-                        activeCarrierId={activeCarrierId}
-                        onSelect={handleCarrierSelect}
-                        attackingRight={teamAttackingRight}
-                        teamPrimaryColor={club?.primary_colour || '#10B981'}
-                        teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-                      />
-                    ) : undefined
+                    (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && ballPosition.team === PossessionTeam.OWN
+                      ? (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
+                        <BallCarrierPicker
+                          players={jerseyStripPlayers}
+                          activeCarrierId={activeCarrierId}
+                          onSelect={handleCarrierSelect}
+                          attackingRight={teamAttackingRight}
+                          teamPrimaryColor={club?.primary_colour || '#10B981'}
+                          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                          ballSvgX={ballSvgX}
+                          ballSvgY={ballSvgY}
+                          ballPctX={ballPctX}
+                          ballPctY={ballPctY}
+                          recentCarrierIds={recentCarrierIds}
+                          onOpenChange={setIsCarrierRadialOpen}
+                        />
+                      )
+                      : undefined
+                  }
+                  pitchOverlay={
+                    (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && ballPosition.team === PossessionTeam.OWN
+                      ? (ballPctX, ballPctY) => (
+                        <PitchReceiverDots
+                          players={jerseyStripPlayers}
+                          activeCarrierId={activeCarrierId}
+                          onSelect={handleCarrierSelect}
+                          attackingRight={teamAttackingRight}
+                          teamPrimaryColor={club?.primary_colour || '#10B981'}
+                          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                          ballPctX={ballPctX}
+                          ballPctY={ballPctY}
+                          disabled={isCarrierRadialOpen}
+                          recentCarrierIds={recentCarrierIds}
+                        />
+                      )
+                      : undefined
                   }
                   svgOverlay={
                     (matchPhase === 'first_half' || matchPhase === 'second_half' || matchPhase === 'half_time') ? (
@@ -3227,7 +4217,7 @@ export default function MatchRecording() {
 
                 {/* Action-required overlay — kickout & free kick */}
                 <PitchActionOverlay
-                  awaitingKickout={awaitingKickout && !pendingKickoutEvent}
+                  awaitingKickout={awaitingKickout && !pendingKickoutEvent && !kickoutBannerMinimised}
                   pendingFreeKick={!!pendingFreeKick && !isAdjustingFreePosition}
                   pendingFoul={pendingFoul}
                   kickoutTab={activeKickoutTab}
@@ -3242,7 +4232,19 @@ export default function MatchRecording() {
                   onCancelFree={handleCancelFree}
                   onCancelKickout={handleCancelKickout}
                   onAdjustFreePosition={() => setIsAdjustingFreePosition(true)}
+                  onMinimize={() => setKickoutBannerMinimised(true)}
                 />
+
+                {/* Opposition scorer selector — centered overlay, same treatment as the
+                    kickout/free-kick modal above, since this also blocks the flow until resolved */}
+                {pendingOpponentScore && (
+                  <OppositionScorerStrip
+                    players={match?.opposition_roster || []}
+                    onSelect={handleOpponentScorerSelect}
+                    onSkip={handleOpponentScorerSkip}
+                    eventType={String(pendingOpponentScore.eventType).toLowerCase()}
+                  />
+                )}
 
                 {/* Adjust Free Position mode — overlay hidden, pitch is draggable */}
                 {!!pendingFreeKick && isAdjustingFreePosition && (
@@ -3268,9 +4270,14 @@ export default function MatchRecording() {
                   </div>
                 )}
 
-                {/* Kickout landing strip — floats at the bottom of pitch card */}
-                {!!pendingKickoutEvent && (
-                  <div className="absolute inset-x-3 bottom-3 z-10 animate-fade-in">
+                {/* Kickout landing strip — floats at the bottom of the pitch
+                    card normally, but a sideline kickout needs the user to
+                    tap the touchline itself, which sits right where this
+                    banner would otherwise cover it — moved to the top for
+                    that case instead (same slot the free-kick-adjust banner
+                    uses), so both touchlines stay fully tappable. */}
+                {!!pendingKickoutEvent && !kickoutBannerMinimised && (
+                  <div className={`absolute inset-x-3 z-10 animate-fade-in space-y-1.5 ${sidelineTapPending ? 'top-3' : 'bottom-3'}`}>
                     <div
                       className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
                       style={{
@@ -3286,56 +4293,119 @@ export default function MatchRecording() {
                         <span className="text-amber-200 text-sm font-bold flex-shrink-0">Tap landing position</span>
                         <span className="text-amber-300/60 text-xs hidden sm:block truncate">tap the pitch to mark where the ball landed</span>
                       </div>
-                      <button
-                        onClick={handleCancelKickout}
-                        className="text-amber-400/60 hover:text-amber-300 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors flex-shrink-0"
-                      >
-                        Cancel
-                      </button>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => setKickoutBannerMinimised(true)}
+                          title="Minimise — log a sub, card, or correction first"
+                          className="text-amber-400/60 hover:text-amber-300 p-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                        >
+                          <Minus size={13} />
+                        </button>
+                        <button
+                          onClick={handleCancelKickout}
+                          className="text-amber-400/60 hover:text-amber-300 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
+                    {/* Optional "aimed for" jersey tap — own kickouts only. Purely
+                        additive: tapping the pitch above always completes the
+                        kickout regardless of whether a target was tapped here. */}
+                    {String(pendingKickoutEvent.eventType).toLowerCase().startsWith('own_kickout') && jerseyStripPlayers.filter(p => p.isOnField).length > 0 && (
+                      <div
+                        className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 overflow-x-auto no-scrollbar"
+                        style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+                      >
+                        <span className="text-white/40 text-[10px] font-semibold flex-shrink-0 pr-0.5">Aimed for (optional):</span>
+                        {jerseyStripPlayers.filter(p => p.isOnField).sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99)).map(p => (
+                          <button
+                            key={p.playerId}
+                            onClick={() => setPendingKickoutEvent(prev => prev ? {
+                              ...prev,
+                              targetPlayerId: prev.targetPlayerId === p.playerId ? undefined : p.playerId,
+                            } : prev)}
+                            className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-all ${
+                              pendingKickoutEvent.targetPlayerId === p.playerId
+                                ? 'bg-amber-400 text-black scale-110'
+                                : 'bg-white/10 text-white/60 hover:bg-white/20'
+                            }`}
+                          >
+                            {p.jerseyNumber ?? '?'}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {/* Pitch control buttons — top-right */}
                 {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                  <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5">
+                  <div className="absolute top-2 right-2 left-2 z-10 flex items-center justify-end gap-1.5 flex-nowrap overflow-x-auto min-w-0 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {/* Minimised kickout pill — parked here (not over the pitch)
+                        so it never crowds the action buttons below. Tapping it
+                        restores the full banner/overlay exactly as it was. */}
+                    {kickoutBannerMinimised && (awaitingKickout || !!pendingKickoutEvent) && (
+                      <button
+                        onClick={() => setKickoutBannerMinimised(false)}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-amber-500/20 border-2 border-amber-400/40 text-amber-200 hover:bg-amber-500/30 text-xs font-semibold transition-all animate-fade-in"
+                        title="Resume the kickout prompt"
+                      >
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                        <span>Kickout pending</span>
+                      </button>
+                    )}
                     <button
-                      onClick={async () => {
-                        if (activeCarrierId) {
-                          await playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y)
-                          setActiveCarrierId(null)
-                        }
+                      onClick={() => {
+                        // Guard first, flip the label-driving state next — both
+                        // synchronous — so the "who has it" label updates the
+                        // instant this is tapped and a fast double-tap can't
+                        // fire the swap twice and flip it back. The carrier
+                        // segment close is a side effect, not a prerequisite,
+                        // so it runs in the background instead of delaying the
+                        // label (see usePlayerMovement/offlineApi — it only
+                        // touches IndexedDB, no network round-trip either way).
+                        if (!shouldProceedWithQuickAction('possession-swap')) return
                         const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
                         setBallPosition(prev => ({ ...prev, team: newTeam }))
+                        if (activeCarrierId) {
+                          playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y).catch(err =>
+                            console.error('Failed to close carrier segment on possession swap:', err)
+                          )
+                          setActiveCarrierId(null)
+                        }
                       }}
-                      className="p-2 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
-                      title="Swap possession"
+                      className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 text-xs font-semibold transition-all"
+                      title="Swap possession — flip which team has the ball"
                     >
                       <ArrowLeftRight size={16} />
+                      <span>Possession</span>
                     </button>
                     <button
                       data-tour="stoppage-btn"
                       onClick={handleToggleStoppage}
-                      className={`p-2 rounded-xl border-2 transition-all ${
+                      className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
                         isStopped
                           ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
                           : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
                       }`}
-                      title={isStopped ? 'Resume play' : 'Stoppage'}
+                      title={isStopped ? 'Resume play — clock was frozen' : 'Stoppage — freezes the clock (injury, sideline delay, etc.)'}
                     >
                       {isStopped ? <Play size={16} /> : <Pause size={16} />}
+                      <span>{isStopped ? 'Resume' : 'Stoppage'}</span>
                     </button>
                     <button
                       data-tour="dead-ball-btn"
                       onClick={handleToggleDeadBall}
-                      className={`p-2 rounded-xl border-2 transition-all ${
+                      className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
                         isDeadBall
                           ? 'bg-sky-500/20 border-sky-500/40 text-sky-400'
                           : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
                       }`}
-                      title={isDeadBall ? 'Ball back in play' : 'Dead ball — clock keeps running'}
+                      title={isDeadBall ? 'Ball back in play' : 'Dead ball — clock keeps running (unlike Stoppage)'}
                     >
                       <CircleSlash size={16} />
+                      <span>{isDeadBall ? 'Ball Live' : 'Dead Ball'}</span>
                     </button>
                     <FormationSnapshotButton
                       onClick={() => setIsSnapshotMode(true)}
@@ -3349,11 +4419,45 @@ export default function MatchRecording() {
                     <button
                       data-tour="fullscreen-btn"
                       onClick={() => setIsFullscreenPitch(true)}
-                      className="p-2.5 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
+                      className="flex-shrink-0 p-2.5 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
                       title="Fullscreen pitch mode"
                     >
                       <Maximize size={18} />
                     </button>
+                    <button
+                      onClick={() => setShowHalfTimeView(true)}
+                      className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-amber-500/15 border-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/50 text-xs font-semibold transition-all"
+                      title="Half-Time View — full-screen stats, no pitch. Great for a dressing-room TV."
+                    >
+                      <LayoutDashboard size={16} />
+                      <span>Half-Time View</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Jersey Number Strip for carrier tracking — bottom-attached
+                    overlay inside the pitch card, mirroring the top buttons'
+                    technique exactly. Hidden while the kickout-landing-strip
+                    banner is showing (also bottom-anchored in this same card,
+                    see "Kickout landing strip" above) — at that point you're
+                    tapping the landing spot, not picking a carrier, so
+                    showing both here would visually collide. */}
+                {!pendingOpponentScore && jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && !(!!pendingKickoutEvent && !kickoutBannerMinimised) && (
+                  <div data-tour="jersey-strip" className="absolute bottom-2 left-2 right-2 z-10">
+                    <div className="text-center text-[9px] text-white/40 font-semibold uppercase tracking-wider mb-1">
+                      Switch Carrier
+                    </div>
+                    <JerseyNumberStrip
+                      players={jerseyStripPlayers}
+                      activeCarrierId={activeCarrierId}
+                      currentPossession={ballPosition.team}
+                      onCarrierSelect={handleCarrierSelect}
+                      teamPrimaryColor={club?.primary_colour || '#10B981'}
+                      teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                      currentHalf={currentHalf}
+                      attackingRight={teamAttackingRight}
+                      recentCarrierIds={recentCarrierIds}
+                    />
                   </div>
                 )}
 
@@ -3391,12 +4495,18 @@ export default function MatchRecording() {
                   pendingFoul={pendingFoul}
                   pendingBlockRecovery={!!pendingBlockRecovery}
                   onBlockRecovery={handleBlockRecovery}
+                  onBlockResultSideline={handleBlockResultSideline}
+                  onBlockResultFortyFive={handleBlockResultFortyFive}
+                  pendingSidelineDecision={!!pendingSidelineDecision}
+                  onSidelineDecision={handleSidelineDecision}
                   pending45={!!pending45}
                   pendingKickoutPosition={!!pendingKickoutEvent}
-                  awaitingKickout={awaitingKickout}
+                  pendingFortyFivePosition={!!pendingFortyFivePosition}
+                  awaitingKickout={awaitingKickout && !kickoutBannerMinimised}
                   onCancelFree={handleCancelFree}
                   onCancel45={handleCancel45}
                   onCancelKickout={handleCancelKickout}
+                  onCancelFortyFivePosition={handleCancelFortyFivePosition}
                 />
               </div>
 
@@ -3469,65 +4579,7 @@ export default function MatchRecording() {
                 </div>
               )}
 
-              {/* Paths Taken + Possession — full width, 2 side by side */}
-              {matchId && matchEventsData?.events && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <ChartZoomModal title="Paths Taken">
-                    <PathsTakenChart
-                      matchId={matchId}
-                      pollInterval={0}
-                    />
-                  </ChartZoomModal>
-                  <ChartZoomModal title="Possession & Territory">
-                    <PossessionTerritoryChart
-                      stats={matchStats}
-                      events={matchEventsData.events}
-                      matchId={matchId}
-                      opponent={matchDisplay.opponent}
-                      pollInterval={0}
-                      attackingRightFirstHalf={match?.attacking_right_first_half}
-                      halfDurationMins={match?.half_duration_mins || 30}
-                    />
-                  </ChartZoomModal>
-                </div>
-              )}
-
-              {/* Scoring + Shot Outcome — full width, 2 side by side */}
-              {matchId && matchEventsData?.events && (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <ChartZoomModal title="Scoring Timeline">
-                      <ScoringTimeline
-                        events={matchEventsData.events}
-                        opponent={matchDisplay.opponent}
-                        teamName={clubName}
-                      />
-                    </ChartZoomModal>
-                    <ChartZoomModal title="Shot Outcomes">
-                      <ShotOutcomeChart
-                        events={matchEventsData.events}
-                        opponent={matchDisplay.opponent}
-                      />
-                    </ChartZoomModal>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
-                    <ChartZoomModal title="Kickout Zones">
-                      <MatchKickoutZones events={matchEventsData.events} attackingRightFirstHalf={match?.attacking_right_first_half} teamName={clubName} opponentName={matchDisplay.opponent} />
-                    </ChartZoomModal>
-                    <ChartZoomModal title="Kickout Outcomes">
-                      <MatchKickoutOutcomes events={matchEventsData.events} teamName={clubName} opponentName={matchDisplay.opponent} />
-                    </ChartZoomModal>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
-                    <ChartZoomModal title="Scoring Zone Map">
-                      <ScoringZoneMap events={matchEventsData.events} teamName={clubName || 'Us'} opponent={matchDisplay.opponent} />
-                    </ChartZoomModal>
-                    <ChartZoomModal title="Possession Battle Map">
-                      <TurnoverMap events={matchEventsData.events} teamName={clubName || 'Us'} />
-                    </ChartZoomModal>
-                  </div>
-                </>
-              )}
+              {!showHalfTimeView && matchInsightsCharts}
             </div>
 
             {/* Live Stats Sidebar */}
@@ -3545,73 +4597,7 @@ export default function MatchRecording() {
               />
 
               {/* Match Statistics */}
-              <div className="glass-card p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
-                    <Activity size={20} className="text-emerald-400" />
-                    <span>Match Statistics</span>
-                  </h3>
-                  {allEvents.length > 0 && (
-                    <button
-                      onClick={() => setShowExtendedStats(true)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 hover:text-white text-xs font-medium transition-colors"
-                    >
-                      More Stats
-                    </button>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-white/[0.08] overflow-hidden" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)' }}>
-                  {/* Header row */}
-                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 bg-white/[0.06] border-b border-white/[0.08]">
-                    <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-wider">{clubName}</div>
-                    <div className="min-w-[90px]" />
-                    <div className="text-center text-xs font-bold text-white/50 uppercase tracking-wider">{matchDisplay.opponent}</div>
-                  </div>
-
-                  {[
-                    { label: 'Possession', left: `${stats.possession.team}%`, right: `${stats.possession.opponent}%`, leftVal: stats.possession.team, rightVal: stats.possession.opponent },
-                    { label: 'Poss. Count', left: matchStats?.team_possession_count ?? 0, right: matchStats?.opponent_possession_count ?? 0, leftVal: matchStats?.team_possession_count ?? 0, rightVal: matchStats?.opponent_possession_count ?? 0 },
-                    { label: 'Shots', left: stats.shots.team, right: stats.shots.opponent, leftVal: stats.shots.team, rightVal: stats.shots.opponent },
-                    { label: 'Scores', left: stats.scores.team, right: stats.scores.opponent, leftVal: stats.scores.team, rightVal: stats.scores.opponent },
-                    { label: 'Goal Chances', left: matchStats?.team_goal_chances ?? 0, right: matchStats?.opponent_goal_chances ?? 0, leftVal: matchStats?.team_goal_chances ?? 0, rightVal: matchStats?.opponent_goal_chances ?? 0 },
-                    { label: 'Wides', left: stats.wides.team, right: stats.wides.opponent, leftVal: stats.wides.opponent, rightVal: stats.wides.team },
-                    { label: 'Accuracy', left: `${stats.accuracy}%`, right: `${stats.shots.opponent > 0 ? (stats.scores.opponent / stats.shots.opponent * 100).toFixed(1) : '0.0'}%`, leftVal: Number(stats.accuracy), rightVal: stats.shots.opponent > 0 ? stats.scores.opponent / stats.shots.opponent * 100 : 0 },
-                    { label: 'Conversion', left: `${stats.conversionRate}%`, right: `${(stats.scores.opponent + stats.wides.opponent) > 0 ? ((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1) : '0.0'}%`, leftVal: Number(stats.conversionRate), rightVal: (stats.scores.opponent + stats.wides.opponent) > 0 ? (stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100 : 0 },
-                    { label: 'Turnovers Won', left: stats.turnovers.won, right: stats.turnovers.lost, leftVal: stats.turnovers.won, rightVal: stats.turnovers.lost },
-                    ...((matchStats?.team_ball_recovery_avg_min != null || matchStats?.opponent_ball_recovery_avg_min != null) ? [{
-                      label: 'Ball Recovery',
-                      left: matchStats?.team_ball_recovery_avg_min != null ? `${matchStats.team_ball_recovery_avg_min}m` : '–',
-                      right: matchStats?.opponent_ball_recovery_avg_min != null ? `${matchStats.opponent_ball_recovery_avg_min}m` : '–',
-                      leftVal: matchStats?.opponent_ball_recovery_avg_min ?? 0,
-                      rightVal: matchStats?.team_ball_recovery_avg_min ?? 0,
-                    }] : []),
-                    { label: 'Unforced Errors', left: matchStats?.team_unforced_errors ?? 0, right: matchStats?.opponent_unforced_errors ?? 0, leftVal: matchStats?.opponent_unforced_errors ?? 0, rightVal: matchStats?.team_unforced_errors ?? 0 },
-                    { label: 'Kickouts Won', left: `${stats.kickouts.teamWon}/${stats.kickouts.teamTotal}`, right: `${stats.kickouts.opponentWon}/${stats.kickouts.opponentTotal}`, leftVal: stats.kickouts.teamWon, rightVal: stats.kickouts.opponentWon },
-                    { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
-                    { label: 'Fouls', left: matchStats?.team_fouls || 0, right: matchStats?.opponent_fouls || 0, leftVal: matchStats?.opponent_fouls || 0, rightVal: matchStats?.team_fouls || 0 },
-                    { label: '🟡 Yellow', left: matchStats?.team_yellow_cards || 0, right: matchStats?.opponent_yellow_cards || 0, leftVal: matchStats?.opponent_yellow_cards || 0, rightVal: matchStats?.team_yellow_cards || 0 },
-                    ...((matchStats?.team_black_cards || 0) + (matchStats?.opponent_black_cards || 0) > 0 ? [{ label: '⬛ Black', left: matchStats?.team_black_cards || 0, right: matchStats?.opponent_black_cards || 0, leftVal: matchStats?.opponent_black_cards || 0, rightVal: matchStats?.team_black_cards || 0 }] : []),
-                    ...((matchStats?.team_red_cards || 0) + (matchStats?.opponent_red_cards || 0) > 0 ? [{ label: '🔴 Red', left: matchStats?.team_red_cards || 0, right: matchStats?.opponent_red_cards || 0, leftVal: matchStats?.opponent_red_cards || 0, rightVal: matchStats?.team_red_cards || 0 }] : []),
-                  ].map((row, idx) => {
-                    const leftWins = row.leftVal > row.rightVal
-                    const rightWins = row.rightVal > row.leftVal
-                    return (
-                      <div key={row.label} className={`grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 transition-colors hover:bg-white/[0.05] ${idx % 2 === 0 ? 'bg-white/[0.02]' : ''} ${idx > 0 ? 'border-t border-white/[0.05]' : ''}`}>
-                        <div className={`text-center text-base font-bold ${leftWins ? 'text-emerald-400' : 'text-white/80'}`}>
-                          {row.left}
-                        </div>
-                        <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[90px]">
-                          {row.label}
-                        </div>
-                        <div className={`text-center text-base font-bold ${rightWins ? 'text-emerald-400' : 'text-white/80'}`}>
-                          {row.right}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
+              {matchStatsPanel}
 
               {/* Recent Events — stretches to fill remaining sidebar height */}
               <div data-tour="event-feed" className="glass-card p-6 flex-1 flex flex-col min-h-0">
@@ -3624,7 +4610,7 @@ export default function MatchRecording() {
                     <>
                       {allEvents.slice(0, visibleEventCount).map((event) => {
                         const description = formatEventDescription(event)
-                        const isOwn = event.is_home_team
+                        const isOwn = eventIsOwn(event)
 
                         // Determine event color based on type
                         let eventColor = 'bg-slate-700/40 border-slate-600/30'
@@ -3656,9 +4642,9 @@ export default function MatchRecording() {
                               </p>
                             </div>
                             <button
-                              onClick={() => handleEditEventPlayer(event.id)}
+                              onClick={() => handleEditEventClick(event.id)}
                               className="flex-shrink-0 text-white/40 hover:text-blue-400 transition-colors p-1"
-                              title="Edit Player"
+                              title="Edit Event"
                             >
                               <Pencil size={14} />
                             </button>
@@ -3702,11 +4688,7 @@ export default function MatchRecording() {
           lineupLoaded && matchLineup.length > 0 ? (
             <PitchPlayerSelector
               isOpen={isPlayerModalOpen}
-              onClose={() => {
-                setIsPlayerModalOpen(false)
-                setEditingEventId(null)
-                setEditingEventType(null)
-              }}
+              onClose={handleEditPlayerModalClose}
               onSelectPlayer={handleEditPlayerSelected}
               eventType={(editingEventType ?? EventType.TURNOVER_WON) as any}
               team="own"
@@ -3719,11 +4701,7 @@ export default function MatchRecording() {
           ) : (
             <PlayerSelectionModal
               isOpen={isPlayerModalOpen}
-              onClose={() => {
-                setIsPlayerModalOpen(false)
-                setEditingEventId(null)
-                setEditingEventType(null)
-              }}
+              onClose={handleEditPlayerModalClose}
               onSelectPlayer={handleEditPlayerSelected}
               eventType={(editingEventType ?? EventType.TURNOVER_WON) as any}
               team="own"
@@ -3746,6 +4724,7 @@ export default function MatchRecording() {
             teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
             attackingRight={teamAttackingRight}
             ballPosition={pendingEvent?.position ?? ballPosition}
+            suggestedPlayerId={selectingFoulPlayer ? null : suggestedScorerId}
           />
         ) : (
           <PlayerSelectionModal
@@ -3758,6 +4737,7 @@ export default function MatchRecording() {
             attackingRight={teamAttackingRight}
             teamPrimaryColor={club?.primary_colour || '#10B981'}
             teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+            suggestedPlayerId={selectingFoulPlayer ? null : suggestedScorerId}
           />
         )
       )}
@@ -3771,6 +4751,64 @@ export default function MatchRecording() {
         skipDirection={matchPhase === 'half_time'}
         defaultAttackingRight={!teamAttackingRight}
       />
+
+      {/* Edit Event — team/player choice. Opened by the pencil on a kickout-
+          sideline or scoring event instead of jumping straight to the player
+          picker, since "wrong team" (not "wrong player") is the mistake this
+          exists to fix — see handleEditEventClick. */}
+      {editChoice && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setEditChoice(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-bold text-white mb-1">
+              {editChoice.kind === 'sideline' ? 'Edit Kickout' : 'Edit This Event'}
+            </p>
+            <p className="text-xs text-white/40 mb-4">
+              Currently recorded as {editChoice.currentTeam === 'own' ? (clubName || 'Us') : matchDisplay.opponent}
+            </p>
+            <div className="flex flex-col gap-2">
+              {editChoice.kind === 'sideline' ? (
+                <button
+                  onClick={handleConfirmSidelineSwap}
+                  className="w-full py-3 rounded-xl bg-amber-500/20 border border-amber-400/30 text-amber-200 text-sm font-bold hover:bg-amber-500/30 transition-all active:scale-[0.98]"
+                >
+                  Actually {editChoice.currentTeam === 'own' ? matchDisplay.opponent : (clubName || 'Us')}'s kickout
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleSwapScoringTeam}
+                    className="w-full py-3 rounded-xl bg-amber-500/20 border border-amber-400/30 text-amber-200 text-sm font-bold hover:bg-amber-500/30 transition-all active:scale-[0.98]"
+                  >
+                    Change Team → {editChoice.currentTeam === 'own' ? matchDisplay.opponent : (clubName || 'Us')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const id = editChoice.eventId
+                      setEditChoice(null)
+                      handleEditEventPlayer(id)
+                    }}
+                    className="w-full py-3 rounded-xl bg-white/10 border border-white/15 text-white/80 text-sm font-bold hover:bg-white/15 transition-all active:scale-[0.98]"
+                  >
+                    Change Player
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setEditChoice(null)}
+                className="w-full py-2 rounded-xl text-white/40 hover:text-white/70 text-xs transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       <ConfirmationModal
@@ -3850,8 +4888,9 @@ export default function MatchRecording() {
         isOpen={isWeatherPickerOpen}
         onClose={() => setIsWeatherPickerOpen(false)}
         onSave={handleWeatherSave}
-        currentCondition={weatherCondition}
+        currentConditions={weatherConditions}
         currentTemperature={temperatureCelsius}
+        currentNotes={matchNotesText}
       />
 
       {/* Manual clock correction */}
@@ -3931,6 +4970,21 @@ export default function MatchRecording() {
         </div>
       )}
 
+      {/* Voice Notes — a single instance, rendered once regardless of
+          standard vs. fullscreen pitch mode. It portals its own fixed-
+          position UI straight to <body>, so it stays reachable and visible
+          on top of either view (FullscreenPitchMode's own overlay included)
+          without needing a second copy mounted inside it — two copies would
+          double up the floating button and each track recording state
+          independently of the other. */}
+      {matchId && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+        <VoiceNoteButton
+          matchId={matchId}
+          half={currentHalf}
+          minute={minute}
+        />
+      )}
+
       {/* Fullscreen Pitch Mode */}
       <FullscreenPitchMode
         isOpen={isFullscreenPitch}
@@ -3943,6 +4997,7 @@ export default function MatchRecording() {
         onDragPath={handleDragPath}
         matchPhase={matchPhase}
         minute={minute}
+        halfDurationMins={match?.half_duration_mins || 30}
         seconds={seconds}
         teamGoals={teamGoals}
         teamPoints={teamPoints}
@@ -3999,8 +5054,22 @@ export default function MatchRecording() {
         pendingFoul={pendingFoul}
         pendingBlockRecovery={!!pendingBlockRecovery}
         onBlockRecovery={handleBlockRecovery}
+        onBlockResultSideline={handleBlockResultSideline}
+        onBlockResultFortyFive={handleBlockResultFortyFive}
+        pendingSidelineDecision={!!pendingSidelineDecision}
+        onSidelineDecision={handleSidelineDecision}
         pending45={!!pending45}
         pendingKickoutPosition={!!pendingKickoutEvent}
+        pendingKickoutEventType={pendingKickoutEvent ? String(pendingKickoutEvent.eventType) : undefined}
+        pendingKickoutTargetPlayerId={pendingKickoutEvent?.targetPlayerId}
+        highlightSidelines={sidelineTapPending}
+        highlight45LineX={fortyFiveLineX}
+        pendingFortyFivePosition={!!pendingFortyFivePosition}
+        onCancelFortyFivePosition={handleCancelFortyFivePosition}
+        onSelectKickoutTarget={(playerId) => setPendingKickoutEvent(prev => prev ? {
+          ...prev,
+          targetPlayerId: prev.targetPlayerId === playerId ? undefined : playerId,
+        } : prev)}
         onCancelFree={handleCancelFree}
         onCancel45={handleCancel45}
         onCancelKickout={handleCancelKickout}
@@ -4010,20 +5079,30 @@ export default function MatchRecording() {
         activeCategory={activeKickoutTab}
         onCategoryChange={setActiveKickoutTab}
         awaitingKickout={awaitingKickout}
+        kickoutBannerMinimised={kickoutBannerMinimised}
+        onMinimizeKickout={() => setKickoutBannerMinimised(true)}
+        onRestoreKickout={() => setKickoutBannerMinimised(false)}
         teamAttackingRight={teamAttackingRight}
         statusText={statusLabel.text}
         statusAccent={statusLabel.accent}
-        onSwapPossession={async () => {
-          if (activeCarrierId) {
-            await playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y)
-            setActiveCarrierId(null)
-          }
+        onSwapPossession={() => {
+          // See the matching handler above — guard + synchronous label flip
+          // first, carrier-segment close is a fire-and-forget side effect.
+          if (!shouldProceedWithQuickAction('possession-swap')) return
           const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
           setBallPosition(prev => ({ ...prev, team: newTeam }))
+          if (activeCarrierId) {
+            playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y).catch(err =>
+              console.error('Failed to close carrier segment on possession swap:', err)
+            )
+            setActiveCarrierId(null)
+          }
         }}
+        onManualEntry={() => setIsManualEntryOpen(true)}
         jerseyStripPlayers={jerseyStripPlayers}
         activeCarrierId={activeCarrierId}
         onCarrierSelect={handleCarrierSelect}
+        recentCarrierIds={recentCarrierIds}
         carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
         selectingFoulPlayer={selectingFoulPlayer}
         onStartSecondHalf={matchPhase === 'half_time' ? startHalf : undefined}
@@ -4048,17 +5127,66 @@ export default function MatchRecording() {
         onOpponentScorerSkip={handleOpponentScorerSkip}
       />
 
+      {/* Half-Time View — full-screen stats overlay, no touch pitch or
+          carrier UI. Built for a dressing-room TV: big score header, high
+          contrast, generous spacing. Purely visual — sits on top of the
+          pitch/recording UI without unmounting it, so closing it just
+          removes the overlay and recording continues exactly as it was. */}
+      {showHalfTimeView && (
+        <div className="fixed inset-0 z-[200] bg-[#060a14] overflow-y-auto">
+          <div className="sticky top-0 z-10 bg-[#060a14]/95 backdrop-blur-xl border-b border-white/10">
+            <div className="max-w-[1600px] mx-auto px-6 py-5 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 sm:gap-6 min-w-0">
+                <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 flex-shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="text-amber-300 text-[11px] sm:text-xs font-black uppercase tracking-widest">Half-Time</span>
+                </div>
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  <span className="text-sm sm:text-lg font-bold text-white truncate">{clubName || 'Us'}</span>
+                  <span className="text-lg sm:text-2xl font-black text-emerald-400 tabular-nums whitespace-nowrap">
+                    {teamGoals}-{String(teamPoints).padStart(2, '0')}
+                  </span>
+                  <span className="text-white/30 text-sm sm:text-lg font-bold">:</span>
+                  <span className="text-lg sm:text-2xl font-black text-white/80 tabular-nums whitespace-nowrap">
+                    {opponentGoals}-{String(opponentPoints).padStart(2, '0')}
+                  </span>
+                  <span className="text-sm sm:text-lg font-bold text-white/60 truncate">{matchDisplay.opponent}</span>
+                </div>
+              </div>
+              <div className="flex-shrink-0 flex items-center gap-2">
+                <button
+                  onClick={handleShareHalfTime}
+                  disabled={isSharingHalfTime}
+                  className="flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border-2 border-cyan-500/30 text-cyan-300 font-bold text-sm sm:text-base transition-all disabled:opacity-60"
+                  title="Share this view as an image — coaching staff, WhatsApp, etc."
+                >
+                  {isSharingHalfTime ? <Loader2 size={20} className="animate-spin" /> : <Share2 size={20} />}
+                  <span className="hidden sm:inline">{isSharingHalfTime ? 'Preparing…' : 'Share'}</span>
+                </button>
+                <button
+                  onClick={() => setShowHalfTimeView(false)}
+                  className="flex items-center gap-2 px-4 py-2.5 sm:px-5 sm:py-3 rounded-xl bg-white/10 hover:bg-white/20 border-2 border-white/20 text-white font-bold text-sm sm:text-base transition-all"
+                  title="Close half-time view"
+                >
+                  <X size={20} />
+                  <span className="hidden sm:inline">Close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div ref={halfTimeContentRef} className="max-w-[1600px] mx-auto px-6 py-6 space-y-4 bg-[#060a14]">
+            {matchStatsPanel}
+            {matchInsightsCharts}
+          </div>
+        </div>
+      )}
+
       {/* Formation Snapshot Mode */}
       <FormationSnapshotMode
         isOpen={isSnapshotMode}
         onClose={() => setIsSnapshotMode(false)}
         onSave={handleFormationSave}
-        availablePlayers={jerseyStripPlayers.filter(p => p.isOnField).map(p => ({
-          playerId: p.playerId,
-          jerseyNumber: p.jerseyNumber,
-          playerName: p.playerName,
-          positionLabel: p.positionLabel,
-        }))}
+        ownPlayers={snapshotOwnPlayers}
       />
 
       {/* Error Alert Modal */}

@@ -135,10 +135,23 @@ async function processItem(item: OutboxItem): Promise<boolean> {
     if (response.ok) {
       const data = await response.json().catch(() => null)
 
-      // Handle carrier segment ID mapping
-      if (item.category === 'carrier' && item.endpoint.includes('start') && data?.id) {
+      // Handle carrier segment ID mapping — registers the temp local ID
+      // (client_segment_id, set only on the segment-creation request body)
+      // against the real server ID, so a later end-segment/path-point
+      // update for the same segment can resolve it. Previously gated on
+      // `item.endpoint.includes('start')`, but the creation endpoint is
+      // just POST /player-movement/carrier-segments — no "start" substring
+      // ever appears in it — so that check was always false and this
+      // mapping never registered. Every carrier segment's end position
+      // (end_x/end_y) and ended_by reason silently failed to save as a
+      // result, for every match, confirmed via a 2026-09-07 match report
+      // that couldn't compute territory-gained-per-carry despite ~98% of
+      // carries being logged live. `body.client_segment_id` is only ever
+      // present on the creation request, so checking for it directly (and
+      // dropping the broken endpoint substring check) is sufficient.
+      if (item.category === 'carrier' && body.client_segment_id && data?.id) {
         const tempId = body.client_segment_id as string
-        if (tempId) registerTempIdMapping(tempId, data.id)
+        registerTempIdMapping(tempId, data.id)
       }
 
       // Mark local event as synced with server ID
@@ -263,39 +276,95 @@ export function syncNow() {
 
 /** Re-queue unsynced local events back into the outbox for retry */
 export async function resyncLocalEvents(matchId: string): Promise<number> {
-  const { getLocalEvents, enqueueOutbox } = await import('./offlineDb')
+  const { getLocalEvents, enqueueOutbox, markLocalEventSynced } = await import('./offlineDb')
   const localEvents = await getLocalEvents(matchId)
-  let requeued = 0
+  const pending = localEvents.filter(e => e.pending)
+  if (pending.length === 0) return 0
 
-  for (const event of localEvents) {
-    if (event.pending) {
-      // This event never synced — re-queue it
-      await enqueueOutbox({
-        clientEventId: event.clientEventId,
-        matchId: event.matchId,
-        endpoint: '/match-events/',
-        method: 'POST',
-        body: {
-          match_id: event.matchId,
-          event_type: event.event_type,
-          team: event.team,
-          minute: Math.min(event.minute || 0, 120),
-          pitch_x: event.pitch_x,
-          pitch_y: event.pitch_y,
-          player_id: event.player_id,
-          notes: event.notes,
-          client_event_id: event.clientEventId,
-        },
-        status: 'pending',
-        createdAt: Date.now(),
-        retryCount: 0,
-        lastError: null,
-        category: 'event',
-      })
-      requeued++
+  // Before blindly resubmitting anything still marked "pending," check
+  // whether the server already has a matching event. A historical bug
+  // (fixed 2026-09-07 — see the comment on enqueueAndSync in offlineApi.ts)
+  // could leave a local record stuck "pending" even though it had already
+  // synced, under a DIFFERENT client_event_id than the one stored here —
+  // resubmitting it verbatim would create a genuine duplicate on the
+  // server, exactly as happened live that day. Match on content
+  // (type/team/minute/position/player) rather than id, since the id this
+  // local record carries was never actually the one sent to the server.
+  let serverEvents: Array<{ event_type: string; team: string; minute: number | null; pitch_x: number | null; pitch_y: number | null; player_id: string | null }> = []
+  try {
+    const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
+    const res = await fetch(`${baseUrl}/match-events/match/${matchId}?limit=1000`, { credentials: 'include' })
+    if (res.ok) {
+      const data = await res.json()
+      serverEvents = (data.events || []).map((e: any) => ({
+        event_type: e.event_type,
+        team: e.team,
+        minute: e.minute,
+        pitch_x: e.pitch_x,
+        pitch_y: e.pitch_y,
+        player_id: e.player_id ?? null,
+      }))
     }
+  } catch {
+    // Couldn't reach the server to check — fall through to the old
+    // (still correct, just noisier if this bug ever recurs) requeue below.
   }
 
+  const closeEnough = (a: number | null | undefined, b: number | null | undefined) => {
+    if (a == null && b == null) return true
+    if (a == null || b == null) return false
+    return Math.abs(a - b) < 0.001
+  }
+  const alreadyOnServer = (local: (typeof pending)[number]) =>
+    serverEvents.some(se =>
+      se.event_type === local.event_type &&
+      se.team === local.team &&
+      se.minute === local.minute &&
+      closeEnough(se.pitch_x, local.pitch_x) &&
+      closeEnough(se.pitch_y, local.pitch_y) &&
+      (se.player_id ?? null) === (local.player_id ?? null)
+    )
+
+  let requeued = 0
+  let reconciled = 0
+
+  for (const event of pending) {
+    if (serverEvents.length > 0 && alreadyOnServer(event)) {
+      // Already on the server (under some other id) — just clear the
+      // stuck-pending flag locally instead of sending a duplicate.
+      await markLocalEventSynced(event.clientEventId, event.clientEventId)
+      reconciled++
+      continue
+    }
+    // Genuinely never synced — re-queue it
+    await enqueueOutbox({
+      clientEventId: event.clientEventId,
+      matchId: event.matchId,
+      endpoint: '/match-events/',
+      method: 'POST',
+      body: {
+        match_id: event.matchId,
+        event_type: event.event_type,
+        team: event.team,
+        minute: Math.min(event.minute || 0, 120),
+        pitch_x: event.pitch_x,
+        pitch_y: event.pitch_y,
+        player_id: event.player_id,
+        notes: event.notes,
+        client_event_id: event.clientEventId,
+      },
+      status: 'pending',
+      createdAt: Date.now(),
+      retryCount: 0,
+      lastError: null,
+      category: 'event',
+    })
+    requeued++
+  }
+
+  if (reconciled > 0) {
+    console.log(`[Sync] Reconciled ${reconciled} already-synced events for match ${matchId} (no resend)`)
+  }
   if (requeued > 0) {
     console.log(`[Sync] Re-queued ${requeued} unsynced events for match ${matchId}`)
     triggerSync()

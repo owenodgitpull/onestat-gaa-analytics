@@ -15,7 +15,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from datetime import datetime, timedelta, date
 
-from app.auth.dependencies import AuthenticatedUser, require_club, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_club, require_admin, require_admin_or_viewer
 from app.database import get_db
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
@@ -30,6 +30,7 @@ from app.services.leaderboard_service import (
     SCORING_EVENTS,
     SHOT_EVENTS,
     DEFENSIVE_EVENTS,
+    KICKOUT_WON_TYPES as _KICKOUT_WON_TYPES,
     _score_value,
     _format_gaa_score,
 )
@@ -81,17 +82,48 @@ async def _get_club_completed_matches(
 
 
 # ------------------------------------------------------------------
+# Competitions (for the portal's competition filter dropdown)
+# ------------------------------------------------------------------
+
+@router.get("/competitions")
+async def get_competitions(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Distinct competition names for this club's completed matches.
+
+    A player-portal-accessible equivalent of /matches/competitions, which
+    is gated to require_admin_or_viewer and so unreachable for a plain
+    player account — this powers the portal's own competition filter
+    dropdown (leaderboards, stats, etc.) rather than the coach-side
+    fixture-entry autocomplete.
+    """
+    result = await db.execute(
+        select(Match.competition).where(
+            Match.club_id == user.club_id,
+            Match.status == MatchStatus.COMPLETED,
+            Match.is_deleted.is_(False),
+            Match.competition.isnot(None),
+            Match.competition != "",
+        ).distinct().order_by(Match.competition.asc())
+    )
+    return [row[0] for row in result.all()]
+
+
+# ------------------------------------------------------------------
 # Leaderboard Endpoints
 # ------------------------------------------------------------------
 
 @router.get("/leaderboards")
 async def get_all_leaderboards(
+    competition: Optional[str] = Query(None, description="Filter to matches whose competition name contains this"),
+    last_n: Optional[int] = Query(None, ge=1, le=50, description="Only the most recent N completed matches"),
     user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """All 8 leaderboard categories with player's rank + context window."""
     boards = await LeaderboardService.get_all_leaderboards(
-        db, user.club_id, user.player_id
+        db, user.club_id, user.player_id, competition, last_n
     )
     return {"leaderboards": boards}
 
@@ -99,13 +131,15 @@ async def get_all_leaderboards(
 @router.get("/leaderboards/{category}")
 async def get_single_leaderboard(
     category: str,
+    competition: Optional[str] = Query(None, description="Filter to matches whose competition name contains this"),
+    last_n: Optional[int] = Query(None, ge=1, le=50, description="Only the most recent N completed matches"),
     user: AuthenticatedUser = Depends(require_club),
     db: AsyncSession = Depends(get_db),
 ):
     """Full ranking for a single leaderboard category."""
     if category not in LeaderboardService.CATEGORIES:
         raise HTTPException(status_code=404, detail=f"Unknown category: {category}")
-    ranking = await LeaderboardService.get_single_leaderboard(db, user.club_id, category)
+    ranking = await LeaderboardService.get_single_leaderboard(db, user.club_id, category, competition, last_n)
     meta = LeaderboardService.CATEGORIES[category]
     return {
         "category": category,
@@ -301,13 +335,19 @@ async def get_my_match_stats(
         g = sum(1 for e in evts if e.event_type in (EventType.GOAL, EventType.PENALTY_GOAL))
         p = sum(1 for e in evts if e.event_type in (EventType.POINT,))
         tp = sum(1 for e in evts if e.event_type in (EventType.TWO_POINT,))
-        f = sum(1 for e in evts if e.event_type in (EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE))
+        f_one = sum(1 for e in evts if e.event_type in (EventType.POINT_FREE, EventType.FORTY_FIVE))
+        f_two = sum(1 for e in evts if e.event_type == EventType.TWO_POINT_FREE)
+        f = f_one + f_two
         w = sum(1 for e in evts if e.event_type in (EventType.WIDE, EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED))
         tw = sum(1 for e in evts if e.event_type == EventType.TURNOVER_WON)
         tl = sum(1 for e in evts if e.event_type == EventType.TURNOVER_LOST)
         bl = sum(1 for e in evts if e.event_type == EventType.BLOCK)
         ic = sum(1 for e in evts if e.event_type == EventType.INTERCEPTION)
-        total_val = g * 3 + (p + f) + tp * 2
+        fc = sum(1 for e in evts if e.event_type == EventType.FOUL_COMMITTED)
+        kw = sum(1 for e in evts if e.event_type in _KICKOUT_WON_TYPES)
+        # 2-point frees are worth 2, not 1 — folding them into the flat "+f"
+        # count undercounted total_val for keepers/free-takers with 2pt frees
+        total_val = g * 3 + (p + f_one) + (tp + f_two) * 2
 
         rows.append({
             "match_id": mid,
@@ -323,6 +363,8 @@ async def get_my_match_stats(
             "turnovers_lost": tl,
             "blocks": bl,
             "interceptions": ic,
+            "fouls_committed": fc,
+            "kickouts_won": kw,
             "total_score_value": total_val,
         })
 
@@ -421,18 +463,24 @@ async def get_my_gps(
 
     # Training GPS if available
     try:
-        from app.models.training_gps import TrainingGPSData
+        # Was importing from a module that doesn't exist (app.models.training_gps)
+        # — silently swallowed by the except below, so this block has never
+        # actually returned any training entries in production. The real
+        # model lives in training_performance.py, and it has no session_date
+        # of its own (only a session_id FK), so that needs a join to
+        # TrainingSession to resolve the date at all.
+        from app.models.training_performance import TrainingGPSData
         train_result = await db.execute(
-            select(TrainingGPSData).where(
-                TrainingGPSData.player_id == player.id
-            )
+            select(TrainingGPSData, TrainingSession.session_date)
+            .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
+            .where(TrainingGPSData.player_id == player.id)
         )
-        for g in train_result.scalars().all():
+        for g, session_date in train_result.all():
             entries.append({
                 "match_id": None,
                 "session_type": "training",
                 "opponent_or_label": "Training",
-                "date": g.session_date.isoformat() if hasattr(g, 'session_date') and g.session_date else "",
+                "date": session_date.isoformat() if session_date else "",
                 "total_distance_m": g.total_distance_m if hasattr(g, 'total_distance_m') else None,
                 "high_speed_running_m": g.high_speed_running_m if hasattr(g, 'high_speed_running_m') else None,
                 "sprint_count": g.sprint_count if hasattr(g, 'sprint_count') else None,
@@ -455,6 +503,116 @@ async def get_my_gps(
     # Sort by date
     entries.sort(key=lambda x: x["date"])
     return {"gps_entries": entries}
+
+
+@router.get("/my-stats/match-gps-history")
+async def get_my_match_gps_history(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Match GPS history, self-scoped — same shape/logic as the coach-facing
+    GET /matches/player/{id}/match-gps (which powers Season Physical Trend on
+    PlayerView.tsx), reused here via the shared helper so both stay in sync."""
+    player = await _get_player_for_user(db, user)
+
+    from app.routes.match_gps import _get_player_match_gps_history
+    return await _get_player_match_gps_history(db, player.id, 50, user.club_id)
+
+
+@router.get("/my-stats/quarter-profile")
+async def get_my_quarter_profile(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fatigue Signature data, self-scoped — see _compute_quarter_profile in
+    analytics.py for the shared logic (also used by the coach-facing route)."""
+    player = await _get_player_for_user(db, user)
+
+    from app.routes.analytics import _compute_quarter_profile
+    return await _compute_quarter_profile(db, user.club_id, player.id)
+
+
+@router.get("/my-stats/discipline-trend")
+async def get_my_discipline_trend(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """"Ball Security" data, self-scoped — see _compute_discipline_trend in
+    analytics.py for the shared logic (also used by the coach-facing route)."""
+    player = await _get_player_for_user(db, user)
+
+    from app.routes.analytics import _compute_discipline_trend
+    return await _compute_discipline_trend(db, user.club_id, player.id)
+
+
+@router.get("/my-stats/positional-benchmark")
+async def get_my_positional_benchmark(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Positional Benchmark data, self-scoped — see _compute_positional_benchmark
+    in analytics.py for the shared logic (also used by the coach-facing route)."""
+    player = await _get_player_for_user(db, user)
+
+    from app.routes.analytics import _compute_positional_benchmark
+    return await _compute_positional_benchmark(db, user.club_id, player.id)
+
+
+async def _get_goalkeeper_matches(db: AsyncSession, club_id: UUID, player_id: UUID) -> list:
+    """Completed matches restricted to the ones where this player actually
+    played in goal (lineup position 'gk', on the field) — kickout events
+    don't record who took the kick, only who won/lost it, so this is how we
+    scope "my kickouts" to a specific goalkeeper rather than the whole team's
+    season (which could include a different keeper's matches)."""
+    from app.models.match_lineup import MatchLineup
+    from app.services.season_dashboard_service import SeasonDashboardService
+
+    matches = await SeasonDashboardService._get_completed_matches(db, club_id)
+    if not matches:
+        return []
+    match_ids = [m.id for m in matches]
+    lineup_result = await db.execute(
+        select(MatchLineup.match_id).where(
+            and_(
+                MatchLineup.match_id.in_(match_ids),
+                MatchLineup.player_id == player_id,
+                MatchLineup.position_id == "gk",
+                MatchLineup.is_on_field.is_(True),
+            )
+        )
+    )
+    gk_match_ids = {row[0] for row in lineup_result.all()}
+    return [m for m in matches if m.id in gk_match_ids]
+
+
+@router.get("/my-stats/kickout-outcomes")
+async def get_my_kickout_outcomes(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Kickout outcomes per match, restricted to matches this player played
+    in goal — same chart/logic coaches see on the Season Dashboard, but
+    scoped to this goalkeeper's own matches, not the whole team's season."""
+    player = await _get_player_for_user(db, user)
+    matches = await _get_goalkeeper_matches(db, user.club_id, player.id)
+
+    from app.services.season_dashboard_service import SeasonDashboardService
+    return await SeasonDashboardService._kickout_trends(db, matches)
+
+
+@router.get("/my-stats/kickout-zones")
+async def get_my_kickout_zones(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """9-zone kickout landing grid, restricted to matches this player played
+    in goal — same chart coaches see on the Season Dashboard, scoped to this
+    goalkeeper's own matches."""
+    player = await _get_player_for_user(db, user)
+    matches = await _get_goalkeeper_matches(db, user.club_id, player.id)
+
+    from app.services.season_dashboard_service import SeasonDashboardService
+    return await SeasonDashboardService._kickout_landing_zones(db, matches)
 
 
 @router.get("/my-stats/fitness")
@@ -942,7 +1100,9 @@ def _generate_highlights(
         if val > best_match_score:
             best_match_score = val
             best_match_opponent = m.opponent
-            best_match_str = f"{g}-{p + tp}"
+            # p+tp*2 (not p+tp) so 2-point scores count for their real value —
+            # this is a bare "G-P" string with no room for a "(N pts)" aside
+            best_match_str = f"{g}-{p + tp * 2}"
 
     if best_match_str and best_match_opponent:
         highlights.append(f"Best match: {best_match_str} vs {best_match_opponent}")
@@ -1066,7 +1226,7 @@ async def get_sleep_history(
 
 @router.get("/sleep/squad")
 async def get_squad_sleep(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """

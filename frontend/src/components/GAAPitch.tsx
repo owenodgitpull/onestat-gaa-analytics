@@ -34,16 +34,50 @@ interface GAAPitchProps {
   /** Optional overlay rendered inside SVG via foreignObject — always relative to pitch graphic */
   svgOverlay?: React.ReactNode
   /**
-   * Optional overlay anchored to the ball's current position — rendered in a
-   * local 900x900 box centered on the ball (ball = 50%/50% of that box), so
-   * children can be positioned with simple percentage offsets from the ball
-   * regardless of where it currently sits on the pitch.
+   * Optional overlay anchored to the ball's current position. A render prop
+   * (not a plain node) because it needs the ball's live SVG coordinates —
+   * rendered as pure SVG children INSIDE the ball's own <g> group, in the
+   * exact same render pass as the ball marker itself, so it moves in
+   * perfect lockstep with zero possibility of lag/drift. An earlier version
+   * rendered this as a separately-positioned HTML overlay (via foreignObject
+   * or CSS percentage positioning) which visibly chased the ball during
+   * drags and had unreliable touch hit-testing — do not go back to that.
+   * Also receives the ball's raw pitch-% position (ballPctX/Y) alongside its
+   * SVG coordinates, for callers that need to rank things by proximity to
+   * the ball rather than just anchor a badge to it.
    */
-  ballAnchoredOverlay?: React.ReactNode
+  ballAnchoredOverlay?: (ballSvgX: number, ballSvgY: number, ballPctX: number, ballPctY: number) => React.ReactNode
+  /**
+   * Optional overlay spread across the pitch (not anchored to the ball),
+   * rendered as pure SVG siblings BEFORE the ball's own <g> so the ball and
+   * anything ball-anchored always paint on top. Re-invoked on every render
+   * with the ball's live pitch-% position, including mid-drag, so it can
+   * re-rank/re-highlight in real time as the ball moves — unlike
+   * ballAnchoredOverlay this is NOT suppressed during a drag, since
+   * "highlight likely targets while the ball is actively being moved" is
+   * the whole point.
+   */
+  pitchOverlay?: (ballPctX: number, ballPctY: number) => React.ReactNode
   /** Show gradient border around the pitch edge inside the SVG */
   gradientBorder?: boolean
   /** Active ball carrier jersey number — renders badge on ball icon */
   carrierJerseyNumber?: number | null
+  /**
+   * Pulses both long touchlines (top and bottom edges of the pitch) amber —
+   * shown while the user needs to tap ON the sideline itself (a kickout
+   * logged as going out over the line), since that's easy to miss when the
+   * pitch is small on a phone screen.
+   */
+  highlightSidelines?: boolean
+  /**
+   * Pulses a vertical line amber at the given pitch-% x — shown while the
+   * user needs to tap ON the 45m line itself (a 45 is always kicked from
+   * that exact line, never wherever the ball was previously). x is a raw
+   * pitch-% value (same screen-relative frame every other tap position is
+   * captured in) — the caller works out which of the two 45m lines is the
+   * right one before passing it in, this just draws whichever one it's given.
+   */
+  highlight45LineX?: number | null
 }
 
 // Minimum distance (in pitch %) between recorded drag waypoints
@@ -71,15 +105,19 @@ const getEventColor = (event: PitchEvent): string => {
     case 'short':
       return '#94a3b8'                         // slate — stopped/short
     case 'block':
-    case 'interception':
     case 'tackle_won':
       return '#a78bfa'                         // violet — defensive
+    case 'interception':
+      return '#2dd4bf'                         // teal — interception (kept distinct from block/tackle)
     case 'turnover_won':
       return '#3b82f6'                         // blue — won possession
     case 'turnover_lost':
-    case 'our_unforced_error':
-    case 'opp_unforced_error':
+    case 'unforced_error':
       return '#ec4899'                         // hot pink — lost possession
+    case 'foul_won':
+      return '#6366f1'                         // indigo — free won (good for us)
+    case 'foul_committed':
+      return '#d946ef'                         // fuchsia — foul conceded (bad for us)
     default:
       if (event.event_type.includes('kickout') || event.event_type.includes('breaking_ball')) {
         const ownTeamWon = event.event_type.includes('_won') && !event.event_type.includes('opposition_won')
@@ -92,6 +130,7 @@ const getEventColor = (event: PitchEvent): string => {
 // Convert pitch percentage to SVG coordinates
 const toSvgX = (pctX: number) => (pctX / 100) * 1960 + 183
 const toSvgY = (pctY: number) => (pctY / 100) * 1167 + 123
+
 
 export default function GAAPitch({
   onBallMove,
@@ -106,8 +145,11 @@ export default function GAAPitch({
   onDragUpdate,
   svgOverlay,
   ballAnchoredOverlay,
+  pitchOverlay,
   gradientBorder = false,
   carrierJerseyNumber,
+  highlightSidelines = false,
+  highlight45LineX = null,
 }: GAAPitchProps) {
   const [localBallPosition, setLocalBallPosition] = useState<BallPosition | null>(
     ballPosition || null
@@ -247,6 +289,18 @@ export default function GAAPitch({
     }
   }
 
+  // Mobile browsers can fire pointercancel instead of pointerup mid-gesture
+  // (system gesture takeover, focus change, etc.) — without handling it,
+  // draggingRef.current never resets to false, which permanently hid the
+  // ball-anchored overlay (it's suppressed while "dragging") until reload.
+  // Treat a cancel as an abort, not a placement: reset state, don't commit.
+  const handleBallPointerCancel = () => {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    dragWaypointsRef.current = []
+    setDragPosition(null)
+  }
+
   // Check if position is in 2-point zone (outside both 40m arcs)
   // Uses elliptical geometry matching MatchRecording.tsx isIn2PointZone
   const isInTwoPointZone = (x: number, y: number) => {
@@ -308,6 +362,10 @@ export default function GAAPitch({
     <div
       ref={containerRef}
       className={containerClassName ?? "relative w-full aspect-[16/10] bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-2xl overflow-hidden"}
+      // Some callers (FullscreenPitchMode) pass a containerClassName without
+      // "relative" — inline style guarantees the ball-anchored overlay below
+      // always has a real positioning root, regardless of the caller's class.
+      style={{ position: 'relative' }}
       onClick={handleContainerClick}
       onTouchEnd={handleContainerClick}
     >
@@ -356,13 +414,55 @@ export default function GAAPitch({
           preserveAspectRatio="xMidYMid meet"
         />
 
+        {/* Sideline highlight — pulses both touchlines (top and bottom edges
+            of the playing area) while a kickout-over-the-sideline tap is
+            pending, so the exact tappable strip is obvious rather than
+            guessed at. Purely visual — doesn't affect hit-testing. */}
+        {highlightSidelines && (
+          <>
+            <rect x={183} y={123 - 16} width={1960} height={32} fill="#fbbf24" opacity={0.3} className="animate-pulse" />
+            <rect x={183} y={123 + 1167 - 16} width={1960} height={32} fill="#fbbf24" opacity={0.3} className="animate-pulse" />
+            <line x1={183} y1={123} x2={2143} y2={123} stroke="#fbbf24" strokeWidth={6} className="animate-pulse" />
+            <line x1={183} y1={1290} x2={2143} y2={1290} stroke="#fbbf24" strokeWidth={6} className="animate-pulse" />
+          </>
+        )}
+
+        {/* 45m line highlight — a 45 is always taken from directly on this
+            line, so it needs to be obvious rather than guessed at (same
+            reasoning as the sideline highlight above). Unlike the sideline
+            case (a spot on an edge), this is a full vertical line the user
+            can tap ANYWHERE along — so instead of a single crisp stroke, it
+            layers a soft glow that pulses out from the line on both sides,
+            reading as "this whole line lights up", not just a marked point. */}
+        {highlight45LineX != null && (
+          <>
+            {/* Outer glow — widest, faintest layer */}
+            <rect x={toSvgX(highlight45LineX) - 55} y={123} width={110} height={1167} fill="#fbbf24" opacity={0.12} className="animate-pulse" />
+            {/* Mid glow */}
+            <rect x={toSvgX(highlight45LineX) - 28} y={123} width={56} height={1167} fill="#fbbf24" opacity={0.22} className="animate-pulse" />
+            {/* Core tappable strip */}
+            <rect x={toSvgX(highlight45LineX) - 12} y={123} width={24} height={1167} fill="#fbbf24" opacity={0.3} className="animate-pulse" />
+            {/* Crisp centre line so the exact 45m mark still reads precisely */}
+            <line
+              x1={toSvgX(highlight45LineX)} y1={123}
+              x2={toSvgX(highlight45LineX)} y2={1290}
+              stroke="#fbbf24" strokeWidth={5} strokeDasharray="20,14" className="animate-pulse"
+            />
+          </>
+        )}
+
         {/* Event dots (for match result view) */}
         {events.length > 0 && events.map((event, idx) => {
           if (event.pitch_x === null || event.pitch_y === null) return null
-          // 45s are always taken from the 45m line — snap x to nearest 45m line, keep y
+          // 45s are always taken from the 45m line — snap x to nearest 45m line, keep y.
+          // 34/66 matches compute45LineX in MatchRecording.tsx (the live-tuned
+          // capture-time snap, confirmed against the pitch SVG's actual drawn
+          // line on-device 2026-09-07 — not the theoretical 45/145≈31/69,
+          // which this display snap was stuck on until now, pulling historical
+          // 45 dots off the true line toward the 40m arc).
           const isFortyFive = event.event_type === 'forty_five' || event.event_type === 'forty_five_missed'
           const displayX = isFortyFive
-            ? (event.pitch_x < 50 ? 35 : 65)
+            ? (event.pitch_x < 50 ? 34 : 66)
             : event.pitch_x
           const x = toSvgX(displayX)
           const y = toSvgY(event.pitch_y)
@@ -417,6 +517,12 @@ export default function GAAPitch({
         {/* Trail (rendered after event dots, before ball) */}
         {trailElements}
 
+        {/* Pitch-spread overlay (e.g. faint likely-receiver dots) — rendered
+            before the ball's own <g> so the ball/radial always paint on top
+            when they overlap. Not suppressed during drag, unlike
+            ballAnchoredOverlay — it needs to live-update as the ball moves. */}
+        {pitchOverlay && displayPosition && pitchOverlay(displayPosition.x, displayPosition.y)}
+
         {/* Ball position */}
         {displayPosition && (
           <g
@@ -425,30 +531,31 @@ export default function GAAPitch({
             onPointerDown={handleBallPointerDown}
             onPointerMove={handleBallPointerMove}
             onPointerUp={handleBallPointerUp}
+            onPointerCancel={handleBallPointerCancel}
           >
             {/* Shadow */}
             <ellipse
               cx={toSvgX(displayPosition.x)}
               cy={toSvgY(displayPosition.y) + 8}
-              rx="20"
-              ry="10"
+              rx="21"
+              ry="10.5"
               fill="rgba(0, 0, 0, 0.5)"
             />
 
-            {/* GAA Football */}
+            {/* GAA Football — 5% bigger (48 -> 50.4) */}
             <image
               href="/gaelic_football.svg"
-              x={toSvgX(displayPosition.x) - 24}
-              y={toSvgY(displayPosition.y) - 24}
-              width="48"
-              height="48"
+              x={toSvgX(displayPosition.x) - 25.2}
+              y={toSvgY(displayPosition.y) - 25.2}
+              width="50.4"
+              height="50.4"
               className="drop-shadow-lg"
             />
-            {/* Team indicator ring */}
+            {/* Team indicator ring — 5% bigger (28 -> 29.4) */}
             <circle
               cx={toSvgX(displayPosition.x)}
               cy={toSvgY(displayPosition.y)}
-              r="28"
+              r="29.4"
               fill="none"
               stroke={
                 displayPosition.team === PossessionTeam.OWN
@@ -497,23 +604,18 @@ export default function GAAPitch({
                 </text>
               </g>
             )}
+
+            {/* Suppressed entirely while actively dragging the ball — draggingRef is a
+                ref so this check is just read at render time, no extra state needed.
+                Keeping the picker's shapes out of the DOM during a drag guarantees they
+                can never intercept/compete for pointer capture with the drag gesture
+                itself, which must stay instant and 1:1 with the finger — that takes
+                priority over the picker being tappable mid-drag (it wasn't meant to be
+                used while dragging anyway). */}
+            {ballAnchoredOverlay && !draggingRef.current && ballAnchoredOverlay(toSvgX(displayPosition.x), toSvgY(displayPosition.y), displayPosition.x, displayPosition.y)}
           </g>
         )}
 
-        {/* Ball-anchored overlay (e.g. carrier picker) — local 900x900 box centered on the ball */}
-        {ballAnchoredOverlay && displayPosition && (
-          <foreignObject
-            x={toSvgX(displayPosition.x) - 450}
-            y={toSvgY(displayPosition.y) - 450}
-            width="900"
-            height="900"
-            style={{ overflow: 'visible', pointerEvents: 'none' }}
-          >
-            <div style={{ width: '100%', height: '100%', position: 'relative', pointerEvents: 'none' }}>
-              {ballAnchoredOverlay}
-            </div>
-          </foreignObject>
-        )}
 
         {/* Zone labels (if showZones) */}
         {showZones && (

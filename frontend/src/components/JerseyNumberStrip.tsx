@@ -41,7 +41,7 @@ function surname(name: string) {
 }
 
 /** Map position_id prefixes to positional line order (defence → attack) */
-const POSITION_LINE_ORDER: Record<string, number> = {
+export const POSITION_LINE_ORDER: Record<string, number> = {
   'gk': 0,
   'fb': 1,
   'hb': 2,
@@ -60,7 +60,7 @@ const LINE_LABELS: Record<number, string> = {
   5: 'FF',
 }
 
-function getPositionLine(positionId?: string): number {
+export function getPositionLine(positionId?: string): number {
   if (!positionId) return 3 // default to midfield
   const prefix = positionId.split('-')[0]
   return POSITION_LINE_ORDER[prefix] ?? 3
@@ -121,7 +121,15 @@ export default function JerseyNumberStrip({
   let lastLine = -1
 
   return (
-    <div className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-hide">
+    <div
+      className="flex items-center gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-hide"
+      style={{ justifyContent: 'safe center' }}
+    >
+      {/* `safe center` (not plain `center`) — a row centered while it fits
+          scrolls normally, but a PLAIN centered flex row that later overflows
+          (a full 15-a-side lineup on a narrower screen) clips its start
+          behind the left edge until the user scrolls left first to reveal
+          it — "safe" falls back to start-alignment in that case instead. */}
       <span className="text-[10px] text-white/50 font-semibold uppercase tracking-wider whitespace-nowrap mr-1 flex-shrink-0">
         Carrier
       </span>

@@ -282,6 +282,20 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
         </button>
       </div>
 
+      {/* Start/end marker legend */}
+      {hasData && (
+        <div className="flex items-center justify-center gap-4 mb-2 text-[10px] text-white/40">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full bg-slate-900 border-2 border-white" />
+            Start
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
+            End (outcome)
+          </span>
+        </div>
+      )}
+
       {/* Detail card — shown ABOVE pitch so it's always visible */}
       {activeDetail && (() => {
         const color = OUTCOME_COLORS[activeDetail.outcome] || '#10b981'
@@ -354,7 +368,10 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
                 {showDots && svgPoints.slice(1, -1).map((p, di) => (
                   <circle key={di} cx={p.x} cy={p.y} r={14} fill={color} stroke="white" strokeWidth={2} opacity={0.7} />
                 ))}
-                <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={22} fill={color} stroke="white" strokeWidth={3} opacity={0.8} />
+                {/* Start marker: hollow white ring so it reads distinctly from the solid,
+                    outcome-colored end marker below — same color for both made it hard
+                    to tell at a glance which end of the path was the start. */}
+                <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={22} fill="#0f172a" stroke="white" strokeWidth={4} opacity={0.95} />
                 <circle cx={last.x} cy={last.y} r={36} fill={color} stroke="white" strokeWidth={4} />
                 <text x={last.x} y={last.y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
               </g>

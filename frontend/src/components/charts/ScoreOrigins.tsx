@@ -67,42 +67,57 @@ export default function ScoreOrigins({ data, teamName = 'Us', opponentName = 'Op
           { label: teamName, slices: ownSlices, total: data.own.total },
           { label: opponentName, slices: oppSlices, total: data.opp.total },
         ].map(({ label, slices, total }) => (
-          <div key={label} className="flex flex-col items-center">
+          <div key={label} className="flex flex-col items-center min-h-0 h-full">
             <div className="text-xs font-semibold text-white/60 mb-1 truncate max-w-full px-1">
               {label} <span className="text-white/40">({total})</span>
             </div>
             {total === 0 ? (
               <div className="flex-1 flex items-center justify-center text-white/30 text-xs">No scores</div>
             ) : (
-              <ResponsiveContainer width="100%" height={160}>
-                <PieChart>
-                  <Pie
-                    data={slices}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={30}
-                    outerRadius={60}
-                    dataKey="value"
-                    labelLine={false}
-                    label={renderLabel}
-                  >
-                    {slices.map((s, i) => (
-                      <Cell key={i} fill={s.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }}
-                    itemStyle={{ color: '#fff' }}
-                    formatter={(val: number) => [val, '']}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
+              // Radii as % of the container's own size, not fixed px, so the
+              // donut actually grows to fill whatever height this card gets.
+              // No minHeight floor — a hard floor here was forcing the chart
+              // taller than its flex parent on some viewports, and since
+              // .glass-card has no overflow-hidden the excess silently bled
+              // into whatever card sat below this one.
+              <div className="relative flex-1 min-h-0 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={slices}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius="58%"
+                      outerRadius="88%"
+                      paddingAngle={2}
+                      dataKey="value"
+                      labelLine={false}
+                      label={renderLabel}
+                    >
+                      {slices.map((s, i) => (
+                        <Cell key={i} fill={s.color} stroke="rgba(0,0,0,0.35)" strokeWidth={1} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8 }}
+                      itemStyle={{ color: '#fff' }}
+                      formatter={(val: number) => [val, '']}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Center total — the modern-donut convention: the ring reads
+                    the split, the number reads the total at a glance. */}
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-xl font-black text-white leading-none">{total}</span>
+                  <span className="text-[9px] text-white/40 uppercase tracking-wide mt-0.5">scores</span>
+                </div>
+              </div>
             )}
           </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 justify-center pb-1">
         {CATEGORIES.map(c => (
           <span key={c.key} className="flex items-center gap-1 text-[11px] text-white/50">
             <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ background: c.color }} />

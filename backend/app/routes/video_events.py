@@ -11,7 +11,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.video_session import VideoSession
 from app.models.video_event import VideoEvent, TWO_POINTER_ZONES, SCORING_EVENT_TYPES
 from app.models.match_event import MatchEvent, Team
@@ -138,7 +138,7 @@ async def create_video_event(
 @router.get("/{session_id}", response_model=VideoEventListResponse)
 async def list_video_events(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """List all events for a video session, ordered by video timestamp."""
@@ -476,7 +476,7 @@ async def sync_confirm(
 @router.get("/{session_id}/sync-status", response_model=VideoSyncStatusResponse)
 async def sync_status(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Poll sync + AI re-analysis progress."""

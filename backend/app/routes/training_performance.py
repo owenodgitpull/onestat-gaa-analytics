@@ -14,13 +14,14 @@ from sqlalchemy.orm import selectinload
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
+import asyncio
 import json
 import logging
 import base64
 import os
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.training_performance import TrainingGPSData, WeightTrainingSession, WeightExercise, GPSUploadLog
 from app.services.workload_analysis_service import WorkloadAnalysisService
 from app.models.attendance import TrainingSession, Attendance, AttendanceStatus
@@ -99,6 +100,43 @@ async def upload_gps_data(
     )
 
 
+async def _auto_generate_training_summary(session_id: UUID, db: Optional[AsyncSession] = None):
+    """
+    Generate and cache the AI training summary for a session, right after
+    GPS data is added — whichever way it got there (file upload or manual
+    entry). Previously this only ran from the file-upload path, so a
+    session whose GPS data was added manually never got a summary at all
+    and the "latest summary" widget silently fell back to showing an older
+    session's summary/date with no indication it wasn't the newest upload.
+
+    Pass an existing `db` when called from within an already-open session
+    (the file-upload background task); omit it to open a fresh one (a
+    background task scheduled from a request handler, whose own `db` closes
+    when the response returns).
+    """
+    async def _run(session: AsyncSession):
+        try:
+            from app.services.ai import analyze_training_session
+            result = await analyze_training_session(session, str(session_id))
+            if result.get("summary"):
+                session_query = select(TrainingSession).where(TrainingSession.id == session_id)
+                session_result = await session.execute(session_query)
+                session_obj = session_result.scalar_one_or_none()
+                if session_obj:
+                    session_obj.ai_summary = result["summary"]
+                    session_obj.ai_summary_generated_at = datetime.utcnow()
+                    await session.commit()
+                    logger.info(f"AI training summary generated for session {session_id}")
+        except Exception as e:
+            logger.error(f"AI training summary failed: {e}")
+
+    if db is not None:
+        await _run(db)
+    else:
+        async with async_session_maker() as fresh_db:
+            await _run(fresh_db)
+
+
 async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, session_id: UUID):
     """
     Background task to process GPS upload.
@@ -160,6 +198,13 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                         if p.name.lower() == gps_clean:
                             return p
 
+                    # gps_alias match — nickname support (e.g. "Damo" -> "Damien McGowan")
+                    for p in all_players:
+                        aliases = getattr(p, 'gps_alias', None) or ''
+                        for alias in [a.strip().lower() for a in aliases.split(',') if a.strip()]:
+                            if alias == gps_clean:
+                                return p
+
                     # Parse name parts — rejoin "Mc C" / "McB" style fragments
                     parts = gps_clean.split()
                     if not parts:
@@ -176,17 +221,30 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                     if len(first_name_matches) == 1:
                         return first_name_matches[0]
 
-                    # If first_name is a single letter, treat as initial — match on surname instead
+                    # If first_name is a single letter, treat as initial — match on surname instead.
+                    # Try an EXACT surname match first (safe). Only fall back to a loose
+                    # prefix match when it's unambiguous — a bare 3-char prefix like "mcc"
+                    # matches McCready AND McCarron AND McCaffrey, and picking whichever one
+                    # happened to come first in the query previously caused real GPS data
+                    # (and the attendance record derived from it) to be silently credited to
+                    # the wrong player.
                     if len(first_name) == 1 and surname_part:
-                        for p in all_players:
-                            pparts = p.name.lower().split()
-                            if len(pparts) > 1 and pparts[0].startswith(first_name) and pparts[-1].startswith(surname_part[:3]):
-                                return p
-                        # Also try surname match alone
-                        for p in all_players:
-                            pparts = p.name.lower().split()
-                            if len(pparts) > 1 and pparts[-1] == surname_part:
-                                return p
+                        exact_candidates = [
+                            p for p in all_players
+                            if len(p.name.lower().split()) > 1
+                            and p.name.lower().split()[0].startswith(first_name)
+                            and p.name.lower().split()[-1].replace("'", "") == surname_part
+                        ]
+                        if len(exact_candidates) == 1:
+                            return exact_candidates[0]
+                        prefix_candidates = [
+                            p for p in all_players
+                            if len(p.name.lower().split()) > 1
+                            and p.name.lower().split()[0].startswith(first_name)
+                            and p.name.lower().split()[-1].startswith(surname_part[:3])
+                        ]
+                        if len(prefix_candidates) == 1:
+                            return prefix_candidates[0]
 
                     if surname_part and len(first_name_matches) > 1:
                         # Multiple first-name matches — filter by surname start
@@ -207,11 +265,26 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                                 if db_surname.startswith(surname_part):
                                     return p
 
-                    # Partial first name match (but only if first name is 3+ chars to avoid false matches)
+                    # Partial first name match (3+ chars, e.g. "Dan" -> "Daniel").
+                    # Must be a PREFIX of the candidate's actual first name, not just
+                    # appear anywhere in the full name string — "dan" is a substring of
+                    # "Aidan" too, and the old `in` check previously matched "Dan W"
+                    # (intended: Daniel Ward) to Aidan McGee instead. When a surname
+                    # initial/prefix was supplied, it must also agree; only return when
+                    # exactly one candidate survives both checks.
                     if len(first_name) >= 3:
+                        candidates = []
                         for p in all_players:
-                            if first_name in p.name.lower():
-                                return p
+                            pparts = p.name.lower().split()
+                            if not pparts[0].startswith(first_name):
+                                continue
+                            if surname_part:
+                                db_surname = pparts[-1].replace("'", "") if len(pparts) > 1 else ""
+                                if not db_surname.startswith(surname_part[:1]):
+                                    continue
+                            candidates.append(p)
+                        if len(candidates) == 1:
+                            return candidates[0]
 
                     logger.warning(f"No match for GPS player: '{gps_name}'")
                     return None
@@ -268,18 +341,18 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                                 notes="Auto-detected from GPS upload"
                             ))
 
-                    # Active players NOT in GPS file = absent
-                    for p in all_players:
-                        if p.id not in matched_player_ids and p.id not in already_recorded and p.active:
-                            db.add(Attendance(
-                                session_id=session_id,
-                                player_id=p.id,
-                                status=AttendanceStatus.ABSENT,
-                                notes="Not in GPS upload"
-                            ))
-
-                    logger.info(f"Auto-recorded attendance: {len(matched_player_ids)} present, "
-                                f"{sum(1 for p in all_players if p.id not in matched_player_ids and p.id not in already_recorded and p.active)} absent")
+                    # NOTE: we deliberately do NOT auto-mark unmatched active players as
+                    # ABSENT here. A name that fails to match in the GPS export (nickname,
+                    # spelling variant, or the export simply not covering them) is not
+                    # evidence the player wasn't there — it's evidence the matcher missed
+                    # them. Confidently writing ABSENT on a name-match failure silently
+                    # poisoned attendance history: e.g. one player accumulated 39 straight
+                    # auto-generated ABSENT records (0 real ones) purely from unmatched GPS
+                    # names, which then surfaced as a false "hasn't trained in weeks" alert.
+                    # Leaving them unrecorded for the session is the honest default — a
+                    # coach can still mark them present/absent manually if needed.
+                    logger.info(f"Auto-recorded attendance: {len(matched_player_ids)} present "
+                                f"(unmatched players left unrecorded, not marked absent)")
 
                 upload_log.extracted_player_count = player_count
                 upload_log.status = "completed"
@@ -302,20 +375,7 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
                             logger.error(f"Workload analysis failed for {gps_name}: {e}")
 
             # Generate AI training summary
-            try:
-                from app.services.ai import analyze_training_session
-                result = await analyze_training_session(db, str(session_id))
-                if result.get("summary"):
-                    session_query = select(TrainingSession).where(TrainingSession.id == session_id)
-                    session_result = await db.execute(session_query)
-                    session_obj = session_result.scalar_one_or_none()
-                    if session_obj:
-                        session_obj.ai_summary = result["summary"]
-                        session_obj.ai_summary_generated_at = datetime.utcnow()
-                        await db.commit()
-                        logger.info(f"AI training summary generated for session {session_id}")
-            except Exception as e:
-                logger.error(f"AI training summary failed: {e}")
+            await _auto_generate_training_summary(session_id, db=db)
 
             # Generate cross-cutting insight alerts
             try:
@@ -335,9 +395,13 @@ async def process_gps_upload(upload_id: UUID, content: bytes, filename: str, ses
             await db.commit()
 
 
-async def extract_gps_from_pdf(content: bytes, filename: str) -> dict:
+def _extract_gps_from_pdf_sync(content: bytes, filename: str) -> dict:
     """
-    Use Claude Vision to extract GPS data from a PDF.
+    Synchronous worker for extract_gps_from_pdf. Does the CPU-bound PDF->image
+    rendering (fitz) and the blocking Anthropic SDK call together, since both
+    are blocking and happen back-to-back with no async work in between —
+    combined into a single asyncio.to_thread dispatch by the caller rather
+    than two separate ones.
     """
     try:
         import anthropic
@@ -430,6 +494,18 @@ Return ONLY the JSON object, no other text."""
     except Exception as e:
         logger.error(f"PDF extraction failed: {e}")
         return {"error": str(e)}
+
+
+async def extract_gps_from_pdf(content: bytes, filename: str) -> dict:
+    """
+    Use Claude Vision to extract GPS data from a PDF.
+
+    Offloaded to a thread — both the fitz page rendering (CPU-bound) and the
+    Anthropic SDK call (blocking network I/O) would otherwise stall the
+    entire event loop for the full duration, same class of bug fixed in
+    chat_agent.py/season_agent.py/match_agent.py/chart_engine.py.
+    """
+    return await asyncio.to_thread(_extract_gps_from_pdf_sync, content, filename)
 
 
 def _parse_csv_local(content: bytes) -> dict:
@@ -572,7 +648,10 @@ async def parse_gps_csv(content: bytes) -> dict:
             raise ValueError("ANTHROPIC_API_KEY not set")
 
         client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
+        # Offloaded to a thread — synchronous Anthropic SDK call would otherwise
+        # block the whole event loop for the round-trip.
+        response = await asyncio.to_thread(
+            client.messages.create,
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             messages=[{
@@ -601,7 +680,7 @@ CSV:
 @router.get("/gps/upload/{upload_id}", response_model=GPSUploadStatus)
 async def get_upload_status(
     upload_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the status of a GPS upload."""
@@ -626,7 +705,7 @@ async def get_upload_status(
 
 @router.get("/ai-summary/latest")
 async def get_latest_training_ai_summary(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the latest AI-generated training session summary."""
@@ -699,7 +778,7 @@ async def generate_session_summary(
 @router.get("/gps/session/{session_id}", response_model=list[TrainingGPSDataResponse])
 async def get_session_gps_data(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all GPS data for a training session."""
@@ -755,6 +834,7 @@ async def get_session_gps_data(
 @router.post("/gps/manual", response_model=list[TrainingGPSDataResponse], status_code=201)
 async def add_gps_data_manually(
     data: GPSDataBulkCreate,
+    background_tasks: BackgroundTasks,
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -805,6 +885,12 @@ async def add_gps_data_manually(
         ))
 
     await db.commit()
+
+    # Same auto-summary trigger the file-upload path already has — manual
+    # entry is otherwise a silent gap where a session's GPS data exists but
+    # no summary ever gets generated for it.
+    background_tasks.add_task(_auto_generate_training_summary, data.session_id)
+
     return responses
 
 
@@ -881,7 +967,7 @@ async def create_weight_session(
 @router.get("/weights/session/{session_id}", response_model=list[WeightTrainingSessionResponse])
 async def get_session_weight_data(
     session_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all weight training data for a session."""
@@ -937,7 +1023,7 @@ async def get_session_weight_data(
 async def get_player_weight_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get weight training history for a player."""
@@ -996,7 +1082,7 @@ async def get_player_weight_history(
 async def get_player_gps_history(
     player_id: UUID,
     limit: int = Query(20, ge=1, le=100),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get GPS history for a player."""

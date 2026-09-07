@@ -3,30 +3,33 @@
  *
  * Three-tap flow: tap event → tap pitch zone → tap player number → done.
  * Video auto-pauses on event tap and auto-resumes after completion.
- * Pitch and player overlays render ON TOP of the video player.
+ * The pitch-location confirm overlay (PitchOverlay) renders ON TOP of the
+ * video player; the continuous ball-carrier tracking pitch (TaggingPitch)
+ * is a permanent panel beside or below the video (never overlaps it) —
+ * user-toggleable Side/Below, remembered per-device via usePitchPanelLayout.
  * Scoreboard in header with GAA format (1-03) and total.
  * Fullscreen mode hides app header and maximises video area.
  *
- * Layout (normal):
+ * Layout (normal, pitch panel mode = 'side'):
  * ┌──────────────────────────────────────────────────┐
  * │  ← Back | Title | Scoreboard | [Auto] [Sync]    │
- * ├──────────────────────────────────┬───────────────┤
- * │                                  │  Quick Action  │
- * │   Video Player                   │  Sidebar       │
- * │   (pitch overlay / player grid)  │  (tabs+buttons)│
- * ├──────────────────────────────────┴───────────────┤
+ * ├──────────────────────────────┬─────────┬─────────┤
+ * │                              │ Tagging │  Quick  │
+ * │   Video Player               │ Pitch   │  Action │
+ * │   (pitch confirm overlay)    │(vertical│  Sidebar│
+ * │                              │ column) │(tabs+btn│
+ * ├──────────────────────────────┴─────────┴─────────┤
  * │  Event Timeline                                   │
  * ├──────────────────────────────────────────────────┤
  * │  ▾ Event Log (collapsible)                        │
  * └──────────────────────────────────────────────────┘
  *
- * Layout (fullscreen):
+ * Layout (fullscreen, pitch panel mode = 'below'):
  * ┌──────────────────────────────────────────────────┐
  * │  [X] Title | Scoreboard | [Auto] [Report] [Sync] │
  * ├──────────────────────────────────┬───────────────┤
- * │                                  │  Quick Action  │
- * │   Video Player (flex-1)          │  Sidebar       │
- * │   + BallMinimap                  │                │
+ * │   Video Player (flex-1)          │  Quick Action  │
+ * │   TaggingPitch (horizontal strip)│  Sidebar       │
  * ├──────────────────────────────────┴───────────────┤
  * │  Possession status bar                            │
  * └──────────────────────────────────────────────────┘
@@ -34,14 +37,14 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, PanelRight, PanelBottom } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
 import VideoQuickActions, { type Category, type OverlayPendingEvent } from '../components/video/VideoQuickActions'
 import VideoEventLog from '../components/video/VideoEventLog'
 import PitchOverlay from '../components/video/PitchOverlay'
-import BallMinimap from '../components/video/BallMinimap'
+import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
 import SyncPreviewModal from '../components/video/SyncPreviewModal'
 import ConfirmationModal from '../components/ConfirmationModal'
@@ -54,6 +57,7 @@ import { useClubName, useClub } from '../contexts/ClubContext'
 import { useTour } from '../hooks/useTour'
 import { videoTaggingSteps } from '../config/tourSteps'
 import { useVideoSession, useSetHalftime } from '../hooks/useVideoSessions'
+import { usePitchPanelLayout } from '../hooks/usePitchPanelLayout'
 import {
   useVideoEvents,
   useCreateVideoEvent,
@@ -67,7 +71,8 @@ import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
 import type { VideoEventCreateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData } from '../services/videoApi'
 import { api, type BallCarrierSegment } from '../services/api'
 import { useQuery } from '@tanstack/react-query'
-import type { Player } from '../types'
+import { PossessionTeam } from '../types'
+import type { Player, BallPosition } from '../types'
 
 type OverlayState = 'none' | 'pitch' | 'player'
 
@@ -119,7 +124,10 @@ export default function VideoTagging() {
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // Minimap ball tracking
+  // Ball tracking pitch panel layout — Side (vertical pitch) or Below (horizontal pitch)
+  const { mode: pitchPanelMode, toggleMode: togglePitchPanelMode } = usePitchPanelLayout()
+
+  // Ball tracking (TaggingPitch panel)
   const [ballPosition, setBallPosition] = useState<{ x: number; y: number } | null>({ x: 50, y: 50 })
   const [ballTrail, setBallTrail] = useState<Array<{ x: number; y: number }>>([])
   const positionSamples = useRef<BallPositionSampleData[]>([])
@@ -419,10 +427,25 @@ export default function VideoTagging() {
   const handleDurationChange = useCallback((ms: number) => setVideoDurationMs(ms), [])
   const handleSeek = useCallback((ms: number) => playerRef.current?.seekTo(ms), [])
 
-  // Minimap handlers
-  const handleMinimapBallMove = useCallback((x: number, y: number) => {
-    setBallPosition({ x, y })
-    setBallTrail(prev => [...prev.slice(-49), { x, y }])
+  // TaggingPitch's ballPosition prop needs a `team` field (for ring/trail
+  // colour) — derived from `possession`, not independently tracked. The
+  // page's own ballPosition state stays plain {x, y}, as before.
+  const taggingBallPosition = useMemo<BallPosition | null>(() => {
+    if (!ballPosition) return null
+    return {
+      x: ballPosition.x,
+      y: ballPosition.y,
+      team: possession === 'team_a' ? PossessionTeam.OWN : PossessionTeam.OPPONENT,
+    }
+  }, [ballPosition, possession])
+
+  // TaggingPitch handlers — replaces the old BallMinimap wiring.
+  // onBallMove (tap or drag-end commit) and onDragUpdate (live during drag)
+  // both just update the display state the sidebar and the 5s/30s
+  // position-sample pipeline read from `ballPosition`/`ballTrail`.
+  const handleTaggingBallMove = useCallback((position: BallPosition) => {
+    setBallPosition({ x: position.x, y: position.y })
+    setBallTrail(prev => [...prev.slice(-49), { x: position.x, y: position.y }])
   }, [])
 
   /** Create the event, apply auto-flip/auto-switch, resume video.
@@ -972,11 +995,18 @@ export default function VideoTagging() {
     await endCarrierSegment(bx, by, 'turnover')
   }, [endCarrierSegment, ballPosition])
 
-  // Wire minimap ball movement to carrier path tracking
-  const handleMinimapBallMoveWithCarrier = useCallback((x: number, y: number) => {
-    handleMinimapBallMove(x, y)
-    appendCarrierPathPoint(x, y)
-  }, [handleMinimapBallMove, appendCarrierPathPoint])
+  // Drag-end: append the full downsampled waypoint path (collected by
+  // TaggingPitch during the drag) to the active carrier segment in one
+  // batch — the same call pattern as MatchRecording.tsx's handleDragPath,
+  // reusing appendCarrierPathPoint's existing 200ms-throttled buffer/flush.
+  // A tap-only reposition (no drag) does NOT append a carrier path point,
+  // matching MatchRecording's own established onBallMove/onDragPath split —
+  // a carrier's path comes from continuous drags, not discrete placements.
+  const handleTaggingDragPath = useCallback((waypoints: Array<{ x: number; y: number }>) => {
+    for (const wp of waypoints) {
+      appendCarrierPathPoint(wp.x, wp.y)
+    }
+  }, [appendCarrierPathPoint])
 
   // Clean up carrier segment on unmount
   useEffect(() => {
@@ -1139,92 +1169,119 @@ export default function VideoTagging() {
     </div>
   )
 
-  /** Video player with minimap, fullscreen button overlay, and pitch overlay */
+  /** Video player + permanent TaggingPitch tracking panel, fullscreen/layout
+   *  toggle buttons, and the pitch-location confirm overlay. */
   const videoArea = (
-    <div data-tour="video-player" className="flex-1 relative group/video">
-      <VideoPlayer
-        ref={playerRef}
-        src={stableVideoUrl.current}
-        onTimeUpdate={handleTimeUpdate}
-        onDurationChange={handleDurationChange}
-        onPlayStateChange={setIsPlaying}
-        halftimeMs={session.halftime_timestamp_ms ?? undefined}
-      />
+    <div
+      data-tour="video-player"
+      className={`flex-1 flex min-w-0 min-h-0 ${pitchPanelMode === 'side' ? 'flex-row' : 'flex-col'}`}
+    >
+      <div className="relative flex-1 min-w-0 min-h-0 group/video">
+        <VideoPlayer
+          ref={playerRef}
+          src={stableVideoUrl.current}
+          onTimeUpdate={handleTimeUpdate}
+          onDurationChange={handleDurationChange}
+          onPlayStateChange={setIsPlaying}
+          halftimeMs={session.halftime_timestamp_ms ?? undefined}
+        />
 
-      {/* Throw-in marker setup guide — top-left, clear of play button and timeline */}
-      {needsThrowInSetup && (
-        <div className="absolute top-3 left-3 z-30 pointer-events-none">
-          <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-5 py-3.5 w-[340px] shadow-2xl shadow-emerald-500/10">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 text-xs font-bold">
-                {setupStep === '1st_half' ? '1' : '2'}
+        {/* Throw-in marker setup guide — top-left, clear of play button and timeline */}
+        {needsThrowInSetup && (
+          <div className="absolute top-3 left-3 z-30 pointer-events-none">
+            <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-5 py-3.5 w-[340px] shadow-2xl shadow-emerald-500/10">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 text-xs font-bold">
+                  {setupStep === '1st_half' ? '1' : '2'}
+                </div>
+                <h3 className="text-sm font-bold text-white">
+                  {setupStep === '1st_half' ? 'Mark 1st Half Throw-In' : 'Mark 2nd Half Throw-In'}
+                </h3>
+                <span className="text-[10px] text-white/30 ml-auto">Step {setupStep === '1st_half' ? '1' : '2'} of 2</span>
               </div>
-              <h3 className="text-sm font-bold text-white">
-                {setupStep === '1st_half' ? 'Mark 1st Half Throw-In' : 'Mark 2nd Half Throw-In'}
-              </h3>
-              <span className="text-[10px] text-white/30 ml-auto">Step {setupStep === '1st_half' ? '1' : '2'} of 2</span>
-            </div>
-            <p className="text-xs text-white/60 mb-3">
-              {setupStep === '1st_half'
-                ? 'Scrub the video to the exact moment the ball is thrown in to start the 1st half, then tap the button below.'
-                : 'Now scrub to the 2nd half throw-in moment.'}
-            </p>
-            <div className="text-center mb-3">
-              <span className="text-lg font-mono text-emerald-400">
-                {Math.floor(currentTimeMs / 60000)}:{String(Math.floor((currentTimeMs % 60000) / 1000)).padStart(2, '0')}
-              </span>
-              <span className="text-xs text-white/30 ml-2">video time</span>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handleMarkThrowIn}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all animate-pulse hover:animate-none"
-                style={{ background: 'linear-gradient(135deg, #00e676, #00c853)', color: '#0a1a10' }}
-              >
-                {setupStep === '1st_half' ? 'Mark 1st Half Start' : 'Mark 2nd Half Start'}
-              </button>
-              {setupStep === '2nd_half' && (
+              <p className="text-xs text-white/60 mb-3">
+                {setupStep === '1st_half'
+                  ? 'Scrub the video to the exact moment the ball is thrown in to start the 1st half, then tap the button below.'
+                  : 'Now scrub to the 2nd half throw-in moment.'}
+              </p>
+              <div className="text-center mb-3">
+                <span className="text-lg font-mono text-emerald-400">
+                  {Math.floor(currentTimeMs / 60000)}:{String(Math.floor((currentTimeMs % 60000) / 1000)).padStart(2, '0')}
+                </span>
+                <span className="text-xs text-white/30 ml-2">video time</span>
+              </div>
+              <div className="flex gap-2">
                 <button
-                  onClick={handleSkipSecondHalf}
-                  className="px-4 py-2.5 rounded-xl bg-white/10 text-white/60 hover:text-white text-sm transition-colors"
+                  onClick={handleMarkThrowIn}
+                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all animate-pulse hover:animate-none"
+                  style={{ background: 'linear-gradient(135deg, #00e676, #00c853)', color: '#0a1a10' }}
                 >
-                  Skip
+                  {setupStep === '1st_half' ? 'Mark 1st Half Start' : 'Mark 2nd Half Start'}
                 </button>
-              )}
+                {setupStep === '2nd_half' && (
+                  <button
+                    onClick={handleSkipSecondHalf}
+                    className="px-4 py-2.5 rounded-xl bg-white/10 text-white/60 hover:text-white text-sm transition-colors"
+                  >
+                    Skip
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Fullscreen toggle — overlaid on video, top-left, visible on hover */}
-      {overlayState === 'none' && (
-        <button
-          onClick={() => setIsFullscreen(prev => !prev)}
-          className="absolute top-2 left-2 z-20 p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg opacity-70 sm:opacity-0 sm:group-hover/video:opacity-100 transition-all"
-          title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen (F)'}
-        >
-          <Maximize size={18} />
-        </button>
-      )}
+        {/* Fullscreen + pitch-panel layout toggle — overlaid on video, top-left, visible on hover */}
+        {overlayState === 'none' && (
+          <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover/video:opacity-100 transition-all">
+            <button
+              onClick={() => setIsFullscreen(prev => !prev)}
+              className="p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg transition-colors"
+              title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen (F)'}
+            >
+              <Maximize size={18} />
+            </button>
+            <button
+              onClick={togglePitchPanelMode}
+              className="p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg transition-colors"
+              title={pitchPanelMode === 'side' ? 'Move tracking pitch below video' : 'Move tracking pitch beside video'}
+            >
+              {pitchPanelMode === 'side' ? <PanelBottom size={18} /> : <PanelRight size={18} />}
+            </button>
+          </div>
+        )}
 
-      {/* Ball minimap (always visible, dims when overlay active) */}
-      <BallMinimap
-        ballPosition={ballPosition}
-        possession={possession}
-        onBallMove={handleMinimapBallMoveWithCarrier}
+        {/* Pitch zone overlay (step 2 of three-tap) */}
+        {overlayState === 'pitch' && pendingOverlay && (
+          <PitchOverlay
+            eventLabel={pendingOverlay.action.label}
+            onZoneSelect={handlePitchZoneTap}
+            onCancel={cancelOverlay}
+            suggestedZone={ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined}
+          />
+        )}
+      </div>
+
+      {/* Ball-carrier tracking pitch — permanent panel, never overlays the
+          video. 'side': vertical pitch column next to the video (landscape
+          tablets, width to spare). 'below': horizontal pitch strip under
+          the video (portrait tablets, height to spare). Replaces the old
+          floating BallMinimap widget. */}
+      <TaggingPitch
+        orientation={pitchPanelMode === 'side' ? 'vertical' : 'horizontal'}
+        containerClassName={
+          pitchPanelMode === 'side'
+            ? 'relative h-full w-[300px] md:w-[340px] flex-shrink-0 bg-gradient-to-br from-green-900/40 to-green-800/40 overflow-hidden'
+            : 'relative w-full flex-shrink-0 bg-gradient-to-br from-green-900/40 to-green-800/40 overflow-hidden aspect-[1960/1167]'
+        }
+        ballPosition={taggingBallPosition}
+        onBallMove={handleTaggingBallMove}
+        onDragUpdate={handleTaggingBallMove}
+        onDragPath={handleTaggingDragPath}
         trail={ballTrail}
+        carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
         disabled={overlayState !== 'none'}
       />
-
-      {/* Pitch zone overlay (step 2 of three-tap) */}
-      {overlayState === 'pitch' && pendingOverlay && (
-        <PitchOverlay
-          eventLabel={pendingOverlay.action.label}
-          onZoneSelect={handlePitchZoneTap}
-          onCancel={cancelOverlay}
-          suggestedZone={ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined}
-        />
-      )}
     </div>
   )
 

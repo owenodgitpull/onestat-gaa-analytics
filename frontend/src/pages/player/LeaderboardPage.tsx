@@ -29,21 +29,36 @@ export default function LeaderboardPage() {
   const [activeCategory, setActiveCategory] = useState(initialCategory);
   const [showInfo, setShowInfo] = useState(false);
 
+  // Competition + recent-matches filter — applies to every category, not
+  // just the active tab, so switching tabs keeps whatever scope is chosen.
+  const [competition, setCompetition] = useState<string | null>(null);
+  const [lastN, setLastN] = useState<number | null>(null);
+  const filter = { competition, lastN };
+  const hasFilter = !!(competition || lastN);
+
+  const { data: competitions } = useQuery({
+    queryKey: ['player-portal-competitions'],
+    queryFn: playerPortalAPI.getCompetitions,
+    staleTime: 1000 * 60 * 30,
+  });
+
   const { data, isLoading } = useQuery({
-    queryKey: ['player-leaderboards'],
-    queryFn: playerPortalAPI.getAllLeaderboards,
+    queryKey: ['player-leaderboards', competition, lastN],
+    queryFn: () => playerPortalAPI.getAllLeaderboards(filter),
     staleTime: 1000 * 60 * 5, // Standings only change after a match/GPS/training upload
   });
 
   const { data: fullData, isLoading: fullLoading } = useQuery({
-    queryKey: ['player-leaderboard-full', activeCategory],
-    queryFn: () => playerPortalAPI.getSingleLeaderboard(activeCategory),
+    queryKey: ['player-leaderboard-full', activeCategory, competition, lastN],
+    queryFn: () => playerPortalAPI.getSingleLeaderboard(activeCategory, filter),
     staleTime: 1000 * 60 * 5,
   });
 
-  // Cache previous ranks in localStorage for rank change indicators
+  // Cache previous ranks in localStorage for rank change indicators — only
+  // meaningful for the unfiltered, all-matches view, since a filtered
+  // ranking isn't comparable to the baseline it'd otherwise be diffed against.
   useEffect(() => {
-    if (data?.leaderboards) {
+    if (data?.leaderboards && !hasFilter) {
       const prev = localStorage.getItem('leaderboard_ranks');
       if (prev) {
         // Already stored — don't overwrite until next session
@@ -55,7 +70,7 @@ export default function LeaderboardPage() {
       });
       localStorage.setItem('leaderboard_ranks', JSON.stringify(ranks));
     }
-  }, [data]);
+  }, [data, hasFilter]);
 
   const activeMeta = CATEGORIES.find((c) => c.key === activeCategory)!;
   const activeBoard = data?.leaderboards?.find((b) => b.category === activeCategory);
@@ -72,6 +87,37 @@ export default function LeaderboardPage() {
   return (
     <div className="space-y-5 pb-4">
       <PlayerHeader title="Leaderboards" />
+
+      {/* Scope filter — competition + recent-matches window, applies to every category */}
+      <div className="flex items-center gap-2 px-1 overflow-x-auto scrollbar-hide">
+        <select
+          value={competition ?? ''}
+          onChange={(e) => setCompetition(e.target.value || null)}
+          className="flex-shrink-0 bg-white/[0.06] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white/80 focus:outline-none focus:border-white/30"
+        >
+          <option value="">All competitions</option>
+          {(competitions || []).map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        {[
+          { label: 'All matches', value: null },
+          { label: 'Last 5', value: 5 },
+          { label: 'Last 3', value: 3 },
+        ].map((opt) => (
+          <button
+            key={opt.label}
+            onClick={() => setLastN(opt.value)}
+            className={`flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              lastN === opt.value
+                ? 'bg-white/15 text-white border border-white/20'
+                : 'bg-white/[0.04] text-white/50 border border-transparent hover:bg-white/[0.08]'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
 
       {/* Category Tabs — horizontal scroll */}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x scrollbar-hide">

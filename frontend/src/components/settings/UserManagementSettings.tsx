@@ -1,9 +1,24 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Shield, ShieldOff, UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock, RefreshCw, Send, Trash2 } from 'lucide-react'
+import { UserX, UserCheck, Loader2, Copy, Check, UserPlus, Mail, Clock, RefreshCw, Send, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { clubMembersAPI } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 // ClubContext no longer needed — invite code fetched from API
 import type { ClubMember } from '../../types'
+
+const ROLE_LABELS: Record<string, string> = { club_admin: 'Admin', player: 'Player', viewer: 'Viewer' }
+const ROLE_BADGE_CLASS: Record<string, string> = {
+  club_admin: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  player: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  viewer: 'bg-slate-500/10 text-slate-300 border-slate-500/20',
+}
+function roleLabel(role: string): string {
+  return ROLE_LABELS[role] || role
+}
+function roleBadgeClass(role: string): string {
+  return ROLE_BADGE_CLASS[role] || ROLE_BADGE_CLASS.player
+}
+
+const MEMBERS_PAGE_SIZE = 10
 
 interface PendingInvitation {
   id: string
@@ -38,6 +53,7 @@ export default function UserManagementSettings() {
   const [resendingId, setResendingId] = useState<string | null>(null)
   const [resendSuccess, setResendSuccess] = useState<string | null>(null)
   const [deletingInviteId, setDeletingInviteId] = useState<string | null>(null)
+  const [membersPage, setMembersPage] = useState(1)
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -72,7 +88,7 @@ export default function UserManagementSettings() {
   }
 
   const handleRoleChange = async (memberId: string, newRole: string) => {
-    if (!confirm(`Change this user's role to ${newRole === 'club_admin' ? 'Admin' : 'Player'}?`)) return
+    if (!confirm(`Change this user's role to ${roleLabel(newRole)}?`)) return
     setActionLoading(memberId)
     try {
       await clubMembersAPI.changeRole(memberId, newRole)
@@ -161,6 +177,19 @@ export default function UserManagementSettings() {
 
   const isSelf = (id: string) => id === user?.id
 
+  const membersTotalPages = Math.max(1, Math.ceil(members.length / MEMBERS_PAGE_SIZE))
+  const paginatedMembers = members.slice(
+    (membersPage - 1) * MEMBERS_PAGE_SIZE,
+    membersPage * MEMBERS_PAGE_SIZE,
+  )
+
+  // If a deactivate/role-change refetch shrinks the list (or the list was
+  // just re-sorted) and the current page no longer exists, step back rather
+  // than showing a blank page.
+  useEffect(() => {
+    if (membersPage > membersTotalPages) setMembersPage(membersTotalPages)
+  }, [membersPage, membersTotalPages])
+
   const inputClass = "w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-colors text-sm [&>option]:bg-slate-800 [&>option]:text-white"
 
   return (
@@ -220,6 +249,7 @@ export default function UserManagementSettings() {
                   onChange={e => setInviteRole(e.target.value)}
                 >
                   <option value="club_admin">Admin</option>
+                  <option value="viewer">Viewer (read-only)</option>
                   <option value="player">Player</option>
                 </select>
               </div>
@@ -272,12 +302,8 @@ export default function UserManagementSettings() {
                     }
                   </p>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                  inv.role === 'club_admin'
-                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                    : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                }`}>
-                  {inv.role === 'club_admin' ? 'Admin' : 'Player'}
+                <span className={`text-xs px-2 py-0.5 rounded-full border ${roleBadgeClass(inv.role)}`}>
+                  {roleLabel(inv.role)}
                 </span>
                 {inv.status === 'expired' && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">Expired</span>
@@ -353,7 +379,7 @@ export default function UserManagementSettings() {
         <div className="flex justify-center py-8"><Loader2 size={24} className="animate-spin text-white/30" /></div>
       ) : (
         <div className="space-y-2">
-          {members.map(member => (
+          {paginatedMembers.map(member => (
             <div key={member.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-500/30 to-cyan-500/30 flex items-center justify-center flex-shrink-0">
                 <span className="text-xs font-bold text-white/70">
@@ -370,14 +396,14 @@ export default function UserManagementSettings() {
                 <p className="text-xs text-white/40 truncate">{member.email}</p>
               </div>
 
-              {/* Role badge */}
-              <span className={`text-xs px-2 py-1 rounded-full border ${
-                member.role === 'club_admin'
-                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                  : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-              }`}>
-                {member.role === 'club_admin' ? 'Admin' : 'Player'}
-              </span>
+              {/* Role badge — static for self (can't change your own role), the
+                  interactive select below doubles as both display and control
+                  for everyone else, so it's not shown redundantly here too. */}
+              {isSelf(member.id) && (
+                <span className={`text-xs px-2 py-1 rounded-full border ${roleBadgeClass(member.role)}`}>
+                  {roleLabel(member.role)}
+                </span>
+              )}
 
               {/* Status */}
               {!member.is_active && (
@@ -387,15 +413,17 @@ export default function UserManagementSettings() {
               {/* Actions (hidden for self) */}
               {!isSelf(member.id) && (
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleRoleChange(member.id, member.role === 'club_admin' ? 'player' : 'club_admin')}
+                  <select
+                    value={member.role}
+                    onChange={e => handleRoleChange(member.id, e.target.value)}
                     disabled={actionLoading === member.id}
-                    className="p-1.5 rounded-lg hover:bg-white/5 text-white/30 hover:text-amber-400 transition-colors disabled:opacity-50"
-                    title={member.role === 'club_admin' ? 'Demote to Player' : 'Promote to Admin'}
+                    className={`text-xs px-2 py-1 rounded-full border bg-transparent disabled:opacity-50 focus:outline-none [&>option]:bg-slate-800 [&>option]:text-white ${roleBadgeClass(member.role)}`}
+                    title="Change role"
                   >
-                    {actionLoading === member.id ? <Loader2 size={14} className="animate-spin" /> :
-                      member.role === 'club_admin' ? <ShieldOff size={14} /> : <Shield size={14} />}
-                  </button>
+                    <option value="club_admin">Admin</option>
+                    <option value="viewer">Viewer</option>
+                    <option value="player">Player</option>
+                  </select>
                   <button
                     onClick={() => handleToggleActive(member.id, member.is_active)}
                     disabled={actionLoading === member.id}
@@ -410,6 +438,28 @@ export default function UserManagementSettings() {
               )}
             </div>
           ))}
+
+          {membersTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => setMembersPage(p => Math.max(1, p - 1))}
+                disabled={membersPage === 1}
+                className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="text-sm text-white/50">Page {membersPage} of {membersTotalPages}</span>
+              <button
+                onClick={() => setMembersPage(p => Math.min(membersTotalPages, p + 1))}
+                disabled={membersPage === membersTotalPages}
+                className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                aria-label="Next page"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          )}
         </div>
       )}
 

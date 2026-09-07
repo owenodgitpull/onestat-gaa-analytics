@@ -66,8 +66,12 @@ export default function ManMarkingPanel({
             className="w-full bg-white/10 border border-white/15 rounded-lg px-3 py-2 text-sm text-white [&>option]:bg-slate-800 [&>option]:text-white"
           >
             <option value="">Select our player...</option>
+            {/* No jersey number here — GAA has no fixed squad numbers, only
+                per-match lineup numbers (handled separately in Select
+                Lineup), so a static Player.jersey_number would be
+                misleading rather than useful. */}
             {activePlayers.map(p => (
-              <option key={p.id} value={p.id}>{p.name} {p.jersey_number ? `#${p.jersey_number}` : ''}</option>
+              <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
           <input

@@ -9,6 +9,7 @@ import {
   Legend,
 } from 'recharts'
 import type { SpeedZoneBucket } from '@/services/api'
+import { parseLocalDate } from '@/utils/dateUtils'
 
 interface Props {
   data: SpeedZoneBucket[]
@@ -17,7 +18,7 @@ interface Props {
 export default function SpeedZoneChart({ data }: Props) {
   const formatted = data.map(d => ({
     ...d,
-    label: new Date(d.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+    label: parseLocalDate(d.session_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
   }))
 
   const CustomTooltip = ({ active, payload, label }: any) => {

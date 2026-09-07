@@ -94,6 +94,11 @@ GAA_ESSENTIALS = """
 - Score format: Goals-Points (e.g., 2-14 = 2 goals + 14 points = 20 total)
 - Points includes: play points, frees (point_free), 45s (forty_five) — always sum ALL of these
 - When describing results use GAA margin language: "won by 4 points", "a 1-point win", "lost by 7 points". Always state the margin, not just the raw score.
+- "From play" vs "from a free" is about event_type, not point value: goal/point/two_point are ALL
+  from play. point_free/two_point_free/forty_five are the free-kick/45 equivalents. A 2-pointer
+  (two_point) is a from-play score just like a point is — never describe a match as having "no score
+  from play" while also crediting a two-pointer, unless that two-pointer was specifically a
+  two_point_free. Treat two_point the same as point/goal when summing "scored from play."
 
 ## Positions (15 players)
 1. GK (Goalkeeper)  2. RCB  3. FB (Full Back)  4. LCB
@@ -132,12 +137,52 @@ Events include a "location" field with human-readable zone descriptions. Use the
   those as carrier/transition events and explain this to the user.
 
 ## Key Interpretations (do NOT get these backwards)
+- free_short_pass / free_high_ball: the team chose NOT to shoot from a free and instead played it short
+  (quick restart, kept possession close) or long/high (a contestable ball, usually into the square). These
+  are tactical decisions, not misses or shots — never count them in shooting accuracy, wides, or shot totals.
+  Worth a mention in Tactical Analysis if one team leaned heavily on one option (e.g. "opted to play frees
+  short on 4 of 6 occasions, prioritising retained possession over direct shots").
+- "short" is NOT the same event as "free_short_pass" despite the shared word — do not conflate them.
+  A plain SHORT event is a MISS: a shot (open play or from a free) that didn't have the legs to reach
+  the target. It is an outcome, not a choice — never describe it as the player "opting" or "choosing" to
+  go short, and never apply the free_short_pass "prioritising retention" framing to it. Confirmed live
+  2026-09-07: a missed free-kick shot logged as SHORT was wrongly narrated as "opted to play it short,
+  prioritising retention" — that phrasing belongs only to a genuine free_short_pass event.
 - Possession %: >50% = we had MORE of the ball — dominant. 57% is GOOD, not a concern.
 - Turnover differential: POSITIVE = good (won more than lost). +1 means we edged the battle.
 - Opp kickout win %: % of the OPPONENT's kickouts that WE win — 35% means we won 35 of theirs.
   Above 40% is dominant; 30-40% is competitive. Do NOT confuse with our own kickout retention.
 - Our kickout retention %: % of OUR OWN kickouts we keep. Above 60% is the target.
 - ACWR > 1.5 = high injury risk; ACWR 0.8-1.3 = optimal; "INSUFFICIENT BASELINE" = early season, not enough history yet — do NOT flag as risky.
+
+## Starting XV / Team Selection — CRITICAL
+When asked to suggest a starting 15, a team, or where a specific player should line up:
+1. Call get_recent_lineup_history FIRST and default every player to their "usual_position" from that
+   tool's output — their actual position across recent real match lineups, not a guess from GPS
+   coverage zones, general form, or a player's single static profile position (which can be a stale
+   default). Moving a player to a new position should be rare and always justified with a specific,
+   stated reason (an injury to the incumbent, a clear tactical matchup, a documented form issue) —
+   never a silent, unexplained swap. Flag any change explicitly via is_change + note rather than
+   presenting the new position as if it were already his.
+2. If this is a lineup for an UPCOMING match (not a retrospective "team of the season"-style honour),
+   also call get_workload_risk_assessment for the players you're selecting. Do NOT exclude a player
+   purely for a high ACWR or heavy recent load — you're flagging a caution, not making a medical call.
+   Note it alongside the pick instead: "Magee is the clear pick on form, but he's carrying a 2.1 ACWR —
+   worth checking with him/the physio before committing." A player with no elevated risk needs no
+   mention; only call out the ones that stand out.
+3. Call display_starting_lineup to SHOW the result — never write a starting 15 out as markdown text or
+   a table. The user wants to see it laid out on the pitch, the same way it's shown everywhere else in
+   this app, not read as a list. This applies even for a quick/informal ask ("who should start Sunday?")
+   — call the tool, don't describe it in prose.
+
+## Comparing Many Players — CRITICAL
+Any question touching more than a couple of players at once — "team of the season", "who are our top
+performers", a full-squad shortlist, ranking the whole panel by some stat — MUST use
+get_squad_season_stats (one call, every player). NEVER call get_player_season_stats in a loop, once per
+player, to answer this kind of question: doing that for ~15-20 players is slow enough on its own to blow
+the chat turn's response-time budget and can cause the whole reply to fail to come back. Reserve
+get_player_season_stats for a genuine single-player deep-dive after the squad-wide view has narrowed
+things down.
 """
 
 
@@ -278,14 +323,128 @@ TOOLS = [
         }
     },
     {
+        "name": "get_recent_lineup_history",
+        "description": (
+            "Get each player's ACTUAL starting position from their recent match lineups — this is the "
+            "ground truth for 'what position does this player usually play', not the static position "
+            "field on their profile (which can be a general/default category and drift out of date). "
+            "ALWAYS call this before suggesting a starting team/lineup, team selection, or any 'starting 15'. "
+            "Default every named player to their 'usual_position' from this tool's output. Only propose "
+            "moving a player to a different position when you have a specific, stated tactical or fitness "
+            "reason — and even then, present it explicitly as a suggested CHANGE from their usual role "
+            "('normally plays X, but suggesting Y here because...'), never as if it were already their "
+            "position. Deviations should be rare, not the default."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_name": {
+                    "type": "string",
+                    "description": "Optional — filter to one player (partial name match). Omit to get the whole squad."
+                },
+                "num_matches": {
+                    "type": "integer",
+                    "description": "How many of the player's most recent starts to consider (default 5)."
+                }
+            }
+        }
+    },
+    {
+        "name": "display_starting_lineup",
+        "description": (
+            "Render a starting 15 (and optional subs) visually on the pitch. ALWAYS use this — never "
+            "write a lineup out as markdown text or a table — whenever the user asks for a starting 15, "
+            "a team selection, or 'who should start'. Call get_recent_lineup_history first to ground "
+            "each player's position, then pass your final selection here: one entry per formation slot "
+            "using these exact position_id values — gk, fb-left, fb-center, fb-right, hb-left, "
+            "hb-center, hb-right, mf-left, mf-right, hf-left, hf-center, hf-right, ff-left, ff-center, "
+            "ff-right. Set is_change + a short note only on entries where you're deliberately moving a "
+            "player away from their usual recent position."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Chart title, e.g. 'Starting 15 vs Downings'"},
+                "lineup": {
+                    "type": "array",
+                    "description": "Exactly one entry per starting position (15 total, one per position_id).",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "position_id": {
+                                "type": "string",
+                                "enum": [
+                                    "gk", "fb-left", "fb-center", "fb-right",
+                                    "hb-left", "hb-center", "hb-right",
+                                    "mf-left", "mf-right",
+                                    "hf-left", "hf-center", "hf-right",
+                                    "ff-left", "ff-center", "ff-right",
+                                ],
+                            },
+                            "player_name": {"type": "string"},
+                            "jersey_number": {"type": "integer"},
+                            "is_change": {
+                                "type": "boolean",
+                                "description": "true only if deliberately moving this player from their usual recent position",
+                            },
+                            "note": {"type": "string", "description": "Required when is_change is true — brief reason"},
+                        },
+                        "required": ["position_id", "player_name"],
+                    },
+                },
+                "subs": {
+                    "type": "array",
+                    "description": "Optional bench list",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "player_name": {"type": "string"},
+                            "jersey_number": {"type": "integer"},
+                        },
+                        "required": ["player_name"],
+                    },
+                },
+                "insight": {"type": "string", "description": "Optional short note shown alongside the chart"},
+            },
+            "required": ["lineup"],
+        },
+    },
+    {
+        "name": "get_squad_season_stats",
+        "description": (
+            "Every active player's season stats (goals, points, 2-pointers, assists, turnovers, "
+            "shooting accuracy, blocks, matches played) in ONE call. ALWAYS use this instead of "
+            "calling get_player_season_stats in a loop whenever comparing many or all players at once — "
+            "'team of the season', 'who are our top performers', 'best XV', a full-squad shortlist, etc. "
+            "Calling the single-player tool once per player for a squad-wide question is slow enough to "
+            "blow the chat's response-time budget and can make the turn fail to complete. Only use "
+            "get_player_season_stats for a genuine single-player deep-dive. Supports a competition "
+            "filter — use it for any follow-up narrowing to 'championship', 'league', etc. rather than "
+            "trying to filter manually from raw match/event data."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "competition": {
+                    "type": "string",
+                    "description": "Optional — case-insensitive substring match against each match's competition name, e.g. 'championship' or 'league'. Omit for the full season."
+                }
+            },
+        },
+    },
+    {
         "name": "get_player_season_stats",
-        "description": "Get aggregated statistics for a player across all matches this season. IMPORTANT: You must use search_players first to get the player's UUID.",
+        "description": "Get aggregated statistics for a player across all matches this season. IMPORTANT: You must use search_players first to get the player's UUID. Supports a competition filter for narrowing to 'championship'/'league'/etc.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "player_id": {
                     "type": "string",
                     "description": "The UUID of the player (get this from search_players first)"
+                },
+                "competition": {
+                    "type": "string",
+                    "description": "Optional — case-insensitive substring match against each match's competition name, e.g. 'championship' or 'league'. Omit for the full season."
                 }
             },
             "required": ["player_id"]
@@ -293,10 +452,15 @@ TOOLS = [
     },
     {
         "name": "get_team_season_stats",
-        "description": "Get aggregated team statistics for the entire season",
+        "description": "Get aggregated team statistics for the entire season. Supports a competition filter for narrowing to 'championship'/'league'/etc.",
         "input_schema": {
             "type": "object",
-            "properties": {}
+            "properties": {
+                "competition": {
+                    "type": "string",
+                    "description": "Optional — case-insensitive substring match against each match's competition name, e.g. 'championship' or 'league'. Omit for the full season."
+                }
+            },
         }
     },
     {
@@ -318,7 +482,7 @@ TOOLS = [
     },
     {
         "name": "get_scoring_patterns",
-        "description": "Analyze scoring patterns - where goals/points come from, conversion rates by zone",
+        "description": "Analyze scoring patterns - where goals/points come from, conversion rates by zone. Shots from open play only — frees, 45s and two-point frees are deliberately excluded (dead-ball attempts are far easier to convert than the same range from play, so mixing them in would inflate a zone's apparent shooting quality). State this scope when quoting a zone's conversion rate.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -447,6 +611,19 @@ TOOLS = [
         }
     },
     {
+        "name": "get_kickout_targets",
+        "description": "Who our own kickouts are aimed at, and how often that target actually retains possession. Use for questions like 'who do we target most on kickouts' or 'which kickout target has the best success rate'. Only covers own_kickout_* events with a target recorded — coverage may be partial since this is an optional field captured during live recording.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "Match UUID, or 'recent'/'latest' for most recent match, or omit for season-wide across all completed matches"
+                }
+            }
+        }
+    },
+    {
         "name": "generate_chart",
         "description": "Generate a data visualization chart (bar, line, pie, area, radar, scatter). Use for statistical comparisons, trends, distributions — NOT for pitch/spatial visualizations (use get_pitch_paths for those).",
         "input_schema": {
@@ -539,13 +716,18 @@ TOOLS = [
     },
     {
         "name": "web_search",
-        "description": "Search the web for GAA results, team form, player stats, news. Use this to research opposition teams, find recent county results, check league tables, etc. Returns relevant web snippets.",
+        "description": "Search the web for GAA results, team form, player stats, news. Use this to research opposition teams, find recent county results, check league tables, etc. Returns a mix of dated news results and general web snippets — always read each result's \"date\" field (when present) before using it, and say what season/year a stat is from rather than presenting it as current. Undated general-web results can surface old (even prior-season) pages ranked purely by relevance, so prefer the dated news results for anything about current form, a recent result, or an upcoming fixture.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
                     "description": "The search query (e.g. 'Kilcar GAA Donegal senior football results 2026')"
+                },
+                "recency": {
+                    "type": "string",
+                    "enum": ["week", "month", "year", "any"],
+                    "description": "How far back to search. Use 'week' for 'this weekend'/last match/upcoming-fixture questions, 'month' for current form and recent results (default), 'year' or 'any' only for season-long or historical/all-time stats."
                 }
             },
             "required": ["query"]
@@ -748,10 +930,16 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_match_summary(db, **tool_input, club_id=club_id)
     elif tool_name == "search_players":
         return await search_players(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_recent_lineup_history":
+        return await get_recent_lineup_history(db, **tool_input, club_id=club_id)
+    elif tool_name == "display_starting_lineup":
+        return display_starting_lineup(**tool_input)
+    elif tool_name == "get_squad_season_stats":
+        return await get_squad_season_stats(db, **tool_input, club_id=club_id)
     elif tool_name == "get_player_season_stats":
         return await get_player_season_stats(db, **tool_input, club_id=club_id)
     elif tool_name == "get_team_season_stats":
-        return await get_team_season_stats(db, club_id=club_id)
+        return await get_team_season_stats(db, **tool_input, club_id=club_id)
     elif tool_name == "get_stats_by_half":
         return await get_stats_by_half(db, tool_input.get("match_id"), tool_input.get("half"), club_id=club_id)
     elif tool_name == "get_scoring_patterns":
@@ -770,6 +958,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_training_session_gps(db, **tool_input, club_id=club_id)
     elif tool_name == "get_pitch_paths":
         return await get_pitch_paths(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_kickout_targets":
+        return await get_kickout_targets(db, **tool_input, club_id=club_id)
     elif tool_name == "generate_chart":
         return await _execute_generate_chart(db, tool_input.get("query", ""), club_id=club_id)
     elif tool_name == "create_data_table":
@@ -781,7 +971,7 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
     elif tool_name == "get_man_marking_history":
         return await get_man_marking_history(db, **tool_input, club_id=club_id)
     elif tool_name == "web_search":
-        return await web_search_tool(tool_input.get("query", ""))
+        return await web_search_tool(tool_input.get("query", ""), tool_input.get("recency", "month"))
     elif tool_name == "get_fitness_tests":
         return await get_fitness_tests(db, **tool_input, club_id=club_id)
     elif tool_name == "get_performance_correlations":
@@ -847,6 +1037,20 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
         if ev.player_id and ev.minute:
             sub_lookup[ev.player_id] = ev.minute
 
+    # Featured players (started, or came on as a sub) per the match lineup — this
+    # is ground truth, unlike the old distance/min heuristic below which used
+    # session-length noise to guess who never played and got it wrong for
+    # players whose GPS unit ran long before kickout (see PlayerDistanceChart fix).
+    from app.models.match_lineup import MatchLineup
+    lineup_result = await db.execute(
+        select(MatchLineup.player_id, MatchLineup.is_substitute, MatchLineup.is_on_field)
+        .where(MatchLineup.match_id == match_uuid)
+    )
+    lineup_rows = lineup_result.all()
+    featured_player_ids = {
+        pid for pid, is_sub, is_on_field in lineup_rows if not is_sub or is_on_field
+    } if lineup_rows else None  # None = no lineup saved for this match — don't filter
+
     # Calculate team totals and outfield averages
     outfield_rows = [
         (g, name, pos) for g, name, pos in gps_rows
@@ -865,6 +1069,7 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
 
     # Build per-player data
     players = []
+    bench_not_used = []
     for g, player_name, player_position in gps_rows:
         pos_val = player_position.value if hasattr(player_position, 'value') else player_position if player_position else None
         is_gk = pos_val == "goalkeeper"
@@ -878,7 +1083,7 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
             "high_speed_running_m": round(g.high_speed_running_m or 0),
             "hml_distance_m": round(g.hml_distance_m or 0),
             "sprint_count": g.sprint_count or 0,
-            "max_speed_kmh": round((g.max_speed_ms or 0) * 3.6, 1),
+            "max_speed_ms": round(g.max_speed_ms or 0, 2),
             "player_load": round(g.player_load or 0),
             "playing_minutes": g.playing_minutes or g.duration_mins,
         }
@@ -886,15 +1091,15 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
         if was_subbed:
             player_data["subbed_off_minute"] = sub_lookup[g.player_id]
 
-        # Flag players who appear to have never come on (bench player with GPS device)
-        # STATSports exports total session time (not playing time), so use distance/min as signal.
-        # Outfield players who played typically cover 70+ m/min; bench players show 20-40 m/min.
-        total_mins = (g.playing_minutes or g.duration_mins or 0)
-        distance_m = g.total_distance_m or 0
-        dist_per_min = (distance_m / total_mins) if total_mins > 0 else 0
-        is_unused_sub = not is_gk and not was_subbed and dist_per_min < 45 and distance_m < 5000
+        # Flag players who never left the bench, per the actual match lineup
+        is_unused_sub = featured_player_ids is not None and g.player_id not in featured_player_ids
         if is_unused_sub:
-            # Exclude unused subs from tool response — they didn't play, their GPS is bench-only noise
+            # Kept separately (name + distance only) — never mixed into match
+            # analysis/averages, but available for an optional one-line footnote
+            bench_not_used.append({
+                "name": player_name or "Unknown",
+                "total_distance_m": round(g.total_distance_m or 0),
+            })
             continue
         else:
             # Outlier flags for outfield full-match players only
@@ -921,6 +1126,7 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
         },
         "substitutions_count": len(sub_lookup),
         "players": players,
+        "bench_players_not_used": sorted(bench_not_used, key=lambda p: p["total_distance_m"], reverse=True) if bench_not_used else [],
     })
 
 
@@ -974,7 +1180,7 @@ async def get_training_session_gps(db: AsyncSession, session_id: str, club_id=No
             "total_distance_m": round(gps.total_distance_m or 0),
             "high_speed_running_m": round(gps.high_speed_running_m or 0),
             "sprint_count": gps.sprint_count or 0,
-            "max_speed_kmh": round((gps.max_speed_ms or 0) * 3.6, 1),
+            "max_speed_ms": round(gps.max_speed_ms or 0, 2),
             "dynamic_stress_load": round(gps.dynamic_stress_load or 0),
             "player_load": round(gps.player_load or 0) if gps.player_load else None,
         })
@@ -1027,6 +1233,90 @@ async def get_training_session_gps(db: AsyncSession, session_id: str, club_id=No
         },
         "recent_session_averages": recent_avg,
         "players": players,
+    })
+
+
+async def get_kickout_targets(db: AsyncSession, match_id: str = None, club_id=None) -> str:
+    """
+    Who OUR OWN kickouts are aimed at, and how often that target actually
+    retains possession. Scoped to own_kickout_* events only — this is about
+    our own kickout strategy, not opposition scouting.
+
+    kickout_target_player_id is a newly added, OPTIONAL field, captured via a
+    non-blocking jersey tap during live recording — never required to
+    complete recording a kickout. Coverage will be partial for a while:
+    matches recorded before this field existed, and any kickout where the
+    recorder didn't have a spare second to tap a target, will have no target
+    on file. Always report coverage alongside the numbers so it isn't
+    mistaken for a complete picture.
+    """
+    import uuid as uuid_mod
+    from app.models.match_event import MatchEvent, EventType, Team
+    from app.models.match import Match, MatchStatus
+    from app.models.player import Player
+
+    own_kickout_types = [
+        EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
+        EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
+        EventType.OWN_KICKOUT_SIDELINE,
+    ]
+    won_types = {EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK}
+
+    conditions = [MatchEvent.event_type.in_(own_kickout_types)]
+    if match_id and match_id.lower() not in ("recent", "latest", "last"):
+        try:
+            uuid_mod.UUID(match_id)
+        except ValueError:
+            return safe_json({"success": False, "error": f"'{match_id}' is not a valid match UUID"})
+        conditions.append(MatchEvent.match_id == match_id)
+    else:
+        completed_conditions = [Match.status == MatchStatus.COMPLETED]
+        if club_id:
+            completed_conditions.append(Match.club_id == club_id)
+        completed_ids = await db.execute(select(Match.id).where(*completed_conditions))
+        ids = [row[0] for row in completed_ids.fetchall()]
+        if not ids:
+            return safe_json({"success": False, "error": "No completed matches"})
+        conditions.append(MatchEvent.match_id.in_(ids))
+
+    result = await db.execute(select(MatchEvent).where(*conditions))
+    all_kickouts = list(result.scalars().all())
+    total_kickouts = len(all_kickouts)
+    targeted = [e for e in all_kickouts if e.kickout_target_player_id]
+
+    if not targeted:
+        return safe_json({
+            "success": True,
+            "total_own_kickouts": total_kickouts,
+            "kickouts_with_target_recorded": 0,
+            "targets": [],
+            "note": "No kickout target data recorded yet — this is a new optional field. Tell the user no target data exists for the scope they asked about, rather than guessing.",
+        })
+
+    player_ids = list({e.kickout_target_player_id for e in targeted})
+    pr = await db.execute(select(Player).where(Player.id.in_(player_ids)))
+    players = {p.id: p.name for p in pr.scalars().all()}
+
+    by_player: dict = {}
+    for e in targeted:
+        pid = e.kickout_target_player_id
+        row = by_player.setdefault(pid, {"player_name": players.get(pid, "Unknown"), "targeted": 0, "won": 0})
+        row["targeted"] += 1
+        if e.event_type in won_types:
+            row["won"] += 1
+
+    targets = []
+    for row in by_player.values():
+        row["win_pct"] = round(row["won"] / row["targeted"] * 100, 1) if row["targeted"] else 0.0
+        targets.append(row)
+    targets.sort(key=lambda r: -r["targeted"])
+
+    return safe_json({
+        "success": True,
+        "total_own_kickouts": total_kickouts,
+        "kickouts_with_target_recorded": len(targeted),
+        "coverage_pct": round(len(targeted) / total_kickouts * 100, 1) if total_kickouts else 0.0,
+        "targets": targets,
     })
 
 
@@ -1431,8 +1721,10 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     result = await db.execute(query)
     events = result.scalars().all()
 
-    # Get player names
+    # Get player names — includes assist_player_id too, so scoring events
+    # can carry the assist player's name alongside the scorer's.
     player_ids = [e.player_id for e in events if e.player_id]
+    player_ids += [e.assist_player_id for e in events if e.assist_player_id]
     players = {}
     if player_ids:
         player_result = await db.execute(select(Player).where(Player.id.in_(player_ids)))
@@ -1451,6 +1743,8 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             "y": e.pitch_y,
             "notes": e.notes,
         }
+        if e.assist_player_id:
+            event_dict["assist"] = players.get(str(e.assist_player_id), "Unknown")
         if e.sub_type:
             event_dict["sub_type"] = e.sub_type
         loc = _pitch_location(e.pitch_x, e.pitch_y)
@@ -1657,7 +1951,11 @@ async def get_weather_context(db: AsyncSession, limit: int = 5, club_id=None) ->
 
         lines = ["## Match Weather & Pitch Conditions"]
         for m in matches:
-            weather = m.weather_condition.value if m.weather_condition else "unknown"
+            # weather_conditions (plural) is the source of truth going
+            # forward — falls back to the legacy single field for matches
+            # recorded before multi-select weather existed.
+            weather_list = m.weather_conditions or ([m.weather_condition.value] if m.weather_condition else [])
+            weather = " + ".join(weather_list) if weather_list else "unknown"
             pitch = m.pitch_condition.value if m.pitch_condition else "unknown"
             temp = f"{m.temperature_celsius}°C" if m.temperature_celsius is not None else "N/A"
             wind = f"{m.wind_speed_kmh} km/h" if m.wind_speed_kmh is not None else "N/A"
@@ -1752,9 +2050,40 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     # Get player names
     if player_scores:
         player_result = await db.execute(select(Player).where(Player.id.in_([p for p in player_scores.keys()])))
-        players = {str(p.id): p.name for p in player_result.scalars().all()}
+        _player_rows = player_result.scalars().all()
+        players = {str(p.id): p.name for p in _player_rows}
+        # Player.position is a season-long default and can be stale/wrong for
+        # THIS match — a player can genuinely play a different role from
+        # game to game (e.g. an outfield player covering in goal). Fall back
+        # to it only when this match's own lineup doesn't say otherwise.
+        _player_default_position = {str(p.id): p.position for p in _player_rows if p.position}
     else:
         players = {}
+        _player_default_position = {}
+
+    # Position lets the report apply the right standard per role (e.g. not
+    # expecting open-play scores from a goalkeeper who took frees/45s; see
+    # player_breakdown below). Sourced from THIS match's actual lineup
+    # (position_id, e.g. 'gk') rather than Player.position, same rationale
+    # get_recent_lineup_history uses — a player's default position can be
+    # wrong for a specific game they covered a different role in.
+    _POSITION_ID_CATEGORY = {
+        'gk': 'goalkeeper',
+        'fb-left': 'defender', 'fb-center': 'defender', 'fb-right': 'defender',
+        'hb-left': 'defender', 'hb-center': 'defender', 'hb-right': 'defender',
+        'mf-left': 'midfielder', 'mf-right': 'midfielder',
+        'hf-left': 'forward', 'hf-center': 'forward', 'hf-right': 'forward',
+        'ff-left': 'forward', 'ff-center': 'forward', 'ff-right': 'forward',
+    }
+    from app.models.match_lineup import MatchLineup
+    _lineup_result = await db.execute(
+        select(MatchLineup.player_id, MatchLineup.position_id).where(MatchLineup.match_id == match_id)
+    )
+    player_positions = dict(_player_default_position)
+    for _row in _lineup_result.all():
+        _category = _POSITION_ID_CATEGORY.get(_row.position_id)
+        if _category:
+            player_positions[str(_row.player_id)] = _category
 
     top_scorers = []
     for pid, scores in player_scores.items():
@@ -1799,6 +2128,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
                 'yellow_cards': 0, 'black_cards': 0, 'red_cards': 0,
                 'blocks': 0, 'frees_won': 0,
                 'goals': 0, 'points': 0, 'two_pts': 0,
+                'points_dead_ball': 0, 'two_pts_dead_ball': 0,
             }
         _pb = _player_breakdown_raw[_pid]
         _et = e.event_type
@@ -1828,8 +2158,12 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             _pb['goals'] += 1
         elif _et in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}:
             _pb['points'] += 1
+            if _et in {EventType.POINT_FREE, EventType.FORTY_FIVE}:
+                _pb['points_dead_ball'] += 1
         elif _et in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}:
             _pb['two_pts'] += 1
+            if _et == EventType.TWO_POINT_FREE:
+                _pb['two_pts_dead_ball'] += 1
 
     # Resolve any player names not already in the players dict (from scorer lookup)
     _missing_ids = _breakdown_player_ids - set(players.keys())
@@ -1837,16 +2171,34 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
         _extra_res = await db.execute(select(Player).where(Player.id.in_(list(_missing_ids))))
         for _p in _extra_res.scalars().all():
             players[str(_p.id)] = _p.name
+            # Don't clobber a better this-match lineup position with the
+            # season-default one — only fill in if the lineup query above
+            # didn't already resolve a position for this player.
+            if _p.position and str(_p.id) not in player_positions:
+                player_positions[str(_p.id)] = _p.position
 
     # Build compact breakdown — only non-zero fields included
     player_breakdown = []
     for _pid, _pb in _player_breakdown_raw.items():
         _total_score = _pb['goals'] * 3 + _pb['points'] + _pb['two_pts'] * 2
         _entry: dict = {'name': players.get(_pid, 'Unknown')}
+        if _pid in player_positions:
+            _entry['position'] = player_positions[_pid]
         if _total_score:
             _entry['score'] = f"{_pb['goals']}-{_pb['points']}"
             if _pb['two_pts']:
                 _entry['two_pts'] = _pb['two_pts']
+            # All of this player's points/2pts came from frees/45s, not open
+            # play — flag it explicitly so the report never criticises a
+            # free-taker (often the goalkeeper) for lacking "scores from
+            # play". No goals means nothing here was a from-play finish.
+            _all_dead_ball = (
+                _pb['goals'] == 0
+                and _pb['points_dead_ball'] == _pb['points']
+                and _pb['two_pts_dead_ball'] == _pb['two_pts']
+            )
+            if _all_dead_ball:
+                _entry['scoring_note'] = 'all from frees/45s — none from open play'
         if _pb['unforced_errors']:
             _entry['unforced_errors'] = _pb['unforced_errors']
             if _pb['error_subtypes']:
@@ -1878,23 +2230,63 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     ))
 
     # Count other stats - use EventType and Team enums
-    # turnovers_won = own TURNOVER_WON + own INTERCEPTION + own TACKLE_WON
-    # turnovers_lost = own TURNOVER_LOST + opp INTERCEPTION + opp TACKLE_WON (symmetric with opp won count)
-    _turnover_won_types = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}
-    turnovers_won = len([e for e in events if e.team == Team.OWN and e.event_type in _turnover_won_types])
-    turnovers_lost = (
-        len([e for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST]) +
-        len([e for e in events if e.team == Team.OPPONENT and e.event_type in {EventType.INTERCEPTION, EventType.TACKLE_WON}])
-    )
-    unforced_errors = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.UNFORCED_ERROR])
+    # Turnovers won/lost — single-pass symmetric definition, kept identical to
+    # match_service.py's calculate_match_stats (the human-facing sidebar/KPI
+    # cards) on purpose. The old version here only counted each team's own
+    # direct TURNOVER_WON/INTERCEPTION/TACKLE_WON events and never credited a
+    # team with a turnover won when the OTHER team recorded TURNOVER_LOST or
+    # UNFORCED_ERROR — even though that's the same turnover from the other
+    # side. That caused the AI report and the sidebar to show different
+    # numbers for the same match (e.g. AI said the opposition won 1 turnover
+    # while the sidebar showed 14).
+    turnovers_won = 0
+    turnovers_lost = 0
+    opp_turnovers_won = 0
+    opp_turnovers_lost = 0
+    unforced_errors = 0
+    opp_unforced_errors = 0
+    _direct_won_types = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}
+    for _e in events:
+        _is_own = _e.team == Team.OWN
+        if _e.event_type in _direct_won_types:
+            if _is_own:
+                turnovers_won += 1
+            else:
+                opp_turnovers_won += 1
+        elif _e.event_type == EventType.TURNOVER_LOST:
+            if _is_own:
+                turnovers_lost += 1
+                opp_turnovers_won += 1
+            else:
+                opp_turnovers_lost += 1
+                turnovers_won += 1
+        elif _e.event_type == EventType.UNFORCED_ERROR:
+            if _is_own:
+                turnovers_lost += 1
+                opp_turnovers_won += 1
+                unforced_errors += 1
+            else:
+                opp_turnovers_lost += 1
+                turnovers_won += 1
+                opp_unforced_errors += 1
+
     blocks = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.BLOCK])
     fouls_committed = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FOUL_COMMITTED])
     frees_won = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FREE_WON])
-    opp_fouls_committed = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.FOUL_COMMITTED])
-    opp_unforced_errors = len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.UNFORCED_ERROR])
+    # The opponent's own fouls are never logged directly as
+    # team=OPPONENT/FOUL_COMMITTED — the recording UI captures the same
+    # real-world event from our side as "we won a foul" (FOUL_WON, team=OWN)
+    # instead. Counting only the direct (always-empty) form previously made
+    # every match report show "0" opponent fouls no matter how many free
+    # kicks we actually won off them — confirmed live 2026-09-07 (own 13,
+    # Termon reported as 0 despite 10 logged FOUL_WON). Sum both forms so
+    # this is correct regardless of which convention produced the data.
+    opp_fouls_committed = (
+        len([e for e in events if e.team == Team.OPPONENT and e.event_type == EventType.FOUL_COMMITTED])
+        + len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FOUL_WON])
+    )
     _wide_types = {EventType.WIDE, EventType.WIDE_FREE}
     wides = len([e for e in events if e.team == Team.OWN and e.event_type in _wide_types])
-    opp_turnovers_won = len([e for e in events if e.team == Team.OPPONENT and e.event_type in _turnover_won_types])
     opp_wides = len([e for e in events if e.team == Team.OPPONENT and e.event_type in _wide_types])
 
     # Calculate shots and accuracy
@@ -1988,8 +2380,10 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             "opponent_accuracy": opp_accuracy,
             "opponent_possession_percentage": opp_possession,
             "opponent_turnovers_won": opp_turnovers_won,
+            "opponent_turnovers_lost": opp_turnovers_lost,
             "opponent_fouls_committed": opp_fouls_committed,
             "opponent_unforced_errors": opp_unforced_errors,
+            "opponent_wides": opp_wides,
         },
         "recent_events": [
             {
@@ -2005,9 +2399,11 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
         "player_breakdown": player_breakdown,
         "player_breakdown_note": (
             "player_breakdown: per-player stats for OWN team. Sorted by most errors/turnovers first. "
-            "Fields only present when non-zero: score (G-P), two_pts, unforced_errors, error_subtypes, "
-            "turnovers_lost, turnovers_won, wides, fouls_committed, blocks, frees_won, yellow_card, "
-            "black_card, red_card. USE THESE TO NAME SPECIFIC PLAYERS in your insights."
+            "Fields only present when non-zero/set: position (goalkeeper/defender/midfielder/forward — "
+            "APPLY DIFFERENT STANDARDS BY POSITION, see rule below), score (G-P), two_pts, scoring_note "
+            "(present when every score was a free/45 — do not read this as a weakness), unforced_errors, "
+            "error_subtypes, turnovers_lost, turnovers_won, wides, fouls_committed, blocks, frees_won, "
+            "yellow_card, black_card, red_card. USE THESE TO NAME SPECIFIC PLAYERS in your insights."
         ),
     })
 
@@ -2039,8 +2435,243 @@ async def search_players(db: AsyncSession, name: str, club_id=None) -> str:
     })
 
 
-async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None) -> str:
-    """Get aggregated stats for a player across the season."""
+LINEUP_POSITION_LABELS = {
+    'gk': 'Goalkeeper (1)',
+    'fb-left': 'Left Corner Back (4)', 'fb-center': 'Full Back (3)', 'fb-right': 'Right Corner Back (2)',
+    'hb-left': 'Left Half Back (7)', 'hb-center': 'Centre Half Back (6)', 'hb-right': 'Right Half Back (5)',
+    'mf-left': 'Midfield (8)', 'mf-right': 'Midfield (9)',
+    'hf-left': 'Left Half Forward (12)', 'hf-center': 'Centre Half Forward (11)', 'hf-right': 'Right Half Forward (10)',
+    'ff-left': 'Left Corner Forward (15)', 'ff-center': 'Full Forward (14)', 'ff-right': 'Right Corner Forward (13)',
+}
+
+
+async def get_recent_lineup_history(db: AsyncSession, player_name: str = None, num_matches: int = 5, club_id=None) -> str:
+    """Each player's actual starting position from real MatchLineup rows across
+    their recent starts — the ground truth for "what position does X usually
+    play". A player's Player.position field is a single static category (can
+    be a general default, or drift stale over a season); actual lineup history
+    is what the user means by "tried and tested" and should anchor any
+    starting-XV suggestion, not GPS zones or general reasoning alone."""
+    from app.models.match_lineup import MatchLineup
+    from collections import defaultdict
+
+    match_q = select(Match.id, Match.match_date).where(
+        Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)
+    )
+    if club_id:
+        match_q = match_q.where(Match.club_id == club_id)
+    # Look back further than num_matches — some recent matches may have no saved lineup.
+    match_q = match_q.order_by(Match.match_date.desc()).limit(25)
+    matches = (await db.execute(match_q)).all()
+    if not matches:
+        return safe_json({"message": "No completed matches found", "players": []})
+
+    match_ids = [m.id for m in matches]
+    match_date_by_id = {m.id: m.match_date.isoformat() if m.match_date else None for m in matches}
+    match_order = {m.id: i for i, m in enumerate(matches)}  # 0 = most recent
+
+    lineup_q = (
+        select(MatchLineup.match_id, MatchLineup.player_id, MatchLineup.position_id, Player.name)
+        .join(Player, Player.id == MatchLineup.player_id)
+        .where(MatchLineup.match_id.in_(match_ids), MatchLineup.is_substitute.is_(False))
+    )
+    if club_id:
+        lineup_q = lineup_q.where(Player.club_id == club_id)
+    if player_name:
+        lineup_q = lineup_q.where(Player.name.ilike(f"%{player_name}%"))
+    rows = (await db.execute(lineup_q)).all()
+
+    if not rows:
+        return safe_json({
+            "message": "No saved lineup history found" + (f" for '{player_name}'" if player_name else ""),
+            "players": [],
+        })
+
+    by_player = defaultdict(list)
+    for match_id, pid, position_id, name in rows:
+        by_player[(pid, name)].append((match_order[match_id], position_id, match_date_by_id[match_id]))
+
+    players_out = []
+    for (pid, name), entries in by_player.items():
+        entries.sort(key=lambda e: e[0])
+        recent = entries[:num_matches]
+        counts: dict = {}
+        for _, p, _ in recent:
+            counts[p] = counts.get(p, 0) + 1
+        usual = max(counts, key=counts.get)
+        players_out.append({
+            "player_id": str(pid),
+            "player_name": name,
+            "starts_in_window": len(recent),
+            "usual_position": LINEUP_POSITION_LABELS.get(usual, usual),
+            "usual_position_id": usual,
+            "consistent": counts[usual] == len(recent),
+            "position_history": [
+                {"match_date": d, "position": LINEUP_POSITION_LABELS.get(p, p)} for _, p, d in recent
+            ],
+        })
+
+    players_out.sort(key=lambda p: p["player_name"])
+    return safe_json({
+        "note": (
+            "usual_position is each player's most common ACTUAL starting position across recent "
+            "starts — treat this as the default for any lineup suggestion. Only deviate with a "
+            "specific stated reason, and flag any deviation explicitly as a change from their "
+            "usual role rather than presenting it as fact."
+        ),
+        "players": players_out,
+    })
+
+
+VALID_LINEUP_POSITION_IDS = {
+    "gk", "fb-left", "fb-center", "fb-right",
+    "hb-left", "hb-center", "hb-right",
+    "mf-left", "mf-right",
+    "hf-left", "hf-center", "hf-right",
+    "ff-left", "ff-center", "ff-right",
+}
+
+
+def display_starting_lineup(
+    lineup: list = None, subs: list = None, title: str = None, insight: str = None
+) -> str:
+    """Build a chart spec the frontend renders as players positioned on the
+    pitch (DynamicChart.tsx's 'lineup' case), instead of a markdown list —
+    same envelope shape as get_pitch_paths so the existing SSE chart-event
+    wiring in chat_agent.py picks it up without any special-casing there
+    beyond the tool-name check."""
+    import uuid as uuid_mod
+
+    lineup = lineup or []
+    seen_positions = set()
+    data = []
+    for entry in lineup:
+        pos = entry.get("position_id")
+        if pos not in VALID_LINEUP_POSITION_IDS:
+            continue  # skip anything not a real formation slot rather than fail the whole chart
+        if pos in seen_positions:
+            continue  # first assignment wins if the model accidentally duplicates a slot
+        seen_positions.add(pos)
+        data.append({
+            "position_id": pos,
+            "player_name": entry.get("player_name", "?"),
+            "jersey_number": entry.get("jersey_number"),
+            "is_change": bool(entry.get("is_change")),
+            "note": entry.get("note"),
+        })
+
+    for sub in (subs or []):
+        data.append({
+            "position_id": None,
+            "player_name": sub.get("player_name", "?"),
+            "jersey_number": sub.get("jersey_number"),
+        })
+
+    missing = VALID_LINEUP_POSITION_IDS - seen_positions
+    default_insight = insight or (
+        f"{len(seen_positions)}/15 starting positions filled."
+        + (f" Missing: {', '.join(sorted(missing))}." if missing else "")
+    )
+
+    chart = {
+        "id": f"chat-{uuid_mod.uuid4().hex[:8]}",
+        "type": "lineup",
+        "title": title or "Starting 15",
+        "insight": default_insight,
+        "data": data,
+        "config": {"xKey": None, "dataKeys": [], "colors": [], "stacked": False, "showLegend": False},
+    }
+    return safe_json({"success": True, "chart": chart})
+
+
+async def get_squad_season_stats(db: AsyncSession, club_id=None, competition: str = None) -> str:
+    """Every active player's season stats computed from ONE bulk query pass,
+    instead of the N+1 pattern of calling get_player_season_stats once per
+    player. That pattern is what a "team of the season" style question used
+    to trigger — 18-20 sequential single-player calls, which alone took
+    45+ seconds and blew the chat turn's total time budget, leaving nothing
+    persisted when even the emergency wrap-up call then also timed out on
+    the resulting oversized context. Same per-player metric shape as
+    get_player_season_stats so results are directly comparable.
+
+    competition is a case-insensitive substring match against Match.competition
+    (a free-text field, e.g. "Donegal Senior Championship Round 3" — there's
+    no separate league/championship category to filter on). Added because a
+    "only championship matches" follow-up to a squad-wide question had no
+    filter to narrow with, so the model resorted to pulling raw per-match
+    events to filter manually instead — exactly the kind of heavy workaround
+    that blows the response-time budget the bulk tool was built to avoid."""
+    club_match_ids_sq = select(Match.id).where(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False))
+    if club_id:
+        club_match_ids_sq = club_match_ids_sq.where(Match.club_id == club_id)
+    if competition:
+        club_match_ids_sq = club_match_ids_sq.where(Match.competition.ilike(f"%{competition}%"))
+
+    events_result = await db.execute(
+        select(MatchEvent).where(MatchEvent.match_id.in_(club_match_ids_sq), MatchEvent.player_id.isnot(None))
+    )
+    events = events_result.scalars().all()
+
+    assist_result = await db.execute(
+        select(MatchEvent.assist_player_id, func.count())
+        .where(MatchEvent.match_id.in_(club_match_ids_sq), MatchEvent.assist_player_id.isnot(None))
+        .group_by(MatchEvent.assist_player_id)
+    )
+    assists_by_player = {pid: cnt for pid, cnt in assist_result.all()}
+
+    from collections import defaultdict
+    by_player = defaultdict(list)
+    for e in events:
+        by_player[e.player_id].append(e)
+
+    if not by_player:
+        msg = f"No player-tagged events found for matches matching '{competition}'" if competition else "No player-tagged events found"
+        return safe_json({"message": msg, "players": []})
+
+    players_result = await db.execute(select(Player).where(Player.id.in_(list(by_player.keys()))))
+    player_lookup = {p.id: p for p in players_result.scalars().all()}
+
+    out = []
+    for pid, p_events in by_player.items():
+        player = player_lookup.get(pid)
+        if not player:
+            continue
+        goals = len([e for e in p_events if e.event_type in {EventType.GOAL, EventType.PENALTY_GOAL}])
+        points = len([e for e in p_events if e.event_type in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}])
+        two_pts = len([e for e in p_events if e.event_type in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}])
+        turnovers_won = len([e for e in p_events if e.event_type == EventType.TURNOVER_WON])
+        turnovers_lost = len([e for e in p_events if e.event_type == EventType.TURNOVER_LOST])
+        unforced_errors = len([e for e in p_events if e.event_type == EventType.UNFORCED_ERROR])
+        wides = len([e for e in p_events if e.event_type in {EventType.WIDE, EventType.WIDE_FREE}])
+        blocks = len([e for e in p_events if e.event_type == EventType.BLOCK])
+        n_matches = len(set(e.match_id for e in p_events))
+        attempts = goals + points + two_pts + wides
+        out.append({
+            "player_id": str(pid),
+            "player_name": player.name,
+            "position": player.position,
+            "matches_played": n_matches,
+            "goals": goals,
+            "points": points,
+            "two_pointers": two_pts,
+            "total_score": goals * 3 + points + two_pts * 2,
+            "assists": assists_by_player.get(pid, 0),
+            "turnovers_won": turnovers_won,
+            "turnovers_lost": turnovers_lost,
+            "unforced_errors": unforced_errors,
+            "turnover_net": turnovers_won - turnovers_lost,
+            "shooting_accuracy_pct": round((goals + points + two_pts) / attempts * 100, 1) if attempts else None,
+            "blocks": blocks,
+        })
+
+    out.sort(key=lambda p: -p["total_score"])
+    return safe_json({"competition_filter": competition, "players": out})
+
+
+async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None, competition: str = None) -> str:
+    """Get aggregated stats for a player across the season. competition is an
+    optional case-insensitive substring match against Match.competition
+    (free text, e.g. "championship") to narrow to a subset of matches."""
     # Validate UUID format — if not a UUID, tell the AI to search by name first
     import uuid as uuid_mod
     try:
@@ -2074,15 +2705,31 @@ async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None
     if not player:
         return safe_json({"error": "Player not found"})
 
-    # Get all their events (scoped to club matches if club_id provided)
+    # Get all their events (scoped to club/competition matches if provided)
+    def _scoped_match_ids():
+        q = select(Match.id)
+        if club_id:
+            q = q.where(Match.club_id == club_id)
+        if competition:
+            q = q.where(Match.competition.ilike(f"%{competition}%"))
+        return q
+
     event_conditions = [MatchEvent.player_id == player_id]
-    if club_id:
-        club_match_ids = select(Match.id).where(Match.club_id == club_id)
-        event_conditions.append(MatchEvent.match_id.in_(club_match_ids))
+    if club_id or competition:
+        event_conditions.append(MatchEvent.match_id.in_(_scoped_match_ids()))
     events_result = await db.execute(
         select(MatchEvent).where(*event_conditions)
     )
     events = events_result.scalars().all()
+
+    # Assists are a separate query — assist_player_id credits a DIFFERENT
+    # player than the one who scored, so they never show up in the query
+    # above (which only matches events where this player is player_id).
+    assist_conditions = [MatchEvent.assist_player_id == player_id]
+    if club_id or competition:
+        assist_conditions.append(MatchEvent.match_id.in_(_scoped_match_ids()))
+    assists_result = await db.execute(select(func.count()).select_from(MatchEvent).where(*assist_conditions))
+    assists = assists_result.scalar() or 0
 
     goals    = len([e for e in events if e.event_type in {EventType.GOAL, EventType.PENALTY_GOAL}])
     points   = len([e for e in events if e.event_type in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}])
@@ -2102,12 +2749,14 @@ async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None
             "name": player.name,
             "position": player.position
         },
+        "competition_filter": competition,
         "matches_played": n_matches,
         "scoring": {
             "goals": goals,
             "points": points,
             "2_pointers": two_pts,
-            "total_score": goals * 3 + points + two_pts * 2
+            "total_score": goals * 3 + points + two_pts * 2,
+            "assists": assists,
         },
         "turnovers": {
             "won": turnovers_won,
@@ -2128,8 +2777,10 @@ async def get_player_season_stats(db: AsyncSession, player_id: str, club_id=None
     })
 
 
-async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
-    """Get aggregated team stats for the season."""
+async def get_team_season_stats(db: AsyncSession, club_id=None, competition: str = None) -> str:
+    """Get aggregated team stats for the season. competition is an optional
+    case-insensitive substring match against Match.competition (free text,
+    e.g. "championship") to narrow to a subset of matches."""
     # Get completed matches that have at least one event tagged
     event_count = (
         select(func.count(MatchEvent.id))
@@ -2144,13 +2795,16 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
     ]
     if club_id:
         query_filters.append(Match.club_id == club_id)
+    if competition:
+        query_filters.append(Match.competition.ilike(f"%{competition}%"))
     matches_result = await db.execute(
         select(Match).where(*query_filters)
     )
     matches = matches_result.scalars().all()
 
     if not matches:
-        return safe_json({"message": "No completed matches yet"})
+        msg = f"No completed matches matching '{competition}' yet" if competition else "No completed matches yet"
+        return safe_json({"message": msg})
 
     # Get events only for the filtered matches (scoped to club)
     match_ids = [m.id for m in matches]
@@ -2238,6 +2892,7 @@ async def get_team_season_stats(db: AsyncSession, club_id=None) -> str:
 
     return safe_json({
         "NOTE": "These are SEASON TOTALS across all matches — NOT a single match score. Use get_match_summary(match_id) for per-match detail.",
+        "competition_filter": competition,
         "matches_played": n_matches,
         "record": {
             "wins": wins,
@@ -2385,7 +3040,14 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
 
 
 async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=None) -> str:
-    """Analyze scoring patterns by zone."""
+    """Analyze scoring patterns by zone. Deliberately open-play only — frees/
+    45s are dead-ball attempts from a fixed, unguarded spot and would inflate
+    a zone's apparent conversion quality if folded in (same reasoning as
+    expected_points_service.classify_shot's "never reclassify 45s/65s by
+    location"). Keep the query filter and the scored/missed check below in
+    sync — they drifted out of sync once already (the scored check used to
+    reference POINT_FREE/TWO_POINT_FREE/FORTY_FIVE, which this query never
+    fetched, so that branch was silently dead)."""
     if not match_id and not club_id:
         return safe_json({"error": "match_id or club_id required"})
     scoring_event_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.WIDE, EventType.SHORT]
@@ -2428,8 +3090,7 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=N
 
         zone = "inside_45m" if e.pitch_x >= 69 else "outside_45m"
 
-        if e.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
-                            EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]:
+        if e.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]:
             zones[zone]["scored"] += 1
         else:
             zones[zone]["missed"] += 1
@@ -2558,7 +3219,7 @@ async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = 
                 "distance_m": round(float(row.MatchGPSData.total_distance_m or 0)),
                 "hsr_m": round(float(row.MatchGPSData.high_speed_running_m or 0)),
                 "sprints": int(row.MatchGPSData.sprint_count or 0),
-                "max_speed_kmh": round(float(row.MatchGPSData.max_speed_ms or 0) * 3.6, 1),
+                "max_speed_ms": round(float(row.MatchGPSData.max_speed_ms or 0), 2),
                 "load": round(float(row.MatchGPSData.dynamic_stress_load or 0), 1),
                 "playing_mins": int(row.MatchGPSData.playing_minutes) if row.MatchGPSData.playing_minutes else None,
             }
@@ -2584,7 +3245,7 @@ async def get_player_gps_stats(db: AsyncSession, player_id: str, context: str = 
                 "distance_m": round(float(row.TrainingGPSData.total_distance_m or 0)),
                 "hsr_m": round(float(row.TrainingGPSData.high_speed_running_m or 0)),
                 "sprints": int(row.TrainingGPSData.sprint_count or 0),
-                "max_speed_kmh": round(float(row.TrainingGPSData.max_speed_ms or 0) * 3.6, 1),
+                "max_speed_ms": round(float(row.TrainingGPSData.max_speed_ms or 0), 2),
                 "load": round(float(row.TrainingGPSData.dynamic_stress_load or 0), 1),
             }
             for row in rows
@@ -2630,7 +3291,7 @@ async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: i
                 "avg_distance_m": round(float(row.avg_distance or 0)),
                 "avg_hsr_m": round(float(row.avg_hsr or 0)),
                 "avg_sprints": round(float(row.avg_sprints or 0), 1),
-                "avg_max_speed_kmh": round(float(row.avg_max_speed or 0) * 3.6, 1),
+                "avg_max_speed_ms": round(float(row.avg_max_speed or 0), 2),
                 "avg_load": round(float(row.avg_load or 0), 1),
                 "period": f"Last {weeks} weeks",
             }
@@ -2659,7 +3320,7 @@ async def get_team_gps_summary(db: AsyncSession, context: str = "both", weeks: i
                 "avg_distance_m": round(float(row.avg_distance or 0)),
                 "avg_hsr_m": round(float(row.avg_hsr or 0)),
                 "avg_sprints": round(float(row.avg_sprints or 0), 1),
-                "avg_max_speed_kmh": round(float(row.avg_max_speed or 0) * 3.6, 1),
+                "avg_max_speed_ms": round(float(row.avg_max_speed or 0), 2),
                 "avg_load": round(float(row.avg_load or 0), 1),
                 "period": f"Last {weeks} weeks",
             }
@@ -2795,7 +3456,6 @@ async def get_attendance_data(db: AsyncSession, player_id: str = None, weeks: in
 async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -> str:
     """Get ball carrier segments, passing network, and possession chain analysis."""
     from app.models.ball_carrier_segment import BallCarrierSegment
-    from app.models.possession_chain import PossessionChain
     import uuid as uuid_mod
 
     try:
@@ -2849,6 +3509,12 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     # Per-player turnover consequences: pid -> {turnovers_lost, led_to_opp_score, turnover_zones}
     player_consequences: dict = {}
 
+    # NOTE: this counts PASS TRANSITIONS between two different players' carrier
+    # segments where the ball progressed >=10% of pitch length — it is NOT a count
+    # of forward carries. Most carries never chain into a different-player segment
+    # with both endpoints logged, so this number is always much smaller than the
+    # total number of forward-moving carries in the match. Keep the key name
+    # explicit so nothing downstream (including the AI report) mislabels it.
     territory_passes = {"forward": 0, "lateral": 0, "backward": 0}
 
     prev_seg = None
@@ -2943,6 +3609,12 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
 
         prev_seg = seg
 
+    # GAA pitch length used to convert avg_gain_x from a 0-100 pitch-length
+    # percentage into real metres — kept in sync with PITCH_LENGTH_M in
+    # expected_points_service.py so "how far is a carry" means the same
+    # distance everywhere in the app.
+    _PITCH_LENGTH_M = 145.0
+
     # Post-loop: compute avg territory gain per player and clean up internal lists
     for stats in carrier_stats.values():
         sx = stats.pop("start_xs", [])
@@ -2950,11 +3622,19 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         if sx and ex:
             stats["avg_start_x"] = round(sum(sx) / len(sx), 1)
             stats["avg_end_x"] = round(sum(ex) / len(ex), 1)
-            stats["avg_gain_x"] = round(stats["avg_end_x"] - stats["avg_start_x"], 1)
+            gain_pct = stats["avg_end_x"] - stats["avg_start_x"]
+            # avg_gain_x is kept on the original 0-100 pitch-% scale for any
+            # existing internal comparisons; avg_gain_x_metres is the real-world
+            # distance and is what the report-writing prompt must use — a raw
+            # percentage point was previously being read out loud as "X metres",
+            # understating actual carry distance by roughly 30%.
+            stats["avg_gain_x"] = round(gain_pct, 1)
+            stats["avg_gain_x_metres"] = round(gain_pct / 100 * _PITCH_LENGTH_M, 1)
         else:
             stats["avg_start_x"] = None
             stats["avg_end_x"] = None
             stats["avg_gain_x"] = None
+            stats["avg_gain_x_metres"] = None
         # Summarise carry zones as top-3 most common
         if stats["carry_zones"]:
             from collections import Counter
@@ -2965,12 +3645,120 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     total_passes = sum(c["count"] for c in pass_connections.values())
 
     # ── Possession Chain Analysis ──
-    chain_result = await db.execute(
-        select(PossessionChain)
-        .where(PossessionChain.match_id == match_uuid, PossessionChain.source == "live")
-        .order_by(PossessionChain.created_at.asc())
+    # Derived directly from the carrier segments already fetched above,
+    # rather than read from the separate possession_chains table — that
+    # table has never actually been populated by anything (checked
+    # 2026-09-08: zero rows across every match on the platform, this club
+    # or any other), even though this function has always queried it as if
+    # it were, which is why "chain effectiveness" always came back empty. A
+    # chain is a run of consecutive same-team segments joined end-to-end by
+    # ended_by=='pass' — the moment a segment ends any other way (score,
+    # wide, turnover, foul, manual) or the team changes, that chain closes
+    # and the next segment starts a new one. Filtered to team=='own' since
+    # this analysis is specifically about the coached team's own attacking
+    # structure — the sparse handful of opponent segments some matches
+    # carry would otherwise pollute "our" scoring-chain averages.
+    from types import SimpleNamespace
+
+    # ended_by can only ever say 'pass' or 'turnover' with any reliability —
+    # the backfill that populates it (see project-refresh-duplicate-event-bug
+    # memory) infers those two purely from whether the next carrier is the
+    # same team or not, which can never produce 'score' or 'wide' since the
+    # team carrying doesn't reliably flip immediately after either (a
+    # kickout after our score often goes to a THIRD team-change pattern
+    # ended_by can't see). So: use the real match_events log as the
+    # authority on whether a chain ended in a score or a miss.
+    #
+    # A time-window match (even a tight 15s one) still over-attributes:
+    # confirmed live 2026-09-08, carries sitting entirely in our own half
+    # kept coming back as "scoring chains" just because an unrelated score
+    # happened elsewhere on the pitch within the same few seconds — GAA is
+    # fast enough that this genuinely happens often. The only reliable rule
+    # is sequence, not proximity: merge every segment and event into one
+    # true chronological timeline, and only credit a score/miss to a carry
+    # if that event is *the very next thing that happened for this team*,
+    # with no other carry (ours or theirs) landing in between. That
+    # guarantees the event is actually describing the outcome of this
+    # specific carry, not some other passage of play that happened nearby.
+    _SCORE_EVENT_TYPES = {'goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five', 'penalty_goal'}
+    _MISS_EVENT_TYPES = {'wide', 'wide_free', 'short', 'saved', 'hit_post', 'forty_five_missed', 'penalty_miss'}
+
+    _timeline = sorted(
+        [(s.created_at, 'segment', s) for s in segments if s.created_at is not None]
+        + [(e.created_at, 'event', e) for e in _all_events if e.created_at is not None],
+        key=lambda t: t[0],
     )
-    chains = list(chain_result.scalars().all())
+    _seg_index = {id(s): i for i, (_ts, kind, s) in enumerate(_timeline) if kind == 'segment'}
+
+    def _real_outcome_at(seg) -> Optional[str]:
+        idx = _seg_index.get(id(seg))
+        if idx is None:
+            return None
+        for _ts, kind, obj in _timeline[idx + 1:]:
+            if kind == 'segment':
+                return None  # another carry happened first — no dead-ball outcome yet
+            if _ev_team(obj) != seg.team:
+                return None  # the other team's event came first — not ours to attribute
+            t = _ev_type(obj)
+            if t in _SCORE_EVENT_TYPES:
+                return "score"
+            if t in _MISS_EVENT_TYPES:
+                return "wide"
+            # Some other own-team event (e.g. foul_won logged alongside the
+            # same stoppage) came first — keep looking past it.
+        return None
+
+    _raw_chains: list = []
+    _current: list = []
+    for seg in segments:
+        should_continue = False
+        if _current:
+            prev = _current[-1]
+            should_continue = (
+                seg.team == prev.team
+                and prev.ended_by == "pass"
+                and _real_outcome_at(prev) is None
+            )
+        if should_continue:
+            _current.append(seg)
+        else:
+            if _current:
+                _raw_chains.append(_current)
+            _current = [seg]
+    if _current:
+        _raw_chains.append(_current)
+
+    def _chain_outcome(last_seg) -> str:
+        real = _real_outcome_at(last_seg)
+        if real:
+            return real
+        eb = last_seg.ended_by
+        if eb in ("score", "wide", "turnover"):
+            return eb
+        if eb == "foul":
+            return "free"
+        if eb is None:
+            # Only the very last segment of the match can land here — there's
+            # no next touch to infer an ending from, so it's genuinely unknown.
+            return "unknown"
+        return eb
+
+    chains = []
+    for chain_segs in _raw_chains:
+        if chain_segs[0].team != "own":
+            continue
+        first, last = chain_segs[0], chain_segs[-1]
+        end_x = last.end_x if last.end_x is not None else last.start_x
+        end_y = last.end_y if last.end_y is not None else last.start_y
+        chains.append(SimpleNamespace(
+            team=first.team,
+            player_sequence=[str(s.player_id) for s in chain_segs],
+            jersey_sequence=[s.jersey_number for s in chain_segs],
+            chain_length=len(chain_segs),
+            outcome=_chain_outcome(last),
+            start_zone=_xy_zone(first.start_x, first.start_y),
+            end_zone=_xy_zone(end_x, end_y),
+        ))
 
     # Chain effectiveness breakdown
     scoring_chains = [c for c in chains if c.outcome == "score"]
@@ -3074,7 +3862,17 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
 
     # High tier only: include aggregated stats (averages, percentages, tempo)
     if confidence == "high":
-        result["territory_progression"] = territory_passes
+        result["pass_territory_progression"] = {
+            **territory_passes,
+            "note": (
+                "Counts PASS TRANSITIONS between two different players' carries where the ball "
+                "moved >=10% of pitch length — NOT a count of forward carries, and NOT the total "
+                "number of forward-moving carries in the match (most carries don't chain into a "
+                "different-player segment with both endpoints logged, so this is always a small "
+                "subset). Never report these numbers as '<n> forward carries'. Use each player's "
+                "avg_gain_x in carrier_stats to describe individual forward-carrying tendency instead."
+            ),
+        }
         result["chain_effectiveness"] = chain_effectiveness
         result["tempo"] = tempo
 
@@ -3182,37 +3980,102 @@ async def get_man_marking_history(
     })
 
 
-async def web_search_tool(query: str) -> str:
-    """Search the web for GAA-related information using DuckDuckGo."""
+WEB_SEARCH_TIMEOUT_SECONDS = 18
+
+
+async def web_search_tool(query: str, recency: str = "month") -> str:
+    """Search the web for GAA-related information using DuckDuckGo.
+
+    Runs a dated news search and a time-limited general text search
+    concurrently (not sequentially — DDGS falls back across several backend
+    search engines per call, so doing news-then-text back to back could
+    approach or exceed the chat's overall per-request timeout on its own)
+    and merges them, news first, so the model always has a "date" field to
+    reason about freshness from. A plain ddgs.text() call ranks purely by
+    relevance with no recency signal at all — that's how a 2025 championship
+    top-scorer page outranked (and got quoted ahead of) an actual result
+    from the previous weekend when a user asked about upcoming opposition
+    form. timelimit narrows the pool DDG searches in the first place;
+    surfacing "date" per-result lets the model additionally judge freshness
+    within that pool instead of trusting rank order alone.
+
+    Hard-capped at WEB_SEARCH_TIMEOUT_SECONDS regardless of what DDGS is
+    doing internally — a slow/hanging search engine here has no per-call
+    timeout of its own, and previously could silently stall the whole SSE
+    chat stream (no bytes sent to the browser) long enough to trip a
+    proxy/browser idle-connection timeout. The user would see a chat error
+    while the backend kept working in the background and the reply would
+    only show up on a page reload once it finally finished. Timing this
+    tool out and handing the model a "search timed out" result instead lets
+    the turn finish normally either way.
+    """
     import asyncio
+
+    timelimit = {"week": "w", "month": "m", "year": "y", "any": None}.get(recency, "m")
 
     try:
         from ddgs import DDGS
 
-        # Run synchronous DDGS in a thread to avoid blocking
-        def _search():
-            with DDGS() as ddgs:
-                return list(ddgs.text(query, max_results=8))
+        def _news():
+            try:
+                with DDGS() as ddgs:
+                    return list(ddgs.news(query, timelimit=timelimit, max_results=6))
+            except Exception as news_err:
+                logger.warning(f"Web search (news) failed: {news_err}")
+                return []
 
-        raw_results = await asyncio.to_thread(_search)
+        def _text():
+            try:
+                with DDGS() as ddgs:
+                    return list(ddgs.text(query, timelimit=timelimit, max_results=6))
+            except Exception as text_err:
+                logger.warning(f"Web search (text) failed: {text_err}")
+                return []
 
-        if not raw_results:
+        try:
+            raw_news, raw_text = await asyncio.wait_for(
+                asyncio.gather(asyncio.to_thread(_news), asyncio.to_thread(_text)),
+                timeout=WEB_SEARCH_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Web search timed out after {WEB_SEARCH_TIMEOUT_SECONDS}s for query: {query!r}")
             return safe_json({
                 "query": query,
-                "note": "No results found. Try different search terms.",
+                "recency": recency,
+                "error": "Web search timed out — continue with whatever other data is available and tell the user live web results weren't reachable this time rather than waiting further.",
                 "results": [],
             })
 
         results = []
-        for r in raw_results:
+        for r in raw_news:
+            results.append({
+                "title": r.get("title", ""),
+                "body": r.get("body", ""),
+                "url": r.get("url", r.get("href", "")),
+                "date": r.get("date", ""),
+                "source": "news",
+            })
+        for r in raw_text:
             results.append({
                 "title": r.get("title", ""),
                 "body": r.get("body", ""),
                 "url": r.get("href", ""),
+                "date": "",
+                "source": "web",
+            })
+
+        if not results:
+            return safe_json({
+                "query": query,
+                "recency": recency,
+                "note": "No results found. Try different search terms or a wider recency.",
+                "results": [],
             })
 
         return safe_json({
             "query": query,
+            "recency": recency,
+            "note": "Results with a 'date' are dated news; results without are general web pages that may be old — check for a year/date before treating them as current.",
             "results": results,
         })
 
@@ -3684,9 +4547,17 @@ async def get_contextual_patterns(db: AsyncSession, split_by: str, club_id=None)
     prev_match_date = None
     for m in matches:
         if split_by == "weather":
-            key = (m.weather_condition.value if m.weather_condition else "unknown")
+            # A match can be genuinely both windy and rainy — it belongs in
+            # both buckets, not forced into a single one (which would either
+            # undercount one condition or require an ever-growing set of
+            # named combo buckets). weather_conditions (plural) is the source
+            # of truth; falls back to the legacy single field for matches
+            # recorded before multi-select weather existed.
+            keys = m.weather_conditions or ([m.weather_condition.value] if m.weather_condition else [])
+            if not keys:
+                keys = ["unknown"]
         elif split_by == "venue":
-            key = (m.venue.value if m.venue else "unknown")
+            keys = [m.venue.value if m.venue else "unknown"]
         elif split_by == "rest_days":
             if prev_match_date and m.match_date:
                 rest = (m.match_date - prev_match_date).days
@@ -3699,10 +4570,12 @@ async def get_contextual_patterns(db: AsyncSession, split_by: str, club_id=None)
             else:
                 key = "first_match"
             prev_match_date = m.match_date
+            keys = [key]
         else:
             return safe_json({"error": f"Invalid split_by: {split_by}"})
 
-        groups.setdefault(key, []).append(m)
+        for key in keys:
+            groups.setdefault(key, []).append(m)
 
     # Compute stats per group
     result_groups = []
@@ -4104,18 +4977,35 @@ async def get_live_match_stats(db: AsyncSession, match_id: str, club_id=None) ->
     total_to_lost = sum(1 for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST)
     total_to_won  = sum(1 for e in events if e.team == Team.OWN and e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON})
 
-    # ── Card / foul risk ───────────────────────────────────────────────────
-    # Build a name→pid reverse lookup for quick foul check
+    # ── Discipline watch ─────────────────────────────────────────────────
+    # GAA has no rule tying a personal foul TALLY to a card or dismissal —
+    # that's entirely referee discretion (a black card is for one specific
+    # cynical/dangerous act, a red is a second yellow), and 3-4 fouls in a
+    # match is routine, not alarming. This used to fire at 2+ fouls and get
+    # phrased as "before he's sin-binned" — a fabricated rule that produced
+    # misleading advice (confirmed live 2026-09-07: flagged a player on 3
+    # fouls as if one more meant automatic dismissal). Raised well above
+    # normal match noise and reframed as a soft discipline flag, not a
+    # countdown to a card.
     name_to_pid = {players_map[pid]: pid for pid in player_raw if pid in players_map}
-    sin_bin_risks = [
+    discipline_watch = [
         r['name'] for r in player_rows
-        if player_raw.get(name_to_pid.get(r['name']), {}).get('fouls_committed', 0) >= 2
+        if player_raw.get(name_to_pid.get(r['name']), {}).get('fouls_committed', 0) >= 4
     ]
 
     # ── Build readable output ──────────────────────────────────────────────
     lines = [
         f"=== LIVE MATCH SNAPSHOT — {minute_str} ===",
-        f"SCORE: Us {tm_goals}-{tm_points} ({tm_total}pts) vs Them {op_goals}-{op_points} ({op_total}pts) — {margin_str}",
+        # Score STRING must use the combined points total (points + two-pointers*2),
+        # not the raw 1-point count — displaying just tm_points/op_points here
+        # silently dropped every 2-pointer from the visible scoreline (e.g. a real
+        # 0-10 with three 2-pointers rendered as "0-4") while the parenthetical
+        # (op_total)pts and the margin were computed correctly from the full total,
+        # so the two numbers openly contradicted each other. This is exactly what
+        # produced a live half-time insight reading "0-4, trailing by 6" — 0-4 is
+        # only 4pts, which can't trail anything by 6 on its own; the AI was quoting
+        # this string verbatim, the bug was here, not in the model's arithmetic.
+        f"SCORE: Us {tm_goals}-{tm_points + tm_2pts * 2:02d} ({tm_total}pts) vs Them {op_goals}-{op_points + op_2pts * 2:02d} ({op_total}pts) — {margin_str}",
         "",
         "POSSESSION BATTLE:",
         f"  Turnovers WON: {total_to_won} | Turnovers LOST: {total_to_lost} (inc. {total_ue} unforced errors)",
@@ -4148,9 +5038,9 @@ async def get_live_match_stats(db: AsyncSession, match_id: str, club_id=None) ->
     else:
         lines.append("  No notable individual events yet.")
 
-    if sin_bin_risks:
+    if discipline_watch:
         lines.append("")
-        lines.append(f"SIN-BIN RISK: {', '.join(sin_bin_risks)} (2+ fouls)")
+        lines.append(f"DISCIPLINE WATCH: {', '.join(discipline_watch)} (4+ fouls — not an automatic card, just worth a quiet word)")
 
     return "\n".join(lines)
 

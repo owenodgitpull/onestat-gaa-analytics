@@ -3,7 +3,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { videoSessionsAPI, type VideoSession } from '../services/videoApi';
+import { videoSessionsAPI, type VideoSession, type MultipartPartInfo } from '../services/videoApi';
 
 export const videoSessionKeys = {
   all: ['videoSessions'] as const,
@@ -61,7 +61,7 @@ export function useInitiateVideoUpload() {
   });
 }
 
-/** Confirm upload complete. */
+/** Confirm upload complete. Pass uploadId + parts to finalize a multipart upload. */
 export function useCompleteVideoUpload() {
   const queryClient = useQueryClient();
 
@@ -70,15 +70,21 @@ export function useCompleteVideoUpload() {
       sessionId,
       durationMs,
       sizeBytes,
+      uploadId,
+      parts,
     }: {
       sessionId: string;
       matchId: string;
       durationMs?: number;
       sizeBytes?: number;
+      uploadId?: string;
+      parts?: MultipartPartInfo[];
     }) =>
       videoSessionsAPI.completeUpload(sessionId, {
         video_duration_ms: durationMs,
         video_size_bytes: sizeBytes,
+        upload_id: uploadId,
+        parts,
       }),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({
@@ -89,6 +95,14 @@ export function useCompleteVideoUpload() {
         data
       );
     },
+  });
+}
+
+/** Best-effort cancel of an in-progress multipart upload. */
+export function useAbortMultipartUpload() {
+  return useMutation({
+    mutationFn: ({ sessionId, uploadId }: { sessionId: string; uploadId: string }) =>
+      videoSessionsAPI.abortMultipartUpload(sessionId, uploadId),
   });
 }
 

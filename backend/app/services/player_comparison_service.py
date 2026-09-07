@@ -47,7 +47,7 @@ class PlayerComparisonService:
             "blocks": 0, "interceptions": 0,
             "matches_played": 0,
             "avg_distance_km": None, "avg_sprints": None,
-            "avg_max_speed_kmh": None,
+            "avg_max_speed_ms": None,
             "attendance_rate": None,
         }
         if not match_ids:
@@ -103,7 +103,7 @@ class PlayerComparisonService:
             if sprints:
                 stats["avg_sprints"] = round(sum(sprints) / len(sprints), 1)
             if speeds:
-                stats["avg_max_speed_kmh"] = round(max(speeds) * 3.6, 1)
+                stats["avg_max_speed_ms"] = round(max(speeds), 2)
 
         # Attendance
         sessions_result = await db.execute(

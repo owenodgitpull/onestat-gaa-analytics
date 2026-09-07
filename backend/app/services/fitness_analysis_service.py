@@ -11,6 +11,7 @@ Uses Claude AI to analyze fitness test results and generate:
 import os
 import json
 import logging
+import asyncio
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -107,7 +108,10 @@ Respond with ONLY the JSON object, no other text."""
 
         try:
             client = anthropic.Anthropic(api_key=api_key)
-            response = client.messages.create(
+            # Offloaded to a thread — synchronous Anthropic SDK call would
+            # otherwise block the whole event loop for the round-trip.
+            response = await asyncio.to_thread(
+                client.messages.create,
                 model="claude-sonnet-4-20250514",
                 max_tokens=1000,
                 messages=[{"role": "user", "content": prompt}]

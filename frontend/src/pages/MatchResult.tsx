@@ -3,7 +3,7 @@
  * Read-only view of a completed match with event visualization on pitch
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -25,7 +25,8 @@ import {
   Video,
   Info,
   Users,
-  BarChart2
+  BarChart2,
+  RotateCcw
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from 'recharts'
 import { api } from '../services/api'
@@ -36,6 +37,7 @@ import GAAPitch from '../components/GAAPitch'
 import MatchLineupViewer from '../components/MatchLineupViewer'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
+import AttackingThirdsChart from '../components/charts/AttackingThirdsChart'
 import ScoringTimeline from '../components/charts/ScoringTimeline'
 import ShotOutcomeChart from '../components/charts/ShotOutcomeChart'
 import PathsTakenChart from '../components/charts/PathsTakenChart'
@@ -45,10 +47,12 @@ import KickoutSequence from '../components/charts/KickoutSequence'
 import ScoringZoneMap from '../components/charts/ScoringZoneMap'
 import TurnoverMap from '../components/charts/TurnoverMap'
 import ShootingEfficiencyHeatmap from '../components/charts/ShootingEfficiencyHeatmap'
+import ExpectedPointsCard from '../components/charts/ExpectedPointsCard'
 import ScoreOrigins from '../components/charts/ScoreOrigins'
 import ScoreableFreesAnalysis from '../components/charts/ScoreableFreesAnalysis'
 import AttackEfficiencyCard from '../components/charts/AttackEfficiencyCard'
 import SeasonBenchmarkCard from '../components/charts/SeasonBenchmarkCard'
+import StatsTable from '../components/charts/StatsTable'
 import GPSConfirmModal from '../components/GPSConfirmModal'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
@@ -59,7 +63,6 @@ import { getWeatherIcon, getWeatherLabel } from '../components/WeatherPickerPopo
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import FeatureGate from '../components/FeatureGate'
 import { useFeatureAccess } from '../hooks/useFeatureAccess'
-import type { MatchStats } from '../types'
 
 // Format GAA score as "G-PP" (e.g., "1-08")
 function formatGAAScore(goals: number, points: number): string {
@@ -71,23 +74,70 @@ function totalScore(goals: number, points: number): number {
   return goals * 3 + points
 }
 
+// Rejects after `ms` if the underlying promise hasn't settled — used so a
+// hung/dropped connection surfaces as an error instead of loading forever.
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Request timed out')), ms)
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      (err) => { clearTimeout(timer); reject(err) }
+    )
+  })
+}
+
 export default function MatchResult() {
   const { matchId } = useParams<{ matchId: string }>()
+  const queryClient = useQueryClient()
   const clubName = useClubName()
   const { data: match, isLoading: matchLoading } = useMatch(matchId || null)
   const [statsHalf, setStatsHalf] = useState<1 | 2 | undefined>(undefined)
   const [showExtendedStats, setShowExtendedStats] = useState(false)
   const { data: matchStats } = useMatchStats(matchId || null, statsHalf)
-  const { data: eventsData } = useMatchEvents(matchId || null)
+  const { data: eventsData, isLoading: eventsLoading } = useMatchEvents(matchId || null)
   const { data: players } = usePlayers()
 
-  // Fetch post-match AI analysis
-  const { data: postMatchReport, refetch: refetchReport, isLoading: reportLoading } = useQuery({
+  // Fetch post-match AI analysis.
+  // A first-ever (uncached) report can take 1-3 minutes to generate (multiple
+  // tool calls + Claude round-trips), but Fly.io's proxy silently drops the
+  // connection at ~60s while the backend keeps working and saves the result
+  // anyway. Plain fetch() has no timeout, so without this the request can
+  // hang indefinitely and the page just shows "loading" forever even though
+  // the report finishes server-side a minute later. Give up client-side at
+  // 50s and fall back to polling so we pick up the saved result.
+  const { data: postMatchReport, refetch: refetchReport, isLoading: reportLoading, isError: reportErrored } = useQuery({
     queryKey: ['post-match-report', matchId],
-    queryFn: () => api.ai.getPostMatchReport(matchId!),
+    queryFn: () => withTimeout(api.ai.getPostMatchReport(matchId!), 50000),
     enabled: !!matchId && match?.status === 'completed',
     staleTime: 1000 * 60 * 10, // Cache for 10 mins
+    retry: false,
   })
+
+  const [isPollingReport, setIsPollingReport] = useState(false)
+  const reportPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => {
+    if (!reportErrored || reportPollRef.current) return
+    setIsPollingReport(true)
+    let attempts = 0
+    reportPollRef.current = setInterval(() => {
+      refetchReport()
+      attempts++
+      if (attempts >= 9) {
+        if (reportPollRef.current) clearInterval(reportPollRef.current)
+        reportPollRef.current = null
+        setIsPollingReport(false)
+      }
+    }, 20000)
+  }, [reportErrored])
+
+  // Stop polling as soon as the report actually lands
+  useEffect(() => {
+    if (postMatchReport?.analysis && reportPollRef.current) {
+      clearInterval(reportPollRef.current)
+      reportPollRef.current = null
+      setIsPollingReport(false)
+    }
+  }, [postMatchReport])
 
   // Fetch existing GPS data
   const { data: gpsData, refetch: refetchGps } = useQuery({
@@ -96,13 +146,47 @@ export default function MatchResult() {
     enabled: !!matchId && match?.status === 'completed',
   })
 
-  // Fetch AI GPS analysis when GPS data exists
+  // Lineup — declared here (rather than further down with the other lineup state)
+  // because the GPS analysis query below needs it to know who actually featured
+  const { data: lineupData } = useQuery({
+    queryKey: ['match-lineup', matchId],
+    queryFn: () => api.matchLineups.getLineup(matchId!),
+    enabled: !!matchId,
+  })
+
+  // Fetch AI GPS analysis when GPS data exists.
+  // Mark unused subs (never left the bench) with status: 'unused_substitute' so
+  // the Match Agent's own "exclude unused subs" logic (already in analyze_match_gps)
+  // actually has something to key off — without this every GPS row looked "active"
+  // to the AI regardless of whether the player featured.
+  const buildAnnotatedGpsData = () => {
+    const featuredSet = buildFeaturedPlayerSet(lineupData)
+    return gpsData!.map(p => ({
+      ...p,
+      status: featuredSet && !featuredSet.has(p.player_id) ? 'unused_substitute' : undefined,
+    }))
+  }
+
   const { data: gpsAnalysis, isLoading: gpsAnalysisLoading } = useQuery({
-    queryKey: ['gps-analysis', matchId],
-    queryFn: () => api.ai.analyzeGps(gpsData!, { opponent: match?.opponent, date: match?.match_date }),
-    enabled: !!gpsData && gpsData.length > 0,
+    queryKey: ['gps-analysis', matchId, lineupData?.length],
+    // match_id lets the backend cache/regenerate the analysis on the match
+    // row itself, so a plain page reload doesn't re-call the LLM.
+    queryFn: () => api.ai.analyzeGps(buildAnnotatedGpsData(), { match_id: matchId, opponent: match?.opponent, date: match?.match_date }),
+    enabled: !!gpsData && gpsData.length > 0 && lineupData !== undefined,
     staleTime: 1000 * 60 * 30, // Cache for 30 mins
   })
+
+  const [isRegeneratingGps, setIsRegeneratingGps] = useState(false)
+  const regenerateGpsAnalysis = async () => {
+    if (!gpsData || gpsData.length === 0) return
+    setIsRegeneratingGps(true)
+    try {
+      const result = await api.ai.analyzeGps(buildAnnotatedGpsData(), { match_id: matchId, opponent: match?.opponent, date: match?.match_date }, true)
+      queryClient.setQueryData(['gps-analysis', matchId, lineupData?.length], result)
+    } finally {
+      setIsRegeneratingGps(false)
+    }
+  }
 
   const { hasAccess: hasProAccess } = useFeatureAccess('pro')
   const { hasAccess: hasEliteAccess } = useFeatureAccess('elite')
@@ -173,13 +257,8 @@ export default function MatchResult() {
   // Team filter state - which team's events to show on pitch
   const [teamFilter, setTeamFilter] = useState<'own' | 'opponent'>('own')
 
-  // Lineup
+  // Lineup (query itself declared earlier, alongside GPS data)
   const [showLineup, setShowLineup] = useState(false)
-  const { data: lineupData } = useQuery({
-    queryKey: ['match-lineup', matchId],
-    queryFn: () => api.matchLineups.getLineup(matchId!),
-    enabled: !!matchId,
-  })
 
   // Man marking
   const { data: markingAssignments = [], refetch: refetchMarkings } = useQuery({
@@ -242,17 +321,38 @@ export default function MatchResult() {
   const shotLocations = useMemo(() => {
     const shotTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'wide', 'short', 'saved', 'point_free', 'two_point_free', 'wide_free', 'forty_five', 'forty_five_missed', 'penalty_miss'])
     const scoreTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'])
+    // ShootingEfficiencyHeatmap's zone math (close/long/2-point, the 40m arc)
+    // assumes x=100 always means "the goal this shot is aimed at" — but
+    // pitch_x is stored raw, relative to a fixed physical end of the pitch,
+    // and which end a team's shooting AT flips every half. Without
+    // normalizing here, every second-half shot's true distance-from-goal
+    // reads backwards: a shot taken right under the posts can come out as
+    // raw_x=13 (a value the heatmap's own zone boundaries then read as
+    // "outside the 65% mark", i.e. long range, or drop it entirely below the
+    // x<35 cutoff) purely because the team was defending that end in the
+    // first half. Same normalizeX convention as getPitchArea/PathsTakenChart.
+    const halfDuration = match?.half_duration_mins || 30
+    const attackingRightFirstHalf = match?.attacking_right_first_half ?? true
+    const normalizeX = (rawX: number, isOwn: boolean, minute: number | null | undefined): number => {
+      const isFirstHalf = (minute ?? 0) <= halfDuration
+      const teamAttackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
+      const attackingRight = isOwn ? teamAttackingRight : !teamAttackingRight
+      return attackingRight ? rawX : 100 - rawX
+    }
     return (eventsData?.events || [])
       .filter((e: any) => shotTypes.has(e.event_type) && e.pitch_x != null)
-      .map((e: any) => ({
-        x: e.pitch_x as number,
-        y: e.pitch_y ?? 50,
-        event_type: e.event_type,
-        is_score: scoreTypes.has(e.event_type),
-        team: e.team || (e.is_home_team ? 'own' : 'opponent'),
-        match_id: e.match_id,
-      }))
-  }, [eventsData])
+      .map((e: any) => {
+        const isOwn = e.team === 'own' || e.is_home_team
+        return {
+          x: normalizeX(e.pitch_x as number, isOwn, e.minute),
+          y: e.pitch_y ?? 50,
+          event_type: e.event_type,
+          is_score: scoreTypes.has(e.event_type),
+          team: e.team || (e.is_home_team ? 'own' : 'opponent'),
+          match_id: e.match_id,
+        }
+      })
+  }, [eventsData, match?.half_duration_mins, match?.attacking_right_first_half])
 
   // Extract Man of the Match — prefer AI pick, fall back to formula
   const manOfMatch = useMemo(() => {
@@ -273,6 +373,42 @@ export default function MatchResult() {
     }))
     return calculateManOfMatch(eventsWithTeam, players)
   }, [eventsData, players, postMatchReport])
+
+  // Scorers — per-player breakdown of own-team scores, GAA-style (G-PP + 2pt note)
+  const scorers = useMemo(() => {
+    if (!eventsData?.events || !players) return []
+    const scoreTypes: Record<string, 'goal' | 'point' | 'two_point'> = {
+      goal: 'goal', penalty_goal: 'goal',
+      point: 'point', point_free: 'point', forty_five: 'point',
+      two_point: 'two_point', two_point_free: 'two_point',
+    }
+    const byPlayer: Record<string, { goals: number; points: number; twoPointers: number }> = {}
+    for (const e of eventsData.events as any[]) {
+      const team = e.team || (e.is_home_team ? 'own' : 'opponent')
+      if (team !== 'own' || !e.player_id) continue
+      const kind = scoreTypes[e.event_type]
+      if (!kind) continue
+      const pid = String(e.player_id)
+      if (!byPlayer[pid]) byPlayer[pid] = { goals: 0, points: 0, twoPointers: 0 }
+      if (kind === 'goal') byPlayer[pid].goals++
+      else if (kind === 'point') byPlayer[pid].points++
+      else byPlayer[pid].twoPointers++
+    }
+    return Object.entries(byPlayer)
+      .map(([pid, b]) => {
+        const player = players.find((p: any) => p.id === pid)
+        const pointsValue = b.points + b.twoPointers * 2
+        return {
+          playerId: pid,
+          name: player?.name || 'Unknown',
+          goals: b.goals,
+          pointsValue,
+          twoPointers: b.twoPointers,
+          totalValue: b.goals * 3 + pointsValue,
+        }
+      })
+      .sort((a, b) => b.totalValue - a.totalValue)
+  }, [eventsData, players])
 
   // Filter events for pitch display
   const filteredEvents = useMemo(() => {
@@ -312,7 +448,14 @@ export default function MatchResult() {
     return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type))
   }, [eventsData, activeFilters, teamFilter, halfFilter])
 
-  if (matchLoading) {
+  // Also gate on events loading, not just the match itself — hasEvents
+  // (used below to decide whether to show the "Start Video Analysis" empty
+  // state) reads from eventsData, a separate query. Without this, a match
+  // that loads quickly but whose events are still in flight briefly shows
+  // the big "no events, start video analysis" button before flipping to
+  // the real content once events arrive — confusing on every match that
+  // actually does have events logged.
+  if (matchLoading || eventsLoading) {
     return <LoadingSkeleton variant="match" />
   }
 
@@ -350,6 +493,12 @@ export default function MatchResult() {
             <h1 className="text-2xl font-bold text-white">
               vs {match.opponent}
             </h1>
+            {match.competition && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                <Trophy size={12} />
+                {match.competition}{match.stage ? ` · ${match.stage}` : ''}
+              </span>
+            )}
             <div className="flex flex-wrap gap-3 text-sm text-white/60">
               <div className="flex items-center space-x-1">
                 <Calendar size={16} />
@@ -359,12 +508,22 @@ export default function MatchResult() {
                 <MapPin size={16} />
                 <span className="capitalize">{match.venue}</span>
               </div>
-              {match.weather_condition && (() => {
-                const WeatherIcon = getWeatherIcon(match.weather_condition)
+              {(() => {
+                const conditions = match.weather_conditions?.length
+                  ? match.weather_conditions
+                  : (match.weather_condition ? [match.weather_condition] : [])
+                if (conditions.length === 0) return null
                 return (
-                  <div className="flex items-center space-x-1">
-                    <WeatherIcon size={16} />
-                    <span>{getWeatherLabel(match.weather_condition)}</span>
+                  <div className="flex items-center space-x-2">
+                    {conditions.map(c => {
+                      const WeatherIcon = getWeatherIcon(c)
+                      return (
+                        <span key={c} className="flex items-center space-x-1">
+                          <WeatherIcon size={16} />
+                          <span>{getWeatherLabel(c)}</span>
+                        </span>
+                      )
+                    })}
                     {match.temperature_celsius != null && (
                       <span>{match.temperature_celsius}°C</span>
                     )}
@@ -411,11 +570,19 @@ export default function MatchResult() {
                     <div className="text-sm text-white/60">
                       {(manOfMatch as any).aiPicked
                         ? <span className="text-amber-400/70 text-xs">AI Selected</span>
-                        : <>
-                            {manOfMatch.breakdown.goals > 0 && `${manOfMatch.breakdown.goals}G `}
-                            {manOfMatch.breakdown.points > 0 && `${manOfMatch.breakdown.points}P `}
-                            {manOfMatch.breakdown.twoPointers > 0 && `${manOfMatch.breakdown.twoPointers}x2PT`}
-                          </>
+                        : (() => {
+                            const { goals, points, twoPointers } = manOfMatch.breakdown
+                            // Showing raw counts side by side ("3P 1x2PT") read as if he'd
+                            // only scored 3 in total — lead with the actual points VALUE
+                            // (goal=3, point=1, 2-pointer=2) and put the breakdown in parens.
+                            const totalValue = goals * 3 + points * 1 + twoPointers * 2
+                            const parts = [
+                              goals > 0 ? `${goals}g` : null,
+                              points > 0 ? `${points}pt` : null,
+                              twoPointers > 0 ? `${twoPointers}x2pt` : null,
+                            ].filter(Boolean)
+                            return `${totalValue}P${parts.length ? ` (${parts.join(', ')})` : ''}`
+                          })()
                       }
                     </div>
                   </div>
@@ -438,6 +605,23 @@ export default function MatchResult() {
             )}
           </div>
         </div>
+
+        {/* Scorers */}
+        {scorers.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-white/10">
+            <div className="text-xs text-white/40 font-semibold uppercase tracking-wide mb-2">Scorers</div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {scorers.map(s => (
+                <div key={s.playerId} className="text-sm text-white/70 whitespace-nowrap">
+                  <span className="text-white font-medium">{s.name}</span>
+                  {' '}
+                  {formatGAAScore(s.goals, s.pointsValue)}
+                  {s.twoPointers > 0 && <span className="text-cyan-400/80 text-xs"> (+{s.twoPointers}x2pt)</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* No events indicator */}
         {!hasEvents && (
@@ -776,6 +960,20 @@ export default function MatchResult() {
             </div>
           )}
 
+          {(eventsData?.events?.length ?? 0) > 0 && (
+            <div className="[&>div]:h-full [&_.glass-card]:h-full">
+              <ChartZoomModal title="Attacking Thirds">
+                <AttackingThirdsChart
+                  matchId={matchId!}
+                  opponent={match.opponent}
+                  events={eventsData?.events || []}
+                  attackingRightFirstHalf={match?.attacking_right_first_half}
+                  halfDurationMins={match?.half_duration_mins || 30}
+                />
+              </ChartZoomModal>
+            </div>
+          )}
+
         </div>
 
         {/* Right column — stats sidebar */}
@@ -911,14 +1109,44 @@ export default function MatchResult() {
             </ChartZoomModal>
           </div>
 
-          <div className="h-[450px] [&>div]:h-full [&_.glass-card]:h-full">
+          {/* Phase 2+3 Analytics — paired by natural shape, not just alphabetically/logically:
+              CSS grid rows stretch both cells to match the taller one, so a pitch graphic
+              (~450px, fixed aspect ratio) paired with a couple of progress bars just left a
+              huge dead gap under the short card. Both pitch-graphic charts go together;
+              the two compact stat cards go together. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Shooting Efficiency">
               <ShootingEfficiencyHeatmap shots={shotLocations} />
             </ChartZoomModal>
+            <ChartZoomModal title="Scoreable Frees">
+              {scoreableFreesData && <ScoreableFreesAnalysis data={scoreableFreesData} teamName={clubName} />}
+            </ChartZoomModal>
           </div>
+          <div className="[&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Expected Points">
+              <ExpectedPointsCard matchId={matchId!} teamName={clubName} opponentName={match.opponent} />
+            </ChartZoomModal>
+          </div>
+          {/* Fixed height here, not auto — Score Origins' donut chart uses
+              ResponsiveContainer height="100%" to scale with its card, but an
+              auto-height grid row containing a height:100% descendant is a
+              circular reference (the row wants to size to content, the content
+              wants to size to the row), which is exactly what produced the
+              huge dead gap in both cards. A concrete height breaks the loop.
+              overflow-hidden is a deliberate safety net: ResponsiveContainer's
+              minHeight can force content taller than this box on some
+              viewports, and without clipping that overflow visually bled
+              into the "vs Season Average" card directly below it.
 
-          {/* Phase 2+3 Analytics */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+              All of this is scoped to sm: and up, where the two cards sit
+              side by side and genuinely share one 380px row. Below sm the
+              grid drops to a single column, so Score Origins and Attack
+              Efficiency stack as two separate rows INSIDE that same fixed
+              380px box instead of getting a row each — Score Origins ate
+              almost the whole box and Attack Efficiency was clipped to a
+              sliver by the overflow-hidden meant for the desktop case.
+              Unscoped on mobile, each card just gets its own natural height. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:h-[380px] sm:overflow-hidden sm:[&>div]:h-full sm:[&_.glass-card]:h-full sm:[&_.glass-card]:overflow-hidden">
             <ChartZoomModal title="Score Origins">
               {scoreOriginsData && <ScoreOrigins data={scoreOriginsData} teamName={clubName} opponentName={match.opponent} />}
             </ChartZoomModal>
@@ -926,10 +1154,7 @@ export default function MatchResult() {
               {attackEfficiencyData && <AttackEfficiencyCard data={attackEfficiencyData} teamName={clubName} opponentName={match.opponent} />}
             </ChartZoomModal>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
-            <ChartZoomModal title="Scoreable Frees">
-              {scoreableFreesData && <ScoreableFreesAnalysis data={scoreableFreesData} teamName={clubName} />}
-            </ChartZoomModal>
+          <div className="[&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="vs Season Average">
               {seasonBenchmarkData && <SeasonBenchmarkCard data={seasonBenchmarkData} teamName={clubName} />}
             </ChartZoomModal>
@@ -958,7 +1183,12 @@ export default function MatchResult() {
 
           {/* AI GPS Insights Panel */}
           {gpsAnalysis?.success && gpsAnalysis.insights && (
-            <GPSInsightsPanel insights={gpsAnalysis.insights} isLoading={gpsAnalysisLoading} />
+            <GPSInsightsPanel
+              insights={gpsAnalysis.insights}
+              isLoading={gpsAnalysisLoading}
+              onRegenerate={regenerateGpsAnalysis}
+              isRegenerating={isRegeneratingGps}
+            />
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 [&>div]:h-full [&_.glass-card]:h-full">
@@ -972,10 +1202,10 @@ export default function MatchResult() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Player Distance">
-              <PlayerDistanceChart gpsData={gpsData} />
+              <PlayerDistanceChart gpsData={gpsData} lineupData={lineupData} />
             </ChartZoomModal>
             <ChartZoomModal title="Player Workload">
-              <PlayerWorkloadChart gpsData={gpsData} />
+              <PlayerWorkloadChart gpsData={gpsData} lineupData={lineupData} />
             </ChartZoomModal>
           </div>
         </div>
@@ -1024,7 +1254,7 @@ export default function MatchResult() {
             </div>
           </div>
         </div>
-      ) : reportLoading || isRegenerating ? (
+      ) : reportLoading || isRegenerating || isPollingReport ? (
         <div className="glass-card p-6 mt-6">
           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center animate-pulse">
@@ -1041,8 +1271,18 @@ export default function MatchResult() {
           </div>
           <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2 text-xs text-white/40">
             <Brain size={14} />
-            <span>Generating AI analysis…</span>
+            <span>{isPollingReport ? 'Still generating — a detailed report can take a couple of minutes…' : 'Generating AI analysis…'}</span>
           </div>
+        </div>
+      ) : reportErrored ? (
+        <div className="glass-card p-6 mt-6 text-center">
+          <p className="text-white/50 text-sm mb-3">The report is taking longer than expected. It may still finish in the background.</p>
+          <button
+            onClick={() => refetchReport()}
+            className="px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 text-xs font-medium transition-colors border border-emerald-500/30"
+          >
+            Check again
+          </button>
         </div>
       ) : null}
 
@@ -1067,95 +1307,6 @@ export default function MatchResult() {
           isConfirming={isConfirmingGps}
         />
       )}
-    </div>
-  )
-}
-
-// Stats Table Component - matches live match glassmorphic styling
-function abbreviateTeamName(name: string, maxLen = 12): string {
-  if (name.length <= maxLen) return name
-  // Try dropping common suffixes first
-  const short = name.replace(/\s+(GAA|CLG|GFC|AFC)$/i, '')
-  if (short.length <= maxLen) return short
-  // Split into words, abbreviate all but the first
-  const words = short.split(/\s+/)
-  if (words.length >= 2) {
-    return words[0] + ' ' + words.slice(1).map(w => w[0].toUpperCase()).join('')
-  }
-  return name.slice(0, maxLen)
-}
-
-function StatsTable({ stats, opponent, teamName = 'Us' }: { stats: MatchStats; opponent: string; teamName?: string }) {
-  const totalTeamKickouts = stats.team_kickouts_won + stats.team_kickouts_lost
-  const totalOpponentKickouts = stats.opponent_kickouts_won + stats.opponent_kickouts_lost
-  const teamKickoutRetention = totalTeamKickouts > 0
-    ? ((stats.team_kickouts_won / totalTeamKickouts) * 100).toFixed(1)
-    : '0.0'
-  const opponentKickoutRetention = totalOpponentKickouts > 0
-    ? ((stats.opponent_kickouts_won / totalOpponentKickouts) * 100).toFixed(1)
-    : '0.0'
-  const teamConversion = stats.team_total_shots > 0
-    ? ((stats.team_scores / stats.team_total_shots) * 100).toFixed(1)
-    : '0.0'
-  const opponentConversion = stats.opponent_total_shots > 0
-    ? ((stats.opponent_scores / stats.opponent_total_shots) * 100).toFixed(1)
-    : '0.0'
-  const teamPos = Math.round(stats.team_possession_percentage)
-  const opponentPos = stats.team_possession_percentage === 0 && stats.opponent_possession_percentage === 0
-    ? 0
-    : 100 - teamPos
-
-  const rows = [
-    { label: 'Possession', left: `${teamPos}%`, right: `${opponentPos}%`, leftVal: teamPos, rightVal: opponentPos },
-    { label: 'Poss. Count', left: stats.team_possession_count ?? 0, right: stats.opponent_possession_count ?? 0, leftVal: stats.team_possession_count ?? 0, rightVal: stats.opponent_possession_count ?? 0 },
-    { label: 'Shots', left: stats.team_total_shots, right: stats.opponent_total_shots, leftVal: stats.team_total_shots, rightVal: stats.opponent_total_shots },
-    { label: 'Scores', left: stats.team_scores, right: stats.opponent_scores, leftVal: stats.team_scores, rightVal: stats.opponent_scores },
-    { label: 'Goal Chances', left: stats.team_goal_chances ?? 0, right: stats.opponent_goal_chances ?? 0, leftVal: stats.team_goal_chances ?? 0, rightVal: stats.opponent_goal_chances ?? 0 },
-    { label: 'Wides', left: stats.team_wides, right: stats.opponent_wides, leftVal: stats.opponent_wides, rightVal: stats.team_wides },
-    { label: 'Dropped Short', left: stats.team_dropped_short ?? 0, right: stats.opponent_dropped_short ?? 0, leftVal: stats.opponent_dropped_short ?? 0, rightVal: stats.team_dropped_short ?? 0 },
-    { label: 'Accuracy', left: `${Math.round(stats.team_accuracy)}%`, right: `${Math.round(stats.opponent_accuracy)}%`, leftVal: stats.team_accuracy, rightVal: stats.opponent_accuracy },
-    { label: 'Conversion', left: `${teamConversion}%`, right: `${opponentConversion}%`, leftVal: Number(teamConversion), rightVal: Number(opponentConversion) },
-    { label: 'Turnovers Won', left: stats.team_turnovers_won, right: stats.opponent_turnovers_won, leftVal: stats.team_turnovers_won, rightVal: stats.opponent_turnovers_won },
-    ...(stats.team_ball_recovery_avg_min != null || stats.opponent_ball_recovery_avg_min != null ? [{
-      label: 'Ball Recovery',
-      left: stats.team_ball_recovery_avg_min != null ? `${stats.team_ball_recovery_avg_min}m` : '–',
-      right: stats.opponent_ball_recovery_avg_min != null ? `${stats.opponent_ball_recovery_avg_min}m` : '–',
-      leftVal: stats.opponent_ball_recovery_avg_min ?? 0,
-      rightVal: stats.team_ball_recovery_avg_min ?? 0,
-    }] : []),
-    { label: 'Unforced Errors', left: stats.team_unforced_errors ?? 0, right: stats.opponent_unforced_errors ?? 0, leftVal: stats.opponent_unforced_errors ?? 0, rightVal: stats.team_unforced_errors ?? 0 },
-    { label: 'Kickouts Won', left: `${stats.team_kickouts_won}/${totalTeamKickouts}`, right: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}`, leftVal: stats.team_kickouts_won, rightVal: stats.opponent_kickouts_won },
-    { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
-    { label: 'Fouls', left: stats.team_fouls, right: stats.opponent_fouls, leftVal: stats.opponent_fouls, rightVal: stats.team_fouls },
-    { label: 'Yellow Cards', left: stats.team_yellow_cards, right: stats.opponent_yellow_cards, leftVal: stats.opponent_yellow_cards, rightVal: stats.team_yellow_cards },
-    { label: 'Black Cards', left: stats.team_black_cards ?? 0, right: stats.opponent_black_cards ?? 0, leftVal: stats.opponent_black_cards ?? 0, rightVal: stats.team_black_cards ?? 0 },
-    { label: 'Red Cards', left: stats.team_red_cards, right: stats.opponent_red_cards, leftVal: stats.opponent_red_cards, rightVal: stats.team_red_cards },
-  ]
-
-  return (
-    <div className="rounded-xl border border-white/[0.08] overflow-hidden" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)' }}>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 bg-white/[0.06] border-b border-white/[0.08]">
-        <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-wider truncate" title={teamName}>{abbreviateTeamName(teamName)}</div>
-        <div className="min-w-[80px]" />
-        <div className="text-center text-xs font-bold text-white/50 uppercase tracking-wider truncate" title={opponent}>{abbreviateTeamName(opponent)}</div>
-      </div>
-      {rows.map((row, idx) => {
-        const leftWins = row.leftVal > row.rightVal
-        const rightWins = row.rightVal > row.leftVal
-        return (
-          <div key={row.label} className={`grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 transition-colors hover:bg-white/[0.05] ${idx % 2 === 0 ? 'bg-white/[0.02]' : ''} ${idx > 0 ? 'border-t border-white/[0.05]' : ''}`}>
-            <div className={`text-center text-base font-bold ${leftWins ? 'text-emerald-400' : 'text-white/80'}`}>
-              {row.left}
-            </div>
-            <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[80px]">
-              {row.label}
-            </div>
-            <div className={`text-center text-base font-bold ${rightWins ? 'text-emerald-400' : 'text-white/80'}`}>
-              {row.right}
-            </div>
-          </div>
-        )
-      })}
     </div>
   )
 }
@@ -1265,6 +1416,7 @@ function formatEventDescription(event: any, players: any[], opponentName: string
   const derivedHalf = event.minute <= halfDuration ? 1 : 2
   const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName, teamName, attackingRightFirstHalf, derivedHalf)
   const playerName = isOwn ? (player?.name || event.player_name || 'our player') : opponentName
+  const kickoutTargetSuffix = event.kickout_target_player_name ? ` (aimed at ${event.kickout_target_player_name})` : ''
 
   switch (event.event_type) {
     case 'point':
@@ -1285,6 +1437,10 @@ function formatEventDescription(event: any, players: any[], opponentName: string
       return `${playerName} scored a 2-pointer from a free in ${area}`
     case 'wide_free':
       return `${playerName} hit a wide from a free in ${area}`
+    case 'free_short_pass':
+      return `${playerName} played a free short in ${area}`
+    case 'free_high_ball':
+      return `${playerName} played a free long/high into ${area}`
     case 'forty_five':
       return `${playerName} scored from a 45`
     case 'forty_five_missed':
@@ -1310,13 +1466,13 @@ function formatEventDescription(event: any, players: any[], opponentName: string
     // Detailed kickout types — own kickout (our team kicking out)
     // Replace team name in area with "their" to avoid "Ardara ... in Ardara's half"
     case 'own_kickout_won':
-      return `${playerName} won own kickout clean in ${area}`
+      return `${playerName} won own kickout clean in ${area}${kickoutTargetSuffix}`
     case 'own_kickout_opposition_won':
-      return `${opponentName} won our kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
+      return `${opponentName} won our kickout clean in ${area.replace(`${opponentName}'s`, 'their')}${kickoutTargetSuffix}`
     case 'own_kickout_won_break':
-      return `${playerName} won breaking ball from own kickout in ${area}`
+      return `${playerName} won breaking ball from own kickout in ${area}${kickoutTargetSuffix}`
     case 'own_kickout_opposition_won_break':
-      return `${opponentName} won breaking ball from our kickout in ${area.replace(`${opponentName}'s`, 'their')}`
+      return `${opponentName} won breaking ball from our kickout in ${area.replace(`${opponentName}'s`, 'their')}${kickoutTargetSuffix}`
     // Detailed kickout types — opponent kickout (Opposition kicking out)
     case 'opp_kickout_won':
       return `${playerName} won ${opponentName} kickout clean in ${area.replace(`${opponentName}'s`, 'their')}`
@@ -1349,6 +1505,8 @@ const EVENT_TYPE_OPTIONS = [
   { value: 'point_free', label: 'Point (Free)' },
   { value: 'two_point_free', label: '2-Point Free' },
   { value: 'wide_free', label: 'Wide (Free)' },
+  { value: 'free_short_pass', label: 'Free — Short Pass' },
+  { value: 'free_high_ball', label: 'Free — High Ball' },
   { value: 'forty_five', label: '45 Scored' },
   { value: 'forty_five_missed', label: '45 Missed' },
   { value: 'penalty_goal', label: 'Penalty Goal' },
@@ -1381,6 +1539,8 @@ function EventItem({ event, players, opponentName, teamName, matchId, attackingR
   const [editEventType, setEditEventType] = useState(event.event_type)
   const [editNotes, setEditNotes] = useState(event.notes || '')
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const getEventStyle = (eventType: string) => {
     if (['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'].includes(eventType)) {
@@ -1413,6 +1573,19 @@ function EventItem({ event, players, opponentName, teamName, matchId, attackingR
       setEditing(false)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await api.matchEvents.delete(String(event.id))
+      queryClient.invalidateQueries({ queryKey: ['match-events', 'match', matchId] })
+      queryClient.invalidateQueries({ queryKey: ['matches', matchId] })
+      queryClient.invalidateQueries({ queryKey: ['matches', matchId, 'stats'] })
+    } finally {
+      setDeleting(false)
+      setConfirmingDelete(false)
     }
   }
 
@@ -1468,6 +1641,29 @@ function EventItem({ event, players, opponentName, teamName, matchId, attackingR
     )
   }
 
+  if (confirmingDelete) {
+    return (
+      <div className="p-3 rounded-lg border-l-4 border-l-red-500 bg-red-500/10">
+        <p className="text-white/90 text-sm mb-2">Delete this event? This can't be undone.</p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex-1 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold py-1.5 rounded transition-colors disabled:opacity-50"
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
+          <button
+            onClick={() => setConfirmingDelete(false)}
+            className="flex-1 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold py-1.5 rounded transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`p-3 rounded-lg border-l-4 ${getEventStyle(event.event_type)}`}>
       <div className="flex items-start justify-between">
@@ -1483,6 +1679,13 @@ function EventItem({ event, players, opponentName, teamName, matchId, attackingR
           title="Edit event"
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button
+          onClick={() => setConfirmingDelete(true)}
+          className="ml-2 flex-shrink-0 text-white/30 hover:text-red-400 transition-colors"
+          title="Delete event"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
         </button>
       </div>
     </div>
@@ -1506,7 +1709,7 @@ interface GPSData {
 }
 
 // GPS Insights Panel - Displays AI-generated insights
-function GPSInsightsPanel({ insights, isLoading }: { insights: any; isLoading: boolean }) {
+function GPSInsightsPanel({ insights, isLoading, onRegenerate, isRegenerating }: { insights: any; isLoading: boolean; onRegenerate?: () => void; isRegenerating?: boolean }) {
   if (isLoading) {
     return (
       <div className="glass-card p-4 mb-4 animate-pulse">
@@ -1540,14 +1743,26 @@ function GPSInsightsPanel({ insights, isLoading }: { insights: any; isLoading: b
           <Brain size={20} className="text-emerald-400" />
           <span className="text-lg font-bold text-white">AI Performance Insights</span>
         </div>
-        <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-          insights.overall_intensity === 'championship' ? 'bg-emerald-500/20 text-emerald-400' :
-          insights.overall_intensity === 'good' ? 'bg-blue-500/20 text-blue-400' :
-          insights.overall_intensity === 'moderate' ? 'bg-amber-500/20 text-amber-400' :
-          'bg-red-500/20 text-red-400'
-        }`}>
-          {insights.overall_intensity?.charAt(0).toUpperCase() + insights.overall_intensity?.slice(1)} Intensity
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+            insights.overall_intensity === 'championship' ? 'bg-emerald-500/20 text-emerald-400' :
+            insights.overall_intensity === 'good' ? 'bg-blue-500/20 text-blue-400' :
+            insights.overall_intensity === 'moderate' ? 'bg-amber-500/20 text-amber-400' :
+            'bg-red-500/20 text-red-400'
+          }`}>
+            {insights.overall_intensity?.charAt(0).toUpperCase() + insights.overall_intensity?.slice(1)} Intensity
+          </span>
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              disabled={isRegenerating}
+              title="Regenerate — re-run the AI analysis on this match's GPS data"
+              className="p-1.5 rounded-lg bg-white/5 text-white/40 hover:text-white hover:bg-white/10 border border-white/10 transition-all disabled:opacity-40"
+            >
+              <RotateCcw size={14} className={isRegenerating ? 'animate-spin' : ''} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Intensity Summary */}
@@ -1644,6 +1859,12 @@ function GPSInsightsPanel({ insights, isLoading }: { insights: any; isLoading: b
           </div>
         </div>
       </div>
+
+      {insights.unused_sub_footnote && (
+        <div className="mt-4 pt-3 border-t border-white/10 text-xs text-white/40 italic">
+          {insights.unused_sub_footnote}
+        </div>
+      )}
     </div>
   )
 }
@@ -1937,20 +2158,40 @@ function gpsDisplayName(playerName: string | null | undefined, allNames: string[
   return hasDup && parts.length > 1 ? `${first} ${parts[1][0]}` : first
 }
 
+// Which players actually featured (started, or came on as a sub) — vs. players
+// who wore a GPS unit but never left the bench. Built from the match lineup, not
+// from the GPS file itself: an unused sub's vest can rack up real-looking distance
+// just sitting on the sideline for hours, so the GPS data alone can't tell the two apart.
+// Returns null when there's no lineup on record (older matches) — meaning don't filter.
+function buildFeaturedPlayerSet(
+  lineupData?: { player_id: string; is_substitute: boolean; is_on_field: boolean }[]
+): Set<string> | null {
+  if (!lineupData || lineupData.length === 0) return null
+  const set = new Set<string>()
+  for (const entry of lineupData) {
+    if (!entry.is_substitute || entry.is_on_field) set.add(entry.player_id)
+  }
+  return set
+}
+
 // Player Distance Chart - Bar chart showing distance covered per player
-function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
-  const chartData = useMemo(() => {
+function PlayerDistanceChart({ gpsData, lineupData }: { gpsData: GPSData[]; lineupData?: { player_id: string; is_substitute: boolean; is_on_field: boolean }[] }) {
+  const featuredSet = useMemo(() => buildFeaturedPlayerSet(lineupData), [lineupData])
+
+  const { chartData, benchData } = useMemo(() => {
     const allNames = gpsData.map(p => p.player_name || '')
-    return gpsData
-      .map(p => ({
-        name: gpsDisplayName(p.player_name, allNames),
-        fullName: p.player_name,
-        distance: ((p.total_distance_m || 0) / 1000), // Convert to km
-        hsr: ((p.high_speed_running_m || 0) / 1000),
-        sprints: p.sprint_count || 0
-      }))
-      .sort((a, b) => b.distance - a.distance)
-  }, [gpsData])
+    const mapped = gpsData.map(p => ({
+      name: gpsDisplayName(p.player_name, allNames),
+      fullName: p.player_name,
+      distance: ((p.total_distance_m || 0) / 1000), // Convert to km
+      hsr: ((p.high_speed_running_m || 0) / 1000),
+      sprints: p.sprint_count || 0,
+      featured: featuredSet ? featuredSet.has(p.player_id) : true,
+    }))
+    const played = mapped.filter(p => p.featured).sort((a, b) => b.distance - a.distance)
+    const benched = mapped.filter(p => !p.featured).sort((a, b) => b.distance - a.distance)
+    return { chartData: played, benchData: benched }
+  }, [gpsData, featuredSet])
 
   const maxDistance = Math.max(...chartData.map(d => d.distance), 1)
   const chartHeight = Math.max(220, chartData.length * 30)
@@ -2003,44 +2244,67 @@ function PlayerDistanceChart({ gpsData }: { gpsData: GPSData[] }) {
       <div className="mt-2 text-center text-xs text-white/60">
         Top performer: {chartData[0]?.fullName} ({chartData[0]?.distance.toFixed(2)} km)
       </div>
+
+      {/* Did not feature - deprioritized at the bottom, excluded from ranking above */}
+      {benchData.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-white/10">
+          <div className="text-[10px] uppercase tracking-wide text-white/30 mb-1.5">Did not feature</div>
+          <div className="space-y-1">
+            {benchData.map((p, i) => (
+              <div key={i} className="flex items-center justify-between text-xs text-white/30">
+                <span className="truncate">{p.fullName}</span>
+                <span>{p.distance.toFixed(2)} km</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-const GPS_SPIKE_THRESHOLD_KMH = 38
+// 38 km/h equivalent — same "likely a sensor glitch" cutoff as leaderboard_service.py's
+// GPS_SPIKE_THRESHOLD_MS, kept in sync so "genuine top speed" means the same thing here
+// as it does on the Speed Demon leaderboard.
+const GPS_SPIKE_THRESHOLD_MS = 10.6
 
 // Player Workload Chart - Shows player load / sprint count comparison
-function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
+function PlayerWorkloadChart({ gpsData, lineupData }: { gpsData: GPSData[]; lineupData?: { player_id: string; is_substitute: boolean; is_on_field: boolean }[] }) {
   const [spikeTooltip, setSpikeTooltip] = useState<number | null>(null)
+  const featuredSet = useMemo(() => buildFeaturedPlayerSet(lineupData), [lineupData])
 
-  const chartData = useMemo(() => {
+  const { chartData, benchData } = useMemo(() => {
     const allNames = gpsData.map(p => p.player_name || '')
-    return gpsData
-      .map(p => {
-        const maxSpeedKmh = p.max_speed_ms ? p.max_speed_ms * 3.6 : 0
-        return {
-          name: gpsDisplayName(p.player_name, allNames),
-          fullName: p.player_name,
-          sprints: p.sprint_count || 0,
-          maxSpeed: maxSpeedKmh.toFixed(1),
-          maxSpeedKmh,
-          isSpike: maxSpeedKmh > GPS_SPIKE_THRESHOLD_KMH,
-          load: p.player_load || 0,
-          hsr: (p.high_speed_running_m || 0) / 1000,
-        }
-      })
-      .sort((a, b) => b.sprints - a.sprints)
-  }, [gpsData])
+    const mapped = gpsData.map(p => {
+      const maxSpeedMs = p.max_speed_ms || 0
+      return {
+        name: gpsDisplayName(p.player_name, allNames),
+        fullName: p.player_name,
+        sprints: p.sprint_count || 0,
+        maxSpeed: maxSpeedMs.toFixed(2),
+        maxSpeedMs,
+        isSpike: maxSpeedMs > GPS_SPIKE_THRESHOLD_MS,
+        load: p.player_load || 0,
+        hsr: (p.high_speed_running_m || 0) / 1000,
+        featured: featuredSet ? featuredSet.has(p.player_id) : true,
+      }
+    })
+    const played = mapped.filter(p => p.featured).sort((a, b) => b.sprints - a.sprints)
+    const benched = mapped.filter(p => !p.featured).sort((a, b) => b.sprints - a.sprints)
+    return { chartData: played, benchData: benched }
+  }, [gpsData, featuredSet])
 
-  // Team totals
+  // Team totals — only players who actually featured, so an unused sub's
+  // sideline movement doesn't inflate the team's real match workload
   const teamTotals = useMemo(() => {
-    const totalSprints = gpsData.reduce((sum, p) => sum + (p.sprint_count || 0), 0)
-    const totalHSR = gpsData.reduce((sum, p) => sum + (p.high_speed_running_m || 0), 0) / 1000
-    const avgMaxSpeed = gpsData.length > 0
-      ? gpsData.reduce((sum, p) => sum + (p.max_speed_ms || 0), 0) / gpsData.length * 3.6
+    const featuredGps = featuredSet ? gpsData.filter(p => featuredSet.has(p.player_id)) : gpsData
+    const totalSprints = featuredGps.reduce((sum, p) => sum + (p.sprint_count || 0), 0)
+    const totalHSR = featuredGps.reduce((sum, p) => sum + (p.high_speed_running_m || 0), 0) / 1000
+    const avgMaxSpeed = featuredGps.length > 0
+      ? featuredGps.reduce((sum, p) => sum + (p.max_speed_ms || 0), 0) / featuredGps.length
       : 0
     return { totalSprints, totalHSR, avgMaxSpeed }
-  }, [gpsData])
+  }, [gpsData, featuredSet])
 
   return (
     <div className="glass-card p-4">
@@ -2060,8 +2324,8 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
           <div className="text-xs text-white/60">HSR Distance</div>
         </div>
         <div className="bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-lg p-2 text-center border border-cyan-500/30">
-          <div className="text-xl font-bold text-cyan-400">{teamTotals.avgMaxSpeed.toFixed(1)}</div>
-          <div className="text-xs text-white/60">Avg Max km/h</div>
+          <div className="text-xl font-bold text-cyan-400">{teamTotals.avgMaxSpeed.toFixed(2)}</div>
+          <div className="text-xs text-white/60">Avg Max Speed (m/s)</div>
         </div>
       </div>
 
@@ -2091,7 +2355,7 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
                 </div>
                 <div className="flex items-center gap-1 w-20 justify-end flex-shrink-0">
                   <span className={`text-xs ${player.isSpike ? 'text-amber-400 font-semibold' : 'text-white/40'}`}>
-                    {player.maxSpeed} km/h
+                    {player.maxSpeed} m/s
                   </span>
                   {player.isSpike && (
                     <button
@@ -2106,7 +2370,7 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
               </div>
               {player.isSpike && spikeOpen && (
                 <div className="mt-1 ml-[72px] mr-0 text-[10px] text-amber-200/80 bg-amber-500/10 border border-amber-500/25 rounded-lg px-3 py-2 leading-relaxed">
-                  <span className="font-semibold text-amber-300">GPS spike detected.</span> This reading ({player.maxSpeed} km/h) likely reflects a momentary sensor error, not actual speed. Typical GAA match max is 30–36 km/h.
+                  <span className="font-semibold text-amber-300">GPS spike detected.</span> This reading ({player.maxSpeed} m/s) likely reflects a momentary sensor error, not actual speed. Typical GAA match max is 8.3–10.0 m/s.
                 </div>
               )}
             </div>
@@ -2120,10 +2384,25 @@ function PlayerWorkloadChart({ gpsData }: { gpsData: GPSData[] }) {
           <Zap size={14} className="text-orange-400 mt-0.5 flex-shrink-0" />
           <p className="text-xs text-white/70">
             {chartData[0]?.fullName} led the team with {chartData[0]?.sprints} sprints
-            and a top speed of {chartData[0]?.maxSpeed} km/h
+            and a top speed of {chartData[0]?.maxSpeed} m/s
           </p>
         </div>
       </div>
+
+      {/* Did not feature - deprioritized at the bottom, excluded from ranking/totals above */}
+      {benchData.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-white/10">
+          <div className="text-[10px] uppercase tracking-wide text-white/30 mb-1.5">Did not feature</div>
+          <div className="space-y-1">
+            {benchData.map((p, i) => (
+              <div key={i} className="flex items-center justify-between text-xs text-white/30">
+                <span className="truncate">{p.fullName}</span>
+                <span>{p.sprints} sprints · {p.maxSpeed} m/s</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

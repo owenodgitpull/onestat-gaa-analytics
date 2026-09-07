@@ -13,6 +13,7 @@ A truly agentic agent with a tool loop that owns all season-level analysis:
 Uses the same tools as the Match Agent but with season-specific system prompts.
 """
 
+import asyncio
 import re
 import json
 import logging
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 # Tools available to the season agent (dashboard/KPI tasks)
 SEASON_TOOLS = [
     "get_team_season_stats",
+    "get_squad_season_stats",
     "get_player_season_stats",
     "get_scoring_patterns",
     "get_turnover_analysis",
@@ -45,6 +47,8 @@ SEASON_TOOLS = [
     "get_match_summary",
     "get_stats_by_half",
     "search_players",
+    "get_recent_lineup_history",
+    "display_starting_lineup",
     "get_ball_carrier_data",
     "get_formation_snapshots",
     "get_man_marking_history",
@@ -57,6 +61,7 @@ SEASON_TOOLS = [
     "get_tactical_tags",
     "get_sleep_data",
     "get_ball_recovery_time",
+    "get_kickout_targets",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)
@@ -146,8 +151,12 @@ class SeasonAgent:
         # Use higher token limit for chart tasks (large JSON output)
         token_limit = 8000 if task in ("dashboard_charts", "chart_recommendations", "outlier_suggestions") else 4000
 
-        # Initial call
-        response = client.messages.create(
+        # Initial call — offloaded to a thread so this synchronous SDK call
+        # (5-40s per round-trip) doesn't block the single-worker event loop.
+        # Without this, one dashboard load could stall every other request
+        # on the machine, including health checks, for the full duration.
+        response = await asyncio.to_thread(
+            client.messages.create,
             model=model,
             max_tokens=token_limit,
             system=cached_system,
@@ -183,7 +192,8 @@ class SeasonAgent:
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
 
-            response = client.messages.create(
+            response = await asyncio.to_thread(
+                client.messages.create,
                 model=model,
                 max_tokens=token_limit,
                 system=cached_system,
@@ -217,7 +227,8 @@ class SeasonAgent:
             messages.append({"role": "user", "content": tool_results + [
                 {"type": "text", "text": "You've used all available tool calls. Now produce your final JSON response using the data you've gathered. Do NOT call any more tools."}
             ]})
-            response = client.messages.create(
+            response = await asyncio.to_thread(
+                client.messages.create,
                 model=model,
                 max_tokens=token_limit,
                 system=cached_system,
@@ -321,7 +332,7 @@ class SeasonAgent:
                         f"avg dist={round(row.avg_distance or 0)}m, "
                         f"avg sprints={round(row.avg_sprints or 0)}, "
                         f"avg HSR={round(row.avg_hsr or 0)}m, "
-                        f"avg max speed={round(row.avg_max_speed or 0, 1)} km/h"
+                        f"avg max speed={round(row.avg_max_speed or 0, 2)} m/s"
                     )
                 training_context = "Recent training sessions (last 4 weeks):\n" + "\n".join(lines)
         except Exception as e:
@@ -920,7 +931,16 @@ class SeasonAgent:
         """
         from app.services.season_dashboard_service import _compute_data_fingerprint
         data_fingerprint = await _compute_data_fingerprint(db, club_id)
-        return f"{data_fingerprint}|day:{date.today().isoformat()}"
+        # SeasonCache.data_fingerprint is String(64), sized exactly for a raw SHA256
+        # hex digest — data_fingerprint alone already fills it, so appending "|day:..."
+        # overflowed the column (StringDataRightTruncationError) on every single save,
+        # silently swallowed by the caller's try/except. The brief generated fine
+        # (~70s of tool calls) but was NEVER cached, so every visit re-ran the full
+        # generation from scratch. Re-hash the composite so it still changes daily
+        # but fits the column.
+        import hashlib
+        composite = f"{data_fingerprint}|day:{date.today().isoformat()}"
+        return hashlib.sha256(composite.encode()).hexdigest()
 
     @staticmethod
     async def generate_weekly_brief(db: AsyncSession, club_id=None, force_refresh: bool = False) -> dict:
@@ -1026,6 +1046,14 @@ def _fallback_challenges() -> list[dict]:
             "metric_key": "turnovers_won",
             "target_value": 3.0,
             "evaluation_window": 3,
+        },
+        {
+            "title": "Iron Attendance: attend 4 sessions in a row",
+            "description": "Show up to your next 4 training sessions without missing one.",
+            "category": "attendance",
+            "metric_key": "attendance_streak",
+            "target_value": 4.0,
+            "evaluation_window": 4,
         },
     ]
 

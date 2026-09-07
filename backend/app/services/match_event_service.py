@@ -45,6 +45,7 @@ class MatchEventService:
             match_id=event_data.match_id,
             player_id=event_data.player_id,
             assist_player_id=event_data.assist_player_id,
+            kickout_target_player_id=getattr(event_data, 'kickout_target_player_id', None),
             event_type=event_type,
             team=event_data.team,
             minute=event_data.minute,
@@ -134,22 +135,36 @@ class MatchEventService:
         # Store old values for stats update
         old_event_type = event.event_type
         old_player_id = event.player_id
-        
+        old_team = event.team
+        old_assist_player_id = event.assist_player_id
+
         # Update fields
         update_data = event_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(event, field, value)
-        
+
         await db.flush()
-        
+
         # Recalculate match scores
         await MatchEventService._recalculate_match_scores(db, event.match_id)
-        
+
         # Update player stats if player changed
         if old_player_id != event.player_id:
             if old_player_id:
-                # Remove from old player
-                temp_event = MatchEvent(event_type=old_event_type, player_id=old_player_id, match_id=event.match_id)
+                # Remove from old player. team=old_team (and assist_player_id=
+                # old_assist_player_id) are required here — _update_player_stats
+                # bails out immediately on anything that isn't Team.OWN, and a
+                # transient MatchEvent built without an explicit team defaults
+                # to None (never Team.OWN), which silently skipped this
+                # decrement entirely: reassigning who scored an own-team event
+                # (or editing an own-team event's team away, e.g. correcting it
+                # to the opposition) added the new attribution but left the old
+                # player's — and old assist-giver's — stat rows double-counted
+                # forever.
+                temp_event = MatchEvent(
+                    event_type=old_event_type, player_id=old_player_id, match_id=event.match_id,
+                    team=old_team, assist_player_id=old_assist_player_id,
+                )
                 await MatchEventService._update_player_stats(db, temp_event, is_delete=True)
             if event.player_id:
                 # Add to new player

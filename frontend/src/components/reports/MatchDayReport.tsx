@@ -10,7 +10,7 @@ import {
 } from 'recharts'
 import {
   Download, Trophy, Target, BarChart2, Activity, Brain, Zap,
-  MapPin, Calendar, Users, Shield,
+  MapPin, Calendar, Users, Shield, Loader2,
 } from 'lucide-react'
 import { api } from '@/services/api'
 import { useClubName } from '@/contexts/ClubContext'
@@ -69,9 +69,9 @@ function mToKm(m?: number) {
   return (m / 1000).toFixed(2)
 }
 
-function msToKmh(ms?: number) {
+function formatSpeed(ms?: number) {
   if (ms == null) return '—'
-  return (ms * 3.6).toFixed(1)
+  return ms.toFixed(2)
 }
 
 function resultBadge(teamTotal: number, oppTotal: number) {
@@ -251,6 +251,7 @@ export default function MatchDayReport({ matches }: Props) {
   const [loadingEvents, setLoadingEvents] = useState(false)
   const [loadingGps, setLoadingGps] = useState(false)
   const [loadingReport, setLoadingReport] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
     if (!selectedId) return
@@ -323,6 +324,7 @@ export default function MatchDayReport({ matches }: Props) {
 
   const handleExport = async () => {
     if (!reportRef.current) return
+    setIsExporting(true)
     try {
       const html2canvas = (await import('html2canvas')).default
       const { jsPDF } = await import('jspdf')
@@ -341,6 +343,8 @@ export default function MatchDayReport({ matches }: Props) {
       pdf.save(`match-report-${match?.opponent ?? 'report'}-${match?.match_date?.slice(0, 10) ?? ''}.pdf`)
     } catch {
       alert('Export failed. Please try again.')
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -370,11 +374,11 @@ export default function MatchDayReport({ matches }: Props) {
         </select>
         <button
           onClick={handleExport}
-          disabled={!match}
+          disabled={!match || isExporting}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm font-medium transition-colors disabled:opacity-40"
         >
-          <Download size={14} />
-          Export PDF
+          {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          {isExporting ? 'Exporting...' : 'Export PDF'}
         </button>
       </div>
 
@@ -685,7 +689,7 @@ export default function MatchDayReport({ matches }: Props) {
                       <th className="text-right py-2 px-2 font-medium">Dist (km)</th>
                       <th className="text-right py-2 px-2 font-medium">HSR (m)</th>
                       <th className="text-right py-2 px-2 font-medium">Sprints</th>
-                      <th className="text-right py-2 px-2 font-medium">Max (km/h)</th>
+                      <th className="text-right py-2 px-2 font-medium">Max (m/s)</th>
                       <th className="text-right py-2 px-2 font-medium">Load</th>
                       <th className="text-right py-2 px-2 font-medium">Mins</th>
                     </tr>
@@ -700,7 +704,7 @@ export default function MatchDayReport({ matches }: Props) {
                           <td className="py-2 px-2 text-right text-white/80 tabular-nums">{mToKm(g.total_distance_m)}</td>
                           <td className="py-2 px-2 text-right text-white/80 tabular-nums">{g.high_speed_running_m != null ? Math.round(g.high_speed_running_m) : '—'}</td>
                           <td className="py-2 px-2 text-right text-white/80 tabular-nums">{g.sprint_count ?? '—'}</td>
-                          <td className="py-2 px-2 text-right text-white/80 tabular-nums">{msToKmh(g.max_speed_ms)}</td>
+                          <td className="py-2 px-2 text-right text-white/80 tabular-nums">{formatSpeed(g.max_speed_ms)}</td>
                           <td className="py-2 px-2 text-right text-white/80 tabular-nums">{g.player_load != null ? g.player_load.toFixed(1) : '—'}</td>
                           <td className="py-2 px-2 text-right text-white/80 tabular-nums">{g.playing_minutes ?? '—'}</td>
                         </tr>
@@ -711,7 +715,7 @@ export default function MatchDayReport({ matches }: Props) {
                       <td className="py-2 px-2 text-right text-emerald-400 font-bold tabular-nums">{mToKm(gpsTotals.total_distance_m)}</td>
                       <td className="py-2 px-2 text-right text-emerald-400 font-bold tabular-nums">{Math.round(gpsTotals.high_speed_running_m)}</td>
                       <td className="py-2 px-2 text-right text-emerald-400 font-bold tabular-nums">{gpsTotals.sprint_count}</td>
-                      <td className="py-2 px-2 text-right text-emerald-400 font-bold tabular-nums">{msToKmh(gpsTotals.max_speed_ms)} ↑</td>
+                      <td className="py-2 px-2 text-right text-emerald-400 font-bold tabular-nums">{formatSpeed(gpsTotals.max_speed_ms)} ↑</td>
                       <td className="py-2 px-2 text-right text-emerald-400 font-bold tabular-nums">{gpsTotals.player_load.toFixed(1)}</td>
                       <td className="py-2 px-2 text-right text-white/30">—</td>
                     </tr>

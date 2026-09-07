@@ -147,6 +147,9 @@ const LEGEND_ITEMS = [
   { color: '#3b82f6', label: 'Turnover won' },
   { color: '#ec4899', label: 'Turnover lost' },
   { color: '#a78bfa', label: 'Block / Tackle' },
+  { color: '#2dd4bf', label: 'Interception' },
+  { color: '#6366f1', label: 'Foul won' },
+  { color: '#d946ef', label: 'Foul committed' },
 ]
 
 export function EventMapLegend() {

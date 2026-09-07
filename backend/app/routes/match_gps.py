@@ -20,7 +20,7 @@ import re as _re
 from pydantic import BaseModel as _BaseModel
 
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match import Match, MatchStatus
 from app.models.match_gps import MatchGPSData
 from app.models.training_performance import GPSUploadLog
@@ -643,7 +643,7 @@ async def trigger_match_reanalysis_with_gps(db: AsyncSession, match_id: UUID):
 @router.get("/{match_id}/gps", response_model=list[MatchGPSDataResponse])
 async def get_match_gps(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all GPS data for a match."""
@@ -697,7 +697,7 @@ async def get_match_gps(
 async def get_match_gps_upload_status(
     match_id: UUID,
     upload_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the status of a match GPS upload."""
@@ -726,7 +726,7 @@ async def get_match_gps_upload_status(
 @router.get("/{match_id}/gps/summary", response_model=MatchGPSSummary)
 async def get_match_gps_summary(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a summary of GPS data for a match."""
@@ -894,20 +894,25 @@ async def delete_match_gps(
 
 # ============ Player Match GPS History ============
 
-@router.get("/player/{player_id}/match-gps", response_model=list[MatchGPSDataResponse])
-async def get_player_match_gps_history(
-    player_id: UUID,
-    limit: int = Query(20, ge=1, le=100),
-    user: AuthenticatedUser = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get match GPS history for a player."""
+async def _get_player_match_gps_history(db: AsyncSession, player_id: UUID, limit: int, club_id: UUID) -> list[MatchGPSDataResponse]:
+    """Core query for a player's match GPS history — shared by the admin
+    route below (GET /player/{id}/match-gps) and the player-portal
+    self-service route (GET /player-portal/my-stats/match-gps-history).
+
+    club_id is required (not optional) — this previously only filtered by
+    player_id, so any authenticated admin/viewer who knew or guessed another
+    club's player UUID could pull that player's GPS history cross-club. The
+    self-service caller was never exposed to this (it always resolves its
+    own player_id server-side, never from a URL), but the admin route's
+    player_id path param was wide open to it.
+    """
     query = select(MatchGPSData, Player.name, Match.opponent, Match.match_date).join(
         Player, MatchGPSData.player_id == Player.id
     ).join(
         Match, MatchGPSData.match_id == Match.id
     ).where(
-        MatchGPSData.player_id == player_id
+        MatchGPSData.player_id == player_id,
+        Player.club_id == club_id,
     ).order_by(
         Match.match_date.desc()
     ).limit(limit)
@@ -921,6 +926,8 @@ async def get_player_match_gps_history(
             match_id=r.MatchGPSData.match_id,
             player_id=r.MatchGPSData.player_id,
             player_name=r.name,
+            opponent=r.opponent,
+            match_date=r.match_date,
             total_distance_m=r.MatchGPSData.total_distance_m,
             high_speed_running_m=r.MatchGPSData.high_speed_running_m,
             sprint_distance_m=r.MatchGPSData.sprint_distance_m,
@@ -943,3 +950,14 @@ async def get_player_match_gps_history(
         )
         for r in records
     ]
+
+
+@router.get("/player/{player_id}/match-gps", response_model=list[MatchGPSDataResponse])
+async def get_player_match_gps_history(
+    player_id: UUID,
+    limit: int = Query(20, ge=1, le=100),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get match GPS history for a player."""
+    return await _get_player_match_gps_history(db, player_id, limit, user.club_id)

@@ -183,18 +183,25 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
         )
 
       case 'scatter':
+        // xKey/dataKeys already resolve to 'name'/['value'] fallbacks if the
+        // AI omits config — but a scatter chart's own generic fallback name
+        // ('name') isn't a numeric axis field, so fall back to the literal
+        // 'x'/'y' names only when config truly didn't specify anything,
+        // rather than the generic non-numeric defaults used by other types.
+        const scatterXKey = config.xKey || 'x'
+        const scatterYKey = (config.dataKeys && config.dataKeys[0]) || 'y'
         return (
           <ResponsiveContainer width="100%" height={200}>
             <ScatterChart>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
               <XAxis
-                dataKey="x"
+                dataKey={scatterXKey}
                 type="number"
                 stroke="rgba(255,255,255,0.5)"
                 tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
               />
               <YAxis
-                dataKey="y"
+                dataKey={scatterYKey}
                 type="number"
                 stroke="rgba(255,255,255,0.5)"
                 tick={{ fill: 'rgba(255,255,255,0.7)', fontSize: 11 }}
@@ -451,6 +458,108 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </div>
+        )
+      }
+
+      case 'lineup': {
+        // Starting XV rendered on the pitch — same background/coordinate
+        // system as the 'pitch' case above, but fixed formation slots
+        // instead of shot/movement points.
+        const PITCH_X_OFFSET = 183
+        const PITCH_Y_OFFSET = 123
+        const PITCH_W = 1960
+        const PITCH_H = 1167
+
+        const FORMATION_POS: Record<string, { x: number; y: number; label: string }> = {
+          'gk':        { x: 7,  y: 50, label: 'GK' },
+          'fb-left':   { x: 20, y: 18, label: 'CB' },
+          'fb-center': { x: 20, y: 50, label: 'FB' },
+          'fb-right':  { x: 20, y: 82, label: 'CB' },
+          'hb-left':   { x: 35, y: 18, label: 'HB' },
+          'hb-center': { x: 35, y: 50, label: 'CHB' },
+          'hb-right':  { x: 35, y: 82, label: 'HB' },
+          'mf-left':   { x: 50, y: 35, label: 'MF' },
+          'mf-right':  { x: 50, y: 65, label: 'MF' },
+          'hf-left':   { x: 65, y: 18, label: 'HF' },
+          'hf-center': { x: 65, y: 50, label: 'CHF' },
+          'hf-right':  { x: 65, y: 82, label: 'HF' },
+          'ff-left':   { x: 80, y: 18, label: 'CF' },
+          'ff-center': { x: 80, y: 50, label: 'FF' },
+          'ff-right':  { x: 80, y: 82, label: 'CF' },
+        }
+
+        const toSvg = (px: number, py: number) => ({
+          x: (px / 100) * PITCH_W + PITCH_X_OFFSET,
+          y: (py / 100) * PITCH_H + PITCH_Y_OFFSET,
+        })
+
+        const surname = (name: string) => {
+          const parts = (name || '').trim().split(' ')
+          return parts[parts.length - 1] || name || '?'
+        }
+
+        const starters = data.filter((d: any) => FORMATION_POS[d.position_id])
+        const subs = data.filter((d: any) => !FORMATION_POS[d.position_id])
+        const changeNotes = starters.filter((p: any) => p.is_change && p.note)
+
+        return (
+          <div>
+            <svg viewBox="0 0 2332 1446" className="w-full h-auto rounded-lg overflow-hidden">
+              <rect width="2332" height="1446" fill="#2d5016" />
+              <image href="/pitch-svg.svg" width="2332" height="1446" preserveAspectRatio="xMidYMid meet" />
+              <rect width="2332" height="1446" fill="rgba(0,0,0,0.25)" />
+
+              {starters.map((p: any, idx: number) => {
+                const pos = FORMATION_POS[p.position_id]
+                const svg = toSvg(pos.x, pos.y)
+                const changed = !!p.is_change
+                const fill = changed ? '#f59e0b' : '#10b981'
+                return (
+                  <g key={idx}>
+                    <circle cx={svg.x} cy={svg.y} r={58} fill={fill} stroke="white" strokeWidth={5} opacity={0.95} />
+                    <text x={svg.x} y={svg.y + 15} textAnchor="middle" fill="white" fontSize={46} fontWeight="bold">
+                      {p.jersey_number ?? ''}
+                    </text>
+                    <text
+                      x={svg.x} y={svg.y + 92} textAnchor="middle" fill="white" fontSize={38} fontWeight="600"
+                      style={{ paintOrder: 'stroke', stroke: 'rgba(0,0,0,0.65)', strokeWidth: 6 } as React.CSSProperties}
+                    >
+                      {surname(p.player_name)}
+                    </text>
+                    {changed && (
+                      <text x={svg.x} y={svg.y - 72} textAnchor="middle" fill="#fbbf24" fontSize={28} fontWeight="700">
+                        CHANGE
+                      </text>
+                    )}
+                  </g>
+                )
+              })}
+            </svg>
+
+            {subs.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">Substitutes</div>
+                <div className="flex flex-wrap gap-2">
+                  {subs.map((p: any, idx: number) => (
+                    <div key={idx} className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white/80 text-sm">
+                      {p.jersey_number ? `${p.jersey_number}. ` : ''}{p.player_name}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {changeNotes.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                {changeNotes.map((p: any, idx: number) => (
+                  <div key={idx} className="text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                    <span className="font-semibold">{p.player_name}</span>
+                    {FORMATION_POS[p.position_id] ? ` (${FORMATION_POS[p.position_id].label})` : ''}: {p.note}
+                  </div>
+                ))}
               </div>
             )}
           </div>

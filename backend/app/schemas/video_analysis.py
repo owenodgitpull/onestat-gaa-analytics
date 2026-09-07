@@ -22,16 +22,38 @@ class VideoUploadInitiateRequest(BaseModel):
 
 
 class VideoUploadInitiateResponse(BaseModel):
-    """Response with presigned upload URL and session info."""
+    """Response with presigned upload URL and session info.
+
+    For files over the single-PUT cap, `is_multipart` is true and `upload_url`
+    is omitted in favour of `upload_id` + `part_urls` (one presigned PUT per
+    part, index 0 = part number 1)."""
     session_id: UUID
-    upload_url: str
+    upload_url: Optional[str] = None
     r2_key: str
+    is_multipart: bool = False
+    upload_id: Optional[str] = None
+    part_size_bytes: Optional[int] = None
+    part_urls: Optional[List[str]] = None
+
+
+class MultipartPartInfo(BaseModel):
+    """One completed part of a multipart upload."""
+    part_number: int = Field(..., ge=1)
+    etag: str
 
 
 class VideoUploadCompleteRequest(BaseModel):
-    """Confirm upload completed."""
+    """Confirm upload completed. For multipart uploads, upload_id + parts
+    finalize the R2-side object before the session is marked uploaded."""
     video_duration_ms: Optional[int] = None
     video_size_bytes: Optional[int] = None
+    upload_id: Optional[str] = None
+    parts: Optional[List[MultipartPartInfo]] = None
+
+
+class VideoUploadAbortRequest(BaseModel):
+    """Cancel an in-progress multipart upload."""
+    upload_id: str
 
 
 class SetHalftimeRequest(BaseModel):

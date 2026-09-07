@@ -2,11 +2,25 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useClubName } from '@/contexts/ClubContext'
 import type { TerritoryDistributionData } from '@/services/api'
 
-interface TerritoryDistributionProps {
-  data: TerritoryDistributionData
+// Shown below the header whenever one or more matches in the current filter
+// scope were recorded with Simple Scoring (tap-only, no continuous ball
+// tracking) — those matches are excluded from this chart's calculation
+// entirely, so the count here explains any "missing" matches vs other charts.
+function ExcludedMatchesNote({ excludedCount, totalInView, what }: { excludedCount: number; totalInView: number; what: string }) {
+  if (!excludedCount) return null
+  return (
+    <p className="text-white/40 text-xs -mt-2 mb-4">
+      {excludedCount} of {totalInView} games did not have precise location tracking on, so {what} cannot be derived for these.
+    </p>
+  )
 }
 
-export default function TerritoryDistribution({ data }: TerritoryDistributionProps) {
+interface TerritoryDistributionProps {
+  data: TerritoryDistributionData
+  matchesInView?: number
+}
+
+export default function TerritoryDistribution({ data, matchesInView = 0 }: TerritoryDistributionProps) {
   const clubName = useClubName()
   const [selectedTeam, setSelectedTeam] = useState<'own' | 'opponent'>('own')
   const [timeScope, setTimeScope] = useState<'season' | 'last_match'>('season')
@@ -64,6 +78,11 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-white">Territory Distribution</h3>
         </div>
+        <ExcludedMatchesNote
+          excludedCount={data.excluded_match_count ?? 0}
+          totalInView={matchesInView}
+          what="territorial possession"
+        />
         <div className="h-[200px] flex items-center justify-center text-white/40">
           No possession data recorded yet
         </div>
@@ -197,6 +216,12 @@ export default function TerritoryDistribution({ data }: TerritoryDistributionPro
           </div>
         </div>
       </div>
+
+      <ExcludedMatchesNote
+        excludedCount={data.excluded_match_count ?? 0}
+        totalInView={matchesInView}
+        what="territorial possession"
+      />
 
       {/* Season Avg / Last Match Toggle */}
       {hasLastMatch && data.per_match.length > 1 && (

@@ -359,9 +359,11 @@ def _build_initial_prompt(half: Optional[int], match_context: Optional[dict] = N
         team_block += f'team_a = {our_team} (the team we are analysing)\n'
         team_block += f'team_b = {opponent} (the opposition)\n'
         if match_context.get("our_colour"):
-            team_block += f'{our_team} jersey colour: {match_context["our_colour"]}\n'
+            trim = f' with {match_context["our_secondary_colour"]} trim' if match_context.get("our_secondary_colour") else ''
+            team_block += f'{our_team} jersey colour: {match_context["our_colour"]}{trim}\n'
         if match_context.get("opp_colour"):
-            team_block += f'{opponent} jersey colour: {match_context["opp_colour"]}\n'
+            trim = f' with {match_context["opp_secondary_colour"]} trim' if match_context.get("opp_secondary_colour") else ''
+            team_block += f'{opponent} jersey colour: {match_context["opp_colour"]}{trim}\n'
         if match_context.get("venue"):
             team_block += f'Venue: {match_context["venue"]}\n'
         team_block += (
@@ -453,7 +455,8 @@ async def analyze_video_with_gemini(
         match_context: Optional dict with team names, colours, venue for
             better team attribution. Shape:
             {"our_team": "Dungloe", "opponent": "Four Masters",
-             "our_colour": "#2D5016", "opp_colour": "#003399", "venue": "HOME"}
+             "our_colour": "#2D5016", "our_secondary_colour": "#FFFFFF",
+             "opp_colour": "#003399", "opp_secondary_colour": None, "venue": "HOME"}
     """
     return await asyncio.to_thread(_analyze_video_sync, video_path, half, match_context)
 

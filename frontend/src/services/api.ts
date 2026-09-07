@@ -131,7 +131,7 @@ export interface ComparisonPlayerStats {
   matches_played: number;
   avg_distance_km: number | null;
   avg_sprints: number | null;
-  avg_max_speed_kmh: number | null;
+  avg_max_speed_ms: number | null;
   attendance_rate: number | null;
 }
 
@@ -254,6 +254,7 @@ export const matchesAPI = {
     weather_condition?: string | null;
     temperature_celsius?: number | null;
     competition?: string | null;
+    stage?: string | null;
     referee?: string | null;
     half_duration_mins?: number;
   }): Promise<Match> => {
@@ -345,11 +346,15 @@ export const matchesAPI = {
    */
   getNextScheduled: async (): Promise<Match | null> => {
     try {
-      const response = await fetchAPI<{ matches: Match[] }>('/matches/?status=scheduled&sort=asc&limit=10');
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const upcoming = response.matches.find(m => new Date(m.match_date) >= today);
-      return upcoming ?? null;
+      // upcoming_only filters server-side — a club can accumulate old
+      // "scheduled" fixtures that were never marked completed/cancelled
+      // (e.g. an imported season fixture list left unreconciled against
+      // matches actually recorded), and those can fill up a small limit()
+      // entirely before reaching a genuinely upcoming match. Previously this
+      // relied on a client-side date filter over just the first 10 results,
+      // which silently returned "no fixture" once the backlog grew past 10.
+      const response = await fetchAPI<{ matches: Match[] }>('/matches/?status=scheduled&sort=asc&limit=1&upcoming_only=true');
+      return response.matches[0] ?? null;
     } catch {
       return null;
     }
@@ -368,11 +373,32 @@ export const matchesAPI = {
   },
 
   /**
+   * Distinct competition names already used across every match for this
+   * club (scheduled + completed) — powers the Competition field's
+   * autocomplete on match/fixture creation so names stay consistent
+   * instead of being retyped slightly differently each time.
+   */
+  getCompetitions: async (): Promise<string[]> => {
+    try {
+      return await fetchAPI<string[]>('/matches/competitions');
+    } catch {
+      return [];
+    }
+  },
+
+  /**
    * Get pitch path visualizations for a match (traces possession chains from events)
    */
   getPitchPaths: async (matchId: string, outcomes?: string[]): Promise<PitchPathsResponse> => {
     const params = outcomes ? `?outcomes=${outcomes.join(',')}` : '';
     return fetchAPI<PitchPathsResponse>(`/matches/${matchId}/pitch-paths${params}`);
+  },
+
+  /**
+   * Get team- and player-level Expected Points (xP) for a match
+   */
+  getExpectedPoints: async (matchId: string): Promise<ExpectedPointsResponse> => {
+    return fetchAPI<ExpectedPointsResponse>(`/matches/${matchId}/expected-points`);
   },
 };
 
@@ -458,6 +484,7 @@ export const matchEventsAPI = {
     minute: number;
     half: number;
     player_id: string | null;
+    assist_player_id: string | null;
     x_coord: number | null;
     y_coord: number | null;
     notes: string | null;
@@ -689,6 +716,7 @@ export interface PossessionFunnelData {
   opponent_shot_rate: number;
   opponent_score_rate: number;
   insight?: string;
+  excluded_match_count?: number;
 }
 
 export interface KickoutTrendMatch {
@@ -752,6 +780,35 @@ export interface TerritoryDistributionData {
   opponent_pcts: TerritoryZonePcts;
   per_match: TerritoryMatchData[];
   possession_pct: number;
+  excluded_match_count?: number;
+}
+
+export interface AttackingThirdsChannelPcts {
+  left: number;
+  centre: number;
+  right: number;
+}
+
+export interface AttackingThirdsMatchData {
+  match_id: string;
+  opponent: string;
+  date: string;
+  team_pcts: AttackingThirdsChannelPcts;
+  opponent_pcts: AttackingThirdsChannelPcts;
+}
+
+export interface AttackingThirdsData {
+  season_totals: Record<string, number>;
+  season_pcts: AttackingThirdsChannelPcts;
+  opponent_totals: Record<string, number>;
+  opponent_pcts: AttackingThirdsChannelPcts;
+  /** Colour-driving signal — scores per channel, falling back to shots, falling back to volume. See season_threat_basis. */
+  season_threat: AttackingThirdsChannelPcts;
+  opponent_threat: AttackingThirdsChannelPcts;
+  season_threat_basis: 'scores' | 'shots' | 'volume';
+  opponent_threat_basis: 'scores' | 'shots' | 'volume';
+  per_match: AttackingThirdsMatchData[];
+  excluded_match_count?: number;
 }
 
 export interface KPICardItem {
@@ -961,6 +1018,59 @@ export interface SeasonDashboardData {
   kickout_landing_zones?: KickoutLandingZonesData;
   kpi_sparkline_grid?: KPISparklineGridData;
   season_hmld?: SeasonHMLDData;
+  attacking_thirds?: AttackingThirdsData;
+  expected_points_season?: SeasonExpectedPointsData;
+  available_competitions: string[];
+  available_stages: string[];
+  matches_in_view: number;
+}
+
+export interface SeasonDashboardFilters {
+  competition?: string;
+  stage?: string;
+  lastN?: number;
+}
+
+// Fixed dropdown of match stages — mirrors MATCH_STAGE_OPTIONS in
+// backend/app/models/match.py. Kept in sync manually since it's a short,
+// rarely-changing list; not worth a round trip to fetch it.
+export const MATCH_STAGE_OPTIONS = [
+  'Preliminary Round',
+  ...Array.from({ length: 15 }, (_, i) => `Round ${i + 1}`), // league fixtures run a round per matchday, up to ~15 in a season
+  'Group Stage',
+  'Last 16',
+  'Quarter-Final',
+  'Semi-Final',
+  'Final',
+];
+
+// Season-long Expected Points (xP)
+export interface SeasonExpectedPointsMatch {
+  match_id: string;
+  opponent: string;
+  match_date: string | null;
+  team_expected_points: number;
+  team_actual_points: number;
+  opponent_expected_points: number;
+  opponent_actual_points: number;
+}
+
+export interface SeasonExpectedPointsPlayer {
+  player_id: string;
+  player_name: string;
+  shots: number;
+  total_pts: number;
+  expected_points: number;
+  under_over: number;
+}
+
+export interface SeasonExpectedPointsData {
+  season_team_expected_points: number;
+  season_team_actual_points: number;
+  season_opponent_expected_points: number;
+  season_opponent_actual_points: number;
+  per_match: SeasonExpectedPointsMatch[];
+  players: SeasonExpectedPointsPlayer[];
 }
 
 // Training Analytics types
@@ -1068,7 +1178,7 @@ export interface MatchReportGPSSummary {
   total_distance_km: number | null;
   high_speed_running_m: number | null;
   sprint_count: number | null;
-  max_speed_kmh: number | null;
+  max_speed_ms: number | null;
   dynamic_stress_load: number | null;
 }
 
@@ -1234,8 +1344,13 @@ const analyticsAPI = {
     return fetchAPI<DashboardData>('/analytics/dashboard');
   },
 
-  getSeasonDashboard: async (): Promise<SeasonDashboardData> => {
-    return fetchAPI<SeasonDashboardData>('/analytics/season-dashboard');
+  getSeasonDashboard: async (filters?: SeasonDashboardFilters): Promise<SeasonDashboardData> => {
+    const params = new URLSearchParams();
+    if (filters?.competition) params.set('competition', filters.competition);
+    if (filters?.stage) params.set('stage', filters.stage);
+    if (filters?.lastN) params.set('last_n', String(filters.lastN));
+    const qs = params.toString();
+    return fetchAPI<SeasonDashboardData>(`/analytics/season-dashboard${qs ? `?${qs}` : ''}`);
   },
 
   getSeasonSummary: async (): Promise<SeasonSummary> => {
@@ -1363,6 +1478,7 @@ export interface GPSAnalysisResponse {
   insights?: GPSInsights;
   error?: string;
   generated_at?: string;
+  cached?: boolean;
 }
 
 export interface ChartRecommendation {
@@ -1433,7 +1549,7 @@ export interface ChartConfig {
 
 export interface AIChartSpec {
   id: string;
-  type: 'line' | 'bar' | 'pie' | 'scatter' | 'area' | 'composed' | 'pitch';
+  type: 'line' | 'bar' | 'pie' | 'scatter' | 'area' | 'composed' | 'pitch' | 'lineup';
   title: string;
   trend?: 'improving' | 'declining' | 'stable';
   insight: string;
@@ -1541,6 +1657,33 @@ export interface PitchPathsResponse {
   insight: string;
   title?: string;
   attacking_right_first_half?: boolean;
+}
+
+// Expected Points (xP) types
+export interface ExpectedPointsPlayerRow {
+  player_id: string | null;
+  player_name: string;
+  shots: number;
+  goals: number;
+  two_pts: number;
+  pts: number;
+  total_pts: number;
+  expected_points: number;
+  under_over: number;
+  avg_shot_quality: number;
+}
+
+export interface ExpectedPointsResponse {
+  team_expected_points: number;
+  opponent_expected_points: number;
+  team_actual_points: number;
+  opponent_actual_points: number;
+  team_under_over: number;
+  opponent_under_over: number;
+  expected_result_margin: number;
+  actual_result_margin: number;
+  players: ExpectedPointsPlayerRow[];
+  model_sample_size: Record<string, number>;
 }
 
 // Chat Session types
@@ -1691,10 +1834,10 @@ const aiAPI = {
     return fetchAPI<PostMatchReport>(`/ai/post-match-report/${matchId}?force_regenerate=true&exclude_ball_carry=${excludeBallCarry}`);
   },
 
-  analyzeGps: async (gpsData: any[], matchInfo?: any): Promise<GPSAnalysisResponse> => {
+  analyzeGps: async (gpsData: any[], matchInfo?: any, forceRefresh = false): Promise<GPSAnalysisResponse> => {
     return fetchAPI<GPSAnalysisResponse>('/ai/analyze-gps', {
       method: 'POST',
-      body: JSON.stringify({ gps_data: gpsData, match_info: matchInfo }),
+      body: JSON.stringify({ gps_data: gpsData, match_info: matchInfo, force_refresh: forceRefresh }),
     });
   },
 
@@ -2299,6 +2442,8 @@ export interface MatchGPSData {
   match_id: string;
   player_id: string;
   player_name?: string;
+  opponent?: string;
+  match_date?: string;
   total_distance_m?: number;
   high_speed_running_m?: number;
   sprint_distance_m?: number;
@@ -3025,10 +3170,34 @@ const matchAnalyticsAPI = {
   getSeasonBenchmark: (matchId: string) => fetchAPI<SeasonBenchmarkData>(`/match-analytics/${matchId}/vs-season`),
 };
 
+export interface MatchVoiceNote {
+  id: string;
+  match_id: string;
+  text: string;
+  half: number | null;
+  minute: number | null;
+  created_at: string;
+}
+
+export const matchVoiceNotesAPI = {
+  create: (data: { match_id: string; text: string; half?: number | null; minute?: number | null }): Promise<MatchVoiceNote> =>
+    fetchAPI('/match-voice-notes/', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getByMatch: (matchId: string): Promise<{ notes: MatchVoiceNote[]; total: number }> =>
+    fetchAPI(`/match-voice-notes/match/${matchId}`),
+
+  delete: (noteId: string): Promise<void> =>
+    fetchAPI(`/match-voice-notes/${noteId}`, { method: 'DELETE' }),
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
   matchEvents: matchEventsAPI,
+  matchVoiceNotes: matchVoiceNotesAPI,
   possession: possessionAPI,
   matchLineups: matchLineupsAPI,
   analytics: analyticsAPI,

@@ -241,6 +241,17 @@ function TurnoverCauses({
     <div>
       <p className="text-xs text-white/40 font-medium mb-1.5">Turnover Causes — tap to highlight on the map</p>
       <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => onSelectCause(null)}
+          className="px-2.5 py-1 rounded-full text-xs transition-all"
+          style={{
+            background: selectedCause === null ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.1)',
+            border: `1px solid ${selectedCause === null ? '#10b981' : 'transparent'}`,
+            color: selectedCause === null ? '#fff' : 'rgba(255,255,255,0.6)',
+          }}
+        >
+          All: <span className="text-white font-semibold">{total}</span>
+        </button>
         {pills.map(p => {
           const active = selectedCause === p.key
           return (

@@ -16,7 +16,7 @@ from typing import Optional
 from uuid import UUID
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.player import Player, PlayerStatus, PlayerPosition
 from app.schemas.player import (
     PlayerCreate,
@@ -70,7 +70,7 @@ async def list_players(
     position: Optional[PlayerPosition] = Query(None, description="Filter by position"),
     search: Optional[str] = Query(None, description="Search by name"),
     active_only: bool = Query(True, description="Show only active players"),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -136,7 +136,7 @@ async def list_players(
 async def compare_players(
     player_a_id: UUID,
     player_b_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Compare two players side-by-side (manager view)."""
@@ -148,7 +148,7 @@ async def compare_players(
 @router.get("/{player_id}", response_model=PlayerDetail)
 async def get_player(
     player_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """

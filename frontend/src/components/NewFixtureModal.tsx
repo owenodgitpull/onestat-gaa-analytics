@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Home, Bus, Globe, CalendarDays, Clock, Trophy } from 'lucide-react'
+import { api, MATCH_STAGE_OPTIONS } from '@/services/api'
 
 interface NewFixtureModalProps {
   isOpen: boolean
@@ -10,6 +11,7 @@ interface NewFixtureModalProps {
     venue: 'home' | 'away' | 'neutral'
     matchDate: Date
     competition?: string | null
+    stage?: string | null
     half_duration_mins?: number
   }) => void
   defaultHalfDuration?: number
@@ -24,8 +26,19 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
   })
   const [matchTime, setMatchTime] = useState('15:00')
   const [competition, setCompetition] = useState('')
+  const [stage, setStage] = useState('')
   const [halfDurationMins, setHalfDurationMins] = useState(defaultHalfDuration)
   const [errors, setErrors] = useState<{ opponent?: string; matchDate?: string }>({})
+  const [competitionOptions, setCompetitionOptions] = useState<string[]>([])
+
+  // Competition names already used on this club's matches/fixtures — feeds
+  // the Competition field's <datalist> autocomplete below, same as
+  // NewMatchModal, so entries stay consistent instead of drifting into
+  // slightly different spellings. Still free-text, so a new one can be typed.
+  useEffect(() => {
+    if (!isOpen) return
+    api.matches.getCompetitions().then(setCompetitionOptions)
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -48,6 +61,7 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
       venue,
       matchDate: dateTime,
       competition: competition.trim() || null,
+      stage: stage || null,
       half_duration_mins: halfDurationMins,
     })
 
@@ -57,6 +71,7 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
     setMatchDate(new Date().toISOString().split('T')[0])
     setMatchTime('15:00')
     setCompetition('')
+    setStage('')
     setHalfDurationMins(defaultHalfDuration)
     setErrors({})
   }
@@ -67,6 +82,7 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
     setMatchDate(new Date().toISOString().split('T')[0])
     setMatchTime('15:00')
     setCompetition('')
+    setStage('')
     setHalfDurationMins(defaultHalfDuration)
     setErrors({})
     onClose()
@@ -210,13 +226,36 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
               <input
                 id="fix-comp"
                 type="text"
+                list="fixture-competition-options"
                 value={competition}
                 onChange={(e) => setCompetition(e.target.value)}
-                placeholder="e.g. All County Football League Div 1"
+                placeholder="e.g. Donegal Senior Championship"
                 className="w-full px-4 py-3 pl-10 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent transition-all"
               />
+              <datalist id="fixture-competition-options">
+                {competitionOptions.map(c => <option key={c} value={c} />)}
+              </datalist>
               <Trophy size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
             </div>
+            <p className="text-white/30 text-xs mt-1.5">Just the competition name — round/stage has its own field below.</p>
+          </div>
+
+          {/* Stage */}
+          <div>
+            <label htmlFor="fix-stage" className="block text-sm font-medium text-white mb-2">
+              Stage <span className="text-white/40 text-xs font-normal">(optional)</span>
+            </label>
+            <select
+              id="fix-stage"
+              value={stage}
+              onChange={(e) => setStage(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent transition-all"
+            >
+              <option value="" className="bg-slate-900">— None —</option>
+              {MATCH_STAGE_OPTIONS.map(s => (
+                <option key={s} value={s} className="bg-slate-900">{s}</option>
+              ))}
+            </select>
           </div>
 
           {/* Actions */}

@@ -12,7 +12,7 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.player import Player
@@ -151,6 +151,7 @@ class PossessionFunnelData(BaseModel):
     opponent_attack_rate: float
     opponent_shot_rate: float
     opponent_score_rate: float
+    excluded_match_count: int = 0
 
 class KickoutTrendMatch(BaseModel):
     match_id: str
@@ -164,6 +165,34 @@ class KickoutTrendMatch(BaseModel):
     won_break_pct: float
     lost_clean_pct: float
     lost_break_pct: float
+
+class SeasonExpectedPointsMatch(BaseModel):
+    match_id: str
+    opponent: str
+    match_date: Optional[str] = None
+    team_expected_points: float
+    team_actual_points: int
+    opponent_expected_points: float
+    opponent_actual_points: int
+
+
+class SeasonExpectedPointsPlayer(BaseModel):
+    player_id: str
+    player_name: str
+    shots: int
+    total_pts: int
+    expected_points: float
+    under_over: float
+
+
+class SeasonExpectedPointsData(BaseModel):
+    season_team_expected_points: float
+    season_team_actual_points: int
+    season_opponent_expected_points: float
+    season_opponent_actual_points: int
+    per_match: List[SeasonExpectedPointsMatch]
+    players: List[SeasonExpectedPointsPlayer]
+
 
 class TurnoverSourcePlayer(BaseModel):
     player_id: str
@@ -207,6 +236,35 @@ class TerritoryDistributionData(BaseModel):
     opponent_pcts: TerritoryZonePcts
     per_match: List[TerritoryMatchData]
     possession_pct: float
+    excluded_match_count: int = 0
+
+class AttackingThirdsChannelPcts(BaseModel):
+    left: float
+    centre: float
+    right: float
+
+class AttackingThirdsMatchData(BaseModel):
+    match_id: str
+    opponent: str
+    date: str
+    team_pcts: AttackingThirdsChannelPcts
+    opponent_pcts: AttackingThirdsChannelPcts
+
+class AttackingThirdsData(BaseModel):
+    season_totals: dict
+    season_pcts: AttackingThirdsChannelPcts
+    opponent_totals: dict
+    opponent_pcts: AttackingThirdsChannelPcts
+    # Threat colour is a separate signal from the volume pcts above — see
+    # SeasonDashboardService._attacking_thirds docstring. Basis names which
+    # metric actually drove it: "scores" (preferred), "shots" (no scores
+    # yet), or "volume" (no shot-location data at all — same as the pcts).
+    season_threat: AttackingThirdsChannelPcts
+    opponent_threat: AttackingThirdsChannelPcts
+    season_threat_basis: str = "volume"
+    opponent_threat_basis: str = "volume"
+    per_match: List[AttackingThirdsMatchData]
+    excluded_match_count: int = 0
 
 class KPICardTrend(BaseModel):
     direction: str
@@ -395,6 +453,11 @@ class SeasonDashboardData(BaseModel):
     kickout_landing_zones: Optional[KickoutLandingZonesData] = None
     kpi_sparkline_grid: Optional[KPISparklineGridData] = None
     season_hmld: Optional[SeasonHMLDData] = None
+    attacking_thirds: Optional[AttackingThirdsData] = None
+    expected_points_season: Optional[SeasonExpectedPointsData] = None
+    available_competitions: List[str] = []
+    available_stages: List[str] = []
+    matches_in_view: int = 0
 
 
 # Training Analytics schemas
@@ -492,16 +555,69 @@ def get_pitch_zone(x: float, y: float) -> str:
 # Endpoints
 # ============================================================================
 
+# Bump when the shape of _get_dashboard_data_fresh's output changes — the
+# data fingerprint alone doesn't change just because the code did, so without
+# a version signature a deploy could silently keep serving an old-shaped
+# cached payload (see the season-dashboard/leaderboard caches for the same
+# pattern and the story behind it).
+DASHBOARD_CACHE_VERSION = "v1"
+
+
 @router.get("/dashboard", response_model=DashboardData)
 async def get_dashboard_data(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get all dashboard data in a single request.
 
     Returns season summary, top scorers, shot locations, and trends.
+
+    Cached wrapper — same data-fingerprint pattern as
+    SeasonDashboardService.get_all / LeaderboardService._compute_all_rankings.
+    This loads every completed match plus every one of their MatchEvent rows
+    and recomputes win/loss/scoring/top-scorer aggregations in Python; before
+    this cache it reran on every dashboard view (this function is also called
+    directly, un-cached-otherwise, by /season-summary, /top-scorers and
+    /shot-locations below).
     """
+    from app.models.season_cache import SeasonCache
+    from app.services.season_dashboard_service import _compute_data_fingerprint
+
+    club_id = user.club_id
+    fingerprint = await _compute_data_fingerprint(db, club_id)
+    cache_type = f"analytics_dash_{DASHBOARD_CACHE_VERSION}"
+
+    cache_result = await db.execute(
+        select(SeasonCache).where(
+            SeasonCache.club_id == club_id,
+            SeasonCache.cache_type == cache_type,
+        )
+    )
+    cache = cache_result.scalar_one_or_none()
+    if cache and cache.data_fingerprint == fingerprint and cache.cached_result is not None:
+        return DashboardData.model_validate(cache.cached_result)
+
+    result = await _get_dashboard_data_fresh(db, club_id)
+
+    if cache:
+        cache.cached_result = result.model_dump(mode="json")
+        cache.data_fingerprint = fingerprint
+        cache.cached_at = datetime.utcnow()
+    else:
+        db.add(SeasonCache(
+            club_id=club_id,
+            cache_type=cache_type,
+            data_fingerprint=fingerprint,
+            cached_result=result.model_dump(mode="json"),
+        ))
+    await db.commit()
+
+    return result
+
+
+async def _get_dashboard_data_fresh(db: AsyncSession, club_id) -> DashboardData:
+    """The actual full season scan — only called on a get_dashboard_data() cache miss."""
     # Get completed matches that have at least one event tagged
     event_count = (
         select(func.count(MatchEvent.id))
@@ -514,7 +630,7 @@ async def get_dashboard_data(
             and_(
                 Match.status == MatchStatus.COMPLETED,
                 Match.is_deleted.is_(False),
-                Match.club_id == user.club_id,
+                Match.club_id == club_id,
                 event_count > 0,
             )
         ).options(
@@ -728,7 +844,7 @@ async def get_dashboard_data(
 
 @router.get("/season-summary", response_model=SeasonSummary)
 async def get_season_summary(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get season summary statistics only."""
@@ -739,7 +855,7 @@ async def get_season_summary(
 @router.get("/top-scorers", response_model=List[TopScorer])
 async def get_top_scorers(
     limit: int = Query(10, ge=1, le=50),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get top scorers leaderboard."""
@@ -750,7 +866,7 @@ async def get_top_scorers(
 @router.get("/shot-locations", response_model=List[ShotLocation])
 async def get_shot_locations(
     team: Optional[str] = Query(None, description="Filter by team: own or opponent"),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all shot locations for heat map visualization."""
@@ -766,7 +882,7 @@ async def get_shot_locations(
 @router.get("/player/{player_id}/matches", response_model=List[PlayerMatchStats])
 async def get_player_match_stats(
     player_id: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -962,7 +1078,7 @@ class PlayerShotEvent(BaseModel):
 @router.get("/player/{player_id}/shot-events", response_model=List[PlayerShotEvent])
 async def get_player_shot_events(
     player_id: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1019,11 +1135,27 @@ async def get_player_shot_events(
             half = 1
             if event.minute and event.minute > (match.half_duration_mins or 30):
                 half = 2
+            # pitch_x is stored raw, relative to a fixed physical end of the
+            # pitch — but which end this player's team attacks flips every
+            # half. The frontend's ShotMap only plots pitch_x >= 50 (the
+            # attacking half), so without normalizing here, every shot taken
+            # in the half where the team defended the high-x end reads as
+            # "own half" and is silently dropped from the map — the same bug
+            # already found and fixed in MatchResult.tsx's shot chart earlier
+            # this session, just unnormalized at the source here instead.
+            pitch_x = float(event.pitch_x) if event.pitch_x is not None else None
+            if pitch_x is not None:
+                attacking_right_first_half = (
+                    match.attacking_right_first_half
+                    if match.attacking_right_first_half is not None else True
+                )
+                attacking_right = attacking_right_first_half if half == 1 else not attacking_right_first_half
+                pitch_x = pitch_x if attacking_right else (100 - pitch_x)
             result.append(PlayerShotEvent(
                 match_id=str(event.match_id),
                 opponent=match.opponent,
                 event_type=event.event_type.value,
-                pitch_x=float(event.pitch_x) if event.pitch_x is not None else None,
+                pitch_x=pitch_x,
                 pitch_y=float(event.pitch_y) if event.pitch_y is not None else None,
                 minute=event.minute,
                 half=half,
@@ -1032,21 +1164,525 @@ async def get_player_shot_events(
     return result
 
 
+class QuarterBucket(BaseModel):
+    """One proportional quarter of match time, aggregated across every
+    completed match this season."""
+    quarter: str  # "Q1".."Q4"
+    work_rate_count: int
+    errors_count: int
+    work_rate_per_match: float
+    errors_per_match: float
+
+
+class PlayerQuarterProfile(BaseModel):
+    matches_included: int
+    quarters: List[QuarterBucket]
+    note: str
+
+
+async def _compute_quarter_profile(db: AsyncSession, club_id, player_uuid) -> "PlayerQuarterProfile":
+    """Core computation for quarter-profile — shared by the admin route below
+    (GET /player/{id}/quarter-profile) and the player-portal self-service
+    route (GET /player-portal/my-stats/quarter-profile), so both read
+    exactly the same logic instead of two copies drifting apart."""
+    matches_result = await db.execute(
+        select(Match).where(
+            and_(
+                Match.status == MatchStatus.COMPLETED,
+                Match.is_deleted.is_(False),
+                Match.club_id == club_id,
+            )
+        )
+    )
+    matches = matches_result.scalars().all()
+    if not matches:
+        return PlayerQuarterProfile(matches_included=0, quarters=[], note="No completed matches yet")
+
+    match_ids = [m.id for m in matches]
+    matches_map = {m.id: m for m in matches}
+
+    WORK_RATE_TYPES = {EventType.TACKLE_WON, EventType.TURNOVER_WON, EventType.BLOCK, EventType.INTERCEPTION}
+    ERROR_TYPES = {EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR}
+
+    events_result = await db.execute(
+        select(MatchEvent).where(
+            and_(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.player_id == player_uuid,
+                MatchEvent.team == Team.OWN,
+                MatchEvent.event_type.in_(list(WORK_RATE_TYPES | ERROR_TYPES)),
+                MatchEvent.minute.isnot(None),
+            )
+        )
+    )
+    events = events_result.scalars().all()
+
+    if not events:
+        return PlayerQuarterProfile(
+            matches_included=0, quarters=[],
+            note="No tagged work-rate/error events found for this player yet",
+        )
+
+    quarter_counts = {q: {"work": 0, "error": 0} for q in (1, 2, 3, 4)}
+    matches_with_events: set = set()
+
+    for e in events:
+        match = matches_map.get(e.match_id)
+        if not match:
+            continue
+        half_len = match.half_duration_mins or 30
+        full_len = half_len * 2
+        if not full_len:
+            continue
+        # Fraction of the whole match (0-1), clamped so stoppage/injury time
+        # past the nominal length still lands in Q4 instead of being lost.
+        frac = min(e.minute / full_len, 0.999)
+        quarter = min(int(frac * 4) + 1, 4)
+        matches_with_events.add(e.match_id)
+        if e.event_type in WORK_RATE_TYPES:
+            quarter_counts[quarter]["work"] += 1
+        else:
+            quarter_counts[quarter]["error"] += 1
+
+    n_matches = len(matches_with_events)
+    quarters = [
+        QuarterBucket(
+            quarter=f"Q{q}",
+            work_rate_count=quarter_counts[q]["work"],
+            errors_count=quarter_counts[q]["error"],
+            work_rate_per_match=round(quarter_counts[q]["work"] / n_matches, 2) if n_matches else 0.0,
+            errors_per_match=round(quarter_counts[q]["error"] / n_matches, 2) if n_matches else 0.0,
+        )
+        for q in (1, 2, 3, 4)
+    ]
+
+    return PlayerQuarterProfile(
+        matches_included=n_matches,
+        quarters=quarters,
+        note=(
+            "Quarters are proportional to each match's actual half length (not a fixed "
+            "minute count) so matches of different duration line up fairly. Work-rate = "
+            "tackles won + turnovers won + blocks + interceptions. Errors = turnovers lost "
+            "+ unforced errors. Behavioural proxy, not physical GPS output — full-match GPS "
+            "totals only, no quarter/half split captured yet."
+        ),
+    )
+
+
+@router.get("/player/{player_id}/quarter-profile", response_model=PlayerQuarterProfile)
+async def get_player_quarter_profile(
+    player_id: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Aggregates this player's work-rate events (tackles won, turnovers won,
+    blocks, interceptions) and error events (turnovers lost, unforced
+    errors) into four proportional match-quarters, summed across every
+    completed match this season and expressed as a per-match rate.
+
+    Deliberately season-wide rather than one match at a time: MatchGPSData
+    only ever stores full-match totals (no half/quarter split — see
+    docs/pitch-svg-geometry.md-adjacent finding, GPS PDF uploads don't carry
+    that granularity), and a single match's own tagged events per quarter is
+    usually only 2-5 — too sparse to show a real trend. Aggregating across
+    the whole season gives enough volume for a genuine per-player pattern
+    (e.g. errors clustering late in games) to show up, which one match can't.
+    """
+    from uuid import UUID
+    from fastapi import HTTPException
+
+    try:
+        player_uuid = UUID(player_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid player id")
+
+    return await _compute_quarter_profile(db, user.club_id, player_uuid)
+
+
+class SleepLogEntry(BaseModel):
+    date: str
+    hours_slept: float
+    quality: Optional[int] = None
+
+
+class PlayerSleepHistory(BaseModel):
+    player_id: str
+    entries: List[SleepLogEntry]
+    avg_hours: Optional[float] = None
+    avg_quality: Optional[float] = None
+    nights_below_7hrs: int = 0
+
+
+@router.get("/player/{player_id}/sleep-history", response_model=PlayerSleepHistory)
+async def get_player_sleep_history(
+    player_id: str,
+    days: int = Query(90, ge=1, le=365),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Coach-facing view of one player's self-logged sleep history. Players log
+    their own sleep via the player portal (POST /player-portal/sleep/log);
+    this is the read side for a coach looking at that player's page — the
+    existing /player-portal/sleep/history endpoint only returns the
+    AUTHENTICATED player's own data, and /sleep/squad is a 7-day squad-wide
+    summary, so neither covers "coach viewing one specific player's trend."
+    """
+    from uuid import UUID
+    from datetime import date, timedelta
+    from fastapi import HTTPException
+    from app.models.sleep_log import SleepLog
+
+    try:
+        player_uuid = UUID(player_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid player id")
+
+    # Confirm the player belongs to this admin's club before returning
+    # anything — sleep logs are self-reported personal data, not something
+    # to leak across clubs just because the UUID was guessable.
+    player_result = await db.execute(
+        select(Player).where(and_(Player.id == player_uuid, Player.club_id == user.club_id))
+    )
+    if not player_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    cutoff = date.today() - timedelta(days=days)
+    logs_result = await db.execute(
+        select(SleepLog).where(
+            and_(SleepLog.player_id == player_uuid, SleepLog.date >= cutoff)
+        ).order_by(SleepLog.date.asc())
+    )
+    logs = logs_result.scalars().all()
+
+    if not logs:
+        return PlayerSleepHistory(player_id=player_id, entries=[])
+
+    hours = [l.hours_slept for l in logs if l.hours_slept is not None]
+    qualities = [l.quality for l in logs if l.quality is not None]
+
+    return PlayerSleepHistory(
+        player_id=player_id,
+        entries=[
+            SleepLogEntry(date=l.date.isoformat(), hours_slept=l.hours_slept, quality=l.quality)
+            for l in logs
+        ],
+        avg_hours=round(sum(hours) / len(hours), 1) if hours else None,
+        avg_quality=round(sum(qualities) / len(qualities), 1) if qualities else None,
+        nights_below_7hrs=sum(1 for h in hours if h < 7),
+    )
+
+
+class DisciplineMatchPoint(BaseModel):
+    match_id: str
+    opponent: str
+    match_date: str
+    turnovers_won: int
+    turnovers_lost: int
+    unforced_errors: int
+
+
+class PlayerDisciplineTrend(BaseModel):
+    player_id: str
+    matches: List[DisciplineMatchPoint]
+
+
+async def _compute_discipline_trend(db: AsyncSession, club_id, player_uuid) -> "PlayerDisciplineTrend":
+    """Core computation for discipline-trend ("Ball Security") — shared by
+    the admin route below and the player-portal self-service route."""
+    matches_result = await db.execute(
+        select(Match).where(
+            and_(
+                Match.status == MatchStatus.COMPLETED,
+                Match.is_deleted.is_(False),
+                Match.club_id == club_id,
+            )
+        ).order_by(Match.match_date.asc())
+    )
+    matches = matches_result.scalars().all()
+    if not matches:
+        return PlayerDisciplineTrend(player_id=str(player_uuid), matches=[])
+
+    match_ids = [m.id for m in matches]
+    events_result = await db.execute(
+        select(MatchEvent).where(
+            and_(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.player_id == player_uuid,
+                MatchEvent.team == Team.OWN,
+            )
+        )
+    )
+    events = events_result.scalars().all()
+
+    from collections import defaultdict
+    by_match: dict = defaultdict(list)
+    for e in events:
+        by_match[e.match_id].append(e)
+
+    result = []
+    for m in matches:
+        m_events = by_match.get(m.id)
+        if not m_events:
+            continue  # player didn't feature in this match — not a real 0
+        result.append(DisciplineMatchPoint(
+            match_id=str(m.id),
+            opponent=m.opponent,
+            match_date=m.match_date.isoformat() if m.match_date else "",
+            turnovers_won=sum(1 for e in m_events if e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}),
+            turnovers_lost=sum(1 for e in m_events if e.event_type == EventType.TURNOVER_LOST),
+            unforced_errors=sum(1 for e in m_events if e.event_type == EventType.UNFORCED_ERROR),
+        ))
+
+    return PlayerDisciplineTrend(player_id=str(player_uuid), matches=result)
+
+
+@router.get("/player/{player_id}/discipline-trend", response_model=PlayerDisciplineTrend)
+async def get_player_discipline_trend(
+    player_id: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Turnovers won/lost and unforced errors per match across the season for
+    one player, chronological. Same per-match-trend shape as
+    /player/{id}/match-gps (which powers Season Physical Trend) — a match a
+    player featured in but with zero of a given event still counts (a clean
+    game with 0 turnovers lost is a real, meaningful data point, not missing
+    data), so every match they had ANY tagged event in is included, not just
+    matches with a turnover/error specifically.
+    """
+    from uuid import UUID
+    from fastapi import HTTPException
+
+    try:
+        player_uuid = UUID(player_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid player id")
+
+    return await _compute_discipline_trend(db, user.club_id, player_uuid)
+
+
+class PositionalBenchmarkStats(BaseModel):
+    matches_played: float  # avg matches played, only non-integer for the peer-group side
+    scoring_per_match: float
+    turnovers_won_per_match: float
+    turnovers_lost_per_match: float
+    blocks_per_match: float
+    assists_per_match: float
+    shooting_accuracy_pct: Optional[float] = None
+
+
+class PlayerPositionalBenchmark(BaseModel):
+    player_id: str
+    position: Optional[str] = None
+    peer_count: int
+    player_stats: Optional[PositionalBenchmarkStats] = None
+    position_avg: Optional[PositionalBenchmarkStats] = None
+    message: Optional[str] = None
+
+
+def _per_match_stats(events: list, n_matches: int, assists: int = 0) -> PositionalBenchmarkStats:
+    """Shared per-player aggregation — same event categories as
+    get_squad_season_stats (_shared.py), rebuilt here as per-match RATES so
+    players with different appearance counts are comparable.
+
+    assists is passed in separately rather than filtered out of `events`:
+    this app has no standalone ASSIST event type — an assist is recorded via
+    assist_player_id on the SCORER's event, crediting a different player
+    than whoever's event_type list this is, so it can't be derived from
+    `events` (which only ever contains this one player's own events)."""
+    n = max(n_matches, 1)
+    goals = sum(1 for e in events if e.event_type in {EventType.GOAL, EventType.PENALTY_GOAL})
+    points = sum(1 for e in events if e.event_type in {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE})
+    two_pts = sum(1 for e in events if e.event_type in {EventType.TWO_POINT, EventType.TWO_POINT_FREE})
+    wides = sum(1 for e in events if e.event_type in {EventType.WIDE, EventType.WIDE_FREE})
+    turnovers_won = sum(1 for e in events if e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON})
+    turnovers_lost = sum(1 for e in events if e.event_type == EventType.TURNOVER_LOST)
+    blocks = sum(1 for e in events if e.event_type == EventType.BLOCK)
+    attempts = goals + points + two_pts + wides
+    scored = goals + points + two_pts
+    return PositionalBenchmarkStats(
+        matches_played=n_matches,
+        scoring_per_match=round((goals * 3 + points + two_pts * 2) / n, 2),
+        turnovers_won_per_match=round(turnovers_won / n, 2),
+        turnovers_lost_per_match=round(turnovers_lost / n, 2),
+        blocks_per_match=round(blocks / n, 2),
+        assists_per_match=round(assists / n, 2),
+        shooting_accuracy_pct=round(scored / attempts * 100, 1) if attempts else None,
+    )
+
+
+async def _compute_positional_benchmark(db: AsyncSession, club_id, player_uuid) -> "PlayerPositionalBenchmark":
+    """Core computation for positional-benchmark — shared by the admin route
+    below and the player-portal self-service route.
+
+    A player's per-match rates vs the average of every OTHER active player
+    who shares their position — answers "is this player good for a
+    half-back", not "is this player good compared to a corner-forward",
+    which a whole-squad average can't. Per-match rates (not raw totals) so
+    players with different appearance counts stay comparable.
+
+    Excludes the player themselves from their own peer-group average — with
+    small position groups (a club panel might have only 3-4 midfielders)
+    including yourself measurably inflates your own baseline.
+    """
+    player_id = str(player_uuid)
+
+    player_result = await db.execute(
+        select(Player).where(and_(Player.id == player_uuid, Player.club_id == club_id))
+    )
+    player = player_result.scalar_one_or_none()
+    if not player:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    if not player.position:
+        return PlayerPositionalBenchmark(
+            player_id=player_id, position=None, peer_count=0,
+            message="No position set for this player — set one to enable positional benchmarking.",
+        )
+
+    peers_result = await db.execute(
+        select(Player).where(
+            and_(
+                Player.club_id == club_id,
+                Player.position == player.position,
+                Player.id != player_uuid,
+                Player.active.is_(True),
+            )
+        )
+    )
+    peers = peers_result.scalars().all()
+    if not peers:
+        return PlayerPositionalBenchmark(
+            player_id=player_id, position=player.position, peer_count=0,
+            message=f"No other active players listed as {player.position} to benchmark against yet.",
+        )
+
+    matches_result = await db.execute(
+        select(Match).where(
+            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == club_id)
+        )
+    )
+    match_ids = [m.id for m in matches_result.scalars().all()]
+
+    all_ids = [player_uuid] + [p.id for p in peers]
+    events_result = await db.execute(
+        select(MatchEvent).where(
+            and_(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.player_id.in_(all_ids),
+                MatchEvent.team == Team.OWN,
+            )
+        )
+    )
+    events = events_result.scalars().all()
+
+    assists_result = await db.execute(
+        select(MatchEvent.assist_player_id, func.count())
+        .where(
+            and_(
+                MatchEvent.match_id.in_(match_ids),
+                MatchEvent.assist_player_id.in_(all_ids),
+            )
+        )
+        .group_by(MatchEvent.assist_player_id)
+    )
+    assists_by_player = {pid: cnt for pid, cnt in assists_result.all()}
+
+    from collections import defaultdict
+    by_player: dict = defaultdict(list)
+    matches_by_player: dict = defaultdict(set)
+    for e in events:
+        by_player[e.player_id].append(e)
+        matches_by_player[e.player_id].add(e.match_id)
+
+    player_stats = _per_match_stats(
+        by_player.get(player_uuid, []), len(matches_by_player.get(player_uuid, set())),
+        assists=assists_by_player.get(player_uuid, 0),
+    )
+
+    peer_stat_list = [
+        _per_match_stats(
+            by_player.get(p.id, []), len(matches_by_player.get(p.id, set())),
+            assists=assists_by_player.get(p.id, 0),
+        )
+        for p in peers
+        if matches_by_player.get(p.id)  # only peers who actually featured in a match
+    ]
+    if not peer_stat_list:
+        return PlayerPositionalBenchmark(
+            player_id=player_id, position=player.position, peer_count=0,
+            message=f"No other {player.position}s have match data yet to benchmark against.",
+        )
+
+    def _avg(field: str) -> float:
+        return round(sum(getattr(s, field) for s in peer_stat_list) / len(peer_stat_list), 2)
+
+    accuracy_vals = [s.shooting_accuracy_pct for s in peer_stat_list if s.shooting_accuracy_pct is not None]
+
+    position_avg = PositionalBenchmarkStats(
+        matches_played=round(sum(s.matches_played for s in peer_stat_list) / len(peer_stat_list), 1),
+        scoring_per_match=_avg("scoring_per_match"),
+        turnovers_won_per_match=_avg("turnovers_won_per_match"),
+        turnovers_lost_per_match=_avg("turnovers_lost_per_match"),
+        blocks_per_match=_avg("blocks_per_match"),
+        assists_per_match=_avg("assists_per_match"),
+        shooting_accuracy_pct=round(sum(accuracy_vals) / len(accuracy_vals), 1) if accuracy_vals else None,
+    )
+
+    return PlayerPositionalBenchmark(
+        player_id=player_id,
+        position=player.position,
+        peer_count=len(peer_stat_list),
+        player_stats=player_stats,
+        position_avg=position_avg,
+    )
+
+
+@router.get("/player/{player_id}/positional-benchmark", response_model=PlayerPositionalBenchmark)
+async def get_player_positional_benchmark(
+    player_id: str,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Coach-facing positional benchmark — see _compute_positional_benchmark
+    for the actual logic, shared with the player-portal self-service route."""
+    from uuid import UUID
+    from fastapi import HTTPException
+
+    try:
+        player_uuid = UUID(player_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid player id")
+
+    return await _compute_positional_benchmark(db, user.club_id, player_uuid)
+
+
 @router.get("/season-dashboard", response_model=SeasonDashboardData)
 async def get_season_dashboard(
     background_tasks: BackgroundTasks,
-    user: AuthenticatedUser = Depends(require_admin),
+    competition: Optional[str] = Query(None, description="Filter to matches whose competition contains this text (case-insensitive)"),
+    stage: Optional[str] = Query(None, description="Filter to matches at this exact stage (e.g. 'Round 1', 'Quarter-Final')"),
+    last_n: Optional[int] = Query(None, ge=1, le=200, description="Only include the N most recent matches (after any competition/stage filter)"),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Get season dashboard data for canonical charts.
 
     Returns possession funnel, kickout trends, turnover leaderboard,
-    red zone players, and workhorse radar data.
+    red zone players, and workhorse radar data. Optionally scoped to a
+    competition, a stage within it, and/or the last N matches.
     """
     from app.services.season_dashboard_service import SeasonDashboardService
 
-    data = await SeasonDashboardService.get_all(db, user.club_id, background_tasks=background_tasks)
+    data = await SeasonDashboardService.get_all(
+        db, user.club_id, background_tasks=background_tasks,
+        competition=competition, last_n=last_n, stage=stage,
+    )
 
     td = data["territory_distribution"]
     kpi_raw = data.get("kpi_cards")
@@ -1107,6 +1743,22 @@ async def get_season_dashboard(
             trend_pct=sh.get("trend_pct"),
         )
 
+    attacking_thirds = None
+    if data.get("attacking_thirds"):
+        at = data["attacking_thirds"]
+        attacking_thirds = AttackingThirdsData(
+            season_totals=at["season_totals"],
+            season_pcts=AttackingThirdsChannelPcts(**at["season_pcts"]),
+            opponent_totals=at["opponent_totals"],
+            opponent_pcts=AttackingThirdsChannelPcts(**at["opponent_pcts"]),
+            season_threat=AttackingThirdsChannelPcts(**at.get("season_threat", at["season_pcts"])),
+            opponent_threat=AttackingThirdsChannelPcts(**at.get("opponent_threat", at["opponent_pcts"])),
+            season_threat_basis=at.get("season_threat_basis", "volume"),
+            opponent_threat_basis=at.get("opponent_threat_basis", "volume"),
+            per_match=[AttackingThirdsMatchData(**m) for m in at["per_match"]],
+            excluded_match_count=at.get("excluded_match_count", 0),
+        )
+
     return SeasonDashboardData(
         possession_funnel=PossessionFunnelData(**data["possession_funnel"]),
         kickout_trends=[KickoutTrendMatch(**k) for k in data["kickout_trends"]],
@@ -1120,6 +1772,7 @@ async def get_season_dashboard(
             opponent_pcts=TerritoryZonePcts(**td["opponent_pcts"]),
             per_match=[TerritoryMatchData(**m) for m in td["per_match"]],
             possession_pct=td["possession_pct"],
+            excluded_match_count=td.get("excluded_match_count", 0),
         ),
         kpi_cards=kpi,
         score_timeline=score_timeline,
@@ -1128,12 +1781,17 @@ async def get_season_dashboard(
         kickout_landing_zones=kickout_zones,
         kpi_sparkline_grid=kpi_sparkline,
         season_hmld=season_hmld,
+        attacking_thirds=attacking_thirds,
+        expected_points_season=SeasonExpectedPointsData(**data["expected_points_season"]) if data.get("expected_points_season") else None,
+        available_competitions=data.get("available_competitions", []),
+        available_stages=data.get("available_stages", []),
+        matches_in_view=data.get("matches_in_view", 0),
     )
 
 
 @router.get("/training-overview", response_model=TrainingOverviewData)
 async def get_training_overview(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1199,7 +1857,7 @@ class MatchReportGPSSummary(BaseModel):
     total_distance_km: Optional[float]
     high_speed_running_m: Optional[float]
     sprint_count: Optional[int]
-    max_speed_kmh: Optional[float]
+    max_speed_ms: Optional[float]
     dynamic_stress_load: Optional[float]
 
 
@@ -1239,7 +1897,7 @@ class MatchReportData(BaseModel):
 @router.get("/match-report/{match_id}", response_model=MatchReportData)
 async def get_match_report(
     match_id: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Aggregated single-match report data."""
@@ -1468,7 +2126,7 @@ async def get_match_report(
             total_distance_km=round(g.total_distance_m / 1000, 2) if g.total_distance_m else None,
             high_speed_running_m=g.high_speed_running_m,
             sprint_count=g.sprint_count,
-            max_speed_kmh=round(g.max_speed_ms * 3.6, 1) if g.max_speed_ms else None,
+            max_speed_ms=round(g.max_speed_ms, 2) if g.max_speed_ms else None,
             dynamic_stress_load=g.dynamic_stress_load,
         ))
 
@@ -1616,16 +2274,34 @@ class PlayerFormData(BaseModel):
     season: PlayerSeasonTotals
 
 
+PLAYER_FORM_CACHE_VERSION = "v1"
+
+
 @router.get("/player-form/{player_id}", response_model=PlayerFormData)
 async def get_player_form(
     player_id: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
-    """Per-player form report — full season stats, kickouts, defensive actions, GPS, squad ranks."""
+    """Per-player form report — full season stats, kickouts, defensive actions, GPS, squad ranks.
+
+    The heaviest of the 5 report endpoints: loads every completed match, the
+    selected player's own events, PLUS every own-team event and GPS row for
+    the ENTIRE SQUAD (needed for the squad averages/rankings), re-run every
+    time the player dropdown changes. Cached wrapper — same data-fingerprint
+    pattern as get_dashboard_data, keyed additionally by player_id since each
+    player has a genuinely different payload.
+
+    cache_type is String(50); a raw player UUID is already 36 characters, so
+    rather than embed it (leaving barely any room for a version prefix, and
+    none at all once the version needs to bump), player_id is hashed into a
+    short digest — mirrors how LeaderboardService hashes its category set
+    into a short digest rather than embedding the full string.
+    """
     from uuid import UUID as _UUID
-    from app.models.match_gps import MatchGPSData
-    from app.models.attendance import Attendance, AttendanceStatus, TrainingSession
+    import hashlib as _hashlib
+    from app.models.season_cache import SeasonCache
+    from app.services.season_dashboard_service import _compute_data_fingerprint
 
     try:
         player_uuid = _UUID(player_id)
@@ -1633,16 +2309,58 @@ async def get_player_form(
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Player not found")
 
+    # Player existence is always checked fresh — a cache hit must never mask
+    # a deleted/renamed player, and this is a single cheap row lookup, not
+    # part of the expensive aggregation being cached below.
     player_result = await db.execute(select(Player).where(Player.id == player_uuid))
     player = player_result.scalar_one_or_none()
     if not player:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Player not found")
 
+    club_id = user.club_id
+    fingerprint = await _compute_data_fingerprint(db, club_id)
+    player_hash = _hashlib.md5(player_id.encode()).hexdigest()[:16]
+    cache_type = f"player_form_{PLAYER_FORM_CACHE_VERSION}_{player_hash}"
+
+    cache_result = await db.execute(
+        select(SeasonCache).where(
+            SeasonCache.club_id == club_id,
+            SeasonCache.cache_type == cache_type,
+        )
+    )
+    cache = cache_result.scalar_one_or_none()
+    if cache and cache.data_fingerprint == fingerprint and cache.cached_result is not None:
+        return PlayerFormData.model_validate(cache.cached_result)
+
+    result = await _get_player_form_fresh(db, club_id, player, player_uuid)
+
+    if cache:
+        cache.cached_result = result.model_dump(mode="json")
+        cache.data_fingerprint = fingerprint
+        cache.cached_at = datetime.utcnow()
+    else:
+        db.add(SeasonCache(
+            club_id=club_id,
+            cache_type=cache_type,
+            data_fingerprint=fingerprint,
+            cached_result=result.model_dump(mode="json"),
+        ))
+    await db.commit()
+
+    return result
+
+
+async def _get_player_form_fresh(db: AsyncSession, club_id, player, player_uuid) -> PlayerFormData:
+    """The actual squad-wide events/GPS/attendance scan — only called on a
+    get_player_form() cache miss."""
+    from app.models.match_gps import MatchGPSData
+    from app.models.attendance import Attendance, AttendanceStatus, TrainingSession
+
     # ── Completed matches for this club ─────────────────────────────────────
     matches_result = await db.execute(
         select(Match).where(
-            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == user.club_id)
+            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == club_id)
         ).order_by(Match.match_date.desc())
     )
     matches = matches_result.scalars().all()
@@ -1684,7 +2402,7 @@ async def get_player_form(
     eight_weeks_ago = _dt.utcnow().date() - _td(weeks=8)
     sessions_result = await db.execute(
         select(TrainingSession).where(
-            and_(TrainingSession.club_id == user.club_id, TrainingSession.session_date >= eight_weeks_ago)
+            and_(TrainingSession.club_id == club_id, TrainingSession.session_date >= eight_weeks_ago)
         )
     )
     sessions = sessions_result.scalars().all()
@@ -1998,17 +2716,60 @@ class DisciplineSummaryData(BaseModel):
     season_totals: dict
 
 
+DISCIPLINE_CACHE_VERSION = "v1"
+
+
 @router.get("/discipline-summary", response_model=DisciplineSummaryData)
 async def get_discipline_summary(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
-    """Cards and fouls discipline summary for the season."""
+    """Cards and fouls discipline summary for the season.
+
+    Cached wrapper — same data-fingerprint pattern as get_dashboard_data.
+    """
+    from app.models.season_cache import SeasonCache
+    from app.services.season_dashboard_service import _compute_data_fingerprint
+
+    club_id = user.club_id
+    fingerprint = await _compute_data_fingerprint(db, club_id)
+    cache_type = f"discipline_summary_{DISCIPLINE_CACHE_VERSION}"
+
+    cache_result = await db.execute(
+        select(SeasonCache).where(
+            SeasonCache.club_id == club_id,
+            SeasonCache.cache_type == cache_type,
+        )
+    )
+    cache = cache_result.scalar_one_or_none()
+    if cache and cache.data_fingerprint == fingerprint and cache.cached_result is not None:
+        return DisciplineSummaryData.model_validate(cache.cached_result)
+
+    result = await _get_discipline_summary_fresh(db, club_id)
+
+    if cache:
+        cache.cached_result = result.model_dump(mode="json")
+        cache.data_fingerprint = fingerprint
+        cache.cached_at = datetime.utcnow()
+    else:
+        db.add(SeasonCache(
+            club_id=club_id,
+            cache_type=cache_type,
+            data_fingerprint=fingerprint,
+            cached_result=result.model_dump(mode="json"),
+        ))
+    await db.commit()
+
+    return result
+
+
+async def _get_discipline_summary_fresh(db: AsyncSession, club_id) -> DisciplineSummaryData:
+    """The actual full season scan — only called on a get_discipline_summary() cache miss."""
     from uuid import UUID as _UUID
 
     matches_result = await db.execute(
         select(Match).where(
-            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == user.club_id)
+            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == club_id)
         ).order_by(Match.match_date.asc())
     )
     matches = matches_result.scalars().all()
@@ -2158,15 +2919,58 @@ class KickoutSummaryData(BaseModel):
     player_leaderboard: List[KickoutPlayerRow] = []
 
 
+KICKOUT_SUMMARY_CACHE_VERSION = "v1"
+
+
 @router.get("/kickout-summary", response_model=KickoutSummaryData)
 async def get_kickout_summary(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
-    """Kickout retention per match with correlation to results."""
+    """Kickout retention per match with correlation to results.
+
+    Cached wrapper — same data-fingerprint pattern as get_dashboard_data.
+    """
+    from app.models.season_cache import SeasonCache
+    from app.services.season_dashboard_service import _compute_data_fingerprint
+
+    club_id = user.club_id
+    fingerprint = await _compute_data_fingerprint(db, club_id)
+    cache_type = f"kickout_summary_{KICKOUT_SUMMARY_CACHE_VERSION}"
+
+    cache_result = await db.execute(
+        select(SeasonCache).where(
+            SeasonCache.club_id == club_id,
+            SeasonCache.cache_type == cache_type,
+        )
+    )
+    cache = cache_result.scalar_one_or_none()
+    if cache and cache.data_fingerprint == fingerprint and cache.cached_result is not None:
+        return KickoutSummaryData.model_validate(cache.cached_result)
+
+    result = await _get_kickout_summary_fresh(db, club_id)
+
+    if cache:
+        cache.cached_result = result.model_dump(mode="json")
+        cache.data_fingerprint = fingerprint
+        cache.cached_at = datetime.utcnow()
+    else:
+        db.add(SeasonCache(
+            club_id=club_id,
+            cache_type=cache_type,
+            data_fingerprint=fingerprint,
+            cached_result=result.model_dump(mode="json"),
+        ))
+    await db.commit()
+
+    return result
+
+
+async def _get_kickout_summary_fresh(db: AsyncSession, club_id) -> KickoutSummaryData:
+    """The actual full season scan — only called on a get_kickout_summary() cache miss."""
     matches_result = await db.execute(
         select(Match).where(
-            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == user.club_id)
+            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == club_id)
         ).order_by(Match.match_date.asc())
     )
     matches = matches_result.scalars().all()
@@ -2329,7 +3133,7 @@ class TrainingLoadPlayerRow(BaseModel):
     high_speed_running_m: Optional[float]
     sprint_count: Optional[int]
     dynamic_stress_load: Optional[float]
-    max_speed_kmh: Optional[float]
+    max_speed_ms: Optional[float]
     sessions_attended: int
     attendance_rank: Optional[int] = None
 
@@ -2341,17 +3145,28 @@ class TrainingLoadData(BaseModel):
     date_to: str
 
 
+TRAINING_LOAD_CACHE_VERSION = "v2"  # bumped: max_speed_kmh -> max_speed_ms (display unit reverted to m/s)
+
+
 @router.get("/training-load", response_model=TrainingLoadData)
 async def get_training_load(
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
-    """Training load report: sessions, attendance, GPS load per player."""
+    """Training load report: sessions, attendance, GPS load per player.
+
+    Cached wrapper — same data-fingerprint pattern as get_dashboard_data.
+    Date-range scoped, so the range is hashed into the cache_type (a raw
+    "YYYY-MM-DD|YYYY-MM-DD" pair plus a version prefix would risk overflowing
+    cache_type's String(50) column across a few weeks of ranges) — mirrors
+    how player-form hashes player_id in below.
+    """
     from datetime import datetime as _dt, timedelta as _td, date as _date
-    from app.models.attendance import TrainingSession, Attendance, AttendanceStatus
-    from app.models.training_performance import TrainingGPSData
+    import hashlib as _hashlib
+    from app.models.season_cache import SeasonCache
+    from app.services.season_dashboard_service import _compute_data_fingerprint
 
     # Default: current week Mon-Sun
     today = _dt.utcnow().date()
@@ -2371,10 +3186,49 @@ async def get_training_load(
     else:
         d_to = d_from + _td(days=6)
 
+    club_id = user.club_id
+    fingerprint = await _compute_data_fingerprint(db, club_id)
+    range_sig = f"{d_from.isoformat()}|{d_to.isoformat()}"
+    range_hash = _hashlib.md5(range_sig.encode()).hexdigest()[:16]
+    cache_type = f"training_load_{TRAINING_LOAD_CACHE_VERSION}_{range_hash}"
+
+    cache_result = await db.execute(
+        select(SeasonCache).where(
+            SeasonCache.club_id == club_id,
+            SeasonCache.cache_type == cache_type,
+        )
+    )
+    cache = cache_result.scalar_one_or_none()
+    if cache and cache.data_fingerprint == fingerprint and cache.cached_result is not None:
+        return TrainingLoadData.model_validate(cache.cached_result)
+
+    result = await _get_training_load_fresh(db, club_id, d_from, d_to)
+
+    if cache:
+        cache.cached_result = result.model_dump(mode="json")
+        cache.data_fingerprint = fingerprint
+        cache.cached_at = datetime.utcnow()
+    else:
+        db.add(SeasonCache(
+            club_id=club_id,
+            cache_type=cache_type,
+            data_fingerprint=fingerprint,
+            cached_result=result.model_dump(mode="json"),
+        ))
+    await db.commit()
+
+    return result
+
+
+async def _get_training_load_fresh(db: AsyncSession, club_id, d_from, d_to) -> TrainingLoadData:
+    """The actual sessions/attendance/GPS scan — only called on a get_training_load() cache miss."""
+    from app.models.attendance import TrainingSession, Attendance, AttendanceStatus
+    from app.models.training_performance import TrainingGPSData
+
     sessions_result = await db.execute(
         select(TrainingSession).where(
             and_(
-                TrainingSession.club_id == user.club_id,
+                TrainingSession.club_id == club_id,
                 TrainingSession.session_date >= d_from,
                 TrainingSession.session_date <= d_to,
             )
@@ -2442,7 +3296,7 @@ async def get_training_load(
         if g.dynamic_stress_load:
             player_gps[pid]["dsl"].append(g.dynamic_stress_load)
         if g.max_speed_ms:
-            player_gps[pid]["max_speed"].append(g.max_speed_ms * 3.6)
+            player_gps[pid]["max_speed"].append(g.max_speed_ms)
 
     # Build player loads and attendance ranking
     att_sessions_by_player: dict = {}
@@ -2467,7 +3321,7 @@ async def get_training_load(
             high_speed_running_m=round(sum(g["hsr"]), 1) if g["hsr"] else None,
             sprint_count=sum(g["sprints"]) if g["sprints"] else None,
             dynamic_stress_load=round(sum(g["dsl"]), 1) if g["dsl"] else None,
-            max_speed_kmh=round(max(g["max_speed"]), 1) if g["max_speed"] else None,
+            max_speed_ms=round(max(g["max_speed"]), 2) if g["max_speed"] else None,
             sessions_attended=att_sessions_by_player.get(pid, g["sessions"]),
         ))
     # Sort by sessions attended desc, then distance

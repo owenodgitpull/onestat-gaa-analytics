@@ -13,6 +13,10 @@ interface PlayerSelectionModalProps {
   attackingRight?: boolean
   teamPrimaryColor?: string
   teamSecondaryColor?: string
+  /** Player ID of the last tracked ball carrier — on scoring events, this player
+   *  gets a distinct gold "Last carrier" highlight as a selection hint. It's a
+   *  suggestion only: tapping any other player works exactly the same. */
+  suggestedPlayerId?: string | null
 }
 
 const POSITION_LINE: Record<string, number> = {
@@ -60,6 +64,7 @@ export default function PlayerSelectionModal({
   attackingRight = true,
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
+  suggestedPlayerId = null,
 }: PlayerSelectionModalProps) {
   const [search, setSearch] = useState('')
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
@@ -129,13 +134,19 @@ export default function PlayerSelectionModal({
   )
 
   const handleSelect = (player: Player) => {
+    // Guard against a double-fire — the 90ms delay below leaves a real
+    // window where a second tap (double-tap, or a touch bouncing on a
+    // slower device) can call this again before selectedPlayerId's own
+    // re-render disables anything, logging the same event twice.
+    if (selectedPlayerId) return
     setSelectedPlayerId(player.id)
-    // Slight delay for visual feedback before closing
+    // Brief delay for visual feedback before closing — kept short since this
+    // gates how fast the next modal (e.g. the kickout overlay) can appear.
     setTimeout(() => {
       onSelectPlayer(player)
       setSearch('')
       setSelectedPlayerId(null)
-    }, 200)
+    }, 90)
   }
 
   return (
@@ -180,13 +191,16 @@ export default function PlayerSelectionModal({
               {jerseyNumbers.map(num => {
                 const player = byJersey.get(num)
                 const surname = player?.name?.split(' ').pop() || ''
+                const isSuggested = !!suggestedPlayerId && player?.id === suggestedPlayerId
                 return (
                   <button
                     key={num}
                     onClick={() => { if (player) handleSelect(player) }}
-                    className={`flex flex-col items-center justify-center rounded-xl transition-all active:scale-90 ${
+                    className={`relative flex flex-col items-center justify-center rounded-xl transition-all active:scale-90 ${
                       selectedPlayerId === player?.id
                         ? 'ring-2 ring-white/60 scale-105'
+                        : isSuggested
+                        ? 'ring-[3px] ring-amber-400 scale-105'
                         : 'hover:scale-105 hover:brightness-110'
                     }`}
                     style={{
@@ -194,8 +208,14 @@ export default function PlayerSelectionModal({
                       backgroundColor: teamPrimaryColor,
                       border: `2px solid ${teamSecondaryColor}`,
                       color: teamSecondaryColor,
+                      boxShadow: isSuggested ? '0 0 14px rgba(251,191,36,0.7)' : undefined,
                     }}
                   >
+                    {isSuggested && (
+                      <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[8px] font-bold text-black bg-amber-400 px-1.5 py-0.5 rounded-full whitespace-nowrap shadow">
+                        Last carrier
+                      </span>
+                    )}
                     <span className="text-lg font-black">{num}</span>
                     <span className="text-[9px] truncate max-w-full px-1 leading-tight opacity-70">{surname}</span>
                   </button>
@@ -222,19 +242,29 @@ export default function PlayerSelectionModal({
         {/* Player Grid — secondary option for players without jersey numbers */}
         <div className="p-6 overflow-y-auto max-h-[400px]">
           <div className="grid grid-cols-2 gap-3">
-            {filteredPlayers.map((player) => (
+            {filteredPlayers.map((player) => {
+              const isSuggested = !!suggestedPlayerId && player.id === suggestedPlayerId
+              return (
               <button
                 key={player.id}
                 onClick={() => handleSelect(player)}
                 className={`
-                  p-4 rounded-xl border-2 transition-all duration-200 text-left
+                  relative p-4 rounded-xl border-2 transition-all duration-200 text-left
                   ${
                     selectedPlayerId === player.id
                       ? 'border-emerald-500 bg-emerald-500/20 scale-95'
+                      : isSuggested
+                      ? 'border-amber-400 bg-amber-400/10 hover:bg-amber-400/15 hover:scale-105'
                       : 'border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/40 hover:scale-105'
                   }
                 `}
+                style={isSuggested ? { boxShadow: '0 0 14px rgba(251,191,36,0.35)' } : undefined}
               >
+                {isSuggested && (
+                  <span className="absolute -top-2 left-3 text-[8px] font-bold text-black bg-amber-400 px-1.5 py-0.5 rounded-full whitespace-nowrap shadow">
+                    Last carrier
+                  </span>
+                )}
                 <div className="flex items-center space-x-3">
                   {/* Jersey Number */}
                   <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center">
@@ -249,7 +279,8 @@ export default function PlayerSelectionModal({
                   </div>
                 </div>
               </button>
-            ))}
+              )
+            })}
           </div>
 
           {filteredPlayers.length === 0 && (

@@ -15,10 +15,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.match import Match
 from app.models.match_event import MatchEvent, EventType, Team
+from app.models.player import Player
 from app.models.live_insight import LiveInsight, InsightTrigger
 from app.services.ai import live_match_insight
 
 logger = logging.getLogger(__name__)
+
+# Concern types the sideline agent is allowed to name a specific own-team
+# player for, with the count at which they become worth mentioning at all —
+# matches the thresholds already stated in MatchAgent's live-insight TRIGGERS
+# section ("Any player: 2+ fouls", "2+ unforced errors"). turnovers_lost has
+# no separate stated threshold there — 2 is the same bar as the others.
+CONCERN_THRESHOLDS = {
+    "turnovers_lost": 2,
+    "unforced_errors": 2,
+    "fouls": 2,
+}
+CONCERN_EVENT_TYPES = {
+    "turnovers_lost": {EventType.TURNOVER_LOST},
+    "unforced_errors": {EventType.UNFORCED_ERROR},
+    "fouls": {EventType.FOUL_COMMITTED},
+}
 
 
 class LiveInsightsService:
@@ -315,6 +332,116 @@ class LiveInsightsService:
         return result.scalar_one_or_none()
 
     @staticmethod
+    async def _compute_concern_snapshot(db: AsyncSession, match_id: UUID) -> Dict[str, Dict[str, Any]]:
+        """Current match-wide count of each tracked concern, per own-team
+        player who has player_id set. Full-match totals, not a rolling
+        window — a concern is worth re-raising once it has genuinely grown,
+        regardless of which half that growth happened in."""
+        all_concern_types = {t for types in CONCERN_EVENT_TYPES.values() for t in types}
+        result = await db.execute(
+            select(MatchEvent.player_id, MatchEvent.event_type)
+            .where(
+                MatchEvent.match_id == match_id,
+                MatchEvent.team == Team.OWN,
+                MatchEvent.player_id.isnot(None),
+                MatchEvent.event_type.in_(list(all_concern_types)),
+            )
+        )
+        rows = result.all()
+        if not rows:
+            return {}
+
+        player_ids = {pid for pid, _ in rows}
+        player_result = await db.execute(select(Player).where(Player.id.in_(player_ids)))
+        names = {p.id: p.name for p in player_result.scalars().all()}
+
+        snapshot: Dict[str, Dict[str, Any]] = {}
+        for pid, event_type in rows:
+            key = str(pid)
+            if key not in snapshot:
+                snapshot[key] = {"player_id": key, "player_name": names.get(pid, "Unknown"),
+                                  "turnovers_lost": 0, "unforced_errors": 0, "fouls": 0}
+            for concern, types in CONCERN_EVENT_TYPES.items():
+                if event_type in types:
+                    snapshot[key][concern] += 1
+        return snapshot
+
+    @staticmethod
+    async def _build_already_flagged_note(db: AsyncSession, match_id: UUID, snapshot: Dict[str, Dict[str, Any]]) -> str:
+        """
+        Cross-references the current concern snapshot against every prior
+        insight's flagged_concerns for this match. Returns a hard-instruction
+        prompt block listing player+concern combos that are still at the same
+        count as when they were last raised — the model is told not to
+        re-mention these unless the count has since moved.
+
+        Deliberately does NOT try to enumerate what IS fair game — anything
+        not on this exclusion list is implicitly free to raise, so the
+        existing TRIGGERS section keeps working unchanged for everything else.
+        """
+        history_result = await db.execute(
+            select(LiveInsight.flagged_concerns)
+            .where(LiveInsight.match_id == match_id, LiveInsight.flagged_concerns.isnot(None))
+        )
+        # Last-flagged count per (player_id, concern) — later rows (higher
+        # created_at) would win on a tie, but since a concern only ever
+        # increases, the max already gives the correct "last known" value.
+        last_flagged: Dict[tuple, int] = {}
+        for (rows,) in history_result.all():
+            for entry in (rows or []):
+                k = (entry.get("player_id"), entry.get("concern"))
+                last_flagged[k] = max(last_flagged.get(k, 0), entry.get("count", 0))
+
+        if not last_flagged:
+            return ""
+
+        excluded = []
+        for player_key, counts in snapshot.items():
+            for concern, threshold in CONCERN_THRESHOLDS.items():
+                count = counts.get(concern, 0)
+                if count < threshold:
+                    continue
+                prior = last_flagged.get((player_key, concern))
+                if prior is not None and count <= prior:
+                    excluded.append(f"{counts['player_name']} ({concern.replace('_', ' ')}, still {count})")
+
+        if not excluded:
+            return ""
+
+        return (
+            "\n## ALREADY FLAGGED — DO NOT MENTION AGAIN UNLESS THE COUNT HAS RISEN\n"
+            f"{'; '.join(excluded)}.\n"
+            "These were already raised to the sideline and nothing has changed since — repeating them "
+            "as if new wastes the manager's attention. If the snapshot has nothing else notable, say so "
+            "briefly rather than repeating one of the above.\n"
+        )
+
+    @staticmethod
+    def _mark_flagged_concerns(insight_text: str, snapshot: Dict[str, Dict[str, Any]]) -> list:
+        """After generation, records which concern(s) actually got named in
+        the output text (simple case-insensitive name match) so the NEXT
+        check can tell whether that exact count has already been surfaced."""
+        flagged = []
+        lowered = insight_text.lower()
+        for counts in snapshot.values():
+            name = counts["player_name"]
+            if not name or name == "Unknown":
+                continue
+            surname = name.split()[-1].lower()
+            if surname not in lowered and name.lower() not in lowered:
+                continue
+            for concern, threshold in CONCERN_THRESHOLDS.items():
+                count = counts.get(concern, 0)
+                if count >= threshold:
+                    flagged.append({
+                        "player_id": counts["player_id"],
+                        "player_name": name,
+                        "concern": concern,
+                        "count": count,
+                    })
+        return flagged
+
+    @staticmethod
     async def _generate_and_store_insight(
         db: AsyncSession,
         match_id: UUID,
@@ -336,8 +463,38 @@ class LiveInsightsService:
                 for e in events[:10]
             ]
 
+            # Fetch the last couple of real (non-fallback) insights so the model
+            # knows what it already told the sideline and doesn't re-raise the
+            # same player/concern as if it were a fresh discovery every interval
+            prior_result = await db.execute(
+                select(LiveInsight.insight)
+                .where(LiveInsight.match_id == match_id)
+                .order_by(desc(LiveInsight.created_at))
+                .limit(2)
+            )
+            previous_insights = [
+                text for (text,) in prior_result.all()
+                if text and not text.startswith("[Analysis pending")
+            ]
+
+            # Deterministic repeat-suppression: compute current per-player
+            # concern counts and cross-reference against every prior
+            # insight's flagged_concerns, so a concern already raised at the
+            # same count doesn't get re-raised as if it were new (previously
+            # relied entirely on the LLM inferring this from free-text
+            # history — unreliable enough that a player's early turnovers
+            # kept getting flagged fresh every interval with no change).
+            concern_snapshot = await LiveInsightsService._compute_concern_snapshot(db, match_id)
+            already_flagged_note = await LiveInsightsService._build_already_flagged_note(db, match_id, concern_snapshot)
+
             # Generate AI insight
-            insight_text = await live_match_insight(db, match_id, recent_events, trigger=trigger.value)
+            insight_text = await live_match_insight(
+                db, match_id, recent_events, trigger=trigger.value,
+                previous_insights=previous_insights,
+                already_flagged_note=already_flagged_note,
+            )
+
+            flagged_concerns = LiveInsightsService._mark_flagged_concerns(insight_text, concern_snapshot)
 
             # Store insight (trigger stored as string value to avoid asyncpg enum caching)
             insight = LiveInsight(
@@ -346,7 +503,8 @@ class LiveInsightsService:
                 half=half,
                 trigger=trigger.value,
                 insight=insight_text,
-                trigger_context=context
+                trigger_context=context,
+                flagged_concerns=flagged_concerns or None,
             )
             db.add(insight)
             await db.commit()

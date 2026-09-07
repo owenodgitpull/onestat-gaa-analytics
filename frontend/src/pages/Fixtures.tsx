@@ -18,6 +18,7 @@ import { api } from '../services/api'
 import type { CsvImportResult } from '../services/api'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useClub } from '../contexts/ClubContext'
+import { useAuth } from '../contexts/AuthContext'
 import NewFixtureModal from '../components/NewFixtureModal'
 import EditFixtureModal from '../components/EditFixtureModal'
 import ImportFixturesModal from '../components/ImportFixturesModal'
@@ -49,6 +50,7 @@ export default function Fixtures() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { club } = useClub()
+  const { canEdit } = useAuth()
   const createMatch = useCreateMatch()
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -59,9 +61,14 @@ export default function Fixtures() {
 
   const hasScraper = club?.county ? SUPPORTED_SCRAPER_COUNTIES.includes(club.county) : false
 
+  // The calendar grid needs every match regardless of status — api.fixtures.getAll()
+  // only returns SCHEDULED/IN_PROGRESS matches (by design, for the "upcoming" list),
+  // which meant a fixture vanished from the calendar the moment it was marked
+  // COMPLETED. api.matches.getAll() returns all statuses, so past fixtures stay
+  // visible when browsing back through previous months.
   const { data: fixtures = [], isLoading } = useQuery({
     queryKey: ['fixtures'],
-    queryFn: () => api.fixtures.getAll(),
+    queryFn: () => api.matches.getAll(),
   })
 
   const { data: trainingSessions = [] } = useQuery<CalendarTrainingSession[]>({
@@ -88,6 +95,7 @@ export default function Fixtures() {
     venue: 'home' | 'away' | 'neutral'
     matchDate: Date
     competition?: string | null
+    stage?: string | null
     half_duration_mins?: number
   }) => {
     try {
@@ -96,6 +104,7 @@ export default function Fixtures() {
         match_date: data.matchDate.toISOString(),
         venue: data.venue,
         competition: data.competition,
+        stage: data.stage,
         half_duration_mins: data.half_duration_mins ?? 30,
       })
       setIsModalOpen(false)
@@ -110,6 +119,7 @@ export default function Fixtures() {
     venue: 'home' | 'away' | 'neutral'
     match_date: string
     competition?: string | null
+    stage?: string | null
     half_duration_mins?: number
   }) => {
     await api.matches.update(id, data)
@@ -180,21 +190,25 @@ export default function Fixtures() {
             <ChevronDown size={16} />
             <span className="hidden sm:inline">Upcoming</span>
           </button>
-          <button
-            onClick={() => setIsImportModalOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all bg-white/[0.06] border border-white/10 text-white/70 hover:bg-white/[0.10] hover:text-white"
-          >
-            <Upload size={16} />
-            <span className="hidden sm:inline">Import</span>
-          </button>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all"
-            style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
-          >
-            <PlusCircle size={16} />
-            <span className="hidden sm:inline">Fixture</span>
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all bg-white/[0.06] border border-white/10 text-white/70 hover:bg-white/[0.10] hover:text-white"
+            >
+              <Upload size={16} />
+              <span className="hidden sm:inline">Import</span>
+            </button>
+          )}
+          {canEdit && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md text-sm font-semibold transition-all"
+              style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+            >
+              <PlusCircle size={16} />
+              <span className="hidden sm:inline">Fixture</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -388,7 +402,7 @@ export default function Fixtures() {
                   {f.competition && (
                     <div className="flex items-center gap-1.5">
                       <Trophy size={12} />
-                      <span className="text-amber-400/70">{f.competition}</span>
+                      <span className="text-amber-400/70">{f.competition}{f.stage ? ` · ${f.stage}` : ''}</span>
                     </div>
                   )}
                 </div>

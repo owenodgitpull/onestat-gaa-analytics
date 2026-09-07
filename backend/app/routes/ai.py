@@ -15,12 +15,13 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
 from uuid import UUID
+import hashlib
 import json
 import logging
 from datetime import datetime
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.services.ai import (
     analyze_match,
     live_match_insight,
@@ -165,6 +166,7 @@ class WeeklyBriefResponse(BaseModel):
 class GPSAnalysisRequest(BaseModel):
     gps_data: List[dict]
     match_info: Optional[dict] = None
+    force_refresh: bool = False
 
 
 class GPSAnalysisResponse(BaseModel):
@@ -172,6 +174,7 @@ class GPSAnalysisResponse(BaseModel):
     insights: Optional[dict] = None
     error: Optional[str] = None
     generated_at: Optional[str] = None
+    cached: bool = False
 
 
 # =============================================================================
@@ -203,7 +206,7 @@ async def _generate_session_title(first_message: str) -> str:
 @router.get("/chat/sessions")
 async def list_chat_sessions(
     limit: int = 50,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """List all chat sessions, newest first."""
@@ -231,7 +234,7 @@ async def list_chat_sessions(
 @router.get("/chat/sessions/{session_id}")
 async def get_chat_session(
     session_id: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a full chat session with all messages."""
@@ -547,7 +550,7 @@ async def post_match_report_endpoint(
     match_id: str,
     force_regenerate: bool = False,
     exclude_ball_carry: bool = False,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -612,7 +615,7 @@ async def ai_health_check():
 
 @router.get("/chart-recommendations", response_model=ChartRecommendationsResponse)
 async def get_chart_recommendations_endpoint(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -720,7 +723,7 @@ async def generate_replacement_chart_endpoint(
 
 @router.get("/outlier-suggestions", response_model=OutlierSuggestionsResponse)
 async def get_outlier_suggestions_endpoint(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -744,7 +747,7 @@ async def get_outlier_suggestions_endpoint(
 @router.get("/weekly-brief", response_model=WeeklyBriefResponse)
 async def get_weekly_brief_endpoint(
     force_refresh: bool = False,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -788,8 +791,57 @@ async def analyze_gps_endpoint(
 
     The AI analyzes workload distribution, identifies outliers,
     and flags players who may need extended recovery or are at risk.
+
+    Result is cached on the match (same pattern as chart_insights) keyed by a
+    fingerprint of the GPS payload — repeat page loads for the same match
+    data return the cached insights instead of re-calling the LLM. Pass
+    force_refresh=true to bypass the cache.
     """
     try:
+        match_id_str = request.match_info.get("match_id") if request.match_info else None
+        match_uuid = None
+        if match_id_str:
+            try:
+                match_uuid = UUID(str(match_id_str))
+            except (ValueError, AttributeError):
+                match_uuid = None
+
+        # Cheap deterministic fingerprint of the GPS payload — if this hasn't
+        # changed since the last analysis, the cached result is still valid.
+        fingerprint_source = sorted(
+            (
+                str(p.get("player_id")),
+                p.get("total_distance_m"),
+                p.get("sprint_count"),
+                p.get("high_speed_running_m"),
+                p.get("hml_distance_m"),
+                p.get("max_speed_ms"),
+                p.get("playing_minutes"),
+                p.get("status"),
+            )
+            for p in request.gps_data
+        )
+        fingerprint = hashlib.sha256(json.dumps(fingerprint_source).encode()).hexdigest()
+
+        match = None
+        if match_uuid:
+            from app.models.match import Match
+            match_result = await db.execute(select(Match).where(Match.id == match_uuid))
+            match = match_result.scalar_one_or_none()
+
+            if (
+                match
+                and not request.force_refresh
+                and match.gps_insights
+                and match.gps_insights_fingerprint == fingerprint
+            ):
+                return GPSAnalysisResponse(
+                    success=True,
+                    insights=match.gps_insights,
+                    generated_at=match.gps_insights_generated_at.isoformat() if match.gps_insights_generated_at else None,
+                    cached=True,
+                )
+
         # Enrich GPS data with player positions and substitution info
         enriched_gps = list(request.gps_data)
 
@@ -813,23 +865,18 @@ async def analyze_gps_endpoint(
                 )
                 pos_lookup = {str(row.id): row.position if row.position else None for row in pos_result.all()}
 
-                # Look up substitution events if match_info has match_id
+                # Look up substitution events
                 sub_lookup = {}
-                match_id_str = request.match_info.get("match_id") if request.match_info else None
-                if match_id_str:
-                    try:
-                        match_uuid = UUID(str(match_id_str))
-                        sub_result = await db.execute(
-                            select(MatchEvent).where(
-                                MatchEvent.match_id == match_uuid,
-                                MatchEvent.event_type == EventType.SUBSTITUTION,
-                            )
+                if match_uuid:
+                    sub_result = await db.execute(
+                        select(MatchEvent).where(
+                            MatchEvent.match_id == match_uuid,
+                            MatchEvent.event_type == EventType.SUBSTITUTION,
                         )
-                        for ev in sub_result.scalars().all():
-                            if ev.player_id and ev.minute:
-                                sub_lookup[str(ev.player_id)] = ev.minute
-                    except (ValueError, AttributeError):
-                        pass
+                    )
+                    for ev in sub_result.scalars().all():
+                        if ev.player_id and ev.minute:
+                            sub_lookup[str(ev.player_id)] = ev.minute
 
                 # Enrich each player dict
                 for p in enriched_gps:
@@ -843,6 +890,13 @@ async def analyze_gps_endpoint(
             gps_data=enriched_gps,
             match_info=request.match_info
         )
+
+        if match and result.get("success"):
+            match.gps_insights = result.get("insights")
+            match.gps_insights_fingerprint = fingerprint
+            match.gps_insights_generated_at = datetime.utcnow()
+            await db.commit()
+
         return GPSAnalysisResponse(**result)
     except Exception as e:
         logger.error(f"GPS analysis failed: {str(e)}", exc_info=True)
@@ -858,7 +912,7 @@ async def get_insight_alerts(
     dashboard: Optional[str] = None,
     include_dismissed: bool = False,
     limit: int = 20,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """

@@ -4,7 +4,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, TrendingDown, Minus, CheckCircle, XCircle, Download,
-  Target, Shield, Zap, Activity, Trophy, Medal,
+  Target, Shield, Zap, Activity, Trophy, Medal, Loader2,
 } from 'lucide-react'
 import { fetchAPI } from '@/services/api'
 import type { Player } from '@/types'
@@ -162,9 +162,11 @@ export default function PlayerFormReport({ players }: Props) {
   const [data, setData] = useState<PlayerFormData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   const handleExport = async () => {
     if (!reportRef.current) return
+    setIsExporting(true)
     try {
       const html2canvas = (await import('html2canvas')).default
       const { jsPDF } = await import('jspdf')
@@ -176,6 +178,7 @@ export default function PlayerFormReport({ players }: Props) {
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       pdf.save(`player-report-${data?.player_name?.toLowerCase().replace(/\s+/g, '-') ?? 'player'}.pdf`)
     } catch { alert('Export failed. Please try again.') }
+    finally { setIsExporting(false) }
   }
 
   useEffect(() => {
@@ -216,8 +219,13 @@ export default function PlayerFormReport({ players }: Props) {
             </option>
           ))}
         </select>
-        <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm font-medium transition-colors">
-          <Download size={14} /> Export PDF
+        <button
+          onClick={handleExport}
+          disabled={isExporting}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          {isExporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+          {isExporting ? 'Exporting...' : 'Export PDF'}
         </button>
       </div>
 
@@ -359,7 +367,7 @@ export default function PlayerFormReport({ players }: Props) {
                 <StatCard label="Avg Distance" value={s.avg_distance_km ? `${s.avg_distance_km} km` : '—'} rank={s.rank_distance} />
                 <StatCard label="Avg HSR" value={s.avg_hsr_m ? `${s.avg_hsr_m} m` : '—'} sub="high speed running" />
                 <StatCard label="Avg Sprints" value={s.avg_sprint_count ?? '—'} />
-                <StatCard label="Top Speed" value={s.avg_max_speed_ms ? `${(s.avg_max_speed_ms * 3.6).toFixed(1)} km/h` : '—'} sub="avg max speed" />
+                <StatCard label="Top Speed" value={s.avg_max_speed_ms ? `${s.avg_max_speed_ms.toFixed(2)} m/s` : '—'} sub="avg max speed" />
               </div>
             </div>
           )}

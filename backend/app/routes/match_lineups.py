@@ -12,7 +12,7 @@ import uuid
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match_lineup import MatchLineup
 from app.models.match import Match
 from app.models.player import Player
@@ -55,6 +55,12 @@ async def set_match_lineup(
     Set the starting lineup and substitutes for a match.
 
     This replaces any existing lineup for the match.
+
+    Previously this issued a per-entry "does this player exist" SELECT, a
+    per-entry DELETE, and a per-entry refresh() after insert — for a full
+    26-player squad that's 70+ sequential round-trips to the DB, which is
+    exactly the "save and start took a moment" delay reported from the
+    match-prep screen. Batched below to a handful of round-trips total.
     """
     try:
         match_uuid = uuid.UUID(match_id)
@@ -67,44 +73,47 @@ async def set_match_lineup(
     if not match:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    # Delete existing lineup
-    result = await db.execute(select(MatchLineup).where(MatchLineup.match_id == match_uuid))
-    existing = result.scalars().all()
-    for lineup_entry in existing:
-        await db.delete(lineup_entry)
-
-    # Create new lineup
-    created_lineups = []
+    # Validate + parse all player IDs up front
+    player_uuids: dict[str, uuid.UUID] = {}
     for lineup_entry in lineup:
         try:
-            player_uuid = uuid.UUID(lineup_entry.player_id)
+            player_uuids[lineup_entry.player_id] = uuid.UUID(lineup_entry.player_id)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid player ID format: {lineup_entry.player_id}")
 
-        # Check if player exists
-        result = await db.execute(select(Player).where(Player.id == player_uuid))
-        player = result.scalar_one_or_none()
-        if not player:
-            raise HTTPException(status_code=404, detail=f"Player not found: {lineup_entry.player_id}")
+    # One batched existence check for every player in the submitted lineup,
+    # instead of one query per player.
+    if player_uuids:
+        result = await db.execute(select(Player.id).where(Player.id.in_(player_uuids.values())))
+        found_ids = {row[0] for row in result.all()}
+        missing = [pid for pid, puuid in player_uuids.items() if puuid not in found_ids]
+        if missing:
+            raise HTTPException(status_code=404, detail=f"Player not found: {missing[0]}")
 
-        new_lineup = MatchLineup(
+    # One bulk delete for the existing lineup instead of select-then-loop-delete.
+    from sqlalchemy import delete as sa_delete
+    await db.execute(sa_delete(MatchLineup).where(MatchLineup.match_id == match_uuid))
+
+    # Create new lineup — single flush + commit for the whole batch.
+    for lineup_entry in lineup:
+        db.add(MatchLineup(
             match_id=match_uuid,
-            player_id=player_uuid,
+            player_id=player_uuids[lineup_entry.player_id],
             position_id=lineup_entry.position_id,
             is_substitute=lineup_entry.is_substitute,
             is_on_field=not lineup_entry.is_substitute,  # Starters on field, subs on bench
             jersey_number=lineup_entry.jersey_number,
-        )
-        db.add(new_lineup)
-        created_lineups.append(new_lineup)
+        ))
 
     await db.commit()
 
-    # Refresh and return with player details
-    response = []
-    for lineup_entry in created_lineups:
-        await db.refresh(lineup_entry)
-        response.append(MatchLineupResponse(
+    # One query for the whole saved lineup, with players batch-loaded via
+    # the model's lazy="selectin" relationship (one extra query, not one per row).
+    result = await db.execute(select(MatchLineup).where(MatchLineup.match_id == match_uuid))
+    created_lineups = result.scalars().all()
+
+    return [
+        MatchLineupResponse(
             id=str(lineup_entry.id),
             match_id=str(lineup_entry.match_id),
             player_id=str(lineup_entry.player_id),
@@ -114,15 +123,15 @@ async def set_match_lineup(
             player_name=lineup_entry.player.name,
             player_jersey_number=lineup_entry.jersey_number or lineup_entry.player.jersey_number,
             match_jersey_number=lineup_entry.jersey_number,
-        ))
-
-    return response
+        )
+        for lineup_entry in created_lineups
+    ]
 
 
 @router.get("/matches/{match_id}/lineup", response_model=List[MatchLineupResponse])
 async def get_match_lineup(
     match_id: str,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -159,7 +168,7 @@ async def get_match_lineup(
 
 @router.get("/last-lineup", response_model=List[MatchLineupResponse])
 async def get_last_match_lineup(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """

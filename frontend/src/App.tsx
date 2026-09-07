@@ -4,17 +4,11 @@ import { AuthProvider } from './contexts/AuthContext'
 import { ClubProvider } from './contexts/ClubContext'
 import RequireAuth from './components/RequireAuth'
 import MatchSetup from './pages/MatchSetup'
-import MatchRecording from './pages/MatchRecording'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import Results from './pages/Results'
-import MatchResult from './pages/MatchResult'
-import Attendance from './pages/Attendance'
-import Players from './pages/Players'
-import PlayerView from './pages/PlayerView'
 import Navigation from './components/Navigation'
 import PlayerNavigation from './components/PlayerNavigation'
 import Settings from './pages/Settings'
-import VideoTagging from './pages/VideoTagging'
 import VideoSessionList from './pages/VideoSessionList'
 import Fixtures from './pages/Fixtures'
 import Onboarding from './pages/Onboarding'
@@ -26,23 +20,33 @@ import SelectPlayer from './pages/SelectPlayer'
 
 // Player portal pages
 import PlayerDashboard from './pages/player/PlayerDashboard'
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
+import { lazyWithRetry } from './utils/lazyWithRetry'
+import ErrorBoundary from './components/ErrorBoundary'
 import InstallBanner from './components/InstallBanner'
 import TrialBanner from './components/TrialBanner'
 import PlayerPreviewBanner from './components/PlayerPreviewBanner'
+import EnableNotificationsBanner from './components/EnableNotificationsBanner'
 
-const LeaderboardPage = lazy(() => import('./pages/player/LeaderboardPage'))
-const MyStatsPage = lazy(() => import('./pages/player/MyStatsPage'))
-const PlayerProfile = lazy(() => import('./pages/player/PlayerProfile'))
-const PlaybooksPage = lazy(() => import('./pages/player/PlaybooksPage'))
+const LeaderboardPage = lazyWithRetry(() => import('./pages/player/LeaderboardPage'))
+const MyStatsPage = lazyWithRetry(() => import('./pages/player/MyStatsPage'))
+const PlayerProfile = lazyWithRetry(() => import('./pages/player/PlayerProfile'))
+const PlaybooksPage = lazyWithRetry(() => import('./pages/player/PlaybooksPage'))
+const TrainingPage = lazyWithRetry(() => import('./pages/player/TrainingPage'))
 
 // Lazy-load heavy admin pages
-const AIAnalystPage = lazy(() => import('./pages/AIAnalystPage'))
-const SeasonReport = lazy(() => import('./pages/SeasonReport'))
-const SquadFitness = lazy(() => import('./pages/SquadFitness'))
-const MatchPrep = lazy(() => import('./pages/MatchPrep'))
-const FixturePreview = lazy(() => import('./pages/FixturePreview'))
-const PlayerComparison = lazy(() => import('./pages/PlayerComparison'))
+const AIAnalystPage = lazyWithRetry(() => import('./pages/AIAnalystPage'))
+const SeasonReport = lazyWithRetry(() => import('./pages/SeasonReport'))
+const SquadFitness = lazyWithRetry(() => import('./pages/SquadFitness'))
+const MatchPrep = lazyWithRetry(() => import('./pages/MatchPrep'))
+const FixturePreview = lazyWithRetry(() => import('./pages/FixturePreview'))
+const PlayerComparison = lazyWithRetry(() => import('./pages/PlayerComparison'))
+const MatchResult = lazyWithRetry(() => import('./pages/MatchResult'))
+const PlayerView = lazyWithRetry(() => import('./pages/PlayerView'))
+const MatchRecordingRouter = lazyWithRetry(() => import('./pages/MatchRecordingRouter'))
+const VideoTagging = lazyWithRetry(() => import('./pages/VideoTagging'))
+const Attendance = lazyWithRetry(() => import('./pages/Attendance'))
+const Players = lazyWithRetry(() => import('./pages/Players'))
 
 // Initialize offline-first infrastructure (IndexedDB, network monitor, sync engine)
 import { initOffline } from './services/offline'
@@ -70,6 +74,7 @@ function PlayerLoading() {
 
 function App() {
   return (
+    <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <Router>
@@ -107,11 +112,13 @@ function App() {
                 <RequireAuth>
                   <ClubProvider>
                     <PlayerPreviewBanner />
+                    <EnableNotificationsBanner />
                     <main className="px-4 pt-8 pb-24 max-w-lg mx-auto safe-area-top">
                       <Suspense fallback={<PlayerLoading />}>
                         <Routes>
                           <Route path="/" element={<PlayerDashboard />} />
                           <Route path="/leaderboards" element={<LeaderboardPage />} />
+                          <Route path="/training" element={<TrainingPage />} />
                           <Route path="/stats" element={<MyStatsPage />} />
                           <Route path="/playbooks" element={<PlaybooksPage />} />
                           <Route path="/profile" element={<PlayerProfile />} />
@@ -135,7 +142,7 @@ function App() {
                         <Routes>
                           <Route path="/" element={<AnalyticsDashboard />} />
                           <Route path="/match/:matchId/setup" element={<MatchSetup />} />
-                          <Route path="/match/:matchId" element={<MatchRecording />} />
+                          <Route path="/match/:matchId" element={<MatchRecordingRouter />} />
                           <Route path="/match-prep/:matchId" element={<MatchPrep />} />
                           <Route path="/fixtures" element={<Fixtures />} />
                           <Route path="/fixtures/:matchId/preview" element={<FixturePreview />} />
@@ -165,6 +172,7 @@ function App() {
         </Router>
       </AuthProvider>
     </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
 

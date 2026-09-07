@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.services.player_movement_service import PlayerMovementService
 from app.models.ball_carrier_segment import BallCarrierSegment
 from app.models.formation_snapshot import FormationSnapshot
@@ -131,7 +131,7 @@ async def append_path_points(
 @router.get("/carrier-segments/{match_id}", response_model=BallCarrierSegmentListResponse)
 async def list_carrier_segments(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     segments = await PlayerMovementService.list_carrier_segments(db, match_id)
@@ -195,7 +195,7 @@ async def create_formation_snapshot(
 @router.get("/snapshots/{match_id}", response_model=FormationSnapshotListResponse)
 async def list_formation_snapshots(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     snapshots = await PlayerMovementService.list_formation_snapshots(db, match_id)
@@ -242,7 +242,7 @@ async def create_tactical_tag(
 @router.get("/tactical-tags/{match_id}", response_model=TacticalTagListResponse)
 async def list_tactical_tags(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     tags = await PlayerMovementService.list_tactical_tags(db, match_id)
@@ -284,7 +284,7 @@ async def create_kickout_play(
 
 @router.get("/kickout-plays", response_model=KickoutPlayListResponse)
 async def list_kickout_plays(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     plays = await PlayerMovementService.list_kickout_plays(db, user.club_id)
@@ -341,7 +341,7 @@ async def create_movement_arrow(
 @router.get("/movement-arrows/{match_id}", response_model=MovementArrowListResponse)
 async def list_movement_arrows(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     arrows = await PlayerMovementService.list_movement_arrows(db, match_id)
@@ -368,7 +368,7 @@ async def delete_movement_arrow(
 @router.get("/chains/{match_id}/derive")
 async def derive_possession_chains(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     chains = await PlayerMovementService.derive_possession_chains(db, match_id)

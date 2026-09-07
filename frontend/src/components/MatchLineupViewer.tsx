@@ -154,22 +154,22 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
   const subs = lineup.filter(l => l.is_substitute)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 animate-fade-in">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-4xl glass-card p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-full bg-emerald-500/20">
-              <Users className="text-emerald-400" size={22} />
+      <div className="relative w-full max-w-4xl glass-card p-3 sm:p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-3 sm:mb-5">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-full bg-emerald-500/20">
+              <Users className="text-emerald-400" size={18} />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">Match Lineup</h2>
-              <p className="text-xs text-white/40">vs {opponentName}</p>
+              <h2 className="text-base sm:text-xl font-bold text-white">Match Lineup</h2>
+              <p className="text-[11px] sm:text-xs text-white/40">vs {opponentName}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors p-1">
-            <X size={22} />
+            <X size={20} />
           </button>
         </div>
 
@@ -197,7 +197,7 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
               >
                 {/* Jersey */}
                 <div
-                  className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-sm ring-2 shadow-lg transition-opacity ${isSubbedOff ? 'opacity-50' : ''}`}
+                  className={`w-6 h-6 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-[9px] sm:text-sm ring-1 sm:ring-2 shadow-lg transition-opacity ${isSubbedOff ? 'opacity-50' : ''}`}
                   style={{ backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties}
                 >
                   {jersey ?? pos.label}
@@ -205,21 +205,21 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
 
                 {/* Name + score */}
                 <div className="absolute top-full mt-0.5 left-1/2 transform -translate-x-1/2 whitespace-nowrap flex flex-col items-center">
-                  <span className="text-white text-[10px] sm:text-xs font-semibold bg-black/60 px-1.5 py-0.5 rounded">
+                  <span className="text-white text-[6px] sm:text-xs font-semibold bg-black/60 px-1 py-px sm:px-1.5 sm:py-0.5 rounded">
                     {displaySurname(player.player_name)}
                     {isSubbedOff && <span className="text-amber-400 ml-0.5">↓</span>}
                   </span>
                   {scoreLine && (
-                    <span className="text-emerald-400 text-[9px] sm:text-[10px] font-bold bg-black/70 px-1.5 py-0.5 rounded mt-0.5">
+                    <span className="text-emerald-400 text-[5px] sm:text-[10px] font-bold bg-black/70 px-1 py-px sm:px-1.5 sm:py-0.5 rounded mt-0.5">
                       {scoreLine}
                     </span>
                   )}
                   {/* Cards */}
                   {meta && (meta.yellowCard || meta.blackCard || meta.redCard) && (
                     <div className="flex gap-0.5 mt-0.5">
-                      {meta.yellowCard && <div className="w-2.5 h-3.5 rounded-[1px] bg-yellow-400" />}
-                      {meta.blackCard && <div className="w-2.5 h-3.5 rounded-[1px] bg-gray-900 border border-white/30" />}
-                      {meta.redCard && <div className="w-2.5 h-3.5 rounded-[1px] bg-red-600" />}
+                      {meta.yellowCard && <div className="w-1.5 h-2 sm:w-2.5 sm:h-3.5 rounded-[1px] bg-yellow-400" />}
+                      {meta.blackCard && <div className="w-1.5 h-2 sm:w-2.5 sm:h-3.5 rounded-[1px] bg-gray-900 border border-white/30" />}
+                      {meta.redCard && <div className="w-1.5 h-2 sm:w-2.5 sm:h-3.5 rounded-[1px] bg-red-600" />}
                     </div>
                   )}
                 </div>
@@ -230,9 +230,9 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
 
         {/* Substitutes */}
         {subs.length > 0 && (
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold text-white/50 mb-2">Substitutes</h3>
-            <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center">
+          <div className="mt-3 sm:mt-4">
+            <h3 className="text-xs sm:text-sm font-semibold text-white/50 mb-2">Substitutes</h3>
+            <div className="flex flex-wrap gap-x-2.5 sm:gap-x-4 gap-y-2 justify-center">
               {subs.map((player, i) => {
                 const jersey = player.match_jersey_number ?? player.player_jersey_number
                 const meta = playerMeta.get(String(player.player_id))
@@ -242,23 +242,23 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
                 return (
                   <div key={player.player_id} className="flex flex-col items-center">
                     <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ring-2 shadow-lg ${!cameOn ? 'opacity-40' : ''}`}
+                      className={`w-7 h-7 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-bold text-[10px] sm:text-xs ring-1 sm:ring-2 shadow-lg ${!cameOn ? 'opacity-40' : ''}`}
                       style={{ backgroundColor: jerseyBg, color: jerseyText, '--tw-ring-color': jerseyText } as React.CSSProperties}
                     >
                       {jersey ?? `S${i + 1}`}
                     </div>
-                    <span className={`text-[10px] font-semibold mt-1 ${cameOn ? 'text-white/80' : 'text-white/40'}`}>
+                    <span className={`text-[9px] sm:text-[10px] font-semibold mt-1 ${cameOn ? 'text-white/80' : 'text-white/40'}`}>
                       {displaySurname(player.player_name)}
                       {cameOn && <span className="text-emerald-400 ml-0.5">↑</span>}
                     </span>
                     {scoreLine && (
-                      <span className="text-emerald-400 text-[9px] font-bold">{scoreLine}</span>
+                      <span className="text-emerald-400 text-[8px] sm:text-[9px] font-bold">{scoreLine}</span>
                     )}
                     {meta && (meta.yellowCard || meta.blackCard || meta.redCard) && (
                       <div className="flex gap-0.5 mt-0.5">
-                        {meta.yellowCard && <div className="w-2 h-3 rounded-[1px] bg-yellow-400" />}
-                        {meta.blackCard && <div className="w-2 h-3 rounded-[1px] bg-gray-900 border border-white/30" />}
-                        {meta.redCard && <div className="w-2 h-3 rounded-[1px] bg-red-600" />}
+                        {meta.yellowCard && <div className="w-1.5 h-2.5 sm:w-2 sm:h-3 rounded-[1px] bg-yellow-400" />}
+                        {meta.blackCard && <div className="w-1.5 h-2.5 sm:w-2 sm:h-3 rounded-[1px] bg-gray-900 border border-white/30" />}
+                        {meta.redCard && <div className="w-1.5 h-2.5 sm:w-2 sm:h-3 rounded-[1px] bg-red-600" />}
                       </div>
                     )}
                   </div>
@@ -269,7 +269,7 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
         )}
 
         {/* Legend */}
-        <div className="mt-4 flex flex-wrap gap-3 text-[10px] text-white/40 justify-center">
+        <div className="mt-3 sm:mt-4 flex flex-wrap gap-2 sm:gap-3 text-[9px] sm:text-[10px] text-white/40 justify-center">
           <span className="flex items-center gap-1"><span className="text-emerald-400 font-bold">0-02 (1f)</span> = score (frees)</span>
           <span className="flex items-center gap-1"><span className="text-emerald-400 font-bold">tp</span> = two-pointer</span>
           <span className="flex items-center gap-1"><span className="text-emerald-400 font-bold">tpf</span> = two-point free</span>

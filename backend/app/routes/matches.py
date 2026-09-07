@@ -4,17 +4,21 @@ API routes for Match operations.
 Handles CRUD operations, match start/complete, and statistics.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
 from uuid import UUID
 import logging
 import json
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from app.database import get_db, async_session_maker
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match_lineup import MatchLineup
 from app.services.workload_analysis_service import WorkloadAnalysisService
+
+limiter = Limiter(key_func=get_remote_address)
 
 logger = logging.getLogger(__name__)
 from app.models.match import Match, MatchStatus, MatchVenue
@@ -34,6 +38,36 @@ from app.services.possession_service import PossessionService
 import math
 
 router = APIRouter()
+
+
+async def _get_match_flags(db: AsyncSession, match_ids: list) -> dict:
+    """Lightweight has_gps/has_video/has_events lookup for a set of matches.
+
+    Replaces the old `bool(match.events)`/`bool(match.gps_data)`/
+    `bool(match.video_sessions)` pattern, which — since these relationships
+    default to eager (selectin) loading — forced a full fetch of every
+    event/GPS/video-session row for every match on the page just to answer a
+    true/false flag. This does the same job with 3 queries returning only
+    match_id, regardless of how many matches are being flagged.
+    """
+    from app.models.match_gps import MatchGPSData
+    from app.models.video_session import VideoSession
+    from app.models.match_event import MatchEvent
+
+    if not match_ids:
+        return {"gps": set(), "video": set(), "events": set()}
+
+    gps_ids = (await db.execute(
+        select(MatchGPSData.match_id).where(MatchGPSData.match_id.in_(match_ids)).distinct()
+    )).scalars().all()
+    video_ids = (await db.execute(
+        select(VideoSession.match_id).where(VideoSession.match_id.in_(match_ids)).distinct()
+    )).scalars().all()
+    event_ids = (await db.execute(
+        select(MatchEvent.match_id).where(MatchEvent.match_id.in_(match_ids)).distinct()
+    )).scalars().all()
+
+    return {"gps": set(gps_ids), "video": set(video_ids), "events": set(event_ids)}
 
 
 @router.post("/", response_model=MatchResponse, status_code=status.HTTP_201_CREATED)
@@ -79,7 +113,8 @@ async def list_matches(
     status: Optional[MatchStatus] = Query(None, description="Filter by match status"),
     venue: Optional[MatchVenue] = Query(None, description="Filter by venue"),
     sort: Optional[str] = Query(None, description="Sort order: 'asc' or 'desc' (default desc)"),
-    user: AuthenticatedUser = Depends(require_admin),
+    upcoming_only: bool = Query(False, description="Only include matches with match_date in the future — filters server-side rather than relying on the client to skip past stale/unreconciled 'scheduled' entries"),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -90,20 +125,22 @@ async def list_matches(
     - **status**: Filter by status (scheduled/in_progress/completed/cancelled)
     - **venue**: Filter by venue (home/away/neutral)
     - **sort**: Sort by date: 'asc' (earliest first) or 'desc' (latest first, default)
+    - **upcoming_only**: Only matches from now onward
     """
     sort_asc = sort == "asc"
-    matches, total = await MatchService.list_matches(db, skip, limit, status, venue, club_id=user.club_id, sort_asc=sort_asc)
+    matches, total = await MatchService.list_matches(db, skip, limit, status, venue, club_id=user.club_id, sort_asc=sort_asc, upcoming_only=upcoming_only)
     
     # Convert to response models with computed fields
+    flags = await _get_match_flags(db, [m.id for m in matches])
     match_responses = []
     for match in matches:
         response = MatchResponse.model_validate(match)
         response.team_total_score = match.team_total_score
         response.opponent_total_score = match.opponent_total_score
         response.result = match.result
-        response.has_gps = bool(match.gps_data)
-        response.has_video = bool(match.video_sessions)
-        response.has_events = bool(match.events)
+        response.has_gps = match.id in flags["gps"]
+        response.has_video = match.id in flags["video"]
+        response.has_events = match.id in flags["events"]
         match_responses.append(response)
     
     total_pages = math.ceil(total / limit) if total > 0 else 0
@@ -117,10 +154,35 @@ async def list_matches(
     )
 
 
+@router.get("/competitions", response_model=List[str])
+async def list_competitions(
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Distinct competition names already used across every match for this club
+    — scheduled and completed both, so a competition entered only on an
+    upcoming fixture still shows up. Powers the autocomplete on the match/
+    fixture "Competition" field so coaches pick an existing name (keeping
+    season-dashboard filtering/grouping consistent) instead of retyping it
+    slightly differently each time, while still allowing a genuinely new
+    competition to be typed freely.
+    """
+    result = await db.execute(
+        select(Match.competition).where(
+            Match.club_id == user.club_id,
+            Match.is_deleted.is_(False),
+            Match.competition.isnot(None),
+            Match.competition != "",
+        ).distinct()
+    )
+    return sorted({row[0] for row in result.all()}, key=str.lower)
+
+
 @router.get("/{match_id}", response_model=MatchResponse)
 async def get_match(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -137,9 +199,10 @@ async def get_match(
     response.team_total_score = match.team_total_score
     response.opponent_total_score = match.opponent_total_score
     response.result = match.result
-    response.has_gps = bool(match.gps_data)
-    response.has_video = bool(match.video_sessions)
-    response.has_events = bool(match.events)
+    flags = await _get_match_flags(db, [match.id])
+    response.has_gps = match.id in flags["gps"]
+    response.has_video = match.id in flags["video"]
+    response.has_events = match.id in flags["events"]
 
     return response
 
@@ -330,7 +393,7 @@ async def update_match_score(
 @router.get("/{match_id}/stats/stream")
 async def stream_match_stats(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """SSE endpoint — pushes stats every 5s. Replaces client-side polling during live recording."""
@@ -384,7 +447,7 @@ async def stream_match_stats(
 async def get_match_stats(
     match_id: UUID,
     half: Optional[int] = Query(None, ge=1, le=2, description="Filter stats by half (1 or 2). Omit for full match."),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -437,7 +500,7 @@ async def delete_match(
 async def get_match_pitch_paths(
     match_id: UUID,
     outcomes: Optional[str] = Query(None, description="Comma-separated outcome types, e.g. goal,point,wide"),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -464,4 +527,30 @@ async def get_match_pitch_paths(
         "title": chart.get("title", ""),
         "attacking_right_first_half": match.attacking_right_first_half if match.attacking_right_first_half is not None else True,
     }
+
+
+@router.get("/{match_id}/expected-points")
+@limiter.limit("20/minute")
+async def get_match_expected_points(
+    request: Request,
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Team- and player-level Expected Points (xP) for a match, computed fresh
+    from shot location data against a shot-quality model calibrated from real
+    shot outcomes logged across the platform. See expected_points_service.py.
+
+    Post-match reporting only — the underlying model build is cached
+    (see expected_points_service._model_cache) but this must never be polled
+    from live match tracking.
+    """
+    from app.services.expected_points_service import compute_match_expected_points
+
+    match = await MatchService.get_match(db, match_id, club_id=user.club_id)
+    if not match:
+        raise HTTPException(status_code=404, detail=f"Match {match_id} not found")
+
+    return await compute_match_expected_points(db, match)
 

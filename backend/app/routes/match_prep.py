@@ -16,11 +16,12 @@ from typing import Optional
 from uuid import UUID
 from datetime import date, timedelta
 from collections import defaultdict
+import asyncio
 import json
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match import Match
 from app.models.player import Player
 from app.models.set_piece_routine import SetPieceRoutine
@@ -62,7 +63,7 @@ async def save_tactical_notes(
 @router.get("/matches/{match_id}/tactical-notes")
 async def get_tactical_notes(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get tactical notes for a match."""
@@ -99,7 +100,7 @@ async def create_set_piece(
 @router.get("/set-pieces", response_model=list[SetPieceRoutineResponse])
 async def list_set_pieces(
     category: Optional[str] = Query(None),
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(SetPieceRoutine).where(SetPieceRoutine.club_id == user.club_id)
@@ -113,7 +114,7 @@ async def list_set_pieces(
 @router.get("/set-pieces/{routine_id}", response_model=SetPieceRoutineResponse)
 async def get_set_piece(
     routine_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -224,7 +225,7 @@ async def create_marking_assignment(
 @router.get("/matches/{match_id}/marking", response_model=list[ManMarkingAssignmentResponse])
 async def list_marking_assignments(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -275,7 +276,7 @@ async def delete_marking_assignment(
 @router.get("/matches/{match_id}/opposition-briefing/saved")
 async def get_saved_opposition_briefing(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Return the saved opposition briefing for a match, if any."""
@@ -291,7 +292,7 @@ async def get_saved_opposition_briefing(
 @router.get("/matches/{match_id}/opposition-briefing")
 async def generate_opposition_briefing(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -351,6 +352,13 @@ async def generate_opposition_briefing(
             conversation_history=[],
             user_message=prompt,
             club_id=user.club_id,
+            # Default 45s (tuned for live chat, where "never hang" is the
+            # point) was too tight here — this prompt fans web_search out
+            # across ~5 topics x ~7 engines each, and the follow-up model
+            # call synthesizing all of it was timing out. This has its own
+            # "Researching..." loading state, not a chat bubble, so a longer
+            # wait is the right tradeoff.
+            timeout_seconds=120,
         ):
             # Accumulate text content for persistence
             if sse_line.startswith("data: ") and "[DONE]" not in sse_line:
@@ -448,7 +456,7 @@ async def confirm_voiceover_upload(
 @router.get("/set-pieces/{routine_id}/voiceover-url")
 async def get_voiceover_download_url(
     routine_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a presigned download URL for the voiceover audio."""
@@ -491,7 +499,8 @@ async def delete_voiceover(
 
     if routine.voiceover_key:
         from app.services.storage_service import storage
-        storage.delete_file(routine.voiceover_key, club_id=str(user.club_id))
+        # Offloaded to a thread — synchronous boto3 call.
+        await asyncio.to_thread(storage.delete_file, routine.voiceover_key, club_id=str(user.club_id))
         routine.voiceover_key = None
         await db.commit()
 
@@ -501,7 +510,7 @@ async def delete_voiceover(
 @router.get("/matches/{match_id}/opposition-roster")
 async def get_opposition_roster(
     match_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """Get opposition roster for a match (list of player names)."""
@@ -543,7 +552,7 @@ async def save_opposition_roster(
 
 @router.get("/sleep-flags")
 async def get_sleep_flags(
-    user: AuthenticatedUser = Depends(require_admin),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
     """
