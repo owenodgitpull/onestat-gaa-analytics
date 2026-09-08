@@ -242,7 +242,7 @@ export default function AnalyticsDashboard() {
     try {
       const existingIds = aiCharts.map(c => c.id)
       const allExcluded = [...dismissedChartIds, ...existingIds]
-      const result = await api.ai.getDashboardCharts(allExcluded, 2, true)
+      const result = await api.ai.getDashboardCharts(allExcluded, 2, true, true)
       if (result.success && result.charts && result.charts.length > 0) {
         setAiCharts(prev => [...prev, ...result.charts])
         setRegenCount(incrementRegenCount())
@@ -251,7 +251,15 @@ export default function AnalyticsDashboard() {
       }
     } catch (err) {
       console.error('Failed to load more charts:', err)
-      setLoadMoreError(err instanceof Error ? err.message : "Couldn't generate more charts right now — try again in a moment.")
+      // Generation keeps running server-side even if this request timed out
+      // client-side (see fetchAPI/getDashboardCharts) — so a timeout isn't
+      // really a failure, just a "still cooking" state worth saying plainly.
+      const timedOut = err instanceof Error && err.message.includes('taking longer than expected')
+      setLoadMoreError(
+        timedOut
+          ? "Still generating — this can take a minute or two. It'll be ready next time you open this tab, even if you navigate away now."
+          : (err instanceof Error ? err.message : "Couldn't generate more charts right now — try again in a moment.")
+      )
     } finally {
       setLoadingMore(false)
     }

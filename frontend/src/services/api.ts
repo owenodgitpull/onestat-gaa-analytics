@@ -1913,15 +1913,28 @@ const aiAPI = {
   getDashboardCharts: async (
     excludedChartIds: string[] = [],
     numCharts: number = 4,
-    forceRefresh: boolean = false
+    forceRefresh: boolean = false,
+    // "Load More" only — appends the newly generated charts to whatever's
+    // already cached server-side instead of replacing it, so the result is
+    // there waiting even if this tab is long gone by the time it finishes
+    // (see generate_dashboard_charts). Leave false for "Regenerate All".
+    mergeWithCache: boolean = false
   ): Promise<DashboardChartsResponse> => {
     return fetchAPI<DashboardChartsResponse>('/ai/dashboard-charts', {
       method: 'POST',
-      body: JSON.stringify({ excluded_chart_ids: excludedChartIds, num_charts: numCharts, force_refresh: forceRefresh }),
+      body: JSON.stringify({
+        excluded_chart_ids: excludedChartIds,
+        num_charts: numCharts,
+        force_refresh: forceRefresh,
+        merge_with_cache: mergeWithCache,
+      }),
       // Uncached (force_refresh) generation is a real agentic LLM run —
       // observed taking ~80s in production for just 2 charts. Bounded so
       // "Generate More" can never spin forever; comfortably above any
       // legitimate run, but still resolves the UI's loading state either way.
+      // The generation itself isn't cancelled server-side by this timeout —
+      // it keeps running and caches its result regardless, which is what
+      // lets a caller safely give up waiting and check back later.
       timeoutMs: forceRefresh ? 150_000 : undefined,
     });
   },

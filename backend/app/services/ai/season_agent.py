@@ -515,6 +515,7 @@ class SeasonAgent:
         num_charts: int = 4,
         club_id=None,
         force_refresh: bool = False,
+        merge_with_cache: bool = False,
     ) -> dict:
         """Generate Recharts-compatible chart specs for the dashboard via agentic analysis."""
         from app.services.ai.chart_engine import _get_raw_data_for_charts
@@ -562,12 +563,31 @@ class SeasonAgent:
                 "generated_at": datetime.now().isoformat(),
             }
 
-            # Cache the result
+            # Cache the result. The cache row is keyed only by (club_id,
+            # cache_type) — not by num_charts or excluded_chart_ids — so it
+            # represents "the current dashboard AI chart set" as a whole.
+            # "Load More" (merge_with_cache=True) generates a handful of
+            # ADDITIONAL charts on top of whatever's already there and
+            # should extend that set, not replace it — the underlying data
+            # hasn't changed (same fingerprint), the two calls are
+            # complementary. Previously every successful call overwrote the
+            # row outright, so a Load More success silently replaced the
+            # base 4-chart set with just the 2 new ones: the next normal
+            # dashboard load (or a fresh session/device) would then cache-hit
+            # on only 2 charts instead of the real set. "Regenerate All"
+            # (force_refresh alone, merge_with_cache=False) still replaces
+            # the set outright, matching its actual intent.
             if club_id and fingerprint and output.get("charts"):
                 import uuid as _uuid
+                cache_payload = output
+                if merge_with_cache and cache and cache.data_fingerprint == fingerprint and isinstance(cache.cached_result, dict):
+                    prior_charts = cache.cached_result.get("charts") or []
+                    prior_ids = {c.get("id") for c in prior_charts if isinstance(c, dict)}
+                    merged_charts = list(prior_charts) + [c for c in charts if c.get("id") not in prior_ids]
+                    cache_payload = {**output, "charts": merged_charts}
                 if cache:
                     cache.data_fingerprint = fingerprint
-                    cache.cached_result = output
+                    cache.cached_result = cache_payload
                     cache.cached_at = datetime.utcnow()
                 else:
                     db.add(SeasonCache(
@@ -575,7 +595,7 @@ class SeasonAgent:
                         club_id=club_id,
                         cache_type="dashboard_charts",
                         data_fingerprint=fingerprint,
-                        cached_result=output,
+                        cached_result=cache_payload,
                         cached_at=datetime.utcnow(),
                     ))
                 await db.commit()

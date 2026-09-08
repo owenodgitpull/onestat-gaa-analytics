@@ -120,6 +120,12 @@ class DashboardChartsRequest(BaseModel):
     excluded_chart_ids: List[str] = []
     num_charts: int = 4
     force_refresh: bool = False
+    # "Load More" on the AI Insights tab generates additional charts on top
+    # of whatever's already cached, rather than replacing it (see
+    # generate_dashboard_charts) — the caller sets this to True for that
+    # specific flow only. "Regenerate All" (force_refresh alone) still
+    # replaces the cached set outright.
+    merge_with_cache: bool = False
 
 
 class ChartSpec(BaseModel):
@@ -690,6 +696,7 @@ async def get_dashboard_charts_endpoint(
             num_charts=request.num_charts,
             club_id=user.club_id,
             force_refresh=request.force_refresh,
+            merge_with_cache=request.merge_with_cache,
         )
         return DashboardChartsResponse(**result)
     except Exception as e:

@@ -198,11 +198,16 @@ export default function AiInsightsSection({
             className="btn-glass flex items-center gap-2 text-sm"
           >
             {loadingMore ? (
-              <><RefreshCw size={14} className="animate-spin" /> Generating more... (can take up to a minute)</>
+              <><RefreshCw size={14} className="animate-spin" /> Generating...</>
             ) : (
               <><Plus size={14} /> Load More Charts</>
             )}
           </button>
+          {loadingMore && (
+            <p className="text-xs text-white/40 text-center max-w-sm">
+              This can take a minute or two — feel free to check back later, no need to wait on this page.
+            </p>
+          )}
           {loadMoreError && !loadingMore && (
             <p className="text-xs text-rose-400 text-center max-w-sm">{loadMoreError}</p>
           )}
