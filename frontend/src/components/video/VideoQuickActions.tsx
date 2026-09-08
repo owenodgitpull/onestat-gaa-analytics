@@ -88,6 +88,14 @@ const OUR_KICKOUT_ACTIONS: ActionButton[] = [
   { id: 'own_ko_opp', label: 'Opp Won', eventType: 'OWN_KICKOUT_OPPOSITION_WON', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
   { id: 'own_ko_won_brk', label: 'We Won Brk', eventType: 'OWN_KICKOUT_WON_BREAK', needsPlayer: true, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
   { id: 'own_ko_opp_brk', label: 'Opp Won Brk', eventType: 'OWN_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  // Kickout goes out over the sideline — parity with live recording's
+  // "Over Sideline" button (PitchActionOverlay.tsx). Unlike live recording
+  // (which bakes team into own_kickout_sideline/opp_kickout_sideline as
+  // separate event_type strings), video events already carry team as its
+  // own field, so both tabs share the one SIDELINE_KICK video event type —
+  // no backend change needed. The restart goes to whoever didn't take the
+  // kickout, same flip direction as "Opp Won".
+  { id: 'own_ko_sideline', label: 'Over Sideline', eventType: 'SIDELINE_KICK', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
 ]
 
 const OPP_KICKOUT_ACTIONS: ActionButton[] = [
@@ -95,6 +103,7 @@ const OPP_KICKOUT_ACTIONS: ActionButton[] = [
   { id: 'opp_ko_opp', label: 'Opp Won', eventType: 'OPP_KICKOUT_OPPOSITION_WON', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
   { id: 'opp_ko_won_brk', label: 'We Won Brk', eventType: 'OPP_KICKOUT_WON_BREAK', needsPlayer: true, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
   { id: 'opp_ko_opp_brk', label: 'Opp Won Brk', eventType: 'OPP_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  { id: 'opp_ko_sideline', label: 'Over Sideline', eventType: 'SIDELINE_KICK', needsPlayer: false, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'scoring' },
 ]
 
 const CATEGORY_ACTIONS: Record<Category, ActionButton[]> = {

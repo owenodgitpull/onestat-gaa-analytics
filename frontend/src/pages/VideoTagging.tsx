@@ -684,6 +684,89 @@ export default function VideoTagging() {
     })
   }, [sessionId, updateEvent])
 
+  // ── Event team/player re-editing — parity with MatchRecording.tsx's
+  // handleEditEventClick/editChoice flow. VideoEventLog previously only
+  // supported delete/verify/edit-zone. Video events already separate team
+  // from event_type (no own_kickout_sideline/opp_kickout_sideline-style
+  // paired swap needed like live recording has), so "edit team" is always
+  // just PUTting the `team` field — the only nuance is that moving a
+  // scoring/shot event TO our team needs a player picked, same reasoning
+  // as live recording ("we need to know who actually took it").
+  const SCORING_SHOT_VIDEO_TYPES = useMemo(() => new Set([
+    'POINT_SCORED', 'GOAL_SCORED', 'WIDE', 'SHORT', 'POST_HIT',
+    'FREE_KICK', 'FORTY_FIVE', 'PENALTY',
+  ]), [])
+
+  const [editTeamChoice, setEditTeamChoice] = useState<{ eventId: string; currentTeam: 'team_a' | 'team_b' } | null>(null)
+  // Set only when the player picker below was opened to FINISH a team swap
+  // (a scoring event moving to team_a) — carries the team patch that should
+  // land alongside player_id once a player is chosen or skipped. Plain
+  // "edit player" (no team change) leaves this null.
+  const [editingPlayerEventId, setEditingPlayerEventId] = useState<string | null>(null)
+  const [pendingTeamForPlayerEdit, setPendingTeamForPlayerEdit] = useState<'team_a' | 'team_b' | null>(null)
+
+  const handleEditEventTeam = useCallback((eventId: string) => {
+    const event = events.find(e => e.id === eventId)
+    if (!event) return
+    setEditTeamChoice({ eventId, currentTeam: event.team as 'team_a' | 'team_b' })
+  }, [events])
+
+  const handleConfirmEventTeamSwap = useCallback(() => {
+    if (!editTeamChoice || !sessionId) return
+    const { eventId, currentTeam } = editTeamChoice
+    const event = events.find(e => e.id === eventId)
+    const targetTeam = currentTeam === 'team_a' ? 'team_b' : 'team_a'
+    setEditTeamChoice(null)
+    if (!event) return
+
+    if (targetTeam === 'team_a' && SCORING_SHOT_VIDEO_TYPES.has(event.event_type)) {
+      // Chain into the player picker — same spirit as live recording's
+      // handleSwapScoringTeam. Finished by handleEditPlayerSelect/Skip below.
+      setPendingTeamForPlayerEdit('team_a')
+      setEditingPlayerEventId(eventId)
+      return
+    }
+    updateEvent.mutate({
+      eventId,
+      sessionId,
+      data: { team: targetTeam, player_id: targetTeam === 'team_b' ? null : undefined },
+    })
+  }, [editTeamChoice, events, sessionId, updateEvent, SCORING_SHOT_VIDEO_TYPES])
+
+  // Plain "edit player" — no team change, mirrors live recording's
+  // handleEditEventPlayer.
+  const handleEditEventPlayer = useCallback((eventId: string) => {
+    setPendingTeamForPlayerEdit(null)
+    setEditingPlayerEventId(eventId)
+  }, [])
+
+  const handleEditPlayerSelect = useCallback((player: Player) => {
+    if (!sessionId || !editingPlayerEventId) return
+    const eventId = editingPlayerEventId
+    const teamPatch = pendingTeamForPlayerEdit
+    setEditingPlayerEventId(null)
+    setPendingTeamForPlayerEdit(null)
+    updateEvent.mutate({
+      eventId,
+      sessionId,
+      data: { player_id: player.id, ...(teamPatch ? { team: teamPatch } : {}) },
+    })
+  }, [sessionId, editingPlayerEventId, pendingTeamForPlayerEdit, updateEvent])
+
+  // Skipping the edit-player picker still finishes a pending team swap
+  // (player left blank) — same "Skip" spirit as everywhere else in
+  // recording; a plain player-only edit (no team change) just cancels.
+  const handleEditPlayerSkip = useCallback(() => {
+    if (!sessionId || !editingPlayerEventId) return
+    const eventId = editingPlayerEventId
+    const teamPatch = pendingTeamForPlayerEdit
+    setEditingPlayerEventId(null)
+    setPendingTeamForPlayerEdit(null)
+    if (teamPatch) {
+      updateEvent.mutate({ eventId, sessionId, data: { team: teamPatch, player_id: null } })
+    }
+  }, [sessionId, editingPlayerEventId, pendingTeamForPlayerEdit, updateEvent])
+
   const handleVerifyAll = useCallback(() => {
     if (!sessionId) return
     events.filter(e => (e.source === 'gemini_auto' || e.source === 'keyframe_auto') && !e.is_verified).forEach(e => {
@@ -1665,6 +1748,8 @@ export default function VideoTagging() {
           onDelete={handleDeleteEvent}
           onVerify={handleVerifyEvent}
           onEditZone={handleEditZone}
+          onEditTeam={handleEditEventTeam}
+          onEditPlayer={handleEditEventPlayer}
           collapsed={!eventLogExpanded}
           onToggle={() => setEventLogExpanded(v => !v)}
           onVerifyAll={hasAiEvents ? handleVerifyAll : undefined}
@@ -1695,6 +1780,45 @@ export default function VideoTagging() {
         team={possession === 'team_a' ? 'own' : 'opponent'}
         players={playerList}
       />
+
+      {/* Edit-player modal — separate instance/state (editingPlayerEventId)
+          from the new-event picker above, so editing an existing event's
+          player/team never interferes with an in-flight new-event tap. */}
+      <PlayerSelectionModal
+        isOpen={!!editingPlayerEventId}
+        onClose={handleEditPlayerSkip}
+        onSelectPlayer={handleEditPlayerSelect}
+        eventType="point"
+        team="own"
+        players={playerList}
+      />
+
+      {/* Team-swap confirm — parity with live recording's editChoice card */}
+      {editTeamChoice && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4" onClick={() => setEditTeamChoice(null)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div
+            className="relative bg-slate-900 border border-white/10 rounded-xl p-4 w-full max-w-sm shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-white">Edit This Event</span>
+              <button onClick={() => setEditTeamChoice(null)} className="p-1 text-white/40 hover:text-white transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-white/50 mb-3">
+              Currently {editTeamChoice.currentTeam === 'team_a' ? clubName : matchData?.opponent || 'Opponent'}
+            </p>
+            <button
+              onClick={handleConfirmEventTeamSwap}
+              className="w-full py-2.5 rounded-lg text-sm font-semibold bg-blue-500/20 border border-blue-400/40 text-blue-200 hover:bg-blue-500/30 transition-all"
+            >
+              Actually {editTeamChoice.currentTeam === 'team_a' ? (matchData?.opponent || 'Opponent') : clubName}'s
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Sync Preview Modal */}
       <SyncPreviewModal

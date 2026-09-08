@@ -8,7 +8,7 @@
  * No inactivity timeout (unlike live mode) since video review is deliberate.
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { X, Check, RotateCcw, Users } from 'lucide-react'
 
 interface OwnPlayer {
@@ -37,6 +37,13 @@ interface VideoFormationSnapshotProps {
 const LABELS = ['Defensive Shape', 'Kickout Setup', 'Attacking Press', 'Counter Attack', 'Custom']
 const OPP_JERSEYS = Array.from({ length: 15 }, (_, i) => i + 1)
 
+// A pointer that moved less than this (in container px) counts as a tap
+// (remove), not a drag (reposition) — same threshold and pattern as
+// FormationSnapshotMode.tsx (live recording), which this previously had no
+// equivalent of at all: placed markers here could only be removed and
+// re-placed, never dragged to correct a spot.
+const DRAG_THRESHOLD_PX = 6
+
 export default function VideoFormationSnapshot({
   isOpen,
   onClose,
@@ -49,6 +56,12 @@ export default function VideoFormationSnapshot({
   const [selectedLabel, setSelectedLabel] = useState('Defensive Shape')
   const [activeTeam, setActiveTeam] = useState<'own' | 'opponent'>('own')
 
+  // Drag tracking — refs, not state, so pointermove doesn't re-render on
+  // every pixel. Same pattern as FormationSnapshotMode.tsx.
+  const dragIndexRef = useRef<number | null>(null)
+  const dragMovedRef = useRef(false)
+  const dragStartClientRef = useRef<{ x: number; y: number } | null>(null)
+
   // Sort own players by jersey number
   const sortedOwnPlayers = useMemo(
     () => [...ownPlayers].sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99)),
@@ -57,11 +70,53 @@ export default function VideoFormationSnapshot({
 
   if (!isOpen) return null
 
-  const handlePitchTap = (e: React.MouseEvent<HTMLDivElement>) => {
+  const pctFromClient = (rect: DOMRect, clientX: number, clientY: number) => {
+    const x = ((clientX - rect.left) / rect.width) * 100
+    const y = ((clientY - rect.top) / rect.height) * 100
+    return { x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) }
+  }
+
+  const handleMarkerPointerDown = (e: React.PointerEvent, index: number) => {
+    e.stopPropagation()
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    dragIndexRef.current = index
+    dragMovedRef.current = false
+    dragStartClientRef.current = { x: e.clientX, y: e.clientY }
+  }
+
+  const handlePitchPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const draggingIndex = dragIndexRef.current
+    if (draggingIndex === null) return
+    const start = dragStartClientRef.current
+    if (start && !dragMovedRef.current) {
+      const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y)
+      if (moved > DRAG_THRESHOLD_PX) dragMovedRef.current = true
+    }
+    if (!dragMovedRef.current) return
     const rect = e.currentTarget.getBoundingClientRect()
-    const x = ((e.clientX - rect.left) / rect.width) * 100
-    const y = ((e.clientY - rect.top) / rect.height) * 100
-    setPendingTap({ x: Math.max(0, Math.min(100, x)), y: Math.max(0, Math.min(100, y)) })
+    const { x, y } = pctFromClient(rect, e.clientX, e.clientY)
+    setPositions(prev => prev.map((p, i) => (i === draggingIndex ? { ...p, x, y } : p)))
+  }
+
+  // Pointer-up on the pitch: finishes a marker drag (reposition, or remove
+  // if it never actually moved — the old tap-to-remove behaviour), or —
+  // when no marker drag was in progress — places a new pending tap, same
+  // as the old onClick handler did.
+  const handlePitchPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const draggingIndex = dragIndexRef.current
+    if (draggingIndex !== null) {
+      if (!dragMovedRef.current) {
+        handleRemovePlayer(draggingIndex)
+      }
+      dragIndexRef.current = null
+      dragStartClientRef.current = null
+      // handleRemovePlayer above must see the pre-reset value; reset after.
+      setTimeout(() => { dragMovedRef.current = false }, 0)
+      return
+    }
+    const rect = e.currentTarget.getBoundingClientRect()
+    const { x, y } = pctFromClient(rect, e.clientX, e.clientY)
+    setPendingTap({ x, y })
   }
 
   const handleOwnPlayerSelect = (player: OwnPlayer) => {
@@ -188,7 +243,9 @@ export default function VideoFormationSnapshot({
       {/* Pitch area */}
       <div
         className="flex-1 relative mx-4 my-3 rounded-xl overflow-hidden bg-green-900/50 border-2 border-purple-500/30 cursor-crosshair"
-        onClick={handlePitchTap}
+        onPointerMove={handlePitchPointerMove}
+        onPointerUp={handlePitchPointerUp}
+        style={{ touchAction: 'none' }}
       >
         <img
           src="/pitch-svg.svg"
@@ -197,17 +254,16 @@ export default function VideoFormationSnapshot({
           draggable={false}
         />
 
-        {/* Placed own players — green */}
+        {/* Placed own players — green. Drag to reposition, tap (no
+            movement) to remove — see handleMarkerPointerDown/
+            handlePitchPointerMove/handlePitchPointerUp above. */}
         {ownPositions.map((pos) => (
           <div
             key={`own-${pos.playerId}`}
-            className="absolute w-10 h-10 -ml-5 -mt-5 rounded-full bg-emerald-600 border-2 border-white flex items-center justify-center text-white text-sm font-bold shadow-lg cursor-pointer hover:scale-110 transition-transform"
+            className="absolute w-10 h-10 -ml-5 -mt-5 rounded-full bg-emerald-600 border-2 border-white flex items-center justify-center text-white text-sm font-bold shadow-lg cursor-grab active:cursor-grabbing hover:scale-110 transition-transform"
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-            onClick={(e) => {
-              e.stopPropagation()
-              handleRemovePlayer(positions.indexOf(pos))
-            }}
-            title={`${pos.playerName} — tap to remove`}
+            onPointerDown={(e) => handleMarkerPointerDown(e, positions.indexOf(pos))}
+            title={`${pos.playerName} — drag to move, tap to remove`}
           >
             {pos.jerseyNumber ?? pos.playerName?.split(' ').map(w => w[0]).join('').slice(0, 2) ?? '?'}
           </div>
@@ -217,13 +273,10 @@ export default function VideoFormationSnapshot({
         {oppPositions.map((pos) => (
           <div
             key={`opp-${pos.jerseyNumber}`}
-            className="absolute w-10 h-10 -ml-5 -mt-5 rounded-full bg-orange-600 border-2 border-white/80 flex items-center justify-center text-white text-sm font-bold shadow-lg cursor-pointer hover:scale-110 transition-transform"
+            className="absolute w-10 h-10 -ml-5 -mt-5 rounded-full bg-orange-600 border-2 border-white/80 flex items-center justify-center text-white text-sm font-bold shadow-lg cursor-grab active:cursor-grabbing hover:scale-110 transition-transform"
             style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-            onClick={(e) => {
-              e.stopPropagation()
-              handleRemovePlayer(positions.indexOf(pos))
-            }}
-            title={`${pos.playerName} — tap to remove`}
+            onPointerDown={(e) => handleMarkerPointerDown(e, positions.indexOf(pos))}
+            title={`${pos.playerName} — drag to move, tap to remove`}
           >
             {pos.jerseyNumber}
           </div>

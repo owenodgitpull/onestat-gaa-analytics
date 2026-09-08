@@ -108,6 +108,7 @@ export interface VideoEventCreateData {
 
 export interface VideoEventUpdateData {
   event_type?: string;
+  sub_type?: string;
   team?: string;
   half?: number;
   match_minute?: number;
@@ -116,7 +117,9 @@ export interface VideoEventUpdateData {
   pitch_zone?: string;
   pitch_x?: number;
   pitch_y?: number;
-  player_id?: string;
+  // Nullable — editing an event's team to the opponent clears any player
+  // attribution outright (opponent events never carry one of our players).
+  player_id?: string | null;
   jersey_number?: number;
   scoring_context?: ScoringContext;
   kickout_context?: KickoutContext;

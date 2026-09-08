@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useRef, useEffect, useState } from 'react'
-import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, MapPin, X } from 'lucide-react'
+import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, MapPin, X, Pencil } from 'lucide-react'
 import type { VideoEvent } from '../../services/videoApi'
 import PitchZoneSelector from './PitchZoneSelector'
 import type { PitchZone } from './PitchZoneSelector'
@@ -19,6 +19,11 @@ interface VideoEventLogProps {
   onDelete: (eventId: string) => void
   onVerify: (eventId: string) => void
   onEditZone?: (eventId: string, zone: PitchZone) => void
+  /** Open the team-swap confirm for this event — parity with live
+   * recording's handleEditEventClick/editChoice flow. */
+  onEditTeam?: (eventId: string) => void
+  /** Open the player picker for this event with no team change. */
+  onEditPlayer?: (eventId: string) => void
   selectedEventId?: string | null
   collapsed?: boolean
   onToggle?: () => void
@@ -77,6 +82,8 @@ export default function VideoEventLog({
   onDelete,
   onVerify,
   onEditZone,
+  onEditTeam,
+  onEditPlayer,
   selectedEventId,
   collapsed = false,
   onToggle,
@@ -305,6 +312,27 @@ export default function VideoEventLog({
                         title="Verify"
                       >
                         <CheckCircle size={14} />
+                      </button>
+                    )}
+                    {/* Edit team/player — parity with live recording's pencil
+                        edit. Team swap first (the common mistake: wrong-team
+                        score), plain player re-attribution as a second tap. */}
+                    {onEditTeam && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditTeam(event.id) }}
+                        className="p-1 text-white/20 hover:text-blue-400 transition-colors"
+                        title="Edit team"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                    {onEditPlayer && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditPlayer(event.id) }}
+                        className="p-1 text-[9px] font-bold text-white/20 hover:text-blue-400 transition-colors w-[14px] h-[14px] flex items-center justify-center"
+                        title="Edit player"
+                      >
+                        P
                       </button>
                     )}
                     <button
