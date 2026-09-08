@@ -118,6 +118,8 @@ class KickoutContextSchema(BaseModel):
 class VideoEventCreateRequest(BaseModel):
     """Create a new video event (human tag)."""
     event_type: str = Field(..., max_length=50)
+    # Turnover reason/subtype — mirrors MatchEvent.sub_type, see video_event.py.
+    sub_type: Optional[str] = Field(None, max_length=50)
     team: str = Field(..., max_length=20)  # team_a / team_b
     half: int = Field(..., ge=1, le=2)
     match_minute: int = Field(..., ge=0)
@@ -152,6 +154,7 @@ class VideoEventCreateRequest(BaseModel):
 class VideoEventUpdateRequest(BaseModel):
     """Update a video event."""
     event_type: Optional[str] = None
+    sub_type: Optional[str] = None
     team: Optional[str] = None
     half: Optional[int] = None
     match_minute: Optional[int] = None
@@ -188,6 +191,7 @@ class VideoEventResponse(BaseModel):
     video_session_id: UUID
     match_id: UUID
     event_type: str
+    sub_type: Optional[str] = None
     team: str
     half: int
     match_minute: int

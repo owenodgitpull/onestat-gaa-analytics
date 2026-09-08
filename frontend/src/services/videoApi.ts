@@ -57,6 +57,7 @@ export interface VideoEvent {
   video_session_id: string;
   match_id: string;
   event_type: string;
+  sub_type: string | null;
   team: string;
   half: number;
   match_minute: number;
@@ -83,6 +84,9 @@ export interface VideoEvent {
 
 export interface VideoEventCreateData {
   event_type: string;
+  // Turnover reason/subtype — mirrors MatchEvent.sub_type, see
+  // constants/turnoverSubtypes.ts.
+  sub_type?: string;
   team: string;
   half: number;
   match_minute: number;

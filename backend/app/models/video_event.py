@@ -78,6 +78,12 @@ class VideoEvent(Base):
 
     # Event classification (String, not SQLEnum)
     event_type: Column[str] = Column(String(50), nullable=False, index=True)
+    # Turnover reason/subtype — mirrors MatchEvent.sub_type. Populated by the
+    # turnover-reason picker (Active Dispossession / Unforced Error /
+    # Offensive Foul, each with their own subtype list — see
+    # frontend/src/constants/turnoverSubtypes.ts) for parity with live
+    # match recording's macro/micro turnover framework.
+    sub_type: Column[Optional[str]] = Column(String(50), nullable=True)
     team: Column[str] = Column(String(20), nullable=False)  # team_a / team_b
     half: Column[int] = Column(Integer, nullable=False)
 

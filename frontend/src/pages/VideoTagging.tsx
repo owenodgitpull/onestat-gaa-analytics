@@ -448,6 +448,57 @@ export default function VideoTagging() {
     setBallTrail(prev => [...prev.slice(-49), { x: position.x, y: position.y }])
   }, [])
 
+  // Discrete possession-change point — fires on a tap or drag-END commit
+  // only (bound to onBallMove, never onDragUpdate's live-drag callback, so
+  // this doesn't fire dozens of times per drag). Mirrors MatchRecording.tsx's
+  // handleBallMove writing a PossessionEvent on every commit. Video tagging
+  // previously wrote none at all, so PossessionEvent-dependent season charts
+  // (Territory Distribution, Possession Funnel) had zero data for any
+  // video-tagged match.
+  const handleTaggingBallCommit = useCallback((position: BallPosition) => {
+    handleTaggingBallMove(position)
+    if (!session?.match_id) return
+    const matchTime = calcMatchTime(currentTimeMs)
+    api.possession.create({
+      match_id: session.match_id,
+      x_coord: position.x,
+      y_coord: position.y,
+      is_home_team: possession === 'team_a',
+      minute: matchTime.minute,
+      half: matchTime.half,
+    }).catch(err => console.error('Failed to record possession point (video tagging):', err))
+  }, [handleTaggingBallMove, session?.match_id, calcMatchTime, currentTimeMs, possession])
+
+  // Which side the kicking team is attacking right now, for 45m-line
+  // placement — mirrors MatchRecording.tsx's compute45LineX (34/66, the
+  // live-tuned real line position confirmed against the pitch SVG's actual
+  // drawn line, not the theoretical 45/145≈31/69).
+  const compute45LineX = useCallback((isHomeTeam: boolean): number => {
+    const attackingRightFirstHalf = matchData?.attacking_right_first_half ?? true
+    const currentHalf = calcMatchTime(currentTimeMs).half
+    const teamAttackingRight = currentHalf === 2 ? !attackingRightFirstHalf : attackingRightFirstHalf
+    const kickingTeamAttacksRight = isHomeTeam ? teamAttackingRight : !teamAttackingRight
+    return kickingTeamAttacksRight ? 66 : 34
+  }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
+
+  const [highlight45LineX, setHighlight45LineX] = useState<number | null>(null)
+
+  // TaggingPitch previously had no 45m-line snap/highlight at all. When the
+  // 45m Free sub-panel opens, snap the persistent pitch's ball marker onto
+  // the real line (same as MatchRecording.tsx does on 45 initiation — the
+  // event's location is derived from wherever the ball marker sits, so this
+  // keeps it accurate) and highlight the line so the user can drag-correct
+  // along it before picking Scored/Missed.
+  const handleFortyFivePanelToggle = useCallback((open: boolean) => {
+    if (open) {
+      const lineX = compute45LineX(possession === 'team_a')
+      setHighlight45LineX(lineX)
+      setBallPosition(prev => (prev ? { ...prev, x: lineX } : prev))
+    } else {
+      setHighlight45LineX(null)
+    }
+  }, [possession, compute45LineX])
+
   /** Create the event, apply auto-flip/auto-switch, resume video.
    *  Stored in a ref so overlay handlers always call the latest version. */
   const finalizeEventRef = useRef<(pending: OverlayPendingEvent, data: VideoEventCreateData) => void>(() => {})
@@ -1006,7 +1057,20 @@ export default function VideoTagging() {
     for (const wp of waypoints) {
       appendCarrierPathPoint(wp.x, wp.y)
     }
-  }, [appendCarrierPathPoint])
+
+    // Bulk-record the same waypoints as PossessionEvent rows — the drag-path
+    // counterpart to handleTaggingBallCommit's single-point write, same call
+    // pattern as MatchRecording.tsx's handleDragPath.
+    if (session?.match_id) {
+      const matchTime = calcMatchTime(currentTimeMs)
+      api.possession.bulkCreate({
+        match_id: session.match_id,
+        team: possession === 'team_a' ? 'own' : 'opponent',
+        minute: matchTime.minute,
+        waypoints,
+      }).catch(err => console.error('Failed to record possession drag path (video tagging):', err))
+    }
+  }, [appendCarrierPathPoint, session?.match_id, calcMatchTime, currentTimeMs, possession])
 
   // Clean up carrier segment on unmount
   useEffect(() => {
@@ -1275,12 +1339,13 @@ export default function VideoTagging() {
             : 'relative w-full flex-shrink-0 bg-gradient-to-br from-green-900/40 to-green-800/40 overflow-hidden aspect-[1960/1167]'
         }
         ballPosition={taggingBallPosition}
-        onBallMove={handleTaggingBallMove}
+        onBallMove={handleTaggingBallCommit}
         onDragUpdate={handleTaggingBallMove}
         onDragPath={handleTaggingDragPath}
         trail={ballTrail}
         carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
         disabled={overlayState !== 'none'}
+        highlight45LineX={highlight45LineX}
       />
     </div>
   )
@@ -1303,6 +1368,7 @@ export default function VideoTagging() {
       ballPitchX={ballPosition?.x}
       ballPitchY={ballPosition?.y}
       calcMatchTime={calcMatchTime}
+      onFortyFivePanelToggle={handleFortyFivePanelToggle}
     />
     </div>
   )

@@ -16,6 +16,7 @@ import {
 import type { PitchZone } from './PitchZoneSelector'
 import { TWO_POINTER_ZONES, xyToZone } from './PitchZoneSelector'
 import type { VideoEventCreateData } from '../../services/videoApi'
+import { TURNOVER_REASON_CONFIG, UNFORCED_ERROR_SUBTYPES, type TurnoverReason, type SubtypeOption } from '../../constants/turnoverSubtypes'
 
 export type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
 
@@ -56,6 +57,10 @@ export interface VideoQuickActionsProps {
   ballPitchY?: number
   /** Convert video timestamp to match minute/second (accounts for throw-in offset) */
   calcMatchTime?: (videoMs: number) => { minute: number; second: number; half: number }
+  /** Fires when the 45m Free sub-panel opens/closes, so the parent can snap
+   * the persistent pitch's ball marker onto the 45m line and highlight it —
+   * the same tap-accuracy aid MatchRecording.tsx gives live recording. */
+  onFortyFivePanelToggle?: (open: boolean) => void
 }
 
 const SCORING_ACTIONS: ActionButton[] = [
@@ -131,10 +136,21 @@ export default function VideoQuickActions({
   ballPitchX,
   ballPitchY,
   calcMatchTime,
+  onFortyFivePanelToggle,
 }: VideoQuickActionsProps) {
   const [flashButton, setFlashButton] = useState<string | null>(null)
   const [showFreePanel, setShowFreePanel] = useState(false)
   const [showFortyFivePanel, setShowFortyFivePanel] = useState(false)
+  // Turnover reason/subtype picker — parity with MatchRecording.tsx's
+  // pendingTurnoverReason/pendingSubType flow. "T/O Lost" opens the 3-way
+  // reason panel; "Our Error" (already its own button here, unlike live
+  // recording where it's a separate interception of the same event type)
+  // skips straight to the unforced-error subtype panel. Video tagging has
+  // no separate FOUL_COMMITTED event type, so "Offensive Foul" is tagged as
+  // TURNOVER_LOST with a distinguishing subtype rather than replicating
+  // live recording's foul-committed + free-kick-conceded flow.
+  const [showTurnoverReasonPanel, setShowTurnoverReasonPanel] = useState(false)
+  const [turnoverSubtypePanel, setTurnoverSubtypePanel] = useState<{ videoEventType: string; subtypeOptions: SubtypeOption[] } | null>(null)
 
   const isUs = possession === 'team_a'
 
@@ -186,6 +202,24 @@ export default function VideoQuickActions({
   const handleActionTap = useCallback((action: ActionButton, freeKickContext?: boolean) => {
     if (disabled) return
 
+    // T/O Lost — route through the 3-way reason picker instead of recording
+    // a bare TURNOVER_LOST immediately, matching live recording's macro/
+    // micro turnover framework.
+    if (action.id === 'to_lost') {
+      setFlashButton(action.id)
+      setShowTurnoverReasonPanel(true)
+      return
+    }
+
+    // Our Error — already a distinct button/event type here (unlike live
+    // recording, where it's a second interception of the same TURNOVER_LOST
+    // flow), so it skips straight to the unforced-error subtype panel.
+    if (action.id === 'our_error') {
+      setFlashButton(action.id)
+      setTurnoverSubtypePanel({ videoEventType: 'OUR_UNFORCED_ERROR', subtypeOptions: UNFORCED_ERROR_SUBTYPES })
+      return
+    }
+
     // Handle Free Won marker — create FREE_KICK event then show sub-panel
     if (action.eventType === 'FREE_WON_MARKER') {
       const freeData = buildEventData({ ...action, eventType: 'FREE_KICK' })
@@ -204,6 +238,7 @@ export default function VideoQuickActions({
     if (action.eventType === 'FORTY_FIVE_MARKER') {
       setFlashButton(action.id)
       setShowFortyFivePanel(true)
+      onFortyFivePanelToggle?.(true)
       return
     }
 
@@ -256,7 +291,7 @@ export default function VideoQuickActions({
     }
 
     if (freeKickContext) setShowFreePanel(false)
-  }, [disabled, buildEventData, onEventTap, onCreateEvent, onPossessionChange, onTabChange])
+  }, [disabled, buildEventData, onEventTap, onCreateEvent, onPossessionChange, onTabChange, onFortyFivePanelToggle])
 
   const handleFortyFiveTap = useCallback((scored: boolean) => {
     if (disabled) return
@@ -265,6 +300,7 @@ export default function VideoQuickActions({
     data.scoring_context = { scored }
     setFlashButton(action.id)
     setShowFortyFivePanel(false)
+    onFortyFivePanelToggle?.(false)
 
     if (action.needsPlayer) {
       onEventTap({ action: { ...action, eventType: 'FORTY_FIVE' }, eventData: data })
@@ -273,7 +309,34 @@ export default function VideoQuickActions({
       if (action.autoFlipTo) onPossessionChange(action.autoFlipTo === 'us' ? 'team_a' : 'team_b')
       if (action.autoSwitchTab) onTabChange(action.autoSwitchTab)
     }
-  }, [disabled, buildEventData, onEventTap, onCreateEvent, onPossessionChange, onTabChange])
+  }, [disabled, buildEventData, onEventTap, onCreateEvent, onPossessionChange, onTabChange, onFortyFivePanelToggle])
+
+  const handleTurnoverReasonTap = useCallback((reason: TurnoverReason) => {
+    setShowTurnoverReasonPanel(false)
+    const { eventType, subtypeOptions } = TURNOVER_REASON_CONFIG[reason]
+    const videoEventType = eventType === 'unforced_error' ? 'OUR_UNFORCED_ERROR' : 'TURNOVER_LOST'
+    setTurnoverSubtypePanel({ videoEventType, subtypeOptions })
+  }, [])
+
+  const handleTurnoverSubtypeTap = useCallback((subtype: string) => {
+    if (!turnoverSubtypePanel) return
+    const { videoEventType } = turnoverSubtypePanel
+    setTurnoverSubtypePanel(null)
+    const action: ActionButton = {
+      id: videoEventType === 'OUR_UNFORCED_ERROR' ? 'our_error' : 'to_lost',
+      label: videoEventType === 'OUR_UNFORCED_ERROR' ? 'Our Error' : 'T/O Lost',
+      eventType: videoEventType,
+      autoFlipTo: 'them',
+      needsPlayer: true,
+      needsPitch: false,
+      playerModalTitle: videoEventType === 'OUR_UNFORCED_ERROR' ? 'Who Made the Error?' : 'Who Lost Possession?',
+      playerModalEventType: 'turnover_lost',
+    }
+    const eventData = buildEventData(action)
+    eventData.sub_type = subtype
+    setFlashButton(action.id)
+    onEventTap({ action, eventData })
+  }, [turnoverSubtypePanel, buildEventData, onEventTap])
 
   const isButtonDisabled = (action: ActionButton): boolean => {
     if (disabled) return true
@@ -348,7 +411,7 @@ export default function VideoQuickActions({
         {CATEGORY_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false) }}
+            onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false); setShowTurnoverReasonPanel(false); setTurnoverSubtypePanel(null) }}
             className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all ${
               activeTab === id
                 ? 'text-emerald-400 bg-emerald-500/10 border-b-2 border-emerald-400'
@@ -435,7 +498,55 @@ export default function VideoQuickActions({
               45 Missed
             </button>
             <button
-              onClick={() => setShowFortyFivePanel(false)}
+              onClick={() => { setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false) }}
+              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
+            >
+              <ChevronLeft size={12} />
+              Back
+            </button>
+          </>
+        ) : showTurnoverReasonPanel ? (
+          <>
+            <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
+              Turnover Reason
+            </div>
+            {(Object.keys(TURNOVER_REASON_CONFIG) as TurnoverReason[]).map((reason) => (
+              <button
+                key={reason}
+                onClick={() => handleTurnoverReasonTap(reason)}
+                disabled={disabled}
+                className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 disabled:opacity-30 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
+              >
+                {TURNOVER_REASON_CONFIG[reason].label}
+              </button>
+            ))}
+            <button
+              onClick={() => setShowTurnoverReasonPanel(false)}
+              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
+            >
+              <ChevronLeft size={12} />
+              Back
+            </button>
+          </>
+        ) : turnoverSubtypePanel ? (
+          <>
+            <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
+              Reason / Subtype
+            </div>
+            {turnoverSubtypePanel.subtypeOptions.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => handleTurnoverSubtypeTap(opt.value)}
+                disabled={disabled}
+                className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 disabled:opacity-30 disabled:cursor-not-allowed"
+                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
+              >
+                {opt.label}
+              </button>
+            ))}
+            <button
+              onClick={() => setTurnoverSubtypePanel(null)}
               className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
             >
               <ChevronLeft size={12} />

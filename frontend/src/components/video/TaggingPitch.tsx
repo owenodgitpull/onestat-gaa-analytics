@@ -76,6 +76,16 @@ interface TaggingPitchProps {
    * elsewhere on screen) — dims the panel and ignores pointer events, same
    * as the old BallMinimap's `disabled` prop. */
   disabled?: boolean
+  /** Pulse both touchlines — same tap-accuracy aid as GAAPitch.tsx's prop of
+   * the same name, ported here so a sideline-ball tap gets the same visual
+   * guide in video tagging as it does in live recording. */
+  highlightSidelines?: boolean
+  /** Pulse a full vertical glow at this pitch-% x-position — same
+   * tap-accuracy aid as GAAPitch.tsx's prop of the same name, for 45m free
+   * placement. Ported here since TaggingPitch previously had no 45m-line
+   * snap/highlight at all (a real gap vs. live recording — see the plan doc
+   * referenced in this file's header comment). */
+  highlight45LineX?: number | null
 }
 
 // Minimum distance (in pitch %) between recorded drag waypoints
@@ -100,6 +110,8 @@ export default function TaggingPitch({
   gradientBorder = false,
   carrierJerseyNumber,
   disabled = false,
+  highlightSidelines = false,
+  highlight45LineX = null,
 }: TaggingPitchProps) {
   const [localBallPosition, setLocalBallPosition] = useState<BallPosition | null>(
     ballPosition || null
@@ -336,6 +348,38 @@ export default function TaggingPitch({
             height={PITCH.svgH}
             preserveAspectRatio="xMidYMid meet"
           />
+
+          {/* Sideline highlight — pulses both touchlines while a kickout-
+              over-the-sideline tap is pending. Purely visual, doesn't affect
+              hit-testing. Ported verbatim from GAAPitch.tsx. */}
+          {highlightSidelines && (
+            <>
+              <rect x={PITCH.left} y={PITCH.top - 16} width={PITCH.playW} height={32} fill="#fbbf24" opacity={0.3} className="animate-pulse" />
+              <rect x={PITCH.left} y={PITCH.top + PITCH.playH - 16} width={PITCH.playW} height={32} fill="#fbbf24" opacity={0.3} className="animate-pulse" />
+              <line x1={PITCH.left} y1={PITCH.top} x2={PITCH.left + PITCH.playW} y2={PITCH.top} stroke="#fbbf24" strokeWidth={6} className="animate-pulse" />
+              <line x1={PITCH.left} y1={PITCH.top + PITCH.playH} x2={PITCH.left + PITCH.playW} y2={PITCH.top + PITCH.playH} stroke="#fbbf24" strokeWidth={6} className="animate-pulse" />
+            </>
+          )}
+
+          {/* 45m line highlight — a 45 is always taken from directly on this
+              line, so it needs to be obvious rather than guessed at. Full
+              vertical glow (tappable anywhere along the line) plus a crisp
+              dashed centre line for precision. Ported verbatim from
+              GAAPitch.tsx — highlight45LineX should be computed the same way
+              as MatchRecording.tsx's compute45LineX (34/66, the live-tuned
+              real line position, not the theoretical 45/145≈31/69). */}
+          {highlight45LineX != null && (
+            <>
+              <rect x={toSvgX(highlight45LineX) - 55} y={PITCH.top} width={110} height={PITCH.playH} fill="#fbbf24" opacity={0.12} className="animate-pulse" />
+              <rect x={toSvgX(highlight45LineX) - 28} y={PITCH.top} width={56} height={PITCH.playH} fill="#fbbf24" opacity={0.22} className="animate-pulse" />
+              <rect x={toSvgX(highlight45LineX) - 12} y={PITCH.top} width={24} height={PITCH.playH} fill="#fbbf24" opacity={0.3} className="animate-pulse" />
+              <line
+                x1={toSvgX(highlight45LineX)} y1={PITCH.top}
+                x2={toSvgX(highlight45LineX)} y2={PITCH.top + PITCH.playH}
+                stroke="#fbbf24" strokeWidth={5} strokeDasharray="20,14" className="animate-pulse"
+              />
+            </>
+          )}
 
           {/* Trail (rendered before ball) */}
           {trailElements}

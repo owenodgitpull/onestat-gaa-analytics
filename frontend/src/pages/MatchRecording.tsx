@@ -52,6 +52,10 @@ import { useTour } from '@/hooks/useTour'
 import { matchRecordingSteps } from '@/config/tourSteps'
 import MatchRecordingTutorial, { type TutorialMatchState, consumePendingTutorial } from '@/components/MatchRecordingTutorial'
 import NetworkStatusIndicator from '@/components/NetworkStatusIndicator'
+import {
+  UNFORCED_ERROR_SUBTYPES, FOUL_SUBTYPES,
+  TURNOVER_REASON_CONFIG, type TurnoverReason,
+} from '@/constants/turnoverSubtypes'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import { useMatchStateRestore } from '@/hooks/useMatchStateRestore'
 import { startActiveMonitoring, stopActiveMonitoring, offlineMatchEvents } from '@/services/offline'
@@ -84,50 +88,9 @@ type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | '
 const DEV_SPEED_MULTIPLIER = parseInt(import.meta.env.VITE_DEV_MATCH_SPEED || '1', 10)
 const IS_DEV_SPEED = DEV_SPEED_MULTIPLIER > 1
 
-const UNFORCED_ERROR_SUBTYPES = [
-  { value: 'stray_pass', label: 'Stray Pass' },
-  { value: 'dropped_ball', label: 'Dropped Ball' },
-  { value: 'miscue', label: 'Miscue' },
-  { value: 'kick_over_sideline', label: 'Kicked Over Sideline' },
-  { value: 'square_ball', label: 'Square Ball' },
-  { value: 'three_v_three', label: '3v3 Violation' },
-  { value: 'time_wasting', label: 'Time Wasting' },
-]
-
-// A macro-level GAA turnover splits into three distinct reasons, each with a
-// different real-world meaning (and a different event_type/consequence):
-//  - Active Dispossession: the opposition actively won it (tackle/strip/
-//    forced interception) — a genuine forced turnover, TURNOVER_LOST, no
-//    free conceded.
-//  - Unforced Error: our own mistake with no defensive pressure (stray
-//    pass, dropped ball, miscue) — OUR_UNFORCED_ERROR, no free conceded.
-//  - Offensive Foul: a technical infringement by the carrier (overcarrying,
-//    picking the ball off the ground) — this concedes a free, same as any
-//    other foul, so it's recorded as FOUL_COMMITTED, not a turnover type.
-// Before this, "T/O Lost" recorded a bare TURNOVER_LOST with no way to
-// capture which of these actually happened, and overcarrying/picked-off-
-// ground were miscategorised as "unforced error" subtypes even though
-// they're fouls that concede a free, not a general-play turnover.
-const DISPOSSESSION_SUBTYPES = [
-  { value: 'strip', label: 'Strip' },
-  { value: 'tackle', label: 'Tackle' },
-  { value: 'forced_interception', label: 'Forced Interception' },
-]
-
-const OFFENSIVE_FOUL_SUBTYPES = [
-  { value: 'overcarrying', label: 'Overcarrying' },
-  { value: 'picked_off_ground', label: 'Picked Off Ground' },
-]
-
-const FOUL_SUBTYPES = [
-  { value: 'pushing', label: 'Pushing' },
-  { value: 'pulling', label: 'Pulling' },
-  { value: 'charging', label: 'Charging' },
-  { value: 'late_tackle', label: 'Late Tackle' },
-  { value: 'jersey_pull', label: 'Jersey Pull' },
-  { value: 'obstruction', label: 'Obstruction' },
-  { value: 'dissent', label: 'Dissent' },
-]
+// Turnover-reason and sub-type constant lists live in
+// constants/turnoverSubtypes.ts, shared with VideoTagging.tsx's reason
+// picker so the two pickers can never drift apart.
 
 
 interface PendingEvent {
@@ -2356,16 +2319,12 @@ export default function MatchRecording() {
   // button already uses, Offensive Foul becomes a genuine FOUL_COMMITTED
   // (it concedes a free, same as any other foul — foulMode:true gets it
   // the same post-record free-kick handling).
-  const handleTurnoverReasonSelected = (reason: 'dispossession' | 'unforced' | 'offensive_foul') => {
+  const handleTurnoverReasonSelected = (reason: TurnoverReason) => {
     if (!pendingTurnoverReason) return
     const { player, capturedMinute, capturedHalf, position } = pendingTurnoverReason
     setPendingTurnoverReason(null)
-    const config = {
-      dispossession: { eventType: 'turnover_lost', foulMode: false, subtypeOptions: DISPOSSESSION_SUBTYPES },
-      unforced: { eventType: 'unforced_error', foulMode: false, subtypeOptions: UNFORCED_ERROR_SUBTYPES },
-      offensive_foul: { eventType: 'foul_committed', foulMode: true, subtypeOptions: OFFENSIVE_FOUL_SUBTYPES },
-    }[reason]
-    setPendingSubType({ player, capturedMinute, capturedHalf, position, ...config })
+    const { eventType, foulMode, subtypeOptions } = TURNOVER_REASON_CONFIG[reason]
+    setPendingSubType({ player, capturedMinute, capturedHalf, position, eventType, foulMode, subtypeOptions })
   }
 
   const handleSubTypeSelected = async (subType?: string) => {

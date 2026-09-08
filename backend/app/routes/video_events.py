@@ -41,6 +41,7 @@ def _event_to_response(event: VideoEvent) -> VideoEventResponse:
         video_session_id=event.video_session_id,
         match_id=event.match_id,
         event_type=event.event_type,
+        sub_type=event.sub_type,
         team=event.team,
         half=event.half,
         match_minute=event.match_minute,
@@ -109,6 +110,7 @@ async def create_video_event(
         video_session_id=session.id,
         match_id=session.match_id,
         event_type=body.event_type,
+        sub_type=body.sub_type,
         team=body.team,
         half=body.half,
         match_minute=body.match_minute,
@@ -543,6 +545,7 @@ async def process_video_sync(
                 match_event = MatchEvent(
                     match_id=ve.match_id,
                     event_type=match_event_type,
+                    sub_type=ve.sub_type,
                     team=team,
                     minute=ve.match_minute,
                     pitch_x=ve.pitch_x,
@@ -569,6 +572,7 @@ async def process_video_sync(
                 )
                 if match_event_type:
                     me.event_type = match_event_type
+                me.sub_type = ve.sub_type or me.sub_type
                 me.minute = ve.match_minute
                 me.pitch_x = ve.pitch_x or me.pitch_x
                 me.pitch_y = ve.pitch_y or me.pitch_y
@@ -658,6 +662,7 @@ async def sync_events_to_match(
             match_event = MatchEvent(
                 match_id=ve.match_id,
                 event_type=match_event_type,
+                sub_type=ve.sub_type,
                 team=team,
                 minute=ve.match_minute,
                 pitch_x=ve.pitch_x,
