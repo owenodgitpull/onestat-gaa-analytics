@@ -75,12 +75,18 @@ export default function ScoreOrigins({ data, teamName = 'Us', opponentName = 'Op
               <div className="flex-1 flex items-center justify-center text-white/30 text-xs">No scores</div>
             ) : (
               // Radii as % of the container's own size, not fixed px, so the
-              // donut actually grows to fill whatever height this card gets.
-              // No minHeight floor — a hard floor here was forcing the chart
-              // taller than its flex parent on some viewports, and since
-              // .glass-card has no overflow-hidden the excess silently bled
-              // into whatever card sat below this one.
-              <div className="relative flex-1 min-h-0 w-full">
+              // donut actually grows to fill whatever height this card gets
+              // — but ResponsiveContainer's height="100%" only resolves at
+              // all when SOME ancestor in the chain has a real pixel height.
+              // On sm+ that's MatchResult's fixed 380px row; below sm that
+              // box is deliberately absent (see MatchResult.tsx), so this
+              // flex-1/h-full chain had nothing to resolve against and
+              // collapsed to 0 — the chart never rendered, and the
+              // absolutely-positioned center-total text rendered right on
+              // top of the label above it instead. A real height floor on
+              // mobile only (sm+ keeps flex-1, matching the original) fixes
+              // it without touching the desktop/tablet layout.
+              <div className="relative h-[170px] sm:h-auto sm:flex-1 min-h-0 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie

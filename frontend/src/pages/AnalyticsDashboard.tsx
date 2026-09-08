@@ -470,7 +470,8 @@ export default function AnalyticsDashboard() {
             style={viewMode === 'season' ? { background: 'var(--gradient-primary)' } : {}}
           >
             <BarChart3 size={16} />
-            Season Stats
+            <span className="md:hidden">Stats</span>
+            <span className="hidden md:inline">Season Stats</span>
           </button>
           <button
             onClick={() => setViewMode('health')}
@@ -482,7 +483,8 @@ export default function AnalyticsDashboard() {
             style={viewMode === 'health' ? { background: 'var(--gradient-primary)' } : {}}
           >
             <Heart size={16} />
-            Squad Health
+            <span className="md:hidden">Squad</span>
+            <span className="hidden md:inline">Squad Health</span>
           </button>
           <button
             onClick={() => setViewMode('ai')}
@@ -494,7 +496,8 @@ export default function AnalyticsDashboard() {
             style={viewMode === 'ai' ? { background: 'var(--gradient-primary)' } : {}}
           >
             <Sparkles size={16} />
-            AI Insights
+            <span className="md:hidden">AI</span>
+            <span className="hidden md:inline">AI Insights</span>
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -637,7 +640,8 @@ export default function AnalyticsDashboard() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white/70 hover:text-white text-xs font-medium transition-colors"
             >
               <LayoutGrid size={14} />
-              KPI Library
+              <span className="md:hidden">KPI</span>
+              <span className="hidden md:inline">KPI Library</span>
             </button>
           </div>
         </div>
