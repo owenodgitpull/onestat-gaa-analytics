@@ -359,7 +359,18 @@ export default function MatchResult() {
       })
   }, [eventsData, match?.half_duration_mins, match?.attacking_right_first_half])
 
-  // Extract Man of the Match — prefer AI pick, fall back to formula
+  // Extract Man of the Match — prefer AI pick, fall back to formula.
+  // The AI report fetch is slower than the plain events/players queries it
+  // races against — the report is cached server-side once generated (see
+  // match_agent.py's generate_post_match_report), so it does NOT actually
+  // regenerate on every visit, but this memo used to fall back to the
+  // formula pick immediately whenever postMatchReport hadn't resolved YET,
+  // then swap to the AI's pick once it arrived a moment later. Any page
+  // visit where the two picks disagreed visibly flashed a different name
+  // before settling — reading as "the Man of the Match keeps changing"
+  // even though nothing was ever actually regenerated. Once an AI report
+  // exists for this match, its pick should be the only one ever shown —
+  // wait for the report to resolve before considering the formula at all.
   const manOfMatch = useMemo(() => {
     // Try to parse AI MOTM from the analysis text
     if (postMatchReport?.analysis) {
@@ -370,6 +381,10 @@ export default function MatchResult() {
         return { playerName: name, breakdown: { goals: 0, points: 0, twoPointers: 0, turnoversWon: 0, turnoversLost: 0, kickoutsWon: 0 }, score: 0, playerId: '', aiPicked: true }
       }
     }
+    // Don't fall back to the formula pick while the AI report is still in
+    // flight (or being polled after a slow first generation) — only once
+    // we actually know there's no AI pick to show.
+    if (reportLoading || isPollingReport) return null
     // Fallback to formula-based calculation
     if (!eventsData?.events || !players) return null
     const eventsWithTeam = eventsData.events.map((e: any) => ({
@@ -377,7 +392,7 @@ export default function MatchResult() {
       team: e.team || (e.is_home_team ? 'own' : 'opponent')
     }))
     return calculateManOfMatch(eventsWithTeam, players)
-  }, [eventsData, players, postMatchReport])
+  }, [eventsData, players, postMatchReport, reportLoading, isPollingReport])
 
   // Scorers — per-player breakdown of own-team scores, GAA-style (G-PP + 2pt note)
   const scorers = useMemo(() => {
@@ -590,6 +605,18 @@ export default function MatchResult() {
                           })()
                       }
                     </div>
+                  </div>
+                </div>
+              </div>
+            ) : reportLoading || isPollingReport ? (
+              <div className="glass-card p-4 bg-white/5 animate-pulse">
+                <div className="flex items-center space-x-3">
+                  <Trophy className="text-white/20" size={32} />
+                  <div>
+                    <div className="text-xs text-white/40 font-semibold uppercase tracking-wide">
+                      Man of the Match
+                    </div>
+                    <div className="text-sm text-white/30">Loading...</div>
                   </div>
                 </div>
               </div>
