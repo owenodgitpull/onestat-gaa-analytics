@@ -16,6 +16,8 @@ from app.auth.dependencies import AuthenticatedUser, require_admin, require_admi
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent, EventType, Team
 from app.models.player import Player
+from app.models.match_lineup import MatchLineup
+from app.models.match_gps import MatchGPSData
 
 router = APIRouter()
 
@@ -1024,6 +1026,45 @@ async def get_player_match_stats(
             match_stats[mid] = init_stats()
         match_stats[mid]['assists'] += 1
 
+    # Seed every match this player actually featured in, even ones with zero
+    # attributed MatchEvent rows. A player who came on as a substitute and
+    # had a quiet game statistically (no score/turnover/foul logged against
+    # them personally) — but was genuinely on the pitch, per the lineup, and
+    # may well have real GPS/ball-carrier data — was previously dropped from
+    # this list entirely rather than shown with all-zero stats, which reads
+    # as "didn't play" instead of "played, nothing to report." Confirmed
+    # live 2026-09-08: a used sub with real Termon match GPS + 3 tracked
+    # ball-carries had zero MatchEvent rows and was invisible here.
+    lineup_result = await db.execute(
+        select(MatchLineup.match_id, MatchLineup.is_substitute).where(
+            and_(
+                MatchLineup.match_id.in_(match_ids),
+                MatchLineup.player_id == player_uuid,
+                MatchLineup.is_on_field.is_(True),
+            )
+        )
+    )
+    lineup_rows = lineup_result.all()
+    started_map = {str(mid): not is_sub for mid, is_sub in lineup_rows}
+    for mid in started_map:
+        if mid not in match_stats:
+            match_stats[mid] = init_stats()
+
+    # Playing minutes, when GPS data exists for this player/match, to explain
+    # an all-zero row (e.g. "came on, 22 mins, no scoring involvement").
+    gps_minutes_result = await db.execute(
+        select(MatchGPSData.match_id, MatchGPSData.playing_minutes, MatchGPSData.duration_mins).where(
+            and_(
+                MatchGPSData.match_id.in_(match_ids),
+                MatchGPSData.player_id == player_uuid,
+            )
+        )
+    )
+    minutes_map = {
+        str(mid): (playing_mins if playing_mins is not None else duration_mins)
+        for mid, playing_mins, duration_mins in gps_minutes_result.all()
+    }
+
     # Build response
     result = []
     for mid, stats in match_stats.items():
@@ -1057,6 +1098,8 @@ async def get_player_match_stats(
                 kickouts_lost=stats['kickouts_lost'],
                 assists=stats['assists'],
                 accuracy=accuracy,
+                started=started_map.get(mid, False),
+                minutes_played=minutes_map.get(mid),
             ))
 
     # Sort by match date descending
