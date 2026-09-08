@@ -14,6 +14,7 @@ interface AiInsightsSectionProps {
   onRegenerateAll: () => void
   onLoadMore?: () => void
   loadingMore?: boolean
+  loadMoreError?: string | null
   regenLimitReached?: boolean
   isPinned: (chartId: string) => boolean
   aiChartsSummary?: string
@@ -39,6 +40,7 @@ export default function AiInsightsSection({
   onRegenerateAll,
   onLoadMore,
   loadingMore = false,
+  loadMoreError = null,
   regenLimitReached = false,
   isPinned,
   aiChartsSummary,
@@ -189,18 +191,21 @@ export default function AiInsightsSection({
 
       {/* Load More button */}
       {dynamicCharts.length > 0 && onLoadMore && !regenLimitReached && (
-        <div className="flex justify-center mt-4">
+        <div className="flex flex-col items-center gap-2 mt-4">
           <button
             onClick={onLoadMore}
             disabled={loadingMore}
             className="btn-glass flex items-center gap-2 text-sm"
           >
             {loadingMore ? (
-              <><RefreshCw size={14} className="animate-spin" /> Generating more...</>
+              <><RefreshCw size={14} className="animate-spin" /> Generating more... (can take up to a minute)</>
             ) : (
               <><Plus size={14} /> Load More Charts</>
             )}
           </button>
+          {loadMoreError && !loadingMore && (
+            <p className="text-xs text-rose-400 text-center max-w-sm">{loadMoreError}</p>
+          )}
         </div>
       )}
 

@@ -27,11 +27,21 @@ export const API_BASE = API_BASE_URL;
  *
  * Authentication is handled via httpOnly cookies — no Authorization header.
  * All requests include `credentials: 'include'` so cookies are sent cross-origin.
+ *
+ * `timeoutMs` (optional) bounds how long we'll wait before giving up and
+ * throwing — plain `fetch()` has no timeout of its own, so a slow backend
+ * call (or a reverse proxy that holds the connection open instead of
+ * cleanly erroring, as Vercel's edge rewrite to the Fly backend can do past
+ * ~30s) would otherwise leave a caller's loading state spinning forever
+ * with nothing in the console to explain why. Only pass this for endpoints
+ * known to be genuinely slow (AI generation) — everything else keeps the
+ * previous unbounded behavior.
  */
 export async function fetchAPI<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit & { timeoutMs?: number } = {}
 ): Promise<T> {
+  const { timeoutMs, ...fetchOptions } = options;
   const url = `${API_BASE_URL}${endpoint}`;
 
   const defaultHeaders: Record<string, string> = {
@@ -50,14 +60,18 @@ export async function fetchAPI<T>(
     }
   }
 
+  const controller = timeoutMs ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
   try {
     const response = await fetch(url, {
-      ...options,
+      ...fetchOptions,
       credentials: 'include',
       headers: {
         ...defaultHeaders,
-        ...options.headers,
+        ...fetchOptions.headers,
       },
+      signal: controller ? controller.signal : fetchOptions.signal,
     });
 
     if (!response.ok) {
@@ -76,8 +90,15 @@ export async function fetchAPI<T>(
 
     return await response.json();
   } catch (error) {
+    if (controller?.signal.aborted) {
+      const timeoutError = new Error('This is taking longer than expected — please try again.');
+      console.error(`API call timed out after ${timeoutMs}ms: ${endpoint}`);
+      throw timeoutError;
+    }
     console.error(`API call failed: ${endpoint}`, error);
     throw error;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
@@ -1897,6 +1918,11 @@ const aiAPI = {
     return fetchAPI<DashboardChartsResponse>('/ai/dashboard-charts', {
       method: 'POST',
       body: JSON.stringify({ excluded_chart_ids: excludedChartIds, num_charts: numCharts, force_refresh: forceRefresh }),
+      // Uncached (force_refresh) generation is a real agentic LLM run —
+      // observed taking ~80s in production for just 2 charts. Bounded so
+      // "Generate More" can never spin forever; comfortably above any
+      // legitimate run, but still resolves the UI's loading state either way.
+      timeoutMs: forceRefresh ? 150_000 : undefined,
     });
   },
 
@@ -1907,6 +1933,7 @@ const aiAPI = {
     return fetchAPI<SingleChartResponse>('/ai/generate-replacement-chart', {
       method: 'POST',
       body: JSON.stringify({ excluded_chart_ids: excludedChartIds }),
+      timeoutMs: 150_000,
     });
   },
 

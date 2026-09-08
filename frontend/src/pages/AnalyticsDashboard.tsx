@@ -234,9 +234,11 @@ export default function AnalyticsDashboard() {
   }, [])
 
   const [loadingMore, setLoadingMore] = useState(false)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
   const loadMoreCharts = useCallback(async () => {
     if (regenLimitReached) return
     setLoadingMore(true)
+    setLoadMoreError(null)
     try {
       const existingIds = aiCharts.map(c => c.id)
       const allExcluded = [...dismissedChartIds, ...existingIds]
@@ -244,9 +246,12 @@ export default function AnalyticsDashboard() {
       if (result.success && result.charts && result.charts.length > 0) {
         setAiCharts(prev => [...prev, ...result.charts])
         setRegenCount(incrementRegenCount())
+      } else {
+        setLoadMoreError("Couldn't generate more charts right now — try again in a moment.")
       }
     } catch (err) {
       console.error('Failed to load more charts:', err)
+      setLoadMoreError(err instanceof Error ? err.message : "Couldn't generate more charts right now — try again in a moment.")
     } finally {
       setLoadingMore(false)
     }
@@ -598,6 +603,7 @@ export default function AnalyticsDashboard() {
           onRegenerateAll={() => fetchAICharts(true)}
           onLoadMore={loadMoreCharts}
           loadingMore={loadingMore}
+          loadMoreError={loadMoreError}
           regenLimitReached={regenLimitReached}
           isPinned={isPinned}
           aiChartsSummary={aiChartsSummary}
