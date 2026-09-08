@@ -182,8 +182,15 @@ export default function PlayerPhysicalTrend({ matchGpsHistory }: Props) {
         ))}
       </div>
 
-      {/* Bar chart */}
-      <div className="flex-1 min-h-0" style={{ minHeight: 160 }}>
+      {/* Bar chart — a fixed height, not flex-1/min-h-0, is deliberate: recharts'
+          ResponsiveContainer with height="100%" needs its immediate parent to
+          resolve to a real pixel height. If that parent is itself sized by a
+          flex-fill with no definite ancestor height above it (true here — this
+          card sits in a grid whose row height comes from its own content), the
+          two chase each other with nothing to anchor to and the container grows
+          without bound. Confirmed live 2026-09-08: this chart's container grew
+          vertically forever on the player performance tab. */}
+      <div style={{ height: 220 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 18, right: 4, left: -18, bottom: 0 }} barCategoryGap="28%">
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />

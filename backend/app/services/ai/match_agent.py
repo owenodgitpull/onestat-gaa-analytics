@@ -469,9 +469,20 @@ INSTRUCTIONS:
                 "concerning metrics, recovery recommendations, and how physical output impacted the result."
                 "\n\nGPS ANALYSIS RULES:"
                 "\n- NEVER flag the goalkeeper for low distance — GKs typically cover 2-4km"
-                "\n- Players with subbed_off_minute were DEFINITELY substituted — state as fact"
-                "\n- Use positions for distance expectations: Midfielders 9-12km, Forwards/Defenders 7-10km, GK 2-4km"
-                "\n- Only flag outfield full-match players significantly below position benchmarks"
+                "\n- Players with subbed_off_minute were DEFINITELY substituted off — state as fact"
+                "\n- Players with came_on_as_sub=true started on the bench and only played part of the match — "
+                "NEVER compare their total distance/sprints against a full-match position benchmark, and NEVER "
+                "call it 'underperformed' just because the raw number is lower. A sub on for 15 minutes covering "
+                "2km is not underperforming a 7-10km full-match benchmark, they simply played a fraction of the "
+                "match. Use playing_minutes to judge a substitute's output (pace/intensity per minute on pitch), "
+                "not the raw total. Confirmed live 2026-09-08: three genuine substitutes were wrongly flagged as "
+                "'significantly underperformed distance benchmarks' with a recommendation to review defensive "
+                "shape — a real mistake that misread playing time as a physical or tactical problem."
+                "\n- Use positions for distance expectations: Midfielders 9-12km, Forwards/Defenders 7-10km, GK 2-4km — "
+                "these are FULL-MATCH benchmarks; only apply them to players who played close to the full match, "
+                "using playing_minutes to confirm, not just the absence of subbed_off_minute"
+                "\n- Only flag outfield full-match players (came_on_as_sub is not true, and playing_minutes is "
+                "close to the full match duration) significantly below position benchmarks"
             )
 
         ball_carry_note = "\n\nIMPORTANT: Do NOT use the get_ball_carrier_data tool — ball carry data has been excluded from this report by the analyst. Do not mention passes, carries, or ball-carrying chains." if exclude_ball_carry else ""
@@ -695,7 +706,7 @@ INSTRUCTIONS:
             6. {"Ball Carrying & Possession Patterns — detail which players drove play forward, who recycled possession, and whether scoring chains were direct or buildup." if has_gps_data else "Areas for Improvement"}
             7. {"Areas for Improvement" if has_gps_data else "Training Recommendations"}
             8. {"Training Recommendations" if has_gps_data else ""}
-            9. Man of the Match — pick the single best {report_club_name} player considering scoring, workrate, ball carrying/distribution{", GPS data," if has_gps_data else ","} and overall impact. Write it as a section header exactly like: **Man of the Match: Player Name** followed by a 1-2 sentence justification.{gps_hint}{momentum_hint}{weather_hint}{lineup_hint}{notes_hint}
+            9. Man of the Match — pick the single best {report_club_name} player. PRIORITY ORDER, not equal weighting: (1) direct match impact FIRST — scores (goals/points/2-pointers), assists, turnovers won, kickouts won, blocks, interceptions; (2) GPS/physical output (distance, sprints, max speed) is SUPPORTING context only — use it to explain HOW a player delivered their impact, or as a tiebreaker between players with comparable scoreboard impact, never as the primary reason someone gets the nod over a player who scored/assisted/turned the ball over more. A player who ran the most distance but had a quiet scoreboard is not Man of the Match ahead of someone with a goal, points, and multiple assists — that is a real mistake the model has made before (confirmed live 2026-09-08: Dylan Sweeney picked over Conor Greene, who had a goal, two points, and two assists, apparently on distance covered alone). Write it as a section header exactly like: **Man of the Match: Player Name** followed by a 1-2 sentence justification that leads with their scoreboard/turnover impact, physical output mentioned only as supporting colour if at all.{gps_hint}{momentum_hint}{weather_hint}{lineup_hint}{notes_hint}
 
             POSSESSION LANGUAGE — calibrate to the actual percentage, don't default to strong language:
             - Below 50%: "{report_club_name} had less of the ball" / "lost the possession battle"

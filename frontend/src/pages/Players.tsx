@@ -641,6 +641,28 @@ export default function Players() {
             )
           }
 
+          // While any inline edit control on this card is open (position,
+          // DOB, GPS alias), the card must not act as a navigation link at
+          // all — per-element stopPropagation on the <select>/<input> was
+          // already in place and still let clicks through to the wrapping
+          // Link (confirmed live 2026-09-08: picking a new position from
+          // the dropdown navigated to the player detail page instead of
+          // saving it). Rendering a plain div instead of a Link removes the
+          // whole class of bug rather than chasing which handler leaks.
+          const isEditingThisCard =
+            editingPositionId === player.id || editingDobId === player.id || editingGpsAliasId === player.id
+
+          if (isEditingThisCard) {
+            return (
+              <div
+                key={player.id}
+                className={`glass-card p-4 transition-all block relative ${menuOpenId === player.id ? 'z-[90]' : ''}`}
+              >
+                {cardContent}
+              </div>
+            )
+          }
+
           return (
             <Link
               key={player.id}

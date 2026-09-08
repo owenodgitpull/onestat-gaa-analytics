@@ -94,6 +94,8 @@ GAA_ESSENTIALS = """
 - Score format: Goals-Points (e.g., 2-14 = 2 goals + 14 points = 20 total)
 - Points includes: play points, frees (point_free), 45s (forty_five) — always sum ALL of these
 - When describing results use GAA margin language: "won by 4 points", "a 1-point win", "lost by 7 points". Always state the margin, not just the raw score.
+- A draw is "a point dropped," never "two points dropped" (win=2 table points, draw=1, loss=0, so a draw is 2-1=1 short of a win). This audience is GAA coaches and players — they know the points system already, so just get the arithmetic right and move on; do NOT explain the win/draw/loss points rule itself in the output, that reads as condescending. Confirmed live 2026-09-08: the brief said a draw "felt like 2 dropped" (wrong number) — the fix is silently saying "a point dropped," not narrating the rule.
+- Context matters for how a dropped point should read: a draw clawed back from well behind (e.g. trailing by 8-10+ at some stage) is a good point salvaged, not just "a point dropped" — say so if the match data shows a big deficit recovered. A draw that was never really threatened, or squandered from a winning position, reads differently — match the tone to the actual game, don't default to one framing.
 - "From play" vs "from a free" is about event_type, not point value: goal/point/two_point are ALL
   from play. point_free/two_point_free/forty_five are the free-kick/45 equivalents. A 2-pointer
   (two_point) is a from-play score just like a point is — never describe a match as having "no score
@@ -1050,6 +1052,15 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
     featured_player_ids = {
         pid for pid, is_sub, is_on_field in lineup_rows if not is_sub or is_on_field
     } if lineup_rows else None  # None = no lineup saved for this match — don't filter
+    # Players who started on the bench and came on (is_substitute AND is_on_field)
+    # — distinct from subbed_off_minute below, which only ever fires for players
+    # taken OFF. Without this, a player subbed ON had no signal at all that they
+    # only played part of the match, so their (correctly lower) total distance
+    # got compared straight against a full-match position benchmark and flagged
+    # as "underperformed" — confirmed live 2026-09-08, three genuine substitutes
+    # called out as a defensive/tactical concern for a benchmark they were never
+    # on the pitch long enough to reach.
+    came_on_as_sub_ids = {pid for pid, is_sub, is_on_field in lineup_rows if is_sub and is_on_field}
 
     # Calculate team totals and outfield averages
     outfield_rows = [
@@ -1090,6 +1101,8 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
 
         if was_subbed:
             player_data["subbed_off_minute"] = sub_lookup[g.player_id]
+        if g.player_id and g.player_id in came_on_as_sub_ids:
+            player_data["came_on_as_sub"] = True
 
         # Flag players who never left the bench, per the actual match lineup
         is_unused_sub = featured_player_ids is not None and g.player_id not in featured_player_ids
@@ -2866,6 +2879,7 @@ async def get_team_season_stats(db: AsyncSession, club_id=None, competition: str
         match_results.append({
             "match_id": str(match.id),
             "opponent": match.opponent,
+            "competition": match.competition,
             "date": match.match_date.strftime("%Y-%m-%d") if match.match_date else None,
             "result": result,
             "margin_desc": margin_desc,
@@ -4973,9 +4987,18 @@ async def get_live_match_stats(db: AsyncSession, match_id: str, club_id=None) ->
         drought_minutes = current_minute - last_own_score.minute
 
     # ── Unforced errors + turnovers summary ───────────────────────────────
+    # Macro-level turnover count: any possession change before a shot counts
+    # as a turnover from the team perspective, whether it was forced
+    # (TURNOVER_LOST/opponent pressure) or unforced (our own mistake, no
+    # pressure) — both are "we lost it, they gained it" at this level. The
+    # display line below already claimed "(inc. X unforced errors)" but
+    # total_to_lost never actually summed them in — the label was lying
+    # about its own number. Symmetric with opp_to_won for the same reason:
+    # an opponent unforced error is still a turnover we won it back from.
     total_ue = sum(1 for e in events if e.team == Team.OWN and e.event_type == EventType.UNFORCED_ERROR)
-    total_to_lost = sum(1 for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST)
-    total_to_won  = sum(1 for e in events if e.team == Team.OWN and e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON})
+    opp_total_ue = sum(1 for e in events if e.team == Team.OPPONENT and e.event_type == EventType.UNFORCED_ERROR)
+    total_to_lost = total_ue + sum(1 for e in events if e.team == Team.OWN and e.event_type == EventType.TURNOVER_LOST)
+    total_to_won  = opp_total_ue + sum(1 for e in events if e.team == Team.OWN and e.event_type in {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON})
 
     # ── Discipline watch ─────────────────────────────────────────────────
     # GAA has no rule tying a personal foul TALLY to a card or dismissal —

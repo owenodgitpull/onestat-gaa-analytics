@@ -3163,11 +3163,24 @@ export const auditLogAPI = {
     fetchAPI<AuditSummary>('/audit-log/summary'),
 }
 
+export interface TeamVolumeInterval {
+  interval: string
+  distance_km: number
+  carries: number
+}
+
+export interface TeamVolumeData {
+  intervals: TeamVolumeInterval[]
+  total_distance_km: number
+  source: 'carrier_backed' | 'event_estimate'
+}
+
 const matchAnalyticsAPI = {
   getScoreOrigins: (matchId: string) => fetchAPI<ScoreOriginsData>(`/match-analytics/${matchId}/score-origins`),
   getScoreableFrees: (matchId: string) => fetchAPI<ScoreableFreesData>(`/match-analytics/${matchId}/scoreable-frees`),
   getAttackEfficiency: (matchId: string) => fetchAPI<AttackEfficiencyData>(`/match-analytics/${matchId}/attack-efficiency`),
   getSeasonBenchmark: (matchId: string) => fetchAPI<SeasonBenchmarkData>(`/match-analytics/${matchId}/vs-season`),
+  getTeamVolume: (matchId: string) => fetchAPI<TeamVolumeData>(`/match-analytics/${matchId}/team-volume`),
 };
 
 export interface MatchVoiceNote {

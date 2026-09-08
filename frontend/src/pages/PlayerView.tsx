@@ -109,7 +109,7 @@ interface PlayerAttendanceStats {
 }
 
 interface GPSDataPoint {
-  session_date: string
+  session_date: string | null
   total_distance_m: number | null
   max_speed_ms: number | null
   sprint_count: number | null
@@ -385,7 +385,7 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
                 cx={x}
                 cy={y}
                 r={isGoal ? 26 : 20}
-                fill={isScore ? '#10b981' : '#ef4444'}
+                fill={isGoal ? '#f59e0b' : isScore ? '#10b981' : '#ef4444'}
                 stroke={isSelected ? '#fff' : 'rgba(255,255,255,0.7)'}
                 strokeWidth={isSelected ? 5 : 3}
                 opacity={isSelected ? 1 : 0.85}
@@ -419,16 +419,16 @@ function ShotMap({ shots }: { shots: ShotEvent[] }) {
       <div className="flex items-center justify-between mt-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5">
+            <span className="w-4 h-4 rounded-full bg-amber-500" />
+            <span className="text-xs text-white/50">Goal</span>
+          </div>
+          <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-emerald-500" />
             <span className="text-xs text-white/50">Score</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded-full bg-red-500" />
             <span className="text-xs text-white/50">Miss</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-4 h-4 rounded-full border-2 border-white/30" />
-            <span className="text-xs text-white/50">Goal</span>
           </div>
         </div>
         <span className="text-[10px] text-white/30 italic">Tap a shot for detail</span>
@@ -1519,7 +1519,7 @@ function PerformanceTab({
             <div className="space-y-3">
               {pagedTraining.map((data, i) => (
                 <div key={i} className="p-4 rounded-xl bg-white/5">
-                  <div className="text-sm text-white/60 mb-2">{parseLocalDate(data.session_date).toLocaleDateString()}</div>
+                  <div className="text-sm text-white/60 mb-2">{data.session_date ? parseLocalDate(data.session_date).toLocaleDateString() : 'Unknown date'}</div>
                   <div className="grid grid-cols-4 gap-4">
                     <div><div className="text-xs text-white/50">Distance</div><div className="text-lg font-bold text-white">{data.total_distance_m ? `${(data.total_distance_m / 1000).toFixed(1)}km` : '-'}</div></div>
                     <div><div className="text-xs text-white/50">Max Speed</div><div className="text-lg font-bold text-white">{data.max_speed_ms ? `${data.max_speed_ms.toFixed(1)} m/s` : '-'}</div></div>

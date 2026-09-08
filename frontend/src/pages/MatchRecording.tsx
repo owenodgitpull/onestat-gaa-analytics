@@ -87,12 +87,36 @@ const IS_DEV_SPEED = DEV_SPEED_MULTIPLIER > 1
 const UNFORCED_ERROR_SUBTYPES = [
   { value: 'stray_pass', label: 'Stray Pass' },
   { value: 'dropped_ball', label: 'Dropped Ball' },
-  { value: 'overcarrying', label: 'Overcarrying' },
-  { value: 'picked_off_ground', label: 'Picked Off Ground' },
+  { value: 'miscue', label: 'Miscue' },
   { value: 'kick_over_sideline', label: 'Kicked Over Sideline' },
   { value: 'square_ball', label: 'Square Ball' },
   { value: 'three_v_three', label: '3v3 Violation' },
   { value: 'time_wasting', label: 'Time Wasting' },
+]
+
+// A macro-level GAA turnover splits into three distinct reasons, each with a
+// different real-world meaning (and a different event_type/consequence):
+//  - Active Dispossession: the opposition actively won it (tackle/strip/
+//    forced interception) — a genuine forced turnover, TURNOVER_LOST, no
+//    free conceded.
+//  - Unforced Error: our own mistake with no defensive pressure (stray
+//    pass, dropped ball, miscue) — OUR_UNFORCED_ERROR, no free conceded.
+//  - Offensive Foul: a technical infringement by the carrier (overcarrying,
+//    picking the ball off the ground) — this concedes a free, same as any
+//    other foul, so it's recorded as FOUL_COMMITTED, not a turnover type.
+// Before this, "T/O Lost" recorded a bare TURNOVER_LOST with no way to
+// capture which of these actually happened, and overcarrying/picked-off-
+// ground were miscategorised as "unforced error" subtypes even though
+// they're fouls that concede a free, not a general-play turnover.
+const DISPOSSESSION_SUBTYPES = [
+  { value: 'strip', label: 'Strip' },
+  { value: 'tackle', label: 'Tackle' },
+  { value: 'forced_interception', label: 'Forced Interception' },
+]
+
+const OFFENSIVE_FOUL_SUBTYPES = [
+  { value: 'overcarrying', label: 'Overcarrying' },
+  { value: 'picked_off_ground', label: 'Picked Off Ground' },
 ]
 
 const FOUL_SUBTYPES = [
@@ -274,6 +298,18 @@ export default function MatchRecording() {
     player?: Player
     eventType: string
     foulMode: boolean
+    subtypeOptions?: { value: string; label: string }[]
+    capturedMinute: number
+    capturedHalf: number
+    position: BallPosition
+  } | null>(null)
+
+  // "T/O Lost" reason picker — shown before the sub-type list, so a turnover
+  // gets classified as one of the three real reasons (active dispossession /
+  // unforced error / offensive foul) up front rather than always landing as
+  // a bare, undifferentiated TURNOVER_LOST.
+  const [pendingTurnoverReason, setPendingTurnoverReason] = useState<{
+    player?: Player
     capturedMinute: number
     capturedHalf: number
     position: BallPosition
@@ -2314,6 +2350,24 @@ export default function MatchRecording() {
   }
 
   // Record event after sub-type selection (or skip)
+  // Turn a "T/O Lost" reason choice into the matching sub-type picker —
+  // Active Dispossession stays a TURNOVER_LOST (forced, no free conceded),
+  // Unforced Error becomes the same OUR_UNFORCED_ERROR flow the dedicated
+  // button already uses, Offensive Foul becomes a genuine FOUL_COMMITTED
+  // (it concedes a free, same as any other foul — foulMode:true gets it
+  // the same post-record free-kick handling).
+  const handleTurnoverReasonSelected = (reason: 'dispossession' | 'unforced' | 'offensive_foul') => {
+    if (!pendingTurnoverReason) return
+    const { player, capturedMinute, capturedHalf, position } = pendingTurnoverReason
+    setPendingTurnoverReason(null)
+    const config = {
+      dispossession: { eventType: 'turnover_lost', foulMode: false, subtypeOptions: DISPOSSESSION_SUBTYPES },
+      unforced: { eventType: 'unforced_error', foulMode: false, subtypeOptions: UNFORCED_ERROR_SUBTYPES },
+      offensive_foul: { eventType: 'foul_committed', foulMode: true, subtypeOptions: OFFENSIVE_FOUL_SUBTYPES },
+    }[reason]
+    setPendingSubType({ player, capturedMinute, capturedHalf, position, ...config })
+  }
+
   const handleSubTypeSelected = async (subType?: string) => {
     if (!pendingSubType || !matchId) { setPendingSubType(null); return }
     const { player, eventType, foulMode, capturedMinute, capturedHalf, position } = pendingSubType
@@ -3215,6 +3269,20 @@ export default function MatchRecording() {
         player,
         eventType: 'unforced_error',
         foulMode: false,
+        subtypeOptions: UNFORCED_ERROR_SUBTYPES,
+        capturedMinute,
+        capturedHalf,
+        position: event.position,
+      })
+      return
+    }
+
+    // "T/O Lost" — ask WHY before recording anything, rather than always
+    // logging a bare TURNOVER_LOST. See the reason picker render + its
+    // handlers below for what each of the three choices actually records.
+    if (event.eventType === EventType.TURNOVER_LOST) {
+      setPendingTurnoverReason({
+        player,
         capturedMinute,
         capturedHalf,
         position: event.position,
@@ -5240,13 +5308,56 @@ export default function MatchRecording() {
         }
       `}</style>
 
+      {/* "T/O Lost" reason picker — WHY the ball was lost, before any event
+          is recorded. Determines both the final event_type and which
+          sub-type list appears next. */}
+      {pendingTurnoverReason && (
+        <div className="fixed inset-0 z-[180] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-5">
+            <p className="text-sm font-bold text-white mb-1">How was it lost?</p>
+            <p className="text-xs text-white/40 mb-4">
+              {pendingTurnoverReason.player?.name ?? 'Player'} — pick the reason
+            </p>
+            <div className="flex flex-col gap-2 mb-4">
+              <button
+                onClick={() => handleTurnoverReasonSelected('dispossession')}
+                className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-red-600/25 border border-white/10 hover:border-red-500/40 text-left transition-all"
+              >
+                <span className="block text-sm font-semibold text-white">Active Dispossession</span>
+                <span className="block text-xs text-white/40">They won it — strip, tackle, forced interception</span>
+              </button>
+              <button
+                onClick={() => handleTurnoverReasonSelected('unforced')}
+                className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-amber-600/25 border border-white/10 hover:border-amber-500/40 text-left transition-all"
+              >
+                <span className="block text-sm font-semibold text-white">Unforced Error</span>
+                <span className="block text-xs text-white/40">We gave it away — stray pass, dropped ball, miscue</span>
+              </button>
+              <button
+                onClick={() => handleTurnoverReasonSelected('offensive_foul')}
+                className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-orange-600/25 border border-white/10 hover:border-orange-500/40 text-left transition-all"
+              >
+                <span className="block text-sm font-semibold text-white">Offensive Foul</span>
+                <span className="block text-xs text-white/40">Overcarrying, picked off the ground — concedes a free</span>
+              </button>
+            </div>
+            <button
+              onClick={() => setPendingTurnoverReason(null)}
+              className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sub-type picker — shown after player selection for unforced errors / fouls */}
       {pendingSubType && (
         <div className="fixed inset-0 z-[180] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-5">
             <div className="flex items-center justify-between mb-1">
               <p className="text-sm font-bold text-white">
-                {pendingSubType.foulMode ? 'What type of foul?' : 'What type of error?'}
+                {pendingSubType.eventType === 'turnover_lost' ? 'What type of dispossession?' : pendingSubType.foulMode ? 'What type of foul?' : 'What type of error?'}
               </p>
               {pendingSubType.foulMode && (
                 <label className="flex items-center gap-1.5 cursor-pointer">
@@ -5259,7 +5370,7 @@ export default function MatchRecording() {
               {pendingSubType.player?.name ?? 'Player'} — tap to categorise or skip
             </p>
             <div className="flex flex-wrap gap-2 mb-4">
-              {(pendingSubType.foulMode ? FOUL_SUBTYPES : UNFORCED_ERROR_SUBTYPES).map(({ value, label }) => (
+              {(pendingSubType.subtypeOptions ?? (pendingSubType.foulMode ? FOUL_SUBTYPES : UNFORCED_ERROR_SUBTYPES)).map(({ value, label }) => (
                 <button
                   key={value}
                   onClick={() => handleSubTypeSelected(value)}

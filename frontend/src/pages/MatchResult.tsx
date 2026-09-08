@@ -29,7 +29,7 @@ import {
   RotateCcw
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from 'recharts'
-import { api } from '../services/api'
+import { api, TeamVolumeData } from '../services/api'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
 import { useClubName } from '../contexts/ClubContext'
@@ -210,6 +210,11 @@ export default function MatchResult() {
     queryKey: ['season-benchmark', matchId],
     queryFn: () => api.matchAnalytics.getSeasonBenchmark(matchId!),
     enabled: !!matchId,
+  })
+  const { data: teamVolumeData } = useQuery({
+    queryKey: ['team-volume', matchId],
+    queryFn: () => api.matchAnalytics.getTeamVolume(matchId!),
+    enabled: !!matchId && (eventsData?.events?.length ?? 0) > 0,
   })
 
   // GPS upload state
@@ -1193,7 +1198,7 @@ export default function MatchResult() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Team Volume (5-min)">
-              <TeamVolumeChart gpsData={gpsData} events={eventsData?.events || []} />
+              <TeamVolumeChart gpsData={gpsData} events={eventsData?.events || []} volumeData={teamVolumeData} />
             </ChartZoomModal>
             <ChartZoomModal title="Team Intensity">
               <TeamIntensityGauge gpsData={gpsData} />
@@ -1869,9 +1874,23 @@ function GPSInsightsPanel({ insights, isLoading, onRegenerate, isRegenerating }:
   )
 }
 
-// Team Volume Chart - Shows estimated team activity in 5-minute intervals
-function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[] }) {
+// Team Volume Chart - Shows estimated team running distance in 5-minute intervals.
+// Prefers the backend's ball-carrier-weighted estimate (volumeData) — real
+// carried distance per interval, redistributing the real post-match GPS
+// total against it — which is a far better proxy for running load than a
+// flat count of events. Falls back to the old raw-event-count redistribution
+// only while volumeData hasn't loaded yet (or for a match with neither GPS
+// nor carrier data at all).
+function TeamVolumeChart({ gpsData, events, volumeData }: { gpsData: GPSData[]; events: any[]; volumeData?: TeamVolumeData }) {
   const chartData = useMemo(() => {
+    if (volumeData?.intervals?.length) {
+      return volumeData.intervals.map(iv => ({
+        interval: iv.interval,
+        distance: iv.distance_km,
+        carries: iv.carries,
+      }))
+    }
+
     // Calculate total team distance
     const totalDistance = gpsData.reduce((sum, p) => sum + (p.total_distance_m || 0), 0)
 
@@ -1916,7 +1935,9 @@ function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[
     })
 
     return data
-  }, [gpsData, events])
+  }, [gpsData, events, volumeData])
+
+  const isCarrierBacked = volumeData?.source === 'carrier_backed'
 
   // Identify trend
   const trend = useMemo(() => {
@@ -1998,7 +2019,9 @@ function TeamVolumeChart({ gpsData, events }: { gpsData: GPSData[]; events: any[
       </div>
 
       <div className="mt-3 p-2 rounded-lg bg-white/5 text-xs text-white/50 text-center">
-        Note: Volume distribution estimated from match events. Real-time API will provide exact data.
+        {isCarrierBacked
+          ? 'Distribution weighted by tracked ball-carry distance per interval, scaled to the real post-match GPS total.'
+          : 'Note: No ball-carrying data for this match — distribution estimated from raw event count instead.'}
       </div>
     </div>
   )

@@ -5,7 +5,7 @@ Validates request/response data for GPS tracking and weight training.
 """
 
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 from uuid import UUID
 
@@ -55,6 +55,12 @@ class TrainingGPSDataResponse(TrainingGPSDataBase):
     session_id: UUID
     player_name: Optional[str] = None
     created_at: datetime
+    # The actual calendar date of the training session (from TrainingSession,
+    # not this row's own created_at/upload time) — added because the player
+    # detail page's Training GPS History list was rendering "Invalid Date"
+    # for every entry, having nothing else to show. Optional since not every
+    # caller populates it (only get_player_gps_history joins for it).
+    session_date: Optional[date] = None
 
     class Config:
         from_attributes = True

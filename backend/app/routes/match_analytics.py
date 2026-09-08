@@ -10,6 +10,7 @@ from app.services.match_analytics_service import (
     get_scoreable_frees,
     get_attack_efficiency,
     get_season_benchmark,
+    get_team_volume_intervals,
 )
 
 router = APIRouter()
@@ -59,3 +60,13 @@ async def vs_season(
 ):
     await _verify_match_club(db, match_id, user.club_id)
     return await get_season_benchmark(db, match_id, user.club_id)
+
+
+@router.get("/{match_id}/team-volume")
+async def team_volume(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    await _verify_match_club(db, match_id, user.club_id)
+    return await get_team_volume_intervals(db, match_id, user.club_id)

@@ -1548,6 +1548,12 @@ CRITICAL — do not present stale data as current:
 - If there is ALSO no recent training session (days_since_last_training is None or > 10), say so plainly in the headline/summary (e.g. "No match or training activity logged recently") instead of inventing content to fill the section.
 - Never imply a match or session happened "this week" unless the freshness data above confirms it did.
 
+CRITICAL — competition context, don't cross-contaminate form narratives:
+- `get_team_season_stats` returns every match's `competition` and `date` in `match_results`. Before citing ANY specific past result as context for current form ("that heavy defeat remains a nagging outlier," etc.), check both: is it the SAME competition as the matches you're actually discussing, and is it RECENT relative to them?
+- A league result has no bearing on early-championship form once the league is finished and a new competition has started — leagues and championships are different competitions with different squads-in-form, different stakes, sometimes played months apart. Don't weigh a league loss against "3 games into the championship" as if it's still live pressure. Confirmed live 2026-09-08: the brief cited an old league defeat as a "nagging outlier" while discussing current championship form — the two competitions weren't even related, and the loss was months old.
+- The reverse IS valid: if the most recent league match was, say, 2 weeks before the first championship game, that recency and proximity make it fair, relevant context ("carrying momentum/concern from the league into the championship opener").
+- When in doubt, only reference results from the SAME competition as whatever run of form you're describing, unless the older result is genuinely recent (days, not months) relative to it.
+
 {GAA_ESSENTIALS}
 
 Return a single valid JSON object with these keys (omit any key if insufficient data):

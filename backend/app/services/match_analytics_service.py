@@ -4,6 +4,9 @@ from sqlalchemy import select, and_, func
 from app.models.match import Match, MatchStatus
 from app.models.match_event import MatchEvent
 from app.models.possession_event import PossessionEvent
+from app.models.match_gps import MatchGPSData
+from app.models.match_lineup import MatchLineup
+from app.models.ball_carrier_segment import BallCarrierSegment
 
 
 _SCORE_TYPES = {'goal', 'point', 'two_point'}
@@ -12,6 +15,14 @@ _FREE_ATTEMPT_TYPES = {'point_free', 'two_point_free', 'forty_five', 'penalty_go
 _OWN_KICKOUT_WON_TYPES = {'own_kickout_won', 'own_kickout_won_break', 'kickout_won'}
 _OPP_KICKOUT_WON_BY_US_TYPES = {'opp_kickout_opposition_won', 'opp_kickout_opposition_won_break'}
 _TURNOVER_WON_TYPES = {'turnover_won', 'tackle_won', 'block', 'interception'}
+# The same real-world turnover can be recorded from either side — the
+# winning team's turnover_won/tackle_won/block/interception, OR the losing
+# team's turnover_lost/unforced_error. Both are equally valid signals that
+# a score originated from a turnover; only checking the winner's side (as
+# this used to) missed every score that followed the loser's own event
+# instead — e.g. an unforced error credited to our player right before the
+# opposition scored was falling through to "open play" instead of "turnover".
+_TURNOVER_LOST_TYPES = {'turnover_lost', 'unforced_error'}
 _KICKOUT_POSSESSION_CHANGE_TYPES = (
     _OWN_KICKOUT_WON_TYPES
     | _OPP_KICKOUT_WON_BY_US_TYPES
@@ -67,6 +78,8 @@ def _classify_score_origin(preceding_events: list, scoring_team: str) -> str:
                 return 'opp_kickout'
             if et in _TURNOVER_WON_TYPES and team == 'own':
                 return 'turnover'
+            if et in _TURNOVER_LOST_TYPES and team == 'opponent':
+                return 'turnover'
         else:
             if et in {'opp_kickout_won', 'opp_kickout_won_break'} and team == 'opponent':
                 return 'own_kickout'
@@ -74,7 +87,9 @@ def _classify_score_origin(preceding_events: list, scoring_team: str) -> str:
                 return 'opp_kickout'
             if et in _TURNOVER_WON_TYPES and team == 'opponent':
                 return 'turnover'
-        if et in _KICKOUT_POSSESSION_CHANGE_TYPES or et in _TURNOVER_WON_TYPES:
+            if et in _TURNOVER_LOST_TYPES and team == 'own':
+                return 'turnover'
+        if et in _KICKOUT_POSSESSION_CHANGE_TYPES or et in _TURNOVER_WON_TYPES or et in _TURNOVER_LOST_TYPES:
             break
     return 'open_play'
 
@@ -379,4 +394,124 @@ async def get_season_benchmark(db: AsyncSession, match_id: UUID, club_id: UUID) 
         'season_avg': season_avg,
         'match_count': match_count,
         'trend': trend,
+    }
+
+
+# Pitch is standardized at 145m app-wide (see docs/pitch-svg-geometry.md).
+# BallCarrierSegment coordinates are stored 0-100 (percent of pitch length),
+# so a segment's absolute carried distance = |end_x - start_x| / 100 * this.
+_TEAM_VOLUME_PITCH_LENGTH_M = 145.0
+
+
+async def get_team_volume_intervals(db: AsyncSession, match_id: UUID, club_id: UUID) -> dict:
+    """Estimate team running distance per 5-minute interval.
+
+    We only ever get ONE real number from GPS: total distance for the whole
+    match, per player, uploaded after full time. There is no time-series GPS
+    feed. Previously this chart just spread that total proportionally by raw
+    match_events COUNT per interval — a card or a sub counted the same as a
+    burst of fast broken play, which is a poor proxy for actual running.
+
+    Ball-carrier segments give us something much closer to the truth: for
+    every interval we know how far the ball actually moved (own team) via
+    tracked carries, which correlates far better with real running load than
+    an event count does. So: derive a per-interval WEIGHT from own-team
+    carried distance, and redistribute the match's real GPS total against
+    that weight instead. Falls back to the old event-count method for a
+    match (or a match with zero carrier data) where no segments exist, so
+    the chart never goes blank.
+    """
+    match_result = await db.execute(
+        select(Match.half_duration_mins).where(and_(Match.id == match_id, Match.club_id == club_id))
+    )
+    match_row = match_result.first()
+    half_duration = match_row[0] if match_row else 30
+    total_minutes = max(half_duration * 2, 60)
+    num_intervals = (total_minutes // 5) + (1 if total_minutes % 5 else 0)
+    num_intervals = max(num_intervals, 12)
+
+    # GPS total: only players who actually featured (on the pitch at some
+    # point), matching the convention established elsewhere (leaderboard
+    # Workhorse calc, _shared.py get_match_gps) — an unused substitute's
+    # stray GPS row must not inflate the team total.
+    featured_result = await db.execute(
+        select(MatchLineup.player_id).where(
+            and_(MatchLineup.match_id == match_id, MatchLineup.is_on_field == True)  # noqa: E712
+        )
+    )
+    featured_player_ids = {row[0] for row in featured_result.all()}
+
+    gps_result = await db.execute(
+        select(MatchGPSData.player_id, MatchGPSData.total_distance_m).where(MatchGPSData.match_id == match_id)
+    )
+    gps_rows = gps_result.all()
+    if featured_player_ids:
+        total_distance_m = sum(
+            (row[1] or 0) for row in gps_rows if row[0] in featured_player_ids
+        )
+    else:
+        total_distance_m = sum((row[1] or 0) for row in gps_rows)
+
+    def _interval_label(idx: int) -> str:
+        start = idx * 5
+        if idx == num_intervals - 1:
+            return f"{start}+"
+        return f"{start}-{start + 5}"
+
+    labels = [_interval_label(i) for i in range(num_intervals)]
+
+    def _bucket_for_minute(minute) -> int:
+        m = minute or 0
+        return min(int(m) // 5, num_intervals - 1)
+
+    carry_weight = [0.0] * num_intervals
+    carry_count = [0] * num_intervals
+
+    segments_result = await db.execute(
+        select(BallCarrierSegment.minute, BallCarrierSegment.start_x, BallCarrierSegment.end_x)
+        .where(and_(BallCarrierSegment.match_id == match_id, BallCarrierSegment.team == 'own'))
+    )
+    segments = segments_result.all()
+    for minute, start_x, end_x in segments:
+        if start_x is None or end_x is None:
+            continue
+        idx = _bucket_for_minute(minute)
+        carried_m = abs(end_x - start_x) / 100.0 * _TEAM_VOLUME_PITCH_LENGTH_M
+        carry_weight[idx] += carried_m
+        carry_count[idx] += 1
+
+    total_carry_weight = sum(carry_weight)
+    source = 'carrier_backed' if total_carry_weight > 0 else 'event_estimate'
+
+    if total_carry_weight > 0:
+        weights = carry_weight
+        total_weight = total_carry_weight
+    else:
+        # Fall back to the old event-count proxy (no carrier data for this
+        # match — an older match, or one recorded before tracking existed).
+        events_result = await db.execute(
+            select(MatchEvent.minute).where(MatchEvent.match_id == match_id)
+        )
+        event_weight = [0.0] * num_intervals
+        for (minute,) in events_result.all():
+            event_weight[_bucket_for_minute(minute)] += 1.0
+        weights = event_weight
+        total_weight = sum(event_weight)
+
+    intervals = []
+    for i in range(num_intervals):
+        if total_weight > 0:
+            distance_m = (weights[i] / total_weight) * total_distance_m
+        else:
+            distance_m = total_distance_m / num_intervals
+        intervals.append({
+            'interval': labels[i],
+            'distance_km': round(distance_m / 1000, 2),
+            'carries': carry_count[i],
+        })
+
+    return {
+        'intervals': intervals,
+        'total_distance_km': round(total_distance_m / 1000, 2),
+        'source': source,
     }

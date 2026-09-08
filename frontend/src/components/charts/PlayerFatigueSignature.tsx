@@ -55,7 +55,12 @@ export default function PlayerFatigueSignature({ profile }: Props) {
       </div>
 
       {/* Chart */}
-      <div className="flex-1 min-h-0" style={{ minHeight: 180 }}>
+      {/* Fixed height, not flex-1/min-h-0 — see the matching comment in
+          PlayerPhysicalTrend.tsx for why: recharts' ResponsiveContainer needs
+          a real pixel height on its immediate parent, and a flex-fill parent
+          with no definite ancestor height above it grows without bound
+          instead. Confirmed live 2026-09-08 on this exact chart. */}
+      <div style={{ height: 220 }}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={profile.quarters} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />

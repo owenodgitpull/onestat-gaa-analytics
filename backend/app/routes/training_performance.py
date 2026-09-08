@@ -1094,14 +1094,20 @@ async def get_player_gps_history(
         raise HTTPException(status_code=404, detail="Player not found")
     player_name = player.name
 
+    # Joined to TrainingSession for session_date — the player detail page's
+    # GPS history list has always rendered "Invalid Date" for every entry,
+    # since this response never carried any date field the frontend's
+    # session_date-based formatter could parse (only created_at, which this
+    # route didn't select either). Confirmed live 2026-09-08.
     query = (
-        select(TrainingGPSData)
+        select(TrainingGPSData, TrainingSession.session_date)
+        .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
         .where(TrainingGPSData.player_id == player_id)
         .order_by(TrainingGPSData.created_at.desc())
         .limit(limit)
     )
     result = await db.execute(query)
-    records = result.scalars().all()
+    rows = result.all()
 
     return [
         TrainingGPSDataResponse(
@@ -1109,6 +1115,7 @@ async def get_player_gps_history(
             session_id=r.session_id,
             player_id=r.player_id,
             player_name=player_name,
+            session_date=session_date,
             total_distance_m=r.total_distance_m,
             high_speed_running_m=r.high_speed_running_m,
             sprint_distance_m=r.sprint_distance_m,
@@ -1127,5 +1134,5 @@ async def get_player_gps_history(
             notes=r.notes,
             created_at=r.created_at
         )
-        for r in records
+        for r, session_date in rows
     ]
