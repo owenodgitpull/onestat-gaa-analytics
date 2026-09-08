@@ -824,13 +824,43 @@ INSTRUCTIONS:
                 for p in sorted(unused_subs, key=lambda p: p.get("total_distance_m", 0) or 0, reverse=True)
             ]
 
+        # Full-match reference — the longest playing_minutes among outfield
+        # players who weren't subbed off, as a fallback proxy for "a full
+        # match" (match/half duration isn't passed into this endpoint).
+        # `came_on_as_sub` (from the frontend's lineup-derived annotation,
+        # same signal get_match_gps in _shared.py already uses for the main
+        # AI report) is the PRIMARY, more reliable check — confirmed live
+        # 2026-09-08 querying prod data: playing_minutes on MatchGPSData
+        # rows is frequently null/unpopulated even for a real used
+        # substitute, so a playing_minutes-only check silently no-ops and
+        # the bug persists. subbed_off_minute alone only catches starters
+        # who left EARLY, not players who entered late, so before this a
+        # genuine sub's naturally lower total distance still ran through
+        # the same vs-average comparison as a full-match player — two
+        # genuine substitutes were flagged "Distance X% below average —
+        # review for injury or illness" for exactly this reason (the same
+        # bug already fixed in generate_post_match_report's GPS ANALYSIS
+        # RULES, but this separate single-shot GPS endpoint, feeding the
+        # match-result page's GPSInsightsPanel, never got the same fix).
+        full_match_minutes = max(
+            (p.get("playing_minutes") or 0 for p in outfield_data if p.get("subbed_off_minute") is None),
+            default=0,
+        )
+
         for p in active_data:
             is_gk = p.get("position", "").lower() == "goalkeeper"
             was_subbed = p.get("subbed_off_minute") is not None
+            came_on_as_sub = p.get("came_on_as_sub") is True
+            playing_minutes = p.get("playing_minutes") or 0
+            played_close_to_full_match = (
+                not came_on_as_sub
+                and (full_match_minutes == 0 or playing_minutes >= full_match_minutes * 0.85 or not playing_minutes)
+            )
             player_summary = {
                 "name": p.get("player_name", "Unknown"),
                 "position": p.get("position", "unknown"),
                 "subbed_off_minute": p.get("subbed_off_minute"),
+                "came_on_as_sub": came_on_as_sub,
                 "total_distance_m": p.get("total_distance_m", 0),
                 "high_speed_running_m": p.get("high_speed_running_m", 0),
                 "sprint_distance_m": p.get("sprint_distance_m", 0),
@@ -840,13 +870,24 @@ INSTRUCTIONS:
                 "player_load": p.get("player_load", 0),
                 "playing_minutes": p.get("playing_minutes", 0),
             }
-            if not is_gk and not was_subbed and avg_distance > 0:
+            if not is_gk and not was_subbed and played_close_to_full_match and avg_distance > 0:
                 player_summary["distance_vs_avg_pct"] = round(((p.get("total_distance_m", 0) or 0) / avg_distance - 1) * 100, 1)
-            if not is_gk and not was_subbed and avg_sprints > 0:
+            if not is_gk and not was_subbed and played_close_to_full_match and avg_sprints > 0:
                 player_summary["sprints_vs_avg_pct"] = round(((p.get("sprint_count", 0) or 0) / avg_sprints - 1) * 100, 1)
             gps_summary["players"].append(player_summary)
 
         prompt = f"""Analyze this GPS performance data from a GAA football match and provide CONCISE, ACTIONABLE insights.
+
+IMPORTANT — playing time context: a player's total_distance_m/sprint_count
+naturally scale with how long they were on the pitch, not just their effort
+level. came_on_as_sub=true means they started on the bench and only played
+part of the match; subbed_off_minute means they left early. Only players who
+played close to the full match have a distance_vs_avg_pct/sprints_vs_avg_pct
+field — that's the ONLY basis for an "underperformance" or "injury_risk"
+alert based on distance/sprints. If a player has no distance_vs_avg_pct
+field at all, do NOT flag them for low distance or infer/estimate one from
+their raw total — that's expected for a substitute or early-departure
+player, not a concern, and never worth an alert.
 
 GPS DATA:
 {json.dumps(gps_summary, indent=2)}

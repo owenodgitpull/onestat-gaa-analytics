@@ -161,9 +161,22 @@ export default function MatchResult() {
   // to the AI regardless of whether the player featured.
   const buildAnnotatedGpsData = () => {
     const featuredSet = buildFeaturedPlayerSet(lineupData)
+    // came_on_as_sub — a used substitute (on the bench, then brought on) has
+    // playing_minutes that's frequently null/unpopulated on the GPS row
+    // itself (confirmed live 2026-09-08 querying prod data), so the backend
+    // can't reliably tell "sub with limited minutes" from "full-match player
+    // who just covered less ground" without this — the same lineup-derived
+    // signal get_match_gps (_shared.py) already uses for the main AI report,
+    // now also fed into the separate analyze_match_gps GPS-insights panel,
+    // which was missing it entirely and flagging genuine subs as injury risks.
+    const subEntry = (playerId: string) => lineupData?.find(l => l.player_id === playerId)
     return gpsData!.map(p => ({
       ...p,
       status: featuredSet && !featuredSet.has(p.player_id) ? 'unused_substitute' : undefined,
+      came_on_as_sub: (() => {
+        const entry = subEntry(p.player_id)
+        return entry ? entry.is_substitute && entry.is_on_field : undefined
+      })(),
     }))
   }
 

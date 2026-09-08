@@ -825,6 +825,7 @@ async def analyze_gps_endpoint(
                 p.get("max_speed_ms"),
                 p.get("playing_minutes"),
                 p.get("status"),
+                p.get("came_on_as_sub"),
             )
             for p in request.gps_data
         )

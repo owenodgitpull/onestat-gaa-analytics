@@ -102,6 +102,10 @@ GAA_ESSENTIALS = """
   from play" while also crediting a two-pointer, unless that two-pointer was specifically a
   two_point_free. Treat two_point the same as point/goal when summing "scored from play."
 
+## Match Length — do not assume inter-county timing
+- Half length varies by grade — club matches are commonly 2×30 minutes, inter-county senior football is 2×35 minutes. This is a per-club setting chosen at onboarding (`half_duration_mins` on the match), NOT a fixed convention. Full time (before any injury/stoppage time) is `half_duration_mins × 2` for THIS match — never assume 70 minutes as if every match were inter-county.
+- Never state a specific "before/around/after the Nth minute" reference for full time or a late-match moment unless you've derived it from this match's own `half_duration_mins` and the actual recorded event minutes (which naturally include any injury time played, since the clock kept running through it). Confirmed live 2026-09-08: a report said "subbed before the 70th minute" for a club match whose real playing time (including ~8 mins injury time) ended at minute 68 — 70 was never reached, the number was just assumed rather than checked. If you don't have a precise figure, say "before full time" / "late in the game" rather than inventing a minute number.
+
 ## Positions (15 players)
 1. GK (Goalkeeper)  2. RCB  3. FB (Full Back)  4. LCB
 5. RHB  6. CHB (Centre Half Back)  7. LHB
@@ -2362,6 +2366,11 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             "status": match.status.value if match.status else None,
             "current_phase": match.current_phase,
             "current_match_minute": _current_minute,
+            # This club's actual half length (see GAA_ESSENTIALS "Match
+            # Length" — club vs inter-county, chosen at onboarding). Full
+            # time (before injury/stoppage) is half_duration_mins * 2 —
+            # never assume the inter-county 70-minute convention.
+            "half_duration_mins": match.half_duration_mins,
         },
         "score": {
             "team": _gaa_score(tm_goals, tm_points, tm_2pts_play, tm_2pts_free),
