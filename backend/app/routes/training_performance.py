@@ -465,12 +465,18 @@ Return a JSON object with this structure:
             "deceleration_count": 48,
             "dynamic_stress_load": 350,
             "avg_heart_rate": 155,
-            "max_heart_rate": 185
+            "max_heart_rate": 185,
+            "playing_minutes": 68
         }
     ]
 }
 
 Extract EVERY player and ALL metrics visible. Use null for missing values.
+playing_minutes is each player's own time on the pitch — STATSports reports
+almost always show this as a per-player "Duration" or "Time" column/figure
+next to their other stats (distinct from the whole-session duration_mins
+above). Look for it specifically; do not leave it null just because it
+wasn't in your first pass over the obvious distance/speed columns.
 Return ONLY the JSON object, no other text."""
         })
 
@@ -607,6 +613,16 @@ def _parse_csv_local(content: bytes) -> dict:
             "step_balance_left_pct": safe_float(row, step_bal_col),
             "hml_distance_m": safe_float(row, hml_col),
             "duration_mins": safe_float(row, duration_col),
+            # Same source column as duration_mins — for a single-match GPS
+            # export, "Duration" is that player's time on the pitch, but
+            # every downstream consumer (match_gps.py's insert routes,
+            # analyze_match_gps, get_match_gps in _shared.py) reads
+            # playing_minutes specifically, not duration_mins. Confirmed
+            # live 2026-09-08/09: playing_minutes was null on every single
+            # uploaded record because nothing ever populated it — only
+            # duration_mins is read into a column, and match_gps.py's
+            # insert paths only look at d.get("playing_minutes").
+            "playing_minutes": safe_float(row, duration_col),
         })
 
     logger.info(f"Local CSV parser extracted {len(players)} players")

@@ -25,6 +25,10 @@ except ImportError:
     TrainingGPSData = None
 
 
+# Pitch length is standardized at 145m app-wide (see docs/pitch-svg-geometry.md).
+# BallCarrierSegment start_x/end_x are 0-100 (percent of pitch length).
+_PITCH_LENGTH_M = 145.0
+
 # MOTM weights — canonical, matches frontend motm.ts
 MOTM_WEIGHTS = {
     EventType.GOAL: 10,
@@ -690,14 +694,17 @@ class LeaderboardService:
             "unit": "won",
             "method": "kickout_king",
         },
-        # Possessions (ball-carrier segments) + passes made (segments ended
-        # by 'pass'), combined and averaged per match. Only populated for
-        # matches recorded with Tier 1 ball-carrier tracking active — a
-        # player with zero tracked matches simply doesn't appear, same as
-        # Workhorse/Speed Demon/Sprint King not showing untracked GPS players.
+        # Carry distance (metres, from ball-carrier segments) + passes made
+        # (segments ended by 'pass'), combined and averaged per match — a
+        # driving carry that drags defenders out of position counts for
+        # more than a short give-and-go, unlike a flat touch/possession
+        # count. Only populated for matches recorded with Tier 1
+        # ball-carrier tracking active — a player with zero tracked matches
+        # simply doesn't appear, same as Workhorse/Speed Demon/Sprint King
+        # not showing untracked GPS players.
         "orchestrator": {
             "display_name": "Orchestrator",
-            "unit": "touches/match",
+            "unit": "drive+pass/match",
             "method": "orchestrator",
         },
     }
@@ -758,7 +765,9 @@ class LeaderboardService:
         # m/s) — the category *names* wouldn't change, so categories_sig alone
         # wouldn't catch it and old cached blobs would keep serving km/h values.
         import hashlib as _hashlib
-        LEADERBOARD_SCHEMA_VERSION = "v2"
+        # v3: Orchestrator switched from possession-spell COUNT to carry
+        # DISTANCE (metres) + pass count, 2026-09-09.
+        LEADERBOARD_SCHEMA_VERSION = "v3"
         categories_sig = ",".join(sorted(LeaderboardService.CATEGORIES.keys())) + f"|{LEADERBOARD_SCHEMA_VERSION}"
         categories_hash = _hashlib.md5(categories_sig.encode()).hexdigest()[:8]
         cache_type = f"leaderboard_rankings_{categories_hash}"
@@ -947,6 +956,8 @@ class LeaderboardService:
                 BallCarrierSegment.player_id,
                 BallCarrierSegment.match_id,
                 BallCarrierSegment.ended_by,
+                BallCarrierSegment.start_x,
+                BallCarrierSegment.end_x,
             ).where(
                 and_(
                     BallCarrierSegment.match_id.in_(match_ids),
@@ -1152,37 +1163,48 @@ class LeaderboardService:
             for i, (pid, d) in enumerate(kickout_ranked)
         ]
 
-        # 10. Orchestrator (possessions + passes made, combined, avg/match)
-        # Each BallCarrierSegment row is one possession spell; a segment
-        # that ended_by == 'pass' also counts as a completed pass. Both are
-        # tallied per player PER MATCH first, then averaged across matches —
-        # same "average of per-match totals" shape as Workhorse/Sprint King —
-        # so a player who's only had carrier tracking on for 2 matches isn't
-        # penalised against one tracked for 10.
+        # 10. Orchestrator (carry distance + passes made, combined, avg/match)
+        # Was possession-spell COUNT + pass count — changed 2026-09-09 per
+        # the user's own reasoning: a raw touch count treats a one-yard
+        # give-and-go the same as a driving carry that drags defenders out
+        # of position, which is the actual "orchestrating" behaviour this
+        # leaderboard is meant to reward. Carry distance (metres actually
+        # covered while carrying, from start_x/end_x) replaces possession
+        # count; pass count is unchanged. Both tallied per player PER MATCH
+        # first, then averaged across matches — same "average of per-match
+        # totals" shape as Workhorse/Sprint King — so a player only tracked
+        # for 2 matches isn't penalised against one tracked for 10.
+        # Metres and a raw pass count are different scales (a single good
+        # carry can be 20-40m; a big passing match might be 10-15 passes),
+        # so metres are compressed by /10 before combining — "10m carried"
+        # reads as roughly one unit of involvement, the same order of
+        # magnitude as one pass — rather than distance swamping the passing
+        # side of the score entirely.
         orch_by_player: dict[str, dict[str, dict]] = {}
-        for pid_raw, mid_raw, ended_by in carrier_rows:
+        for pid_raw, mid_raw, ended_by, start_x, end_x in carrier_rows:
             pid = str(pid_raw)
             if pid not in players:
                 continue
             mid = str(mid_raw)
             per_match = orch_by_player.setdefault(pid, {})
-            d = per_match.setdefault(mid, {"poss": 0, "passes": 0})
-            d["poss"] += 1
+            d = per_match.setdefault(mid, {"carry_m": 0.0, "passes": 0})
+            if start_x is not None and end_x is not None:
+                d["carry_m"] += abs(end_x - start_x) / 100 * _PITCH_LENGTH_M
             if ended_by == "pass":
                 d["passes"] += 1
 
         orchestrator_data = []
         for pid, by_match in orch_by_player.items():
             match_count = len(by_match)
-            avg_poss = round(sum(d["poss"] for d in by_match.values()) / match_count, 1)
+            avg_carry_m = round(sum(d["carry_m"] for d in by_match.values()) / match_count, 1)
             avg_passes = round(sum(d["passes"] for d in by_match.values()) / match_count, 1)
-            combined = round(avg_poss + avg_passes, 1)
-            orchestrator_data.append((pid, combined, avg_poss, avg_passes, match_count))
+            combined = round(avg_carry_m / 10 + avg_passes, 1)
+            orchestrator_data.append((pid, combined, avg_carry_m, avg_passes, match_count))
         orchestrator_data.sort(key=lambda x: x[1], reverse=True)
         orchestrator = [
             {"rank": i + 1, "player_id": pid, "player_name": players[pid].name,
-             "value": combined, "detail": f"{avg_poss} poss + {avg_passes} pass /match · {mc} matches"}
-            for i, (pid, combined, avg_poss, avg_passes, mc) in enumerate(orchestrator_data)
+             "value": combined, "detail": f"{avg_carry_m}m carried + {avg_passes} pass /match · {mc} matches"}
+            for i, (pid, combined, avg_carry_m, avg_passes, mc) in enumerate(orchestrator_data)
         ]
 
         return {
