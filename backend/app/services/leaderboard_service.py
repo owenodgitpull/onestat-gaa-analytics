@@ -25,9 +25,13 @@ except ImportError:
     TrainingGPSData = None
 
 
-# Pitch length is standardized at 145m app-wide (see docs/pitch-svg-geometry.md).
-# BallCarrierSegment start_x/end_x are 0-100 (percent of pitch length).
+# Pitch is standardized at 145m x 90m app-wide (see docs/pitch-svg-geometry.md
+# and GAA_ESSENTIALS in ai/_shared.py). BallCarrierSegment start_x/end_x/
+# start_y/end_y are all 0-100 (percent of pitch length / width respectively)
+# — length and width need separate scale factors, they're not the same
+# distance per percentage point.
 _PITCH_LENGTH_M = 145.0
+_PITCH_WIDTH_M = 90.0
 
 # MOTM weights — canonical, matches frontend motm.ts
 MOTM_WEIGHTS = {
@@ -767,7 +771,11 @@ class LeaderboardService:
         import hashlib as _hashlib
         # v3: Orchestrator switched from possession-spell COUNT to carry
         # DISTANCE (metres) + pass count, 2026-09-09.
-        LEADERBOARD_SCHEMA_VERSION = "v3"
+        # v4: Orchestrator carry distance switched from x-axis-only net
+        # displacement to full 2D straight-line distance (both axes,
+        # correctly scaled per pitch length vs width) — the v3 formula
+        # undercounted carries with real lateral movement, 2026-09-09.
+        LEADERBOARD_SCHEMA_VERSION = "v4"
         categories_sig = ",".join(sorted(LeaderboardService.CATEGORIES.keys())) + f"|{LEADERBOARD_SCHEMA_VERSION}"
         categories_hash = _hashlib.md5(categories_sig.encode()).hexdigest()[:8]
         cache_type = f"leaderboard_rankings_{categories_hash}"
@@ -958,6 +966,8 @@ class LeaderboardService:
                 BallCarrierSegment.ended_by,
                 BallCarrierSegment.start_x,
                 BallCarrierSegment.end_x,
+                BallCarrierSegment.start_y,
+                BallCarrierSegment.end_y,
             ).where(
                 and_(
                     BallCarrierSegment.match_id.in_(match_ids),
@@ -1169,11 +1179,21 @@ class LeaderboardService:
         # give-and-go the same as a driving carry that drags defenders out
         # of position, which is the actual "orchestrating" behaviour this
         # leaderboard is meant to reward. Carry distance (metres actually
-        # covered while carrying, from start_x/end_x) replaces possession
-        # count; pass count is unchanged. Both tallied per player PER MATCH
-        # first, then averaged across matches — same "average of per-match
-        # totals" shape as Workhorse/Sprint King — so a player only tracked
-        # for 2 matches isn't penalised against one tracked for 10.
+        # covered while carrying) replaces possession count; pass count is
+        # unchanged. Both tallied per player PER MATCH first, then averaged
+        # across matches — same "average of per-match totals" shape as
+        # Workhorse/Sprint King — so a player only tracked for 2 matches
+        # isn't penalised against one tracked for 10.
+        # Straight-line distance uses BOTH axes (Pythagorean, each scaled by
+        # its own real-world dimension — x is pitch LENGTH 145m, y is pitch
+        # WIDTH 90m, not the same scale) — not x-axis-only net displacement,
+        # which was the first version of this fix and undercounted real
+        # carries: confirmed against live data (2026-09-09) that carries
+        # often move MORE side-to-side than forward (e.g. one real segment:
+        # 9.5% of pitch length forward but 20.3% of pitch width sideways),
+        # exactly the "dragging defenders left and right" behaviour the user
+        # specifically wants this metric to credit, which an x-only formula
+        # was silently throwing away.
         # Metres and a raw pass count are different scales (a single good
         # carry can be 20-40m; a big passing match might be 10-15 passes),
         # so metres are compressed by /10 before combining — "10m carried"
@@ -1181,7 +1201,7 @@ class LeaderboardService:
         # magnitude as one pass — rather than distance swamping the passing
         # side of the score entirely.
         orch_by_player: dict[str, dict[str, dict]] = {}
-        for pid_raw, mid_raw, ended_by, start_x, end_x in carrier_rows:
+        for pid_raw, mid_raw, ended_by, start_x, end_x, start_y, end_y in carrier_rows:
             pid = str(pid_raw)
             if pid not in players:
                 continue
@@ -1189,7 +1209,9 @@ class LeaderboardService:
             per_match = orch_by_player.setdefault(pid, {})
             d = per_match.setdefault(mid, {"carry_m": 0.0, "passes": 0})
             if start_x is not None and end_x is not None:
-                d["carry_m"] += abs(end_x - start_x) / 100 * _PITCH_LENGTH_M
+                dx_m = (end_x - start_x) / 100 * _PITCH_LENGTH_M
+                dy_m = (end_y - start_y) / 100 * _PITCH_WIDTH_M if start_y is not None and end_y is not None else 0.0
+                d["carry_m"] += (dx_m ** 2 + dy_m ** 2) ** 0.5
             if ended_by == "pass":
                 d["passes"] += 1
 
