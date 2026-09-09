@@ -87,6 +87,11 @@ export interface Match {
   second_half_started_at?: string | null;
   attacking_right_first_half?: boolean | null;
   half_duration_mins?: number;
+  // Actual dimensions of this ground in metres, if known (GAA regulation
+  // 130-145m x 80-90m) — optional, falls back to the app-wide 145x90m
+  // default used by every pitch_x/y-derived distance calculation.
+  pitch_length_m?: number | null;
+  pitch_width_m?: number | null;
   opposition_roster?: string[] | null;
   team_strip_colour?: string | null;
   team_strip_secondary_colour?: string | null;

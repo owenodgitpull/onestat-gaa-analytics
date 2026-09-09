@@ -13,6 +13,8 @@ interface NewFixtureModalProps {
     competition?: string | null
     stage?: string | null
     half_duration_mins?: number
+    pitch_length_m?: number | null
+    pitch_width_m?: number | null
   }) => void
   defaultHalfDuration?: number
 }
@@ -28,6 +30,13 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
   const [competition, setCompetition] = useState('')
   const [stage, setStage] = useState('')
   const [halfDurationMins, setHalfDurationMins] = useState(defaultHalfDuration)
+  // Optional — every distance derived from the pitch (Team Volume,
+  // Orchestrator carry distance, xP) assumes a fixed 145x90m app-wide when
+  // these are blank. Real GAA grounds vary within regulation (130-145m x
+  // 80-90m), so this closes that gap for clubs who know their own ground.
+  const [showPitchSize, setShowPitchSize] = useState(false)
+  const [pitchLengthM, setPitchLengthM] = useState('')
+  const [pitchWidthM, setPitchWidthM] = useState('')
   const [errors, setErrors] = useState<{ opponent?: string; matchDate?: string }>({})
   const [competitionOptions, setCompetitionOptions] = useState<string[]>([])
 
@@ -63,6 +72,8 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
       competition: competition.trim() || null,
       stage: stage || null,
       half_duration_mins: halfDurationMins,
+      pitch_length_m: pitchLengthM ? parseFloat(pitchLengthM) : null,
+      pitch_width_m: pitchWidthM ? parseFloat(pitchWidthM) : null,
     })
 
     // Reset
@@ -73,6 +84,9 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
     setCompetition('')
     setStage('')
     setHalfDurationMins(defaultHalfDuration)
+    setShowPitchSize(false)
+    setPitchLengthM('')
+    setPitchWidthM('')
     setErrors({})
   }
 
@@ -84,6 +98,9 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
     setCompetition('')
     setStage('')
     setHalfDurationMins(defaultHalfDuration)
+    setShowPitchSize(false)
+    setPitchLengthM('')
+    setPitchWidthM('')
     setErrors({})
     onClose()
   }
@@ -215,6 +232,56 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Ground size — optional, collapsed by default (rarely needed,
+              shouldn't slow down the common fast-entry path). When set,
+              every distance derived from this match's pitch coordinates
+              (Team Volume, Orchestrator carry distance, xP) uses these
+              instead of the app-wide 145x90m default. */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowPitchSize(v => !v)}
+              className="text-xs text-white/40 hover:text-white/60 transition-colors underline decoration-dotted underline-offset-2"
+            >
+              {showPitchSize ? 'Hide ground size' : 'Know this ground\'s exact size? (optional)'}
+            </button>
+            {showPitchSize && (
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label htmlFor="fix-pitch-length" className="block text-xs text-white/50 mb-1">Length (m)</label>
+                  <input
+                    id="fix-pitch-length"
+                    type="number"
+                    min={100}
+                    max={160}
+                    step={1}
+                    placeholder="145"
+                    value={pitchLengthM}
+                    onChange={(e) => setPitchLengthM(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="fix-pitch-width" className="block text-xs text-white/50 mb-1">Width (m)</label>
+                  <input
+                    id="fix-pitch-width"
+                    type="number"
+                    min={60}
+                    max={100}
+                    step={1}
+                    placeholder="90"
+                    value={pitchWidthM}
+                    onChange={(e) => setPitchWidthM(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-cyan-500/50"
+                  />
+                </div>
+                <p className="col-span-2 text-[11px] text-white/30">
+                  Leave blank to use the standard 145m x 90m — this only sharpens distance-based stats (Team Volume, Orchestrator, Expected Points) if your ground is a different size.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Competition */}

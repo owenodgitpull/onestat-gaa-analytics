@@ -82,6 +82,10 @@ class MatchService:
             match_kwargs['wind_speed_kmh'] = match_data.wind_speed_kmh
         if match_data.tactical_notes is not None:
             match_kwargs['tactical_notes'] = match_data.tactical_notes
+        if match_data.pitch_length_m is not None:
+            match_kwargs['pitch_length_m'] = match_data.pitch_length_m
+        if match_data.pitch_width_m is not None:
+            match_kwargs['pitch_width_m'] = match_data.pitch_width_m
         # Support client-provided UUID for offline-created matches
         if getattr(match_data, 'id', None):
             match_kwargs['id'] = match_data.id

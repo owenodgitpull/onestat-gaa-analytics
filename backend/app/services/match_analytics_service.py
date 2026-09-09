@@ -422,10 +422,11 @@ async def get_team_volume_intervals(db: AsyncSession, match_id: UUID, club_id: U
     the chart never goes blank.
     """
     match_result = await db.execute(
-        select(Match.half_duration_mins).where(and_(Match.id == match_id, Match.club_id == club_id))
+        select(Match.half_duration_mins, Match.pitch_length_m).where(and_(Match.id == match_id, Match.club_id == club_id))
     )
     match_row = match_result.first()
     half_duration = match_row[0] if match_row else 30
+    pitch_length_m = (match_row[1] if match_row else None) or _TEAM_VOLUME_PITCH_LENGTH_M
     total_minutes = max(half_duration * 2, 60)
     num_intervals = (total_minutes // 5) + (1 if total_minutes % 5 else 0)
     num_intervals = max(num_intervals, 12)
@@ -476,7 +477,7 @@ async def get_team_volume_intervals(db: AsyncSession, match_id: UUID, club_id: U
         if start_x is None or end_x is None:
             continue
         idx = _bucket_for_minute(minute)
-        carried_m = abs(end_x - start_x) / 100.0 * _TEAM_VOLUME_PITCH_LENGTH_M
+        carried_m = abs(end_x - start_x) / 100.0 * pitch_length_m
         carry_weight[idx] += carried_m
         carry_count[idx] += 1
 

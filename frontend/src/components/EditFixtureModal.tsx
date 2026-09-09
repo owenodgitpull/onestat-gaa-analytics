@@ -15,6 +15,8 @@ interface EditFixtureModalProps {
     competition?: string | null
     stage?: string | null
     half_duration_mins?: number
+    pitch_length_m?: number | null
+    pitch_width_m?: number | null
   }) => Promise<void>
   onDelete: (id: string) => Promise<void>
 }
@@ -27,6 +29,8 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }:
   const [competition, setCompetition] = useState('')
   const [stage, setStage] = useState('')
   const [halfDurationMins, setHalfDurationMins] = useState(30)
+  const [pitchLengthM, setPitchLengthM] = useState('')
+  const [pitchWidthM, setPitchWidthM] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -51,6 +55,8 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }:
       setCompetition(fixture.competition || '')
       setStage(fixture.stage || '')
       setHalfDurationMins(fixture.half_duration_mins ?? 30)
+      setPitchLengthM(fixture.pitch_length_m != null ? String(fixture.pitch_length_m) : '')
+      setPitchWidthM(fixture.pitch_width_m != null ? String(fixture.pitch_width_m) : '')
       setShowDeleteConfirm(false)
       setErrors({})
     }
@@ -78,6 +84,8 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }:
         competition: competition.trim() || null,
         stage: stage || null,
         half_duration_mins: halfDurationMins,
+        pitch_length_m: pitchLengthM ? parseFloat(pitchLengthM) : null,
+        pitch_width_m: pitchWidthM ? parseFloat(pitchWidthM) : null,
       })
       onClose()
     } catch {
@@ -224,6 +232,48 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }:
                   {label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Ground size — optional. When set, every distance derived from
+              this match's pitch coordinates (Team Volume, Orchestrator
+              carry distance, xP) uses these instead of the app-wide
+              145x90m default. */}
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Ground Size <span className="text-white/40 text-xs font-normal">(optional — leave blank for the standard 145m x 90m)</span>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="edit-pitch-length" className="block text-xs text-white/50 mb-1">Length (m)</label>
+                <input
+                  id="edit-pitch-length"
+                  type="number"
+                  min={100}
+                  max={160}
+                  step={1}
+                  placeholder="145"
+                  value={pitchLengthM}
+                  onChange={(e) => setPitchLengthM(e.target.value)}
+                  disabled={!isEditable}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent transition-all disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-pitch-width" className="block text-xs text-white/50 mb-1">Width (m)</label>
+                <input
+                  id="edit-pitch-width"
+                  type="number"
+                  min={60}
+                  max={100}
+                  step={1}
+                  placeholder="90"
+                  value={pitchWidthM}
+                  onChange={(e) => setPitchWidthM(e.target.value)}
+                  disabled={!isEditable}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-transparent transition-all disabled:opacity-50"
+                />
+              </div>
             </div>
           </div>
 

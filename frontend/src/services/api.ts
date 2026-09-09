@@ -278,6 +278,8 @@ export const matchesAPI = {
     stage?: string | null;
     referee?: string | null;
     half_duration_mins?: number;
+    pitch_length_m?: number | null;
+    pitch_width_m?: number | null;
   }): Promise<Match> => {
     return fetchAPI<Match>('/matches/', {
       method: 'POST',

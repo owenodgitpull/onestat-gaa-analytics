@@ -3571,11 +3571,18 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     except (ValueError, AttributeError):
         return safe_json({"error": f"'{match_id}' is not a valid match UUID"})
 
-    # Validate match belongs to club
+    # Validate match belongs to club, and grab this match's real pitch
+    # length if the club recorded one for this ground (falls back to the
+    # app-wide 145m default below when not set or when club_id is unknown).
+    match_pitch_length_m = None
     if club_id:
-        match_check = await db.execute(select(Match.id).where(Match.id == match_uuid, Match.club_id == club_id))
-        if not match_check.scalar_one_or_none():
+        match_check = await db.execute(
+            select(Match.id, Match.pitch_length_m).where(Match.id == match_uuid, Match.club_id == club_id)
+        )
+        match_row = match_check.first()
+        if not match_row:
             return safe_json({"error": "Match not found"})
+        match_pitch_length_m = match_row[1]
 
     # Fetch carrier segments
     seg_result = await db.execute(
@@ -3720,8 +3727,9 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     # GAA pitch length used to convert avg_gain_x from a 0-100 pitch-length
     # percentage into real metres — kept in sync with PITCH_LENGTH_M in
     # expected_points_service.py so "how far is a carry" means the same
-    # distance everywhere in the app.
-    _PITCH_LENGTH_M = 145.0
+    # distance everywhere in the app. Uses this match's real recorded pitch
+    # length when the club has set one for this ground.
+    _PITCH_LENGTH_M = match_pitch_length_m or 145.0
 
     # Post-loop: compute avg territory gain per player and clean up internal lists
     for stats in carrier_stats.values():

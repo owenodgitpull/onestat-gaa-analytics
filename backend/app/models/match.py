@@ -7,7 +7,7 @@ Represents a single match with opponent, date, venue, and final scores.
 import uuid
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text, ForeignKey, JSON, Float
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 from app.database import Base
@@ -173,6 +173,14 @@ class Match(Base):
 
     # Half duration in minutes (30 for clubs, 35 for inter-county)
     half_duration_mins: Column[int] = Column(Integer, default=30, nullable=False)
+
+    # Optional real dimensions of this specific ground, in metres. GAA
+    # regulation allows 130-145m x 80-90m, and real club grounds vary within
+    # that — every pitch_x/y-derived distance calculation (Team Volume,
+    # Orchestrator carry distance, xP, ball-carrier chains) assumes a fixed
+    # 145x90m app-wide when these are null. Optional, set at match creation.
+    pitch_length_m: Column[Optional[float]] = Column(Float, nullable=True)
+    pitch_width_m: Column[Optional[float]] = Column(Float, nullable=True)
 
     # Opposition roster (list of player names for opponent scoring attribution)
     opposition_roster = Column(JSON, nullable=True)

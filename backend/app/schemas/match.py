@@ -23,6 +23,11 @@ class MatchBase(BaseModel):
     tactical_notes: Optional[str] = Field(None, max_length=5000, description="Tactical notes for match day reference")
     half_duration_mins: Optional[int] = Field(30, ge=25, le=40, description="Minutes per half (30 for clubs, 35 for inter-county)")
     precise_tracking_enabled: bool = Field(True, description="False = Simple Scoring (tap-only, no territorial possession or ball-carry data)")
+    # Optional real dimensions of this ground (GAA regulation: 130-145m x
+    # 80-90m). When unset, every pitch-derived distance for this match uses
+    # the app-wide 145x90m default.
+    pitch_length_m: Optional[float] = Field(None, ge=100, le=160, description="Actual pitch length in metres, if known (GAA regulation 130-145m)")
+    pitch_width_m: Optional[float] = Field(None, ge=60, le=100, description="Actual pitch width in metres, if known (GAA regulation 80-90m)")
 
     # Weather and pitch conditions (optional, for pattern analysis)
     weather_condition: Optional[WeatherCondition] = Field(None, description="Weather during match (legacy single value — auto-synced from weather_conditions[0])")
@@ -67,6 +72,8 @@ class MatchUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=1000)
     tactical_notes: Optional[str] = Field(None, max_length=5000)
     half_duration_mins: Optional[int] = Field(None, ge=25, le=40)
+    pitch_length_m: Optional[float] = Field(None, ge=100, le=160)
+    pitch_width_m: Optional[float] = Field(None, ge=60, le=100)
     # NOTE: MatchUpdate does not inherit MatchBase, so precise_tracking_enabled
     # must be declared here explicitly too — the "Use Simple Scoring" button
     # PUTs this field via api.matches.update() and would otherwise be silently
@@ -139,6 +146,8 @@ class MatchResponse(MatchBase):
     # Tactical notes
     tactical_notes: Optional[str] = Field(None, description="Tactical notes for match day reference")
     half_duration_mins: int = Field(30, description="Minutes per half (30 for clubs, 35 for inter-county)")
+    pitch_length_m: Optional[float] = Field(None, description="Actual pitch length in metres, if known")
+    pitch_width_m: Optional[float] = Field(None, description="Actual pitch width in metres, if known")
     opposition_roster: Optional[list] = Field(None, description="List of opposition player names")
 
     # AI analysis (generated when match completes)

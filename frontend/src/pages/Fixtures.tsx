@@ -97,6 +97,8 @@ export default function Fixtures() {
     competition?: string | null
     stage?: string | null
     half_duration_mins?: number
+    pitch_length_m?: number | null
+    pitch_width_m?: number | null
   }) => {
     try {
       await createMatch.mutateAsync({
@@ -106,6 +108,8 @@ export default function Fixtures() {
         competition: data.competition,
         stage: data.stage,
         half_duration_mins: data.half_duration_mins ?? 30,
+        pitch_length_m: data.pitch_length_m,
+        pitch_width_m: data.pitch_width_m,
       })
       setIsModalOpen(false)
       queryClient.invalidateQueries({ queryKey: ['fixtures'] })
@@ -121,6 +125,8 @@ export default function Fixtures() {
     competition?: string | null
     stage?: string | null
     half_duration_mins?: number
+    pitch_length_m?: number | null
+    pitch_width_m?: number | null
   }) => {
     await api.matches.update(id, data)
     queryClient.invalidateQueries({ queryKey: ['fixtures'] })

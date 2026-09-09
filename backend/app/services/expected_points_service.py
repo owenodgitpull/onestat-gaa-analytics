@@ -105,14 +105,26 @@ def _normalized_x(
     return raw_x if attacking_right else (100.0 - raw_x)
 
 
-def shot_geometry(norm_x: float, norm_y: float) -> tuple[float, float]:
+def shot_geometry(
+    norm_x: float, norm_y: float,
+    pitch_length_m: Optional[float] = None, pitch_width_m: Optional[float] = None,
+) -> tuple[float, float]:
     """Distance (metres) and subtended goal-angle (degrees) from a normalized
     shot position (100=goal line, 50=pitch centre laterally) to the goal mouth.
     The angle a GOAL_WIDTH_M-wide goal subtends from the shot spot captures
     distance and lateral offset in a single number, which is why shot angle is
-    the primary signal in most real shot-quality models."""
-    dx = max((100.0 - norm_x) / 100.0 * PITCH_LENGTH_M, 0.5)  # metres from goal line
-    dy = (norm_y - 50.0) / 100.0 * PITCH_WIDTH_M               # metres off-centre
+    the primary signal in most real shot-quality models.
+
+    pitch_length_m/pitch_width_m default to the app-wide constants — pass a
+    specific match's real dimensions (Match.pitch_length_m/pitch_width_m,
+    when the club has recorded them for that ground) to sharpen distance for
+    that match's own shots. The trained model's angle bands are calibrated
+    against the default assumption (no per-match dims existed historically),
+    so this only affects single-match display, not model training."""
+    length_m = pitch_length_m or PITCH_LENGTH_M
+    width_m = pitch_width_m or PITCH_WIDTH_M
+    dx = max((100.0 - norm_x) / 100.0 * length_m, 0.5)  # metres from goal line
+    dy = (norm_y - 50.0) / 100.0 * width_m               # metres off-centre
     distance_m = math.hypot(dx, dy)
 
     w = GOAL_WIDTH_M / 2
@@ -268,12 +280,13 @@ def expected_points_for_shot(
     pitch_x: float, pitch_y: float, event_type: EventType, team: Team,
     attacking_right_first_half: Optional[bool], half: Optional[int], model: dict,
     minute: Optional[int] = None, half_duration_mins: Optional[int] = None,
+    pitch_length_m: Optional[float] = None, pitch_width_m: Optional[float] = None,
 ) -> dict:
     """Returns shot-level detail: group, point value, probability, and xP."""
     norm_x = _normalized_x(pitch_x, team, attacking_right_first_half, half, minute, half_duration_mins)
     norm_y = pitch_y
     group, point_value, is_free, made = classify_shot(event_type, norm_x)
-    distance_m, angle_deg = shot_geometry(norm_x, norm_y)
+    distance_m, angle_deg = shot_geometry(norm_x, norm_y, pitch_length_m, pitch_width_m)
     band = _angle_band(angle_deg)
 
     m = model.get(group) or {"global_rate": 0.4, "free_multiplier": 1.0, "bands": {}}
@@ -327,6 +340,7 @@ async def compute_match_expected_points(db: AsyncSession, match: Match) -> dict:
             e.pitch_x, e.pitch_y, e.event_type, e.team,
             match.attacking_right_first_half, e.half, model,
             e.minute, match.half_duration_mins,
+            match.pitch_length_m, match.pitch_width_m,
         )
         actual_pts = shot["point_value"] if shot["made"] else 0
 
