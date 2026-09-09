@@ -505,8 +505,14 @@ class MonotonyPoint(BaseModel):
 class TrainingOverviewKPIs(BaseModel):
     squad_availability: str
     untracked_players: int = 0
-    top_speed_player: str
-    top_speed_value: float
+    # Both null (not "" / 0.0) when no training session falls in the last 7
+    # days — was defaulting to 0.0, indistinguishable from "the query
+    # broke" (confirmed live 2026-09-09: reported as a bug when the real
+    # cause was simply no session logged in over a week — the underlying
+    # GPS data was fine). Same null-means-no-data convention already used
+    # by hmld_density below.
+    top_speed_player: Optional[str] = None
+    top_speed_value: Optional[float] = None
     hmld_density: Optional[float] = None
     hmld_is_estimate: bool = False
     team_balance_left_pct: float

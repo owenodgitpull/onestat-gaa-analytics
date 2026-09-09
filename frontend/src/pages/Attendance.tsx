@@ -1114,9 +1114,14 @@ export default function Attendance() {
                   <Info size={11} className="text-white/50" />
                 </button>
                 <div className="hidden group-hover/tip:block absolute top-9 right-2 bg-slate-900/95 border border-white/20 rounded-lg p-2.5 text-xs text-white/80 leading-relaxed z-30 w-48 shadow-xl backdrop-blur-sm text-left">
-                  The fastest speed recorded by any player in training over the last 7 days.
+                  {overviewKpis.top_speed_value != null
+                    ? "The fastest speed recorded by any player in training over the last 7 days."
+                    : "No training session logged in the last 7 days — nothing to compare yet."
+                  }
                 </div>
-                <div className="text-2xl font-bold text-emerald-400">{overviewKpis.top_speed_value} m/s</div>
+                <div className="text-2xl font-bold text-emerald-400">
+                  {overviewKpis.top_speed_value != null ? `${overviewKpis.top_speed_value} m/s` : 'N/A'}
+                </div>
                 <div className="text-xs text-white/60 mt-1">Top Speed (Week)</div>
                 {overviewKpis.top_speed_player && (
                   <div className="text-[10px] text-white/40 mt-0.5">{overviewKpis.top_speed_player}</div>

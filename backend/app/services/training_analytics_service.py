@@ -357,8 +357,11 @@ class TrainingAnalyticsService:
             .limit(1)
         )
         top_speed_row = speed_result.first()
-        top_speed_player = ""
-        top_speed_value = 0.0
+        # None (not "" / 0.0) when no session falls in the 7-day window —
+        # 0.0 was indistinguishable from a broken query. See
+        # TrainingOverviewKPIs for the full rationale.
+        top_speed_player = None
+        top_speed_value = None
         if top_speed_row:
             player_result = await db.execute(
                 select(Player.name).where(Player.id == top_speed_row.player_id)

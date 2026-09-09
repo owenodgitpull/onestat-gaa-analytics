@@ -1144,8 +1144,8 @@ export interface MonotonyPoint {
 export interface TrainingOverviewKPIs {
   squad_availability: string;
   untracked_players: number;
-  top_speed_player: string;
-  top_speed_value: number;
+  top_speed_player: string | null;
+  top_speed_value: number | null;
   hmld_density: number | null;
   hmld_is_estimate: boolean;
   team_balance_left_pct: number;
