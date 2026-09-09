@@ -61,7 +61,13 @@ ARC_R_PCT = (40 / 145) * 100
 
 GOAL_WIDTH_M = 6.5   # GAA posts are ~6.5m apart — shared target width for point and goal attempts
 PITCH_LENGTH_M = 145.0
-PITCH_WIDTH_M = 88.0
+# Was 88.0 — inconsistent with the 90m used everywhere else in the app
+# (GAA_ESSENTIALS in ai/_shared.py, leaderboard_service.py's Orchestrator
+# fix). Reconciled 2026-09-09 per the user's request, now that pitch width
+# is also the fallback for the optional per-match override (see
+# shot_geometry) — the default and the override should agree on what "the
+# default" even means.
+PITCH_WIDTH_M = 90.0
 
 ANGLE_BAND_WIDTH = 15  # degrees per bucket
 SHRINKAGE_K = 10        # pseudo-shots of the group's global rate blended into each angle band
