@@ -18,6 +18,7 @@ class MatchEventBase(BaseModel):
     player_id: Optional[UUID] = Field(None, description="Player who performed the action")
     assist_player_id: Optional[UUID] = Field(None, description="Player who assisted (for scores)")
     kickout_target_player_id: Optional[UUID] = Field(None, description="Player a kickout was aimed at (own_kickout_* events only)")
+    sub_in_player_id: Optional[UUID] = Field(None, description="Player who came ON (SUBSTITUTION events only — player_id on the same event is who came OFF)")
     minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match (0-120)")
     pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
@@ -88,6 +89,15 @@ class MatchEventCreate(MatchEventBase):
                 raise ValueError('kickout_target_player_id can only be recorded on own_kickout_* events')
         return v
 
+    @validator('sub_in_player_id')
+    def validate_sub_in(cls, v, values):
+        """Ensure the incoming-player field is only provided on SUBSTITUTION events."""
+        if v is not None:
+            event_type = values.get('event_type')
+            if event_type != EventType.SUBSTITUTION:
+                raise ValueError('sub_in_player_id can only be recorded on SUBSTITUTION events')
+        return v
+
 
 class MatchEventUpdate(BaseModel):
     """Schema for updating an existing match event."""
@@ -96,6 +106,7 @@ class MatchEventUpdate(BaseModel):
     player_id: Optional[UUID] = None
     assist_player_id: Optional[UUID] = None
     kickout_target_player_id: Optional[UUID] = None
+    sub_in_player_id: Optional[UUID] = None
     minute: Optional[int] = Field(None, ge=0, le=120)
     pitch_x: Optional[float] = Field(None, ge=0, le=100)
     pitch_y: Optional[float] = Field(None, ge=0, le=100)

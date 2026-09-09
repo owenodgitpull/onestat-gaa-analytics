@@ -46,6 +46,7 @@ class MatchEventService:
             player_id=event_data.player_id,
             assist_player_id=event_data.assist_player_id,
             kickout_target_player_id=getattr(event_data, 'kickout_target_player_id', None),
+            sub_in_player_id=getattr(event_data, 'sub_in_player_id', None),
             event_type=event_type,
             team=event_data.team,
             minute=event_data.minute,

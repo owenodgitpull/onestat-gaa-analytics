@@ -2600,6 +2600,7 @@ export default function MatchRecording() {
       await recordEvent.mutateAsync({
         match_id: matchId,
         player_id: playerOffId,
+        sub_in_player_id: playerOnId,
         event_type: EventType.SUBSTITUTION,
         minute,
         half: currentHalf,

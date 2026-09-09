@@ -117,7 +117,14 @@ class MatchEvent(Base):
     # captured via a non-blocking jersey tap during live recording (never required —
     # the pitch-position tap alone is always sufficient to complete a kickout event).
     kickout_target_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+    # Who came ON in a SUBSTITUTION event — player_id on that same event is
+    # who came OFF. Only meaningful on event_type=SUBSTITUTION. Needed to
+    # compute an accurate playing_minutes for substitutes (full match length
+    # minus their entry minute) — previously only the outgoing player's
+    # identity was captured structurally, the incoming player only ever
+    # appeared in a free-text notes string.
+    sub_in_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Event details
     # Use values_callable to ensure SQLAlchemy uses enum VALUES (lowercase) not NAMES (uppercase)
     event_type: Column[EventType] = Column(
@@ -162,6 +169,7 @@ class MatchEvent(Base):
     player = relationship("Player", foreign_keys=[player_id], lazy="selectin")
     assist_player = relationship("Player", foreign_keys=[assist_player_id], lazy="selectin")
     kickout_target_player = relationship("Player", foreign_keys=[kickout_target_player_id], lazy="selectin")
+    sub_in_player = relationship("Player", foreign_keys=[sub_in_player_id], lazy="selectin")
 
     def __repr__(self):
         player_name = self.player.name if self.player else "Unknown"

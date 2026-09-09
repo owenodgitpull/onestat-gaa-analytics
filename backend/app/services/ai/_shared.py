@@ -1002,6 +1002,79 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
 
+async def compute_playing_minutes(db: AsyncSession, match_id) -> dict:
+    """Compute each player's real on-pitch minutes from lineup + substitution
+    data — NOT from uploaded GPS duration, which includes warm-up/device-on
+    time and is not a reliable measure of actual playing time (the user's
+    own correction, 2026-09-09, after an earlier attempt used GPS duration
+    as a fallback).
+
+    Rule (as specified): a starter never subbed off played the full match
+    (half_duration_mins * 2); a starter subbed off at minute X played X
+    minutes; a substitute who came on at minute Y and was never subbed off
+    again played (full_length - Y) minutes. An unused substitute (never
+    came on) played 0.
+
+    Requires sub_in_player_id on the SUBSTITUTION event (added alongside
+    this function) to compute a substitute's entry minute — matches
+    recorded before that field existed will have a None for any sub whose
+    entry minute can't be determined, rather than a guessed value.
+
+    Returns {player_id_str: minutes_or_None}.
+    """
+    from app.models.match_event import MatchEvent, EventType
+    from app.models.match_lineup import MatchLineup
+    import uuid as uuid_mod
+
+    match_uuid = match_id if isinstance(match_id, uuid_mod.UUID) else uuid_mod.UUID(str(match_id))
+
+    match_result = await db.execute(select(Match.half_duration_mins).where(Match.id == match_uuid))
+    half_duration_mins = match_result.scalar_one_or_none() or 30
+    full_length = half_duration_mins * 2
+
+    lineup_result = await db.execute(
+        select(MatchLineup.player_id, MatchLineup.is_substitute, MatchLineup.is_on_field)
+        .where(MatchLineup.match_id == match_uuid)
+    )
+    lineup_rows = lineup_result.all()
+
+    sub_result = await db.execute(
+        select(MatchEvent.player_id, MatchEvent.sub_in_player_id, MatchEvent.minute)
+        .where(MatchEvent.match_id == match_uuid, MatchEvent.event_type == EventType.SUBSTITUTION)
+    )
+    off_minute_by_player = {}
+    on_minute_by_player = {}
+    for off_id, on_id, minute in sub_result.all():
+        if off_id and minute is not None:
+            off_minute_by_player[off_id] = minute
+        if on_id and minute is not None:
+            on_minute_by_player[on_id] = minute
+
+    minutes_by_player = {}
+    for player_id, is_substitute, is_on_field in lineup_rows:
+        if not player_id:
+            continue
+        pid = str(player_id)
+        if not is_substitute:
+            # Starter — full match unless subbed off at a known minute.
+            minutes_by_player[pid] = off_minute_by_player.get(player_id, full_length)
+        elif is_on_field:
+            # Came on as a sub — full_length minus their entry minute, if
+            # known (requires sub_in_player_id, see docstring). Then still
+            # subtract if they were ALSO subbed off again later.
+            entry_minute = on_minute_by_player.get(player_id)
+            if entry_minute is None:
+                minutes_by_player[pid] = None
+            else:
+                exit_minute = off_minute_by_player.get(player_id, full_length)
+                minutes_by_player[pid] = max(0, exit_minute - entry_minute)
+        else:
+            # Unused substitute — never came on.
+            minutes_by_player[pid] = 0
+
+    return minutes_by_player
+
+
 async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
     """Get GPS/physical performance data for a specific match with player details."""
     from app.models.match_gps import MatchGPSData
@@ -1030,6 +1103,11 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
 
     if not gps_rows:
         return safe_json({"message": "No GPS data available for this match"})
+
+    # Real on-pitch minutes, derived from lineup + substitution data — NOT
+    # from uploaded GPS duration, which includes warm-up/device-on time and
+    # was confirmed unreliable as a playing-time proxy 2026-09-09.
+    computed_minutes = await compute_playing_minutes(db, match_uuid)
 
     # Fetch substitution events
     sub_lookup = {}
@@ -1100,7 +1178,14 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
             "sprint_count": g.sprint_count or 0,
             "max_speed_ms": round(g.max_speed_ms or 0, 2),
             "player_load": round(g.player_load or 0),
-            "playing_minutes": g.playing_minutes or g.duration_mins,
+            # computed_minutes (lineup/substitution-derived) is authoritative
+            # when available; g.playing_minutes/duration_mins (raw upload,
+            # includes warm-up time) is only a last-resort fallback for
+            # matches with no usable substitution data.
+            "playing_minutes": (
+                computed_minutes.get(str(g.player_id)) if g.player_id and computed_minutes.get(str(g.player_id)) is not None
+                else (g.playing_minutes or g.duration_mins)
+            ),
         }
 
         if was_subbed:

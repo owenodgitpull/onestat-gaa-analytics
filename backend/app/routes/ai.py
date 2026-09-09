@@ -875,6 +875,7 @@ async def analyze_gps_endpoint(
 
                 # Look up substitution events
                 sub_lookup = {}
+                computed_minutes = {}
                 if match_uuid:
                     sub_result = await db.execute(
                         select(MatchEvent).where(
@@ -886,6 +887,14 @@ async def analyze_gps_endpoint(
                         if ev.player_id and ev.minute:
                             sub_lookup[str(ev.player_id)] = ev.minute
 
+                    # Real on-pitch minutes from lineup + substitution data —
+                    # NOT the uploaded GPS duration, which includes
+                    # warm-up/device-on time (confirmed unreliable 2026-09-09).
+                    # Authoritative when available; overrides whatever the
+                    # frontend sent for playing_minutes.
+                    from app.services.ai._shared import compute_playing_minutes
+                    computed_minutes = await compute_playing_minutes(db, match_uuid)
+
                 # Enrich each player dict
                 for p in enriched_gps:
                     pid = str(p.get("player_id", ""))
@@ -893,6 +902,8 @@ async def analyze_gps_endpoint(
                         p["position"] = pos_lookup[pid]
                     if pid in sub_lookup:
                         p["subbed_off_minute"] = sub_lookup[pid]
+                    if computed_minutes.get(pid) is not None:
+                        p["playing_minutes"] = computed_minutes[pid]
 
         result = await analyze_match_gps(
             gps_data=enriched_gps,

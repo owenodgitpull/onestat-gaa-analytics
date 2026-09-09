@@ -79,6 +79,7 @@ export function useRecordEvent() {
       match_id: string;
       player_id?: string;
       kickout_target_player_id?: string;
+      sub_in_player_id?: string;
       event_type: string;
       minute: number;
       half: number;
