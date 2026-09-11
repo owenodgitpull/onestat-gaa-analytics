@@ -1,19 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Home, Bus, Globe, Circle, Calendar, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer, CalendarCheck, Link2, Trophy } from 'lucide-react'
+import { X, Home, Bus, Globe, Circle, Calendar, Thermometer, CalendarCheck, Link2, Trophy, Check } from 'lucide-react'
 import { api, MATCH_STAGE_OPTIONS } from '@/services/api'
+import { WEATHER_OPTIONS } from './WeatherPickerPopover'
 import type { Match } from '@/types'
-
-const WEATHER_OPTIONS = [
-  { value: 'sunny', label: 'Sunny', icon: Sun },
-  { value: 'cloudy', label: 'Cloudy', icon: Cloud },
-  { value: 'overcast', label: 'Overcast', icon: CloudSun },
-  { value: 'light_rain', label: 'Light Rain', icon: CloudDrizzle },
-  { value: 'heavy_rain', label: 'Heavy Rain', icon: CloudRain },
-  { value: 'windy', label: 'Windy', icon: Wind },
-  { value: 'cold', label: 'Cold', icon: Snowflake },
-  { value: 'foggy', label: 'Foggy', icon: CloudFog },
-] as const
 
 interface NewMatchModalProps {
   isOpen: boolean
@@ -22,7 +12,7 @@ interface NewMatchModalProps {
     opponent: string
     venue: 'home' | 'away' | 'neutral'
     matchDate: Date
-    weather_condition?: string | null
+    weather_conditions?: string[] | null
     temperature_celsius?: number | null
     competition?: string | null
     stage?: string | null
@@ -37,7 +27,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
     const today = new Date()
     return today.toISOString().split('T')[0]
   })
-  const [weatherCondition, setWeatherCondition] = useState<string | null>(null)
+  const [weatherConditions, setWeatherConditions] = useState<string[]>([])
   const [temperature, setTemperature] = useState('')
   const [competition, setCompetition] = useState('')
   const [stage, setStage] = useState('')
@@ -145,7 +135,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
       opponent: opponent.trim(),
       venue,
       matchDate: new Date(matchDate),
-      weather_condition: weatherCondition,
+      weather_conditions: weatherConditions.length > 0 ? weatherConditions : null,
       temperature_celsius: temperature ? parseFloat(temperature) : null,
       competition: competition.trim() || null,
       stage: stage || null,
@@ -159,7 +149,7 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
     setOpponent('')
     setVenue('home')
     setMatchDate(new Date().toISOString().split('T')[0])
-    setWeatherCondition(null)
+    setWeatherConditions([])
     setTemperature('')
     setCompetition('')
     setStage('')
@@ -378,27 +368,41 @@ export default function NewMatchModal({ isOpen, onClose, onCreate }: NewMatchMod
             </select>
           </div>
 
-          {/* Weather Condition */}
+          {/* Weather Condition — select all that apply, same multi-select
+              pattern as WeatherPickerPopover (in-match weather editor).
+              Real match weather is often more than one thing at once
+              (windy AND raining), and the two pickers disagreeing on
+              whether that was even possible was the actual bug. */}
           <div>
             <label className="block text-sm font-medium text-white mb-3">
-              Weather <span className="text-white/40 text-xs font-normal">(optional)</span>
+              Weather <span className="text-white/40 text-xs font-normal">(optional — select all that apply)</span>
             </label>
             <div className="grid grid-cols-4 gap-2">
-              {WEATHER_OPTIONS.map(({ value, label, icon: Icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setWeatherCondition(weatherCondition === value ? null : value)}
-                  className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
-                    weatherCondition === value
-                      ? 'border-emerald-500 bg-emerald-500/20 scale-105'
-                      : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
-                  }`}
-                >
-                  <Icon size={20} className={weatherCondition === value ? 'text-emerald-400' : 'text-white/60'} />
-                  <div className="text-[10px] font-medium text-white leading-tight">{label}</div>
-                </button>
-              ))}
+              {WEATHER_OPTIONS.map(({ value, label, icon: Icon }) => {
+                const selected = weatherConditions.includes(value)
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setWeatherConditions(prev =>
+                      prev.includes(value) ? prev.filter(c => c !== value) : [...prev, value]
+                    )}
+                    className={`relative p-3 rounded-xl border-2 transition-all flex flex-col items-center gap-1 ${
+                      selected
+                        ? 'border-emerald-500 bg-emerald-500/20'
+                        : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
+                    }`}
+                  >
+                    {selected && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
+                        <Check size={10} className="text-[#0a1a10]" strokeWidth={3} />
+                      </span>
+                    )}
+                    <Icon size={20} className={selected ? 'text-emerald-400' : 'text-white/60'} />
+                    <div className="text-[10px] font-medium text-white leading-tight">{label}</div>
+                  </button>
+                )
+              })}
             </div>
           </div>
 

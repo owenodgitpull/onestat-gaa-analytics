@@ -86,7 +86,7 @@ export default function Navigation() {
     return false
   }
 
-  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date; weather_condition?: string | null; temperature_celsius?: number | null; competition?: string | null; stage?: string | null; fixtureId?: string }) => {
+  const handleNewMatch = async (data: { opponent: string; venue: 'home' | 'away' | 'neutral'; matchDate: Date; weather_conditions?: string[] | null; temperature_celsius?: number | null; competition?: string | null; stage?: string | null; fixtureId?: string }) => {
     // If linked to an existing fixture, go straight to setup
     if (data.fixtureId) {
       setIsNewMatchModalOpen(false)
@@ -101,7 +101,7 @@ export default function Navigation() {
         match_date: data.matchDate.toISOString(),
         venue: data.venue,
         notes: null,
-        weather_condition: data.weather_condition,
+        weather_conditions: data.weather_conditions,
         temperature_celsius: data.temperature_celsius,
         competition: data.competition,
         stage: data.stage,

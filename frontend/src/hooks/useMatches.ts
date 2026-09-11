@@ -136,6 +136,7 @@ export function useCreateMatch() {
       venue: 'home' | 'away' | 'neutral';
       notes?: string | null;
       weather_condition?: string | null;
+      weather_conditions?: string[] | null;
       temperature_celsius?: number | null;
       competition?: string | null;
       stage?: string | null;

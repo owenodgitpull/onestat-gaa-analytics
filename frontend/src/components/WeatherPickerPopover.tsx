@@ -2,7 +2,12 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Sun, Cloud, CloudSun, CloudRain, CloudDrizzle, Wind, Snowflake, CloudFog, Thermometer, Check, StickyNote } from 'lucide-react'
 
-const WEATHER_OPTIONS = [
+// Exported so every weather picker in the app (this popover, used during
+// live recording, and NewMatchModal's create-match form) shares one list —
+// previously NewMatchModal kept its own identical-but-separate copy AND its
+// own single-select-only interaction, which is exactly why the two modals
+// disagreed on whether more than one condition could be picked at once.
+export const WEATHER_OPTIONS = [
   { value: 'sunny', label: 'Sunny', icon: Sun },
   { value: 'cloudy', label: 'Cloudy', icon: Cloud },
   { value: 'overcast', label: 'Overcast', icon: CloudSun },
