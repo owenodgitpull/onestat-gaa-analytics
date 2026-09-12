@@ -84,6 +84,12 @@ export default function BallQuickActionIcon({
         style={{
           cursor: disabled ? 'default' : 'pointer',
           touchAction: 'none',
+          // The ancestor pitch <svg> sets pointer-events:none while the
+          // video is paused (TaggingPitch's own `disabled` prop) — that's
+          // right for ball drag/tap-to-place, but these are single-tap
+          // quick-loggers meant to work at any paused moment too. `auto`
+          // here explicitly overrides the inherited `none` from above.
+          pointerEvents: disabled ? 'none' : 'auto',
           transformOrigin: `${iconX}px ${iconY}px`,
           animation: count ? 'bqai-pop 0.35s ease-out' : undefined,
         }}

@@ -117,14 +117,22 @@ type OverlayState = 'none' | 'player'
 // team_b (the opponent) is credited with them.
 const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT']
 
-/** Derive a human-readable status label from ball position and possession. */
+/** Derive a human-readable status label from ball position and possession.
+ *  Mirrors live recording's getStatusLabel — when our own team has the ball
+ *  AND a carrier is actively selected, names them specifically ("Mark
+ *  Curran past midfield") rather than the generic team name; falls back to
+ *  the team name otherwise (opposition possession, or no carrier selected
+ *  yet this spell). */
 function getStatusLabel(
   pos: { x: number; y: number },
   possession: 'team_a' | 'team_b',
   clubName: string,
   opponentName: string,
+  carrierName?: string | null,
 ): string {
-  const teamLabel = possession === 'team_a' ? clubName : opponentName
+  const teamLabel = possession === 'team_a'
+    ? (carrierName || clubName)
+    : opponentName
   // x: 0 = own DEF → 100 = attacking SQ
   const zone =
     pos.x < 17 ? 'inside own 21m line' :
@@ -1861,6 +1869,15 @@ export default function VideoTagging() {
     </div>
   )
 
+  // The Pass/Long Kick ball-anchored icons are single-tap quick-loggers,
+  // meant to work at any paused moment (unlike TaggingPitch's own `disabled`
+  // prop below, which also gates on `!isPlaying` for ball drag/tap-to-place
+  // and would otherwise silently make these icons unresponsive whenever the
+  // video is paused — exactly when a coach is most likely to be tapping
+  // them for precision). Still blocked during setup or while another
+  // overlay/picker is open.
+  const quickBallIconsBlocked = mode !== 'tracking' || overlayState !== 'none'
+
   /** Video player + permanent TaggingPitch tracking panel, fullscreen/layout
    *  toggle buttons, and the pitch-location confirm overlay. */
   const videoArea = (
@@ -2010,6 +2027,7 @@ export default function VideoTagging() {
                   color="#0891b2"
                   onTap={handleQuickPass}
                   count={oppPassCount}
+                  disabled={quickBallIconsBlocked}
                 />
               )}
               {/* Long Kick — both teams, straight up from the ball so it
@@ -2024,7 +2042,7 @@ export default function VideoTagging() {
                 title="Log Long Kick"
                 color="#d97706"
                 onTap={handleQuickLongKick}
-                disabled={isCarrierRadialOpen}
+                disabled={quickBallIconsBlocked || isCarrierRadialOpen}
               />
             </>
           )
@@ -2093,7 +2111,13 @@ export default function VideoTagging() {
       }`}
     >
       <span className="text-sm text-white/80 font-medium whitespace-nowrap truncate">
-        {getStatusLabel(ballPosition, possession, clubName, opponentName)}
+        {getStatusLabel(
+          ballPosition,
+          possession,
+          clubName,
+          opponentName,
+          activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.playerName : null,
+        )}
       </span>
       <button
         onClick={() => { onCarrierPossessionSwap(); setPossession(p => p === 'team_a' ? 'team_b' : 'team_a') }}
