@@ -4,6 +4,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { videoSessionsAPI, type VideoSession, type MultipartPartInfo } from '../services/videoApi';
+import { videoEventKeys } from './useVideoEvents';
 
 export const videoSessionKeys = {
   all: ['videoSessions'] as const,
@@ -196,6 +197,19 @@ export function useCompleteTracking() {
     mutationFn: ({ sessionId }: { sessionId: string }) => videoSessionsAPI.completeTracking(sessionId),
     onSuccess: (data, variables) => {
       queryClient.setQueryData<VideoSession>(videoSessionKeys.detail(variables.sessionId), data);
+    },
+  });
+}
+
+/** Clear all tagged events + tracking progress for a fresh re-track. */
+export function useResetVideoSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) => videoSessionsAPI.reset(sessionId),
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<VideoSession>(videoSessionKeys.detail(variables.sessionId), data);
+      queryClient.invalidateQueries({ queryKey: videoEventKeys.bySession(variables.sessionId) });
     },
   });
 }

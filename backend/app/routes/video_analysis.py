@@ -12,7 +12,7 @@ from uuid import UUID
 import json
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -21,6 +21,11 @@ from app.models.match import Match
 from app.models.match_lineup import MatchLineup
 from app.models.club import Club
 from app.models.video_session import VideoSession
+from app.models.video_event import VideoEvent
+from app.models.possession_chain import PossessionChain
+from app.models.ball_position_sample import BallPositionSample
+from app.models.possession_event import PossessionEvent
+from app.models.match_event import MatchEvent
 from app.services.storage_service import storage
 from app.schemas.video_analysis import (
     VideoUploadInitiateRequest,
@@ -592,6 +597,55 @@ async def complete_tracking(
         download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
 
     logger.info(f"Tracking completed: session={session_id}")
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/reset", response_model=VideoSessionResponse)
+async def reset_match(
+    session_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Formalizes the manual reset this session's SSH scripts have been doing
+    by hand all along: clear every tagged event and tracking-progress marker
+    so the session can be re-tracked from scratch, while deliberately
+    leaving the one-off setup marks (throw-in/halftime/2nd-half/full-time/
+    attack direction) untouched — re-marking those is the tedious part, and
+    every manual reset this session kept them."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    await db.execute(delete(VideoEvent).where(VideoEvent.video_session_id == session_id))
+    await db.execute(delete(PossessionChain).where(PossessionChain.video_session_id == session_id))
+    await db.execute(delete(BallPositionSample).where(BallPositionSample.video_session_id == session_id))
+
+    # possession_events is match-scoped, shared with live recording — only
+    # safe to clear here if this match was never live-recorded (matches the
+    # guard used by every manual reset performed this way this session).
+    match_event_count = (await db.execute(
+        select(func.count()).select_from(MatchEvent).where(MatchEvent.match_id == session.match_id)
+    )).scalar_one()
+    if match_event_count == 0:
+        await db.execute(delete(PossessionEvent).where(PossessionEvent.match_id == session.match_id))
+
+    session.tracking_started_at = None
+    session.tracking_completed_at = None
+    session.tracking_progress_ms = None
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    logger.info(f"Match reset: session={session_id}")
     return _session_to_response(session, download_url=download_url)
 
 

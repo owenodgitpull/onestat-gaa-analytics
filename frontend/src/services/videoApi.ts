@@ -311,6 +311,12 @@ export const videoSessionsAPI = {
   completeTracking: (sessionId: string) =>
     fetchAPI<VideoSession>(`/video/session/${sessionId}/complete-tracking`, { method: 'POST' }),
 
+  /** Clear all tagged events + tracking progress so the session can be
+   *  re-tracked from scratch. Leaves throw-in/halftime/full-time/attack
+   *  direction marks untouched. */
+  reset: (sessionId: string) =>
+    fetchAPI<VideoSession>(`/video/session/${sessionId}/reset`, { method: 'POST' }),
+
   /** Trigger Gemini 2.5 Flash auto-analysis. */
   autoAnalyze: (sessionId: string) =>
     fetchAPI<{ status: string }>(`/video/session/${sessionId}/auto-analyze`, { method: 'POST' }),

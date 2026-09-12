@@ -84,6 +84,7 @@ import {
   useStartTracking,
   useUpdateTrackingProgress,
   useCompleteTracking,
+  useResetVideoSession,
 } from '../hooks/useVideoSessions'
 import { usePitchPanelLayout } from '../hooks/usePitchPanelLayout'
 import {
@@ -192,6 +193,8 @@ export default function VideoTagging() {
   const startTracking = useStartTracking()
   const updateTrackingProgress = useUpdateTrackingProgress()
   const completeTracking = useCompleteTracking()
+  const resetSession = useResetVideoSession()
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
 
   // Forward-scrub ceiling while tracking — the furthest point reached so
   // far. Initialized from the server-persisted high-water mark once (so a
@@ -1618,6 +1621,12 @@ export default function VideoTagging() {
           >
             + Event / Sub
           </button>
+          <button
+            onClick={() => setShowResetConfirm(true)}
+            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400/80 hover:text-red-300 font-medium transition-colors whitespace-nowrap`}
+          >
+            Reset Match
+          </button>
         </>
       )}
       <button
@@ -1945,6 +1954,37 @@ export default function VideoTagging() {
           attackingRight={teamAttackingRightThisHalf ?? true}
           ballPosition={ballPosition}
         />
+      )}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => setShowResetConfirm(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-white mb-2">Reset Match?</h3>
+            <p className="text-xs text-white/60 mb-4">
+              This deletes every tagged event and clears tracking progress so you can re-track from scratch.
+              Your throw-in, half-time, full-time and attack-direction marks are kept.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (!sessionId) return
+                  resetSession.mutate({ sessionId })
+                  setShowResetConfirm(false)
+                }}
+                disabled={resetSession.isPending}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-all disabled:opacity-40"
+              >
+                {resetSession.isPending ? 'Resetting…' : 'Reset Match'}
+              </button>
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="px-4 py-2.5 rounded-lg bg-white/10 text-white/60 hover:text-white text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {showFullTimeConfirm && (
         <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => setShowFullTimeConfirm(false)}>
