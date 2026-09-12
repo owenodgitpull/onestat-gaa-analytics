@@ -246,6 +246,15 @@ export default function VideoTagging() {
   // using calcMatchTime/ballPosition instead of live match-clock values.
   const [tacticalTagCount, setTacticalTagCount] = useState(0)
 
+  // Opposition quick-pass counter — how many passes logged so far in the
+  // CURRENT opposition possession spell, so the "P" icon's badge reads 1,
+  // 2, 3... for this move and resets the moment possession changes hands
+  // (won back, turned over, scored, etc.) rather than accumulating forever.
+  const [oppPassCount, setOppPassCount] = useState(0)
+  useEffect(() => {
+    setOppPassCount(0)
+  }, [possession])
+
   // Assist prompt — auto-opened after an own-team score finalizes.
   const [assistPromptEventId, setAssistPromptEventId] = useState<string | null>(null)
 
@@ -995,6 +1004,7 @@ export default function VideoTagging() {
       data.pitch_zone = xyToZone(ballPosition.x, ballPosition.y)
     }
     handleDirectCreate(data)
+    setOppPassCount(c => c + 1)
   }, [sessionId, calcMatchTime, currentTimeMs, ballPosition, handleDirectCreate])
 
   /** Quick "Long Kick" log — either team, whichever currently has
@@ -1999,6 +2009,7 @@ export default function VideoTagging() {
                   title="Log Pass (Opposition)"
                   color="#0891b2"
                   onTap={handleQuickPass}
+                  count={oppPassCount}
                 />
               )}
               {/* Long Kick — both teams, straight up from the ball so it
