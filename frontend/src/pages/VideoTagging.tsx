@@ -40,7 +40,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, PanelRight, PanelBottom, Play } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, PanelRight, PanelBottom, Play, Target } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -76,6 +76,8 @@ import VideoFormationSnapshot from '../components/video/VideoFormationSnapshot'
 import JerseyNumberStrip, { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
+import GAAPitch from '../components/GAAPitch'
+import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
 import { useClubName, useClub } from '../contexts/ClubContext'
 import { useTour } from '../hooks/useTour'
 import { videoTaggingSteps } from '../config/tourSteps'
@@ -340,6 +342,29 @@ export default function VideoTagging() {
     () => computeShotLocations(chartEvents, matchData?.half_duration_mins, matchData?.attacking_right_first_half),
     [chartEvents, matchData?.half_duration_mins, matchData?.attacking_right_first_half]
   )
+
+  // Event Map — exact same filterable pitch view as live recording's,
+  // fed the same chartEvents adapter output rather than a live MatchEvent
+  // query (see filteredMapEvents in MatchRecording.tsx for the reference).
+  const [eventMapTeamFilter, setEventMapTeamFilter] = useState<'all' | 'own' | 'opponent'>('all')
+  const [eventMapFilters, setEventMapFilters] = useState<Set<string>>(new Set(['all']))
+  const [eventMapHalfFilter, setEventMapHalfFilter] = useState<'all' | 1 | 2>('all')
+  const filteredMapEvents = useMemo(() => {
+    const eventTypes = getEventTypesForFilters(eventMapFilters)
+    let filtered = chartEvents.filter(e => e.pitch_x != null && e.pitch_y != null)
+    const CARD_TYPES = ['yellow_card', 'black_card', 'red_card']
+    filtered = filtered.filter(e => !CARD_TYPES.includes(e.event_type))
+    if (eventMapTeamFilter !== 'all') {
+      filtered = filtered.filter(e => e.team === eventMapTeamFilter)
+    }
+    if (eventMapHalfFilter !== 'all') {
+      filtered = filtered.filter(e => e.half === eventMapHalfFilter)
+    }
+    if (eventTypes) {
+      filtered = filtered.filter(e => eventTypes.includes(e.event_type))
+    }
+    return filtered.map(e => ({ ...e, player_name: e.player_name ?? undefined }))
+  }, [chartEvents, eventMapFilters, eventMapTeamFilter, eventMapHalfFilter])
 
   const { data: matchLineup } = useQuery({
     queryKey: ['matchLineup', session?.match_id],
@@ -2511,6 +2536,62 @@ export default function VideoTagging() {
           Paths Taken, Score Origins, Scoreable Frees, Attack Efficiency and Season Benchmark need this match's
           events to be saved via "Save to Match" first — they're not shown here yet.
         </p>
+      </div>
+
+      {/* ── Event Map — exact same filterable map as live recording ─────── */}
+      <div className="space-y-3">
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-bold text-white flex items-center space-x-2">
+              <Target size={16} />
+              <span>Event Map</span>
+            </h2>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(['all', 1, 2] as const).map((h) => (
+                <button
+                  key={h}
+                  onClick={() => setEventMapHalfFilter(h)}
+                  className={`px-2.5 py-1 rounded-lg font-medium text-xs transition-all ${
+                    eventMapHalfFilter === h ? 'bg-white/25 text-white' : 'bg-white/8 text-white/40 hover:bg-white/15'
+                  }`}
+                >
+                  {h === 'all' ? 'All' : h === 1 ? '1st' : '2nd'}
+                </button>
+              ))}
+              <span className="text-white/20 text-xs">·</span>
+              <button
+                onClick={() => setEventMapTeamFilter('all')}
+                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                  eventMapTeamFilter === 'all' ? 'bg-cyan-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setEventMapTeamFilter('own')}
+                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                  eventMapTeamFilter === 'own' ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                {clubName}
+              </button>
+              <button
+                onClick={() => setEventMapTeamFilter('opponent')}
+                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                  eventMapTeamFilter === 'opponent' ? 'bg-orange-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                {opponentName}
+              </button>
+            </div>
+          </div>
+          <div className="mb-1 text-xs text-white/40 text-center">
+            {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown
+          </div>
+          <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
+        </div>
+        <EventFilterToggles activeFilters={eventMapFilters} onToggle={setEventMapFilters} />
+        <EventMapLegend />
       </div>
 
       {/* Enrichment Report */}
