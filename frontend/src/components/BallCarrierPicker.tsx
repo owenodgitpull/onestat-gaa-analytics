@@ -27,6 +27,12 @@ interface BallCarrierPickerProps {
    * separate pitch-spread receiver dots while the radial is open, since
    * showing both "likely receiver" indicators at once is redundant. */
   onOpenChange?: (open: boolean) => void
+  /** Video Tagging's TaggingPitch can render this inside a 90°-rotated <g>
+   *  for its vertical layout — live recording never sets this (always
+   *  horizontal), so it defaults to leaving chip text exactly as before.
+   *  When 'vertical', chip text gets a counter-rotation around its own
+   *  center so numbers/names stay upright rather than sideways. */
+  orientation?: 'horizontal' | 'vertical'
 }
 
 const LIKELY_COUNT = 5
@@ -78,6 +84,7 @@ export default function BallCarrierPicker({
   ballPctY,
   recentCarrierIds = [],
   onOpenChange,
+  orientation = 'horizontal',
 }: BallCarrierPickerProps) {
   const [open, setOpen] = useState(false)
 
@@ -227,20 +234,27 @@ export default function BallCarrierPicker({
                   textAnchor="middle" dominantBaseline="central"
                   fill="#fff"
                   fontWeight="800" fontSize={hasJersey ? 34 : 24}
+                  transform={orientation === 'vertical' ? `rotate(-90 ${c.pos.x} ${c.pos.y})` : undefined}
                 >
                   {hasJersey ? c.player.jerseyNumber : (c.player.positionLabel || '?')}
                 </text>
-                <rect
-                  x={c.pos.x - 64} y={c.pos.y + CHIP_R + 7} width="128" height="29" rx="14.5"
-                  fill="rgba(0,0,0,0.82)"
-                />
-                <text
-                  x={c.pos.x} y={c.pos.y + CHIP_R + 22}
-                  textAnchor="middle" dominantBaseline="central"
-                  fill="#fff" fontWeight="700" fontSize="18"
-                >
-                  {surname(c.player.playerName)}
-                </text>
+                {/* Name pill — rect+text rotated together as one unit, pivoted
+                    on the CHIP's own center (not the pill's position), so it
+                    stays correctly "below" the chip on screen while its
+                    contents render upright. */}
+                <g transform={orientation === 'vertical' ? `rotate(-90 ${c.pos.x} ${c.pos.y})` : undefined}>
+                  <rect
+                    x={c.pos.x - 64} y={c.pos.y + CHIP_R + 7} width="128" height="29" rx="14.5"
+                    fill="rgba(0,0,0,0.82)"
+                  />
+                  <text
+                    x={c.pos.x} y={c.pos.y + CHIP_R + 22}
+                    textAnchor="middle" dominantBaseline="central"
+                    fill="#fff" fontWeight="700" fontSize="18"
+                  >
+                    {surname(c.player.playerName)}
+                  </text>
+                </g>
               </g>
             )
           })}

@@ -25,6 +25,12 @@ interface BallQuickActionIconProps {
    *  tap always gets an immediate visual acknowledgement even if the event
    *  log is scrolled out of view. */
   count?: number
+  /** TaggingPitch's current orientation — in 'vertical', this whole icon
+   *  renders inside a 90°-rotated <g>, which would otherwise leave the
+   *  label and count badge sideways. Both <text> elements get a
+   *  counter-rotation around their own center so they always read
+   *  upright, regardless of the icon's (correctly rotated) position. */
+  orientation?: 'horizontal' | 'vertical'
 }
 
 const ICON_DIST = 148
@@ -50,6 +56,7 @@ export default function BallQuickActionIcon({
   title,
   disabled = false,
   count,
+  orientation = 'horizontal',
 }: BallQuickActionIconProps) {
   const angle = angleDeg * (Math.PI / 180)
   const dx = Math.cos(angle) * ICON_DIST
@@ -101,16 +108,18 @@ export default function BallQuickActionIcon({
           textAnchor="middle" dominantBaseline="central"
           fill={textColor} fontWeight="800"
           fontSize={label.length > 1 ? 15 : 22}
+          transform={orientation === 'vertical' ? `rotate(-90 ${iconX} ${iconY})` : undefined}
         >
           {label}
         </text>
         {!!count && count > 0 && (
           <>
-            <circle cx={badgeX} cy={badgeY} r={15} fill="#f43f5e" stroke="#fff" strokeWidth={2} />
+            <circle cx={badgeX} cy={badgeY} r={18} fill="#f43f5e" stroke="#fff" strokeWidth={2.5} />
             <text
               x={badgeX} y={badgeY}
               textAnchor="middle" dominantBaseline="central"
-              fill="#fff" fontWeight="800" fontSize={14}
+              fill="#fff" fontWeight="800" fontSize={18}
+              transform={orientation === 'vertical' ? `rotate(-90 ${badgeX} ${badgeY})` : undefined}
             >
               {count}
             </text>

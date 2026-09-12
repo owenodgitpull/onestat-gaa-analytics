@@ -1877,6 +1877,7 @@ export default function VideoTagging() {
   // them for precision). Still blocked during setup or while another
   // overlay/picker is open.
   const quickBallIconsBlocked = mode !== 'tracking' || overlayState !== 'none'
+  const taggingPitchOrientation: 'horizontal' | 'vertical' = pitchPanelMode === 'side' ? 'vertical' : 'horizontal'
 
   /** Video player + permanent TaggingPitch tracking panel, fullscreen/layout
    *  toggle buttons, and the pitch-location confirm overlay. */
@@ -1980,7 +1981,7 @@ export default function VideoTagging() {
           actually started, and frozen again whenever paused — play/pause
           only controls video playback, never conflated with tracking. */}
       <TaggingPitch
-        orientation={pitchPanelMode === 'side' ? 'vertical' : 'horizontal'}
+        orientation={taggingPitchOrientation}
         containerClassName={
           pitchPanelMode === 'side'
             ? 'relative h-full w-[300px] md:w-[340px] flex-shrink-0 bg-gradient-to-br from-green-900/40 to-green-800/40 overflow-hidden'
@@ -2011,6 +2012,7 @@ export default function VideoTagging() {
                   ballPctY={ballPctY}
                   recentCarrierIds={recentCarrierIds}
                   onOpenChange={setIsCarrierRadialOpen}
+                  orientation={taggingPitchOrientation}
                 />
               )}
               {/* Opposition has no per-player carrier radial (we don't track
@@ -2028,6 +2030,7 @@ export default function VideoTagging() {
                   onTap={handleQuickPass}
                   count={oppPassCount}
                   disabled={quickBallIconsBlocked}
+                  orientation={taggingPitchOrientation}
                 />
               )}
               {/* Long Kick — both teams, straight up from the ball so it
@@ -2041,6 +2044,7 @@ export default function VideoTagging() {
                 label="LK"
                 title="Log Long Kick"
                 color="#d97706"
+                orientation={taggingPitchOrientation}
                 onTap={handleQuickLongKick}
                 disabled={quickBallIconsBlocked || isCarrierRadialOpen}
               />
@@ -2061,6 +2065,7 @@ export default function VideoTagging() {
                 ballPctY={ballPctY}
                 disabled={isCarrierRadialOpen}
                 recentCarrierIds={recentCarrierIds}
+                orientation={taggingPitchOrientation}
               />
             )
             : undefined

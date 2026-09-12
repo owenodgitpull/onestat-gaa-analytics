@@ -305,7 +305,14 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             <input
               type="range"
               min={0}
-              max={maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration}
+              // Always the full duration — this MUST match the scale the tick
+              // marks and hover-preview tooltip use (both position by
+              // `x / duration`), or a click/drag lands at a completely
+              // different time than what's shown under the pointer. The
+              // forward-scrub lock is enforced entirely in onChange below
+              // (clamping the actual seek) and in the `value` clamp for
+              // display, not by shrinking the slider's own range.
+              max={duration}
               value={Math.min(currentTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration)}
               onChange={(e) => {
                 const ms = parseInt(e.target.value)

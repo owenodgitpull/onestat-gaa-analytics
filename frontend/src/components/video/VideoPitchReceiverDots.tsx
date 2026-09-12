@@ -13,11 +13,17 @@ interface VideoPitchReceiverDotsProps {
   teamSecondaryColor?: string
   disabled?: boolean
   recentCarrierIds?: string[]
+  /** TaggingPitch's current orientation — in 'vertical', everything here
+   *  renders inside a 90°-rotated <g>, which would otherwise leave the
+   *  jersey-number/position-label text sideways. Each <text> gets a
+   *  counter-rotation around its own center so it always reads upright
+   *  regardless of the dot's (correctly rotated) position. */
+  orientation?: 'horizontal' | 'vertical'
 }
 
 const LIKELY_COUNT = 5
-const DOT_R_DIM = 38
-const DOT_R_BRIGHT = 54
+const DOT_R_DIM = 42
+const DOT_R_BRIGHT = 60
 
 /**
  * Video Tagging's port of `PitchReceiverDots.tsx` — identical ranking,
@@ -41,6 +47,7 @@ export default function VideoPitchReceiverDots({
   teamSecondaryColor = '#FFFFFF',
   disabled = false,
   recentCarrierIds = [],
+  orientation = 'horizontal',
 }: VideoPitchReceiverDotsProps) {
   if (disabled) return null
 
@@ -90,8 +97,9 @@ export default function VideoPitchReceiverDots({
               textAnchor="middle" dominantBaseline="central"
               fill={isLikely ? '#fff' : 'rgba(234,255,243,0.6)'}
               fontWeight="700"
-              fontSize={hasJersey ? (isLikely ? 38 : 27) : (isLikely ? 26 : 18)}
+              fontSize={hasJersey ? (isLikely ? 43 : 30) : (isLikely ? 29 : 20)}
               opacity={isLikely ? 1 : 0.38}
+              transform={orientation === 'vertical' ? `rotate(-90 ${cx} ${cy})` : undefined}
               style={{ transition: 'opacity 0.25s ease, font-size 0.25s ease' }}
             >
               {hasJersey ? r.player.jerseyNumber : (r.player.positionLabel || '?')}
