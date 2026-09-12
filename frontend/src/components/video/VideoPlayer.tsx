@@ -26,13 +26,31 @@ interface VideoPlayerProps {
   onDurationChange?: (durationMs: number) => void
   onPlayStateChange?: (playing: boolean) => void
   halftimeMs?: number
+  /** Match-timing markers shown on the scrub bar alongside halftimeMs —
+   * throw-in (1H), 2nd-half restart (2H), full-time (FT). */
+  firstHalfStartMs?: number
+  secondHalfStartMs?: number
+  fullTimeMs?: number
+  /** Forward-seek ceiling (ms) — while set, scrubbing/skip-forward/seekTo
+   * can't jump past this point. Used during tracking mode so events are
+   * always logged in chronological order; rewinding is never restricted. */
+  maxSeekMs?: number
+  /** Position to restore to the first time this instance loads metadata.
+   * The parent page toggles fullscreen by branching its whole return tree,
+   * which remounts this component (a fresh <video> element resets
+   * currentTime to 0) — passing the last known position back in here
+   * restores it once metadata is available, so toggling fullscreen never
+   * loses scrub position. Ignored on ordinary playback (only consulted
+   * once per mount). */
+  initialTimeMs?: number
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs }, ref) => {
+  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, maxSeekMs, initialTimeMs }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null)
+    const hasRestoredPositionRef = useRef(false)
     const [playing, setPlaying] = useState(false)
     const [currentTime, setCurrentTime] = useState(0)
     const [duration, setDuration] = useState(0)
@@ -44,7 +62,8 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     useImperativeHandle(ref, () => ({
       seekTo: (ms: number) => {
         if (videoRef.current) {
-          videoRef.current.currentTime = ms / 1000
+          const clamped = maxSeekMs != null ? Math.min(ms, maxSeekMs) : ms
+          videoRef.current.currentTime = clamped / 1000
         }
       },
       getCurrentTimeMs: () => {
@@ -69,8 +88,15 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         const ms = Math.round(videoRef.current.duration * 1000)
         setDuration(ms)
         onDurationChange?.(ms)
+        // Restore scrub position once per mount (see initialTimeMs doc) —
+        // metadata must be loaded before currentTime can be set reliably.
+        if (!hasRestoredPositionRef.current && initialTimeMs) {
+          hasRestoredPositionRef.current = true
+          videoRef.current.currentTime = initialTimeMs / 1000
+          setCurrentTime(initialTimeMs)
+        }
       }
-    }, [onDurationChange])
+    }, [onDurationChange, initialTimeMs])
 
     const togglePlay = () => {
       if (!videoRef.current) return
@@ -83,7 +109,11 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     const skip = (seconds: number) => {
       if (videoRef.current) {
-        videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime + seconds)
+        let target = Math.max(0, videoRef.current.currentTime + seconds)
+        if (maxSeekMs != null && seconds > 0) {
+          target = Math.min(target, maxSeekMs / 1000)
+        }
+        videoRef.current.currentTime = target
       }
     }
 
@@ -247,16 +277,51 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             <input
               type="range"
               min={0}
-              max={duration}
-              value={currentTime}
+              max={maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration}
+              value={Math.min(currentTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration)}
               onChange={(e) => {
                 const ms = parseInt(e.target.value)
                 if (videoRef.current) {
-                  videoRef.current.currentTime = ms / 1000
+                  const clamped = maxSeekMs != null ? Math.min(ms, maxSeekMs) : ms
+                  videoRef.current.currentTime = clamped / 1000
                 }
               }}
               className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-emerald-500"
             />
+            {maxSeekMs != null && duration > 0 && maxSeekMs < duration && (
+              <div
+                className="absolute top-0 bottom-0 right-0 bg-black/40 rounded-r-full pointer-events-none"
+                style={{ left: `${(maxSeekMs / duration) * 100}%` }}
+                title="Can't skip ahead while tracking — rewinding is fine"
+              />
+            )}
+            {firstHalfStartMs != null && duration > 0 && (
+              <div
+                className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
+                style={{ left: `${(firstHalfStartMs / duration) * 100}%` }}
+              >
+                <span className="text-[9px] font-bold text-cyan-400 -translate-y-3.5 select-none">1H</span>
+                <div className="w-0.5 h-full bg-cyan-400 rounded-full" />
+              </div>
+            )}
+            {secondHalfStartMs != null && duration > 0 && (
+              <div
+                className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
+                style={{ left: `${(secondHalfStartMs / duration) * 100}%` }}
+              >
+                <span className="text-[9px] font-bold text-cyan-400 -translate-y-3.5 select-none">2H</span>
+                <div className="w-0.5 h-full bg-cyan-400 rounded-full" />
+              </div>
+            )}
+            {fullTimeMs != null && duration > 0 && (
+              <div
+                className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
+                style={{ left: `${(fullTimeMs / duration) * 100}%` }}
+              >
+                <span className="text-[9px] font-bold text-rose-400 -translate-y-3.5 select-none">FT</span>
+                <div className="w-0.5 h-full bg-rose-400 rounded-full" />
+              </div>
+            )}
             {halftimeMs != null && duration > 0 && (
               <div
                 className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"

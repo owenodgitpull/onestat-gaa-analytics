@@ -23,6 +23,10 @@ export interface VideoSession {
   halftime_timestamp_ms: number | null;
   first_half_start_ms: number | null;
   second_half_start_ms: number | null;
+  full_time_ms: number | null;
+  tracking_started_at: string | null;
+  tracking_completed_at: string | null;
+  tracking_progress_ms: number | null;
   status: string;
   ai_model_used: string | null;
   ai_events_generated: number | null;
@@ -265,6 +269,35 @@ export const videoSessionsAPI = {
         second_half_start_ms: secondHalfStartMs ?? null,
       }) }
     ),
+
+  /** Set the full-time whistle/hooter timestamp. */
+  setFullTime: (sessionId: string, fullTimeMs: number) =>
+    fetchAPI<VideoSession>(
+      `/video/session/${sessionId}/set-full-time`,
+      { method: 'POST', body: JSON.stringify({ full_time_ms: fullTimeMs }) }
+    ),
+
+  /** Set which way the home team attacks in the 1st half (writes to the match). */
+  setAttackDirection: (sessionId: string, attackingRightFirstHalf: boolean) =>
+    fetchAPI<VideoSession>(
+      `/video/session/${sessionId}/set-attack-direction`,
+      { method: 'POST', body: JSON.stringify({ attacking_right_first_half: attackingRightFirstHalf }) }
+    ),
+
+  /** Begin match tracking mode (requires throw-in + attack direction set). */
+  startTracking: (sessionId: string) =>
+    fetchAPI<VideoSession>(`/video/session/${sessionId}/start-tracking`, { method: 'POST' }),
+
+  /** Throttled high-water-mark update while tracking is in progress. */
+  updateTrackingProgress: (sessionId: string, progressMs: number) =>
+    fetchAPI<VideoSession>(
+      `/video/session/${sessionId}/tracking-progress`,
+      { method: 'POST', body: JSON.stringify({ progress_ms: progressMs }) }
+    ),
+
+  /** End tracking mode and move into edit/review mode. */
+  completeTracking: (sessionId: string) =>
+    fetchAPI<VideoSession>(`/video/session/${sessionId}/complete-tracking`, { method: 'POST' }),
 
   /** Trigger Gemini 2.5 Flash auto-analysis. */
   autoAnalyze: (sessionId: string) =>

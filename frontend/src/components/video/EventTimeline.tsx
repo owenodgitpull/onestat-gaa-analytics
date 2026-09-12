@@ -14,6 +14,8 @@ interface EventTimelineProps {
   onSeek: (timestampMs: number) => void
   firstHalfStartMs?: number | null
   secondHalfStartMs?: number | null
+  halftimeMs?: number | null
+  fullTimeMs?: number | null
 }
 
 const EVENT_COLORS: Record<string, string> = {
@@ -48,6 +50,8 @@ export default function EventTimeline({
   onSeek,
   firstHalfStartMs,
   secondHalfStartMs,
+  halftimeMs,
+  fullTimeMs,
 }: EventTimelineProps) {
   const sortedEvents = useMemo(
     () => [...events].filter(e => e.video_timestamp_ms != null).sort((a, b) => a.video_timestamp_ms! - b.video_timestamp_ms!),
@@ -103,6 +107,24 @@ export default function EventTimeline({
             title="2nd half throw-in"
           >
             <span className="absolute -top-3.5 -translate-x-1/2 text-[8px] text-cyan-400 font-bold whitespace-nowrap">2H</span>
+          </div>
+        )}
+        {halftimeMs != null && videoDurationMs > 0 && (
+          <div
+            className="absolute top-0 h-full w-0.5 bg-amber-400/60 z-10"
+            style={{ left: `${(halftimeMs / videoDurationMs) * 100}%` }}
+            title="Half-time"
+          >
+            <span className="absolute -top-3.5 -translate-x-1/2 text-[8px] text-amber-400 font-bold whitespace-nowrap">HT</span>
+          </div>
+        )}
+        {fullTimeMs != null && videoDurationMs > 0 && (
+          <div
+            className="absolute top-0 h-full w-0.5 bg-rose-400/60 z-10"
+            style={{ left: `${(fullTimeMs / videoDurationMs) * 100}%` }}
+            title="Full-time"
+          >
+            <span className="absolute -top-3.5 -translate-x-1/2 text-[8px] text-rose-400 font-bold whitespace-nowrap">FT</span>
           </div>
         )}
 

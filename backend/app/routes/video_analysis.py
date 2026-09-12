@@ -28,6 +28,10 @@ from app.schemas.video_analysis import (
     VideoUploadCompleteRequest,
     VideoUploadAbortRequest,
     SetHalftimeRequest,
+    SetHalfStartsRequest,
+    SetFullTimeRequest,
+    SetAttackDirectionRequest,
+    TrackingProgressRequest,
     VideoSessionResponse,
     VideoSessionListResponse,
     EnrichmentResponse,
@@ -70,6 +74,10 @@ def _session_to_response(session: VideoSession, download_url: str = None) -> Vid
         halftime_timestamp_ms=session.halftime_timestamp_ms,
         first_half_start_ms=session.first_half_start_ms,
         second_half_start_ms=session.second_half_start_ms,
+        full_time_ms=session.full_time_ms,
+        tracking_started_at=session.tracking_started_at,
+        tracking_completed_at=session.tracking_completed_at,
+        tracking_progress_ms=session.tracking_progress_ms,
         status=session.status,
         ai_model_used=session.ai_model_used,
         ai_events_generated=session.ai_events_generated,
@@ -380,7 +388,7 @@ async def set_halftime(
 @router.post("/session/{session_id}/set-half-starts", response_model=VideoSessionResponse)
 async def set_half_starts(
     session_id: UUID,
-    body: dict,
+    body: SetHalfStartsRequest,
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -395,10 +403,10 @@ async def set_half_starts(
     if not session:
         raise HTTPException(status_code=404, detail="Video session not found")
 
-    if "first_half_start_ms" in body and body["first_half_start_ms"] is not None:
-        session.first_half_start_ms = int(body["first_half_start_ms"])
-    if "second_half_start_ms" in body and body["second_half_start_ms"] is not None:
-        session.second_half_start_ms = int(body["second_half_start_ms"])
+    if body.first_half_start_ms is not None:
+        session.first_half_start_ms = body.first_half_start_ms
+    if body.second_half_start_ms is not None:
+        session.second_half_start_ms = body.second_half_start_ms
 
     await db.commit()
     await db.refresh(session)
@@ -408,6 +416,182 @@ async def set_half_starts(
         download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
 
     logger.info(f"Half starts set: session={session_id}, 1H={session.first_half_start_ms}ms, 2H={session.second_half_start_ms}ms")
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/set-full-time", response_model=VideoSessionResponse)
+async def set_full_time(
+    session_id: UUID,
+    body: SetFullTimeRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the full-time whistle/hooter timestamp."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    if session.video_duration_ms and body.full_time_ms > session.video_duration_ms:
+        raise HTTPException(status_code=400, detail="Full-time timestamp must be within the video")
+
+    session.full_time_ms = body.full_time_ms
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    logger.info(f"Full-time set: session={session_id}, timestamp={body.full_time_ms}ms")
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/set-attack-direction", response_model=VideoSessionResponse)
+async def set_attack_direction(
+    session_id: UUID,
+    body: SetAttackDirectionRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set which way the home team attacks in the 1st half. Writes to the
+    parent Match's attacking_right_first_half — the same field live match
+    recording sets — so every downstream chart/xP calculation stays in sync
+    regardless of whether the match was tagged from video or recorded live."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    match_result = await db.execute(select(Match).where(Match.id == session.match_id))
+    match = match_result.scalar_one_or_none()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    match.attacking_right_first_half = body.attacking_right_first_half
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    logger.info(f"Attack direction set: match={session.match_id}, attacking_right_first_half={body.attacking_right_first_half}")
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/start-tracking", response_model=VideoSessionResponse)
+async def start_tracking(
+    session_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Begin match tracking mode. Requires at minimum a 1st-half throw-in
+    marker and an attack direction — without those, event minutes and the
+    persistent attack-direction indicator have no reliable zero-point."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    if session.first_half_start_ms is None:
+        raise HTTPException(status_code=400, detail="Mark the 1st-half throw-in before starting tracking")
+
+    match_result = await db.execute(select(Match).where(Match.id == session.match_id))
+    match = match_result.scalar_one_or_none()
+    if not match or match.attacking_right_first_half is None:
+        raise HTTPException(status_code=400, detail="Set the attack direction before starting tracking")
+
+    from datetime import datetime as _dt
+    session.tracking_started_at = _dt.utcnow()
+    if session.tracking_progress_ms is None:
+        session.tracking_progress_ms = session.first_half_start_ms
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    logger.info(f"Tracking started: session={session_id}")
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/tracking-progress", response_model=VideoSessionResponse)
+async def update_tracking_progress(
+    session_id: UUID,
+    body: TrackingProgressRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Throttled high-water-mark update while tracking is in progress. Never
+    regresses — the frontend calls this periodically while playing, and the
+    stored value is the forward-scrub ceiling, so it must only move forward."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    if session.tracking_progress_ms is None or body.progress_ms > session.tracking_progress_ms:
+        session.tracking_progress_ms = body.progress_ms
+        await db.commit()
+        await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/complete-tracking", response_model=VideoSessionResponse)
+async def complete_tracking(
+    session_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """End tracking mode and move the session into edit/review mode — either
+    because full-time was reached, or the user manually ended tracking early."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    from datetime import datetime as _dt
+    session.tracking_completed_at = _dt.utcnow()
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    logger.info(f"Tracking completed: session={session_id}")
     return _session_to_response(session, download_url=download_url)
 
 

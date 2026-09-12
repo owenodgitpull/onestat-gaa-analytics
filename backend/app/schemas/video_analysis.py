@@ -61,6 +61,30 @@ class SetHalftimeRequest(BaseModel):
     halftime_timestamp_ms: int = Field(..., gt=0)
 
 
+class SetHalfStartsRequest(BaseModel):
+    """Set the throw-in timestamps for 1st and/or 2nd half. Either field may
+    be omitted to leave that half's marker untouched."""
+    first_half_start_ms: Optional[int] = Field(None, gt=0)
+    second_half_start_ms: Optional[int] = Field(None, gt=0)
+
+
+class SetFullTimeRequest(BaseModel):
+    """Set the full-time whistle/hooter timestamp."""
+    full_time_ms: int = Field(..., gt=0)
+
+
+class SetAttackDirectionRequest(BaseModel):
+    """Set which way the home team attacks in the 1st half. Writes through
+    to Match.attacking_right_first_half (the single source of truth read by
+    every downstream chart/xP calculation), not a session-local field."""
+    attacking_right_first_half: bool
+
+
+class TrackingProgressRequest(BaseModel):
+    """Throttled high-water-mark update while tracking is in progress."""
+    progress_ms: int = Field(..., ge=0)
+
+
 class VideoSessionResponse(BaseModel):
     """VideoSession response schema."""
     id: UUID
@@ -74,6 +98,10 @@ class VideoSessionResponse(BaseModel):
     halftime_timestamp_ms: Optional[int]
     first_half_start_ms: Optional[int] = None
     second_half_start_ms: Optional[int] = None
+    full_time_ms: Optional[int] = None
+    tracking_started_at: Optional[datetime] = None
+    tracking_completed_at: Optional[datetime] = None
+    tracking_progress_ms: Optional[int] = None
     status: str
     ai_model_used: Optional[str]
     ai_events_generated: Optional[int]

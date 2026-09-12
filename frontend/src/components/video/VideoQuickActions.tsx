@@ -8,7 +8,7 @@
  * 4-tab layout: Score | T/O | Our KO | Opp KO
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   Target, ArrowRightLeft, CircleDot, ArrowLeftRight,
   AlertTriangle, ChevronLeft, Shield,
@@ -163,6 +163,22 @@ export default function VideoQuickActions({
 
   const isUs = possession === 'team_a'
 
+  // Draw the eye to the button panel whenever the tab changes — most
+  // usefully when it's an auto-switch after logging a score (e.g. straight
+  // to the kickout tab), which otherwise requires scanning the sidebar to
+  // notice the context moved. A brief pulse, not a persistent state.
+  const [tabJustChanged, setTabJustChanged] = useState(false)
+  const isFirstTabRenderRef = useRef(true)
+  useEffect(() => {
+    if (isFirstTabRenderRef.current) {
+      isFirstTabRenderRef.current = false
+      return
+    }
+    setTabJustChanged(true)
+    const timer = setTimeout(() => setTabJustChanged(false), 1600)
+    return () => clearTimeout(timer)
+  }, [activeTab])
+
   useEffect(() => {
     if (!flashButton) return
     const timer = setTimeout(() => setFlashButton(null), 200)
@@ -174,12 +190,13 @@ export default function VideoQuickActions({
     const time = calcMatchTime
       ? calcMatchTime(videoMs)
       : { minute: Math.floor(videoMs / 60000), second: Math.floor((videoMs % 60000) / 1000), half }
-    const isTwoPointer = selectedZone ? TWO_POINTER_ZONES.includes(selectedZone) : false
-
-    // Derive zone from minimap ball position when no zone overlay will be shown
+    // Zone comes from the live tracking-pitch ball position — selectedZone
+    // is a legacy fallback from the old pitch-tap-to-confirm overlay (now
+    // removed; position is always known by the time an event is tapped).
     const effectiveZone = selectedZone ?? (
       ballPitchX != null && ballPitchY != null ? xyToZone(ballPitchX, ballPitchY) : undefined
     )
+    const isTwoPointer = effectiveZone ? TWO_POINTER_ZONES.includes(effectiveZone) : false
 
     const data: VideoEventCreateData = {
       event_type: action.eventType,
@@ -434,7 +451,7 @@ export default function VideoQuickActions({
       </div>
 
       {/* Action buttons */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+      <div className={`flex-1 overflow-y-auto p-2 space-y-1.5 rounded-lg ${tabJustChanged ? 'qa-tab-pulse' : ''}`}>
         {showFreePanel ? (
           <>
             <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
@@ -626,6 +643,16 @@ export default function VideoQuickActions({
           <Shield size={12} className="mx-auto" />
         </button>
       </div>
+
+      <style>{`
+        @keyframes qa-tab-pulse-glow {
+          0%, 100% { box-shadow: 0 0 0 2px rgba(16,185,129,0.65), 0 0 22px 4px rgba(16,185,129,0.35); }
+          50% { box-shadow: 0 0 0 2px rgba(6,182,212,0.65), 0 0 28px 8px rgba(6,182,212,0.45); }
+        }
+        .qa-tab-pulse {
+          animation: qa-tab-pulse-glow 0.8s ease-in-out 2;
+        }
+      `}</style>
     </div>
   )
 }

@@ -4127,9 +4127,9 @@ export default function MatchRecording() {
             )}
           </div>
 
-          <div className="flex flex-col md:flex-row gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 md:items-start gap-6">
             {/* Left column — pitch, action buttons, event map */}
-            <div className="flex-[2] min-w-0 space-y-6">
+            <div className="order-1 md:col-span-2 min-w-0 space-y-6">
               {/* Half Time Banner */}
               {minute >= (match?.half_duration_mins || 30) && matchPhase === 'first_half' && (
                 <div className="backdrop-blur-xl bg-white/5 border border-amber-500/20 rounded-xl px-4 py-3 mb-4">
@@ -4606,12 +4606,10 @@ export default function MatchRecording() {
                   <EventMapLegend />
                 </div>
               )}
-
-              {!showHalfTimeView && matchInsightsCharts}
             </div>
 
             {/* Live Stats Sidebar */}
-            <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden">
+            <div className="order-3 md:order-2 md:col-span-1 min-w-0 flex flex-col gap-4 overflow-hidden">
               {/* AI Live Insights */}
               <LiveInsightDisplay
                 matchId={matchId}
@@ -4702,6 +4700,18 @@ export default function MatchRecording() {
                   )}
                 </div>
               </div>
+            </div>
+
+            {/* Insight charts — own full-width grid row (md:col-span-3), not
+                squeezed into the 2/3 left column: the sidebar next to it is
+                often much shorter (live insights + stats + a handful of
+                recent events), so pairing these ~15 chart cards with it in
+                the same column left them stuck at 2/3 width with dead space
+                beside them. order-2 (mobile) / md:order-3 keeps the original
+                stacking position — charts before the sidebar — on narrow
+                screens where everything is a single column anyway. */}
+            <div className="order-2 md:order-3 md:col-span-3 space-y-6">
+              {!showHalfTimeView && matchInsightsCharts}
             </div>
           </div>
 

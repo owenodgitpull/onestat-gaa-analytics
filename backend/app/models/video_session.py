@@ -38,6 +38,15 @@ class VideoSession(Base):
     halftime_timestamp_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
     first_half_start_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
     second_half_start_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    full_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+
+    # Tracking-mode state: setup (none set) -> tracking (started, not completed)
+    # -> edit (completed). tracking_progress_ms is a monotonic high-water mark
+    # used to clamp forward-scrubbing while tracking is in progress, so events
+    # are always logged in chronological order.
+    tracking_started_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
+    tracking_completed_at: Column[Optional[datetime]] = Column(DateTime, nullable=True)
+    tracking_progress_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
 
     # Processing status
     status: Column[str] = Column(String(30), nullable=False, default="pending")

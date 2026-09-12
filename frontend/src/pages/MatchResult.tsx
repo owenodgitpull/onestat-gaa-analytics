@@ -4,7 +4,7 @@
  */
 
 import { useMemo, useState, useEffect, useRef } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Trophy,
@@ -56,6 +56,7 @@ import StatsTable from '../components/charts/StatsTable'
 import GPSConfirmModal from '../components/GPSConfirmModal'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
+import { useVideoSessions } from '../hooks/useVideoSessions'
 import { usePlayers } from '../hooks/usePlayers'
 import { calculateManOfMatch } from '../utils/motm'
 import { renderAnalysisText } from '../utils/renderAnalysisText'
@@ -96,6 +97,25 @@ export default function MatchResult() {
   const { data: matchStats } = useMatchStats(matchId || null, statsHalf)
   const { data: eventsData, isLoading: eventsLoading } = useMatchEvents(matchId || null)
   const { data: players } = usePlayers()
+  const navigate = useNavigate()
+
+  // A match can have real progress (video-tagged events) without any LIVE
+  // match_events yet — those stay staged in a separate table until an
+  // explicit "Save to Match" sync. Without this, landing here showed the
+  // "Start Video Analysis" empty state (and every hasEvents-gated section
+  // below it) as if nothing had been done, even mid-way through tagging a
+  // whole match. If a video session already exists, skip straight to the
+  // session list (VideoSessionList) — not directly into tagging, since a
+  // match can have multiple sessions (e.g. one per half) to choose between.
+  const { data: videoSessionsData, isLoading: videoSessionsLoading } = useVideoSessions(matchId || null)
+  useEffect(() => {
+    if (!matchId || matchLoading || eventsLoading || videoSessionsLoading) return
+    const hasLiveEvents = (eventsData?.events?.length ?? 0) > 0
+    const hasVideoSessions = (videoSessionsData?.sessions?.length ?? 0) > 0
+    if (!hasLiveEvents && hasVideoSessions) {
+      navigate(`/results/${matchId}/video`, { replace: true })
+    }
+  }, [matchId, matchLoading, eventsLoading, videoSessionsLoading, eventsData, videoSessionsData, navigate])
 
   // Fetch post-match AI analysis.
   // A first-ever (uncached) report can take 1-3 minutes to generate (multiple
@@ -492,6 +512,13 @@ export default function MatchResult() {
     return <LoadingSkeleton variant="match" />
   }
 
+  // Only wait on the video-sessions check for matches that might actually
+  // need the redirect above — matches that already have live events take
+  // the normal fast path and never pay for this extra fetch.
+  if ((eventsData?.events?.length ?? 0) === 0 && videoSessionsLoading) {
+    return <LoadingSkeleton variant="match" />
+  }
+
   if (!match) {
     return (
       <div className="glass-card p-8 text-center">
@@ -674,11 +701,12 @@ export default function MatchResult() {
             {hasEliteAccess ? (
             <Link
               to={`/results/${matchId}/video`}
-              className="flex items-center justify-center gap-3 px-6 py-4 rounded-xl text-white font-semibold text-lg transition-all hover:scale-[1.01] active:scale-[0.99]"
+              className="flex items-center justify-center gap-3 px-6 py-4 rounded-xl font-semibold text-lg transition-all hover:scale-[1.01] active:scale-[0.99]"
               style={{
-                background: 'linear-gradient(135deg, rgba(147,51,234,0.4), rgba(79,70,229,0.3))',
-                border: '1px solid rgba(147,51,234,0.5)',
-                boxShadow: '0 4px 20px rgba(147,51,234,0.2)',
+                background: 'var(--gradient-primary)',
+                color: '#0a1a10',
+                border: '1px solid rgba(0,230,118,0.3)',
+                boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
               }}
             >
               <Video size={22} />

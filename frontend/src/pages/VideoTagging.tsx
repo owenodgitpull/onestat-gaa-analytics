@@ -1,10 +1,13 @@
 /**
  * VideoTagging — Main video analysis tagging page.
  *
- * Three-tap flow: tap event → tap pitch zone → tap player number → done.
+ * Event flow: tap event → tap player number (own-team events only) → done.
+ * Position is always taken from the live ball position on the persistent
+ * tracking pitch — there's no separate pitch-tap-to-confirm step (removed;
+ * redundant once tracking moved from a small minimap to the big persistent
+ * pitch, which already has the position by the time an event is tapped).
  * Video auto-pauses on event tap and auto-resumes after completion.
- * The pitch-location confirm overlay (PitchOverlay) renders ON TOP of the
- * video player; the continuous ball-carrier tracking pitch (TaggingPitch)
+ * The continuous ball-carrier tracking pitch (TaggingPitch)
  * is a permanent panel beside or below the video (never overlaps it) —
  * user-toggleable Side/Below, remembered per-device via usePitchPanelLayout.
  * Scoreboard in header with GAA format (1-03) and total.
@@ -37,18 +40,33 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, PanelRight, PanelBottom } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, PanelRight, PanelBottom, Play } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
 import VideoQuickActions, { type Category, type OverlayPendingEvent } from '../components/video/VideoQuickActions'
 import VideoEventLog from '../components/video/VideoEventLog'
-import PitchOverlay from '../components/video/PitchOverlay'
 import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
+import PitchPlayerSelector from '../components/PitchPlayerSelector'
 import SyncPreviewModal from '../components/video/SyncPreviewModal'
 import ConfirmationModal from '../components/ConfirmationModal'
-import HalftimeMarker from '../components/video/HalftimeMarker'
+import SetupFlowModal, { type SetupStep } from '../components/video/SetupFlowModal'
+import AttackDirectionBadge from '../components/video/AttackDirectionBadge'
+import VideoStatsPanel from '../components/video/VideoStatsPanel'
+import ExtendedStatsModal from '../components/ExtendedStatsModal'
+import ChartZoomModal from '../components/ChartZoomModal'
+import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
+import AttackingThirdsChart from '../components/charts/AttackingThirdsChart'
+import ScoringTimeline from '../components/charts/ScoringTimeline'
+import ShotOutcomeChart from '../components/charts/ShotOutcomeChart'
+import MatchKickoutZones from '../components/charts/MatchKickoutZones'
+import MatchKickoutOutcomes from '../components/charts/MatchKickoutOutcomes'
+import ScoringZoneMap from '../components/charts/ScoringZoneMap'
+import TurnoverMap from '../components/charts/TurnoverMap'
+import ShootingEfficiencyHeatmap from '../components/charts/ShootingEfficiencyHeatmap'
+import KickoutSequence from '../components/charts/KickoutSequence'
+import { videoEventsToChartEvents, computeShotLocations } from '../utils/videoEventChartAdapter'
 import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video/PitchZoneSelector'
 import BlackCardTimer, { type BlackCardEntry } from '../components/BlackCardTimer'
 import VideoFormationSnapshot from '../components/video/VideoFormationSnapshot'
@@ -56,7 +74,15 @@ import JerseyNumberStrip, { type JerseyPlayer } from '../components/JerseyNumber
 import { useClubName, useClub } from '../contexts/ClubContext'
 import { useTour } from '../hooks/useTour'
 import { videoTaggingSteps } from '../config/tourSteps'
-import { useVideoSession, useSetHalftime } from '../hooks/useVideoSessions'
+import {
+  useVideoSession,
+  useSetHalftime,
+  useSetFullTime,
+  useSetAttackDirection,
+  useStartTracking,
+  useUpdateTrackingProgress,
+  useCompleteTracking,
+} from '../hooks/useVideoSessions'
 import { usePitchPanelLayout } from '../hooks/usePitchPanelLayout'
 import {
   useVideoEvents,
@@ -74,7 +100,7 @@ import { useQuery } from '@tanstack/react-query'
 import { PossessionTeam } from '../types'
 import type { Player, BallPosition } from '../types'
 
-type OverlayState = 'none' | 'pitch' | 'player'
+type OverlayState = 'none' | 'player'
 
 /** Derive a human-readable status label from ball position and possession. */
 function getStatusLabel(
@@ -116,7 +142,6 @@ export default function VideoTagging() {
   // Core state
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [videoDurationMs, setVideoDurationMs] = useState(0)
-  const [selectedZone, setSelectedZone] = useState<PitchZone | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [possession, setPossession] = useState<'team_a' | 'team_b'>('team_a')
   const [activeTab, setActiveTab] = useState<Category>('scoring')
@@ -155,6 +180,34 @@ export default function VideoTagging() {
   // Halftime state
   const [halftimeSkipped, setHalftimeSkipped] = useState(false)
   const setHalftime = useSetHalftime()
+
+  // Setup-flow state (throw-in / half-time / 2nd-half / full-time / direction / throw-in winner)
+  const [secondHalfSkipped, setSecondHalfSkipped] = useState(false)
+  const [fullTimeSkipped, setFullTimeSkipped] = useState(false)
+  const [throwInWinnerChosen, setThrowInWinnerChosen] = useState(false)
+  const setFullTime = useSetFullTime()
+  const setAttackDirection = useSetAttackDirection()
+  const startTracking = useStartTracking()
+  const updateTrackingProgress = useUpdateTrackingProgress()
+  const completeTracking = useCompleteTracking()
+
+  // Forward-scrub ceiling while tracking — the furthest point reached so
+  // far. Initialized from the server-persisted high-water mark once (so a
+  // refresh mid-tracking resumes the lock correctly), then only grows.
+  const [highWaterMarkMs, setHighWaterMarkMs] = useState(0)
+  const highWaterMarkRef = useRef(0)
+  const highWaterMarkInitRef = useRef(false)
+  const lastPersistedProgressRef = useRef(0)
+
+  // Full-time reached confirmation
+  const [showFullTimeConfirm, setShowFullTimeConfirm] = useState(false)
+  const fullTimeConfirmShownRef = useRef(false)
+
+  // Stats / Charts sections (below the event log, normal mode only) —
+  // scroll-to targets + the "Extra Stats" modal
+  const statsRef = useRef<HTMLDivElement>(null)
+  const chartsRef = useRef<HTMLDivElement>(null)
+  const [showExtraStats, setShowExtraStats] = useState(false)
 
   // Black card sin bin timers
   const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
@@ -223,11 +276,33 @@ export default function VideoTagging() {
     queryFn: () => api.players.getAll(),
   })
 
-  const { data: matchData } = useQuery({
+  const { data: matchData, refetch: refetchMatchData } = useQuery({
     queryKey: ['match', session?.match_id],
     queryFn: () => api.matches.getById(session!.match_id),
     enabled: !!session?.match_id,
   })
+
+  // Tracking mode: derived from session fields, not stored client-side, so
+  // it survives a refresh. 'setup' (nothing started) -> 'tracking' (started,
+  // not completed) -> 'edit' (completed, free review). Play/pause is a
+  // separate signal (isPlaying, above) — deliberately not conflated with
+  // this, so tracking-gated interactions (ball drag, possession sampling)
+  // require BOTH mode === 'tracking' AND isPlaying.
+  const mode: 'setup' | 'tracking' | 'edit' = useMemo(() => {
+    if (session?.tracking_completed_at != null) return 'edit'
+    if (session?.tracking_started_at != null) return 'tracking'
+    return 'setup'
+  }, [session?.tracking_completed_at, session?.tracking_started_at])
+
+  // Stats/charts data — converts the session's own tagged (but not yet
+  // synced to the match) events into the shape live recording's chart
+  // components read, so the same charts can render live during tagging.
+  // See utils/videoEventChartAdapter.ts for why this is needed and how.
+  const chartEvents = useMemo(() => videoEventsToChartEvents(events), [events])
+  const shotLocations = useMemo(
+    () => computeShotLocations(chartEvents, matchData?.half_duration_mins, matchData?.attacking_right_first_half),
+    [chartEvents, matchData?.half_duration_mins, matchData?.attacking_right_first_half]
+  )
 
   const { data: matchLineup } = useQuery({
     queryKey: ['matchLineup', session?.match_id],
@@ -243,22 +318,6 @@ export default function VideoTagging() {
   const syncPreview = useSyncPreview()
   const syncConfirm = useSyncConfirm()
 
-  // --- Throw-in marker setup ---
-  const [setupStep, setSetupStep] = useState<'none' | '1st_half' | '2nd_half' | 'done'>('none')
-  const needsThrowInSetup = session && setupStep !== 'done' && setupStep !== 'none'
-
-  // Initialize setup step from session data
-  useEffect(() => {
-    if (!session) return
-    if (session.first_half_start_ms != null && session.second_half_start_ms != null) {
-      setSetupStep('done')
-    } else if (session.first_half_start_ms != null) {
-      setSetupStep('2nd_half')
-    } else if (setupStep === 'none') {
-      setSetupStep('1st_half')
-    }
-  }, [session?.first_half_start_ms, session?.second_half_start_ms])
-
   // Trigger guided tour on first visit with valid session
   useEffect(() => {
     if (session && !sessionLoading && !videoTourTriggered.current) {
@@ -267,23 +326,65 @@ export default function VideoTagging() {
     }
   }, [session, sessionLoading, startVideoTour])
 
-  const handleMarkThrowIn = useCallback(async () => {
-    if (!session || !sessionId) return
-    const ms = currentTimeMs
-    if (setupStep === '1st_half') {
-      await videoSessionsAPI.setHalfStarts(sessionId, ms, undefined)
-      await refetchSession()
-      setSetupStep('2nd_half')
-    } else if (setupStep === '2nd_half') {
-      await videoSessionsAPI.setHalfStarts(sessionId, undefined, ms)
-      await refetchSession()
-      setSetupStep('done')
-    }
-  }, [session, sessionId, currentTimeMs, setupStep, refetchSession])
+  const handleMarkFirstHalf = useCallback(async () => {
+    if (!sessionId) return
+    await videoSessionsAPI.setHalfStarts(sessionId, currentTimeMs, undefined)
+    await refetchSession()
+  }, [sessionId, currentTimeMs, refetchSession])
 
-  const handleSkipSecondHalf = useCallback(async () => {
-    setSetupStep('done')
+  const handleMarkSecondHalf = useCallback(async () => {
+    if (!sessionId) return
+    await videoSessionsAPI.setHalfStarts(sessionId, undefined, currentTimeMs)
+    await refetchSession()
+  }, [sessionId, currentTimeMs, refetchSession])
+
+  const handleSkipSecondHalf = useCallback(() => setSecondHalfSkipped(true), [])
+
+  const handleMarkFullTime = useCallback(() => {
+    if (!sessionId) return
+    setFullTime.mutate({ sessionId, fullTimeMs: currentTimeMs })
+  }, [sessionId, currentTimeMs, setFullTime])
+
+  const handleSkipFullTime = useCallback(() => setFullTimeSkipped(true), [])
+
+  const handleSetDirection = useCallback(async (attackingRight: boolean) => {
+    if (!sessionId) return
+    await setAttackDirection.mutateAsync({ sessionId, attackingRightFirstHalf: attackingRight })
+    await refetchMatchData()
+  }, [sessionId, setAttackDirection, refetchMatchData])
+
+  const handleSelectThrowInWinner = useCallback((winner: 'team_a' | 'team_b') => {
+    setPossession(winner)
+    setThrowInWinnerChosen(true)
   }, [])
+
+  const handleStartTracking = useCallback(async () => {
+    if (!sessionId || !session) return
+    const throwInMs = session.first_half_start_ms ?? 0
+    // Prime the high-water mark (and its ref) synchronously, before the seek
+    // below — otherwise maxSeekMs is still its stale pre-tracking value for
+    // one render, which would clamp the throw-in seek right back to 0 (or
+    // wherever full-time was just marked, falsely triggering the full-time
+    // confirm the instant tracking starts).
+    highWaterMarkInitRef.current = true
+    setHighWaterMarkMs(throwInMs)
+    highWaterMarkRef.current = throwInMs
+    lastPersistedProgressRef.current = throwInMs
+    fullTimeConfirmShownRef.current = false
+    await startTracking.mutateAsync({ sessionId })
+    playerRef.current?.seekTo(throwInMs)
+  }, [sessionId, session, startTracking])
+
+  const handleRequestEndTracking = useCallback(() => {
+    playerRef.current?.pause()
+    setShowFullTimeConfirm(true)
+  }, [])
+
+  const handleConfirmFinishTracking = useCallback(async () => {
+    if (!sessionId) return
+    await completeTracking.mutateAsync({ sessionId })
+    setShowFullTimeConfirm(false)
+  }, [sessionId, completeTracking])
 
   /** Convert video timestamp to match minute/second/half, accounting for throw-in offsets */
   const calcMatchTime = useCallback((videoMs: number): { minute: number; second: number; half: number } => {
@@ -345,9 +446,72 @@ export default function VideoTagging() {
     return () => window.removeEventListener('keydown', handler)
   }, [overlayState, isFullscreen])
 
-  // ── Ball position sampling (every 5s while playing) ─────────────────
+  // ── Fullscreen: lock body scroll while active (Escape-to-close already
+  // handled by the keydown handler above) ─────────────────────────────
   useEffect(() => {
-    if (!isPlaying || !ballPosition) return
+    if (!isFullscreen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [isFullscreen])
+
+  // ── Tracking high-water mark: grows with playback, never regresses.
+  // Initialized once from the server-persisted value (or the throw-in
+  // point) so a refresh mid-tracking resumes the scrub lock correctly. ──
+  useEffect(() => {
+    if (highWaterMarkInitRef.current || !session || mode !== 'tracking') return
+    highWaterMarkInitRef.current = true
+    const initial = session.tracking_progress_ms ?? session.first_half_start_ms ?? 0
+    setHighWaterMarkMs(initial)
+    highWaterMarkRef.current = initial
+    lastPersistedProgressRef.current = initial
+  }, [session, mode])
+
+  useEffect(() => { highWaterMarkRef.current = highWaterMarkMs }, [highWaterMarkMs])
+
+  // Throttled server persistence of the high-water mark while tracking —
+  // survives a refresh; the interval reads a ref (not state) so it doesn't
+  // get torn down/recreated on every timeupdate tick.
+  useEffect(() => {
+    if (mode !== 'tracking' || !sessionId) return
+    const interval = setInterval(() => {
+      const current = highWaterMarkRef.current
+      if (current > lastPersistedProgressRef.current) {
+        lastPersistedProgressRef.current = current
+        updateTrackingProgress.mutate({ sessionId, progressMs: current })
+      }
+    }, 10000)
+    return () => clearInterval(interval)
+  }, [mode, sessionId, updateTrackingProgress])
+
+  // Persist immediately on pause too, so the lock is accurate even for a
+  // short tracking session that never hits the 10s interval.
+  useEffect(() => {
+    if (isPlaying || mode !== 'tracking' || !sessionId) return
+    const current = highWaterMarkRef.current
+    if (current > lastPersistedProgressRef.current) {
+      lastPersistedProgressRef.current = current
+      updateTrackingProgress.mutate({ sessionId, progressMs: current })
+    }
+  }, [isPlaying, mode, sessionId, updateTrackingProgress])
+
+  // ── Full-time reached while tracking → prompt to finish & review ────
+  // Compares against highWaterMarkMs (only grows from genuine forward
+  // playback in tracking mode), not raw currentTimeMs — currentTimeMs can
+  // still be near wherever full-time was just marked in setup for one
+  // render after "Start Match Tracking", before the throw-in seek lands.
+  useEffect(() => {
+    if (mode !== 'tracking' || session?.full_time_ms == null) return
+    if (highWaterMarkMs >= session.full_time_ms && !fullTimeConfirmShownRef.current) {
+      fullTimeConfirmShownRef.current = true
+      playerRef.current?.pause()
+      setShowFullTimeConfirm(true)
+    }
+  }, [highWaterMarkMs, mode, session?.full_time_ms])
+
+  // ── Ball position sampling (every 5s while playing AND tracking) ────
+  useEffect(() => {
+    if (!isPlaying || !ballPosition || mode !== 'tracking') return
     const interval = setInterval(() => {
       const ms = playerRef.current?.getCurrentTimeMs?.()
       const tsMs = ms ?? currentTimeMs
@@ -423,7 +587,12 @@ export default function VideoTagging() {
 
   // ── Handlers ──────────────────────────────────────────────────────────
 
-  const handleTimeUpdate = useCallback((ms: number) => setCurrentTimeMs(ms), [])
+  const handleTimeUpdate = useCallback((ms: number) => {
+    setCurrentTimeMs(ms)
+    if (mode === 'tracking') {
+      setHighWaterMarkMs(prev => (ms > prev ? ms : prev))
+    }
+  }, [mode])
   const handleDurationChange = useCallback((ms: number) => setVideoDurationMs(ms), [])
   const handleSeek = useCallback((ms: number) => playerRef.current?.seekTo(ms), [])
 
@@ -479,6 +648,15 @@ export default function VideoTagging() {
     const teamAttackingRight = currentHalf === 2 ? !attackingRightFirstHalf : attackingRightFirstHalf
     const kickingTeamAttacksRight = isHomeTeam ? teamAttackingRight : !teamAttackingRight
     return kickingTeamAttacksRight ? 66 : 34
+  }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
+
+  // Persistent attack-direction indicator — null until direction is known
+  // (i.e. until the setup flow's direction step is complete).
+  const teamAttackingRightThisHalf = useMemo<boolean | null>(() => {
+    const attackingRightFirstHalf = matchData?.attacking_right_first_half
+    if (attackingRightFirstHalf == null) return null
+    const currentHalf = calcMatchTime(currentTimeMs).half
+    return currentHalf === 2 ? !attackingRightFirstHalf : attackingRightFirstHalf
   }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
 
   const [highlight45LineX, setHighlight45LineX] = useState<number | null>(null)
@@ -552,13 +730,19 @@ export default function VideoTagging() {
     }
   }
 
-  /** Start the three-tap overlay flow: pause video → show pitch or player overlay.
-   *  Auto-populates position from minimap ball when available. */
+  /** Start the event-tap flow: pause video → show player overlay if needed.
+   *  Position always comes from the persistent tracking pitch's live ball
+   *  position — needsPitch used to trigger a separate small tap-to-confirm
+   *  overlay for this, but that pitch was the old minimap; now that ball
+   *  position is tracked continuously on the big persistent pitch, that
+   *  extra tap is redundant and has been removed. needsPitch still exists
+   *  on ActionButton (used elsewhere, e.g. the 45m/Free Won flow) but no
+   *  longer triggers its own overlay step here. */
   const handleEventTap = useCallback((pending: OverlayPendingEvent) => {
     wasPlayingRef.current = playerRef.current?.isPlaying() || false
     playerRef.current?.pause()
 
-    // Pre-populate position from minimap ball
+    // Position always comes from the live tracking-pitch ball position
     if (ballPosition) {
       pending.eventData.pitch_x = ballPosition.x
       pending.eventData.pitch_y = ballPosition.y
@@ -570,50 +754,14 @@ export default function VideoTagging() {
 
     setPendingOverlay(pending)
 
-    if (pending.action.needsPitch) {
-      setOverlayState('pitch')
-    } else if (pending.action.needsPlayer && possession === 'team_a') {
+    if (pending.action.needsPlayer && possession === 'team_a') {
       setOverlayState('player')
     } else {
-      // No pitch/player needed, or opponent event — finalize directly
+      // No player needed, or opponent event — finalize directly
       setOverlayState('none')
       setTimeout(() => finalizeEventRef.current(pending, pending.eventData), 0)
     }
   }, [ballPosition, possession])
-
-  /** Pitch location tapped → update event data with zone + precise x,y and advance */
-  const handlePitchZoneTap = useCallback((zone: PitchZone, pitchX?: number, pitchY?: number) => {
-    setSelectedZone(zone)
-
-    setPendingOverlay(prev => {
-      if (!prev) return prev
-
-      const isTwoPointer = TWO_POINTER_ZONES.includes(zone)
-      const updatedData = { ...prev.eventData, pitch_zone: zone }
-
-      // Store precise coordinates when available
-      if (pitchX != null && pitchY != null) {
-        updatedData.pitch_x = pitchX
-        updatedData.pitch_y = pitchY
-      }
-
-      if (updatedData.scoring_context && updatedData.event_type === 'POINT_SCORED') {
-        updatedData.scoring_context = { ...updatedData.scoring_context, is_two_pointer: isTwoPointer }
-      }
-
-      const updatedPending = { ...prev, eventData: updatedData }
-
-      if (prev.action.needsPlayer && possession === 'team_a') {
-        // Advance to player selection for own team only
-        setTimeout(() => setOverlayState('player'), 0)
-      } else {
-        // No player needed — finalize directly
-        setTimeout(() => finalizeEventRef.current(updatedPending, updatedData), 0)
-      }
-
-      return updatedPending
-    })
-  }, [])
 
   /** Player selected → finalize event */
   const handlePlayerSelect = useCallback((player: Player) => {
@@ -1222,6 +1370,27 @@ export default function VideoTagging() {
   const needsHalftime = session.half === null
     && session.halftime_timestamp_ms == null
     && !halftimeSkipped
+
+  // Guided setup-flow step — a single-half upload (session.half set) skips
+  // the half-time/2nd-half-throw-in steps entirely (there's no 2nd half in
+  // this video). Direction is only known once matchData has loaded.
+  const isSingleHalfUpload = session.half !== null
+  const needsSecondHalfMark = !isSingleHalfUpload && session.second_half_start_ms == null && !secondHalfSkipped
+  const needsFullTimeMark = session.full_time_ms == null && !fullTimeSkipped
+  const needsDirection = matchData?.attacking_right_first_half == null
+  const setupStep: SetupStep =
+    session.first_half_start_ms == null ? 'first_half'
+    : needsHalftime ? 'half_time'
+    : needsSecondHalfMark ? 'second_half'
+    : needsFullTimeMark ? 'full_time'
+    : needsDirection ? 'direction'
+    : !throwInWinnerChosen ? 'throw_in_winner'
+    : 'ready'
+  const setupSaving = setHalftime.isPending || setFullTime.isPending || setAttackDirection.isPending || startTracking.isPending
+  const setupError = setFullTime.error ? 'Failed to save full-time marker'
+    : setAttackDirection.error ? 'Failed to save attack direction'
+    : setHalftime.error ? 'Failed to save half-time marker'
+    : null
   const canAutoAnalyze = stableVideoUrl.current && !isAutoAnalyzing
     && !hasAiEvents
     && ['uploaded', 'draft_ready', 'error'].includes(session.status)
@@ -1283,9 +1452,43 @@ export default function VideoTagging() {
     </div>
   )
 
-  /** Action buttons row — Report, Snapshot, Sync */
+  /** Elapsed match-time clock — the furthest point tracking has reached,
+   *  not raw video position (a video can have an hour of pre-match content
+   *  before throw-in). Live while playing, held steady while paused. */
+  const trackingClock = mode === 'tracking' ? calcMatchTime(highWaterMarkMs) : null
+
+  /** Action buttons row — tracking controls (when active), Report, Snapshot, Sync */
   const actionButtons = (compact = false) => (
-    <div className="flex gap-1.5 flex-shrink-0">
+    <div className="flex items-center gap-1.5 flex-shrink-0">
+      {trackingClock && (
+        <>
+          <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs px-1.5' : 'text-sm px-2'}`}>
+            {trackingClock.minute}:{String(trackingClock.second).padStart(2, '0')}
+          </span>
+          <button
+            onClick={handleRequestEndTracking}
+            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 hover:text-red-200 font-medium transition-colors whitespace-nowrap`}
+          >
+            End Tracking
+          </button>
+        </>
+      )}
+      {!isFullscreen && (
+        <>
+          <button
+            onClick={() => statsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+          >
+            Stats
+          </button>
+          <button
+            onClick={() => chartsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+          >
+            Charts
+          </button>
+        </>
+      )}
       <button
         onClick={handleEnrich}
         disabled={isEnriching || events.length === 0}
@@ -1321,7 +1524,7 @@ export default function VideoTagging() {
   const videoArea = (
     <div
       data-tour="video-player"
-      className={`flex-1 flex min-w-0 min-h-0 ${pitchPanelMode === 'side' ? 'flex-row' : 'flex-col'}`}
+      className={`relative flex-1 flex min-w-0 min-h-0 ${pitchPanelMode === 'side' ? 'flex-row' : 'flex-col'}`}
     >
       <div className="relative flex-1 min-w-0 min-h-0 group/video">
         <VideoPlayer
@@ -1331,50 +1534,60 @@ export default function VideoTagging() {
           onDurationChange={handleDurationChange}
           onPlayStateChange={setIsPlaying}
           halftimeMs={session.halftime_timestamp_ms ?? undefined}
+          firstHalfStartMs={session.first_half_start_ms ?? undefined}
+          secondHalfStartMs={session.second_half_start_ms ?? undefined}
+          fullTimeMs={session.full_time_ms ?? undefined}
+          maxSeekMs={mode === 'tracking' ? highWaterMarkMs : undefined}
+          initialTimeMs={
+            mode === 'tracking'
+              ? Math.max(currentTimeMs, session.tracking_progress_ms ?? session.first_half_start_ms ?? 0)
+              : currentTimeMs
+          }
         />
 
-        {/* Throw-in marker setup guide — top-left, clear of play button and timeline */}
-        {needsThrowInSetup && (
+        {/* Guided setup flow — replaces the old throw-in card + separate
+            HalftimeMarker banner. Rendered inside videoArea (shared between
+            fullscreen and normal layouts) so it works in both, unlike the
+            old HalftimeMarker which was only wired into normal mode. */}
+        {mode === 'setup' && (
+          <SetupFlowModal
+            step={setupStep}
+            currentTimeMs={currentTimeMs}
+            homeTeamName={clubName}
+            opponentName={opponentName}
+            isSaving={setupSaving}
+            error={setupError}
+            onMarkFirstHalf={handleMarkFirstHalf}
+            onMarkHalftime={() => handleMarkHalftime(currentTimeMs)}
+            onSkipHalftime={handleSkipHalftime}
+            onMarkSecondHalf={handleMarkSecondHalf}
+            onSkipSecondHalf={handleSkipSecondHalf}
+            onMarkFullTime={handleMarkFullTime}
+            onSkipFullTime={handleSkipFullTime}
+            onSetDirection={handleSetDirection}
+            onSelectThrowInWinner={handleSelectThrowInWinner}
+            onStartTracking={handleStartTracking}
+          />
+        )}
+
+        {/* Resume-tracking cue — tracking mode is "started" server-side but
+            play/pause is a separate signal (see mode gating throughout this
+            file), so once the setup card is gone there'd otherwise be no
+            obvious affordance telling the user how to actually resume
+            recording, especially after leaving and coming back. Placed in
+            the same corner the setup card used (mutually exclusive with it —
+            one is 'setup' mode only, this is 'tracking' mode only) so it
+            never competes with VideoPlayer's own centre play button. */}
+        {mode === 'tracking' && !isPlaying && overlayState === 'none' && (
           <div className="absolute top-3 left-3 z-30 pointer-events-none">
-            <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-5 py-3.5 w-[340px] shadow-2xl shadow-emerald-500/10">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 text-xs font-bold">
-                  {setupStep === '1st_half' ? '1' : '2'}
-                </div>
-                <h3 className="text-sm font-bold text-white">
-                  {setupStep === '1st_half' ? 'Mark 1st Half Throw-In' : 'Mark 2nd Half Throw-In'}
-                </h3>
-                <span className="text-[10px] text-white/30 ml-auto">Step {setupStep === '1st_half' ? '1' : '2'} of 2</span>
-              </div>
-              <p className="text-xs text-white/60 mb-3">
-                {setupStep === '1st_half'
-                  ? 'Scrub the video to the exact moment the ball is thrown in to start the 1st half, then tap the button below.'
-                  : 'Now scrub to the 2nd half throw-in moment.'}
-              </p>
-              <div className="text-center mb-3">
-                <span className="text-lg font-mono text-emerald-400">
-                  {Math.floor(currentTimeMs / 60000)}:{String(Math.floor((currentTimeMs % 60000) / 1000)).padStart(2, '0')}
-                </span>
-                <span className="text-xs text-white/30 ml-2">video time</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleMarkThrowIn}
-                  className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all animate-pulse hover:animate-none"
-                  style={{ background: 'linear-gradient(135deg, #00e676, #00c853)', color: '#0a1a10' }}
-                >
-                  {setupStep === '1st_half' ? 'Mark 1st Half Start' : 'Mark 2nd Half Start'}
-                </button>
-                {setupStep === '2nd_half' && (
-                  <button
-                    onClick={handleSkipSecondHalf}
-                    className="px-4 py-2.5 rounded-xl bg-white/10 text-white/60 hover:text-white text-sm transition-colors"
-                  >
-                    Skip
-                  </button>
-                )}
-              </div>
-            </div>
+            <button
+              onClick={() => playerRef.current?.play()}
+              className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all hover:scale-105 active:scale-95 animate-pulse hover:animate-none"
+              style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+            >
+              <Play size={16} fill="#0a1a10" />
+              Resume Tracking
+            </button>
           </div>
         )}
 
@@ -1397,23 +1610,15 @@ export default function VideoTagging() {
             </button>
           </div>
         )}
-
-        {/* Pitch zone overlay (step 2 of three-tap) */}
-        {overlayState === 'pitch' && pendingOverlay && (
-          <PitchOverlay
-            eventLabel={pendingOverlay.action.label}
-            onZoneSelect={handlePitchZoneTap}
-            onCancel={cancelOverlay}
-            suggestedZone={ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined}
-          />
-        )}
       </div>
 
       {/* Ball-carrier tracking pitch — permanent panel, never overlays the
           video. 'side': vertical pitch column next to the video (landscape
           tablets, width to spare). 'below': horizontal pitch strip under
           the video (portrait tablets, height to spare). Replaces the old
-          floating BallMinimap widget. */}
+          floating BallMinimap widget. Locked until tracking mode has
+          actually started, and frozen again whenever paused — play/pause
+          only controls video playback, never conflated with tracking. */}
       <TaggingPitch
         orientation={pitchPanelMode === 'side' ? 'vertical' : 'horizontal'}
         containerClassName={
@@ -1427,9 +1632,18 @@ export default function VideoTagging() {
         onDragPath={handleTaggingDragPath}
         trail={ballTrail}
         carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
-        disabled={overlayState !== 'none'}
+        disabled={mode !== 'tracking' || !isPlaying || overlayState !== 'none'}
         highlight45LineX={highlight45LineX}
       />
+      {teamAttackingRightThisHalf != null && (
+        <div className={pitchPanelMode === 'side' ? 'absolute top-1/2 right-1.5 -translate-y-1/2 z-20' : 'absolute bottom-2 right-2 z-20'}>
+          <AttackDirectionBadge
+            attackingRight={teamAttackingRightThisHalf}
+            teamName={clubName}
+            orientation={pitchPanelMode === 'side' ? 'vertical' : 'horizontal'}
+          />
+        </div>
+      )}
     </div>
   )
 
@@ -1439,14 +1653,14 @@ export default function VideoTagging() {
     <VideoQuickActions
       possession={possession}
       onPossessionChange={setPossession}
-      selectedZone={selectedZone}
+      selectedZone={null}
       currentTimestampMs={currentTimeMs}
       half={session.half || 1}
       onEventTap={handleEventTap}
       onCreateEvent={handleDirectCreate}
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      disabled={isAutoAnalyzing || overlayState !== 'none'}
+      disabled={isAutoAnalyzing || overlayState !== 'none' || mode === 'setup'}
       teamName={clubName}
       ballPitchX={ballPosition?.x}
       ballPitchY={ballPosition?.y}
@@ -1489,7 +1703,94 @@ export default function VideoTagging() {
     </div>
   ) : null
 
+  /** Stats-so-far panel + full-time/end-tracking confirm dialog — shared
+   *  JSX so both the fullscreen and normal-mode returns below stay in sync
+   *  without duplicating the markup. */
+  /** Player picker for a newly-tagged event (scores/turnovers/kickouts/
+   *  cards) — matches live recording exactly: player circles positioned on
+   *  the pitch by formation, ranked by proximity to the ball, with the
+   *  tracked ball carrier highlighted gold as a "last carrier" suggestion
+   *  (same suggestedPlayerId hint MatchRecording.tsx's PitchPlayerSelector
+   *  gets from BallCarrierPicker). Falls back to the plain jersey-number
+   *  grid only when no lineup exists yet, same condition live recording
+   *  uses (`lineupLoaded && matchLineup.length > 0`). */
+  const newEventPlayerPicker = matchLineup && matchLineup.length > 0 ? (
+    <PitchPlayerSelector
+      isOpen={overlayState === 'player'}
+      onClose={handlePlayerSkip}
+      onSelectPlayer={handlePlayerSelect}
+      eventType={pendingOverlay?.action.playerModalEventType || 'point'}
+      team={(pendingOverlay?.eventData.team ?? possession) === 'team_a' ? 'own' : 'opponent'}
+      players={playerList}
+      matchLineup={matchLineup}
+      teamPrimaryColor={club?.primary_colour || '#10B981'}
+      teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+      attackingRight={teamAttackingRightThisHalf ?? true}
+      ballPosition={ballPosition}
+      suggestedPlayerId={activeCarrierId}
+    />
+  ) : (
+    <PlayerSelectionModal
+      isOpen={overlayState === 'player'}
+      onClose={handlePlayerSkip}
+      onSelectPlayer={handlePlayerSelect}
+      eventType={pendingOverlay?.action.playerModalEventType || 'point'}
+      team={(pendingOverlay?.eventData.team ?? possession) === 'team_a' ? 'own' : 'opponent'}
+      players={playerList}
+    />
+  )
+
+  const trackingOverlays = (
+    <>
+      {showExtraStats && (
+        <ExtendedStatsModal
+          events={chartEvents}
+          opponent={opponentName}
+          teamName={clubName}
+          halfDurationMins={matchData?.half_duration_mins || 30}
+          onClose={() => setShowExtraStats(false)}
+        />
+      )}
+      {showFullTimeConfirm && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => setShowFullTimeConfirm(false)}>
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-white mb-2">
+              {session.full_time_ms != null && currentTimeMs >= session.full_time_ms ? 'Full-Time Reached' : 'End Tracking?'}
+            </h3>
+            <p className="text-xs text-white/60 mb-4">
+              Finish tracking and switch to review mode? You'll be able to scrub freely and correct events, but
+              continuous ball tracking will stop.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleConfirmFinishTracking}
+                disabled={completeTracking.isPending}
+                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all disabled:opacity-40"
+              >
+                {completeTracking.isPending ? 'Finishing…' : 'Finish & Review'}
+              </button>
+              <button
+                onClick={() => setShowFullTimeConfirm(false)}
+                className="px-4 py-2.5 rounded-lg bg-white/10 text-white/60 hover:text-white text-sm transition-colors"
+              >
+                Keep Going
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+
   // ── Fullscreen mode ──────────────────────────────────────────────────
+  // Note: this branch and the normal-mode return below both reference the
+  // same `videoArea`/`sidebar`/`actionButtons` values, so setup-flow UI,
+  // the attack-direction badge, and tracking controls embedded inside them
+  // work identically in both layouts. The <video> element itself DOES
+  // remount when this branch toggles (React can't diff across differently
+  // shaped trees) — VideoPlayer restores scrub position on remount via
+  // `initialTimeMs`, see below, rather than avoiding the remount itself.
 
   if (isFullscreen) {
     return (
@@ -1511,13 +1812,20 @@ export default function VideoTagging() {
           {actionButtons(true)}
         </div>
 
+        {/* Status bar — right under the header, always visible without scrolling */}
+        {statusBar && (
+          <div className="flex-shrink-0 px-3 py-1.5 bg-slate-900/60 border-b border-white/5">
+            {statusBar}
+          </div>
+        )}
+
         {/* Main area: video + sidebar */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           {videoArea}
           {sidebar}
         </div>
 
-        {/* Ball carrier strip — below video, above status bar */}
+        {/* Ball carrier strip — below video */}
         {jerseyStripPlayers.length > 0 && (
           <div className="flex-shrink-0 px-2 py-0.5 bg-slate-900/80 border-t border-white/5">
             <JerseyNumberStrip
@@ -1533,13 +1841,6 @@ export default function VideoTagging() {
           </div>
         )}
 
-        {/* Status bar */}
-        {statusBar && (
-          <div className="flex-shrink-0 px-3 py-1">
-            {statusBar}
-          </div>
-        )}
-
         {/* Black card sin bin timers */}
         {blackCardTimers.length > 0 && (
           <div className="absolute top-14 right-[192px] z-30">
@@ -1547,15 +1848,9 @@ export default function VideoTagging() {
           </div>
         )}
 
-        {/* Player Selection Modal (step 3 of three-tap flow) */}
-        <PlayerSelectionModal
-          isOpen={overlayState === 'player'}
-          onClose={handlePlayerSkip}
-          onSelectPlayer={handlePlayerSelect}
-          eventType={pendingOverlay?.action.playerModalEventType || 'point'}
-          team={possession === 'team_a' ? 'own' : 'opponent'}
-          players={playerList}
-        />
+        {/* Player picker (step 3 of the tap flow) — pitch-formation circles
+            when a lineup exists, jersey-grid fallback otherwise */}
+        {newEventPlayerPicker}
 
         {/* Alert/error modal */}
         <ConfirmationModal
@@ -1587,6 +1882,8 @@ export default function VideoTagging() {
             onClose={() => setShowTacticalView(false)}
           />
         )}
+
+        {trackingOverlays}
       </div>
     )
   }
@@ -1684,16 +1981,8 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {/* Halftime marker */}
-      <HalftimeMarker
-        session={session}
-        currentTimeMs={currentTimeMs}
-        videoDurationMs={videoDurationMs}
-        onMark={handleMarkHalftime}
-        onSkip={handleSkipHalftime}
-        isSaving={setHalftime.isPending}
-        error={setHalftime.error ? (setHalftime.error as Error).message || 'Failed to save half-time marker' : null}
-      />
+      {/* ── Possession status bar — right under the header, always visible ── */}
+      {statusBar}
 
       {/* ── Video Player + Quick Actions sidebar ───────────────────────── */}
       <div className="relative bg-black rounded-lg overflow-hidden">
@@ -1708,9 +1997,6 @@ export default function VideoTagging() {
           </div>
         )}
       </div>
-
-      {/* ── Tracking status bar ──────────────────────────────────────────── */}
-      {statusBar}
 
       {/* ── Ball Carrier Strip ─────────────────────────────────────────── */}
       {jerseyStripPlayers.length > 0 && (
@@ -1737,6 +2023,8 @@ export default function VideoTagging() {
           onSeek={handleSeek}
           firstHalfStartMs={session.first_half_start_ms}
           secondHalfStartMs={session.second_half_start_ms}
+          halftimeMs={session.halftime_timestamp_ms}
+          fullTimeMs={session.full_time_ms}
         />
       </div>
 
@@ -1756,6 +2044,83 @@ export default function VideoTagging() {
         />
       </div>
 
+      {/* ── Match Statistics — scroll target for the "Stats" button ────── */}
+      <div ref={statsRef}>
+        <VideoStatsPanel
+          matchId={session.match_id}
+          chartEvents={chartEvents}
+          clubName={clubName}
+          opponentName={opponentName}
+          hasEvents={events.length > 0}
+          onOpenExtraStats={() => setShowExtraStats(true)}
+        />
+      </div>
+
+      {/* ── Insight Charts — scroll target for the "Charts" button ─────── */}
+      <div ref={chartsRef} className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ChartZoomModal title="Possession & Territory">
+            <PossessionTerritoryChart
+              stats={undefined}
+              events={chartEvents}
+              matchId={session.match_id}
+              opponent={opponentName}
+              pollInterval={20000}
+              attackingRightFirstHalf={matchData?.attacking_right_first_half}
+              halfDurationMins={matchData?.half_duration_mins || 30}
+            />
+          </ChartZoomModal>
+          <div className="[&>div]:h-full [&_.glass-card]:h-full">
+            <ChartZoomModal title="Attacking Thirds">
+              <AttackingThirdsChart
+                matchId={session.match_id}
+                opponent={opponentName}
+                events={chartEvents}
+                pollInterval={20000}
+                attackingRightFirstHalf={matchData?.attacking_right_first_half}
+                halfDurationMins={matchData?.half_duration_mins || 30}
+              />
+            </ChartZoomModal>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <ChartZoomModal title="Scoring Timeline">
+            <ScoringTimeline events={chartEvents} opponent={opponentName} teamName={clubName} />
+          </ChartZoomModal>
+          <ChartZoomModal title="Shot Outcomes">
+            <ShotOutcomeChart events={chartEvents} opponent={opponentName} />
+          </ChartZoomModal>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+          <ChartZoomModal title="Kickout Zones">
+            <MatchKickoutZones events={chartEvents} attackingRightFirstHalf={matchData?.attacking_right_first_half} teamName={clubName} opponentName={opponentName} />
+          </ChartZoomModal>
+          <ChartZoomModal title="Kickout Outcomes">
+            <MatchKickoutOutcomes events={chartEvents} teamName={clubName} opponentName={opponentName} />
+          </ChartZoomModal>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+          <ChartZoomModal title="Scoring Zone Map">
+            <ScoringZoneMap events={chartEvents} teamName={clubName || 'Us'} opponent={opponentName} />
+          </ChartZoomModal>
+          <ChartZoomModal title="Possession Battle Map">
+            <TurnoverMap events={chartEvents} teamName={clubName || 'Us'} />
+          </ChartZoomModal>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+          <ChartZoomModal title="Shooting Efficiency">
+            <ShootingEfficiencyHeatmap shots={shotLocations} />
+          </ChartZoomModal>
+          <ChartZoomModal title="Kickout Sequence">
+            <KickoutSequence events={chartEvents} teamName={clubName} opponentName={opponentName} />
+          </ChartZoomModal>
+        </div>
+        <p className="text-xs text-white/30 text-center px-4">
+          Paths Taken, Score Origins, Scoreable Frees, Attack Efficiency and Season Benchmark need this match's
+          events to be saved via "Save to Match" first — they're not shown here yet.
+        </p>
+      </div>
+
       {/* Enrichment Report */}
       {enrichmentReport && (
         <div className="glass-card p-6">
@@ -1771,15 +2136,9 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {/* Player Selection Modal (step 3 of three-tap flow) */}
-      <PlayerSelectionModal
-        isOpen={overlayState === 'player'}
-        onClose={handlePlayerSkip}
-        onSelectPlayer={handlePlayerSelect}
-        eventType={pendingOverlay?.action.playerModalEventType || 'point'}
-        team={possession === 'team_a' ? 'own' : 'opponent'}
-        players={playerList}
-      />
+      {/* Player picker (step 3 of the tap flow) — pitch-formation circles
+          when a lineup exists, jersey-grid fallback otherwise */}
+      {newEventPlayerPicker}
 
       {/* Edit-player modal — separate instance/state (editingPlayerEventId)
           from the new-event picker above, so editing an existing event's
@@ -1919,6 +2278,8 @@ export default function VideoTagging() {
           onClose={() => setShowTacticalView(false)}
         />
       )}
+
+      {trackingOverlays}
 
       {/* Second Yellow → Red Card dramatic overlay */}
       {secondYellowFlash && (

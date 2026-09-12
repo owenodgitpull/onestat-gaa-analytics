@@ -137,6 +137,69 @@ export function useSetHalftime() {
   });
 }
 
+/** Set the full-time whistle/hooter timestamp. */
+export function useSetFullTime() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId, fullTimeMs }: { sessionId: string; fullTimeMs: number }) =>
+      videoSessionsAPI.setFullTime(sessionId, fullTimeMs),
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<VideoSession>(videoSessionKeys.detail(variables.sessionId), data);
+    },
+  });
+}
+
+/** Set which way the home team attacks in the 1st half. */
+export function useSetAttackDirection() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId, attackingRightFirstHalf }: { sessionId: string; attackingRightFirstHalf: boolean }) =>
+      videoSessionsAPI.setAttackDirection(sessionId, attackingRightFirstHalf),
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<VideoSession>(videoSessionKeys.detail(variables.sessionId), data);
+    },
+  });
+}
+
+/** Begin match tracking mode. */
+export function useStartTracking() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) => videoSessionsAPI.startTracking(sessionId),
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<VideoSession>(videoSessionKeys.detail(variables.sessionId), data);
+    },
+  });
+}
+
+/** Throttled high-water-mark update while tracking is in progress. */
+export function useUpdateTrackingProgress() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId, progressMs }: { sessionId: string; progressMs: number }) =>
+      videoSessionsAPI.updateTrackingProgress(sessionId, progressMs),
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<VideoSession>(videoSessionKeys.detail(variables.sessionId), data);
+    },
+  });
+}
+
+/** End tracking mode and move into edit/review mode. */
+export function useCompleteTracking() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) => videoSessionsAPI.completeTracking(sessionId),
+    onSuccess: (data, variables) => {
+      queryClient.setQueryData<VideoSession>(videoSessionKeys.detail(variables.sessionId), data);
+    },
+  });
+}
+
 /** Run LLM enrichment. */
 export function useEnrichVideoSession() {
   return useMutation({
