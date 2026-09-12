@@ -72,6 +72,12 @@ export interface VideoEvent {
   pitch_y: number | null;
   player_id: string | null;
   player_name: string | null;
+  // SUBSTITUTION only: player_id = who came off, sub_in_player_id = who came on.
+  sub_in_player_id: string | null;
+  sub_in_player_name: string | null;
+  // Scoring events only.
+  assist_player_id: string | null;
+  assist_player_name: string | null;
   jersey_number: number | null;
   player_confidence: string | null;
   event_confidence: string | null;
@@ -100,6 +106,10 @@ export interface VideoEventCreateData {
   pitch_x?: number;
   pitch_y?: number;
   player_id?: string;
+  // SUBSTITUTION only: player_id = who came off, sub_in_player_id = who came on.
+  sub_in_player_id?: string;
+  // Scoring events only.
+  assist_player_id?: string;
   jersey_number?: number;
   player_confidence?: string;
   event_confidence?: string;
@@ -124,6 +134,8 @@ export interface VideoEventUpdateData {
   // Nullable — editing an event's team to the opponent clears any player
   // attribution outright (opponent events never carry one of our players).
   player_id?: string | null;
+  sub_in_player_id?: string | null;
+  assist_player_id?: string | null;
   jersey_number?: number;
   scoring_context?: ScoringContext;
   kickout_context?: KickoutContext;

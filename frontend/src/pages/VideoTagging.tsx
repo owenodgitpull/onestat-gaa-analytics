@@ -49,11 +49,13 @@ import VideoEventLog from '../components/video/VideoEventLog'
 import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
 import PitchPlayerSelector from '../components/PitchPlayerSelector'
+import WeatherPickerPopover from '../components/WeatherPickerPopover'
 import SyncPreviewModal from '../components/video/SyncPreviewModal'
 import ConfirmationModal from '../components/ConfirmationModal'
 import SetupFlowModal, { type SetupStep } from '../components/video/SetupFlowModal'
 import AttackDirectionBadge from '../components/video/AttackDirectionBadge'
 import VideoStatsPanel from '../components/video/VideoStatsPanel'
+import VideoManualEventModal from '../components/video/VideoManualEventModal'
 import ExtendedStatsModal from '../components/ExtendedStatsModal'
 import ChartZoomModal from '../components/ChartZoomModal'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
@@ -209,6 +211,24 @@ export default function VideoTagging() {
   const chartsRef = useRef<HTMLDivElement>(null)
   const [showExtraStats, setShowExtraStats] = useState(false)
 
+  // View Lineup (read-only) + Weather picker — both trivial ports since
+  // PitchPlayerSelector already has a readOnly mode and WeatherPickerPopover
+  // is already the shared component live recording uses.
+  const [showViewLineup, setShowViewLineup] = useState(false)
+  const [showWeatherPicker, setShowWeatherPicker] = useState(false)
+  const [weatherOverride, setWeatherOverride] = useState<{ conditions: string[]; temp: number | null; notes: string | null } | null>(null)
+
+  // Manual event entry (incl. substitution) — deliberately does NOT call
+  // api.matchLineups.updateFieldStatus (would mutate the match's live/
+  // canonical lineup from what might be a retrospective review session).
+  // On-field/bench state for the picker's own purposes lives here, seeded
+  // from matchLineup and updated in-memory as subs are logged this session.
+  const [showManualEvent, setShowManualEvent] = useState(false)
+  const [subOverrides, setSubOverrides] = useState<Record<string, boolean>>({})
+
+  // Assist prompt — auto-opened after an own-team score finalizes.
+  const [assistPromptEventId, setAssistPromptEventId] = useState<string | null>(null)
+
   // Black card sin bin timers
   const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
 
@@ -352,6 +372,22 @@ export default function VideoTagging() {
     await setAttackDirection.mutateAsync({ sessionId, attackingRightFirstHalf: attackingRight })
     await refetchMatchData()
   }, [sessionId, setAttackDirection, refetchMatchData])
+
+  const handleWeatherSave = useCallback(async (conditions: string[], temp: number | null, notes: string | null) => {
+    setWeatherOverride({ conditions, temp, notes })
+    if (!session?.match_id) return
+    try {
+      await api.matches.update(session.match_id, {
+        weather_conditions: conditions,
+        temperature_celsius: temp,
+        notes,
+      } as any)
+      await refetchMatchData()
+      setWeatherOverride(null)
+    } catch (err) {
+      console.error('Failed to update weather:', err)
+    }
+  }, [session?.match_id, refetchMatchData])
 
   const handleSelectThrowInWinner = useCallback((winner: 'team_a' | 'team_b') => {
     setPossession(winner)
@@ -809,6 +845,58 @@ export default function VideoTagging() {
     }
   }, [sessionId, createEvent])
 
+  /** Manual event entry modal submit — mirrors live recording's
+   *  ManualEventEntryModal, but minute/half always derive from the current
+   *  scrub position (calcMatchTime) rather than free-typed inputs, since
+   *  scrubbing to the right moment before opening the modal already does
+   *  that job for video. Substitution updates the in-memory on-field
+   *  override rather than the match's live lineup (see subOverrides). */
+  const handleManualEventSubmit = useCallback((payload: {
+    eventType: string
+    team: 'team_a' | 'team_b'
+    playerId: string | null
+    subInPlayerId?: string | null
+    scoringContext?: Record<string, unknown>
+  }) => {
+    if (!sessionId) return
+    const matchTime = calcMatchTime(currentTimeMs)
+    const data: VideoEventCreateData = {
+      event_type: payload.eventType,
+      team: payload.team,
+      half: matchTime.half,
+      match_minute: matchTime.minute,
+      match_second: matchTime.second,
+      video_timestamp_ms: currentTimeMs,
+      player_id: payload.playerId ?? undefined,
+      sub_in_player_id: payload.subInPlayerId ?? undefined,
+      scoring_context: payload.scoringContext as any,
+      source: 'human_tag',
+    }
+    if (ballPosition) {
+      data.pitch_x = ballPosition.x
+      data.pitch_y = ballPosition.y
+      data.pitch_zone = xyToZone(ballPosition.x, ballPosition.y)
+    }
+
+    createEvent.mutate({ sessionId, data }, {
+      onSuccess: (created: any) => {
+        const isOwnScore = payload.team === 'team_a' &&
+          (payload.eventType === 'GOAL_SCORED' ||
+            (payload.eventType === 'POINT_SCORED') ||
+            (payload.eventType === 'FREE_KICK' && payload.scoringContext?.scored))
+        if (isOwnScore && created?.id) {
+          setAssistPromptEventId(created.id)
+        }
+      },
+    })
+    onCarrierTerminalEvent(payload.eventType)
+    setAiDismissed(true)
+
+    if (payload.eventType === 'SUB_ON' && payload.playerId && payload.subInPlayerId) {
+      setSubOverrides(prev => ({ ...prev, [payload.playerId!]: false, [payload.subInPlayerId!]: true }))
+    }
+  }, [sessionId, createEvent, calcMatchTime, currentTimeMs, ballPosition])
+
   const handleDeleteEvent = useCallback((eventId: string) => {
     if (!sessionId) return
     deleteEvent.mutate({ eventId, sessionId })
@@ -1131,6 +1219,17 @@ export default function VideoTagging() {
       }
     })
   }, [matchLineup, players])
+
+  // On-field roster for the manual-event/substitution modal — real lineup
+  // is_on_field, overridden in-memory by any subs logged this session.
+  const onFieldPlayerIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const entry of matchLineup || []) {
+      const isOn = subOverrides[entry.player_id] ?? entry.is_on_field ?? true
+      if (isOn) ids.add(entry.player_id)
+    }
+    return ids
+  }, [matchLineup, subOverrides])
 
   // ── Ball carrier segment management (direct API, no offline layer) ───
 
@@ -1457,13 +1556,27 @@ export default function VideoTagging() {
    *  before throw-in). Live while playing, held steady while paused. */
   const trackingClock = mode === 'tracking' ? calcMatchTime(highWaterMarkMs) : null
 
+  /** "35 (+2:00)" once a half runs past its normal duration — matches live
+   *  recording's injury-time clock format. */
+  const formatTrackingClock = (clock: { minute: number; second: number; half: number }): string => {
+    const hdm = matchData?.half_duration_mins ?? 30
+    const normalMinute = clock.half === 2 ? hdm * 2 : hdm
+    if (clock.minute <= normalMinute) {
+      return `${clock.minute}:${String(clock.second).padStart(2, '0')}`
+    }
+    const injuryTotalSec = (clock.minute - normalMinute) * 60 + clock.second
+    const injuryMin = Math.floor(injuryTotalSec / 60)
+    const injurySec = injuryTotalSec % 60
+    return `${normalMinute} (+${injuryMin}:${String(injurySec).padStart(2, '0')})`
+  }
+
   /** Action buttons row — tracking controls (when active), Report, Snapshot, Sync */
   const actionButtons = (compact = false) => (
     <div className="flex items-center gap-1.5 flex-shrink-0">
       {trackingClock && (
         <>
           <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs px-1.5' : 'text-sm px-2'}`}>
-            {trackingClock.minute}:{String(trackingClock.second).padStart(2, '0')}
+            {formatTrackingClock(trackingClock)}
           </span>
           <button
             onClick={handleRequestEndTracking}
@@ -1486,6 +1599,24 @@ export default function VideoTagging() {
             className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
           >
             Charts
+          </button>
+          <button
+            onClick={() => setShowViewLineup(true)}
+            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+          >
+            Lineup
+          </button>
+          <button
+            onClick={() => setShowWeatherPicker(true)}
+            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+          >
+            Weather
+          </button>
+          <button
+            onClick={() => setShowManualEvent(true)}
+            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+          >
+            + Event / Sub
           </button>
         </>
       )}
@@ -1543,6 +1674,7 @@ export default function VideoTagging() {
               ? Math.max(currentTimeMs, session.tracking_progress_ms ?? session.first_half_start_ms ?? 0)
               : currentTimeMs
           }
+          fillHeight={isFullscreen}
         />
 
         {/* Guided setup flow — replaces the old throw-in card + separate
@@ -1749,6 +1881,69 @@ export default function VideoTagging() {
           teamName={clubName}
           halfDurationMins={matchData?.half_duration_mins || 30}
           onClose={() => setShowExtraStats(false)}
+        />
+      )}
+      {showViewLineup && matchLineup && matchLineup.length > 0 && (
+        <PitchPlayerSelector
+          isOpen={showViewLineup}
+          onClose={() => setShowViewLineup(false)}
+          onSelectPlayer={() => {}}
+          eventType="point"
+          team="own"
+          players={playerList}
+          matchLineup={matchLineup}
+          teamPrimaryColor={club?.primary_colour || '#10B981'}
+          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+          attackingRight={teamAttackingRightThisHalf ?? true}
+          readOnly={true}
+        />
+      )}
+      {showWeatherPicker && (
+        <WeatherPickerPopover
+          isOpen={showWeatherPicker}
+          onClose={() => setShowWeatherPicker(false)}
+          onSave={handleWeatherSave}
+          currentConditions={
+            weatherOverride
+              ? weatherOverride.conditions
+              : (matchData?.weather_conditions ?? (matchData?.weather_condition ? [matchData.weather_condition] : []))
+          }
+          currentTemperature={weatherOverride ? weatherOverride.temp : (matchData?.temperature_celsius ?? null)}
+          currentNotes={weatherOverride ? weatherOverride.notes : (matchData?.notes ?? null)}
+        />
+      )}
+      {showManualEvent && (
+        <VideoManualEventModal
+          isOpen={showManualEvent}
+          onClose={() => setShowManualEvent(false)}
+          onSubmit={handleManualEventSubmit}
+          players={playerList}
+          matchLineup={matchLineup || []}
+          onFieldPlayerIds={onFieldPlayerIds}
+          opponentName={opponentName}
+          clubName={clubName}
+          currentMinute={calcMatchTime(currentTimeMs).minute}
+          currentHalf={calcMatchTime(currentTimeMs).half as 1 | 2}
+        />
+      )}
+      {assistPromptEventId && matchLineup && matchLineup.length > 0 && (
+        <PitchPlayerSelector
+          isOpen={!!assistPromptEventId}
+          onClose={() => setAssistPromptEventId(null)}
+          onSelectPlayer={(player) => {
+            if (sessionId && assistPromptEventId) {
+              updateEvent.mutate({ eventId: assistPromptEventId, sessionId, data: { assist_player_id: player.id } })
+            }
+            setAssistPromptEventId(null)
+          }}
+          eventType="assist"
+          team="own"
+          players={playerList}
+          matchLineup={matchLineup}
+          teamPrimaryColor={club?.primary_colour || '#10B981'}
+          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+          attackingRight={teamAttackingRightThisHalf ?? true}
+          ballPosition={ballPosition}
         />
       )}
       {showFullTimeConfirm && (

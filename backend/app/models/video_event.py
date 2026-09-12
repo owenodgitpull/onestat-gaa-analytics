@@ -26,7 +26,7 @@ VIDEO_EVENT_TYPES = [
     "BALL_WON", "TACKLE", "BLOCK_SHOT", "BLOCK_PASS",
     "INTERCEPTION", "HOOK", "SPOIL",
     "TURNOVER_WON", "TURNOVER_LOST",
-    "FREE_KICK", "FORTY_FIVE", "SIDELINE_KICK", "PENALTY", "THROW_IN",
+    "FREE_KICK", "FORTY_FIVE", "SIDELINE_KICK", "SIDELINE_BALL", "PENALTY", "THROW_IN",
     "YELLOW_CARD", "RED_CARD", "BLACK_CARD",
     "SUB_ON", "SUB_OFF",
     "HALF_TIME", "FULL_TIME", "INJURY_STOPPAGE", "WATER_BREAK",
@@ -99,6 +99,12 @@ class VideoEvent(Base):
 
     # Player attribution
     player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)
+    # SUBSTITUTION only: player_id = who came off, sub_in_player_id = who
+    # came on — mirrors MatchEvent.sub_in_player_id (added for the same
+    # reason: computing accurate playing_minutes needs both identities).
+    sub_in_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True)
+    # Scoring events only — mirrors MatchEvent.assist_player_id.
+    assist_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True)
     jersey_number: Column[Optional[int]] = Column(Integer, nullable=True)
     player_confidence: Column[Optional[str]] = Column(String(10), nullable=True)  # HIGH/MEDIUM/LOW
     event_confidence: Column[Optional[str]] = Column(String(10), nullable=True)   # HIGH/MEDIUM/LOW
@@ -131,6 +137,8 @@ class VideoEvent(Base):
     video_session = relationship("VideoSession", back_populates="events")
     match = relationship("Match")
     player = relationship("Player", foreign_keys=[player_id], lazy="selectin")
+    sub_in_player = relationship("Player", foreign_keys=[sub_in_player_id], lazy="selectin")
+    assist_player = relationship("Player", foreign_keys=[assist_player_id], lazy="selectin")
     possession_chain = relationship("PossessionChain", back_populates="events")
 
     def __repr__(self):

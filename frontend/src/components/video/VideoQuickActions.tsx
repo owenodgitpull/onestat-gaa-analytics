@@ -16,7 +16,7 @@ import {
 import type { PitchZone } from './PitchZoneSelector'
 import { TWO_POINTER_ZONES, xyToZone } from './PitchZoneSelector'
 import type { VideoEventCreateData } from '../../services/videoApi'
-import { TURNOVER_REASON_CONFIG, UNFORCED_ERROR_SUBTYPES, type TurnoverReason, type SubtypeOption } from '../../constants/turnoverSubtypes'
+import { TURNOVER_REASON_CONFIG, type TurnoverReason } from '../../constants/turnoverSubtypes'
 
 export type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
 
@@ -158,8 +158,11 @@ export default function VideoQuickActions({
   // no separate FOUL_COMMITTED event type, so "Offensive Foul" is tagged as
   // TURNOVER_LOST with a distinguishing subtype rather than replicating
   // live recording's foul-committed + free-kick-conceded flow.
-  const [showTurnoverReasonPanel, setShowTurnoverReasonPanel] = useState(false)
-  const [turnoverSubtypePanel, setTurnoverSubtypePanel] = useState<{ videoEventType: string; subtypeOptions: SubtypeOption[] } | null>(null)
+  // ONE panel, two internal steps (selectedReason null = reason list, set =
+  // that reason's subtype list) — mirrors live recording's merged
+  // pendingTurnoverReason/pendingSubType fix (previously two separate
+  // screens in a row, which read as "asking the same question twice").
+  const [turnoverPanel, setTurnoverPanel] = useState<{ selectedReason: TurnoverReason | null } | null>(null)
 
   const isUs = possession === 'team_a'
 
@@ -233,7 +236,7 @@ export default function VideoQuickActions({
     // micro turnover framework.
     if (action.id === 'to_lost') {
       setFlashButton(action.id)
-      setShowTurnoverReasonPanel(true)
+      setTurnoverPanel({ selectedReason: null })
       return
     }
 
@@ -242,7 +245,7 @@ export default function VideoQuickActions({
     // flow), so it skips straight to the unforced-error subtype panel.
     if (action.id === 'our_error') {
       setFlashButton(action.id)
-      setTurnoverSubtypePanel({ videoEventType: 'OUR_UNFORCED_ERROR', subtypeOptions: UNFORCED_ERROR_SUBTYPES })
+      setTurnoverPanel({ selectedReason: 'unforced' })
       return
     }
 
@@ -338,16 +341,18 @@ export default function VideoQuickActions({
   }, [disabled, buildEventData, onEventTap, onCreateEvent, onPossessionChange, onTabChange, onFortyFivePanelToggle])
 
   const handleTurnoverReasonTap = useCallback((reason: TurnoverReason) => {
-    setShowTurnoverReasonPanel(false)
-    const { eventType, subtypeOptions } = TURNOVER_REASON_CONFIG[reason]
-    const videoEventType = eventType === 'unforced_error' ? 'OUR_UNFORCED_ERROR' : 'TURNOVER_LOST'
-    setTurnoverSubtypePanel({ videoEventType, subtypeOptions })
+    setTurnoverPanel({ selectedReason: reason })
   }, [])
 
-  const handleTurnoverSubtypeTap = useCallback((subtype: string) => {
-    if (!turnoverSubtypePanel) return
-    const { videoEventType } = turnoverSubtypePanel
-    setTurnoverSubtypePanel(null)
+  const handleTurnoverReasonBack = useCallback(() => {
+    setTurnoverPanel({ selectedReason: null })
+  }, [])
+
+  const handleTurnoverSubtypeTap = useCallback((subtype?: string) => {
+    if (!turnoverPanel?.selectedReason) return
+    const { eventType } = TURNOVER_REASON_CONFIG[turnoverPanel.selectedReason]
+    const videoEventType = eventType === 'unforced_error' ? 'OUR_UNFORCED_ERROR' : 'TURNOVER_LOST'
+    setTurnoverPanel(null)
     const action: ActionButton = {
       id: videoEventType === 'OUR_UNFORCED_ERROR' ? 'our_error' : 'to_lost',
       label: videoEventType === 'OUR_UNFORCED_ERROR' ? 'Our Error' : 'T/O Lost',
@@ -359,10 +364,10 @@ export default function VideoQuickActions({
       playerModalEventType: 'turnover_lost',
     }
     const eventData = buildEventData(action)
-    eventData.sub_type = subtype
+    if (subtype) eventData.sub_type = subtype
     setFlashButton(action.id)
     onEventTap({ action, eventData })
-  }, [turnoverSubtypePanel, buildEventData, onEventTap])
+  }, [turnoverPanel, buildEventData, onEventTap])
 
   const isButtonDisabled = (action: ActionButton): boolean => {
     if (disabled) return true
@@ -437,7 +442,7 @@ export default function VideoQuickActions({
         {CATEGORY_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false); setShowTurnoverReasonPanel(false); setTurnoverSubtypePanel(null) }}
+            onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false); setTurnoverPanel(null) }}
             className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all ${
               activeTab === id
                 ? 'text-emerald-400 bg-emerald-500/10 border-b-2 border-emerald-400'
@@ -531,53 +536,62 @@ export default function VideoQuickActions({
               Back
             </button>
           </>
-        ) : showTurnoverReasonPanel ? (
+        ) : turnoverPanel ? (
           <>
             <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
-              Turnover Reason
+              {turnoverPanel.selectedReason ? 'Turnover Subtype' : 'Turnover Reason'}
             </div>
-            {(Object.keys(TURNOVER_REASON_CONFIG) as TurnoverReason[]).map((reason) => (
-              <button
-                key={reason}
-                onClick={() => handleTurnoverReasonTap(reason)}
-                disabled={disabled}
-                className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 disabled:opacity-30 disabled:cursor-not-allowed"
-                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
-              >
-                {TURNOVER_REASON_CONFIG[reason].label}
-              </button>
-            ))}
-            <button
-              onClick={() => setShowTurnoverReasonPanel(false)}
-              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
-            >
-              <ChevronLeft size={12} />
-              Back
-            </button>
-          </>
-        ) : turnoverSubtypePanel ? (
-          <>
-            <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
-              Reason / Subtype
-            </div>
-            {turnoverSubtypePanel.subtypeOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => handleTurnoverSubtypeTap(opt.value)}
-                disabled={disabled}
-                className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 disabled:opacity-30 disabled:cursor-not-allowed"
-                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
-              >
-                {opt.label}
-              </button>
-            ))}
-            <button
-              onClick={() => setTurnoverSubtypePanel(null)}
-              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
-            >
-              <ChevronLeft size={12} />
-              Back
-            </button>
+            {!turnoverPanel.selectedReason ? (
+              <>
+                {(Object.keys(TURNOVER_REASON_CONFIG) as TurnoverReason[]).map((reason) => (
+                  <button
+                    key={reason}
+                    onClick={() => handleTurnoverReasonTap(reason)}
+                    disabled={disabled}
+                    className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 disabled:opacity-30 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
+                  >
+                    {TURNOVER_REASON_CONFIG[reason].label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setTurnoverPanel(null)}
+                  className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
+                >
+                  <ChevronLeft size={12} />
+                  Back
+                </button>
+              </>
+            ) : (
+              <>
+                {TURNOVER_REASON_CONFIG[turnoverPanel.selectedReason].subtypeOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handleTurnoverSubtypeTap(opt.value)}
+                    disabled={disabled}
+                    className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 disabled:opacity-30 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={handleTurnoverReasonBack}
+                    className="flex-1 py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
+                  >
+                    <ChevronLeft size={12} />
+                    Back
+                  </button>
+                  <button
+                    onClick={() => handleTurnoverSubtypeTap(undefined)}
+                    className="flex-1 py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 transition-all"
+                  >
+                    Skip
+                  </button>
+                </div>
+              </>
+            )}
           </>
         ) : (
           actions.map((action) => {

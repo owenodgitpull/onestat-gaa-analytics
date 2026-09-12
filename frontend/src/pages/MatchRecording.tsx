@@ -267,15 +267,19 @@ export default function MatchRecording() {
     position: BallPosition
   } | null>(null)
 
-  // "T/O Lost" reason picker — shown before the sub-type list, so a turnover
-  // gets classified as one of the three real reasons (active dispossession /
-  // unforced error / offensive foul) up front rather than always landing as
-  // a bare, undifferentiated TURNOVER_LOST.
+  // "T/O Lost" reason + sub-type picker — ONE modal, two internal steps
+  // (selectedReason starts null showing the 3 reason buttons; once picked,
+  // the same modal's content swaps to that reason's sub-type chips). This
+  // used to be two separate full-screen modals in a row (pendingTurnoverReason
+  // then pendingSubType) — functionally two taps either way, but rendered as
+  // two distinct dialogs back-to-back read as "asking the same question
+  // twice." Merged into one persistent modal shell instead.
   const [pendingTurnoverReason, setPendingTurnoverReason] = useState<{
     player?: Player
     capturedMinute: number
     capturedHalf: number
     position: BallPosition
+    selectedReason: TurnoverReason | null
   } | null>(null)
 
   // Guided tour (basic driver.js)
@@ -2320,11 +2324,52 @@ export default function MatchRecording() {
   // (it concedes a free, same as any other foul — foulMode:true gets it
   // the same post-record free-kick handling).
   const handleTurnoverReasonSelected = (reason: TurnoverReason) => {
-    if (!pendingTurnoverReason) return
-    const { player, capturedMinute, capturedHalf, position } = pendingTurnoverReason
+    setPendingTurnoverReason(prev => prev ? { ...prev, selectedReason: reason } : prev)
+  }
+
+  // Back up from the sub-type step to the reason step, same modal.
+  const handleTurnoverReasonBack = () => {
+    setPendingTurnoverReason(prev => prev ? { ...prev, selectedReason: null } : prev)
+  }
+
+  // Finalize the merged reason+sub-type flow — same recording logic
+  // handleSubTypeSelected uses for its own (unrelated) entry points below.
+  const handleTurnoverSubtypeFinalize = async (subType?: string) => {
+    if (!pendingTurnoverReason || !pendingTurnoverReason.selectedReason || !matchId) {
+      setPendingTurnoverReason(null)
+      return
+    }
+    const { player, capturedMinute, capturedHalf, position, selectedReason } = pendingTurnoverReason
+    const { eventType, foulMode } = TURNOVER_REASON_CONFIG[selectedReason]
     setPendingTurnoverReason(null)
-    const { eventType, foulMode, subtypeOptions } = TURNOVER_REASON_CONFIG[reason]
-    setPendingSubType({ player, capturedMinute, capturedHalf, position, eventType, foulMode, subtypeOptions })
+    const resolvedSubType = foulMode && tacticalFoul ? 'tactical' : subType
+    if (foulMode) setTacticalFoul(false)
+
+    try {
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        player_id: player?.id,
+        event_type: eventType,
+        minute: capturedMinute,
+        half: capturedHalf,
+        x_coord: position.x,
+        y_coord: position.y,
+        is_home_team: true,
+        sub_type: resolvedSubType,
+      })
+      setLastEventType(eventType)
+      await invalidateStats()
+
+      if (foulMode) {
+        await playerMovement.endSegment(position.x, position.y, 'foul')
+        setPendingFreeKick({ position, player })
+        setBallPosition(prev => ({ ...prev, team: PossessionTeam.OPPONENT }))
+      } else {
+        setBallPosition({ x: position.x, y: position.y, team: PossessionTeam.OPPONENT })
+      }
+    } catch {
+      setErrorAlert('Failed to record event. Please try again.')
+    }
   }
 
   const handleSubTypeSelected = async (subType?: string) => {
@@ -3246,6 +3291,7 @@ export default function MatchRecording() {
         capturedMinute,
         capturedHalf,
         position: event.position,
+        selectedReason: null,
       })
       return
     }
@@ -5278,45 +5324,93 @@ export default function MatchRecording() {
         }
       `}</style>
 
-      {/* "T/O Lost" reason picker — WHY the ball was lost, before any event
-          is recorded. Determines both the final event_type and which
-          sub-type list appears next. */}
+      {/* "T/O Lost" reason + sub-type — ONE modal shell, content swaps
+          internally once a reason is picked (see state comment above). */}
       {pendingTurnoverReason && (
         <div className="fixed inset-0 z-[180] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-5">
-            <p className="text-sm font-bold text-white mb-1">How was it lost?</p>
-            <p className="text-xs text-white/40 mb-4">
-              {pendingTurnoverReason.player?.name ?? 'Player'} — pick the reason
-            </p>
-            <div className="flex flex-col gap-2 mb-4">
-              <button
-                onClick={() => handleTurnoverReasonSelected('dispossession')}
-                className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-red-600/25 border border-white/10 hover:border-red-500/40 text-left transition-all"
-              >
-                <span className="block text-sm font-semibold text-white">Active Dispossession</span>
-                <span className="block text-xs text-white/40">They won it — strip, tackle, forced interception</span>
-              </button>
-              <button
-                onClick={() => handleTurnoverReasonSelected('unforced')}
-                className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-amber-600/25 border border-white/10 hover:border-amber-500/40 text-left transition-all"
-              >
-                <span className="block text-sm font-semibold text-white">Unforced Error</span>
-                <span className="block text-xs text-white/40">We gave it away — stray pass, dropped ball, miscue</span>
-              </button>
-              <button
-                onClick={() => handleTurnoverReasonSelected('offensive_foul')}
-                className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-orange-600/25 border border-white/10 hover:border-orange-500/40 text-left transition-all"
-              >
-                <span className="block text-sm font-semibold text-white">Offensive Foul</span>
-                <span className="block text-xs text-white/40">Overcarrying, picked off the ground — concedes a free</span>
-              </button>
-            </div>
-            <button
-              onClick={() => setPendingTurnoverReason(null)}
-              className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
-            >
-              Cancel
-            </button>
+            {!pendingTurnoverReason.selectedReason ? (
+              <>
+                <p className="text-sm font-bold text-white mb-1">How was it lost?</p>
+                <p className="text-xs text-white/40 mb-4">
+                  {pendingTurnoverReason.player?.name ?? 'Player'} — pick the reason
+                </p>
+                <div className="flex flex-col gap-2 mb-4">
+                  <button
+                    onClick={() => handleTurnoverReasonSelected('dispossession')}
+                    className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-red-600/25 border border-white/10 hover:border-red-500/40 text-left transition-all"
+                  >
+                    <span className="block text-sm font-semibold text-white">Active Dispossession</span>
+                    <span className="block text-xs text-white/40">They won it — strip, tackle, forced interception</span>
+                  </button>
+                  <button
+                    onClick={() => handleTurnoverReasonSelected('unforced')}
+                    className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-amber-600/25 border border-white/10 hover:border-amber-500/40 text-left transition-all"
+                  >
+                    <span className="block text-sm font-semibold text-white">Unforced Error</span>
+                    <span className="block text-xs text-white/40">We gave it away — stray pass, dropped ball, miscue</span>
+                  </button>
+                  <button
+                    onClick={() => handleTurnoverReasonSelected('offensive_foul')}
+                    className="px-3 py-2.5 rounded-xl bg-white/10 hover:bg-orange-600/25 border border-white/10 hover:border-orange-500/40 text-left transition-all"
+                  >
+                    <span className="block text-sm font-semibold text-white">Offensive Foul</span>
+                    <span className="block text-xs text-white/40">Overcarrying, picked off the ground — concedes a free</span>
+                  </button>
+                </div>
+                <button
+                  onClick={() => setPendingTurnoverReason(null)}
+                  className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (() => {
+              const { eventType, foulMode, subtypeOptions } = TURNOVER_REASON_CONFIG[pendingTurnoverReason.selectedReason]
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm font-bold text-white">
+                      {eventType === 'turnover_lost' ? 'What type of dispossession?' : foulMode ? 'What type of foul?' : 'What type of error?'}
+                    </p>
+                    {foulMode && (
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" checked={tacticalFoul} onChange={e => setTacticalFoul(e.target.checked)} className="w-4 h-4 rounded" />
+                        <span className="text-xs text-white/70">Tactical</span>
+                      </label>
+                    )}
+                  </div>
+                  <p className="text-xs text-white/40 mb-4">
+                    {pendingTurnoverReason.player?.name ?? 'Player'} — tap to categorise or skip
+                  </p>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {subtypeOptions.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => handleTurnoverSubtypeFinalize(value)}
+                        className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-emerald-600/30 border border-white/10 hover:border-emerald-500/40 text-white/80 hover:text-white text-xs font-medium transition-all"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleTurnoverReasonBack}
+                      className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={() => handleTurnoverSubtypeFinalize(undefined)}
+                      className="flex-1 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+                    >
+                      Skip categorisation
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
           </div>
         </div>
       )}

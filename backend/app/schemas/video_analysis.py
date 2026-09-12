@@ -157,6 +157,10 @@ class VideoEventCreateRequest(BaseModel):
     pitch_x: Optional[float] = None
     pitch_y: Optional[float] = None
     player_id: Optional[UUID] = None
+    # SUBSTITUTION only: player_id = who came off, sub_in_player_id = who came on.
+    sub_in_player_id: Optional[UUID] = None
+    # Scoring events only.
+    assist_player_id: Optional[UUID] = None
     jersey_number: Optional[int] = None
     player_confidence: Optional[str] = None
     event_confidence: Optional[str] = None
@@ -192,6 +196,8 @@ class VideoEventUpdateRequest(BaseModel):
     pitch_x: Optional[float] = None
     pitch_y: Optional[float] = None
     player_id: Optional[UUID] = None
+    sub_in_player_id: Optional[UUID] = None
+    assist_player_id: Optional[UUID] = None
     jersey_number: Optional[int] = None
     player_confidence: Optional[str] = None
     event_confidence: Optional[str] = None
@@ -230,6 +236,10 @@ class VideoEventResponse(BaseModel):
     pitch_y: Optional[float]
     player_id: Optional[UUID]
     player_name: Optional[str] = None
+    sub_in_player_id: Optional[UUID] = None
+    sub_in_player_name: Optional[str] = None
+    assist_player_id: Optional[UUID] = None
+    assist_player_name: Optional[str] = None
     jersey_number: Optional[int]
     player_confidence: Optional[str]
     event_confidence: Optional[str]

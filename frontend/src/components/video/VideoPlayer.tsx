@@ -43,12 +43,21 @@ interface VideoPlayerProps {
    * loses scrub position. Ignored on ordinary playback (only consulted
    * once per mount). */
   initialTimeMs?: number
+  /** True only in fullscreen mode. The video box normally sizes itself via
+   * `aspect-video` (height derived from width) — harmless on a scrollable
+   * page, but fullscreen sits in a fixed-height flex column with
+   * `overflow-hidden`, so a width-derived height taller than the actual
+   * available space clips the controls row (and its scrub bar) right off
+   * the bottom. When true, the video box fills whatever height its flex
+   * parent actually has (`flex-1 min-h-0`) instead of deriving one from
+   * width, guaranteeing the controls row stays visible. */
+  fillHeight?: boolean
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, maxSeekMs, initialTimeMs }, ref) => {
+  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, maxSeekMs, initialTimeMs, fillHeight }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null)
     const hasRestoredPositionRef = useRef(false)
     const [playing, setPlaying] = useState(false)
@@ -58,6 +67,9 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [showRateMenu, setShowRateMenu] = useState(false)
     const [flashIcon, setFlashIcon] = useState<'play' | 'pause' | null>(null)
     const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    // Hover-time preview on the scrub bar — percent (0-1) of the hovered
+    // position, null when not hovering. Purely informational, no seek.
+    const [hoverPercent, setHoverPercent] = useState<number | null>(null)
 
     useImperativeHandle(ref, () => ({
       seekTo: (ms: number) => {
@@ -191,9 +203,9 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     }
 
     return (
-      <div className="space-y-2">
+      <div className={fillHeight ? 'h-full flex flex-col gap-2' : 'space-y-2'}>
         {/* Video element */}
-        <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+        <div className={`relative bg-black rounded-lg overflow-hidden ${fillHeight ? 'flex-1 min-h-0' : 'aspect-video'}`}>
           {src ? (
             <>
               <video
@@ -239,7 +251,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         </div>
 
         {/* Controls */}
-        <div className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
+        <div className="flex-shrink-0 flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
           {/* Skip back */}
           <button
             onClick={() => skip(-5)}
@@ -273,7 +285,23 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </span>
 
           {/* Scrubber */}
-          <div className="flex-1 relative">
+          <div
+            className="flex-1 relative"
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const percent = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+              setHoverPercent(percent)
+            }}
+            onMouseLeave={() => setHoverPercent(null)}
+          >
+            {hoverPercent != null && duration > 0 && (
+              <div
+                className="absolute bottom-full mb-1.5 -translate-x-1/2 px-1.5 py-0.5 rounded bg-black/85 text-[10px] font-mono text-white pointer-events-none whitespace-nowrap z-20"
+                style={{ left: `${hoverPercent * 100}%` }}
+              >
+                {formatTime(hoverPercent * duration)}
+              </div>
+            )}
             <input
               type="range"
               min={0}

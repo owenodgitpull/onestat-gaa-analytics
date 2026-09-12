@@ -49,6 +49,10 @@ class VideoEventMapper:
         # Unforced error
         "SPOIL": EventType.OTHER,
         "HOOK": EventType.OTHER,
+        # Open-play sideline ball possession decision — distinct from
+        # SIDELINE_KICK (a kickout restart going straight out), no direct
+        # MatchEvent equivalent, kept for possession-flip bookkeeping only.
+        "SIDELINE_BALL": EventType.OTHER,
 
         # Kickouts — granular types map directly
         "OWN_KICKOUT_WON": EventType.OWN_KICKOUT_WON,
@@ -199,8 +203,17 @@ class VideoEventMapper:
         return video_type, scoring_context
 
     @classmethod
-    def video_team_to_match_team(cls, video_team: str, is_own_team: bool) -> Team:
-        """Map video team string to MatchEvent Team enum."""
-        if is_own_team:
-            return Team.OWN if video_team == "team_a" else Team.OPPONENT
-        return Team.OPPONENT if video_team == "team_a" else Team.OWN
+    def video_team_to_match_team(cls, video_team: str) -> Team:
+        """Map video team string to MatchEvent Team enum. team_a = our own
+        team by convention (see VideoEvent model comments) — a plain 1:1
+        mapping, nothing context-dependent.
+
+        This used to take an `is_own_team` flag that every call site derived
+        as `(video_team == "team_a")` — i.e. always true when video_team is
+        "team_a" and always false otherwise, making the two branches below
+        it collapse to: team_a -> OWN either way, but team_b -> OWN in BOTH
+        branches too (self-canceling logic bug). Every synced opponent event
+        was being recorded as our own team's event. Confirmed by hand-tracing
+        both branches against the only call pattern actually used.
+        """
+        return Team.OWN if video_team == "team_a" else Team.OPPONENT

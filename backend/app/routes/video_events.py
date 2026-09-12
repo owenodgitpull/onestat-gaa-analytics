@@ -52,6 +52,10 @@ def _event_to_response(event: VideoEvent) -> VideoEventResponse:
         pitch_y=event.pitch_y,
         player_id=event.player_id,
         player_name=event.player.name if event.player else None,
+        sub_in_player_id=event.sub_in_player_id,
+        sub_in_player_name=event.sub_in_player.name if event.sub_in_player else None,
+        assist_player_id=event.assist_player_id,
+        assist_player_name=event.assist_player.name if event.assist_player else None,
         jersey_number=event.jersey_number,
         player_confidence=event.player_confidence,
         event_confidence=event.event_confidence,
@@ -120,6 +124,8 @@ async def create_video_event(
         pitch_x=body.pitch_x,
         pitch_y=body.pitch_y,
         player_id=body.player_id,
+        sub_in_player_id=body.sub_in_player_id,
+        assist_player_id=body.assist_player_id,
         jersey_number=body.jersey_number,
         player_confidence=body.player_confidence or "HIGH",
         event_confidence=body.event_confidence or "HIGH",
@@ -249,6 +255,8 @@ async def bulk_create_video_events(
             pitch_x=req.pitch_x,
             pitch_y=req.pitch_y,
             player_id=req.player_id,
+            sub_in_player_id=req.sub_in_player_id,
+            assist_player_id=req.assist_player_id,
             jersey_number=req.jersey_number,
             player_confidence=req.player_confidence,
             event_confidence=req.event_confidence,
@@ -327,7 +335,7 @@ def _compute_sync_plan(
             skipped.append(ve)
             continue
 
-        team = VideoEventMapper.video_team_to_match_team(ve.team, is_own_team=(ve.team == "team_a"))
+        team = VideoEventMapper.video_team_to_match_team(ve.team)
 
         # Search for exact or near match
         best_match = None
@@ -541,7 +549,7 @@ async def process_video_sync(
                 if not match_event_type:
                     continue
 
-                team = VideoEventMapper.video_team_to_match_team(ve.team, is_own_team=(ve.team == "team_a"))
+                team = VideoEventMapper.video_team_to_match_team(ve.team)
                 match_event = MatchEvent(
                     match_id=ve.match_id,
                     event_type=match_event_type,
@@ -551,6 +559,8 @@ async def process_video_sync(
                     pitch_x=ve.pitch_x,
                     pitch_y=ve.pitch_y,
                     player_id=ve.player_id,
+                    sub_in_player_id=ve.sub_in_player_id,
+                    assist_player_id=ve.assist_player_id,
                     notes=f"[video-sync] {ve.description or ''}".strip(),
                 )
                 db.add(match_event)
@@ -577,6 +587,8 @@ async def process_video_sync(
                 me.pitch_x = ve.pitch_x or me.pitch_x
                 me.pitch_y = ve.pitch_y or me.pitch_y
                 me.player_id = ve.player_id or me.player_id
+                me.sub_in_player_id = ve.sub_in_player_id or me.sub_in_player_id
+                me.assist_player_id = ve.assist_player_id or me.assist_player_id
                 me.notes = f"[video-enriched] {ve.description or me.notes or ''}".strip()
                 synced_count += 1
 
@@ -657,7 +669,7 @@ async def sync_events_to_match(
                 continue
 
             # Map team: team_a = own team by convention
-            team = VideoEventMapper.video_team_to_match_team(ve.team, is_own_team=(ve.team == "team_a"))
+            team = VideoEventMapper.video_team_to_match_team(ve.team)
 
             match_event = MatchEvent(
                 match_id=ve.match_id,
@@ -668,6 +680,8 @@ async def sync_events_to_match(
                 pitch_x=ve.pitch_x,
                 pitch_y=ve.pitch_y,
                 player_id=ve.player_id,
+                sub_in_player_id=ve.sub_in_player_id,
+                assist_player_id=ve.assist_player_id,
                 notes=f"[video-sync] {ve.description or ''}".strip(),
             )
             db.add(match_event)
