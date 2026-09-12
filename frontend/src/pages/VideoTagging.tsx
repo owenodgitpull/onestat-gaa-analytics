@@ -74,6 +74,8 @@ import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video
 import BlackCardTimer, { type BlackCardEntry } from '../components/BlackCardTimer'
 import VideoFormationSnapshot from '../components/video/VideoFormationSnapshot'
 import JerseyNumberStrip, { type JerseyPlayer } from '../components/JerseyNumberStrip'
+import BallCarrierPicker from '../components/BallCarrierPicker'
+import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
 import { useClubName, useClub } from '../contexts/ClubContext'
 import { useTour } from '../hooks/useTour'
 import { videoTaggingSteps } from '../config/tourSteps'
@@ -143,6 +145,7 @@ export default function VideoTagging() {
   // Ball carrier tracking state
   const [activeCarrierId, setActiveCarrierId] = useState<string | null>(null)
   const [recentCarrierIds, setRecentCarrierIds] = useState<string[]>([])
+  const [isCarrierRadialOpen, setIsCarrierRadialOpen] = useState(false)
   const activeSegmentRef = useRef<BallCarrierSegment | null>(null)
   const carrierPathBufferRef = useRef<Array<{ x: number; y: number }>>([])
   const carrierFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -1837,6 +1840,44 @@ export default function VideoTagging() {
         carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
         disabled={mode !== 'tracking' || !isPlaying || overlayState !== 'none'}
         highlight45LineX={highlight45LineX}
+        ballAnchoredOverlay={
+          possession === 'team_a' && jerseyStripPlayers.length > 0
+            ? (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
+              <BallCarrierPicker
+                players={jerseyStripPlayers}
+                activeCarrierId={activeCarrierId}
+                onSelect={handleCarrierSelect}
+                attackingRight={teamAttackingRightThisHalf ?? true}
+                teamPrimaryColor={club?.primary_colour || '#10B981'}
+                teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                ballSvgX={ballSvgX}
+                ballSvgY={ballSvgY}
+                ballPctX={ballPctX}
+                ballPctY={ballPctY}
+                recentCarrierIds={recentCarrierIds}
+                onOpenChange={setIsCarrierRadialOpen}
+              />
+            )
+            : undefined
+        }
+        pitchOverlay={
+          possession === 'team_a' && jerseyStripPlayers.length > 0
+            ? (ballPctX, ballPctY) => (
+              <VideoPitchReceiverDots
+                players={jerseyStripPlayers}
+                activeCarrierId={activeCarrierId}
+                onSelect={handleCarrierSelect}
+                attackingRight={teamAttackingRightThisHalf ?? true}
+                teamPrimaryColor={club?.primary_colour || '#10B981'}
+                teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                ballPctX={ballPctX}
+                ballPctY={ballPctY}
+                disabled={isCarrierRadialOpen}
+                recentCarrierIds={recentCarrierIds}
+              />
+            )
+            : undefined
+        }
       />
       {teamAttackingRightThisHalf != null && (
         <div className={pitchPanelMode === 'side' ? 'absolute top-1/2 right-1.5 -translate-y-1/2 z-20' : 'absolute bottom-2 right-2 z-20'}>
