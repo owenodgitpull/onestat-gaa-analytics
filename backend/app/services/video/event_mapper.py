@@ -49,6 +49,11 @@ class VideoEventMapper:
         # Unforced error
         "SPOIL": EventType.OTHER,
         "HOOK": EventType.OTHER,
+        # Quick pass log (hand pass, and long kick pass) — no dedicated
+        # MatchEvent equivalent, kept as OTHER so "Save to Match" doesn't
+        # silently drop them like every other genuinely-unmapped type does.
+        "PASS_HAND": EventType.OTHER,
+        "PASS_KICK": EventType.OTHER,
         # Open-play sideline ball possession decision — distinct from
         # SIDELINE_KICK (a kickout restart going straight out), no direct
         # MatchEvent equivalent, kept for possession-flip bookkeeping only.

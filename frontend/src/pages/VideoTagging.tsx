@@ -77,6 +77,7 @@ import { FORMATION_XY } from '@/utils/likelyReceivers'
 import JerseyNumberStrip, { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
+import BallQuickActionIcon from '../components/video/BallQuickActionIcon'
 import GAAPitch from '../components/GAAPitch'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
 import TacticalTagButton from '../components/TacticalTagButton'
@@ -971,6 +972,53 @@ export default function VideoTagging() {
       setSubOverrides(prev => ({ ...prev, [payload.playerId!]: false, [payload.subInPlayerId!]: true }))
     }
   }, [sessionId, createEvent, calcMatchTime, currentTimeMs, ballPosition])
+
+  /** Opposition-only quick "Pass" log — a lightweight stand-in for the own-
+   *  team carrier radial, which can't show for the opposition since we
+   *  don't track their player identities. One tap logs a hand-pass event
+   *  at the ball's current spot, no follow-up. */
+  const handleQuickPass = useCallback(() => {
+    if (!sessionId) return
+    const matchTime = calcMatchTime(currentTimeMs)
+    const data: VideoEventCreateData = {
+      event_type: 'PASS_HAND',
+      team: 'team_b',
+      half: matchTime.half,
+      match_minute: matchTime.minute,
+      match_second: matchTime.second,
+      video_timestamp_ms: currentTimeMs,
+      source: 'human_tag',
+    }
+    if (ballPosition) {
+      data.pitch_x = ballPosition.x
+      data.pitch_y = ballPosition.y
+      data.pitch_zone = xyToZone(ballPosition.x, ballPosition.y)
+    }
+    handleDirectCreate(data)
+  }, [sessionId, calcMatchTime, currentTimeMs, ballPosition, handleDirectCreate])
+
+  /** Quick "Long Kick" log — either team, whichever currently has
+   *  possession. One tap, no follow-up. */
+  const handleQuickLongKick = useCallback(() => {
+    if (!sessionId) return
+    const matchTime = calcMatchTime(currentTimeMs)
+    const data: VideoEventCreateData = {
+      event_type: 'PASS_KICK',
+      team: possession,
+      half: matchTime.half,
+      match_minute: matchTime.minute,
+      match_second: matchTime.second,
+      video_timestamp_ms: currentTimeMs,
+      description: 'Long kick',
+      source: 'human_tag',
+    }
+    if (ballPosition) {
+      data.pitch_x = ballPosition.x
+      data.pitch_y = ballPosition.y
+      data.pitch_zone = xyToZone(ballPosition.x, ballPosition.y)
+    }
+    handleDirectCreate(data)
+  }, [sessionId, calcMatchTime, currentTimeMs, ballPosition, possession, handleDirectCreate])
 
   const handleTacticalTag = useCallback(async (tagType: string, label?: string) => {
     if (!session?.match_id) return
@@ -1920,24 +1968,55 @@ export default function VideoTagging() {
         disabled={mode !== 'tracking' || !isPlaying || overlayState !== 'none'}
         highlight45LineX={highlight45LineX}
         ballAnchoredOverlay={
-          possession === 'team_a' && jerseyStripPlayers.length > 0
-            ? (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
-              <BallCarrierPicker
-                players={jerseyStripPlayers}
-                activeCarrierId={activeCarrierId}
-                onSelect={handleCarrierSelect}
-                attackingRight={teamAttackingRightThisHalf ?? true}
-                teamPrimaryColor={club?.primary_colour || '#10B981'}
-                teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+          (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
+            <>
+              {possession === 'team_a' && jerseyStripPlayers.length > 0 && (
+                <BallCarrierPicker
+                  players={jerseyStripPlayers}
+                  activeCarrierId={activeCarrierId}
+                  onSelect={handleCarrierSelect}
+                  attackingRight={teamAttackingRightThisHalf ?? true}
+                  teamPrimaryColor={club?.primary_colour || '#10B981'}
+                  teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                  ballSvgX={ballSvgX}
+                  ballSvgY={ballSvgY}
+                  ballPctX={ballPctX}
+                  ballPctY={ballPctY}
+                  recentCarrierIds={recentCarrierIds}
+                  onOpenChange={setIsCarrierRadialOpen}
+                />
+              )}
+              {/* Opposition has no per-player carrier radial (we don't track
+                  their identities) — this quick "Pass" icon takes the same
+                  up-right slot the radial-opener icon occupies for our own
+                  team, so exactly one icon ever sits there. */}
+              {possession === 'team_b' && (
+                <BallQuickActionIcon
+                  ballSvgX={ballSvgX}
+                  ballSvgY={ballSvgY}
+                  angleDeg={-45}
+                  label="P"
+                  title="Log Pass (Opposition)"
+                  color="#0891b2"
+                  onTap={handleQuickPass}
+                />
+              )}
+              {/* Long Kick — both teams, straight up from the ball so it
+                  never collides with the radial/pass icon at -45°. Hidden
+                  while the carrier radial's chips are fanned out to avoid
+                  visual clutter/overlap with them. */}
+              <BallQuickActionIcon
                 ballSvgX={ballSvgX}
                 ballSvgY={ballSvgY}
-                ballPctX={ballPctX}
-                ballPctY={ballPctY}
-                recentCarrierIds={recentCarrierIds}
-                onOpenChange={setIsCarrierRadialOpen}
+                angleDeg={-90}
+                label="LK"
+                title="Log Long Kick"
+                color="#d97706"
+                onTap={handleQuickLongKick}
+                disabled={isCarrierRadialOpen}
               />
-            )
-            : undefined
+            </>
+          )
         }
         pitchOverlay={
           possession === 'team_a' && jerseyStripPlayers.length > 0
