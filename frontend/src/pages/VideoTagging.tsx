@@ -72,7 +72,8 @@ import KickoutSequence from '../components/charts/KickoutSequence'
 import { videoEventsToChartEvents, computeShotLocations } from '../utils/videoEventChartAdapter'
 import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video/PitchZoneSelector'
 import BlackCardTimer, { type BlackCardEntry } from '../components/BlackCardTimer'
-import VideoFormationSnapshot from '../components/video/VideoFormationSnapshot'
+import FormationSnapshotMode from '../components/FormationSnapshotMode'
+import { FORMATION_XY } from '@/utils/likelyReceivers'
 import JerseyNumberStrip, { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
@@ -1295,21 +1296,31 @@ export default function VideoTagging() {
     if (session?.match_id) navigate(`/results/${session.match_id}`)
   }
 
-  // Build own players list for formation snapshot from lineup data
+  // Build own players list for formation snapshot from lineup data,
+  // pre-placed at their real lineup slot (FORMATION_XY, the same formation
+  // coordinates the carrier-selection dots use) — matches live recording's
+  // FormationSnapshotMode exactly, so the coach only drags players to where
+  // they actually are rather than building the whole XV from scratch.
   // (must be before early returns to satisfy Rules of Hooks)
   const snapshotOwnPlayers = useMemo(() => {
     if (!matchLineup) return []
     const playerMap = new Map(players?.map(p => [p.id, p]) ?? [])
-    return matchLineup.map((entry) => {
-      const player = playerMap.get(entry.player_id)
-      const jerseyNumber = entry.match_jersey_number ?? entry.player_jersey_number ?? player?.jersey_number ?? null
-      return {
-        playerId: entry.player_id,
-        jerseyNumber,
-        playerName: entry.player_name || player?.name || `#${jerseyNumber ?? '?'}`,
-      }
-    })
-  }, [matchLineup, players])
+    const attackingRight = teamAttackingRightThisHalf ?? true
+    return matchLineup
+      .filter((entry: any) => entry.is_on_field ?? true)
+      .map((entry: any) => {
+        const player = playerMap.get(entry.player_id)
+        const jerseyNumber = entry.match_jersey_number ?? entry.player_jersey_number ?? player?.jersey_number ?? null
+        const base = FORMATION_XY[entry.position_id || ''] || { x: 50, y: 50 }
+        return {
+          playerId: entry.player_id,
+          jerseyNumber,
+          playerName: entry.player_name || player?.name || `#${jerseyNumber ?? '?'}`,
+          x: attackingRight ? base.x : 100 - base.x,
+          y: base.y,
+        }
+      })
+  }, [matchLineup, players, teamAttackingRightThisHalf])
 
   // ── Position label map for carrier strip ─────────────────────────────
   const POSITION_LABELS: Record<string, string> = {
@@ -2304,12 +2315,11 @@ export default function VideoTagging() {
         />
 
         {/* Formation Snapshot Overlay */}
-        <VideoFormationSnapshot
+        <FormationSnapshotMode
           isOpen={isSnapshotOpen}
           onClose={() => setIsSnapshotOpen(false)}
           onSave={handleSnapshotSave}
           ownPlayers={snapshotOwnPlayers}
-          opponentName={opponentName}
         />
 
         {/* Tactical View Overlay */}
@@ -2689,12 +2699,11 @@ export default function VideoTagging() {
       />
 
       {/* Formation Snapshot Overlay */}
-      <VideoFormationSnapshot
+      <FormationSnapshotMode
         isOpen={isSnapshotOpen}
         onClose={() => setIsSnapshotOpen(false)}
         onSave={handleSnapshotSave}
         ownPlayers={snapshotOwnPlayers}
-        opponentName={opponentName}
       />
 
       {/* Prereq Check Modal */}
