@@ -56,6 +56,7 @@ import SetupFlowModal, { type SetupStep } from '../components/video/SetupFlowMod
 import AttackDirectionBadge from '../components/video/AttackDirectionBadge'
 import VideoStatsPanel from '../components/video/VideoStatsPanel'
 import VideoManualEventModal from '../components/video/VideoManualEventModal'
+import OppositionScorerStrip from '../components/OppositionScorerStrip'
 import ExtendedStatsModal from '../components/ExtendedStatsModal'
 import ChartZoomModal from '../components/ChartZoomModal'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
@@ -104,6 +105,10 @@ import { PossessionTeam } from '../types'
 import type { Player, BallPosition } from '../types'
 
 type OverlayState = 'none' | 'player'
+
+// Scoring event types that trigger the opposition-scorer name prompt when
+// team_b (the opponent) is credited with them.
+const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT']
 
 /** Derive a human-readable status label from ball position and possession. */
 function getStatusLabel(
@@ -231,6 +236,12 @@ export default function VideoTagging() {
 
   // Assist prompt — auto-opened after an own-team score finalizes.
   const [assistPromptEventId, setAssistPromptEventId] = useState<string | null>(null)
+
+  // Opposition scorer prompt, block→recovery, sideline-ball decision — all
+  // follow-up panels shown after their trigger event finalizes.
+  const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string } | null>(null)
+  const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
+  const [pendingSidelineDecision, setPendingSidelineDecision] = useState(false)
 
   // Black card sin bin timers
   const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
@@ -739,7 +750,26 @@ export default function VideoTagging() {
       }])
     }
 
-    createEvent.mutate({ sessionId, data })
+    // Opposition scorer prompt — the opponent roster generally isn't in the
+    // system, so unlike our own scores this only captures a free-text name
+    // (mirrors live recording's OppositionScorerStrip + opposition_roster).
+    if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type)) {
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => { if (created?.id) setPendingOppScorer({ eventId: created.id }) },
+      })
+    } else {
+      createEvent.mutate({ sessionId, data })
+    }
+
+    // Block → who recovered it? (own blocks only — matches live recording,
+    // which only asks this after WE make the block)
+    if (data.event_type === 'BLOCK_SHOT' && data.team === 'team_a') {
+      setPendingBlockRecovery(true)
+    }
+    // Open-play sideline ball → who's in possession now?
+    if (data.event_type === 'SIDELINE_BALL') {
+      setPendingSidelineDecision(true)
+    }
 
     // Auto-end carrier on terminal events (scores, turnovers, wides, etc.)
     onCarrierTerminalEvent(data.event_type)
@@ -899,6 +929,38 @@ export default function VideoTagging() {
       setSubOverrides(prev => ({ ...prev, [payload.playerId!]: false, [payload.subInPlayerId!]: true }))
     }
   }, [sessionId, createEvent, calcMatchTime, currentTimeMs, ballPosition])
+
+  /** Opposition scorer prompt — captures a free-text name (mirrors live
+   *  recording's OppositionScorerStrip; the opponent roster isn't tracked
+   *  as real players, so this writes the name into the event's description
+   *  rather than a player_id). */
+  const handleOppScorerSelect = useCallback((name: string) => {
+    if (sessionId && pendingOppScorer) {
+      updateEvent.mutate({ eventId: pendingOppScorer.eventId, sessionId, data: { description: name } })
+    }
+    setPendingOppScorer(null)
+  }, [sessionId, pendingOppScorer, updateEvent])
+
+  const handleOppScorerSkip = useCallback(() => setPendingOppScorer(null), [])
+
+  /** Block → who recovered it? Own blocks only (matches live recording,
+   *  which only asks this after we make the block). No extra event is
+   *  logged either way — the BLOCK_SHOT event already stands; this only
+   *  decides who has the ball now. */
+  const handleBlockRecovery = useCallback((weRecovered: boolean) => {
+    setPossession(weRecovered ? 'team_a' : 'team_b')
+    onCarrierPossessionSwap()
+    setPendingBlockRecovery(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /** Open-play sideline ball → who's in possession now? */
+  const handleSidelineDecision = useCallback((weWonIt: boolean) => {
+    setPossession(weWonIt ? 'team_a' : 'team_b')
+    onCarrierPossessionSwap()
+    setPendingSidelineDecision(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleDeleteEvent = useCallback((eventId: string) => {
     if (!sessionId) return
@@ -1981,6 +2043,60 @@ export default function VideoTagging() {
                 className="px-4 py-2.5 rounded-lg bg-white/10 text-white/60 hover:text-white text-sm transition-colors"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingOppScorer && (
+        <div className="fixed inset-0 z-[140]">
+          <OppositionScorerStrip
+            players={matchData?.opposition_roster || []}
+            onSelect={handleOppScorerSelect}
+            onSkip={handleOppScorerSkip}
+            eventType="point"
+          />
+        </div>
+      )}
+      {pendingBlockRecovery && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl">
+            <h3 className="text-sm font-bold text-white mb-4">Who recovered the ball?</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleBlockRecovery(true)}
+                className="flex-1 px-4 py-3 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all"
+              >
+                We Did
+              </button>
+              <button
+                onClick={() => handleBlockRecovery(false)}
+                className="flex-1 px-4 py-3 rounded-lg text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white transition-all"
+              >
+                They Did
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingSidelineDecision && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl">
+            <h3 className="text-sm font-bold text-white mb-4">Who's in possession now?</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleSidelineDecision(true)}
+                className="flex-1 px-4 py-3 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all"
+              >
+                {clubName}
+              </button>
+              <button
+                onClick={() => handleSidelineDecision(false)}
+                className="flex-1 px-4 py-3 rounded-lg text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white transition-all"
+              >
+                {opponentName}
               </button>
             </div>
           </div>

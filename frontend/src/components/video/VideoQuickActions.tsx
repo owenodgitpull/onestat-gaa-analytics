@@ -81,6 +81,10 @@ const TURNOVER_ACTIONS: ActionButton[] = [
   { id: 'intercept', label: 'Intercept', eventType: 'INTERCEPTION', autoFlipTo: 'us', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Intercepted?', playerModalEventType: 'turnover_won' },
   { id: 'our_error', label: 'Our Error', eventType: 'OUR_UNFORCED_ERROR', disabledWhen: 'them', autoFlipTo: 'them', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Made the Error?', playerModalEventType: 'turnover_lost' },
   { id: 'opp_error', label: 'Opp Error', eventType: 'OPP_UNFORCED_ERROR', disabledWhen: 'us', autoFlipTo: 'us', needsPlayer: false, needsPitch: false },
+  // Open-play ball goes out over the sideline — distinct from SIDELINE_KICK
+  // (a kickout restart going straight out). Doesn't auto-flip possession;
+  // the parent follows up with a "who's got it now?" decision instead.
+  { id: 'sideline_ball', label: 'Sideline Ball', eventType: 'SIDELINE_BALL', needsPlayer: false, needsPitch: false },
 ]
 
 const OUR_KICKOUT_ACTIONS: ActionButton[] = [
