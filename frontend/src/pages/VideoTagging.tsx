@@ -78,6 +78,7 @@ import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
 import GAAPitch from '../components/GAAPitch'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
+import TacticalTagButton from '../components/TacticalTagButton'
 import { useClubName, useClub } from '../contexts/ClubContext'
 import { useTour } from '../hooks/useTour'
 import { videoTaggingSteps } from '../config/tourSteps'
@@ -238,6 +239,10 @@ export default function VideoTagging() {
   // from matchLineup and updated in-memory as subs are logged this session.
   const [showManualEvent, setShowManualEvent] = useState(false)
   const [subOverrides, setSubOverrides] = useState<Record<string, boolean>>({})
+
+  // Tactical tag button — mirrors live recording's TacticalTagButton,
+  // using calcMatchTime/ballPosition instead of live match-clock values.
+  const [tacticalTagCount, setTacticalTagCount] = useState(0)
 
   // Assist prompt — auto-opened after an own-team score finalizes.
   const [assistPromptEventId, setAssistPromptEventId] = useState<string | null>(null)
@@ -957,6 +962,25 @@ export default function VideoTagging() {
       setSubOverrides(prev => ({ ...prev, [payload.playerId!]: false, [payload.subInPlayerId!]: true }))
     }
   }, [sessionId, createEvent, calcMatchTime, currentTimeMs, ballPosition])
+
+  const handleTacticalTag = useCallback(async (tagType: string, label?: string) => {
+    if (!session?.match_id) return
+    const matchTime = calcMatchTime(currentTimeMs)
+    try {
+      await api.playerMovement.createTacticalTag({
+        match_id: session.match_id,
+        tag_type: tagType,
+        label,
+        half: matchTime.half,
+        minute: matchTime.minute,
+        pitch_x: ballPosition?.x,
+        pitch_y: ballPosition?.y,
+      })
+      setTacticalTagCount(prev => prev + 1)
+    } catch (err) {
+      console.error('Failed to create tactical tag (video tagging):', err)
+    }
+  }, [session?.match_id, calcMatchTime, currentTimeMs, ballPosition])
 
   /** Opposition scorer prompt — captures a free-text name (mirrors live
    *  recording's OppositionScorerStrip; the opponent roster isn't tracked
@@ -1711,6 +1735,7 @@ export default function VideoTagging() {
           >
             + Event / Sub
           </button>
+          <TacticalTagButton onTag={handleTacticalTag} tagCount={tacticalTagCount} />
           <button
             onClick={() => setShowResetConfirm(true)}
             className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400/80 hover:text-red-300 font-medium transition-colors whitespace-nowrap`}
