@@ -83,6 +83,7 @@ const EVENT_LABELS: Record<string, { title: string; color: string }> = {
   penalty_miss: { title: 'Who Took Penalty?', color: 'text-red-400' },
   block: { title: 'Who Blocked?', color: 'text-cyan-400' },
   interception: { title: 'Who Intercepted?', color: 'text-cyan-400' },
+  kickout_target: { title: 'Aimed For?', color: 'text-emerald-400' },
 }
 
 export default function PitchPlayerSelector({

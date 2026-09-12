@@ -253,6 +253,10 @@ export default function VideoTagging() {
   const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string } | null>(null)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
   const [pendingSidelineDecision, setPendingSidelineDecision] = useState(false)
+  // Kickout "aimed for" — optional target-player step after we win our own
+  // kickout, own kickouts only (not the landing-position banner, which
+  // doesn't apply to video's continuous-tracking model).
+  const [pendingKickoutAimedFor, setPendingKickoutAimedFor] = useState<{ eventId: string } | null>(null)
 
   // Black card sin bin timers
   const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
@@ -791,6 +795,10 @@ export default function VideoTagging() {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => { if (created?.id) setPendingOppScorer({ eventId: created.id }) },
       })
+    } else if (data.team === 'team_a' && (data.event_type === 'OWN_KICKOUT_WON' || data.event_type === 'OWN_KICKOUT_WON_BREAK')) {
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => { if (created?.id) setPendingKickoutAimedFor({ eventId: created.id }) },
+      })
     } else {
       createEvent.mutate({ sessionId, data })
     }
@@ -995,6 +1003,16 @@ export default function VideoTagging() {
   }, [sessionId, pendingOppScorer, updateEvent])
 
   const handleOppScorerSkip = useCallback(() => setPendingOppScorer(null), [])
+
+  /** Kickout "aimed for" — records who the kickout was aimed at, on top of
+   *  who won it. No dedicated schema field for this, so it's written into
+   *  the event's description like the opposition-scorer name is. */
+  const handleKickoutAimedForSelect = useCallback((player: Player) => {
+    if (sessionId && pendingKickoutAimedFor) {
+      updateEvent.mutate({ eventId: pendingKickoutAimedFor.eventId, sessionId, data: { description: `Aimed for: ${player.name}` } })
+    }
+    setPendingKickoutAimedFor(null)
+  }, [sessionId, pendingKickoutAimedFor, updateEvent])
 
   /** Block → who recovered it? Own blocks only (matches live recording,
    *  which only asks this after we make the block). No extra event is
@@ -2110,6 +2128,21 @@ export default function VideoTagging() {
             setAssistPromptEventId(null)
           }}
           eventType="assist"
+          team="own"
+          players={playerList}
+          matchLineup={matchLineup}
+          teamPrimaryColor={club?.primary_colour || '#10B981'}
+          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+          attackingRight={teamAttackingRightThisHalf ?? true}
+          ballPosition={ballPosition}
+        />
+      )}
+      {pendingKickoutAimedFor && matchLineup && matchLineup.length > 0 && (
+        <PitchPlayerSelector
+          isOpen={!!pendingKickoutAimedFor}
+          onClose={() => setPendingKickoutAimedFor(null)}
+          onSelectPlayer={handleKickoutAimedForSelect}
+          eventType="kickout_target"
           team="own"
           players={playerList}
           matchLineup={matchLineup}
