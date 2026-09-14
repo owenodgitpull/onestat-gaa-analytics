@@ -14,6 +14,7 @@ import DefensiveActionZones from '@/components/charts/DefensiveActionZones'
 import KickoutLandingZones from '@/components/charts/KickoutLandingZones'
 import KPISparklineGrid from '@/components/charts/KPISparklineGrid'
 import SeasonExpectedPoints from '@/components/charts/SeasonExpectedPoints'
+import TransitionSpeedChart from '@/components/charts/TransitionSpeedChart'
 import DynamicChart from '@/components/DynamicChart'
 import type { SeasonDashboardData, DashboardData, AIChartSpec, SeasonExpectedPointsData, AttackingThirdsData } from '@/services/api'
 
@@ -201,6 +202,16 @@ export const CANONICAL_CHARTS: ChartRegistryEntry[] = [
     render: ({ seasonDashboard }) =>
       seasonDashboard?.season_hmld && seasonDashboard.season_hmld.per_match.length > 0
         ? <SeasonHMLDChart data={seasonDashboard.season_hmld} />
+        : null,
+  },
+  {
+    id: 'transition-speed',
+    label: 'Transition Speed',
+    description: 'Ball Recovery Time and Turnover-to-Shot Time, toggled — how fast the team wins the ball back and how fast it converts that into a shot',
+    category: 'Defence',
+    render: ({ seasonDashboard }) =>
+      seasonDashboard?.transition_speed && seasonDashboard.transition_speed.per_match.length > 0
+        ? <TransitionSpeedChart data={seasonDashboard.transition_speed} />
         : null,
   },
 ]

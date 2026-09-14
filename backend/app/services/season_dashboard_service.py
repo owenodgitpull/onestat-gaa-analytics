@@ -267,7 +267,7 @@ class SeasonDashboardService:
 
         (funnel, kickouts, turnovers, red_zone, radar, territory,
          score_timeline, dead_ball, def_zones, kickout_zones, season_hmld,
-         attacking_thirds) = await asyncio.gather(
+         attacking_thirds, transition_speed) = await asyncio.gather(
             SeasonDashboardService._possession_funnel(db, matches),
             SeasonDashboardService._kickout_trends(db, matches),
             SeasonDashboardService._turnover_source_leaderboard(db, matches),
@@ -280,6 +280,7 @@ class SeasonDashboardService:
             SeasonDashboardService._kickout_landing_zones(db, matches),
             SeasonDashboardService._season_hmld_chart(db, matches),
             SeasonDashboardService._attacking_thirds(db, matches),
+            SeasonDashboardService._season_transition_speed_chart(db, matches),
         )
 
         expected_points_season = await SeasonDashboardService._season_expected_points(db, matches)
@@ -332,6 +333,7 @@ class SeasonDashboardService:
             "kpi_sparkline_grid": kpi_sparkline,
             "season_hmld": season_hmld,
             "attacking_thirds": attacking_thirds,
+            "transition_speed": transition_speed,
             "available_competitions": available_competitions,
             "available_stages": available_stages,
             "matches_in_view": len(matches),
@@ -3094,6 +3096,120 @@ class SeasonDashboardService:
                 "hmld_density": peak["hmld_density"],
             } if peak else None,
             "trend_pct": trend_pct,
+        }
+
+    @staticmethod
+    async def _season_transition_speed_chart(db: AsyncSession, matches: list) -> dict:
+        """
+        Per-match transition-speed data for the season toggle chart (Ball
+        Recovery Time / Turnover-to-Shot Time). A dedicated chart-facing
+        version rather than reusing the AI-tool functions in ai/_shared.py
+        (get_ball_recovery_time / get_turnover_to_shot_time) directly —
+        those return a pre-formatted "Opponent (date)" label string meant
+        for an LLM to read, not raw match_id/date fields a chart component
+        can key/sort by. Same underlying event-matching logic, computed
+        fresh here in one query pass covering both metrics.
+        """
+        empty = {"per_match": [], "season_avg": {}}
+        if not matches:
+            return empty
+
+        from app.services.expected_points_service import ALL_SHOT_TYPES
+
+        match_ids = [m.id for m in matches]
+        matches_map = {m.id: m for m in matches}
+
+        BALL_LOSS = frozenset([EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR])
+        BALL_WON = frozenset([
+            EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON,
+            EventType.OWN_KICKOUT_WON, EventType.OPP_KICKOUT_WON, EventType.KICKOUT_WON,
+            EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON_BREAK,
+        ])
+        SHOT_TYPES = frozenset(ALL_SHOT_TYPES)
+
+        ev_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute, MatchEvent.created_at)
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type.in_(list(BALL_LOSS | BALL_WON | SHOT_TYPES)),
+                )
+            )
+            .order_by(MatchEvent.match_id, MatchEvent.created_at)
+        )
+        rows = ev_result.all()
+        if not rows:
+            return empty
+
+        ev_by_match: dict = {}
+        for r in rows:
+            ev_by_match.setdefault(r.match_id, []).append(r)
+
+        def _recovery_avg(evs, team) -> float | None:
+            """Minutes from losing the ball to winning it back."""
+            loss_min = None
+            gaps = []
+            for e in evs:
+                if e.minute is None:
+                    continue
+                if e.team == team and e.event_type in BALL_LOSS:
+                    loss_min = e.minute
+                elif loss_min is not None and e.team == team and e.event_type in BALL_WON:
+                    diff = e.minute - loss_min
+                    if 0 < diff <= 10:
+                        gaps.append(diff)
+                    loss_min = None
+            return round(sum(gaps) / len(gaps), 2) if gaps else None
+
+        def _transition_avg(evs, team) -> float | None:
+            """Seconds from winning the ball to a shot away — created_at,
+            not minute, since a real transition is typically faster than a
+            whole minute (see get_turnover_to_shot_time's own docstring)."""
+            won_at = None
+            gaps = []
+            for e in evs:
+                if e.created_at is None:
+                    continue
+                if e.team == team and e.event_type in BALL_WON:
+                    won_at = e.created_at
+                elif won_at is not None and e.team == team and e.event_type in SHOT_TYPES:
+                    diff = (e.created_at - won_at).total_seconds()
+                    if 0 < diff <= 60:
+                        gaps.append(diff)
+                    won_at = None
+            return round(sum(gaps) / len(gaps), 1) if gaps else None
+
+        per_match = []
+        for mid in match_ids:
+            evs = ev_by_match.get(mid, [])
+            if not evs:
+                continue
+            m = matches_map[mid]
+            recovery_min = _recovery_avg(evs, Team.OWN)
+            transition_sec = _transition_avg(evs, Team.OWN)
+            if recovery_min is None and transition_sec is None:
+                continue
+            per_match.append({
+                "match_id": str(mid),
+                "opponent": m.opponent,
+                "date": m.match_date.isoformat() if m.match_date else "",
+                "ball_recovery_min": recovery_min,
+                "turnover_to_shot_sec": transition_sec,
+            })
+
+        if not per_match:
+            return empty
+
+        def _season_avg(key: str) -> float | None:
+            vals = [m[key] for m in per_match if m[key] is not None]
+            return round(sum(vals) / len(vals), 2) if vals else None
+
+        return {
+            "per_match": per_match,
+            "season_avg": {
+                "ball_recovery_min": _season_avg("ball_recovery_min"),
+                "turnover_to_shot_sec": _season_avg("turnover_to_shot_sec"),
+            },
         }
 
     # ------------------------------------------------------------------

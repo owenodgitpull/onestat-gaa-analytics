@@ -1032,6 +1032,22 @@ export interface SeasonHMLDData {
   trend_pct: number | null;
 }
 
+export interface TransitionSpeedMatch {
+  match_id: string;
+  opponent: string;
+  date: string;
+  ball_recovery_min: number | null;
+  turnover_to_shot_sec: number | null;
+}
+
+export interface TransitionSpeedData {
+  per_match: TransitionSpeedMatch[];
+  season_avg: {
+    ball_recovery_min: number | null;
+    turnover_to_shot_sec: number | null;
+  };
+}
+
 export interface SeasonDashboardData {
   possession_funnel: PossessionFunnelData;
   kickout_trends: KickoutTrendMatch[];
@@ -1047,6 +1063,7 @@ export interface SeasonDashboardData {
   kpi_sparkline_grid?: KPISparklineGridData;
   season_hmld?: SeasonHMLDData;
   attacking_thirds?: AttackingThirdsData;
+  transition_speed?: TransitionSpeedData;
   expected_points_season?: SeasonExpectedPointsData;
   available_competitions: string[];
   available_stages: string[];

@@ -441,6 +441,24 @@ class SeasonHMLDData(BaseModel):
     trend_pct: Optional[float] = None
 
 
+class TransitionSpeedMatch(BaseModel):
+    match_id: str
+    opponent: str
+    date: str
+    ball_recovery_min: Optional[float] = None
+    turnover_to_shot_sec: Optional[float] = None
+
+
+class TransitionSpeedSeasonAvg(BaseModel):
+    ball_recovery_min: Optional[float] = None
+    turnover_to_shot_sec: Optional[float] = None
+
+
+class TransitionSpeedData(BaseModel):
+    per_match: List[TransitionSpeedMatch]
+    season_avg: TransitionSpeedSeasonAvg
+
+
 class SeasonDashboardData(BaseModel):
     possession_funnel: PossessionFunnelData
     kickout_trends: List[KickoutTrendMatch]
@@ -456,6 +474,7 @@ class SeasonDashboardData(BaseModel):
     kpi_sparkline_grid: Optional[KPISparklineGridData] = None
     season_hmld: Optional[SeasonHMLDData] = None
     attacking_thirds: Optional[AttackingThirdsData] = None
+    transition_speed: Optional[TransitionSpeedData] = None
     expected_points_season: Optional[SeasonExpectedPointsData] = None
     available_competitions: List[str] = []
     available_stages: List[str] = []
@@ -1792,6 +1811,14 @@ async def get_season_dashboard(
             trend_pct=sh.get("trend_pct"),
         )
 
+    transition_speed = None
+    if data.get("transition_speed") and data["transition_speed"].get("per_match"):
+        ts = data["transition_speed"]
+        transition_speed = TransitionSpeedData(
+            per_match=[TransitionSpeedMatch(**m) for m in ts["per_match"]],
+            season_avg=TransitionSpeedSeasonAvg(**ts["season_avg"]),
+        )
+
     attacking_thirds = None
     if data.get("attacking_thirds"):
         at = data["attacking_thirds"]
@@ -1831,6 +1858,7 @@ async def get_season_dashboard(
         kpi_sparkline_grid=kpi_sparkline,
         season_hmld=season_hmld,
         attacking_thirds=attacking_thirds,
+        transition_speed=transition_speed,
         expected_points_season=SeasonExpectedPointsData(**data["expected_points_season"]) if data.get("expected_points_season") else None,
         available_competitions=data.get("available_competitions", []),
         available_stages=data.get("available_stages", []),
