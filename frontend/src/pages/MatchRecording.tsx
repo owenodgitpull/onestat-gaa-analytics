@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
 import BallCarrierPicker from '@/components/BallCarrierPicker'
+import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
@@ -184,6 +185,17 @@ export default function MatchRecording() {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState<{ position: BallPosition } | null>(null)
   const [pendingSidelineDecision, setPendingSidelineDecision] = useState<{ position: BallPosition } | null>(null)
+  // High Ball — armed by tapping the ball-anchored "HB" icon (does NOT log
+  // anything yet), then the very next ball tap/drag-release on the pitch is
+  // captured as the kick's landing spot in handleBallMove, same "tap the
+  // pitch to resolve a pending action" pattern already used for
+  // pendingKickoutEvent/pendingFortyFivePosition below — deliberately reuses
+  // that proven mechanism rather than a new overlay/modal, so it doesn't
+  // interrupt the pace of live recording. Unlike those two, a long kick is
+  // NOT a dead-ball restart, so handleBallMove does not return early after
+  // logging it — normal ball movement/possession recording continues right
+  // after.
+  const [pendingLongKick, setPendingLongKick] = useState<{ isHomeTeam: boolean } | null>(null)
   const [resetting, setResetting] = useState(false)
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
@@ -498,6 +510,14 @@ export default function MatchRecording() {
     playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y).catch(err => {
       console.error('Failed to update carrier segment:', err)
     })
+  }
+
+  // Arm/disarm High Ball — freezes which team it's for at the moment of
+  // tapping (whoever currently has the ball), so a possession flip between
+  // arming and the destination tap can't retroactively change who gets
+  // credited. Tapping the icon again while armed cancels it.
+  const handleToggleLongKickArm = () => {
+    setPendingLongKick(prev => prev ? null : { isHomeTeam: ballPosition.team === PossessionTeam.OWN })
   }
 
   // Formation snapshot state
@@ -1963,6 +1983,18 @@ export default function MatchRecording() {
       return
     }
 
+    // Check if there's a pending High Ball waiting for its landing spot —
+    // deliberately does NOT return: a long kick isn't a dead-ball restart,
+    // so the ball's normal movement/possession recording below should still
+    // happen exactly as if this were any other tap/drag.
+    if (pendingLongKick) {
+      const pending = pendingLongKick
+      setPendingLongKick(null)
+      recordLongKickAtPosition(pending, newPosition).catch(err => {
+        console.error('High ball recording failed in handleBallMove:', err)
+      })
+    }
+
     // Block ball movement if awaiting kickout resolution
     if (awaitingKickout) {
       console.log('Ball movement blocked - awaiting kickout resolution')
@@ -2432,6 +2464,32 @@ export default function MatchRecording() {
   const handleCancel45 = () => {
     setPending45(null)
     console.log('45 cancelled')
+  }
+
+  // Log a High Ball MatchEvent at wherever the ball was tapped/dropped once
+  // armed — no dedicated EventType exists for this (mirrors the video-side
+  // gap; VideoEventMapper maps PASS_KICK to EventType.OTHER for the same
+  // reason), so it's recorded as OTHER with a "High ball" note, same
+  // treatment block-recovery gives its own OTHER-typed marker.
+  const recordLongKickAtPosition = async (
+    pending: { isHomeTeam: boolean },
+    position: BallPosition
+  ) => {
+    if (!matchId) return
+    try {
+      await recordEvent.mutateAsync({
+        match_id: matchId,
+        event_type: mapEventTypeToBackend(EventType.OTHER),
+        minute,
+        half: currentHalf,
+        x_coord: position.x,
+        y_coord: position.y,
+        is_home_team: pending.isHomeTeam,
+        notes: 'High ball',
+      })
+    } catch (err) {
+      console.error('Failed to record long kick:', err)
+    }
   }
 
   // Cancel a pending 45 that's already past Scored/Missed and just waiting
@@ -4225,24 +4283,48 @@ export default function MatchRecording() {
                   highlightSidelines={sidelineTapPending}
                   highlight45LineX={fortyFiveLineX}
                   ballAnchoredOverlay={
-                    (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && ballPosition.team === PossessionTeam.OWN
-                      ? (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
-                        <BallCarrierPicker
-                          players={jerseyStripPlayers}
-                          activeCarrierId={activeCarrierId}
-                          onSelect={handleCarrierSelect}
-                          attackingRight={teamAttackingRight}
-                          teamPrimaryColor={club?.primary_colour || '#10B981'}
-                          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-                          ballSvgX={ballSvgX}
-                          ballSvgY={ballSvgY}
-                          ballPctX={ballPctX}
-                          ballPctY={ballPctY}
-                          recentCarrierIds={recentCarrierIds}
-                          onOpenChange={setIsCarrierRadialOpen}
-                        />
-                      )
-                      : undefined
+                    (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
+                      <>
+                        {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && ballPosition.team === PossessionTeam.OWN && (
+                          <BallCarrierPicker
+                            players={jerseyStripPlayers}
+                            activeCarrierId={activeCarrierId}
+                            onSelect={handleCarrierSelect}
+                            attackingRight={teamAttackingRight}
+                            teamPrimaryColor={club?.primary_colour || '#10B981'}
+                            teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                            ballSvgX={ballSvgX}
+                            ballSvgY={ballSvgY}
+                            ballPctX={ballPctX}
+                            ballPctY={ballPctY}
+                            recentCarrierIds={recentCarrierIds}
+                            onOpenChange={setIsCarrierRadialOpen}
+                          />
+                        )}
+                        {/* High Ball — either team, -135° (up-left) so it never
+                            crowds the carrier radial's own icon at -45°
+                            (up-right). Disabled during any other pending
+                            dead-ball/decision flow, so a subsequent tap is
+                            never ambiguous about what it means. */}
+                        {(matchPhase === 'first_half' || matchPhase === 'second_half') && (
+                          <BallQuickActionIcon
+                            ballSvgX={ballSvgX}
+                            ballSvgY={ballSvgY}
+                            angleDeg={-135}
+                            label="HB"
+                            title="Log High Ball"
+                            color="#d97706"
+                            onTap={handleToggleLongKickArm}
+                            armed={!!pendingLongKick}
+                            disabled={
+                              isStopped || isDeadBall || awaitingKickout ||
+                              !!pendingFreeKick || !!pending45 || !!pendingFortyFivePosition || !!pendingKickoutEvent ||
+                              !!pendingBlockRecovery || !!pendingSidelineDecision
+                            }
+                          />
+                        )}
+                      </>
+                    )
                   }
                   pitchOverlay={
                     (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && ballPosition.team === PossessionTeam.OWN
@@ -4269,19 +4351,25 @@ export default function MatchRecording() {
                           display: 'flex', alignItems: 'center', gap: 10,
                           padding: '10px 20px', borderRadius: 14,
                           background: 'rgba(0,0,0,0.75)',
-                          border: `2px solid ${ballPosition.team === PossessionTeam.OWN ? 'rgba(16,185,129,0.5)' : 'rgba(249,115,22,0.4)'}`,
+                          border: pendingLongKick
+                            ? '2px solid rgba(217,119,6,0.6)'
+                            : `2px solid ${ballPosition.team === PossessionTeam.OWN ? 'rgba(16,185,129,0.5)' : 'rgba(249,115,22,0.4)'}`,
                         }}
                         data-tour="possession-indicator"
                         >
                           <div style={{
                             width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
-                            background: ballPosition.team === PossessionTeam.OWN ? '#34d399' : '#fb923c',
+                            background: pendingLongKick ? '#d97706' : (ballPosition.team === PossessionTeam.OWN ? '#34d399' : '#fb923c'),
                           }} />
                           <span style={{
                             fontSize: 30, fontWeight: 700, whiteSpace: 'nowrap',
-                            color: ballPosition.team === PossessionTeam.OWN ? '#6ee7b7' : '#fdba74',
+                            color: pendingLongKick ? '#fbbf24' : (ballPosition.team === PossessionTeam.OWN ? '#6ee7b7' : '#fdba74'),
                           }}>
-                            {statusLabel.text}
+                            {/* Lightweight text swap — no banner/modal — so
+                                arming High Ball doesn't interrupt the pitch
+                                view at all, just repurposes the status text
+                                that's always there anyway. */}
+                            {pendingLongKick ? 'High Ball — tap pitch for landing spot' : statusLabel.text}
                           </span>
                         </div>
                       </div>

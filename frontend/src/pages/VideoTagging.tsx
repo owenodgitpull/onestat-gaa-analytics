@@ -271,6 +271,11 @@ export default function VideoTagging() {
   const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string } | null>(null)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
   const [pendingSidelineDecision, setPendingSidelineDecision] = useState(false)
+  // High Ball — armed by tapping the "HB" icon (logs nothing yet), then the
+  // very next ball tap/drag-release on the tracking pitch is captured as
+  // the landing spot in handleTaggingBallCommit. Mirrors the equivalent
+  // pendingLongKick added to live recording's MatchRecording.tsx.
+  const [pendingLongKick, setPendingLongKick] = useState<{ team: 'team_a' | 'team_b' } | null>(null)
   // Kickout "aimed for" — optional target-player step after we win our own
   // kickout, own kickouts only (not the landing-position banner, which
   // doesn't apply to video's continuous-tracking model).
@@ -732,6 +737,32 @@ export default function VideoTagging() {
   // video-tagged match.
   const handleTaggingBallCommit = useCallback((position: BallPosition) => {
     handleTaggingBallMove(position)
+
+    // If High Ball is armed, this commit IS the landing spot — log it, then
+    // keep going: a long kick isn't a dead-ball restart, so the normal
+    // possession recording below should still happen exactly as if this
+    // were any other tap/drag.
+    if (pendingLongKick && sessionId) {
+      const kickTeam = pendingLongKick.team
+      setPendingLongKick(null)
+      const matchTime = calcMatchTime(currentTimeMs)
+      const data: VideoEventCreateData = {
+        event_type: 'PASS_KICK',
+        team: kickTeam,
+        half: matchTime.half,
+        match_minute: matchTime.minute,
+        match_second: matchTime.second,
+        video_timestamp_ms: currentTimeMs,
+        pitch_x: position.x,
+        pitch_y: position.y,
+        pitch_zone: xyToZone(position.x, position.y),
+        description: 'High ball',
+        source: 'human_tag',
+      }
+      createEvent.mutate({ sessionId, data })
+      onCarrierTerminalEvent('PASS_KICK')
+    }
+
     if (!session?.match_id) return
     const matchTime = calcMatchTime(currentTimeMs)
     api.possession.create({
@@ -742,7 +773,8 @@ export default function VideoTagging() {
       minute: matchTime.minute,
       half: matchTime.half,
     }).catch(err => console.error('Failed to record possession point (video tagging):', err))
-  }, [handleTaggingBallMove, session?.match_id, calcMatchTime, currentTimeMs, possession])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleTaggingBallMove, session?.match_id, calcMatchTime, currentTimeMs, possession, pendingLongKick, sessionId, createEvent])
 
   // Which side the kicking team is attacking right now, for 45m-line
   // placement — mirrors MatchRecording.tsx's compute45LineX (34/66, the
@@ -1015,28 +1047,17 @@ export default function VideoTagging() {
     setOppPassCount(c => c + 1)
   }, [sessionId, calcMatchTime, currentTimeMs, ballPosition, handleDirectCreate])
 
-  /** Quick "Long Kick" log — either team, whichever currently has
-   *  possession. One tap, no follow-up. */
-  const handleQuickLongKick = useCallback(() => {
-    if (!sessionId) return
-    const matchTime = calcMatchTime(currentTimeMs)
-    const data: VideoEventCreateData = {
-      event_type: 'PASS_KICK',
-      team: possession,
-      half: matchTime.half,
-      match_minute: matchTime.minute,
-      match_second: matchTime.second,
-      video_timestamp_ms: currentTimeMs,
-      description: 'Long kick',
-      source: 'human_tag',
-    }
-    if (ballPosition) {
-      data.pitch_x = ballPosition.x
-      data.pitch_y = ballPosition.y
-      data.pitch_zone = xyToZone(ballPosition.x, ballPosition.y)
-    }
-    handleDirectCreate(data)
-  }, [sessionId, calcMatchTime, currentTimeMs, ballPosition, possession, handleDirectCreate])
+  /** Arm/disarm High Ball — either team, whichever currently has possession
+   *  when armed (frozen, so a possession flip before the destination tap
+   *  can't retroactively change who gets credited). Doesn't log anything by
+   *  itself: the very next ball tap/drag-release on the tracking pitch is
+   *  captured as the landing spot by handleTaggingBallCommit below — same
+   *  "tap the pitch to resolve a pending action" pattern live recording
+   *  uses for kickouts/45s, so nothing new is being trusted here. Tapping
+   *  the icon again while armed cancels it. */
+  const handleToggleLongKickArm = useCallback(() => {
+    setPendingLongKick(prev => prev ? null : { team: possession })
+  }, [possession])
 
   const handleTacticalTag = useCallback(async (tagType: string, label?: string) => {
     if (!session?.match_id) return
@@ -1869,14 +1890,21 @@ export default function VideoTagging() {
     </div>
   )
 
-  // The Pass/Long Kick ball-anchored icons are single-tap quick-loggers,
-  // meant to work at any paused moment (unlike TaggingPitch's own `disabled`
-  // prop below, which also gates on `!isPlaying` for ball drag/tap-to-place
-  // and would otherwise silently make these icons unresponsive whenever the
-  // video is paused — exactly when a coach is most likely to be tapping
-  // them for precision). Still blocked during setup or while another
-  // overlay/picker is open.
+  // The opposition Pass icon is a single-tap quick-logger, meant to work at
+  // any paused moment (unlike TaggingPitch's own `disabled` prop below,
+  // which also gates on `!isPlaying` for ball drag/tap-to-place and would
+  // otherwise silently make it unresponsive whenever the video is paused —
+  // exactly when a coach is most likely to be tapping it for precision).
+  // Still blocked during setup or while another overlay/picker is open.
+  // High Ball is different — see highBallBlocked below, it DOES need
+  // `!isPlaying` since its destination tap depends on that same
+  // tap-to-place mechanic being active.
   const quickBallIconsBlocked = mode !== 'tracking' || overlayState !== 'none'
+  // High Ball depends on the pitch's own tap-to-place mechanic (unlike Pass,
+  // which logs immediately) — that's gated by TaggingPitch's own `disabled`
+  // prop, which DOES include `!isPlaying`, so this must too or arming it
+  // while paused would leave the destination tap silently unable to fire.
+  const highBallBlocked = mode !== 'tracking' || !isPlaying || overlayState !== 'none'
   const taggingPitchOrientation: 'horizontal' | 'vertical' = pitchPanelMode === 'side' ? 'vertical' : 'horizontal'
 
   /** Video player + permanent TaggingPitch tracking panel, fullscreen/layout
@@ -2033,20 +2061,23 @@ export default function VideoTagging() {
                   orientation={taggingPitchOrientation}
                 />
               )}
-              {/* Long Kick — both teams, straight up from the ball so it
-                  never collides with the radial/pass icon at -45°. Hidden
-                  while the carrier radial's chips are fanned out to avoid
-                  visual clutter/overlap with them. */}
+              {/* High Ball — both teams. -135° (up-left) rather than -90 —
+                  a full 90° away from the radial/pass icon at -45° (up-
+                  right) instead of just 45°, so the two never crowd
+                  together at the small container sizes the side pitch
+                  panel actually renders at. Hidden while the carrier
+                  radial's chips are fanned out to avoid visual clutter. */}
               <BallQuickActionIcon
                 ballSvgX={ballSvgX}
                 ballSvgY={ballSvgY}
-                angleDeg={-90}
-                label="LK"
-                title="Log Long Kick"
+                angleDeg={-135}
+                label="HB"
+                title="Log High Ball"
                 color="#d97706"
                 orientation={taggingPitchOrientation}
-                onTap={handleQuickLongKick}
-                disabled={quickBallIconsBlocked || isCarrierRadialOpen}
+                onTap={handleToggleLongKickArm}
+                armed={!!pendingLongKick}
+                disabled={highBallBlocked || isCarrierRadialOpen}
               />
             </>
           )

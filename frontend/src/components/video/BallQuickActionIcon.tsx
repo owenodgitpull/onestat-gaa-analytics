@@ -31,6 +31,15 @@ interface BallQuickActionIconProps {
    *  counter-rotation around their own center so they always read
    *  upright, regardless of the icon's (correctly rotated) position. */
   orientation?: 'horizontal' | 'vertical'
+  /** Two-tap "arm, then tap the pitch" actions (e.g. Long Kick) pass this
+   *  instead of `count` — true from the moment the icon is tapped until the
+   *  destination tap resolves it. Renders a continuously-looping pulse ring
+   *  around the icon (distinct from `count`'s one-off pop) so it's obvious,
+   *  without any banner/modal, that the very next pitch tap will be
+   *  captured rather than behaving as a normal action. Tapping the icon
+   *  again while armed is expected to cancel it (the caller's onTap should
+   *  toggle, not just arm). */
+  armed?: boolean
 }
 
 const ICON_DIST = 148
@@ -57,6 +66,7 @@ export default function BallQuickActionIcon({
   disabled = false,
   count,
   orientation = 'horizontal',
+  armed = false,
 }: BallQuickActionIconProps) {
   const angle = angleDeg * (Math.PI / 180)
   const dx = Math.cos(angle) * ICON_DIST
@@ -72,7 +82,15 @@ export default function BallQuickActionIcon({
     <g style={{ opacity: disabled ? 0.35 : 1, transition: 'opacity 0.2s ease' }}>
       <style>{`
         @keyframes bqai-pop { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+        @keyframes bqai-armed-ping { 0% { transform: scale(1); opacity: 0.8; } 100% { transform: scale(1.8); opacity: 0; } }
       `}</style>
+      {armed && (
+        <circle
+          cx={iconX} cy={iconY} r={ICON_R}
+          fill="none" stroke={color} strokeWidth={3}
+          style={{ transformOrigin: `${iconX}px ${iconY}px`, animation: 'bqai-armed-ping 1.1s ease-out infinite' }}
+        />
+      )}
       <line
         x1={ballSvgX + Math.cos(angle) * 26}
         y1={ballSvgY + Math.sin(angle) * 26}
@@ -102,7 +120,11 @@ export default function BallQuickActionIcon({
         }}
       >
         {title && <title>{title}</title>}
-        <circle cx={iconX} cy={iconY} r={ICON_R} fill={color} stroke="#fff" strokeWidth="2.5" />
+        <circle
+          cx={iconX} cy={iconY} r={ICON_R} fill={color}
+          stroke={armed ? '#fef08a' : '#fff'}
+          strokeWidth={armed ? 4 : 2.5}
+        />
         <text
           x={iconX} y={iconY}
           textAnchor="middle" dominantBaseline="central"
