@@ -54,6 +54,16 @@ FREE_TYPES = {
     EventType.PENALTY_GOAL, EventType.PENALTY_MISS,
 }
 
+# Applied to a shot's probability when MatchEvent.under_pressure is True.
+# Placeholder, NOT empirically derived — there is no tagged-pressure shot
+# data anywhere on the platform yet to calibrate against (under_pressure
+# was, until this constant was added, an unused schema-only field). 0.85 is
+# a literature-informed estimate (pressured shots converting roughly 15%
+# less often than an unpressured shot at the same distance/angle) — revisit
+# once enough real tagged shots exist to fit this properly, the same way
+# free_multiplier below is fit from real data rather than assumed.
+PRESSURE_MULTIPLIER = 0.85
+
 # 40m arc radius as % of pitch length (145m pitch) — kept in sync with the
 # same constant the frontend uses for the 2-point zone (ShootingEfficiencyHeatmap),
 # so "two-point zone" means the same patch of grass everywhere in the app.
@@ -287,8 +297,15 @@ def expected_points_for_shot(
     attacking_right_first_half: Optional[bool], half: Optional[int], model: dict,
     minute: Optional[int] = None, half_duration_mins: Optional[int] = None,
     pitch_length_m: Optional[float] = None, pitch_width_m: Optional[float] = None,
+    under_pressure: Optional[bool] = None,
 ) -> dict:
-    """Returns shot-level detail: group, point value, probability, and xP."""
+    """Returns shot-level detail: group, point value, probability, and xP.
+
+    under_pressure defaults to None ("not recorded") — every shot logged
+    before MatchEvent.under_pressure existed, and every shot where the
+    optional tagging prompt is skipped, computes byte-identical xP to
+    before this parameter was added. Only an explicit True applies
+    PRESSURE_MULTIPLIER; False and None both leave probability untouched."""
     norm_x = _normalized_x(pitch_x, team, attacking_right_first_half, half, minute, half_duration_mins)
     norm_y = pitch_y
     group, point_value, is_free, made = classify_shot(event_type, norm_x)
@@ -299,6 +316,8 @@ def expected_points_for_shot(
     p = m["bands"].get(band, m["global_rate"])
     if is_free:
         p *= m["free_multiplier"]
+    if under_pressure:
+        p *= PRESSURE_MULTIPLIER
     p = min(max(p, 0.02), 0.98)
 
     return {
@@ -347,6 +366,7 @@ async def compute_match_expected_points(db: AsyncSession, match: Match) -> dict:
             match.attacking_right_first_half, e.half, model,
             e.minute, match.half_duration_mins,
             match.pitch_length_m, match.pitch_width_m,
+            under_pressure=e.under_pressure,
         )
         actual_pts = shot["point_value"] if shot["made"] else 0
 

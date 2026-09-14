@@ -444,6 +444,8 @@ export const matchEventsAPI = {
     y_coord?: number;
     is_home_team: boolean;
     notes?: string;
+    under_pressure?: boolean;
+    opposition_foot?: string;
   }): Promise<MatchEvent> => {
     // Convert is_home_team to team field and x_coord/y_coord to pitch_x/pitch_y
     const { is_home_team, x_coord, y_coord, ...rest } = event;
@@ -512,6 +514,8 @@ export const matchEventsAPI = {
     x_coord: number | null;
     y_coord: number | null;
     notes: string | null;
+    under_pressure: boolean | null;
+    opposition_foot: string | null;
   }>): Promise<MatchEvent> => {
     // Transform x_coord/y_coord to pitch_x/pitch_y for backend
     const { x_coord, y_coord, ...rest } = data;

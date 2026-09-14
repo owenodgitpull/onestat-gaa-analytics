@@ -105,7 +105,7 @@ import {
   useSyncConfirm,
 } from '../hooks/useVideoEvents'
 import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
-import type { VideoEventCreateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData } from '../services/videoApi'
+import type { VideoEventCreateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
 import { api, type BallCarrierSegment } from '../services/api'
 import { useQuery } from '@tanstack/react-query'
 import { PossessionTeam } from '../types'
@@ -116,6 +116,11 @@ type OverlayState = 'none' | 'player'
 // Scoring event types that trigger the opposition-scorer name prompt when
 // team_b (the opponent) is credited with them.
 const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT']
+
+// Shot attempts (make + miss) eligible for the post-hoc "Under pressure?"
+// prompt — own team only, mirrors live recording's PRESSURE_ELIGIBLE_TYPES
+// as closely as video's more generic event-type set allows.
+const PRESSURE_ELIGIBLE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT', 'POST_HIT', 'GOAL_CHANCE', 'FREE_KICK', 'FORTY_FIVE', 'PENALTY']
 
 /** Derive a human-readable status label from ball position and possession.
  *  Mirrors live recording's getStatusLabel — when our own team has the ball
@@ -265,6 +270,13 @@ export default function VideoTagging() {
 
   // Assist prompt — auto-opened after an own-team score finalizes.
   const [assistPromptEventId, setAssistPromptEventId] = useState<string | null>(null)
+
+  // Pressure prompt — auto-opened after any own-team shot attempt (make or
+  // miss) finalizes. Stores the created event's existing scoring_context so
+  // the PATCH can merge under_pressure in rather than clobbering
+  // is_two_pointer/source (the backend update route replaces the whole
+  // scoring_context object, it doesn't merge server-side).
+  const [pendingPressure, setPendingPressure] = useState<{ eventId: string; scoringContext: ScoringContext } | null>(null)
 
   // Opposition scorer prompt, block→recovery, sideline-ball decision — all
   // follow-up panels shown after their trigger event finalizes.
@@ -848,6 +860,12 @@ export default function VideoTagging() {
     } else if (data.team === 'team_a' && (data.event_type === 'OWN_KICKOUT_WON' || data.event_type === 'OWN_KICKOUT_WON_BREAK')) {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => { if (created?.id) setPendingKickoutAimedFor({ eventId: created.id }) },
+      })
+    } else if (data.team === 'team_a' && PRESSURE_ELIGIBLE_TYPES.includes(data.event_type)) {
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => {
+          if (created?.id) setPendingPressure({ eventId: created.id, scoringContext: created.scoring_context || {} })
+        },
       })
     } else {
       createEvent.mutate({ sessionId, data })
@@ -2286,6 +2304,63 @@ export default function VideoTagging() {
           attackingRight={teamAttackingRightThisHalf ?? true}
           ballPosition={ballPosition}
         />
+      )}
+      {/* Pressure prompt — small non-blocking pill, same intent as the
+          assist prompt above but no player picker needed (just yes/no).
+          Feeds expected_points_service.py's pressure multiplier; closing
+          without choosing leaves under_pressure at None (the correct
+          "not recorded" default). */}
+      {pendingPressure && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[200] animate-fade-in">
+          <div
+            className="flex items-center gap-2 rounded-2xl px-3 py-2"
+            style={{
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(217,119,6,0.35)',
+              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              boxShadow: '0 6px 24px rgba(0,0,0,0.45)',
+            }}
+          >
+            <span className="text-amber-300 text-xs font-bold flex-shrink-0">Under pressure? (optional)</span>
+            <button
+              onClick={() => {
+                if (sessionId) {
+                  updateEvent.mutate({
+                    eventId: pendingPressure.eventId,
+                    sessionId,
+                    data: { scoring_context: { ...pendingPressure.scoringContext, under_pressure: true } },
+                  })
+                }
+                setPendingPressure(null)
+              }}
+              className="flex-shrink-0 px-3 py-1 rounded-lg text-[11px] font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/35 hover:text-white transition-all"
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => {
+                if (sessionId) {
+                  updateEvent.mutate({
+                    eventId: pendingPressure.eventId,
+                    sessionId,
+                    data: { scoring_context: { ...pendingPressure.scoringContext, under_pressure: false } },
+                  })
+                }
+                setPendingPressure(null)
+              }}
+              className="flex-shrink-0 px-3 py-1 rounded-lg text-[11px] font-bold bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-all"
+            >
+              No
+            </button>
+            <button
+              onClick={() => setPendingPressure(null)}
+              className="flex-shrink-0 text-white/40 hover:text-white text-xs px-1.5"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
       )}
       {pendingKickoutAimedFor && matchLineup && matchLineup.length > 0 && (
         <PitchPlayerSelector

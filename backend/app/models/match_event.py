@@ -152,6 +152,20 @@ class MatchEvent(Base):
     # Opposition player name (for opponent scoring events)
     opponent_player_name: Column[Optional[str]] = Column(String(200), nullable=True)
 
+    # Was the shot taken under defensive pressure — optional, human-tagged
+    # (live recording's post-hoc "Under pressure?" pill, video tagging's
+    # inline Scored/Missed-style toggle). None = not recorded, which the
+    # xP formula treats as a neutral no-op, not "definitely not pressured" —
+    # this preserves identical xP for every shot logged before this field
+    # existed. See expected_points_service.py's PRESSURE_MULTIPLIER.
+    under_pressure: Column[Optional[bool]] = Column(Boolean, nullable=True)
+
+    # Which foot an opposition player's shot/key pass was taken with — 'L'/
+    # 'R', optional, tagged via the same opposition name-chip banner used
+    # for opponent_player_name (a further optional sub-step there, not a
+    # separate flow).
+    opposition_foot: Column[Optional[str]] = Column(String(1), nullable=True)
+
     # Sub-type for unforced errors and fouls (e.g. 'stray_pass', 'pushing')
     sub_type: Column[Optional[str]] = Column(String(50), nullable=True)
 

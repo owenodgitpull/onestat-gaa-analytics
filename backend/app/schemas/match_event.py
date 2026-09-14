@@ -26,6 +26,8 @@ class MatchEventBase(BaseModel):
     opponent_player_name: Optional[str] = Field(None, max_length=200, description="Opposition player name for opponent scoring events")
     sub_type: Optional[str] = Field(None, max_length=50, description="Sub-category (e.g. 'stray_pass' for unforced errors, 'pushing' for fouls)")
     half: Optional[int] = Field(None, ge=1, le=2, description="Which half (1 or 2)")
+    under_pressure: Optional[bool] = Field(None, description="Was the shot taken under defensive pressure — None means not recorded, treated as neutral by the xP formula")
+    opposition_foot: Optional[str] = Field(None, max_length=1, description="Which foot an opposition player's shot/key pass was taken with ('L'/'R')")
 
     @field_validator('event_type', mode='before')
     @classmethod
@@ -111,6 +113,8 @@ class MatchEventUpdate(BaseModel):
     pitch_x: Optional[float] = Field(None, ge=0, le=100)
     pitch_y: Optional[float] = Field(None, ge=0, le=100)
     notes: Optional[str] = Field(None, max_length=500)
+    under_pressure: Optional[bool] = None
+    opposition_foot: Optional[str] = Field(None, max_length=1)
 
 
 class MatchEventResponse(MatchEventBase):

@@ -161,6 +161,8 @@ export interface MatchEvent {
   pitch_y: number | null;
   is_home_team: boolean;
   notes: string | null;
+  under_pressure?: boolean | null;
+  opposition_foot?: string | null;
   created_at: string;
 }
 

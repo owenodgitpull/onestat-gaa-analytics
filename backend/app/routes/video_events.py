@@ -561,6 +561,7 @@ async def process_video_sync(
                     player_id=ve.player_id,
                     sub_in_player_id=ve.sub_in_player_id,
                     assist_player_id=ve.assist_player_id,
+                    under_pressure=(ve.scoring_context or {}).get("under_pressure"),
                     notes=f"[video-sync] {ve.description or ''}".strip(),
                 )
                 db.add(match_event)
@@ -589,6 +590,12 @@ async def process_video_sync(
                 me.player_id = ve.player_id or me.player_id
                 me.sub_in_player_id = ve.sub_in_player_id or me.sub_in_player_id
                 me.assist_player_id = ve.assist_player_id or me.assist_player_id
+                # `or` would treat an explicit "not pressured" (False) the
+                # same as "not recorded" (None) and wrongly fall back to
+                # me.under_pressure — under_pressure is a real tri-state
+                # (True/False/None), so it needs an is-not-None check.
+                ve_pressure = (ve.scoring_context or {}).get("under_pressure")
+                me.under_pressure = ve_pressure if ve_pressure is not None else me.under_pressure
                 me.notes = f"[video-enriched] {ve.description or me.notes or ''}".strip()
                 synced_count += 1
 
@@ -682,6 +689,7 @@ async def sync_events_to_match(
                 player_id=ve.player_id,
                 sub_in_player_id=ve.sub_in_player_id,
                 assist_player_id=ve.assist_player_id,
+                under_pressure=(ve.scoring_context or {}).get("under_pressure"),
                 notes=f"[video-sync] {ve.description or ''}".strip(),
             )
             db.add(match_event)

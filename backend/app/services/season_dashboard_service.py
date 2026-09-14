@@ -407,6 +407,7 @@ class SeasonDashboardService:
                     e.pitch_x, e.pitch_y, e.event_type, e.team,
                     match.attacking_right_first_half, e.half, model,
                     e.minute, match.half_duration_mins,
+                    under_pressure=e.under_pressure,
                 )
             except Exception as ex:
                 logger.warning(f"Season xP: failed scoring event {e.id}: {ex}")

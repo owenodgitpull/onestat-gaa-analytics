@@ -170,6 +170,23 @@ export default function MatchRecording() {
   } | null>(null)
   const pendingAssistTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
   const PENDING_ASSIST_TIMEOUT_MS = 6000
+
+  // Optional, auto-dismissing "under pressure?" prompt — same non-blocking
+  // pill pattern as the assist prompt above (they can both be showing at
+  // once for the same score, positioned to stack rather than overlap).
+  // Feeds expected_points_service.py's pressure multiplier; skipping it
+  // (or the timeout firing) leaves MatchEvent.under_pressure at None, which
+  // the formula treats as a neutral no-op. Shown for any shot attempt (make
+  // or miss — xP cares about the attempt, not just conversions), own team
+  // only — matches ALL_SHOT_TYPES in expected_points_service.py exactly.
+  const [pendingPressure, setPendingPressure] = useState<{ eventId: string } | null>(null)
+  const pendingPressureTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const PENDING_PRESSURE_TIMEOUT_MS = 6000
+  const PRESSURE_ELIGIBLE_TYPES = [
+    EventType.GOAL, EventType.PENALTY_GOAL, EventType.SAVED, EventType.HIT_POST, EventType.PENALTY_MISS,
+    EventType.POINT, EventType.POINT_FREE, EventType.TWO_POINT, EventType.TWO_POINT_FREE,
+    EventType.FORTY_FIVE, EventType.FORTY_FIVE_MISSED, EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT,
+  ]
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [editingEventId, setEditingEventId] = useState<number | null>(null) // event being player-edited
   const [editingEventType, setEditingEventType] = useState<string | null>(null) // event type for edit modal title
@@ -2667,6 +2684,18 @@ export default function MatchRecording() {
       .catch((error) => console.error('Failed to record assist:', error))
   }
 
+  // Tap Yes/No on the optional post-shot pressure prompt. Same
+  // fire-and-forget pattern as handleAssistSelect.
+  const handlePressureSelect = (underPressure: boolean) => {
+    const pressure = pendingPressure
+    if (!pressure) return
+    if (pendingPressureTimeoutRef.current) clearTimeout(pendingPressureTimeoutRef.current)
+    setPendingPressure(null)
+
+    api.matchEvents.update(pressure.eventId, { under_pressure: underPressure })
+      .catch((error) => console.error('Failed to record pressure tag:', error))
+  }
+
   // Handle manual event entry
   const handleManualEventSubmit = async (data: {
     eventType: EventType
@@ -3601,6 +3630,8 @@ export default function MatchRecording() {
     // event type), so there's no point offering it elsewhere.
     const assistEligible = event.team === 'own' &&
       [EventType.GOAL, EventType.POINT, EventType.TWO_POINT].includes(event.eventType as EventType)
+    const pressureEligible = event.team === 'own' &&
+      PRESSURE_ELIGIBLE_TYPES.includes(event.eventType as EventType)
 
     recordEvent.mutateAsync({
       match_id: matchId,
@@ -3621,6 +3652,11 @@ export default function MatchRecording() {
         if (pendingAssistTimeoutRef.current) clearTimeout(pendingAssistTimeoutRef.current)
         setPendingAssist({ eventId: String(result.id), scorerId: player.id, scorerName: player.name })
         pendingAssistTimeoutRef.current = setTimeout(() => setPendingAssist(null), PENDING_ASSIST_TIMEOUT_MS)
+      }
+      if (pressureEligible && result?.id) {
+        if (pendingPressureTimeoutRef.current) clearTimeout(pendingPressureTimeoutRef.current)
+        setPendingPressure({ eventId: String(result.id) })
+        pendingPressureTimeoutRef.current = setTimeout(() => setPendingPressure(null), PENDING_PRESSURE_TIMEOUT_MS)
       }
     }).catch((error) => {
       console.error('Failed to record event:', error)
@@ -4089,6 +4125,46 @@ export default function MatchRecording() {
               ))}
             <button
               onClick={() => { if (pendingAssistTimeoutRef.current) clearTimeout(pendingAssistTimeoutRef.current); setPendingAssist(null) }}
+              className="flex-shrink-0 text-white/40 hover:text-white text-xs px-1.5"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Optional "under pressure?" prompt — same non-blocking pill pattern
+          as the assist prompt above, positioned to stack below it (both can
+          be showing at once for the same shot). Feeds the xP formula's
+          pressure multiplier; skipping it leaves under_pressure at None,
+          the correct "not recorded" default. */}
+      {pendingPressure && (
+        <div className="fixed top-28 left-1/2 -translate-x-1/2 z-[200] animate-fade-in">
+          <div
+            className="flex items-center gap-2 rounded-2xl px-3 py-2"
+            style={{
+              background: 'rgba(15,23,42,0.92)',
+              border: '1px solid rgba(217,119,6,0.35)',
+              backdropFilter: 'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              boxShadow: '0 6px 24px rgba(0,0,0,0.45)',
+            }}
+          >
+            <span className="text-amber-300 text-xs font-bold flex-shrink-0">Under pressure? (optional)</span>
+            <button
+              onClick={() => handlePressureSelect(true)}
+              className="flex-shrink-0 px-3 py-1 rounded-lg text-[11px] font-bold bg-amber-500/20 text-amber-300 hover:bg-amber-500/35 hover:text-white transition-all"
+            >
+              Yes
+            </button>
+            <button
+              onClick={() => handlePressureSelect(false)}
+              className="flex-shrink-0 px-3 py-1 rounded-lg text-[11px] font-bold bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-all"
+            >
+              No
+            </button>
+            <button
+              onClick={() => { if (pendingPressureTimeoutRef.current) clearTimeout(pendingPressureTimeoutRef.current); setPendingPressure(null) }}
               className="flex-shrink-0 text-white/40 hover:text-white text-xs px-1.5"
             >
               ✕
