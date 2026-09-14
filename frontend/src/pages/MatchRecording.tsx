@@ -75,6 +75,7 @@ import {
   HelpCircle,
   Pencil,
   CircleSlash,
+  Zap,
   LayoutDashboard,
   X,
   Minus,
@@ -196,6 +197,25 @@ export default function MatchRecording() {
   // logging it — normal ball movement/possession recording continues right
   // after.
   const [pendingLongKick, setPendingLongKick] = useState<{ isHomeTeam: boolean } | null>(null)
+  // Opposition quick-pass counter — mirrors Video Tagging's identical "P"
+  // icon exactly: how many passes logged so far in the CURRENT opposition
+  // possession spell, resets the moment possession changes hands. Feeds
+  // PPDA once opposition passes are trackable from live recording too, not
+  // just video-tagged matches.
+  const [oppPassCount, setOppPassCount] = useState(0)
+  useEffect(() => {
+    setOppPassCount(0)
+  }, [ballPosition.team])
+
+  // Press Trigger — 1-tap on/off, local-only state (mirrors Dead Ball's
+  // pattern, not Stoppage's backend-persisted one). Captures where/when the
+  // press started; "passes allowed during the press" reads off the SAME
+  // opposition Pass counter above rather than a separate counting
+  // mechanism, since that data now exists live. Auto-closes when we win the
+  // ball back or the opposition scores — see the effect below.
+  const [pressTriggerActive, setPressTriggerActive] = useState(false)
+  const pressTriggerStartRef = useRef<{ x: number; y: number; minute: number; passCountAtStart: number } | null>(null)
+  const pressEventCountRef = useRef(0)
   const [resetting, setResetting] = useState(false)
   const [eventToDelete, setEventToDelete] = useState<number | null>(null)
   const [errorAlert, setErrorAlert] = useState<string | null>(null)
@@ -518,6 +538,56 @@ export default function MatchRecording() {
   // credited. Tapping the icon again while armed cancels it.
   const handleToggleLongKickArm = () => {
     setPendingLongKick(prev => prev ? null : { isHomeTeam: ballPosition.team === PossessionTeam.OWN })
+  }
+
+  // Opposition quick-pass log — mirrors Video Tagging's identical "P" icon:
+  // single tap, logs immediately at the ball's current spot, no follow-up.
+  // No dedicated pass EventType exists on the live side either (same gap as
+  // High Ball) — recorded as OTHER with a "Pass" note.
+  const handleLogOppositionPass = () => {
+    if (!matchId) return
+    recordEvent.mutateAsync({
+      match_id: matchId,
+      event_type: mapEventTypeToBackend(EventType.OTHER),
+      minute,
+      half: currentHalf,
+      x_coord: ballPosition.x,
+      y_coord: ballPosition.y,
+      is_home_team: false,
+      notes: 'Pass',
+    }).catch(err => console.error('Failed to record opposition pass:', err))
+    setOppPassCount(c => c + 1)
+  }
+
+  // Closes out a Press Trigger window and logs it — no dedicated schema for
+  // this yet (same pragmatic gap as High Ball/opposition Pass), recorded as
+  // an OTHER-typed marker with a compact structured note.
+  const closePressTrigger = (outcome: 'won_back' | 'broken' | 'manual_end') => {
+    const start = pressTriggerStartRef.current
+    setPressTriggerActive(false)
+    pressTriggerStartRef.current = null
+    if (!start || !matchId) return
+    const durationMin = Math.max(0, minute - start.minute)
+    const passesDuring = Math.max(0, oppPassCount - start.passCountAtStart)
+    recordEvent.mutateAsync({
+      match_id: matchId,
+      event_type: mapEventTypeToBackend(EventType.OTHER),
+      minute: start.minute,
+      half: currentHalf,
+      x_coord: start.x,
+      y_coord: start.y,
+      is_home_team: true,
+      notes: `Press: ${outcome}, ${passesDuring} passes, ${durationMin}m`,
+    }).catch(err => console.error('Failed to record press trigger:', err))
+  }
+
+  const handleTogglePressTrigger = () => {
+    if (pressTriggerActive) {
+      closePressTrigger('manual_end')
+    } else {
+      pressTriggerStartRef.current = { x: ballPosition.x, y: ballPosition.y, minute, passCountAtStart: oppPassCount }
+      setPressTriggerActive(true)
+    }
   }
 
   // Formation snapshot state
@@ -1012,6 +1082,37 @@ export default function MatchRecording() {
   // Recent events - fetch from backend, display newest first
   const { data: matchEventsData } = useMatchEvents(matchId, { live: true })
   const allEvents = [...(matchEventsData?.events || [])].reverse()
+
+  // Auto-close a Press Trigger the moment we win the ball back (turnover
+  // won/interception) or the opposition scores through it — watches this
+  // live match-events query rather than hooking into the ~14 separate
+  // recordEvent call sites scattered through this file, since the query
+  // already appends optimistically the instant any of them succeeds.
+  useEffect(() => {
+    const evs = matchEventsData?.events || []
+    if (!pressTriggerActive) {
+      pressEventCountRef.current = evs.length
+      return
+    }
+    if (evs.length > pressEventCountRef.current) {
+      const newOnes = evs.slice(pressEventCountRef.current)
+      pressEventCountRef.current = evs.length
+      const brokenTypes = ['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five', 'penalty_goal']
+      for (const ev of newOnes) {
+        if (ev.is_home_team && (ev.event_type === 'turnover_won' || ev.event_type === 'interception')) {
+          closePressTrigger('won_back')
+          break
+        }
+        if (!ev.is_home_team && brokenTypes.includes(ev.event_type)) {
+          closePressTrigger('broken')
+          break
+        }
+      }
+    } else {
+      pressEventCountRef.current = evs.length
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchEventsData?.events, pressTriggerActive])
 
   // Match-insight cards — same event-driven aggregations the post-match
   // report uses (score origins, scoreable frees, attack efficiency, vs
@@ -4301,8 +4402,31 @@ export default function MatchRecording() {
                             onOpenChange={setIsCarrierRadialOpen}
                           />
                         )}
+                        {/* Opposition has no per-player carrier radial (we
+                            don't track their identities) — this quick "Pass"
+                            icon takes the same up-right slot the radial-
+                            opener icon occupies for our own team, exactly
+                            like Video Tagging's identical icon, so exactly
+                            one icon ever sits there. */}
+                        {(matchPhase === 'first_half' || matchPhase === 'second_half') && ballPosition.team !== PossessionTeam.OWN && (
+                          <BallQuickActionIcon
+                            ballSvgX={ballSvgX}
+                            ballSvgY={ballSvgY}
+                            angleDeg={-45}
+                            label="P"
+                            title="Log Pass (Opposition)"
+                            color="#0891b2"
+                            onTap={handleLogOppositionPass}
+                            count={oppPassCount}
+                            disabled={
+                              isStopped || isDeadBall || awaitingKickout ||
+                              !!pendingFreeKick || !!pending45 || !!pendingFortyFivePosition || !!pendingKickoutEvent ||
+                              !!pendingBlockRecovery || !!pendingSidelineDecision
+                            }
+                          />
+                        )}
                         {/* High Ball — either team, -135° (up-left) so it never
-                            crowds the carrier radial's own icon at -45°
+                            crowds the carrier radial/pass icon at -45°
                             (up-right). Disabled during any other pending
                             dead-ball/decision flow, so a subsequent tap is
                             never ambiguous about what it means. */}
@@ -4568,6 +4692,19 @@ export default function MatchRecording() {
                     >
                       <CircleSlash size={16} />
                       <span>{isDeadBall ? 'Ball Live' : 'Dead Ball'}</span>
+                    </button>
+                    <button
+                      data-tour="press-trigger-btn"
+                      onClick={handleTogglePressTrigger}
+                      className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
+                        pressTriggerActive
+                          ? 'bg-orange-500/20 border-orange-500/40 text-orange-400 animate-pulse'
+                          : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
+                      }`}
+                      title={pressTriggerActive ? 'Press active — tap to end manually' : 'Mark the start of a high press — auto-ends on turnover won or opposition score'}
+                    >
+                      <Zap size={16} />
+                      <span>{pressTriggerActive ? 'Press Active' : 'Press Trigger'}</span>
                     </button>
                     <FormationSnapshotButton
                       onClick={() => setIsSnapshotMode(true)}
