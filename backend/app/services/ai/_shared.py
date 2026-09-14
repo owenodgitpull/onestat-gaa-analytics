@@ -909,6 +909,26 @@ TOOLS = [
             "required": []
         }
     },
+    {
+        "name": "get_turnover_to_shot_time",
+        "description": (
+            "Analyse how quickly the team gets a shot away after WINNING the ball back (turnover won, "
+            "interception, kickout won). Returns per-match average transition time (seconds) for own team "
+            "and opponent, season average for both, and per-match trend data. Lower = faster, more direct "
+            "transition play — the counterpart to get_ball_recovery_time (which measures time to win the "
+            "ball back, not what happens after). Use for questions about counter-attack/transition speed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "Optional UUID to limit analysis to a single match. Omit for season-wide analysis."
+                }
+            },
+            "required": []
+        }
+    },
 ]
 
 def get_cached_tools() -> list:
@@ -998,6 +1018,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_sleep_data(db, **tool_input, club_id=club_id)
     elif tool_name == "get_ball_recovery_time":
         return await get_ball_recovery_time(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_turnover_to_shot_time":
+        return await get_turnover_to_shot_time(db, **tool_input, club_id=club_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -5485,6 +5507,118 @@ async def get_ball_recovery_time(db: AsyncSession, match_id: str | None = None, 
                 f"Team takes avg {season_own}min to regain possession after a turnover/error "
                 f"vs opponent avg {season_opp}min. Lower = better pressing / transition."
                 if season_own and season_opp else "Insufficient minute-level event data for recovery analysis."
+            ),
+            "per_match": per_match,
+        })
+
+    except Exception as e:
+        return safe_json({"error": str(e)})
+
+
+async def get_turnover_to_shot_time(db: AsyncSession, match_id: str | None = None, club_id=None) -> str:
+    """Compute transition speed — avg seconds from winning the ball back to
+    getting a shot away. Sibling to get_ball_recovery_time above, but
+    DELIBERATELY diffs `created_at` (real wall-clock recording timestamps)
+    rather than `minute` — a genuine turnover-to-shot transition is
+    typically a matter of SECONDS, and MatchEvent.minute is only
+    whole-minute granularity, so a minute-diff here would return 0 for
+    almost every fast break and make the metric useless. created_at is a
+    reasonable proxy for game-time elapsed since both events are logged
+    live, moments after they happen, with only normal UI-tap lag between
+    the real moment and the recorded timestamp — good enough for a
+    directional "how quickly do we convert a turnover" read, not a frame-
+    accurate one."""
+    from collections import defaultdict
+    from app.models.match import Match, MatchStatus
+    from app.models.match_event import MatchEvent, EventType, Team
+    from app.services.expected_points_service import ALL_SHOT_TYPES
+    import uuid as uuid_mod
+
+    BALL_WON = frozenset([
+        EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON,
+        EventType.OWN_KICKOUT_WON, EventType.OPP_KICKOUT_WON, EventType.KICKOUT_WON,
+        EventType.OWN_KICKOUT_WON_BREAK, EventType.OPP_KICKOUT_WON_BREAK,
+    ])
+    SHOT_TYPES = frozenset(ALL_SHOT_TYPES)
+
+    try:
+        if match_id:
+            match_uuid = uuid_mod.UUID(match_id)
+            match_result = await db.execute(select(Match).where(Match.id == match_uuid))
+            match = match_result.scalar_one_or_none()
+            if not match:
+                return safe_json({"error": "Match not found"})
+            scope_ids = [match_uuid]
+            match_labels = {match_uuid: f"{match.opponent} ({match.match_date.strftime('%d %b') if match.match_date else 'Unknown'})"}
+        else:
+            where_clauses = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+            if club_id:
+                where_clauses.append(Match.club_id == club_id)
+            matches_result = await db.execute(
+                select(Match).where(and_(*where_clauses)).order_by(Match.match_date.asc())
+            )
+            matches = matches_result.scalars().all()
+            if not matches:
+                return safe_json({"error": "No completed matches found"})
+            scope_ids = [m.id for m in matches]
+            match_labels = {m.id: f"{m.opponent} ({m.match_date.strftime('%d %b') if m.match_date else 'Unknown'})" for m in matches}
+
+        ev_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.created_at)
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(scope_ids),
+                    MatchEvent.created_at.isnot(None),
+                    MatchEvent.event_type.in_(list(BALL_WON | SHOT_TYPES)),
+                )
+            )
+            .order_by(MatchEvent.match_id, MatchEvent.created_at)
+        )
+        rows = ev_result.all()
+
+        ev_by_match = defaultdict(list)
+        for r in rows:
+            ev_by_match[r.match_id].append(r)
+
+        def _transition_avg(evs, team):
+            won_at = None
+            gaps = []
+            for e in evs:
+                if e.team == team and e.event_type in BALL_WON:
+                    won_at = e.created_at
+                elif won_at is not None and e.team == team and e.event_type in SHOT_TYPES:
+                    diff = (e.created_at - won_at).total_seconds()
+                    if 0 < diff <= 60:
+                        gaps.append(diff)
+                    won_at = None
+            return round(sum(gaps) / len(gaps), 1) if gaps else None
+
+        per_match = []
+        for mid in scope_ids:
+            evs = ev_by_match.get(mid, [])
+            own_avg = _transition_avg(evs, Team.OWN)
+            opp_avg = _transition_avg(evs, Team.OPPONENT)
+            if own_avg is not None or opp_avg is not None:
+                per_match.append({
+                    "match": match_labels.get(mid, str(mid)),
+                    "team_transition_sec": own_avg,
+                    "opponent_transition_sec": opp_avg,
+                })
+
+        own_avgs = [m["team_transition_sec"] for m in per_match if m["team_transition_sec"] is not None]
+        opp_avgs = [m["opponent_transition_sec"] for m in per_match if m["opponent_transition_sec"] is not None]
+        season_own = round(sum(own_avgs) / len(own_avgs), 1) if own_avgs else None
+        season_opp = round(sum(opp_avgs) / len(opp_avgs), 1) if opp_avgs else None
+
+        return safe_json({
+            "scope": "single_match" if match_id else "season",
+            "matches_analysed": len(per_match),
+            "season_avg_team_transition_sec": season_own,
+            "season_avg_opponent_transition_sec": season_opp,
+            "interpretation": (
+                f"Team takes avg {season_own}s to get a shot away after winning the ball back "
+                f"vs opponent avg {season_opp}s. Lower = faster, more direct transition play."
+                if season_own and season_opp else "Insufficient event data for transition-speed analysis."
             ),
             "per_match": per_match,
         })

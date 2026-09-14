@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react'
 import GAAPitch from '@/components/GAAPitch'
 import BallCarrierPicker from '@/components/BallCarrierPicker'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
+import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw } from 'lucide-react'
@@ -117,6 +118,13 @@ interface FullscreenPitchModeProps {
   oppositionRoster?: string[]
   onOpponentScorerSelect?: (name: string) => void
   onOpponentScorerSkip?: () => void
+  // High Ball + opposition Pass — same ball-anchored icons normal mode has,
+  // previously missing here entirely since this component owns its own
+  // separate <GAAPitch> render rather than sharing MatchRecording.tsx's.
+  pendingLongKickArmed?: boolean
+  onToggleLongKickArm?: () => void
+  oppPassCount?: number
+  onLogOppositionPass?: () => void
 }
 
 export default function FullscreenPitchMode({
@@ -200,6 +208,10 @@ export default function FullscreenPitchMode({
   oppositionRoster = [],
   onOpponentScorerSelect,
   onOpponentScorerSkip,
+  pendingLongKickArmed = false,
+  onToggleLongKickArm,
+  oppPassCount = 0,
+  onLogOppositionPass,
 }: FullscreenPitchModeProps) {
   const clubName = useClubName()
   const [toastVisible, setToastVisible] = useState(false)
@@ -637,24 +649,60 @@ export default function FullscreenPitchMode({
           highlightSidelines={highlightSidelines}
           highlight45LineX={highlight45LineX}
           ballAnchoredOverlay={
-            (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN
-              ? (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
-                <BallCarrierPicker
-                  players={jerseyStripPlayers}
-                  activeCarrierId={activeCarrierId ?? null}
-                  onSelect={onCarrierSelect}
-                  attackingRight={teamAttackingRight}
-                  teamPrimaryColor={teamPrimaryColor}
-                  teamSecondaryColor={teamSecondaryColor}
-                  ballSvgX={ballSvgX}
-                  ballSvgY={ballSvgY}
-                  ballPctX={ballPctX}
-                  ballPctY={ballPctY}
-                  recentCarrierIds={recentCarrierIds}
-                  onOpenChange={setIsCarrierRadialOpen}
-                />
-              )
-              : undefined
+            (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
+              <>
+                {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN && (
+                  <BallCarrierPicker
+                    players={jerseyStripPlayers}
+                    activeCarrierId={activeCarrierId ?? null}
+                    onSelect={onCarrierSelect}
+                    attackingRight={teamAttackingRight}
+                    teamPrimaryColor={teamPrimaryColor}
+                    teamSecondaryColor={teamSecondaryColor}
+                    ballSvgX={ballSvgX}
+                    ballSvgY={ballSvgY}
+                    ballPctX={ballPctX}
+                    ballPctY={ballPctY}
+                    recentCarrierIds={recentCarrierIds}
+                    onOpenChange={setIsCarrierRadialOpen}
+                  />
+                )}
+                {(matchPhase === 'first_half' || matchPhase === 'second_half') && currentPossession !== PossessionTeam.OWN && onLogOppositionPass && (
+                  <BallQuickActionIcon
+                    ballSvgX={ballSvgX}
+                    ballSvgY={ballSvgY}
+                    angleDeg={-45}
+                    label="P"
+                    title="Log Pass (Opposition)"
+                    color="#0891b2"
+                    onTap={onLogOppositionPass}
+                    count={oppPassCount}
+                    disabled={
+                      isStopped || isDeadBall || awaitingKickout ||
+                      pendingFreeKick || pending45 || pendingFortyFivePosition || pendingKickoutPosition ||
+                      pendingBlockRecovery || pendingSidelineDecision
+                    }
+                  />
+                )}
+                {(matchPhase === 'first_half' || matchPhase === 'second_half') && onToggleLongKickArm && (
+                  <BallQuickActionIcon
+                    ballSvgX={ballSvgX}
+                    ballSvgY={ballSvgY}
+                    angleDeg={-135}
+                    label="HB"
+                    title="Log High Ball"
+                    color="#d97706"
+                    onTap={onToggleLongKickArm}
+                    armed={pendingLongKickArmed}
+                    disabled={
+                      isStopped || isDeadBall || awaitingKickout ||
+                      pendingFreeKick || pending45 || pendingFortyFivePosition || pendingKickoutPosition ||
+                      pendingBlockRecovery || pendingSidelineDecision
+                    }
+                  />
+                )}
+              </>
+            )
           }
           pitchOverlay={
             (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN

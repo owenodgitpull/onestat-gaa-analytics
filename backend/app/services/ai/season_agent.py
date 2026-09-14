@@ -61,6 +61,7 @@ SEASON_TOOLS = [
     "get_tactical_tags",
     "get_sleep_data",
     "get_ball_recovery_time",
+    "get_turnover_to_shot_time",
     "get_kickout_targets",
 ]
 

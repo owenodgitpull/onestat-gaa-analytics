@@ -5468,7 +5468,7 @@ export default function MatchRecording() {
         onMinimizeKickout={() => setKickoutBannerMinimised(true)}
         onRestoreKickout={() => setKickoutBannerMinimised(false)}
         teamAttackingRight={teamAttackingRight}
-        statusText={statusLabel.text}
+        statusText={pendingLongKick ? 'High Ball — tap pitch for landing spot' : statusLabel.text}
         statusAccent={statusLabel.accent}
         onSwapPossession={() => {
           // See the matching handler above — guard + synchronous label flip
@@ -5510,6 +5510,10 @@ export default function MatchRecording() {
         oppositionRoster={match?.opposition_roster || []}
         onOpponentScorerSelect={handleOpponentScorerSelect}
         onOpponentScorerSkip={handleOpponentScorerSkip}
+        pendingLongKickArmed={!!pendingLongKick}
+        onToggleLongKickArm={handleToggleLongKickArm}
+        oppPassCount={oppPassCount}
+        onLogOppositionPass={handleLogOppositionPass}
       />
 
       {/* Half-Time View — full-screen stats overlay, no touch pitch or
