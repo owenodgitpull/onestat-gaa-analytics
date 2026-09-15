@@ -42,8 +42,9 @@ class TrainingSessionResponse(TrainingSessionBase):
     """Response schema for training sessions."""
     id: UUID
     created_at: datetime
-    attendance_count: int = Field(0, description="Number of attendance records")
+    attendance_count: int = Field(0, description="Number of attendance records (players marked in any status) for this session — NOT the squad size")
     present_count: int = Field(0, description="Number of players present")
+    squad_size: int = Field(0, description="Total active players in the squad at the time of query — the correct denominator for a 'X present out of squad' display, distinct from attendance_count")
     has_gps_data: bool = Field(False, description="Whether GPS data has been uploaded for this session")
 
     class Config:

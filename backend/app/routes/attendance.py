@@ -38,6 +38,19 @@ from app.schemas.attendance import (
 router = APIRouter()
 
 
+async def _get_squad_size(db: AsyncSession, club_id: UUID) -> int:
+    """Total active players for a club — the correct denominator for a
+    'X present out of squad' display. Distinct from attendance_count
+    (number of Attendance rows that exist for a session, i.e. players
+    someone bothered to mark in any status), which reads as a meaningless
+    "17/17 Present" whenever every marked player happens to be present and
+    nobody explicitly recorded the rest as absent."""
+    result = await db.execute(
+        select(func.count(Player.id)).where(Player.club_id == club_id, Player.active.is_(True))
+    )
+    return result.scalar_one() or 0
+
+
 # ============ Training Sessions ============
 
 @router.post("/sessions", response_model=TrainingSessionResponse, status_code=201)
@@ -52,10 +65,13 @@ async def create_session(
     await db.commit()
     await db.refresh(db_session)
 
+    squad_size = await _get_squad_size(db, user.club_id)
+
     return TrainingSessionResponse(
         **{k: v for k, v in db_session.__dict__.items() if not k.startswith('_')},
         attendance_count=0,
-        present_count=0
+        present_count=0,
+        squad_size=squad_size,
     )
 
 
@@ -92,6 +108,8 @@ async def list_sessions(
     gps_result = await db.execute(gps_query)
     sessions_with_gps = {row[0] for row in gps_result.all()}
 
+    squad_size = await _get_squad_size(db, user.club_id)
+
     response = []
     for s in sessions:
         present = sum(1 for a in s.attendance_records if a.status == AttendanceStatus.PRESENT)
@@ -106,6 +124,7 @@ async def list_sessions(
             created_at=s.created_at,
             attendance_count=len(s.attendance_records),
             present_count=present,
+            squad_size=squad_size,
             has_gps_data=s.id in sessions_with_gps
         ))
 
@@ -154,6 +173,7 @@ async def get_session(
     ]
 
     present = sum(1 for a in session.attendance_records if a.status == AttendanceStatus.PRESENT)
+    squad_size = await _get_squad_size(db, user.club_id)
 
     return TrainingSessionDetail(
         id=session.id,
@@ -166,6 +186,7 @@ async def get_session(
         created_at=session.created_at,
         attendance_count=len(session.attendance_records),
         present_count=present,
+        squad_size=squad_size,
         attendance_records=attendance_responses,
         ai_summary=session.ai_summary,
         ai_summary_generated_at=session.ai_summary_generated_at,
@@ -194,10 +215,13 @@ async def update_session(
     await db.commit()
     await db.refresh(session)
 
+    squad_size = await _get_squad_size(db, user.club_id)
+
     return TrainingSessionResponse(
         **{k: v for k, v in session.__dict__.items() if not k.startswith('_')},
         attendance_count=0,
-        present_count=0
+        present_count=0,
+        squad_size=squad_size,
     )
 
 

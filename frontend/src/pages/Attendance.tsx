@@ -52,8 +52,15 @@ interface TrainingSession {
   location: string | null
   notes: string | null
   created_at: string
+  // Number of Attendance rows that exist for this session (players marked
+  // in ANY status) — NOT the squad size. Used elsewhere (Fixtures.tsx) to
+  // flag "no attendance data recorded yet"; not the right denominator for
+  // a "present out of squad" display, since it silently equals
+  // present_count whenever nobody explicitly marked absentees.
   attendance_count: number
   present_count: number
+  // Total active players in the squad — the correct denominator.
+  squad_size: number
 }
 
 interface AttendanceRecord {
@@ -590,7 +597,7 @@ function SessionDetailModal({ session, onClose }: {
           className="w-full mb-4 btn-glass flex items-center justify-center gap-2 text-sm"
         >
           <CheckCircle2 size={16} />
-          {showAttendance ? 'Hide' : 'Show'} Attendance ({session.present_count}/{session.attendance_count})
+          {showAttendance ? 'Hide' : 'Show'} Attendance ({session.present_count}/{session.squad_size})
         </button>
 
         {showAttendance && (
@@ -1251,7 +1258,7 @@ export default function Attendance() {
                 <div className="flex items-center space-x-4">
                   <div className="text-right">
                     <div className="text-lg font-bold text-white">
-                      {session.present_count}/{session.attendance_count}
+                      {session.present_count}/{session.squad_size}
                     </div>
                     <div className="text-xs text-white/60">Present</div>
                   </div>
