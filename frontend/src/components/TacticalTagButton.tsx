@@ -9,8 +9,11 @@ import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Tag } from 'lucide-react'
 
+// 'High Press' deliberately dropped from this list — Press Trigger (the
+// toolbar's own dedicated toggle) now covers that concept with real
+// start/end timing, pass count and outcome, making a static one-tap tag
+// with none of that a redundant, weaker duplicate.
 const QUICK_TAGS = [
-  { type: 'high_press', label: 'High Press' },
   { type: 'blanket_defence', label: 'Blanket Defence' },
   { type: 'formation_change', label: 'Formation Change' },
 ]
@@ -122,7 +125,7 @@ export default function TacticalTagButton({
                 onChange={e => setCustomText(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCustomTag()}
                 placeholder="Custom tag..."
-                className="flex-1 bg-white/10 border border-white/15 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-amber-400/40"
+                className="flex-1 min-w-0 bg-white/10 border border-white/15 rounded-lg px-2.5 py-1.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-amber-400/40"
                 maxLength={100}
               />
               <button

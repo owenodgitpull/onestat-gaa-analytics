@@ -528,6 +528,25 @@ export default function MatchRecording() {
       })
   }, [jerseyStripPlayers, teamAttackingRight])
 
+  // Opposition, preseeded at the mirror-image of our own 15 slots (opposite
+  // end from us, same y) — anonymous, no real roster, but a manager
+  // capturing exactly how a score/concession happened needs both sides on
+  // the pitch, not just ours. Standard GAA squad number by position slot
+  // (1=GK...15=corner-forward), matching FORMATION_POSITION_COORDS'
+  // declaration order — purely a position reference, not a real identity.
+  const snapshotOppositionPlayers = useMemo(() => {
+    return Object.entries(FORMATION_POSITION_COORDS).map(([, base], i) => {
+      const x = teamAttackingRight ? 100 - base.x : base.x
+      return {
+        playerId: `opp-${i + 1}`,
+        jerseyNumber: i + 1,
+        playerName: `Opposition #${i + 1}`,
+        x,
+        y: base.y,
+      }
+    })
+  }, [teamAttackingRight])
+
   // Track recent carrier selections (most recent first) for quick-pick shortcuts
   const [recentCarrierIds, setRecentCarrierIds] = useState<string[]>([])
 
@@ -5515,6 +5534,13 @@ export default function MatchRecording() {
         onToggleStoppage={handleToggleStoppage}
         isDeadBall={isDeadBall}
         onToggleDeadBall={handleToggleDeadBall}
+        pressTriggerActive={pressTriggerActive}
+        onTogglePressTrigger={handleTogglePressTrigger}
+        tacticalTagCount={tacticalTagCount}
+        onTacticalTag={handleTacticalTag}
+        onOpenSnapshot={() => setIsSnapshotMode(true)}
+        shouldPulseSnapshot={shouldPulseSnapshot}
+        snapshotCount={snapshotCount}
         onSubstitution={() => {
           setManualEntryDefaultType(EventType.SUBSTITUTION)
           setIsManualEntryOpen(true)
@@ -5591,6 +5617,7 @@ export default function MatchRecording() {
         onClose={() => setIsSnapshotMode(false)}
         onSave={handleFormationSave}
         ownPlayers={snapshotOwnPlayers}
+        oppositionPlayers={snapshotOppositionPlayers}
       />
 
       {/* Error Alert Modal */}

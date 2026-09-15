@@ -4,8 +4,10 @@ import BallCarrierPicker from '@/components/BallCarrierPicker'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
 import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
 import CategorizedActionButtons from '@/components/CategorizedActionButtons'
+import TacticalTagButton from '@/components/TacticalTagButton'
+import FormationSnapshotButton from '@/components/FormationSnapshotButton'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
-import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw } from 'lucide-react'
+import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw, Zap } from 'lucide-react'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import PitchActionOverlay from '@/components/PitchActionOverlay'
 import JerseyNumberStrip, { getPositionLine, type JerseyPlayer } from '@/components/JerseyNumberStrip'
@@ -125,6 +127,16 @@ interface FullscreenPitchModeProps {
   onToggleLongKickArm?: () => void
   oppPassCount?: number
   onLogOppositionPass?: () => void
+  // Press Trigger, Tactical Tag, Formation Snapshot — same toolbar buttons
+  // non-fullscreen mode has, previously missing here entirely (fullscreen's
+  // top bar is a separate row from normal mode's, built independently).
+  pressTriggerActive?: boolean
+  onTogglePressTrigger?: () => void
+  tacticalTagCount?: number
+  onTacticalTag?: (tagType: string, label?: string) => void
+  onOpenSnapshot?: () => void
+  shouldPulseSnapshot?: boolean
+  snapshotCount?: number
 }
 
 export default function FullscreenPitchMode({
@@ -212,6 +224,13 @@ export default function FullscreenPitchMode({
   onToggleLongKickArm,
   oppPassCount = 0,
   onLogOppositionPass,
+  pressTriggerActive = false,
+  onTogglePressTrigger,
+  tacticalTagCount = 0,
+  onTacticalTag,
+  onOpenSnapshot,
+  shouldPulseSnapshot = false,
+  snapshotCount = 0,
 }: FullscreenPitchModeProps) {
   const clubName = useClubName()
   const [toastVisible, setToastVisible] = useState(false)
@@ -401,6 +420,41 @@ export default function FullscreenPitchMode({
                 <CircleSlash size={16} />
                 <span>{isDeadBall ? 'Ball Live' : 'Dead Ball'}</span>
               </button>
+            )}
+            {onTogglePressTrigger && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+              <button
+                onClick={onTogglePressTrigger}
+                disabled={!pressTriggerActive && currentPossession === PossessionTeam.OWN}
+                className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all ${pressTriggerActive ? 'animate-pulse' : ''}`}
+                style={{
+                  background: pressTriggerActive
+                    ? 'rgba(249,115,22,0.3)'
+                    : currentPossession === PossessionTeam.OWN ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.1)',
+                  borderColor: pressTriggerActive
+                    ? 'rgba(249,115,22,0.6)'
+                    : currentPossession === PossessionTeam.OWN ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.15)',
+                  color: pressTriggerActive
+                    ? '#fb923c'
+                    : currentPossession === PossessionTeam.OWN ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.7)',
+                  cursor: !pressTriggerActive && currentPossession === PossessionTeam.OWN ? 'not-allowed' : 'pointer',
+                }}
+                title={
+                  pressTriggerActive
+                    ? 'Press active — tap to end manually'
+                    : currentPossession === PossessionTeam.OWN
+                      ? 'Press Trigger only applies while the opposition has the ball'
+                      : 'Mark the start of a high press — auto-ends on turnover won or opposition score'
+                }
+              >
+                <Zap size={16} />
+                <span>{pressTriggerActive ? 'Press Active' : 'Press Trigger'}</span>
+              </button>
+            )}
+            {onTacticalTag && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+              <TacticalTagButton onTag={onTacticalTag} tagCount={tacticalTagCount} />
+            )}
+            {onOpenSnapshot && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+              <FormationSnapshotButton onClick={onOpenSnapshot} shouldPulse={shouldPulseSnapshot} snapshotCount={snapshotCount} />
             )}
             {kickoutBannerMinimised && (awaitingKickout || pendingKickoutPosition) && onRestoreKickout && (
               <button

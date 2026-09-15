@@ -625,9 +625,13 @@ export default function GAAPitch({
           </g>
         )}
 
-        {/* Optional overlay — rendered inside SVG so it scales with the pitch */}
+        {/* Optional overlay — rendered inside SVG so it scales with the pitch.
+            y is well clear of the fixed-pixel-height "top-2" control button
+            row absolutely positioned over this same card (MatchRecording's
+            pitch-container) — sitting too close to the top edge (y=25) had
+            this label overlapping that button row. */}
         {svgOverlay && (
-          <foreignObject x="30" y="25" width="1000" height="120">
+          <foreignObject x="30" y="190" width="1000" height="120">
             {svgOverlay}
           </foreignObject>
         )}

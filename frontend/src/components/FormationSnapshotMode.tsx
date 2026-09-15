@@ -44,6 +44,11 @@ interface FormationSnapshotModeProps {
   onSave: (positions: Array<{ playerId: string | null; jerseyNumber: number | null; team: 'own' | 'opponent'; x: number; y: number }>, label: string) => void
   /** Own team, already at their real lineup positions (mirrored for the current attacking direction) */
   ownPlayers: SnapshotOwnPlayer[]
+  /** Opposition, preseeded at the mirror-image of our own 15 slots (anonymous
+   *  — id/name carry no real identity, just a standard GAA squad number by
+   *  position) so a manager capturing a score/concession doesn't have to tap
+   *  15 opposition markers onto the pitch from scratch every time. */
+  oppositionPlayers?: SnapshotOwnPlayer[]
 }
 
 const LABELS = ['Defensive Shape', 'Kickout Setup', 'Attacking Press', 'Custom']
@@ -52,6 +57,16 @@ const LABELS = ['Defensive Shape', 'Kickout Setup', 'Attacking Press', 'Custom']
 // not a drag — distinguishes "place/select" from "reposition".
 const DRAG_THRESHOLD_PX = 6
 
+// Real pitch-svg.svg intrinsic ratio (viewBox 0 0 2332 1446) — the pitch
+// image is rendered with object-contain inside a flexibly-sized container,
+// so it doesn't necessarily fill that container edge-to-edge (letterboxed
+// left/right or top/bottom depending on the container's own proportions).
+// Marker x/y are percentages of the REAL PITCH, so the positioning box has
+// to be sized to exactly this ratio too — otherwise a marker's % lands at
+// the wrong spot relative to the visible pitch (was landing off the pitch
+// entirely for players near either goal line).
+const PITCH_RATIO = 2332 / 1446
+
 let nextId = 1
 
 export default function FormationSnapshotMode({
@@ -59,28 +74,46 @@ export default function FormationSnapshotMode({
   onClose,
   onSave,
   ownPlayers,
+  oppositionPlayers = [],
 }: FormationSnapshotModeProps) {
   const [positions, setPositions] = useState<PlacedPosition[]>([])
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null)
   const [selectedLabel, setSelectedLabel] = useState('Defensive Shape')
+  const outerRef = useRef<HTMLDivElement>(null)
   const pitchRef = useRef<HTMLDivElement>(null)
+  const [pitchBox, setPitchBox] = useState({ width: 0, height: 0 })
 
   // Drag tracking — refs, not state, so pointermove doesn't re-render on every pixel
   const dragIdRef = useRef<string | null>(null)
   const dragMovedRef = useRef(false)
   const dragStartClientRef = useRef<{ x: number; y: number } | null>(null)
 
-  useEffect(() => {
-    if (isOpen) {
-      setPositions(ownPlayers.map(p => ({
+  const seedPositions = useCallback(() => {
+    setPositions([
+      ...ownPlayers.map(p => ({
         id: `own-${p.playerId}`,
-        team: 'own',
+        team: 'own' as const,
         playerId: p.playerId,
         jerseyNumber: p.jerseyNumber,
         playerName: p.playerName,
         x: p.x,
         y: p.y,
-      })))
+      })),
+      ...oppositionPlayers.map((p, i) => ({
+        id: `opp-default-${i}`,
+        team: 'opponent' as const,
+        playerId: null,
+        jerseyNumber: p.jerseyNumber,
+        playerName: p.playerName,
+        x: p.x,
+        y: p.y,
+      })),
+    ])
+  }, [ownPlayers, oppositionPlayers])
+
+  useEffect(() => {
+    if (isOpen) {
+      seedPositions()
       setSelectedMarkerId(null)
       setSelectedLabel('Defensive Shape')
       nextId = 1
@@ -90,6 +123,23 @@ export default function FormationSnapshotMode({
     // while the modal is already up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
+
+  // Size the actual pitch box to PITCH_RATIO, fit within (not stretched to)
+  // the available flex area, centered — see PITCH_RATIO comment above.
+  useEffect(() => {
+    const el = outerRef.current
+    if (!el) return
+    const update = () => {
+      const { width, height } = el.getBoundingClientRect()
+      let w = width, h = width / PITCH_RATIO
+      if (h > height) { h = height; w = height * PITCH_RATIO }
+      setPitchBox({ width: w, height: h })
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const pctFromClient = useCallback((clientX: number, clientY: number) => {
     const rect = pitchRef.current?.getBoundingClientRect()
@@ -193,9 +243,9 @@ export default function FormationSnapshotMode({
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setPositions(ownPlayers.map(p => ({ id: `own-${p.playerId}`, team: 'own', playerId: p.playerId, jerseyNumber: p.jerseyNumber, playerName: p.playerName, x: p.x, y: p.y }))); setSelectedMarkerId(null) }}
+            onClick={() => { seedPositions(); setSelectedMarkerId(null) }}
             className="p-1.5 rounded-lg bg-white/10 text-white/60 active:bg-white/20 touch-manipulation"
-            title="Reset to lineup positions — clears opposition markers too"
+            title="Reset to lineup positions — also resets opposition to their default 15 slots"
           >
             <RotateCcw size={14} />
           </button>
@@ -236,55 +286,72 @@ export default function FormationSnapshotMode({
         ))}
       </div>
 
-      {/* Pitch area */}
+      {/* Pitch area — outer centers/measures, inner is sized to PITCH_RATIO
+          exactly (see comment above) so marker x/y% always lines up with the
+          actually-visible pitch, not the (possibly letterboxed) outer box. */}
       <div
-        ref={pitchRef}
-        className="flex-1 relative mx-3 my-2 rounded-xl overflow-hidden bg-green-900/50 border-2 border-purple-500/30"
-        onPointerMove={handlePitchPointerMove}
-        onPointerUp={handlePitchPointerUp}
-        style={{ touchAction: 'none' }}
+        ref={outerRef}
+        className="flex-1 relative mx-3 my-2 rounded-xl overflow-hidden bg-green-900/50 border-2 border-purple-500/30 flex items-center justify-center"
       >
-        {/* Pitch background */}
-        <img
-          src="/pitch-svg.svg"
-          className="w-full h-full object-contain opacity-40"
-          alt="pitch"
-          draggable={false}
-        />
+        <div
+          ref={pitchRef}
+          className="relative"
+          onPointerMove={handlePitchPointerMove}
+          onPointerUp={handlePitchPointerUp}
+          style={{
+            touchAction: 'none',
+            width: pitchBox.width || '100%',
+            height: pitchBox.height || '100%',
+          }}
+        >
+          {/* Pitch background */}
+          <img
+            src="/pitch-svg.svg"
+            className="w-full h-full object-contain opacity-40"
+            alt="pitch"
+            draggable={false}
+          />
 
-        {/* Placed markers */}
-        {positions.map((pos) => {
-          const isSelected = pos.id === selectedMarkerId
-          const isOwn = pos.team === 'own'
-          return (
-            <div
-              key={pos.id}
-              onPointerDown={(e) => handleMarkerPointerDown(e, pos.id)}
-              className={`absolute rounded-full flex items-center justify-center font-bold shadow-lg transition-transform touch-manipulation cursor-grab active:cursor-grabbing ${
-                isSelected
-                  ? 'w-12 h-12 -ml-6 -mt-6 ring-2 ring-yellow-400 ring-offset-1 ring-offset-transparent z-10 scale-105'
-                  : 'w-10 h-10 -ml-5 -mt-5'
-              } ${
-                isOwn
-                  ? 'bg-purple-500 border-2 border-white text-white text-sm'
-                  : 'bg-orange-500 border-2 border-white text-white text-xs'
-              }`}
-              style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
-            >
-              {isOwn ? (pos.jerseyNumber ?? '?') : 'OPP'}
-            </div>
-          )
-        })}
+          {/* Placed markers */}
+          {positions.map((pos) => {
+            const isSelected = pos.id === selectedMarkerId
+            const isOwn = pos.team === 'own'
+            return (
+              <div
+                key={pos.id}
+                onPointerDown={(e) => handleMarkerPointerDown(e, pos.id)}
+                className={`absolute rounded-full flex items-center justify-center font-bold shadow-lg transition-transform touch-manipulation cursor-grab active:cursor-grabbing ${
+                  isSelected
+                    ? 'w-12 h-12 -ml-6 -mt-6 ring-2 ring-yellow-400 ring-offset-1 ring-offset-transparent z-10 scale-105'
+                    : 'w-10 h-10 -ml-5 -mt-5'
+                } ${
+                  isOwn
+                    ? 'bg-purple-500 border-2 border-white text-white text-sm'
+                    : 'bg-orange-500 border-2 border-white text-white text-sm'
+                }`}
+                style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+              >
+                {/* Own always shows their real jersey number. Opposition
+                    shows their default-slot squad number when preseeded
+                    (jerseyNumber set) — still fully anonymous, just a
+                    position reference — and falls back to "OPP" only for a
+                    freehand extra marker tapped onto the pitch (subs etc.),
+                    which carries no number. */}
+                {isOwn ? (pos.jerseyNumber ?? '?') : (pos.jerseyNumber ?? 'OPP')}
+              </div>
+            )
+          })}
 
-        {/* Instruction */}
-        <div className="absolute bottom-2 left-0 right-0 text-center pointer-events-none">
-          <span className="text-xs text-white/70 bg-black/60 px-3 py-1 rounded-full">
-            {selectedMarker
-              ? selectedMarker.team === 'own'
-                ? `Drag ${selectedMarker.playerName} into position`
-                : 'Drag to adjust, or tap Remove below'
-              : 'Move your players into position — tap empty pitch to add opposition players'}
-          </span>
+          {/* Instruction */}
+          <div className="absolute bottom-2 left-0 right-0 text-center pointer-events-none">
+            <span className="text-xs text-white/70 bg-black/60 px-3 py-1 rounded-full">
+              {selectedMarker
+                ? selectedMarker.team === 'own'
+                  ? `Drag ${selectedMarker.playerName} into position`
+                  : 'Drag to adjust, or tap Remove below'
+                : 'Drag either team into position — tap empty pitch to add an extra marker'}
+            </span>
+          </div>
         </div>
       </div>
 
