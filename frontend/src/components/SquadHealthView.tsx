@@ -16,7 +16,7 @@ import {
   ChevronDown,
   Calendar
 } from 'lucide-react'
-import { api, SquadHealthSummary, PlayerWorkload, SquadFitnessSummary } from '@/services/api'
+import { api, SquadHealthSummary, PlayerWorkload, SquadFitnessSummary, HealthAlert } from '@/services/api'
 import LoadingSkeleton from '@/components/LoadingSkeleton'
 import { renderAnalysisText } from '@/utils/renderAnalysisText'
 import { Link } from 'react-router-dom'
@@ -54,12 +54,76 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
     }
   }
 
-  const dismissAlert = async (alertId: string) => {
-    try {
-      await api.squadHealth.dismissAlert(alertId)
-      await fetchHealthData()
-    } catch (err) {
+  // Dismiss handlers update local state directly (same pattern
+  // InsightAlertsPanel.tsx already uses elsewhere) instead of re-running
+  // fetchHealthData, which used to flip `loading` back to true and replace
+  // the ENTIRE Squad Health view — fitness card, AI summary, stat cards,
+  // workload grid, everything — with a loading skeleton on every single
+  // dismiss. Felt like a full page refresh even though it technically
+  // wasn't one. The API call still happens, just in the background.
+  const removeAlertFromState = (alertId: string) => {
+    setHealthData(prev => {
+      if (!prev) return prev
+      const strip = (list: HealthAlert[]) => list.filter(a => a.id !== alertId)
+      const alerts = {
+        critical: strip(prev.alerts.critical),
+        high: strip(prev.alerts.high),
+        medium: strip(prev.alerts.medium),
+        low: strip(prev.alerts.low),
+        info: strip(prev.alerts.info),
+      }
+      const removed = prev.total_alerts - (alerts.critical.length + alerts.high.length + alerts.medium.length + alerts.low.length + alerts.info.length)
+      return {
+        ...prev,
+        alerts,
+        total_alerts: prev.total_alerts - removed,
+        critical_count: alerts.critical.length,
+        high_count: alerts.high.length,
+      }
+    })
+  }
+
+  const dismissAlert = (alertId: string) => {
+    removeAlertFromState(alertId)
+    api.squadHealth.dismissAlert(alertId).catch(err => {
       console.error('Failed to dismiss alert:', err)
+    })
+  }
+
+  // Dismisses exactly the alert IDs passed in — scoped per-section (Active
+  // Alerts vs. Attendance Concerns render as two separate blocks, so a
+  // "Dismiss All" press in one must never clear the other).
+  const [dismissingAll, setDismissingAll] = useState(false)
+  const dismissAlertsBulk = async (alertIds: string[]) => {
+    if (alertIds.length === 0) return
+    setDismissingAll(true)
+    const idSet = new Set(alertIds)
+    const prevData = healthData
+    setHealthData(prev => {
+      if (!prev) return prev
+      const strip = (list: HealthAlert[]) => list.filter(a => !idSet.has(a.id))
+      const alerts = {
+        critical: strip(prev.alerts.critical),
+        high: strip(prev.alerts.high),
+        medium: strip(prev.alerts.medium),
+        low: strip(prev.alerts.low),
+        info: strip(prev.alerts.info),
+      }
+      return {
+        ...prev,
+        alerts,
+        total_alerts: prev.total_alerts - alertIds.length,
+        critical_count: alerts.critical.length,
+        high_count: alerts.high.length,
+      }
+    })
+    try {
+      await api.squadHealth.dismissAlertsBulk(alertIds)
+    } catch (err) {
+      console.error('Failed to bulk-dismiss alerts:', err)
+      setHealthData(prevData)
+    } finally {
+      setDismissingAll(false)
     }
   }
 
@@ -225,14 +289,27 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
         </div>
       </div>
 
-      {/* Active Alerts — workload / injury / overload only */}
+      {/* Active Alerts — workload / injury / overload only. Capped at a
+          fixed height with internal scroll (rather than growing the page)
+          so a long backlog of undismissed alerts can't keep pushing the
+          Player Workload / ACWR grid further down the page. */}
       {healthAlerts.length > 0 && (
         <div className="glass-card p-6">
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2 text-white">
-            <AlertTriangle size={20} className="text-amber-400" />
-            Active Alerts
-          </h3>
-          <div className="space-y-3">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-bold flex items-center gap-2 text-white">
+              <AlertTriangle size={20} className="text-amber-400" />
+              Active Alerts
+              <span className="text-sm font-normal text-white/40">({healthAlerts.length})</span>
+            </h3>
+            <button
+              onClick={() => dismissAlertsBulk(healthAlerts.map(a => a.id))}
+              disabled={dismissingAll}
+              className="text-xs font-semibold text-white/50 hover:text-white px-2.5 py-1 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-40"
+            >
+              Dismiss all
+            </button>
+          </div>
+          <div className="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
             {(showAllAlerts ? healthAlerts : healthAlerts.slice(0, 3)).map((alert) => (
               <Link
                 key={alert.id}

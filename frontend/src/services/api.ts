@@ -2242,6 +2242,17 @@ const squadHealthAPI = {
   },
 
   /**
+   * Dismiss a specific set of alerts in one call (e.g. every alert
+   * currently visible in one UI section).
+   */
+  dismissAlertsBulk: async (alertIds: string[]): Promise<{ status: string; count: number }> => {
+    return fetchAPI<{ status: string; count: number }>('/squad-health/alerts/dismiss-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ alert_ids: alertIds }),
+    });
+  },
+
+  /**
    * Trigger manual squad analysis
    */
   analyzeSquad: async (): Promise<{ players_analyzed: number; total_alerts_generated: number }> => {

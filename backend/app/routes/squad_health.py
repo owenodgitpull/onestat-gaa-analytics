@@ -9,6 +9,7 @@ Provides endpoints for:
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from typing import Optional
@@ -298,6 +299,45 @@ async def dismiss_alert(
     await db.commit()
 
     return {"status": "dismissed", "alert_id": str(alert_id)}
+
+
+class BulkDismissRequest(BaseModel):
+    alert_ids: list[UUID]
+
+
+@router.post("/alerts/dismiss-bulk")
+async def dismiss_alerts_bulk(
+    body: BulkDismissRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismiss a specific set of alerts in one call — the bulk counterpart to
+    dismiss_alert above, for clearing an accumulated backlog the coach never
+    got around to working through one at a time. Takes an explicit ID list
+    (the alerts currently visible in whichever UI section the "Dismiss All"
+    button was pressed in) rather than blanket-dismissing every active alert
+    for the club, since the dashboard shows workload/injury alerts and
+    attendance alerts in separate sections a user might only mean to clear
+    one of."""
+    from app.models.player import Player
+
+    club_player_ids_q = await db.execute(
+        select(Player.id).where(Player.club_id == user.club_id)
+    )
+    club_player_ids = {row[0] for row in club_player_ids_q.all()}
+
+    result = await db.execute(
+        select(PlayerHealthAlert).where(
+            PlayerHealthAlert.id.in_(body.alert_ids),
+            PlayerHealthAlert.player_id.in_(club_player_ids),
+        )
+    )
+    alerts = result.scalars().all()
+    for alert in alerts:
+        alert.is_active = False
+    await db.commit()
+
+    return {"status": "dismissed", "count": len(alerts)}
 
 
 @router.post("/analyze/player/{player_id}")
