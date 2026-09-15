@@ -772,7 +772,19 @@ export default function VideoTagging() {
         source: 'human_tag',
       }
       createEvent.mutate({ sessionId, data })
-      onCarrierTerminalEvent('PASS_KICK')
+      // 'PASS_KICK' isn't in onCarrierTerminalEvent's terminalMap (that call
+      // was a silent no-op) — the launching carrier is NOT who the high
+      // ball lands with, so their segment must actually end here, not stay
+      // open until something else eventually closes it. 'pass' matches
+      // startCarrierSegment's own end-of-previous-segment reason (a high
+      // ball IS a same-team pass attempt), keeping a possession chain open
+      // rather than wrongly closing it. Own team only — opposition never
+      // has a real carrier segment (we don't track their identities), and
+      // an opposition high ball shouldn't be able to close out OUR active
+      // carrier's segment if one happens to be open.
+      if (kickTeam === 'team_a') {
+        endCarrierSegment(position.x, position.y, 'pass')
+      }
     }
 
     if (!session?.match_id) return
@@ -785,6 +797,11 @@ export default function VideoTagging() {
       minute: matchTime.minute,
       half: matchTime.half,
     }).catch(err => console.error('Failed to record possession point (video tagging):', err))
+    // endCarrierSegment deliberately omitted — it's declared further down
+    // the component (useCallback with a stable `[]` dep array, so its
+    // identity never changes) and including it here would be a genuine
+    // TDZ error, not just a lint nit: this callback is created before that
+    // declaration is reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleTaggingBallMove, session?.match_id, calcMatchTime, currentTimeMs, possession, pendingLongKick, sessionId, createEvent])
 

@@ -2664,6 +2664,21 @@ export default function MatchRecording() {
     } catch (err) {
       console.error('Failed to record long kick:', err)
     }
+
+    // The player who launched the high ball is NOT the player it lands
+    // with — tapping the landing spot previously left the launcher marked
+    // as active carrier with no prompt to say who actually caught it.
+    // 'pass' matches startSegment's own end-of-previous-segment reason (a
+    // high ball IS a same-team pass attempt), so it keeps a possession
+    // chain open rather than wrongly closing it — the receiver's own
+    // selection (or the opposition winning it) is what actually continues
+    // or breaks the chain, exactly like a normal pass.
+    if (pending.isHomeTeam) {
+      setActiveCarrierId(null)
+      playerMovement.endSegment(position.x, position.y, 'pass').catch(err => {
+        console.error('Failed to end carrier segment on high ball landing:', err)
+      })
+    }
   }
 
   // Cancel a pending 45 that's already past Scored/Missed and just waiting
