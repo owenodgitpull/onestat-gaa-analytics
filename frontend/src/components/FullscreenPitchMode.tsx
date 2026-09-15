@@ -118,8 +118,11 @@ interface FullscreenPitchModeProps {
   // Opposition scorer
   pendingOpponentScore?: { eventType: EventType; position: BallPosition } | null
   oppositionRoster?: string[]
-  onOpponentScorerSelect?: (name: string) => void
+  onOpponentScorerSelect?: (name: string, foot?: 'L' | 'R') => void
   onOpponentScorerSkip?: () => void
+  // Opposition turnover-forced-from — same banner, 'turnover_forced' mode
+  pendingTurnoverForcedFrom?: boolean
+  onTurnoverForcedFromSelect?: (name?: string) => void
   // High Ball + opposition Pass — same ball-anchored icons normal mode has,
   // previously missing here entirely since this component owns its own
   // separate <GAAPitch> render rather than sharing MatchRecording.tsx's.
@@ -220,6 +223,8 @@ export default function FullscreenPitchMode({
   oppositionRoster = [],
   onOpponentScorerSelect,
   onOpponentScorerSkip,
+  pendingTurnoverForcedFrom = false,
+  onTurnoverForcedFromSelect,
   pendingLongKickArmed = false,
   onToggleLongKickArm,
   oppPassCount = 0,
@@ -633,7 +638,7 @@ export default function FullscreenPitchMode({
           scoped to that inner wrapper and keeps aligning to the pitch only —
           not the full width including the side columns. */}
       <div className="flex-1 relative overflow-hidden min-h-0 flex items-center justify-center gap-3 px-1.5">
-        {!useBottomCarrierStrip && !pendingOpponentScore && !isPhoneLandscape && !actionsDisabled && onCarrierSelect && leftColumnPlayers.length > 0 && (
+        {!useBottomCarrierStrip && !pendingOpponentScore && !pendingTurnoverForcedFrom && !isPhoneLandscape && !actionsDisabled && onCarrierSelect && leftColumnPlayers.length > 0 && (
           <div className="flex flex-col items-center gap-1.5">
             <span className="text-[9px] text-white/40 font-semibold uppercase tracking-wider">Carrier</span>
             <CarrierSideColumn
@@ -829,6 +834,18 @@ export default function FullscreenPitchMode({
           />
         )}
 
+        {/* Opposition turnover-forced-from selector — same overlay,
+            'turnover_forced' mode (no footedness step). */}
+        {pendingTurnoverForcedFrom && onTurnoverForcedFromSelect && (
+          <OppositionScorerStrip
+            players={oppositionRoster}
+            onSelect={(name) => onTurnoverForcedFromSelect(name)}
+            onSkip={() => onTurnoverForcedFromSelect(undefined)}
+            eventType="turnover_won"
+            mode="turnover_forced"
+          />
+        )}
+
         {/* Adjust Free Position mode — overlay hidden, pitch is draggable */}
         {pendingFreeKick && isAdjustingFreePosition && (
           <div className="absolute inset-x-3 top-3 z-20 animate-fade-in">
@@ -971,7 +988,7 @@ export default function FullscreenPitchMode({
             beside a height-driven pitch. Suppressed while the kickout-
             landing banner is showing, same reasoning as normal mode: at
             that point you're tapping a landing spot, not picking a carrier. */}
-        {useBottomCarrierStrip && !pendingOpponentScore && !isPhoneLandscape && !actionsDisabled && onCarrierSelect &&
+        {useBottomCarrierStrip && !pendingOpponentScore && !pendingTurnoverForcedFrom && !isPhoneLandscape && !actionsDisabled && onCarrierSelect &&
           jerseyStripPlayers.length > 0 && !(pendingKickoutPosition && !kickoutBannerMinimised) && (
           <div className="absolute bottom-2 left-2 right-2 z-10">
             <div className="text-center text-[9px] text-white/40 font-semibold uppercase tracking-wider mb-1">
@@ -990,7 +1007,7 @@ export default function FullscreenPitchMode({
         )}
         </div>
 
-        {!useBottomCarrierStrip && !pendingOpponentScore && !isPhoneLandscape && !actionsDisabled && onCarrierSelect && rightColumnPlayers.length > 0 && (
+        {!useBottomCarrierStrip && !pendingOpponentScore && !pendingTurnoverForcedFrom && !isPhoneLandscape && !actionsDisabled && onCarrierSelect && rightColumnPlayers.length > 0 && (
           <div className="flex flex-col items-center gap-1.5">
             <span className="text-[9px] text-white/40 font-semibold uppercase tracking-wider">Carrier</span>
             <CarrierSideColumn

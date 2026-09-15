@@ -201,6 +201,19 @@ export default function MatchRecording() {
   // scoring/shot events — see handleEditEventClick.
   const [editChoice, setEditChoice] = useState<{ eventId: number; kind: 'sideline' | 'scoring'; currentTeam: 'own' | 'opponent' } | null>(null)
   const [pendingOpponentScore, setPendingOpponentScore] = useState<{ eventType: EventType; position: BallPosition; isFreeKick?: boolean } | null>(null)
+  // "T/O Won" — optional follow-up asking which opposition player we forced
+  // it from, same OppositionScorerStrip banner the opponent-scorer flow
+  // uses (mode='turnover_forced' — no footedness step, a dispossession
+  // isn't a kicked action). Blocks the actual recordEvent call until
+  // resolved, same convention the T/O Lost reason picker already uses —
+  // our player is already known by the time this shows (picked via the
+  // normal jersey/player modal first).
+  const [pendingTurnoverForcedFrom, setPendingTurnoverForcedFrom] = useState<{
+    player: Player
+    capturedMinute: number
+    capturedHalf: number
+    position: BallPosition
+  } | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState<{ position: BallPosition } | null>(null)
   const [pendingSidelineDecision, setPendingSidelineDecision] = useState<{ position: BallPosition } | null>(null)
@@ -2568,6 +2581,48 @@ export default function MatchRecording() {
     }
   }
 
+  // Finalize "T/O Won" once the opposition-forced-from banner resolves
+  // (a name tapped, or Skip) — mirrors handleQuickAction's own generic
+  // TURNOVER_WON handling (possession → own team, standard recordEvent
+  // call) since this bypassed that path to capture opponent_player_name
+  // at create time.
+  const handleTurnoverForcedFromSelect = (opponentName?: string) => {
+    if (!pendingTurnoverForcedFrom || !matchId) {
+      setPendingTurnoverForcedFrom(null)
+      return
+    }
+    const { player, capturedMinute, capturedHalf, position } = pendingTurnoverForcedFrom
+    setPendingTurnoverForcedFrom(null)
+    setBallPosition({ x: position.x, y: position.y, team: PossessionTeam.OWN })
+
+    recordEvent.mutateAsync({
+      match_id: matchId,
+      player_id: player.id,
+      event_type: mapEventTypeToBackend(EventType.TURNOVER_WON),
+      minute: capturedMinute,
+      half: capturedHalf,
+      x_coord: position.x,
+      y_coord: position.y,
+      is_home_team: true,
+      opponent_player_name: opponentName,
+    }).then(() => {
+      setLastEventType('turnover_won')
+      invalidateStats()
+      recordPossession.mutateAsync({
+        match_id: matchId,
+        x_coord: position.x,
+        y_coord: position.y,
+        team: 'home',
+        timestamp: new Date(),
+        minute: capturedMinute,
+        half: capturedHalf,
+      }).catch(err => console.error('Failed to record possession after turnover won:', err))
+    }).catch((err) => {
+      console.error('Failed to record turnover won:', err)
+      setErrorAlert('Failed to record event. Please try again.')
+    })
+  }
+
   const handleSubTypeSelected = async (subType?: string) => {
     if (!pendingSubType || !matchId) { setPendingSubType(null); return }
     const { player, eventType, foulMode, capturedMinute, capturedHalf, position } = pendingSubType
@@ -3079,7 +3134,7 @@ export default function MatchRecording() {
   }
 
   // Record free kick result - works for both own team and opponent frees
-  const recordFreeKickResult = async (eventType: EventType, position: BallPosition, isTeamTakingFree: boolean, player?: Player, scorerName?: string) => {
+  const recordFreeKickResult = async (eventType: EventType, position: BallPosition, isTeamTakingFree: boolean, player?: Player, scorerName?: string, scorerFoot?: 'L' | 'R') => {
     if (!matchId) return
 
     try {
@@ -3093,7 +3148,7 @@ export default function MatchRecording() {
         isTeamTakingFree
       })
 
-      await recordEvent.mutateAsync({
+      const result = await recordEvent.mutateAsync({
         match_id: matchId,
         player_id: player?.id, // Record which player took the free kick
         event_type: backendEventType,
@@ -3104,6 +3159,11 @@ export default function MatchRecording() {
         is_home_team: isTeamTakingFree, // true if own team takes the free, false if opponent takes
         notes: scorerName ? `Scored by ${scorerName}` : undefined
       })
+
+      if (scorerFoot && result?.id) {
+        api.matchEvents.update(String(result.id), { opposition_foot: scorerFoot })
+          .catch(err => console.error('Failed to record opposition footedness:', err))
+      }
 
       // Track for tutorial
       setLastEventType(String(eventType).toLowerCase())
@@ -3146,7 +3206,7 @@ export default function MatchRecording() {
     }
   }
 
-  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean, position: BallPosition = ballPosition, opponentPlayerName?: string) => {
+  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean, position: BallPosition = ballPosition, opponentPlayerName?: string, opponentFoot?: 'L' | 'R') => {
     if (!matchId) return
 
     // Check if this is a kickout event - these need position selection first
@@ -3181,7 +3241,7 @@ export default function MatchRecording() {
         isHomeTeam
       })
 
-      await recordEvent.mutateAsync({
+      const result = await recordEvent.mutateAsync({
         match_id: matchId,
         player_id: undefined, // No player for contested events
         event_type: backendEventType,
@@ -3193,6 +3253,15 @@ export default function MatchRecording() {
         notes: undefined,
         opponent_player_name: opponentPlayerName,
       })
+
+      // Footedness isn't in useRecordEvent's create-time payload (matches
+      // under_pressure's existing precedent — both are optional add-ons
+      // captured after the fact, not core to the event) — a follow-up PATCH
+      // once we have a real event id, same mechanism handlePressureSelect uses.
+      if (opponentFoot && result?.id) {
+        api.matchEvents.update(String(result.id), { opposition_foot: opponentFoot })
+          .catch(err => console.error('Failed to record opposition footedness:', err))
+      }
 
       // Track for tutorial
       setLastEventType(String(eventType).toLowerCase())
@@ -3459,14 +3528,14 @@ export default function MatchRecording() {
   }
 
   // Handle opposition scorer selection
-  const handleOpponentScorerSelect = (name: string) => {
+  const handleOpponentScorerSelect = (name: string, foot?: 'L' | 'R') => {
     if (!pendingOpponentScore) return
     const { eventType, position, isFreeKick } = pendingOpponentScore
     setPendingOpponentScore(null)
     if (isFreeKick) {
-      recordFreeKickResult(eventType, position, false, undefined, name)
+      recordFreeKickResult(eventType, position, false, undefined, name, foot)
     } else {
-      recordEventWithoutPlayer(eventType, false, position, name)
+      recordEventWithoutPlayer(eventType, false, position, name, foot)
     }
   }
 
@@ -3536,6 +3605,20 @@ export default function MatchRecording() {
     // handlers below for what each of the three choices actually records.
     if (event.eventType === EventType.TURNOVER_LOST) {
       setPendingTurnoverReason({
+        player,
+        capturedMinute,
+        capturedHalf,
+        position: event.position,
+      })
+      return
+    }
+
+    // "T/O Won" — optionally ask which opposition player we forced it from
+    // before recording, same delayed-record convention as T/O Lost's reason
+    // picker above. Skipped entirely if there's no opposition roster to
+    // pick from (Match Prep's key-player list is empty).
+    if (event.eventType === EventType.TURNOVER_WON && (match?.opposition_roster || []).length > 0) {
+      setPendingTurnoverForcedFrom({
         player,
         capturedMinute,
         capturedHalf,
@@ -4670,6 +4753,18 @@ export default function MatchRecording() {
                   />
                 )}
 
+                {/* Opposition turnover-forced-from selector — same overlay,
+                    'turnover_forced' mode (no footedness step). */}
+                {pendingTurnoverForcedFrom && (
+                  <OppositionScorerStrip
+                    players={match?.opposition_roster || []}
+                    onSelect={(name) => handleTurnoverForcedFromSelect(name)}
+                    onSkip={() => handleTurnoverForcedFromSelect(undefined)}
+                    eventType="turnover_won"
+                    mode="turnover_forced"
+                  />
+                )}
+
                 {/* Adjust Free Position mode — overlay hidden, pitch is draggable */}
                 {!!pendingFreeKick && isAdjustingFreePosition && (
                   <div className="absolute inset-x-3 top-3 z-20 animate-fade-in">
@@ -5640,6 +5735,8 @@ export default function MatchRecording() {
         oppositionRoster={match?.opposition_roster || []}
         onOpponentScorerSelect={handleOpponentScorerSelect}
         onOpponentScorerSkip={handleOpponentScorerSkip}
+        pendingTurnoverForcedFrom={!!pendingTurnoverForcedFrom}
+        onTurnoverForcedFromSelect={handleTurnoverForcedFromSelect}
         pendingLongKickArmed={!!pendingLongKick}
         onToggleLongKickArm={handleToggleLongKickArm}
         oppPassCount={oppPassCount}
