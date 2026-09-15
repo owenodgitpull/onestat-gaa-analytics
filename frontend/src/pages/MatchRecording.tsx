@@ -4501,16 +4501,18 @@ export default function MatchRecording() {
                             }
                           />
                         )}
-                        {/* High Ball — either team, -135° (up-left) so it never
-                            crowds the carrier radial/pass icon at -45°
-                            (up-right). Disabled during any other pending
-                            dead-ball/decision flow, so a subsequent tap is
-                            never ambiguous about what it means. */}
+                        {/* High Ball — either team, -90° (straight up) — a
+                            clean 45° gap from the carrier radial/pass icon at
+                            -45° (up-right) without sitting on the opposite
+                            side of the ball from it. Disabled during any
+                            other pending dead-ball/decision flow, so a
+                            subsequent tap is never ambiguous about what it
+                            means. */}
                         {(matchPhase === 'first_half' || matchPhase === 'second_half') && (
                           <BallQuickActionIcon
                             ballSvgX={ballSvgX}
                             ballSvgY={ballSvgY}
-                            angleDeg={-135}
+                            angleDeg={-90}
                             label="HB"
                             title="Log High Ball"
                             color="#d97706"

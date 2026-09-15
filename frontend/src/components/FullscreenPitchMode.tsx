@@ -688,7 +688,7 @@ export default function FullscreenPitchMode({
                   <BallQuickActionIcon
                     ballSvgX={ballSvgX}
                     ballSvgY={ballSvgY}
-                    angleDeg={-135}
+                    angleDeg={-90}
                     label="HB"
                     title="Log High Ball"
                     color="#d97706"
