@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
@@ -81,6 +81,7 @@ import {
   Minus,
   Share2,
   Loader2,
+  ChevronRight,
 } from 'lucide-react'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
@@ -637,6 +638,38 @@ export default function MatchRecording() {
 
   // Tactical tag state
   const [tacticalTagCount, setTacticalTagCount] = useState(0)
+
+  // Pitch control button row scroll affordance — this row can't fit on an
+  // iPad/tablet without scrolling once enough toggles are active (Press
+  // Trigger, Formation Snapshot, Tactical Tag etc. stack up), and the
+  // scrollbar itself is deliberately hidden for a cleaner touch UI, so
+  // without this there's zero visual signal that swiping reveals more.
+  // Deliberately NOT a one-time-then-forget hint (the player portal's
+  // Leaderboard tabs use that, localStorage-dismissed after first swipe) —
+  // this needs to stay obvious every time there's genuinely more to reveal,
+  // since a different person can be operating live recording each match and
+  // missing a hidden button (Half-Time View, Tactical Tag) mid-match is a
+  // real cost. So it's one signal, permanently tied to real scroll state:
+  // an edge fade with a continuously-nudging chevron on top, shown whenever
+  // there's unscrolled content and gone the instant you've scrolled to the
+  // true end — reappears again next time the row overflows, no memory of
+  // "already seen it once."
+  const toolbarScrollRef = useRef<HTMLDivElement>(null)
+  const [showToolbarFade, setShowToolbarFade] = useState(false)
+
+  const updateToolbarFadeState = useCallback(() => {
+    const el = toolbarScrollRef.current
+    if (!el) return
+    const hasOverflow = el.scrollWidth > el.clientWidth + 2
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 2
+    setShowToolbarFade(hasOverflow && !atEnd)
+  }, [])
+
+  useEffect(() => {
+    updateToolbarFadeState()
+    window.addEventListener('resize', updateToolbarFadeState)
+    return () => window.removeEventListener('resize', updateToolbarFadeState)
+  }, [updateToolbarFadeState, matchPhase])
 
   const handleFormationSave = async (positions: Array<{ playerId: string | null; jerseyNumber: number | null; team: 'own' | 'opponent'; x: number; y: number }>, label: string) => {
     if (!matchId) return
@@ -4746,9 +4779,19 @@ export default function MatchRecording() {
                 {/* Pitch control buttons — top-right. Shorter (py-1 not py-2,
                     smaller icons/radius) and pulled up to top-1 so this row
                     takes up less of the card and leaves more clear space
-                    above the pitch for the possession status label below. */}
+                    above the pitch for the possession status label below.
+                    Wrapped in its own relative container so the scroll
+                    affordances below (edge fade + swipe hint) can anchor to
+                    it precisely, on an iPad/tablet touchscreen where a
+                    hidden-scrollbar row gives zero visual sign there's more
+                    to swipe to. */}
                 {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                  <div className="absolute top-1 right-1 left-1 z-10 flex items-center justify-end gap-1 pr-10 flex-nowrap overflow-x-auto min-w-0 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="absolute top-1 right-1 left-1 z-10">
+                  <div
+                    ref={toolbarScrollRef}
+                    onScroll={updateToolbarFadeState}
+                    className="flex items-center justify-end gap-1 pr-10 flex-nowrap overflow-x-auto min-w-0 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  >
                     {/* Minimised kickout pill — parked here (not over the pitch)
                         so it never crowds the action buttons below. Tapping it
                         restores the full banner/overlay exactly as it was. */}
@@ -4854,7 +4897,37 @@ export default function MatchRecording() {
                       <span>Half-Time View</span>
                     </button>
                   </div>
+
+                  {/* Persistent scroll affordance — edge fade + a
+                      continuously-nudging chevron, shown the entire time
+                      there's genuinely more to scroll to (tracks real
+                      scroll state) and gone the instant you've actually
+                      reached the end. Reappears again next time the row
+                      overflows — no "seen it once, never again" memory.
+                      Live match recording is a controls-you-must-know
+                      surface, not a browse-at-your-leisure list, so this
+                      can't be allowed to fade away after a first look. */}
+                  {showToolbarFade && (
+                    <div className="pointer-events-none absolute top-0 right-10 bottom-0 w-9 flex items-center justify-end">
+                      <div
+                        className="absolute inset-0"
+                        style={{ background: 'linear-gradient(to right, transparent, rgba(10,14,20,0.9))' }}
+                      />
+                      <ChevronRight
+                        size={14}
+                        className="relative text-white/80"
+                        style={{ animation: 'match-toolbar-swipe-nudge 1.1s ease-in-out infinite' }}
+                      />
+                    </div>
+                  )}
+                  </div>
                 )}
+                <style>{`
+                  @keyframes match-toolbar-swipe-nudge {
+                    0%, 100% { transform: translateX(0); opacity: 0.55; }
+                    50% { transform: translateX(4px); opacity: 1; }
+                  }
+                `}</style>
 
                 {/* Jersey Number Strip for carrier tracking — bottom-attached
                     overlay inside the pitch card, mirroring the top buttons'
