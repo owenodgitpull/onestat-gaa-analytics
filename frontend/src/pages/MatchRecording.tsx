@@ -4736,23 +4736,26 @@ export default function MatchRecording() {
                   <button
                     data-tour="fullscreen-btn"
                     onClick={() => setIsFullscreenPitch(true)}
-                    className="absolute top-2 right-2 z-20 flex-shrink-0 p-2.5 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
+                    className="absolute top-1 right-1 z-20 flex-shrink-0 p-1.5 rounded-lg bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
                     title="Fullscreen pitch mode"
                   >
-                    <Maximize size={18} />
+                    <Maximize size={15} />
                   </button>
                 )}
 
-                {/* Pitch control buttons — top-right */}
+                {/* Pitch control buttons — top-right. Shorter (py-1 not py-2,
+                    smaller icons/radius) and pulled up to top-1 so this row
+                    takes up less of the card and leaves more clear space
+                    above the pitch for the possession status label below. */}
                 {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                  <div className="absolute top-2 right-2 left-2 z-10 flex items-center justify-end gap-1.5 pr-12 flex-nowrap overflow-x-auto min-w-0 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="absolute top-1 right-1 left-1 z-10 flex items-center justify-end gap-1 pr-10 flex-nowrap overflow-x-auto min-w-0 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {/* Minimised kickout pill — parked here (not over the pitch)
                         so it never crowds the action buttons below. Tapping it
                         restores the full banner/overlay exactly as it was. */}
                     {kickoutBannerMinimised && (awaitingKickout || !!pendingKickoutEvent) && (
                       <button
                         onClick={() => setKickoutBannerMinimised(false)}
-                        className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-amber-500/20 border-2 border-amber-400/40 text-amber-200 hover:bg-amber-500/30 text-xs font-semibold transition-all animate-fade-in"
+                        className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/20 border-2 border-amber-400/40 text-amber-200 hover:bg-amber-500/30 text-[11px] font-semibold transition-all animate-fade-in"
                         title="Resume the kickout prompt"
                       >
                         <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
@@ -4779,43 +4782,43 @@ export default function MatchRecording() {
                           setActiveCarrierId(null)
                         }
                       }}
-                      className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 text-xs font-semibold transition-all"
+                      className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 text-[11px] font-semibold transition-all"
                       title="Swap possession — flip which team has the ball"
                     >
-                      <ArrowLeftRight size={16} />
+                      <ArrowLeftRight size={14} />
                       <span>Possession</span>
                     </button>
                     <button
                       data-tour="stoppage-btn"
                       onClick={handleToggleStoppage}
-                      className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
+                      className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg border-2 text-[11px] font-semibold transition-all ${
                         isStopped
                           ? 'bg-amber-500/20 border-amber-500/40 text-amber-400'
                           : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
                       }`}
                       title={isStopped ? 'Resume play — clock was frozen' : 'Stoppage — freezes the clock (injury, sideline delay, etc.)'}
                     >
-                      {isStopped ? <Play size={16} /> : <Pause size={16} />}
+                      {isStopped ? <Play size={14} /> : <Pause size={14} />}
                       <span>{isStopped ? 'Resume' : 'Stoppage'}</span>
                     </button>
                     <button
                       data-tour="dead-ball-btn"
                       onClick={handleToggleDeadBall}
-                      className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
+                      className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg border-2 text-[11px] font-semibold transition-all ${
                         isDeadBall
                           ? 'bg-sky-500/20 border-sky-500/40 text-sky-400'
                           : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
                       }`}
                       title={isDeadBall ? 'Ball back in play' : 'Dead ball — clock keeps running (unlike Stoppage)'}
                     >
-                      <CircleSlash size={16} />
+                      <CircleSlash size={14} />
                       <span>{isDeadBall ? 'Ball Live' : 'Dead Ball'}</span>
                     </button>
                     <button
                       data-tour="press-trigger-btn"
                       onClick={handleTogglePressTrigger}
                       disabled={!pressTriggerActive && ballPosition.team === PossessionTeam.OWN}
-                      className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
+                      className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg border-2 text-[11px] font-semibold transition-all ${
                         pressTriggerActive
                           ? 'bg-orange-500/20 border-orange-500/40 text-orange-400 animate-pulse'
                           : ballPosition.team === PossessionTeam.OWN
@@ -4830,7 +4833,7 @@ export default function MatchRecording() {
                             : 'Mark the start of a high press — auto-ends on turnover won or opposition score'
                       }
                     >
-                      <Zap size={16} />
+                      <Zap size={14} />
                       <span>{pressTriggerActive ? 'Press Active' : 'Press Trigger'}</span>
                     </button>
                     <FormationSnapshotButton
@@ -4844,10 +4847,10 @@ export default function MatchRecording() {
                     />
                     <button
                       onClick={() => setShowHalfTimeView(true)}
-                      className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-amber-500/15 border-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/50 text-xs font-semibold transition-all"
+                      className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/15 border-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/50 text-[11px] font-semibold transition-all"
                       title="Half-Time View — full-screen stats, no pitch. Great for a dressing-room TV."
                     >
-                      <LayoutDashboard size={16} />
+                      <LayoutDashboard size={14} />
                       <span>Half-Time View</span>
                     </button>
                   </div>

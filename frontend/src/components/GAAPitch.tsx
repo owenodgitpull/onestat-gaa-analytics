@@ -626,15 +626,15 @@ export default function GAAPitch({
         )}
 
         {/* Optional overlay — rendered inside SVG so it scales with the pitch.
-            y clears the fixed-pixel-height "top-2" control button row
+            y clears the fixed-pixel-height "top-1" control button row
             absolutely positioned over this same card (MatchRecording's
-            pitch-container) — sitting too close to the top edge (y=25) had
-            this label overlapping that button row — while staying just
-            above the real pitch boundary lines (the marked playing area
-            starts at y=123), so it reads as sitting above the pitch rather
-            than down on the grass itself. */}
+            pitch-container) — that row is now shorter (py-1, smaller icons)
+            and pulled up, so this can sit higher too — while staying above
+            the real pitch boundary lines (the marked playing area starts at
+            y=123), so it reads as sitting above the pitch rather than down
+            on the grass itself. */}
         {svgOverlay && (
-          <foreignObject x="10" y="82" width="1000" height="120">
+          <foreignObject x="10" y="40" width="1000" height="120">
             {svgOverlay}
           </foreignObject>
         )}

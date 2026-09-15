@@ -25,7 +25,7 @@ export default function FormationSnapshotButton({
       onClick={onClick}
       disabled={disabled}
       className={`
-        relative p-2.5 rounded-xl border-2 transition-all
+        relative p-1.5 rounded-lg border-2 transition-all
         ${disabled
           ? 'opacity-40 cursor-not-allowed bg-white/5 border-white/10'
           : shouldPulse
@@ -35,7 +35,7 @@ export default function FormationSnapshotButton({
       `}
       title="Take formation snapshot"
     >
-      <Camera size={18} />
+      <Camera size={15} />
       {snapshotCount > 0 && (
         <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-purple-500 text-white text-[10px] font-bold flex items-center justify-center">
           {snapshotCount}

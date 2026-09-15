@@ -84,7 +84,7 @@ export default function TacticalTagButton({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
         className={`
-          relative p-2.5 rounded-xl border-2 transition-all
+          relative p-1.5 rounded-lg border-2 transition-all
           ${disabled
             ? 'opacity-40 cursor-not-allowed bg-white/5 border-white/10'
             : 'bg-white/10 border-white/20 text-white/70 hover:bg-white/20 hover:text-white'
@@ -92,7 +92,7 @@ export default function TacticalTagButton({
         `}
         title="Tag tactical moment"
       >
-        <Tag size={18} />
+        <Tag size={15} />
         {tagCount > 0 && (
           <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
             {tagCount}
