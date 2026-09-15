@@ -634,7 +634,7 @@ export default function GAAPitch({
             starts at y=123), so it reads as sitting above the pitch rather
             than down on the grass itself. */}
         {svgOverlay && (
-          <foreignObject x="30" y="100" width="1000" height="120">
+          <foreignObject x="10" y="82" width="1000" height="120">
             {svgOverlay}
           </foreignObject>
         )}
