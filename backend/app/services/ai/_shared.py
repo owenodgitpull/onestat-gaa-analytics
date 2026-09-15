@@ -4763,6 +4763,15 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
     now = datetime.utcnow()
     acute_start = now - timedelta(days=7)
     chronic_start = now - timedelta(days=28)
+    # SQL-level fetch cutoffs use midnight of the chronic cutoff CALENDAR
+    # DATE, not the exact `chronic_start` timestamp — a match that happened
+    # earlier in the day on the cutoff date than `now`'s time-of-day would
+    # otherwise be excluded from the query itself (before the Python-side
+    # date comparison below even gets a chance to include it). Both match
+    # and training queries fetch from this same widened boundary; the
+    # precise per-window membership (acute vs chronic vs older) is still
+    # decided by the calendar-date comparisons further down.
+    chronic_start_of_day = datetime.combine(chronic_start.date(), datetime.min.time())
 
     # Resolve player filter
     target_pids = None
@@ -4774,7 +4783,7 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
 
     # Get all match GPS in chronic window
     match_gps_conditions = [
-        Match.match_date >= chronic_start,
+        Match.match_date >= chronic_start_of_day,
         Match.status == MatchStatus.COMPLETED,
     ]
     if club_id:
@@ -4791,7 +4800,7 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
 
     # Get all training GPS in chronic window
     training_gps_conditions = [
-        TrainingSession.session_date >= chronic_start.date(),
+        TrainingSession.session_date >= chronic_start_of_day.date(),
     ]
     if club_id:
         training_gps_conditions.append(TrainingSession.club_id == club_id)
@@ -4825,13 +4834,25 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
     name_result = await db.execute(select(Player.id, Player.name).where(Player.id.in_(all_pids)))
     name_lookup = {row.id: row.name for row in name_result.all()}
 
-    # Calculate ACWR per player
+    # Calculate ACWR per player. Window membership is calendar-date based,
+    # not exact-timestamp based — TrainingSession.session_date has no
+    # time-of-day recorded at all (plain Date column), so the midnight
+    # combine() above made every training session compare as "earlier in
+    # the day" than a match on the SAME calendar day (which keeps its real
+    # kickoff time, e.g. 19:00), systematically excluding boundary-date
+    # training sessions a coach would count as "within the last 7/28 days".
+    # Comparing by .date() applies the identical rule to both event types,
+    # matching the same fix in workload_analysis_service.py's
+    # get_squad_health_summary (this tool's non-AI counterpart — the two
+    # must agree).
+    acute_cutoff_date = acute_start.date()
+    chronic_cutoff_date = chronic_start.date()
     assessments = []
     for pid, loads in player_loads.items():
-        acute_loads = [w for d, w in loads if d >= acute_start]
-        chronic_loads = [w for d, w in loads if d >= chronic_start]
+        acute_loads = [w for d, w in loads if d.date() >= acute_cutoff_date]
+        chronic_loads = [w for d, w in loads if d.date() >= chronic_cutoff_date]
         # Sessions older than 7 days (needed for a meaningful chronic baseline)
-        older_loads = [w for d, w in loads if chronic_start <= d < acute_start]
+        older_loads = [w for d, w in loads if chronic_cutoff_date <= d.date() < acute_cutoff_date]
 
         acute_total = sum(acute_loads)
         chronic_weekly_avg = sum(chronic_loads) / 4  # standard 4-week denominator

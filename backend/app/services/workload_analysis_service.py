@@ -717,8 +717,20 @@ Be concise and actionable. Reference GAA-specific training practices when releva
         # (so the UI can still show "last recorded: 9 days ago") but no
         # longer drives which window of data counts as acute vs chronic.
         now = datetime.utcnow()
-        acute_cutoff = now - timedelta(days=7)
-        chronic_cutoff = now - timedelta(days=28)
+        # Window membership is calendar-date based, not exact-timestamp
+        # based. TrainingSession.session_date has no time-of-day recorded at
+        # all (it's a plain Date column) — combining it with midnight above
+        # made every training session compare as "earlier in the day" than
+        # a match on the SAME calendar day (which keeps its real kickoff
+        # time, e.g. 19:00), systematically excluding boundary-date training
+        # sessions a coach would naturally count as "within the last 7/28
+        # days". Comparing by calendar date instead treats a session that
+        # happened on the cutoff day as included regardless of what hour it
+        # was recorded at — training and matches now use the identical
+        # rule, and neither the fabricated midnight timestamp nor a match's
+        # real kickoff hour can push a same-day session across the boundary.
+        acute_cutoff_date = now.date() - timedelta(days=7)
+        chronic_cutoff_date = now.date() - timedelta(days=28)
 
         player_workloads = {}
         for pid, sessions in raw_loads.items():
@@ -726,9 +738,9 @@ Be concise and actionable. Reference GAA-specific training practices when releva
             sessions_sorted = sorted(sessions, key=lambda x: x[0])
             last_session_date = sessions_sorted[-1][0]  # display only, not the ACWR anchor
 
-            chronic_sessions = [(d, w) for d, w in sessions_sorted if d >= chronic_cutoff]
-            acute_sessions = [(d, w) for d, w in chronic_sessions if d >= acute_cutoff]
-            older_sessions = [(d, w) for d, w in chronic_sessions if d < acute_cutoff]
+            chronic_sessions = [(d, w) for d, w in sessions_sorted if d.date() >= chronic_cutoff_date]
+            acute_sessions = [(d, w) for d, w in chronic_sessions if d.date() >= acute_cutoff_date]
+            older_sessions = [(d, w) for d, w in chronic_sessions if d.date() < acute_cutoff_date]
 
             acute_total = sum(w for _, w in acute_sessions)
             # Standard 4-week denominator
