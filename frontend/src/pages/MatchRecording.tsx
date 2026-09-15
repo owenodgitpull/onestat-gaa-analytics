@@ -4726,9 +4726,26 @@ export default function MatchRecording() {
                   </div>
                 )}
 
+                {/* Fullscreen — standalone, own corner, same convention video
+                    players use (never buried mid-row with the other
+                    controls). Sits above the scrolling toolbar (z-20 vs its
+                    z-10) so it's always reachable regardless of scroll
+                    position; the toolbar reserves pr-12 so its own content
+                    never scrolls underneath it. */}
+                {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
+                  <button
+                    data-tour="fullscreen-btn"
+                    onClick={() => setIsFullscreenPitch(true)}
+                    className="absolute top-2 right-2 z-20 flex-shrink-0 p-2.5 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
+                    title="Fullscreen pitch mode"
+                  >
+                    <Maximize size={18} />
+                  </button>
+                )}
+
                 {/* Pitch control buttons — top-right */}
                 {matchPhase !== 'not_started' && matchPhase !== 'finished' && (
-                  <div className="absolute top-2 right-2 left-2 z-10 flex items-center justify-end gap-1.5 flex-nowrap overflow-x-auto min-w-0 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  <div className="absolute top-2 right-2 left-2 z-10 flex items-center justify-end gap-1.5 pr-12 flex-nowrap overflow-x-auto min-w-0 whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     {/* Minimised kickout pill — parked here (not over the pitch)
                         so it never crowds the action buttons below. Tapping it
                         restores the full banner/overlay exactly as it was. */}
@@ -4825,14 +4842,6 @@ export default function MatchRecording() {
                       onTag={handleTacticalTag}
                       tagCount={tacticalTagCount}
                     />
-                    <button
-                      data-tour="fullscreen-btn"
-                      onClick={() => setIsFullscreenPitch(true)}
-                      className="flex-shrink-0 p-2.5 rounded-xl bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 transition-all"
-                      title="Fullscreen pitch mode"
-                    >
-                      <Maximize size={18} />
-                    </button>
                     <button
                       onClick={() => setShowHalfTimeView(true)}
                       className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-amber-500/15 border-2 border-amber-500/30 text-amber-300 hover:bg-amber-500/25 hover:border-amber-500/50 text-xs font-semibold transition-all"
