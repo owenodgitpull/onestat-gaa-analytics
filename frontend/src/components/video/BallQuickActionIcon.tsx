@@ -129,7 +129,7 @@ export default function BallQuickActionIcon({
           x={iconX} y={iconY}
           textAnchor="middle" dominantBaseline="central"
           fill={textColor} fontWeight="800"
-          fontSize={label.length > 1 ? 15 : 22}
+          fontSize={label.length > 1 ? 18 : 22}
           transform={orientation === 'vertical' ? `rotate(-90 ${iconX} ${iconY})` : undefined}
         >
           {label}

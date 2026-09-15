@@ -1110,6 +1110,12 @@ export default function MatchResult() {
             {eventsData?.events && eventsData.events.length > 0 ? (
               <div className="space-y-2 flex-1 overflow-y-auto max-h-[500px]">
                 {eventsData.events
+                  // Opposition pass counter fires on every single tap during
+                  // live recording (Press Trigger analysis input) — it's a
+                  // raw counter feed, not a narratively meaningful event, so
+                  // a busy press sequence would otherwise flood this list
+                  // with a dozen near-identical "Other - <opponent>" rows.
+                  .filter((event: any) => !(event.event_type === 'other' && event.notes === 'Pass'))
                   .slice()
                   .reverse()
                   .map((event: any) => (
@@ -1490,6 +1496,20 @@ function formatEventDescription(event: any, players: any[], opponentName: string
   const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName, teamName, attackingRightFirstHalf, derivedHalf)
   const playerName = isOwn ? (player?.name || event.player_name || 'our player') : opponentName
   const kickoutTargetSuffix = event.kickout_target_player_name ? ` (aimed at ${event.kickout_target_player_name})` : ''
+
+  // High Ball and Press Trigger both share the generic 'other' EventType
+  // (no dedicated type exists yet) but ARE narratively meaningful, unlike
+  // the opposition pass counter's per-tap rows (filtered out of this list
+  // entirely before it gets here) — give them their own readable lines
+  // instead of falling into the generic "other - X" default below.
+  if (event.event_type === 'other') {
+    if (event.notes === 'High ball') {
+      return `${playerName} played a high ball into ${area}`
+    }
+    if (event.notes?.startsWith('Press: ')) {
+      return `Press trigger — ${event.notes.slice('Press: '.length)}`
+    }
+  }
 
   switch (event.event_type) {
     case 'point':

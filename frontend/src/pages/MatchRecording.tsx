@@ -598,10 +598,14 @@ export default function MatchRecording() {
     }).catch(err => console.error('Failed to record press trigger:', err))
   }
 
+  // Arming only makes sense while the opposition has the ball (there's
+  // nothing to press otherwise) — but ending manually must stay available
+  // regardless of current possession, since the ball can flip mid-press.
   const handleTogglePressTrigger = () => {
     if (pressTriggerActive) {
       closePressTrigger('manual_end')
     } else {
+      if (ballPosition.team === PossessionTeam.OWN) return
       pressTriggerStartRef.current = { x: ballPosition.x, y: ballPosition.y, minute, passCountAtStart: oppPassCount }
       setPressTriggerActive(true)
     }
@@ -4774,12 +4778,21 @@ export default function MatchRecording() {
                     <button
                       data-tour="press-trigger-btn"
                       onClick={handleTogglePressTrigger}
+                      disabled={!pressTriggerActive && ballPosition.team === PossessionTeam.OWN}
                       className={`flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl border-2 text-xs font-semibold transition-all ${
                         pressTriggerActive
                           ? 'bg-orange-500/20 border-orange-500/40 text-orange-400 animate-pulse'
-                          : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
+                          : ballPosition.team === PossessionTeam.OWN
+                            ? 'bg-white/5 border-white/10 text-white/30 cursor-not-allowed'
+                            : 'bg-white/10 border-white/20 text-white/70 hover:text-white hover:bg-white/20'
                       }`}
-                      title={pressTriggerActive ? 'Press active — tap to end manually' : 'Mark the start of a high press — auto-ends on turnover won or opposition score'}
+                      title={
+                        pressTriggerActive
+                          ? 'Press active — tap to end manually'
+                          : ballPosition.team === PossessionTeam.OWN
+                            ? 'Press Trigger only applies while the opposition has the ball'
+                            : 'Mark the start of a high press — auto-ends on turnover won or opposition score'
+                      }
                     >
                       <Zap size={16} />
                       <span>{pressTriggerActive ? 'Press Active' : 'Press Trigger'}</span>
