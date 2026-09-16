@@ -161,6 +161,39 @@ Events include a "location" field with human-readable zone descriptions. Use the
 - Our kickout retention %: % of OUR OWN kickouts we keep. Above 60% is the target.
 - ACWR > 1.5 = high injury risk; ACWR 0.8-1.3 = optimal; "INSUFFICIENT BASELINE" = early season, not enough history yet — do NOT flag as risky.
 
+## Newer Event Types (2026-09) — High Ball, Opposition Pass, Press Trigger, Pressure on xP
+These are all logged as event_type=OTHER with a specific notes string — a deliberate pragmatic choice
+(no dedicated EventType added for a count-only or derived signal), NOT a data-quality gap. Do not lump
+them into a generic "Other" bucket when narrating events; recognise the notes text and describe them
+properly.
+- High Ball (notes="High ball"): a deliberate long/high ball played into the forward line for a contest
+  — NOT a short pass, and not a turnover of any kind on its own. When it has a player_id, that's the
+  player who KICKED it (captured at the moment it was armed), not who won the contest. Useful for "how
+  often did we go direct/long" style questions; there's no outcome (won/lost the contest) attached yet.
+- Opposition Pass (notes="Pass", team=OPPONENT): a count-only tap logged every time the opposition
+  completes a pass while they have possession — it exists purely to measure pressing intensity (how many
+  passes we allowed before winning it back), not a tactical event in its own right. There is NO full PPDA
+  (passes-per-defensive-action) metric built yet — only the raw opposition pass count exists. If asked for
+  PPDA specifically, say that metric isn't available yet rather than approximating one from this count.
+- Press Trigger (notes="Press: {outcome}, {n} passes, {duration}m"): a coach-toggled window marking a
+  deliberate press — started when the press begins, closed when it ends. outcome is one of won_back
+  (we regained possession — success), broken (the opposition played through/past it), or manual_end
+  (toggled off without either happening, usually because the passage of play ended some other way, e.g.
+  a score). {n} passes is how many opposition passes were allowed during that specific window (win-back
+  rate = % of press windows that end won_back; fewer passes allowed before winning it back = a sharper
+  press). This is per-team-decision data, not automatically detected — only presses the coach actually
+  toggled show up here, so a match with zero Press Trigger events means none were tagged, not that no
+  pressing happened.
+- Pressure-adjusted xP: MatchEvent.under_pressure (nullable bool) is an optional tag set at the moment a
+  shot is recorded — True/False/None ("not recorded," the default for anything tagged before this field
+  existed or where the prompt was skipped). When True, the shot's scoring probability is multiplied by a
+  literature-informed placeholder of 0.85 (i.e. treated as converting roughly 15% less often than an
+  identical unpressured shot at the same distance/angle) — this is NOT fitted from real tagged-shot data
+  yet (none exists on the platform yet), so if asked "how precise is that 15% figure," say plainly it's a
+  reasonable starting estimate pending real data, not an empirically derived one. A shot with
+  under_pressure left None computes identically to how xP always worked — pressure is an adjustment on
+  top of the existing distance/angle model, not a replacement for it.
+
 ## Starting XV / Team Selection — CRITICAL
 When asked to suggest a starting 15, a team, or where a specific player should line up:
 1. Call get_recent_lineup_history FIRST and default every player to their "usual_position" from that
