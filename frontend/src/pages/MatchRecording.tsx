@@ -1169,6 +1169,13 @@ export default function MatchRecording() {
   // Recent events - fetch from backend, display newest first
   const { data: matchEventsData } = useMatchEvents(matchId, { live: true })
   const allEvents = [...(matchEventsData?.events || [])].reverse()
+  // Opposition pass counter fires on every single tap during a press
+  // sequence — a raw counter feed, not a narratively meaningful event, so
+  // the Recent Events list would otherwise flood with a dozen near-
+  // identical "Other - <opponent>" rows. Kept in allEvents itself (still
+  // used for dedupe checks/stats elsewhere) — filtered only here, for
+  // display. Same fix as MatchResult.tsx's own copy of this list.
+  const visibleRecentEvents = allEvents.filter(e => !(e.event_type === 'other' && e.notes === 'Pass'))
 
   // Auto-close a Press Trigger the moment we win the ball back (turnover
   // won/interception) or the opposition scores through it — watches this
@@ -1928,6 +1935,22 @@ export default function MatchRecording() {
     const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, teamName)
     // For own team events, use player name; for opponent events, use team name
     const playerName = isOwn ? (player?.name || 'our player') : teamName
+
+    // High Ball and Press Trigger both share the generic 'other' EventType
+    // (no dedicated type exists yet) but ARE narratively meaningful, unlike
+    // the opposition pass counter's per-tap rows (filtered out of the
+    // Recent Events list entirely, see the render site below) — give them
+    // their own readable lines instead of falling into the generic
+    // "other - X" default below. Same fix as MatchResult.tsx's own copy of
+    // this function.
+    if (event.event_type === 'other') {
+      if (event.notes === 'High ball') {
+        return isOwn ? `${playerName} played a high ball into ${area}` : `${teamName} played a high ball into ${area}`
+      }
+      if (event.notes?.startsWith('Press: ')) {
+        return `Press trigger — ${event.notes.slice('Press: '.length)}`
+      }
+    }
 
     switch (event.event_type) {
       case 'point':
@@ -5197,9 +5220,9 @@ export default function MatchRecording() {
                   <span>Recent Events</span>
                 </h3>
                 <div className="space-y-2 text-sm flex-1 overflow-y-auto">
-                  {allEvents.length > 0 ? (
+                  {visibleRecentEvents.length > 0 ? (
                     <>
-                      {allEvents.slice(0, visibleEventCount).map((event) => {
+                      {visibleRecentEvents.slice(0, visibleEventCount).map((event) => {
                         const description = formatEventDescription(event)
                         const isOwn = eventIsOwn(event)
 
@@ -5249,12 +5272,12 @@ export default function MatchRecording() {
                           </div>
                         )
                       })}
-                      {visibleEventCount < allEvents.length && (
+                      {visibleEventCount < visibleRecentEvents.length && (
                         <button
                           onClick={() => setVisibleEventCount(prev => prev + 15)}
                           className="w-full py-2 text-xs text-white/50 hover:text-white/80 bg-white/5 hover:bg-white/10 rounded-lg transition-all"
                         >
-                          Show more ({allEvents.length - visibleEventCount} older events)
+                          Show more ({visibleRecentEvents.length - visibleEventCount} older events)
                         </button>
                       )}
                     </>
@@ -5628,8 +5651,8 @@ export default function MatchRecording() {
           kickoutRetention: { team: teamKickoutRetention, opponent: opponentKickoutRetention },
         } : null}
         latestEventDescription={
-          allEvents.length > 0
-            ? formatEventDescription(allEvents[0])
+          visibleRecentEvents.length > 0
+            ? formatEventDescription(visibleRecentEvents[0])
             : undefined
         }
         onActionSelect={handleQuickAction}
