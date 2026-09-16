@@ -46,6 +46,7 @@ import type { ChartRenderProps } from '@/config/chartRegistry'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem } from '@/services/api'
 import { consumeDashboard, consumeSeasonDashboard, consumeLiveMatch } from '@/services/prefetch'
 import type { Match } from '@/types'
+import { useClub } from '@/contexts/ClubContext'
 import { useTour } from '@/hooks/useTour'
 import { dashboardSteps } from '@/config/tourSteps'
 
@@ -55,20 +56,31 @@ for (const entry of KPI_REGISTRY) {
   Object.assign(KPI_EXPLANATIONS, entry.explanations)
 }
 
-const KPI_STORAGE_KEY = 'gaa-visible-kpis'
-function loadVisibleKpis(): string[] {
+// Both namespaced per club (a plain suffix, no separate function needed) —
+// were single global keys, so switching clubs on the same browser
+// (TeamSwitcher, or logging into a different club) silently inherited
+// whichever club's KPI selection / AI-regen count happened to be saved
+// last. See useDashboardLayout.ts for the matching chart-layout fix and
+// the fuller incident note.
+const KPI_STORAGE_KEY_BASE = 'gaa-visible-kpis'
+function loadVisibleKpis(clubId: string): string[] {
   try {
-    const stored = localStorage.getItem(KPI_STORAGE_KEY)
+    const stored = localStorage.getItem(`${KPI_STORAGE_KEY_BASE}:${clubId}`)
     if (stored) return JSON.parse(stored)
   } catch { /* ignore */ }
   return DEFAULT_VISIBLE_KPIS
 }
-
-const AI_REGEN_KEY = 'gaa-ai-regen'
-const AI_REGEN_DAILY_LIMIT = 5
-function getRegenCount(): { count: number; date: string } {
+function saveVisibleKpis(clubId: string, ids: string[]) {
   try {
-    const stored = localStorage.getItem(AI_REGEN_KEY)
+    localStorage.setItem(`${KPI_STORAGE_KEY_BASE}:${clubId}`, JSON.stringify(ids))
+  } catch { /* ignore */ }
+}
+
+const AI_REGEN_KEY_BASE = 'gaa-ai-regen'
+const AI_REGEN_DAILY_LIMIT = 5
+function getRegenCount(clubId: string): { count: number; date: string } {
+  try {
+    const stored = localStorage.getItem(`${AI_REGEN_KEY_BASE}:${clubId}`)
     if (stored) {
       const parsed = JSON.parse(stored)
       if (parsed.date === new Date().toISOString().slice(0, 10)) return parsed
@@ -76,15 +88,17 @@ function getRegenCount(): { count: number; date: string } {
   } catch { /* ignore */ }
   return { count: 0, date: new Date().toISOString().slice(0, 10) }
 }
-function incrementRegenCount(): number {
-  const current = getRegenCount()
+function incrementRegenCount(clubId: string): number {
+  const current = getRegenCount(clubId)
   const updated = { count: current.count + 1, date: current.date }
-  localStorage.setItem(AI_REGEN_KEY, JSON.stringify(updated))
+  localStorage.setItem(`${AI_REGEN_KEY_BASE}:${clubId}`, JSON.stringify(updated))
   return updated.count
 }
 
 export default function AnalyticsDashboard() {
   const navigate = useNavigate()
+  const { club } = useClub()
+  const clubId = club?.id
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [seasonDashboard, setSeasonDashboard] = useState<SeasonDashboardData | null>(null)
   const [competitionFilter, setCompetitionFilter] = useState<string>('')
@@ -103,13 +117,23 @@ export default function AnalyticsDashboard() {
   const [viewMode, setViewMode] = useState<'season' | 'health' | 'ai'>('season')
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
-  const [visibleKpis, setVisibleKpis] = useState<string[]>(loadVisibleKpis)
+  const [visibleKpis, setVisibleKpis] = useState<string[]>(DEFAULT_VISIBLE_KPIS)
   const [kpiLibraryOpen, setKpiLibraryOpen] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
-  const [regenCount, setRegenCount] = useState(() => getRegenCount().count)
+  const [regenCount, setRegenCount] = useState(0)
   const regenLimitReached = regenCount >= AI_REGEN_DAILY_LIMIT
   const { startTour: startDashboardTour, isTourCompleted: tourDone } = useTour('dashboard', dashboardSteps)
   const tourTriggered = useRef(false)
+  // Loads the current club's own KPI selection + AI-regen count once club
+  // context is ready — stays at in-memory defaults until then, same
+  // race-safe pattern useDashboardLayout uses for chart layout.
+  const loadedKpiClubRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!clubId || loadedKpiClubRef.current === clubId) return
+    loadedKpiClubRef.current = clubId
+    setVisibleKpis(loadVisibleKpis(clubId))
+    setRegenCount(getRegenCount(clubId).count)
+  }, [clubId])
   const [flashingCards, setFlashingCards] = useState<Set<number>>(new Set())
   const triggerFlash = useCallback((idx: number) => {
     setFlashingCards(prev => new Set(prev).add(idx))
@@ -127,10 +151,10 @@ export default function AnalyticsDashboard() {
   const toggleKpi = useCallback((kpiId: string) => {
     setVisibleKpis(prev => {
       const next = prev.includes(kpiId) ? prev.filter(k => k !== kpiId) : [...prev, kpiId]
-      localStorage.setItem(KPI_STORAGE_KEY, JSON.stringify(next))
+      if (clubId) saveVisibleKpis(clubId, next)
       return next
     })
-  }, [])
+  }, [clubId])
 
   // Build pairings from registry filtered by visible KPIs
   const kpiPairings = visibleKpis
@@ -151,7 +175,7 @@ export default function AnalyticsDashboard() {
     reorderCharts,
     reorderSections,
     resetLayout,
-  } = useDashboardLayout()
+  } = useDashboardLayout(clubId)
 
   // Section-level DnD sensors (same config: pointer distance 8, touch delay 200ms)
   const sectionSensors = useSensors(
@@ -208,7 +232,7 @@ export default function AnalyticsDashboard() {
       if (result.success && result.charts && result.charts.length > 0) {
         setAiCharts(result.charts)
         setAiChartsSummary(result.summary || '')
-        if (forceRefresh) setRegenCount(incrementRegenCount())
+        if (forceRefresh && clubId) setRegenCount(incrementRegenCount(clubId))
       } else if (forceRefresh) {
         console.warn('AI charts regeneration returned empty result:', result)
       }
@@ -217,7 +241,7 @@ export default function AnalyticsDashboard() {
     } finally {
       setLoadingAICharts(false)
     }
-  }, [dismissedChartIds, regenLimitReached])
+  }, [dismissedChartIds, regenLimitReached, clubId])
 
   const fetchSuggestions = useCallback(async () => {
     setLoadingSuggestions(true)
@@ -245,7 +269,7 @@ export default function AnalyticsDashboard() {
       const result = await api.ai.getDashboardCharts(allExcluded, 2, true, true)
       if (result.success && result.charts && result.charts.length > 0) {
         setAiCharts(prev => [...prev, ...result.charts])
-        setRegenCount(incrementRegenCount())
+        if (clubId) setRegenCount(incrementRegenCount(clubId))
       } else {
         setLoadMoreError("Couldn't generate more charts right now — try again in a moment.")
       }
@@ -263,7 +287,7 @@ export default function AnalyticsDashboard() {
     } finally {
       setLoadingMore(false)
     }
-  }, [aiCharts, dismissedChartIds, regenLimitReached])
+  }, [aiCharts, dismissedChartIds, regenLimitReached, clubId])
 
   const handlePinChart = useCallback((chart: AIChartSpec) => {
     pinChart(chart)
@@ -932,7 +956,7 @@ export default function AnalyticsDashboard() {
                 onClick={() => {
                   resetLayout()
                   setVisibleKpis(DEFAULT_VISIBLE_KPIS)
-                  localStorage.setItem(KPI_STORAGE_KEY, JSON.stringify(DEFAULT_VISIBLE_KPIS))
+                  if (clubId) saveVisibleKpis(clubId, DEFAULT_VISIBLE_KPIS)
                   setShowResetConfirm(false)
                   window.scrollTo({ top: 0, behavior: 'smooth' })
                 }}

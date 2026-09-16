@@ -1,8 +1,15 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AIChartSpec } from '@/services/api'
 
-const STORAGE_KEY = 'gaa-dashboard-layout'
-const OLD_PINNED_KEY = 'gaa-pinned-charts'
+// Namespaced per club — was a single global key, so switching clubs on the
+// same browser (TeamSwitcher, or logging into a different club) silently
+// inherited whichever club's layout happened to be saved last. For the
+// canonical chart order/hidden list that's just a wrong-looking dashboard;
+// for pinnedAiCharts it's worse, since that array stores the actual
+// rendered chart DATA (not just an id) — one club's real match numbers
+// would render on another club's dashboard. See project memory for the
+// incident this was reported from.
+const STORAGE_KEY_BASE = 'gaa-dashboard-layout'
 const MAX_PINNED = 8
 
 const NEW_V3_CHART_IDS = [
@@ -67,9 +74,10 @@ function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   }
 }
 
-function loadLayout(): DashboardLayout {
+function loadLayout(clubId: string): DashboardLayout {
+  const storageKey = `${STORAGE_KEY_BASE}:${clubId}`
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey)
     if (raw) {
       const parsed = JSON.parse(raw)
 
@@ -82,7 +90,7 @@ function loadLayout(): DashboardLayout {
             parsed.hiddenCharts.push(id)
           }
         }
-        saveLayout(parsed)
+        saveLayout(parsed, clubId)
         return parsed
       }
 
@@ -95,7 +103,7 @@ function loadLayout(): DashboardLayout {
         for (const s of DEFAULT_SECTION_ORDER) {
           if (!parsed.sectionOrder.includes(s)) parsed.sectionOrder.push(s)
         }
-        saveLayout(parsed)
+        saveLayout(parsed, clubId)
         return parsed
       }
 
@@ -106,7 +114,7 @@ function loadLayout(): DashboardLayout {
         for (const s of DEFAULT_SECTION_ORDER) {
           if (!parsed.sectionOrder.includes(s)) parsed.sectionOrder.push(s)
         }
-        saveLayout(parsed)
+        saveLayout(parsed, clubId)
         return parsed
       }
 
@@ -122,24 +130,12 @@ function loadLayout(): DashboardLayout {
         for (const id of NEW_V6_CHART_IDS) {
           if (!existing.has(id)) parsed.hiddenCharts.push(id)
         }
-        saveLayout(parsed)
+        saveLayout(parsed, clubId)
         return parsed
       }
 
       if (parsed.version === 6) {
         return parsed
-      }
-    }
-
-    // Migrate from old pinned charts key
-    const oldRaw = localStorage.getItem(OLD_PINNED_KEY)
-    if (oldRaw) {
-      const oldPinned: AIChartSpec[] = JSON.parse(oldRaw)
-      if (Array.isArray(oldPinned) && oldPinned.length > 0) {
-        const layout = createDefault(oldPinned)
-        saveLayout(layout)
-        localStorage.removeItem(OLD_PINNED_KEY)
-        return layout
       }
     }
   } catch {
@@ -148,24 +144,37 @@ function loadLayout(): DashboardLayout {
   return createDefault()
 }
 
-function saveLayout(layout: DashboardLayout) {
+function saveLayout(layout: DashboardLayout, clubId: string) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(layout))
+    localStorage.setItem(`${STORAGE_KEY_BASE}:${clubId}`, JSON.stringify(layout))
   } catch {
     // localStorage full
   }
 }
 
-export function useDashboardLayout() {
-  const [layout, setLayout] = useState<DashboardLayout>(loadLayout)
+/**
+ * @param clubId Current club's id (from useClub()). Layout stays at
+ * in-memory defaults and nothing is read/written to localStorage until
+ * this is known — avoids ever flashing a previous club's saved layout
+ * during the brief window before club context finishes loading.
+ */
+export function useDashboardLayout(clubId: string | null | undefined) {
+  const [layout, setLayout] = useState<DashboardLayout>(() => createDefault())
+  const loadedForClubRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!clubId || loadedForClubRef.current === clubId) return
+    loadedForClubRef.current = clubId
+    setLayout(loadLayout(clubId))
+  }, [clubId])
 
   const updateLayout = useCallback((updater: (prev: DashboardLayout) => DashboardLayout) => {
     setLayout(prev => {
       const next = updater(prev)
-      saveLayout(next)
+      if (clubId) saveLayout(next, clubId)
       return next
     })
-  }, [])
+  }, [clubId])
 
   // Pin an AI chart → add to pinnedAiCharts + chartOrder, returns true if pinned
   const pinChart = useCallback((chart: AIChartSpec) => {
@@ -233,9 +242,9 @@ export function useDashboardLayout() {
   // Reset to defaults
   const resetLayout = useCallback(() => {
     const fresh = createDefault()
-    saveLayout(fresh)
+    if (clubId) saveLayout(fresh, clubId)
     setLayout(fresh)
-  }, [])
+  }, [clubId])
 
   return {
     layout,
