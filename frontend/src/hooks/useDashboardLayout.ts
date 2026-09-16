@@ -24,6 +24,16 @@ const NEW_V6_CHART_IDS = [
   'season-hmld',
 ]
 
+// transition-speed shipped this session (Phase 4) without ever being added
+// here — recoverable via Chart Library regardless (it lists every
+// CANONICAL_CHARTS entry, not just ones already in chartOrder/hiddenCharts),
+// but not surfaced as "new" the way season-hmld was. Both it and the new
+// press-trigger chart added properly now.
+const NEW_V7_CHART_IDS = [
+  'transition-speed',
+  'press-trigger',
+]
+
 export const DEFAULT_CHART_ORDER = [
   'possession-funnel',
   'kickout-trend',
@@ -39,6 +49,8 @@ export const DEFAULT_CHART_ORDER = [
   'kickout-landing-zones',
   'kpi-sparkline-grid',
   'season-hmld',
+  'transition-speed',
+  'press-trigger',
 ]
 
 export const DEFAULT_SECTION_ORDER = [
@@ -66,7 +78,7 @@ const DEFAULT_VISIBLE_CHARTS = [
 function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   const hiddenCharts = DEFAULT_CHART_ORDER.filter(id => !DEFAULT_VISIBLE_CHARTS.includes(id))
   return {
-    version: 6,
+    version: 7,
     chartOrder: [...DEFAULT_VISIBLE_CHARTS, ...pinnedAiCharts.map(c => `ai-${c.id}`)],
     hiddenCharts,
     sectionOrder: [...DEFAULT_SECTION_ORDER],
@@ -135,6 +147,17 @@ function loadLayout(clubId: string): DashboardLayout {
       }
 
       if (parsed.version === 6) {
+        // v6 → v7: add transition-speed + press-trigger to hiddenCharts
+        parsed.version = 7
+        const existing = new Set([...parsed.chartOrder, ...(parsed.hiddenCharts || [])])
+        for (const id of NEW_V7_CHART_IDS) {
+          if (!existing.has(id)) parsed.hiddenCharts.push(id)
+        }
+        saveLayout(parsed, clubId)
+        return parsed
+      }
+
+      if (parsed.version === 7) {
         return parsed
       }
     }

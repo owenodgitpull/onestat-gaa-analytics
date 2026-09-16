@@ -267,7 +267,7 @@ class SeasonDashboardService:
 
         (funnel, kickouts, turnovers, red_zone, radar, territory,
          score_timeline, dead_ball, def_zones, kickout_zones, season_hmld,
-         attacking_thirds, transition_speed) = await asyncio.gather(
+         attacking_thirds, transition_speed, press_trigger) = await asyncio.gather(
             SeasonDashboardService._possession_funnel(db, matches),
             SeasonDashboardService._kickout_trends(db, matches),
             SeasonDashboardService._turnover_source_leaderboard(db, matches),
@@ -281,6 +281,7 @@ class SeasonDashboardService:
             SeasonDashboardService._season_hmld_chart(db, matches),
             SeasonDashboardService._attacking_thirds(db, matches),
             SeasonDashboardService._season_transition_speed_chart(db, matches),
+            SeasonDashboardService._season_press_trigger_chart(db, matches),
         )
 
         expected_points_season = await SeasonDashboardService._season_expected_points(db, matches)
@@ -334,6 +335,7 @@ class SeasonDashboardService:
             "season_hmld": season_hmld,
             "attacking_thirds": attacking_thirds,
             "transition_speed": transition_speed,
+            "press_trigger": press_trigger,
             "available_competitions": available_competitions,
             "available_stages": available_stages,
             "matches_in_view": len(matches),
@@ -3209,6 +3211,92 @@ class SeasonDashboardService:
             "season_avg": {
                 "ball_recovery_min": _season_avg("ball_recovery_min"),
                 "turnover_to_shot_sec": _season_avg("turnover_to_shot_sec"),
+            },
+        }
+
+    @staticmethod
+    async def _season_press_trigger_chart(db: AsyncSession, matches: list) -> dict:
+        """
+        Per-match Press Trigger effectiveness (win-back rate, avg passes
+        allowed before it resolved, avg duration) for the season chart.
+
+        Press Trigger has no dedicated table/columns yet (shipped as a
+        pragmatic MatchEvent(event_type=OTHER) marker, see MatchRecording.tsx
+        closePressTrigger) — the outcome/pass-count/duration live packed into
+        `notes` as "Press: {outcome}, {n} passes, {duration}m". That string
+        has exactly one writer in the whole codebase and its shape has never
+        changed, so parsing it here is safe (not free-text a human typed) and
+        avoids a migration for what's still an evolving feature. Revisit if
+        Press Trigger ever gets real columns.
+        """
+        import re
+        empty = {"per_match": [], "season_avg": {}}
+        if not matches:
+            return empty
+
+        match_ids = [m.id for m in matches]
+        matches_map = {m.id: m for m in matches}
+
+        ev_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.notes)
+            .where(
+                and_(
+                    MatchEvent.match_id.in_(match_ids),
+                    MatchEvent.event_type == EventType.OTHER,
+                    MatchEvent.team == Team.OWN,
+                    MatchEvent.notes.like("Press: %"),
+                )
+            )
+        )
+        rows = ev_result.all()
+        if not rows:
+            return empty
+
+        PRESS_RE = re.compile(r"^Press: (\w+), (\d+) passes, (\d+)m$")
+
+        parsed_by_match: dict = {}
+        for r in rows:
+            m = PRESS_RE.match(r.notes or "")
+            if not m:
+                continue
+            outcome, passes, duration = m.group(1), int(m.group(2)), int(m.group(3))
+            parsed_by_match.setdefault(r.match_id, []).append({
+                "outcome": outcome, "passes": passes, "duration": duration,
+            })
+
+        per_match = []
+        all_presses = []
+        for mid in match_ids:
+            presses = parsed_by_match.get(mid, [])
+            if not presses:
+                continue
+            m = matches_map[mid]
+            won_back = sum(1 for p in presses if p["outcome"] == "won_back")
+            per_match.append({
+                "match_id": str(mid),
+                "opponent": m.opponent,
+                "date": m.match_date.isoformat() if m.match_date else "",
+                "press_count": len(presses),
+                "win_back_rate": round(won_back / len(presses) * 100, 1),
+                "avg_passes_allowed": round(sum(p["passes"] for p in presses) / len(presses), 1),
+                "avg_duration_min": round(sum(p["duration"] for p in presses) / len(presses), 1),
+            })
+            all_presses.extend(presses)
+
+        if not per_match:
+            return empty
+
+        # Season averages computed over every individual press (not an
+        # average-of-per-match-averages), so a match with only 1-2 presses
+        # doesn't get equal weight to one with 10.
+        season_won_back = sum(1 for p in all_presses if p["outcome"] == "won_back")
+        return {
+            "per_match": per_match,
+            "season_avg": {
+                "press_count": len(all_presses),
+                "win_back_rate": round(season_won_back / len(all_presses) * 100, 1),
+                "avg_passes_allowed": round(sum(p["passes"] for p in all_presses) / len(all_presses), 1),
+                "avg_duration_min": round(sum(p["duration"] for p in all_presses) / len(all_presses), 1),
             },
         }
 

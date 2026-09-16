@@ -1048,6 +1048,26 @@ export interface TransitionSpeedData {
   };
 }
 
+export interface PressTriggerMatch {
+  match_id: string;
+  opponent: string;
+  date: string;
+  press_count: number;
+  win_back_rate: number;
+  avg_passes_allowed: number;
+  avg_duration_min: number;
+}
+
+export interface PressTriggerData {
+  per_match: PressTriggerMatch[];
+  season_avg: {
+    press_count: number;
+    win_back_rate: number;
+    avg_passes_allowed: number;
+    avg_duration_min: number;
+  };
+}
+
 export interface SeasonDashboardData {
   possession_funnel: PossessionFunnelData;
   kickout_trends: KickoutTrendMatch[];
@@ -1064,6 +1084,7 @@ export interface SeasonDashboardData {
   season_hmld?: SeasonHMLDData;
   attacking_thirds?: AttackingThirdsData;
   transition_speed?: TransitionSpeedData;
+  press_trigger?: PressTriggerData;
   expected_points_season?: SeasonExpectedPointsData;
   available_competitions: string[];
   available_stages: string[];

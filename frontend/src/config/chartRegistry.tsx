@@ -15,6 +15,7 @@ import KickoutLandingZones from '@/components/charts/KickoutLandingZones'
 import KPISparklineGrid from '@/components/charts/KPISparklineGrid'
 import SeasonExpectedPoints from '@/components/charts/SeasonExpectedPoints'
 import TransitionSpeedChart from '@/components/charts/TransitionSpeedChart'
+import PressTriggerChart from '@/components/charts/PressTriggerChart'
 import DynamicChart from '@/components/DynamicChart'
 import type { SeasonDashboardData, DashboardData, AIChartSpec, SeasonExpectedPointsData, AttackingThirdsData } from '@/services/api'
 
@@ -212,6 +213,16 @@ export const CANONICAL_CHARTS: ChartRegistryEntry[] = [
     render: ({ seasonDashboard }) =>
       seasonDashboard?.transition_speed && seasonDashboard.transition_speed.per_match.length > 0
         ? <TransitionSpeedChart data={seasonDashboard.transition_speed} />
+        : null,
+  },
+  {
+    id: 'press-trigger',
+    label: 'Press Trigger',
+    description: 'Win-back rate and passes allowed per Press Trigger — how effective the high press is at forcing the ball back',
+    category: 'Defence',
+    render: ({ seasonDashboard }) =>
+      seasonDashboard?.press_trigger && seasonDashboard.press_trigger.per_match.length > 0
+        ? <PressTriggerChart data={seasonDashboard.press_trigger} />
         : null,
   },
 ]

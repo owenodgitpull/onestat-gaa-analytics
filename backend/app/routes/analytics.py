@@ -459,6 +459,28 @@ class TransitionSpeedData(BaseModel):
     season_avg: TransitionSpeedSeasonAvg
 
 
+class PressTriggerMatch(BaseModel):
+    match_id: str
+    opponent: str
+    date: str
+    press_count: int
+    win_back_rate: float
+    avg_passes_allowed: float
+    avg_duration_min: float
+
+
+class PressTriggerSeasonAvg(BaseModel):
+    press_count: int
+    win_back_rate: float
+    avg_passes_allowed: float
+    avg_duration_min: float
+
+
+class PressTriggerData(BaseModel):
+    per_match: List[PressTriggerMatch]
+    season_avg: PressTriggerSeasonAvg
+
+
 class SeasonDashboardData(BaseModel):
     possession_funnel: PossessionFunnelData
     kickout_trends: List[KickoutTrendMatch]
@@ -475,6 +497,7 @@ class SeasonDashboardData(BaseModel):
     season_hmld: Optional[SeasonHMLDData] = None
     attacking_thirds: Optional[AttackingThirdsData] = None
     transition_speed: Optional[TransitionSpeedData] = None
+    press_trigger: Optional[PressTriggerData] = None
     expected_points_season: Optional[SeasonExpectedPointsData] = None
     available_competitions: List[str] = []
     available_stages: List[str] = []
@@ -1819,6 +1842,14 @@ async def get_season_dashboard(
             season_avg=TransitionSpeedSeasonAvg(**ts["season_avg"]),
         )
 
+    press_trigger = None
+    if data.get("press_trigger") and data["press_trigger"].get("per_match"):
+        pt = data["press_trigger"]
+        press_trigger = PressTriggerData(
+            per_match=[PressTriggerMatch(**m) for m in pt["per_match"]],
+            season_avg=PressTriggerSeasonAvg(**pt["season_avg"]),
+        )
+
     attacking_thirds = None
     if data.get("attacking_thirds"):
         at = data["attacking_thirds"]
@@ -1859,6 +1890,7 @@ async def get_season_dashboard(
         season_hmld=season_hmld,
         attacking_thirds=attacking_thirds,
         transition_speed=transition_speed,
+        press_trigger=press_trigger,
         expected_points_season=SeasonExpectedPointsData(**data["expected_points_season"]) if data.get("expected_points_season") else None,
         available_competitions=data.get("available_competitions", []),
         available_stages=data.get("available_stages", []),
