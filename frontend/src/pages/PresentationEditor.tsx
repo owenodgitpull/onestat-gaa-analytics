@@ -274,7 +274,7 @@ export default function PresentationEditor() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4">
         {/* Slide list */}
         <div className="glass-card p-3 space-y-3">
           <div className="grid grid-cols-2 gap-1.5">
