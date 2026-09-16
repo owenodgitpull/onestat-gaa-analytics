@@ -15,12 +15,29 @@ import {
   SortableContext,
   rectSortingStrategy,
 } from '@dnd-kit/sortable'
-import { LayoutGrid, Library } from 'lucide-react'
+import { LayoutGrid, Library, Crosshair, Shield, BarChart3, Gauge, Eye } from 'lucide-react'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import SortableChartCard from './SortableChartCard'
 import ChartLibraryModal from './ChartLibraryModal'
 import { CANONICAL_CHARTS, makePinnedAiEntry, type ChartRenderProps, type ChartRegistryEntry } from '@/config/chartRegistry'
 import type { AIChartSpec } from '@/services/api'
+
+// GAA-tactical filter groups over the registry's raw `category` strings
+// (Possession/Scoring/Defence/Kickouts/GPS/Overview) — maps, doesn't rename,
+// so ChartLibraryModal's own grouping stays untouched. Kickouts kept its
+// own filter rather than folding into Defence/Attack — restarts are their
+// own tactical battle, matches how much this matters to elite analysts.
+// `null` means "no filter" (today's behaviour, stays the default).
+type ChartFilterKey = 'all' | 'attack' | 'defence' | 'kickouts' | 'physical' | 'overview'
+
+const CHART_FILTERS: { key: ChartFilterKey; label: string; icon: React.ReactNode; categories: string[] | null }[] = [
+  { key: 'all', label: 'All', icon: <LayoutGrid size={13} />, categories: null },
+  { key: 'attack', label: 'Attack', icon: <Crosshair size={13} />, categories: ['Scoring', 'Possession'] },
+  { key: 'defence', label: 'Defence', icon: <Shield size={13} />, categories: ['Defence'] },
+  { key: 'kickouts', label: 'Kickouts', icon: <BarChart3 size={13} />, categories: ['Kickouts'] },
+  { key: 'physical', label: 'Physical', icon: <Gauge size={13} />, categories: ['GPS'] },
+  { key: 'overview', label: 'Overview', icon: <Eye size={13} />, categories: ['Overview'] },
+]
 
 interface MyChartsSectionProps {
   chartOrder: string[]
@@ -47,6 +64,7 @@ export default function MyChartsSection({
 }: MyChartsSectionProps) {
   const [showLibrary, setShowLibrary] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeFilter, setActiveFilter] = useState<ChartFilterKey>('all')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -59,12 +77,18 @@ export default function MyChartsSection({
   CANONICAL_CHARTS.forEach(c => registryMap.set(c.id, c))
   pinnedAiCharts.forEach(c => registryMap.set(`ai-${c.id}`, makePinnedAiEntry(c)))
 
+  const activeFilterCategories = CHART_FILTERS.find(f => f.key === activeFilter)?.categories ?? null
+
   // Filter chart order to only renderable charts
   const visibleCharts = chartOrder.filter(id => {
     const entry = registryMap.get(id)
     if (!entry) return false
     // GPS charts only show if GPS data exists
     if (entry.requiresGps && !hasGpsData) return false
+    // Category filter — AI-pinned charts carry no category (their content
+    // varies too freely to force into one tactical bucket), so they only
+    // ever show under "All", not any specific filter.
+    if (activeFilterCategories && !activeFilterCategories.includes(entry.category || '')) return false
     return true
   })
 
@@ -111,6 +135,38 @@ export default function MyChartsSection({
         </button>
       </div>
 
+      {/* Category filters — only show a chart's tactical group at a time.
+          "All" (default) is today's behaviour, unfiltered. */}
+      <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+        {CHART_FILTERS.map(f => (
+          <button
+            key={f.key}
+            onClick={() => setActiveFilter(f.key)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              activeFilter === f.key
+                ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-300'
+                : 'bg-white/5 border border-white/10 text-white/50 hover:text-white/80 hover:bg-white/10'
+            }`}
+          >
+            {f.icon}
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {visibleCharts.length === 0 ? (
+        <div className="glass-card p-8 text-center">
+          <p className="text-white/40 text-sm">
+            No {activeFilter === 'all' ? '' : `${CHART_FILTERS.find(f => f.key === activeFilter)?.label.toLowerCase()} `}charts on your dashboard yet.
+          </p>
+          <button
+            onClick={() => setShowLibrary(true)}
+            className="mt-3 text-emerald-400 hover:text-emerald-300 text-xs font-medium"
+          >
+            Add one from the Chart Library
+          </button>
+        </div>
+      ) : (
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
@@ -158,6 +214,7 @@ export default function MyChartsSection({
           )}
         </DragOverlay>
       </DndContext>
+      )}
 
       <ChartLibraryModal
         isOpen={showLibrary}
