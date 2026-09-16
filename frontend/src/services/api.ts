@@ -88,6 +88,13 @@ export async function fetchAPI<T>(
       );
     }
 
+    // 204 No Content (every DELETE route in this app) has no body — response.json()
+    // throws on an empty body, which silently failed the whole call (including its
+    // onSuccess handler) even though the server-side delete succeeded.
+    if (response.status === 204 || response.headers.get('content-length') === '0') {
+      return undefined as T;
+    }
+
     return await response.json();
   } catch (error) {
     if (controller?.signal.aborted) {
