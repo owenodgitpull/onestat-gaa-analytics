@@ -20,6 +20,7 @@ class NotificationType(str, enum.Enum):
     FITNESS_RESULTS = "fitness_results"
     WEEKLY_BRIEF = "weekly_brief"
     SLEEP_REMINDER = "sleep_reminder"
+    PRESENTATION_SHARED = "presentation_shared"
 
 
 class Notification(Base):

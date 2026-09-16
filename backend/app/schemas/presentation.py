@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 from uuid import UUID
 
 from app.models.presentation import SLIDE_TYPES
@@ -32,6 +32,13 @@ class SlideCreate(BaseModel):
     text_title: Optional[str] = Field(None, max_length=200)
     text_body: Optional[str] = None
 
+    # annotation
+    freeze_frame_ms: Optional[int] = None
+    annotation_shapes: Optional[list[dict[str, Any]]] = None
+
+    # clip only, optional — tracking ring keyframes
+    tracking_keyframes: Optional[list[dict[str, Any]]] = None
+
     @model_validator(mode='after')
     def _validate_type_fields(self):
         if self.slide_type not in SLIDE_TYPES:
@@ -45,6 +52,9 @@ class SlideCreate(BaseModel):
                 raise ValueError("clip_end_ms must be after clip_start_ms")
         if self.slide_type == 'animation' and not self.set_piece_routine_id:
             raise ValueError("animation slides require set_piece_routine_id")
+        if self.slide_type == 'annotation':
+            if not self.video_session_id or self.freeze_frame_ms is None:
+                raise ValueError("annotation slides require video_session_id and freeze_frame_ms")
         return self
 
 
@@ -55,6 +65,8 @@ class SlideUpdate(BaseModel):
     set_piece_routine_id: Optional[UUID] = None
     text_title: Optional[str] = Field(None, max_length=200)
     text_body: Optional[str] = None
+    annotation_shapes: Optional[list[dict[str, Any]]] = None
+    tracking_keyframes: Optional[list[dict[str, Any]]] = None
 
 
 class SlideReorder(BaseModel):
@@ -72,10 +84,20 @@ class SlideResponse(BaseModel):
     set_piece_routine_id: Optional[UUID] = None
     text_title: Optional[str] = None
     text_body: Optional[str] = None
+    freeze_frame_ms: Optional[int] = None
+    annotation_shapes: Optional[list[dict[str, Any]]] = None
+    tracking_keyframes: Optional[list[dict[str, Any]]] = None
+    has_voiceover: bool = False
+    tagged_player_ids: Optional[list[UUID]] = None
     created_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class NotifyPlayersRequest(BaseModel):
+    player_ids: list[UUID] = Field(..., min_length=1)
+    message: Optional[str] = Field(None, max_length=500)
 
 
 class PresentationResponse(BaseModel):
@@ -97,6 +119,17 @@ class PresentationListItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TaggedSlideItem(BaseModel):
+    """A slide a player has been explicitly tagged/shared on — player-portal view."""
+    presentation_id: UUID
+    presentation_title: str
+    slide_id: UUID
+    slide_type: str
+    clip_label: Optional[str] = None
+    text_title: Optional[str] = None
+    created_at: datetime
 
 
 class ClipLibraryEntry(BaseModel):

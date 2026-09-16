@@ -189,6 +189,105 @@ async def get_single_leaderboard(
 
 
 # ------------------------------------------------------------------
+# Tagged clips (Phase 11, 10e) — slides a coach explicitly shared with this player
+# ------------------------------------------------------------------
+
+@router.get("/tagged-clips")
+async def get_tagged_clips(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every PresentationSlide this player has been tagged on. Filtered in
+    Python (not a DB JSON-containment query) — tagged_player_ids is a plain
+    JSON column and expected volume per club is tiny, so a brute-force scan
+    of this club's tagged slides is simpler than a Postgres-specific @>
+    query for no real cost."""
+    if not user.player_id:
+        return {"clips": []}
+
+    from app.models.presentation import Presentation, PresentationSlide
+
+    result = await db.execute(
+        select(PresentationSlide, Presentation.title)
+        .join(Presentation, Presentation.id == PresentationSlide.presentation_id)
+        .where(Presentation.club_id == user.club_id, PresentationSlide.tagged_player_ids.isnot(None))
+        .order_by(PresentationSlide.created_at.desc())
+    )
+
+    player_id_str = str(user.player_id)
+    clips = []
+    for slide, presentation_title in result.all():
+        if player_id_str not in (slide.tagged_player_ids or []):
+            continue
+        clips.append({
+            "presentation_id": slide.presentation_id,
+            "presentation_title": presentation_title,
+            "slide_id": slide.id,
+            "slide_type": slide.slide_type,
+            "clip_label": slide.clip_label,
+            "text_title": slide.text_title,
+            "created_at": slide.created_at,
+        })
+    return {"clips": clips}
+
+
+@router.get("/tagged-clips/{slide_id}")
+async def get_tagged_clip_detail(
+    slide_id: UUID,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full slide detail for one tagged clip — the player-portal single-slide
+    viewer. 403s if this player wasn't actually tagged on it (not just any
+    slide id), same boundary as every other player-portal "mine" endpoint."""
+    from app.models.presentation import PresentationSlide, Presentation
+
+    result = await db.execute(
+        select(PresentationSlide, Presentation.club_id)
+        .join(Presentation, Presentation.id == PresentationSlide.presentation_id)
+        .where(PresentationSlide.id == slide_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    slide, club_id = row
+    if club_id != user.club_id:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    if not user.player_id or str(user.player_id) not in (slide.tagged_player_ids or []):
+        raise HTTPException(status_code=403, detail="This clip wasn't shared with you")
+
+    video_url = None
+    if slide.video_session_id:
+        from app.models.video_session import VideoSession
+        from app.services.storage_service import storage
+        vs_result = await db.execute(select(VideoSession).where(VideoSession.id == slide.video_session_id))
+        vs = vs_result.scalar_one_or_none()
+        if vs and vs.video_r2_key:
+            video_url = storage.get_download_url(vs.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    voiceover_url = None
+    if slide.voiceover_key:
+        from app.services.storage_service import storage
+        voiceover_url = storage.generate_presigned_download_url(
+            key=slide.voiceover_key, expires_in=3600, club_id=str(user.club_id),
+        )
+
+    return {
+        "slide_type": slide.slide_type,
+        "video_url": video_url,
+        "clip_start_ms": slide.clip_start_ms,
+        "clip_end_ms": slide.clip_end_ms,
+        "clip_label": slide.clip_label,
+        "freeze_frame_ms": slide.freeze_frame_ms,
+        "annotation_shapes": slide.annotation_shapes,
+        "tracking_keyframes": slide.tracking_keyframes,
+        "text_title": slide.text_title,
+        "text_body": slide.text_body,
+        "voiceover_url": voiceover_url,
+    }
+
+
+# ------------------------------------------------------------------
 # Player Dashboard
 # ------------------------------------------------------------------
 
