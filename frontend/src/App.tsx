@@ -39,6 +39,8 @@ const AIAnalystPage = lazyWithRetry(() => import('./pages/AIAnalystPage'))
 const SeasonReport = lazyWithRetry(() => import('./pages/SeasonReport'))
 const SquadFitness = lazyWithRetry(() => import('./pages/SquadFitness'))
 const MatchPrep = lazyWithRetry(() => import('./pages/MatchPrep'))
+const PresentationsPage = lazyWithRetry(() => import('./pages/PresentationsPage'))
+const PresentationEditor = lazyWithRetry(() => import('./pages/PresentationEditor'))
 const FixturePreview = lazyWithRetry(() => import('./pages/FixturePreview'))
 const PlayerComparison = lazyWithRetry(() => import('./pages/PlayerComparison'))
 const MatchResult = lazyWithRetry(() => import('./pages/MatchResult'))
@@ -160,6 +162,8 @@ function App() {
                           <Route path="/analyst/:sessionId" element={<AIAnalystPage />} />
                           <Route path="/fitness" element={<SquadFitness />} />
                           <Route path="/settings" element={<Settings />} />
+                          <Route path="/presentations" element={<PresentationsPage />} />
+                          <Route path="/presentations/:presentationId" element={<PresentationEditor />} />
                         </Routes>
                         </Suspense>
                       </div>

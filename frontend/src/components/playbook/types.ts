@@ -152,6 +152,65 @@ export function arrowheadPoints(tip: { x: number; y: number }, angle: number, si
   return `${tip.x},${tip.y} ${left.x},${left.y} ${indent.x},${indent.y} ${right.x},${right.y}`
 }
 
+// ── Elements (persisted JSON) → Phase[] ─────────────────────────────────────
+// SetPieceRoutine.elements is a flat array: either phase-wrapped
+// ({type:'phase', items:[...]}) for a multi-phase routine, or a flat legacy
+// single-phase list of player/arrow/label items directly. Consumers that
+// just need to PLAY a routine (not edit it) use this rather than
+// reimplementing SetPieceEditor's own parsing.
+function elementToPlayer(el: Record<string, unknown>): PlayerDot {
+  return {
+    id: crypto.randomUUID(),
+    x: el.x as number,
+    y: el.y as number,
+    playerId: el.playerId as string | undefined,
+    playerName: (el.playerName as string) || `#${el.jerseyNumber}`,
+    jerseyNumber: el.jerseyNumber as number,
+    isOpponent: (el.isOpponent as boolean) || (el.label === 'OPP'),
+  }
+}
+
+function elementToArrow(el: Record<string, unknown>): Arrow {
+  return {
+    id: crypto.randomUUID(),
+    points: el.points as { x: number; y: number }[],
+    color: (el.color as string) || ARROW_COLOR,
+    dashed: el.dashed as boolean | undefined,
+    curved: el.curved as boolean | undefined,
+  }
+}
+
+function elementToLabel(el: Record<string, unknown>): TextLabel {
+  return {
+    id: crypto.randomUUID(),
+    x: el.x as number,
+    y: el.y as number,
+    text: el.text as string,
+    rotation: (el.rotation as number) || 0,
+  }
+}
+
+export function loadPhaseFromElements(items: Array<Record<string, unknown>>): Phase {
+  const players: PlayerDot[] = []
+  const arrows: Arrow[] = []
+  const labels: TextLabel[] = []
+  for (const el of items) {
+    if (el.type === 'player') players.push(elementToPlayer(el))
+    else if (el.type === 'arrow') arrows.push(elementToArrow(el))
+    else if (el.type === 'label') labels.push(elementToLabel(el))
+  }
+  return { players, arrows, labels }
+}
+
+export function elementsToPhases(elements: Array<Record<string, unknown>>): Phase[] {
+  if (!elements || elements.length === 0) return [{ players: [], arrows: [], labels: [] }]
+  const phaseElements = elements.filter(el => el.type === 'phase')
+  if (phaseElements.length > 0) {
+    return phaseElements.map(ph => loadPhaseFromElements(ph.items as Array<Record<string, unknown>>))
+  }
+  return [loadPhaseFromElements(elements)]
+}
+
 // ── Color constants ────────────────────────────────────────────────────────
 export const OPPONENT_COLOR = '#3B82F6'
 export const OPPONENT_BORDER = '#1E3A5F'

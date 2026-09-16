@@ -18,6 +18,7 @@ import {
   Activity,
   Menu,
   X,
+  MonitorPlay,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useAuth } from '../contexts/AuthContext'
@@ -203,6 +204,7 @@ export default function Navigation() {
     { to: '/fixtures', matchPath: '/fixtures', label: 'Fixtures', icon: CalendarDays, mobileOnly: true },
     { to: '/reports/season', matchPath: '/reports', label: 'Reports', icon: FileText, tour: 'nav-reports', proOnly: true },
     { to: '/analyst', matchPath: '/analyst', label: 'Analyst', icon: MessageSquare, tour: 'nav-analyst', proOnly: true },
+    { to: '/presentations', matchPath: '/presentations', label: 'Presentations', icon: MonitorPlay, proOnly: true },
   ]
 
   return (
