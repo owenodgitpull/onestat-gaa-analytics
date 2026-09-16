@@ -122,10 +122,45 @@ async def get_all_leaderboards(
     db: AsyncSession = Depends(get_db),
 ):
     """All 8 leaderboard categories with player's rank + context window."""
+    # is_preview: an admin "viewing as" a specific player should see exactly
+    # what that player would see (including opted-out teammates hidden) —
+    # not the real admin's full-visibility view.
+    viewer_is_admin = user.role == "club_admin" and not user.is_preview
     boards = await LeaderboardService.get_all_leaderboards(
-        db, user.club_id, user.player_id, competition, last_n
+        db, user.club_id, user.player_id, competition, last_n,
+        viewer_is_admin=viewer_is_admin,
     )
     return {"leaderboards": boards}
+
+
+@router.get("/leaderboards/me/visibility")
+async def get_my_leaderboard_visibility(
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """Whether the current player has opted their own stats out of
+    teammate-visible leaderboards."""
+    player = await _get_player_for_user(db, user)
+    return {"hide_from_leaderboards": player.hide_from_leaderboards}
+
+
+@router.put("/leaderboards/me/visibility")
+async def set_my_leaderboard_visibility(
+    body: dict,
+    user: AuthenticatedUser = Depends(require_club),
+    db: AsyncSession = Depends(get_db),
+):
+    """A player's own opt-out from teammate-visible leaderboards — self-
+    service only, never settable for someone else here. Their own dashboard
+    still shows their own rank either way; this only affects what teammates
+    see."""
+    hide = body.get("hide_from_leaderboards")
+    if not isinstance(hide, bool):
+        raise HTTPException(status_code=400, detail="hide_from_leaderboards must be a boolean")
+    player = await _get_player_for_user(db, user)
+    player.hide_from_leaderboards = hide
+    await db.commit()
+    return {"hide_from_leaderboards": player.hide_from_leaderboards}
 
 
 @router.get("/leaderboards/{category}")
@@ -139,7 +174,11 @@ async def get_single_leaderboard(
     """Full ranking for a single leaderboard category."""
     if category not in LeaderboardService.CATEGORIES:
         raise HTTPException(status_code=404, detail=f"Unknown category: {category}")
-    ranking = await LeaderboardService.get_single_leaderboard(db, user.club_id, category, competition, last_n)
+    viewer_is_admin = user.role == "club_admin" and not user.is_preview
+    ranking = await LeaderboardService.get_single_leaderboard(
+        db, user.club_id, category, competition, last_n,
+        viewer_is_admin=viewer_is_admin, viewer_player_id=user.player_id,
+    )
     meta = LeaderboardService.CATEGORIES[category]
     return {
         "category": category,

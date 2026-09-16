@@ -302,6 +302,17 @@ export const playerPortalAPI = {
   getCompetitions: () =>
     fetchAPI<string[]>('/player-portal/competitions'),
 
+  // Leaderboard visibility — a player's own opt-out from teammate-visible
+  // leaderboards. Self-service only; doesn't affect their own dashboard.
+  getLeaderboardVisibility: () =>
+    fetchAPI<{ hide_from_leaderboards: boolean }>('/player-portal/leaderboards/me/visibility'),
+
+  setLeaderboardVisibility: (hide: boolean) =>
+    fetchAPI<{ hide_from_leaderboards: boolean }>('/player-portal/leaderboards/me/visibility', {
+      method: 'PUT',
+      body: JSON.stringify({ hide_from_leaderboards: hide }),
+    }),
+
   // Dashboard
   getMyDashboard: () =>
     fetchAPI<PlayerDashboard>('/player-portal/my-dashboard'),

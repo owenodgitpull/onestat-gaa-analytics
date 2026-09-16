@@ -456,12 +456,12 @@ export default function FixturePreview() {
         {rosterExpanded && (
           <div className="px-4 pb-4 space-y-3">
             <p className="text-xs text-white/40">
-              Enter key opposition players — one name per line. These will appear for quick selection when recording opponent scores or tagging who we forced a turnover from.
+              Enter key opposition players by surname only — one per line (we keep this to the minimum needed to tag them pitchside, not a full name). These will appear for quick selection when recording opponent scores or tagging who we forced a turnover from.
             </p>
             <textarea
               value={rosterInput}
               onChange={(e) => setRosterInput(e.target.value)}
-              placeholder={"Enter one player per line, e.g.:\nConor Cox\nDiarmuid Murtagh"}
+              placeholder={"Enter one surname per line, e.g.:\nCox\nMurtagh"}
               rows={5}
               className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-orange-500/40 resize-none"
             />

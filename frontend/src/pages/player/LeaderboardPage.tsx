@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { playerPortalAPI } from '../../services/playerPortalApi';
 import { useAuth } from '../../contexts/AuthContext';
-import { Trophy, Target, Shield, TrendingUp, Zap, Footprints, Clock, Star, Info, Crown, Share2, ChevronRight } from 'lucide-react';
+import { Trophy, Target, Shield, TrendingUp, Zap, Footprints, Clock, Star, Info, Crown, Share2, ChevronRight, EyeOff } from 'lucide-react';
 import PlayerHeader from '../../components/PlayerHeader';
 import LeaderboardCategoryView from '../../components/player/LeaderboardCategoryView';
 
@@ -41,6 +41,22 @@ export default function LeaderboardPage() {
     queryFn: playerPortalAPI.getCompetitions,
     staleTime: 1000 * 60 * 30,
   });
+
+  // Opt out of teammate-visible leaderboards — self-service, doesn't affect
+  // what the player sees of their own stats, only what teammates see of them.
+  const queryClient = useQueryClient();
+  const { data: visibility } = useQuery({
+    queryKey: ['leaderboard-visibility'],
+    queryFn: playerPortalAPI.getLeaderboardVisibility,
+    staleTime: 1000 * 60 * 5,
+  });
+  const setVisibility = useMutation({
+    mutationFn: (hide: boolean) => playerPortalAPI.setLeaderboardVisibility(hide),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['leaderboard-visibility'], result);
+    },
+  });
+  const isHidden = visibility?.hide_from_leaderboards ?? false;
 
   const { data, isLoading } = useQuery({
     queryKey: ['player-leaderboards', competition, lastN],
@@ -128,6 +144,32 @@ export default function LeaderboardPage() {
   return (
     <div className="space-y-5 pb-4">
       <PlayerHeader title="Leaderboards" />
+
+      {/* Self-service opt-out — hides this player's name/stats from every
+          leaderboard a teammate sees. Doesn't affect this player's own view
+          of their own rank, and admins/managers always see everyone
+          regardless. */}
+      <div className="mx-1 flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/10">
+        <div className="flex items-center gap-2 min-w-0">
+          <EyeOff size={14} className="text-white/40 flex-shrink-0" />
+          <span className="text-xs text-white/60 truncate">Hide me from teammates' leaderboards</span>
+        </div>
+        <button
+          role="switch"
+          aria-checked={isHidden}
+          onClick={() => setVisibility.mutate(!isHidden)}
+          disabled={setVisibility.isPending}
+          className={`relative flex-shrink-0 w-10 h-5.5 rounded-full transition-colors touch-manipulation ${
+            isHidden ? 'bg-emerald-500' : 'bg-white/15'
+          }`}
+          style={{ height: 22, width: 38 }}
+        >
+          <span
+            className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+            style={{ transform: isHidden ? 'translateX(16px)' : 'translateX(0)' }}
+          />
+        </button>
+      </div>
 
       {/* Scope filter — competition + recent-matches window, applies to every
           category. Two full-width rows, never scrolled — a competition name

@@ -79,6 +79,12 @@ class Player(Base):
     # Comma-separated GPS device names / nicknames for this player.
     # Used to match GPS tracker labels (e.g. "Damo McG") to the correct player.
     gps_alias = Column(String(255), nullable=True)
+
+    # Player-controlled: hide this player from teammate-visible leaderboards
+    # in the player portal (LeaderboardService still computes their stats —
+    # this only affects what OTHER players see; admins/managers always see
+    # everyone regardless). Set by the player themselves, not an admin.
+    hide_from_leaderboards = Column(Boolean, default=False, nullable=False)
     
     # Relationships (defined as strings to avoid circular imports)
     # lazy="selectin": Eager load related data (1 query instead of N+1)

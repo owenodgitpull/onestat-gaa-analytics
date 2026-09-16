@@ -717,6 +717,7 @@ class LeaderboardService:
     async def get_all_leaderboards(
         db: AsyncSession, club_id: UUID, player_id: UUID | None = None,
         competition: str | None = None, last_n: int | None = None,
+        viewer_is_admin: bool = False,
     ) -> list[dict]:
         """Build top-3/context-window previews for the portal home screen.
 
@@ -726,10 +727,24 @@ class LeaderboardService:
         """
         all_rankings = await LeaderboardService._compute_all_rankings(db, club_id, competition, last_n)
         pid_str = str(player_id) if player_id else None
+        opted_out = set() if viewer_is_admin else await LeaderboardService._opted_out_player_ids(db, club_id)
         return [
-            _build_context(key, meta, all_rankings.get(key, []), pid_str)
+            _build_context(
+                key, meta,
+                _visible_ranking(all_rankings.get(key, []), opted_out, pid_str),
+                pid_str,
+            )
             for key, meta in LeaderboardService.CATEGORIES.items()
         ]
+
+    @staticmethod
+    async def _opted_out_player_ids(db: AsyncSession, club_id: UUID) -> set[str]:
+        """Players who've opted their own stats out of teammate-visible
+        leaderboards — see Player.hide_from_leaderboards."""
+        result = await db.execute(
+            select(Player.id).where(Player.club_id == club_id, Player.hide_from_leaderboards.is_(True))
+        )
+        return {str(pid) for (pid,) in result.all()}
 
     @staticmethod
     async def _compute_all_rankings(
@@ -1255,6 +1270,7 @@ class LeaderboardService:
     async def get_single_leaderboard(
         db: AsyncSession, club_id: UUID, category: str,
         competition: str | None = None, last_n: int | None = None,
+        viewer_is_admin: bool = False, viewer_player_id: UUID | None = None,
     ) -> list[dict]:
         """
         Return full ranking for one category.
@@ -1269,12 +1285,31 @@ class LeaderboardService:
         if category not in LeaderboardService.CATEGORIES:
             return []
         all_rankings = await LeaderboardService._compute_all_rankings(db, club_id, competition, last_n)
-        return all_rankings.get(category, [])
+        ranking = all_rankings.get(category, [])
+        if viewer_is_admin:
+            return ranking
+        opted_out = await LeaderboardService._opted_out_player_ids(db, club_id)
+        pid_str = str(viewer_player_id) if viewer_player_id else None
+        return _visible_ranking(ranking, opted_out, pid_str)
 
 
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+def _visible_ranking(ranking: list[dict], opted_out_ids: set[str], viewer_player_id_str: str | None) -> list[dict]:
+    """Drop opted-out players from what a non-admin viewer sees — except the
+    viewer's own row, which stays so they can always see their own rank/value
+    on their own dashboard even after opting out. rank numbers are left as
+    originally computed (not renumbered), so a gap is possible — that's more
+    honest than silently promoting a neighbour into a rank they didn't earn."""
+    if not opted_out_ids:
+        return ranking
+    return [
+        e for e in ranking
+        if e["player_id"] not in opted_out_ids or e["player_id"] == viewer_player_id_str
+    ]
+
 
 def _format_gaa_score(d: dict) -> str:
     """Format as GAA-style e.g. '2-5 (1f, 1×2pt)'."""

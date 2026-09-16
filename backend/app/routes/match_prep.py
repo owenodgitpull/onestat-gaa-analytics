@@ -523,6 +523,18 @@ async def get_opposition_roster(
     return {"players": match.opposition_roster or []}
 
 
+def _last_name_only(name: str) -> str:
+    """Data-minimization pass for opposition player names — these are
+    people who have never used OneStat and never consented to anything, so
+    we only ever keep the minimum needed for pitchside scorer/turnover
+    tagging (surname only, not a full name). Enforced here server-side
+    (not just a frontend hint) so it holds regardless of what any client
+    sends. Last whitespace-separated token — "Conor Cox" -> "Cox"; already
+    single-word names pass through unchanged."""
+    parts = name.strip().split()
+    return parts[-1] if parts else name.strip()
+
+
 @router.put("/matches/{match_id}/opposition-roster")
 async def save_opposition_roster(
     match_id: UUID,
@@ -530,7 +542,8 @@ async def save_opposition_roster(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Save opposition roster (list of player names)."""
+    """Save opposition roster (list of player surnames only — see
+    _last_name_only)."""
     from app.models.match import Match
     result = await db.execute(select(Match).where(Match.id == match_id, Match.club_id == user.club_id))
     match = result.scalar_one_or_none()
@@ -541,8 +554,10 @@ async def save_opposition_roster(
     if not isinstance(players, list):
         raise HTTPException(status_code=400, detail="players must be a list of names")
 
-    # Clean: strip whitespace, remove empty strings
-    match.opposition_roster = [p.strip() for p in players if isinstance(p, str) and p.strip()]
+    # Clean: strip whitespace, remove empty strings, reduce to surname only
+    match.opposition_roster = [
+        _last_name_only(p) for p in players if isinstance(p, str) and p.strip()
+    ]
     await db.commit()
 
     return {"players": match.opposition_roster}
