@@ -54,15 +54,21 @@ FREE_TYPES = {
     EventType.PENALTY_GOAL, EventType.PENALTY_MISS,
 }
 
-# Applied to a shot's probability when MatchEvent.under_pressure is True.
-# Placeholder, NOT empirically derived — there is no tagged-pressure shot
-# data anywhere on the platform yet to calibrate against (under_pressure
-# was, until this constant was added, an unused schema-only field). 0.85 is
-# a literature-informed estimate (pressured shots converting roughly 15%
-# less often than an unpressured shot at the same distance/angle) — revisit
-# once enough real tagged shots exist to fit this properly, the same way
-# free_multiplier below is fit from real data rather than assumed.
-PRESSURE_MULTIPLIER = 0.85
+# Literature-informed prior for the pressure multiplier (pressured shots
+# converting ~15% less often than an unpressured shot at the same
+# distance/angle). Used two ways: (1) as the shrinkage target each shot
+# group's real pressure_multiplier is blended toward in
+# _build_shot_quality_model — early on, with few tagged shots, the model
+# leans on this; as real under_pressure=True/False tagged shots accumulate,
+# it's progressively replaced by the group's own measured ratio, same
+# pattern free_multiplier already uses for real vs. angle-band rates.
+# (2) as the cold-start fallback for a shot group with zero shots at all.
+PRESSURE_MULTIPLIER_DEFAULT = 0.85
+# "Pseudo-shots" of the literature prior blended into each group's real
+# pressure/no-pressure ratio — mirrors SHRINKAGE_K's role for angle bands.
+# 20 tagged shots (pressured + not) roughly halfway trusts the real signal;
+# below that the prior dominates, well above it the real ratio does.
+PRESSURE_SHRINKAGE_K = 20
 
 # 40m arc radius as % of pitch length (145m pitch) — kept in sync with the
 # same constant the frontend uses for the 2-point zone (ShootingEfficiencyHeatmap),
@@ -223,7 +229,7 @@ async def _build_shot_quality_model(db: AsyncSession) -> dict:
     result = await db.execute(
         select(
             MatchEvent.event_type, MatchEvent.pitch_x, MatchEvent.pitch_y,
-            MatchEvent.team, MatchEvent.half, MatchEvent.minute,
+            MatchEvent.team, MatchEvent.half, MatchEvent.minute, MatchEvent.under_pressure,
             Match.attacking_right_first_half, Match.half_duration_mins,
         )
         .join(Match, Match.id == MatchEvent.match_id)
@@ -239,10 +245,17 @@ async def _build_shot_quality_model(db: AsyncSession) -> dict:
         "makes": 0, "shots": 0,
         "free_makes": 0, "free_shots": 0,
         "play_makes": 0, "play_shots": 0,
+        # under_pressure is a tri-state (True/False/None — see the model
+        # docstring on this column). Only explicit True/False rows count
+        # here; None ("not recorded") is excluded from both buckets rather
+        # than folded into "not pressured", since it's a different
+        # population (untagged), not a confirmed non-pressure shot.
+        "pressure_makes": 0, "pressure_shots": 0,
+        "nopressure_makes": 0, "nopressure_shots": 0,
         "bands": defaultdict(lambda: {"makes": 0, "shots": 0}),
     })
 
-    for event_type, px, py, team, half, minute, arfh, half_dur in rows:
+    for event_type, px, py, team, half, minute, under_pressure, arfh, half_dur in rows:
         if px is None or py is None:
             continue
         norm_x = _normalized_x(px, team, arfh, half, minute, half_dur)
@@ -259,6 +272,12 @@ async def _build_shot_quality_model(db: AsyncSession) -> dict:
         else:
             g["play_shots"] += 1
             g["play_makes"] += 1 if made else 0
+        if under_pressure is True:
+            g["pressure_shots"] += 1
+            g["pressure_makes"] += 1 if made else 0
+        elif under_pressure is False:
+            g["nopressure_shots"] += 1
+            g["nopressure_makes"] += 1 if made else 0
         b = g["bands"][band]
         b["shots"] += 1
         b["makes"] += 1 if made else 0
@@ -272,6 +291,19 @@ async def _build_shot_quality_model(db: AsyncSession) -> dict:
         # it can't push a probability wildly out of a sane range on its own.
         free_multiplier = min(max(free_rate / play_rate, 0.5), 2.0) if play_rate > 0 else 1.0
 
+        # Same idea for pressure: real tagged pressured-vs-not conversion
+        # rates, shrunk toward the literature prior until there's enough
+        # tagged volume to trust the group's own numbers.
+        pressure_tagged_n = g["pressure_shots"] + g["nopressure_shots"]
+        if g["pressure_shots"] > 0 and g["nopressure_shots"] > 0:
+            pressure_rate = g["pressure_makes"] / g["pressure_shots"]
+            nopressure_rate = g["nopressure_makes"] / g["nopressure_shots"]
+            raw_pressure_ratio = min(max(pressure_rate / nopressure_rate, 0.3), 1.5) if nopressure_rate > 0 else PRESSURE_MULTIPLIER_DEFAULT
+        else:
+            raw_pressure_ratio = PRESSURE_MULTIPLIER_DEFAULT
+        shrink_weight = pressure_tagged_n / (pressure_tagged_n + PRESSURE_SHRINKAGE_K)
+        pressure_multiplier = shrink_weight * raw_pressure_ratio + (1 - shrink_weight) * PRESSURE_MULTIPLIER_DEFAULT
+
         bands = {
             band: (b["makes"] + SHRINKAGE_K * global_rate) / (b["shots"] + SHRINKAGE_K)
             for band, b in g["bands"].items()
@@ -280,6 +312,8 @@ async def _build_shot_quality_model(db: AsyncSession) -> dict:
         model[group] = {
             "global_rate": global_rate,
             "free_multiplier": free_multiplier,
+            "pressure_multiplier": pressure_multiplier,
+            "pressure_sample_size": pressure_tagged_n,
             "bands": bands,
             "sample_size": g["shots"],
         }
@@ -287,7 +321,11 @@ async def _build_shot_quality_model(db: AsyncSession) -> dict:
     # Sensible fallback for a shot_group with literally zero historical shots yet
     for group, default_rate in (("goal", 0.35), ("two_point", 0.30), ("point", 0.55)):
         if group not in model:
-            model[group] = {"global_rate": default_rate, "free_multiplier": 1.0, "bands": {}, "sample_size": 0}
+            model[group] = {
+                "global_rate": default_rate, "free_multiplier": 1.0,
+                "pressure_multiplier": PRESSURE_MULTIPLIER_DEFAULT, "pressure_sample_size": 0,
+                "bands": {}, "sample_size": 0,
+            }
 
     return model
 
@@ -304,20 +342,23 @@ def expected_points_for_shot(
     under_pressure defaults to None ("not recorded") — every shot logged
     before MatchEvent.under_pressure existed, and every shot where the
     optional tagging prompt is skipped, computes byte-identical xP to
-    before this parameter was added. Only an explicit True applies
-    PRESSURE_MULTIPLIER; False and None both leave probability untouched."""
+    before this parameter was added. Only an explicit True applies the
+    group's pressure_multiplier (see _build_shot_quality_model — real
+    tagged-shot ratio once enough exist, shrunk toward
+    PRESSURE_MULTIPLIER_DEFAULT while data is thin); False and None both
+    leave probability untouched."""
     norm_x = _normalized_x(pitch_x, team, attacking_right_first_half, half, minute, half_duration_mins)
     norm_y = pitch_y
     group, point_value, is_free, made = classify_shot(event_type, norm_x)
     distance_m, angle_deg = shot_geometry(norm_x, norm_y, pitch_length_m, pitch_width_m)
     band = _angle_band(angle_deg)
 
-    m = model.get(group) or {"global_rate": 0.4, "free_multiplier": 1.0, "bands": {}}
+    m = model.get(group) or {"global_rate": 0.4, "free_multiplier": 1.0, "pressure_multiplier": PRESSURE_MULTIPLIER_DEFAULT, "bands": {}}
     p = m["bands"].get(band, m["global_rate"])
     if is_free:
         p *= m["free_multiplier"]
     if under_pressure:
-        p *= PRESSURE_MULTIPLIER
+        p *= m.get("pressure_multiplier", PRESSURE_MULTIPLIER_DEFAULT)
     p = min(max(p, 0.02), 0.98)
 
     return {
@@ -411,4 +452,5 @@ async def compute_match_expected_points(db: AsyncSession, match: Match) -> dict:
         "actual_result_margin": team_actual_pts - opp_actual_pts,
         "players": player_rows,
         "model_sample_size": {g: m.get("sample_size", 0) for g, m in model.items()},
+        "pressure_model_sample_size": {g: m.get("pressure_sample_size", 0) for g, m in model.items()},
     }

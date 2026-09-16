@@ -187,12 +187,14 @@ properly.
 - Pressure-adjusted xP: MatchEvent.under_pressure (nullable bool) is an optional tag set at the moment a
   shot is recorded — True/False/None ("not recorded," the default for anything tagged before this field
   existed or where the prompt was skipped). When True, the shot's scoring probability is multiplied by a
-  literature-informed placeholder of 0.85 (i.e. treated as converting roughly 15% less often than an
-  identical unpressured shot at the same distance/angle) — this is NOT fitted from real tagged-shot data
-  yet (none exists on the platform yet), so if asked "how precise is that 15% figure," say plainly it's a
-  reasonable starting estimate pending real data, not an empirically derived one. A shot with
-  under_pressure left None computes identically to how xP always worked — pressure is an adjustment on
-  top of the existing distance/angle model, not a replacement for it.
+  pressure factor that works exactly like the free-kick adjustment already in the model: it's calibrated
+  from real tagged shots (pressured vs. not-pressured conversion rates, per shot group), shrunk toward a
+  ~15%-reduction literature estimate while tagged volume is still thin (same "INSUFFICIENT BASELINE"-style
+  idea as ACWR — early on it leans on the prior, and firms up automatically as more shots get tagged). If
+  asked how precise the current figure is, check pressure_model_sample_size in the xP data (tagged shots
+  per group) rather than assuming — a handful of tagged shots is still mostly the prior; dozens+ is real
+  signal. A shot with under_pressure left None computes identically to how xP always worked — pressure is
+  an adjustment on top of the existing distance/angle model, not a replacement for it.
 
 ## Starting XV / Team Selection — CRITICAL
 When asked to suggest a starting 15, a team, or where a specific player should line up:
