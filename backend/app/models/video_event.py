@@ -122,6 +122,11 @@ class VideoEvent(Base):
     # Narrative
     description: Column[Optional[str]] = Column(Text, nullable=True)
 
+    # Opposition player name for a score or a forced-turnover tag — mirrors
+    # MatchEvent.opponent_player_name (we don't track a full opposition
+    # roster, just the key players a manager enters in Match Prep).
+    opponent_player_name: Column[Optional[str]] = Column(String(200), nullable=True)
+
     # AI batch tracking (for selective Improve Analysis re-runs)
     batch_index: Column[Optional[int]] = Column(Integer, nullable=True)
 

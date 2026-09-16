@@ -168,6 +168,7 @@ class VideoEventCreateRequest(BaseModel):
     kickout_context: Optional[KickoutContextSchema] = None
     possession_team: Optional[str] = None
     description: Optional[str] = None
+    opponent_player_name: Optional[str] = Field(None, max_length=200)
     source: str = Field(default="human_tag", max_length=20)
 
     @validator("event_type")
@@ -205,6 +206,7 @@ class VideoEventUpdateRequest(BaseModel):
     kickout_context: Optional[KickoutContextSchema] = None
     possession_team: Optional[str] = None
     description: Optional[str] = None
+    opponent_player_name: Optional[str] = Field(None, max_length=200)
 
     @validator("event_type")
     def validate_event_type(cls, v):
@@ -248,6 +250,7 @@ class VideoEventResponse(BaseModel):
     possession_chain_id: Optional[UUID]
     possession_team: Optional[str]
     description: Optional[str]
+    opponent_player_name: Optional[str] = None
     source: str
     is_verified: bool
     created_at: datetime

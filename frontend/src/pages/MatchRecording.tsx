@@ -5509,6 +5509,7 @@ export default function MatchRecording() {
         players={players}
         lastMatchLineup={lastMatchLineup}
         savedLineup={startingLineup}
+        matchId={matchId}
       />
       <WeatherPickerPopover
         isOpen={isWeatherPickerOpen}

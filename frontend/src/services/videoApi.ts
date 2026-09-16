@@ -86,6 +86,7 @@ export interface VideoEvent {
   possession_chain_id: string | null;
   possession_team: string | null;
   description: string | null;
+  opponent_player_name: string | null;
   source: string;
   is_verified: boolean;
   created_at: string;
@@ -117,6 +118,7 @@ export interface VideoEventCreateData {
   kickout_context?: KickoutContext;
   possession_team?: string;
   description?: string;
+  opponent_player_name?: string;
   source?: string;
 }
 
@@ -141,6 +143,7 @@ export interface VideoEventUpdateData {
   kickout_context?: KickoutContext;
   possession_team?: string;
   description?: string;
+  opponent_player_name?: string;
 }
 
 export interface VideoSyncResult {

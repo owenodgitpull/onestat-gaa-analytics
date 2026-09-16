@@ -105,7 +105,7 @@ import {
   useSyncConfirm,
 } from '../hooks/useVideoEvents'
 import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
-import type { VideoEventCreateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
+import type { VideoEventCreateData, VideoEventUpdateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
 import { api, type BallCarrierSegment } from '../services/api'
 import { useQuery } from '@tanstack/react-query'
 import { PossessionTeam } from '../types'
@@ -279,8 +279,10 @@ export default function VideoTagging() {
   const [pendingPressure, setPendingPressure] = useState<{ eventId: string; scoringContext: ScoringContext } | null>(null)
 
   // Opposition scorer prompt, block→recovery, sideline-ball decision — all
-  // follow-up panels shown after their trigger event finalizes.
-  const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string } | null>(null)
+  // follow-up panels shown after their trigger event finalizes. Also reused
+  // for the turnover-forced-from prompt (mode: 'turnover_forced') — same
+  // banner, no footedness step, no scoringContext to merge into.
+  const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string; mode: 'score' | 'turnover_forced'; scoringContext?: ScoringContext } | null>(null)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
   const [pendingSidelineDecision, setPendingSidelineDecision] = useState(false)
   // High Ball — armed by tapping the "HB" icon (logs nothing yet), then the
@@ -872,7 +874,15 @@ export default function VideoTagging() {
     // (mirrors live recording's OppositionScorerStrip + opposition_roster).
     if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type)) {
       createEvent.mutate({ sessionId, data }, {
-        onSuccess: (created: any) => { if (created?.id) setPendingOppScorer({ eventId: created.id }) },
+        onSuccess: (created: any) => {
+          if (created?.id) setPendingOppScorer({ eventId: created.id, mode: 'score', scoringContext: created.scoring_context || {} })
+        },
+      })
+    } else if (data.team === 'team_a' && data.event_type === 'TURNOVER_WON' && (matchData?.opposition_roster || []).length > 0) {
+      // Optional follow-up: which opposition player we forced it from.
+      // Same banner, 'turnover_forced' mode (no footedness step).
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => { if (created?.id) setPendingOppScorer({ eventId: created.id, mode: 'turnover_forced' }) },
       })
     } else if (data.team === 'team_a' && (data.event_type === 'OWN_KICKOUT_WON' || data.event_type === 'OWN_KICKOUT_WON_BREAK')) {
       createEvent.mutate({ sessionId, data }, {
@@ -1113,13 +1123,22 @@ export default function VideoTagging() {
     }
   }, [session?.match_id, calcMatchTime, currentTimeMs, ballPosition])
 
-  /** Opposition scorer prompt — captures a free-text name (mirrors live
-   *  recording's OppositionScorerStrip; the opponent roster isn't tracked
-   *  as real players, so this writes the name into the event's description
-   *  rather than a player_id). */
-  const handleOppScorerSelect = useCallback((name: string) => {
+  /** Opposition scorer / turnover-forced-from prompt — captures a name from
+   *  Match Prep's opposition key players (not tracked as real Player rows,
+   *  so this writes opponent_player_name directly rather than a player_id
+   *  — mirrors live recording's OppositionScorerStrip). foot is only ever
+   *  passed in 'score' mode; merges into the event's existing
+   *  scoring_context rather than replacing it (the backend update route
+   *  does a full replace, not a merge — losing source/is_two_pointer etc.
+   *  set at creation time would silently break other things that read
+   *  them). */
+  const handleOppScorerSelect = useCallback((name: string, foot?: 'L' | 'R') => {
     if (sessionId && pendingOppScorer) {
-      updateEvent.mutate({ eventId: pendingOppScorer.eventId, sessionId, data: { description: name } })
+      const data: VideoEventUpdateData = { opponent_player_name: name }
+      if (foot) {
+        data.scoring_context = { ...(pendingOppScorer.scoringContext || {}), foot }
+      }
+      updateEvent.mutate({ eventId: pendingOppScorer.eventId, sessionId, data })
     }
     setPendingOppScorer(null)
   }, [sessionId, pendingOppScorer, updateEvent])
@@ -2431,7 +2450,8 @@ export default function VideoTagging() {
             players={matchData?.opposition_roster || []}
             onSelect={handleOppScorerSelect}
             onSkip={handleOppScorerSkip}
-            eventType="point"
+            eventType={pendingOppScorer.mode === 'turnover_forced' ? 'turnover_won' : 'point'}
+            mode={pendingOppScorer.mode}
           />
         </div>
       )}

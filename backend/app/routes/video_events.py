@@ -64,11 +64,23 @@ def _event_to_response(event: VideoEvent) -> VideoEventResponse:
         possession_chain_id=event.possession_chain_id,
         possession_team=event.possession_team,
         description=event.description,
+        opponent_player_name=event.opponent_player_name,
         source=event.source,
         is_verified=event.is_verified,
         created_at=event.created_at,
         updated_at=event.updated_at,
     )
+
+
+def _normalize_foot(scoring_context: Optional[dict]) -> Optional[str]:
+    """scoring_context.foot can be 'L'/'R' (the human-tag footedness step)
+    or 'LEFT'/'RIGHT' (Gemini/keyframe agents sometimes guess this) —
+    MatchEvent.opposition_foot is a single char, so normalize either form."""
+    raw = (scoring_context or {}).get("foot")
+    if not raw:
+        return None
+    first = raw[0].upper()
+    return first if first in ("L", "R") else None
 
 
 def _auto_set_two_pointer(event_type: str, pitch_zone: str, scoring_context: dict) -> dict:
@@ -133,6 +145,7 @@ async def create_video_event(
         kickout_context=body.kickout_context.dict() if body.kickout_context else None,
         possession_team=body.possession_team,
         description=body.description,
+        opponent_player_name=body.opponent_player_name,
         source=body.source,
         is_verified=body.source == "human_tag",
     )
@@ -562,6 +575,8 @@ async def process_video_sync(
                     sub_in_player_id=ve.sub_in_player_id,
                     assist_player_id=ve.assist_player_id,
                     under_pressure=(ve.scoring_context or {}).get("under_pressure"),
+                    opposition_foot=_normalize_foot(ve.scoring_context),
+                    opponent_player_name=ve.opponent_player_name,
                     notes=f"[video-sync] {ve.description or ''}".strip(),
                 )
                 db.add(match_event)
@@ -596,6 +611,8 @@ async def process_video_sync(
                 # (True/False/None), so it needs an is-not-None check.
                 ve_pressure = (ve.scoring_context or {}).get("under_pressure")
                 me.under_pressure = ve_pressure if ve_pressure is not None else me.under_pressure
+                me.opposition_foot = _normalize_foot(ve.scoring_context) or me.opposition_foot
+                me.opponent_player_name = ve.opponent_player_name or me.opponent_player_name
                 me.notes = f"[video-enriched] {ve.description or me.notes or ''}".strip()
                 synced_count += 1
 
@@ -690,6 +707,8 @@ async def sync_events_to_match(
                 sub_in_player_id=ve.sub_in_player_id,
                 assist_player_id=ve.assist_player_id,
                 under_pressure=(ve.scoring_context or {}).get("under_pressure"),
+                opposition_foot=_normalize_foot(ve.scoring_context),
+                opponent_player_name=ve.opponent_player_name,
                 notes=f"[video-sync] {ve.description or ''}".strip(),
             )
             db.add(match_event)

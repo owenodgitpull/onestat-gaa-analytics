@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Users, Copy, Search } from 'lucide-react'
+import { X, Users, Copy, Search, Swords } from 'lucide-react'
 import { Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
 
@@ -90,6 +90,9 @@ interface StartingLineupModalProps {
   players: Player[]
   lastMatchLineup?: Record<string, LineupEntry>
   savedLineup?: Record<string, LineupEntry>
+  /** Powers the "Opposition Key Players" reminder link below — omitted
+   *  entirely (not just disabled) when there's no match yet to link to. */
+  matchId?: string | null
 }
 
 export default function StartingLineupModal({
@@ -98,7 +101,8 @@ export default function StartingLineupModal({
   onConfirm,
   players,
   lastMatchLineup,
-  savedLineup
+  savedLineup,
+  matchId,
 }: StartingLineupModalProps) {
   const [lineup, setLineup] = useState<Record<string, LineupEntry>>(savedLineup ?? {})
   const [selectingPosition, setSelectingPosition] = useState<string | null>(null)
@@ -301,6 +305,24 @@ export default function StartingLineupModal({
                 <Copy size={14} className="text-blue-400" />
                 <span className="text-white text-xs font-semibold">Use Last Match</span>
               </button>
+            )}
+            {matchId && (
+              // Opens in a new tab, deliberately not an in-app navigate —
+              // this modal holds unsaved lineup picks in local state that
+              // navigating away would lose. Deep-links straight to the
+              // roster section (already expanded + scrolled to) via
+              // ?openRoster=1, so it's a genuine reminder, not just a
+              // pointer at the fixture page in general.
+              <a
+                href={`/fixtures/${matchId}/preview?openRoster=1`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="glass-card-hover px-3 py-1.5 flex items-center space-x-1.5 ml-2"
+                title="Opens in a new tab — add opposition key players for scorer/turnover tagging during the match"
+              >
+                <Swords size={14} className="text-orange-400" />
+                <span className="text-white text-xs font-semibold">Opposition Key Players</span>
+              </a>
             )}
           </div>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
