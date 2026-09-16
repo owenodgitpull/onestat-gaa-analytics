@@ -7,8 +7,15 @@
  */
 
 import { fetchAPI } from './api';
+import type { AnnotationShape } from '@/components/presentations/AnnotationOverlay';
 
-export type SlideType = 'clip' | 'animation' | 'text';
+export type SlideType = 'clip' | 'animation' | 'text' | 'annotation';
+
+export interface TrackingKeyframe {
+  video_timestamp_ms: number;
+  x: number;
+  y: number;
+}
 
 export interface PresentationSlide {
   id: string;
@@ -21,6 +28,11 @@ export interface PresentationSlide {
   set_piece_routine_id: string | null;
   text_title: string | null;
   text_body: string | null;
+  freeze_frame_ms: number | null;
+  annotation_shapes: AnnotationShape[] | null;
+  tracking_keyframes: TrackingKeyframe[] | null;
+  has_voiceover: boolean;
+  tagged_player_ids: string[] | null;
   created_at: string;
 }
 
@@ -110,9 +122,18 @@ export const presentationsAPI = {
       body: JSON.stringify({ slide_type: 'text', text_title: textTitle, text_body: textBody }),
     }),
 
+  addAnnotationSlide: (presentationId: string, data: {
+    video_session_id: string; freeze_frame_ms: number; annotation_shapes: AnnotationShape[]; clip_label?: string;
+  }) =>
+    fetchAPI<PresentationSlide>(`/presentations/${presentationId}/slides`, {
+      method: 'POST',
+      body: JSON.stringify({ slide_type: 'annotation', ...data }),
+    }),
+
   updateSlide: (presentationId: string, slideId: string, data: Partial<{
     clip_start_ms: number; clip_end_ms: number; clip_label: string;
     set_piece_routine_id: string; text_title: string; text_body: string;
+    annotation_shapes: AnnotationShape[]; tracking_keyframes: TrackingKeyframe[];
   }>) =>
     fetchAPI<PresentationSlide>(`/presentations/${presentationId}/slides/${slideId}`, {
       method: 'PATCH',
@@ -130,4 +151,29 @@ export const presentationsAPI = {
 
   searchClipLibrary: (filter?: ClipLibraryFilter) =>
     fetchAPI<ClipLibraryEntry[]>(`/presentations/clip-library/search${clipLibraryQS(filter)}`),
+
+  // Voiceover — mirrors the Match Prep set-piece voiceover flow exactly.
+  getVoiceoverUploadUrl: (presentationId: string, slideId: string) =>
+    fetchAPI<{ upload_url: string; key: string }>(
+      `/presentations/${presentationId}/slides/${slideId}/voiceover-upload-url`, { method: 'POST' }
+    ),
+
+  confirmVoiceoverUpload: (presentationId: string, slideId: string, key: string) =>
+    fetchAPI<{ voiceover_key: string }>(
+      `/presentations/${presentationId}/slides/${slideId}/voiceover-confirm`,
+      { method: 'PUT', body: JSON.stringify({ key }) }
+    ),
+
+  getVoiceoverUrl: (presentationId: string, slideId: string) =>
+    fetchAPI<{ voiceover_url: string | null }>(`/presentations/${presentationId}/slides/${slideId}/voiceover-url`),
+
+  deleteVoiceover: (presentationId: string, slideId: string) =>
+    fetchAPI<void>(`/presentations/${presentationId}/slides/${slideId}/voiceover`, { method: 'DELETE' }),
+
+  // Player tagging (10e)
+  notifyPlayers: (presentationId: string, slideId: string, playerIds: string[], message?: string) =>
+    fetchAPI<{ tagged_player_ids: string[]; notified: number }>(
+      `/presentations/${presentationId}/slides/${slideId}/notify`,
+      { method: 'POST', body: JSON.stringify({ player_ids: playerIds, message }) }
+    ),
 };

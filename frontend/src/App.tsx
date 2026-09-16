@@ -31,6 +31,7 @@ import EnableNotificationsBanner from './components/EnableNotificationsBanner'
 const LeaderboardPage = lazyWithRetry(() => import('./pages/player/LeaderboardPage'))
 const MyStatsPage = lazyWithRetry(() => import('./pages/player/MyStatsPage'))
 const PlayerProfile = lazyWithRetry(() => import('./pages/player/PlayerProfile'))
+const MyClipsPage = lazyWithRetry(() => import('./pages/player/MyClipsPage'))
 const PlaybooksPage = lazyWithRetry(() => import('./pages/player/PlaybooksPage'))
 const TrainingPage = lazyWithRetry(() => import('./pages/player/TrainingPage'))
 
@@ -123,6 +124,7 @@ function App() {
                           <Route path="/training" element={<TrainingPage />} />
                           <Route path="/stats" element={<MyStatsPage />} />
                           <Route path="/playbooks" element={<PlaybooksPage />} />
+                          <Route path="/clips" element={<MyClipsPage />} />
                           <Route path="/profile" element={<PlayerProfile />} />
                         </Routes>
                       </Suspense>

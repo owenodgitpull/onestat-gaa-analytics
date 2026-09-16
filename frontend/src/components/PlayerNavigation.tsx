@@ -1,11 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Trophy, BarChart3, UserCircle, ClipboardList, Dumbbell } from 'lucide-react';
+import { Home, Trophy, BarChart3, UserCircle, ClipboardList, Dumbbell, Film } from 'lucide-react';
 
 const tabs = [
   { icon: Home, label: 'Dashboard', path: '/player' },
   { icon: Trophy, label: 'Leaderboards', path: '/player/leaderboards' },
   { icon: Dumbbell, label: 'Training', path: '/player/training' },
   { icon: ClipboardList, label: 'Playbook', path: '/player/playbooks' },
+  { icon: Film, label: 'Clips', path: '/player/clips' },
   { icon: BarChart3, label: 'My Stats', path: '/player/stats' },
   { icon: UserCircle, label: 'Profile', path: '/player/profile' },
 ];

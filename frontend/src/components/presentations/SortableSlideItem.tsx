@@ -1,9 +1,9 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Film, Zap, Type, Trash2 } from 'lucide-react'
+import { GripVertical, Film, Zap, Type, Trash2, Pencil } from 'lucide-react'
 import type { PresentationSlide } from '@/services/presentationsApi'
 
-const SLIDE_ICONS = { clip: Film, animation: Zap, text: Type } as const
+const SLIDE_ICONS = { clip: Film, animation: Zap, text: Type, annotation: Pencil } as const
 
 interface SortableSlideItemProps {
   slide: PresentationSlide
@@ -21,7 +21,9 @@ export default function SortableSlideItem({ slide, index, isSelected, onSelect, 
     ? (slide.text_title || 'Text card')
     : slide.slide_type === 'clip'
       ? (slide.clip_label || 'Clip')
-      : 'Tactical animation'
+      : slide.slide_type === 'annotation'
+        ? (slide.clip_label || 'Annotated frame')
+        : 'Tactical animation'
 
   const style = {
     transform: CSS.Transform.toString(transform),

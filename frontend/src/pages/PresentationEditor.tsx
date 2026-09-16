@@ -6,11 +6,15 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { ArrowLeft, Plus, Play, Film, Zap, Type } from 'lucide-react'
+import { ArrowLeft, Plus, Play, Film, Zap, Type, Pencil, Crosshair } from 'lucide-react'
 import { presentationsAPI, type PresentationSlide } from '@/services/presentationsApi'
 import SortableSlideItem from '@/components/presentations/SortableSlideItem'
 import ClipPickerModal from '@/components/presentations/ClipPickerModal'
 import AnimationPickerModal from '@/components/presentations/AnimationPickerModal'
+import AnnotationCanvasEditor from '@/components/presentations/AnnotationCanvasEditor'
+import TrackingKeyframeEditor from '@/components/presentations/TrackingKeyframeEditor'
+import SlideVoiceoverRecorder from '@/components/presentations/SlideVoiceoverRecorder'
+import TagPlayersPanel from '@/components/presentations/TagPlayersPanel'
 import PresentMode from '@/components/presentations/PresentMode'
 
 function msToClock(ms: number): string {
@@ -20,11 +24,22 @@ function msToClock(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+function SlideFooter({ presentationId, slide }: { presentationId: string; slide: PresentationSlide }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 pt-4 mt-4 border-t border-white/10">
+      <SlideVoiceoverRecorder presentationId={presentationId} slideId={slide.id} hasVoiceover={slide.has_voiceover} />
+      <TagPlayersPanel presentationId={presentationId} slideId={slide.id} taggedPlayerIds={slide.tagged_player_ids || []} />
+    </div>
+  )
+}
+
 function SlideDetailPanel({
-  slide, onUpdate,
+  presentationId, slide, onUpdate, onEditTracking,
 }: {
+  presentationId: string
   slide: PresentationSlide
   onUpdate: (data: Partial<{ clip_start_ms: number; clip_end_ms: number; clip_label: string; text_title: string; text_body: string }>) => void
+  onEditTracking: () => void
 }) {
   const [textTitle, setTextTitle] = useState(slide.text_title || '')
   const [textBody, setTextBody] = useState(slide.text_body || '')
@@ -42,72 +57,102 @@ function SlideDetailPanel({
 
   if (slide.slide_type === 'text') {
     return (
-      <div className="space-y-4 max-w-lg">
-        <div>
-          <label className="text-xs text-white/50 uppercase tracking-wide">Title</label>
-          <input
-            value={textTitle}
-            onChange={(e) => setTextTitle(e.target.value)}
-            onBlur={() => onUpdate({ text_title: textTitle })}
-            className="w-full mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-lg font-bold focus:outline-none focus:border-purple-500/50"
-          />
+      <div className="max-w-lg">
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs text-white/50 uppercase tracking-wide">Title</label>
+            <input
+              value={textTitle}
+              onChange={(e) => setTextTitle(e.target.value)}
+              onBlur={() => onUpdate({ text_title: textTitle })}
+              className="w-full mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-lg font-bold focus:outline-none focus:border-purple-500/50"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-white/50 uppercase tracking-wide">Body (optional)</label>
+            <textarea
+              value={textBody}
+              onChange={(e) => setTextBody(e.target.value)}
+              onBlur={() => onUpdate({ text_body: textBody })}
+              rows={5}
+              className="w-full mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm resize-none focus:outline-none focus:border-purple-500/50"
+            />
+          </div>
         </div>
-        <div>
-          <label className="text-xs text-white/50 uppercase tracking-wide">Body (optional)</label>
-          <textarea
-            value={textBody}
-            onChange={(e) => setTextBody(e.target.value)}
-            onBlur={() => onUpdate({ text_body: textBody })}
-            rows={5}
-            className="w-full mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm resize-none focus:outline-none focus:border-purple-500/50"
-          />
-        </div>
+        <SlideFooter presentationId={presentationId} slide={slide} />
       </div>
     )
   }
 
   if (slide.slide_type === 'clip') {
     return (
-      <div className="space-y-4 max-w-lg">
-        <div>
-          <label className="text-xs text-white/50 uppercase tracking-wide">Label</label>
-          <input
-            value={clipLabel}
-            onChange={(e) => setClipLabel(e.target.value)}
-            onBlur={() => onUpdate({ clip_label: clipLabel })}
-            className="w-full mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
-          />
-        </div>
-        <div className="flex gap-4">
+      <div className="max-w-lg">
+        <div className="space-y-4">
           <div>
-            <label className="text-xs text-white/50 uppercase tracking-wide">Start (sec)</label>
+            <label className="text-xs text-white/50 uppercase tracking-wide">Label</label>
             <input
-              type="number" step="0.5" value={startSec}
-              onChange={(e) => setStartSec(e.target.value)}
-              onBlur={() => onUpdate({ clip_start_ms: Math.round(parseFloat(startSec) * 1000) })}
-              className="w-24 mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+              value={clipLabel}
+              onChange={(e) => setClipLabel(e.target.value)}
+              onBlur={() => onUpdate({ clip_label: clipLabel })}
+              className="w-full mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
             />
           </div>
-          <div>
-            <label className="text-xs text-white/50 uppercase tracking-wide">End (sec)</label>
-            <input
-              type="number" step="0.5" value={endSec}
-              onChange={(e) => setEndSec(e.target.value)}
-              onBlur={() => onUpdate({ clip_end_ms: Math.round(parseFloat(endSec) * 1000) })}
-              className="w-24 mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
-            />
+          <div className="flex gap-4">
+            <div>
+              <label className="text-xs text-white/50 uppercase tracking-wide">Start (sec)</label>
+              <input
+                type="number" step="0.5" value={startSec}
+                onChange={(e) => setStartSec(e.target.value)}
+                onBlur={() => onUpdate({ clip_start_ms: Math.round(parseFloat(startSec) * 1000) })}
+                className="w-24 mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-white/50 uppercase tracking-wide">End (sec)</label>
+              <input
+                type="number" step="0.5" value={endSec}
+                onChange={(e) => setEndSec(e.target.value)}
+                onBlur={() => onUpdate({ clip_end_ms: Math.round(parseFloat(endSec) * 1000) })}
+                className="w-24 mt-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:border-purple-500/50"
+              />
+            </div>
           </div>
+          <p className="text-xs text-white/40">
+            Plays {msToClock(slide.clip_start_ms ?? 0)} – {msToClock(slide.clip_end_ms ?? 0)} from the source video.
+          </p>
+          <button onClick={onEditTracking} className="btn-glass flex items-center gap-1.5 px-3 py-1.5 text-xs">
+            <Crosshair size={12} />
+            {slide.tracking_keyframes && slide.tracking_keyframes.length > 0
+              ? `Tracking ring — ${slide.tracking_keyframes.length} keyframes`
+              : 'Add tracking ring'}
+          </button>
         </div>
-        <p className="text-xs text-white/40">
-          Plays {msToClock(slide.clip_start_ms ?? 0)} – {msToClock(slide.clip_end_ms ?? 0)} from the source video.
-        </p>
+        <SlideFooter presentationId={presentationId} slide={slide} />
+      </div>
+    )
+  }
+
+  if (slide.slide_type === 'annotation') {
+    return (
+      <div className="max-w-lg">
+        <div className="space-y-2">
+          <p className="text-white font-medium">{slide.clip_label || 'Annotated frame'}</p>
+          <p className="text-white/50 text-xs">{(slide.annotation_shapes || []).length} shapes drawn</p>
+          <button onClick={onEditTracking} className="btn-glass flex items-center gap-1.5 px-3 py-1.5 text-xs">
+            <Pencil size={12} /> Edit annotation
+          </button>
+        </div>
+        <SlideFooter presentationId={presentationId} slide={slide} />
       </div>
     )
   }
 
   return (
-    <div className="text-white/50 text-sm">
-      Tactical animation — plays full-screen in Present mode. Edit the routine itself in Match Prep.
+    <div className="max-w-lg">
+      <div className="text-white/50 text-sm">
+        Tactical animation — plays full-screen in Present mode. Edit the routine itself in Match Prep.
+      </div>
+      <SlideFooter presentationId={presentationId} slide={slide} />
     </div>
   )
 }
@@ -120,6 +165,9 @@ export default function PresentationEditor() {
   const [selectedSlideId, setSelectedSlideId] = useState<string | null>(null)
   const [showClipPicker, setShowClipPicker] = useState(false)
   const [showAnimationPicker, setShowAnimationPicker] = useState(false)
+  const [showAnnotationEditor, setShowAnnotationEditor] = useState(false)
+  const [editingAnnotationSlide, setEditingAnnotationSlide] = useState<PresentationSlide | null>(null)
+  const [editingTrackingSlide, setEditingTrackingSlide] = useState<PresentationSlide | null>(null)
   const [presenting, setPresenting] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
 
@@ -229,7 +277,7 @@ export default function PresentationEditor() {
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
         {/* Slide list */}
         <div className="glass-card p-3 space-y-3">
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
             <button onClick={() => setShowClipPicker(true)} className="btn-glass flex flex-col items-center gap-1 py-2.5 text-xs">
               <Film size={16} /> Clip
             </button>
@@ -238,6 +286,9 @@ export default function PresentationEditor() {
             </button>
             <button onClick={() => addTextMutation.mutate()} className="btn-glass flex flex-col items-center gap-1 py-2.5 text-xs">
               <Type size={16} /> Text
+            </button>
+            <button onClick={() => setShowAnnotationEditor(true)} className="btn-glass flex flex-col items-center gap-1 py-2.5 text-xs">
+              <Pencil size={16} /> Annotate
             </button>
           </div>
 
@@ -272,13 +323,18 @@ export default function PresentationEditor() {
             <div className="flex items-center justify-center h-full text-white/40 text-sm py-12">
               <div className="text-center space-y-2">
                 <Plus size={24} className="mx-auto text-white/20" />
-                <p>Add a clip, animation, or text card to get started</p>
+                <p>Add a clip, animation, annotation, or text card to get started</p>
               </div>
             </div>
           ) : (
             <SlideDetailPanel
+              presentationId={presentationId!}
               slide={selectedSlide}
               onUpdate={(data) => updateSlideMutation.mutate({ slideId: selectedSlide.id, data })}
+              onEditTracking={() => {
+                if (selectedSlide.slide_type === 'annotation') setEditingAnnotationSlide(selectedSlide)
+                else setEditingTrackingSlide(selectedSlide)
+              }}
             />
           )}
         </div>
@@ -296,8 +352,31 @@ export default function PresentationEditor() {
           onAdd={async (id) => { await addAnimationMutation.mutateAsync(id) }}
         />
       )}
+      {showAnnotationEditor && (
+        <AnnotationCanvasEditor
+          presentationId={presentationId!}
+          onClose={() => setShowAnnotationEditor(false)}
+          onSaved={() => { setShowAnnotationEditor(false); invalidate() }}
+        />
+      )}
+      {editingAnnotationSlide && (
+        <AnnotationCanvasEditor
+          presentationId={presentationId!}
+          existingSlide={editingAnnotationSlide}
+          onClose={() => setEditingAnnotationSlide(null)}
+          onSaved={() => { setEditingAnnotationSlide(null); invalidate() }}
+        />
+      )}
+      {editingTrackingSlide && (
+        <TrackingKeyframeEditor
+          presentationId={presentationId!}
+          slide={editingTrackingSlide}
+          onClose={() => setEditingTrackingSlide(null)}
+        />
+      )}
       {presenting && (
         <PresentMode
+          presentationId={presentationId!}
           title={presentation.title}
           slides={presentation.slides}
           startIndex={Math.max(0, presentation.slides.findIndex(s => s.id === selectedSlideId))}

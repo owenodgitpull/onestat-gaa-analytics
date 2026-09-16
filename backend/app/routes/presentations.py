@@ -335,7 +335,7 @@ async def notify_players(
         from app.models.notification import NotificationType
         from app.models.user import User
         user_result = await db.execute(
-            select(User.user_id).where(User.player_id.in_(data.player_ids), User.club_id == user.club_id)
+            select(User.id).where(User.player_id.in_(data.player_ids), User.club_id == user.club_id)
         )
         user_ids = [row[0] for row in user_result.all()]
         slide_label = slide.clip_label or slide.text_title or "a clip"

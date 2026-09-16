@@ -144,7 +144,9 @@ self.addEventListener('notificationclick', (event) => {
   const data = event.notification.data || {};
   let url = '/player';
 
-  if (data.match_id) {
+  if (data.slide_id) {
+    url = '/player/clips';
+  } else if (data.match_id) {
     url = '/player/stats';
   }
 

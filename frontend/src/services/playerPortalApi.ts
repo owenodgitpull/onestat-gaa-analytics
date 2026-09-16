@@ -287,6 +287,29 @@ export interface SleepHistory {
   entries: SleepLogEntry[];
 }
 
+export interface TaggedClipItem {
+  presentation_id: string;
+  presentation_title: string;
+  slide_id: string;
+  slide_type: 'clip' | 'annotation' | 'text' | 'animation';
+  clip_label: string | null;
+  text_title: string | null;
+  created_at: string;
+}
+
+export interface TaggedClipDetail {
+  slide_type: 'clip' | 'annotation' | 'text' | 'animation';
+  video_url: string | null;
+  clip_start_ms: number | null;
+  clip_end_ms: number | null;
+  clip_label: string | null;
+  freeze_frame_ms: number | null;
+  annotation_shapes: Array<Record<string, unknown>> | null;
+  text_title: string | null;
+  text_body: string | null;
+  voiceover_url: string | null;
+}
+
 // ---- API Functions ----
 
 export const playerPortalAPI = {
@@ -380,4 +403,11 @@ export const playerPortalAPI = {
     fetchAPI<SleepHistory>(
       `/player-portal/sleep/history${days != null ? `?days=${days}` : ''}`
     ),
+
+  // Tagged clips (Phase 11, 10e) — slides a coach explicitly shared with this player
+  getTaggedClips: () =>
+    fetchAPI<{ clips: TaggedClipItem[] }>('/player-portal/tagged-clips'),
+
+  getTaggedClipDetail: (slideId: string) =>
+    fetchAPI<TaggedClipDetail>(`/player-portal/tagged-clips/${slideId}`),
 };

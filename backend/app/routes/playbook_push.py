@@ -130,7 +130,7 @@ async def push_playbook(
         from app.models.user import User
         # Find users linked to these players
         user_result = await db.execute(
-            select(User.user_id).where(
+            select(User.id).where(
                 User.player_id.in_(data.player_ids),
                 User.club_id == user.club_id,
             )
@@ -142,7 +142,7 @@ async def push_playbook(
                 user_id=uid,
                 title=f"New play: {routine.name}",
                 body=data.message or "The manager has shared a tactical play with you.",
-                notification_type=NotificationType.match_report,  # reuse existing type
+                notification_type=NotificationType.MATCH_REPORT,  # reuse existing type
                 data={"push_id": str(push.id), "routine_id": str(routine.id)},
             )
     except Exception as e:
