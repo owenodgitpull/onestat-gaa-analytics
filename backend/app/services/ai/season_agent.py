@@ -63,6 +63,7 @@ SEASON_TOOLS = [
     "get_ball_recovery_time",
     "get_turnover_to_shot_time",
     "get_kickout_targets",
+    "get_match_expected_points",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)

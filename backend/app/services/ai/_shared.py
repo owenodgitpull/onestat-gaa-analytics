@@ -964,6 +964,32 @@ TOOLS = [
             "required": []
         }
     },
+    {
+        "name": "get_match_expected_points",
+        "description": (
+            "Get Expected Points (xP) for one match — team and opponent xP totals, actual points scored, "
+            "under/over performance (actual minus expected), expected result margin, and a per-player shot "
+            "breakdown (shots, expected_points, avg_shot_quality). xP is a probability-of-scoring value "
+            "derived from each shot's distance/angle to goal, adjusted for free-kicks and, when tagged, "
+            "defensive pressure — calibrated fresh from every shot logged across the platform, never a fixed "
+            "table. ALWAYS call this (don't estimate or describe the model from memory) if asked what the "
+            "team's xP was for a match, whether a team over/under-performed its chances, or how confident to "
+            "be in the pressure adjustment — model_sample_size and pressure_model_sample_size in the result "
+            "tell you exactly how much real data backs each shot group and the pressure multiplier "
+            "specifically; a low number there means treat the pressure adjustment as still close to the "
+            "literature estimate, not a firm calibrated figure yet."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {
+                    "type": "string",
+                    "description": "UUID of the match, or 'recent'/'latest' for the most recently completed match."
+                }
+            },
+            "required": ["match_id"]
+        }
+    },
 ]
 
 def get_cached_tools() -> list:
@@ -1055,6 +1081,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_ball_recovery_time(db, **tool_input, club_id=club_id)
     elif tool_name == "get_turnover_to_shot_time":
         return await get_turnover_to_shot_time(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_match_expected_points":
+        return await get_match_expected_points(db, **tool_input, club_id=club_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -5681,3 +5709,58 @@ async def get_turnover_to_shot_time(db: AsyncSession, match_id: str | None = Non
 
     except Exception as e:
         return safe_json({"error": str(e)})
+
+
+async def get_match_expected_points(db: AsyncSession, match_id: str, club_id=None) -> str:
+    """AI-tool wrapper around expected_points_service.compute_match_expected_points
+    — the same function the MatchResult page's xP panel calls, so the agent's
+    numbers are always identical to what the coach sees on screen, never a
+    separately-computed or approximated figure."""
+    from app.models.match import Match, MatchStatus
+    from app.services.expected_points_service import compute_match_expected_points
+    import uuid as uuid_mod
+
+    try:
+        uuid_mod.UUID(str(match_id))
+    except (ValueError, AttributeError):
+        if str(match_id).lower() in ("recent", "latest", "last"):
+            recent_conditions = [Match.status == MatchStatus.COMPLETED]
+            if club_id:
+                recent_conditions.append(Match.club_id == club_id)
+            result = await db.execute(
+                select(Match).where(*recent_conditions).order_by(Match.match_date.desc()).limit(1)
+            )
+            m = result.scalar_one_or_none()
+            if m:
+                match_id = str(m.id)
+            else:
+                return safe_json({"error": "No completed matches found"})
+        else:
+            return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use 'recent'/'latest' or provide a specific match UUID."})
+
+    match_conditions = [Match.id == match_id]
+    if club_id:
+        match_conditions.append(Match.club_id == club_id)
+    match_result = await db.execute(select(Match).where(*match_conditions))
+    match = match_result.scalar_one_or_none()
+    if not match:
+        return safe_json({"error": "Match not found"})
+
+    try:
+        xp = await compute_match_expected_points(db, match)
+    except Exception as e:
+        return safe_json({"error": str(e)})
+
+    return safe_json({
+        "opponent": match.opponent,
+        "match_date": match.match_date.strftime("%d %b %Y") if match.match_date else None,
+        **xp,
+        "methodology": (
+            "xP is a probability-of-scoring value derived from each shot's distance and angle to goal, "
+            "calibrated fresh from every shot logged across the platform (never a fixed/hardcoded table) — "
+            "adjusted multiplicatively for free-kicks (real free-vs-play conversion rate) and, when tagged, "
+            "defensive pressure (real pressured-vs-not conversion rate, shrunk toward a literature estimate "
+            "until enough tagged shots exist). model_sample_size / pressure_model_sample_size show exactly "
+            "how many real shots back each shot group's numbers — cite these if asked how confident to be."
+        ),
+    })
