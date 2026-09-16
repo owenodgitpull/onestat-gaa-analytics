@@ -289,7 +289,7 @@ export default function VideoTagging() {
   // very next ball tap/drag-release on the tracking pitch is captured as
   // the landing spot in handleTaggingBallCommit. Mirrors the equivalent
   // pendingLongKick added to live recording's MatchRecording.tsx.
-  const [pendingLongKick, setPendingLongKick] = useState<{ team: 'team_a' | 'team_b' } | null>(null)
+  const [pendingLongKick, setPendingLongKick] = useState<{ team: 'team_a' | 'team_b'; playerId?: string | null } | null>(null)
   // Kickout "aimed for" — optional target-player step after we win our own
   // kickout, own kickouts only (not the landing-position banner, which
   // doesn't apply to video's continuous-tracking model).
@@ -758,6 +758,7 @@ export default function VideoTagging() {
     // were any other tap/drag.
     if (pendingLongKick && sessionId) {
       const kickTeam = pendingLongKick.team
+      const kickPlayerId = pendingLongKick.playerId
       setPendingLongKick(null)
       const matchTime = calcMatchTime(currentTimeMs)
       const data: VideoEventCreateData = {
@@ -772,6 +773,7 @@ export default function VideoTagging() {
         pitch_zone: xyToZone(position.x, position.y),
         description: 'High ball',
         source: 'human_tag',
+        ...(kickPlayerId ? { player_id: kickPlayerId } : {}),
       }
       createEvent.mutate({ sessionId, data })
       // 'PASS_KICK' isn't in onCarrierTerminalEvent's terminalMap (that call
@@ -1101,8 +1103,14 @@ export default function VideoTagging() {
    *  uses for kickouts/45s, so nothing new is being trusted here. Tapping
    *  the icon again while armed cancels it. */
   const handleToggleLongKickArm = useCallback(() => {
-    setPendingLongKick(prev => prev ? null : { team: possession })
-  }, [possession])
+    // Capture the launcher at arm-time (whoever's the active carrier) —
+    // was recorded with no player_id at all, so the event read as a bare
+    // "our player" instead of a real name. Only meaningful for our own
+    // team (activeCarrierId only ever tracks our players).
+    setPendingLongKick(prev => prev
+      ? null
+      : { team: possession, playerId: possession === 'team_a' ? activeCarrierId : null })
+  }, [possession, activeCarrierId])
 
   const handleTacticalTag = useCallback(async (tagType: string, label?: string) => {
     if (!session?.match_id) return

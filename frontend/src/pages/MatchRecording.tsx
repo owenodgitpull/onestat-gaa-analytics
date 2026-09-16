@@ -227,7 +227,7 @@ export default function MatchRecording() {
   // NOT a dead-ball restart, so handleBallMove does not return early after
   // logging it — normal ball movement/possession recording continues right
   // after.
-  const [pendingLongKick, setPendingLongKick] = useState<{ isHomeTeam: boolean } | null>(null)
+  const [pendingLongKick, setPendingLongKick] = useState<{ isHomeTeam: boolean; playerId?: string | null } | null>(null)
   // Opposition quick-pass counter — mirrors Video Tagging's identical "P"
   // icon exactly: how many passes logged so far in the CURRENT opposition
   // possession spell, resets the moment possession changes hands. Feeds
@@ -588,7 +588,14 @@ export default function MatchRecording() {
   // arming and the destination tap can't retroactively change who gets
   // credited. Tapping the icon again while armed cancels it.
   const handleToggleLongKickArm = () => {
-    setPendingLongKick(prev => prev ? null : { isHomeTeam: ballPosition.team === PossessionTeam.OWN })
+    // Capture the launcher at arm-time — whoever's currently the active
+    // carrier IS the player kicking the high ball. Was recorded with no
+    // player_id at all, so the event read as "our player" instead of a
+    // real name. Only meaningful for our own team (activeCarrierId only
+    // ever tracks our players, never opposition).
+    setPendingLongKick(prev => prev
+      ? null
+      : { isHomeTeam: ballPosition.team === PossessionTeam.OWN, playerId: ballPosition.team === PossessionTeam.OWN ? activeCarrierId : null })
   }
 
   // Opposition quick-pass log — mirrors Video Tagging's identical "P" icon:
@@ -2714,13 +2721,14 @@ export default function MatchRecording() {
   // reason), so it's recorded as OTHER with a "High ball" note, same
   // treatment block-recovery gives its own OTHER-typed marker.
   const recordLongKickAtPosition = async (
-    pending: { isHomeTeam: boolean },
+    pending: { isHomeTeam: boolean; playerId?: string | null },
     position: BallPosition
   ) => {
     if (!matchId) return
     try {
       await recordEvent.mutateAsync({
         match_id: matchId,
+        player_id: pending.playerId ?? undefined,
         event_type: mapEventTypeToBackend(EventType.OTHER),
         minute,
         half: currentHalf,

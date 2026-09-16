@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { X, Users, Copy, Search, Swords } from 'lucide-react'
+import { X, Users, Copy, Search, Swords, ChevronDown, ChevronUp } from 'lucide-react'
 import { Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
+import { api } from '@/services/api'
 
 interface LineupPosition {
   id: string
@@ -111,6 +112,42 @@ export default function StartingLineupModal({
   const { club } = useClub()
   const jerseyBg = club?.primary_colour || '#10B981'
   const jerseyText = club?.secondary_colour || '#FFFFFF'
+
+  // Opposition Key Players — same one-name-per-line textarea Match Prep's
+  // FixturePreview.tsx uses, inline here instead of linking out to it. A
+  // link away was overkill for "add a couple of names" and risked losing
+  // unsaved lineup picks (this modal's own local state) on navigation.
+  const [rosterExpanded, setRosterExpanded] = useState(false)
+  const [rosterInput, setRosterInput] = useState('')
+  const [rosterSaving, setRosterSaving] = useState(false)
+  const [rosterSaved, setRosterSaved] = useState(false)
+  const [rosterLoaded, setRosterLoaded] = useState(false)
+
+  const handleToggleRoster = async () => {
+    setRosterExpanded(prev => !prev)
+    if (!rosterLoaded && matchId) {
+      try {
+        const result = await api.matchPrep.getOppositionRoster(matchId)
+        if (result.players?.length) setRosterInput(result.players.join('\n'))
+        setRosterLoaded(true)
+      } catch { setRosterLoaded(true) }
+    }
+  }
+
+  const handleSaveRoster = async () => {
+    if (!matchId) return
+    const names = rosterInput.split('\n').map(n => n.trim()).filter(Boolean)
+    setRosterSaving(true)
+    try {
+      await api.matchPrep.saveOppositionRoster(matchId, names)
+      setRosterSaved(true)
+      setTimeout(() => setRosterSaved(false), 3000)
+    } catch (err) {
+      console.error('Failed to save opposition roster:', err)
+    } finally {
+      setRosterSaving(false)
+    }
+  }
 
   // Sync saved lineup when it loads (e.g. from API after mount)
   useEffect(() => {
@@ -307,28 +344,54 @@ export default function StartingLineupModal({
               </button>
             )}
             {matchId && (
-              // Opens in a new tab, deliberately not an in-app navigate —
-              // this modal holds unsaved lineup picks in local state that
-              // navigating away would lose. Deep-links straight to the
-              // roster section (already expanded + scrolled to) via
-              // ?openRoster=1, so it's a genuine reminder, not just a
-              // pointer at the fixture page in general.
-              <a
-                href={`/fixtures/${matchId}/preview?openRoster=1`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={handleToggleRoster}
                 className="glass-card-hover px-3 py-1.5 flex items-center space-x-1.5 ml-2"
-                title="Opens in a new tab — add opposition key players for scorer/turnover tagging during the match"
+                title="Add opposition key players for scorer/turnover tagging during the match"
               >
                 <Swords size={14} className="text-orange-400" />
                 <span className="text-white text-xs font-semibold">Opposition Key Players</span>
-              </a>
+                {rosterExpanded ? <ChevronUp size={14} className="text-white/40" /> : <ChevronDown size={14} className="text-white/40" />}
+              </button>
             )}
           </div>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
             <X size={22} />
           </button>
         </div>
+
+        {/* Opposition Key Players — inline, collapsed by default */}
+        {matchId && rosterExpanded && (
+          <div className="mb-3 p-3 rounded-xl bg-white/5 border border-white/10 space-y-2">
+            <p className="text-xs text-white/40">
+              Enter key opposition players — one name per line. These appear for quick selection when recording opponent scores or tagging who we forced a turnover from.
+            </p>
+            <textarea
+              value={rosterInput}
+              onChange={(e) => setRosterInput(e.target.value)}
+              placeholder={"Enter one player per line, e.g.:\nConor Cox\nDiarmuid Murtagh"}
+              rows={4}
+              className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-orange-500/40 resize-none"
+            />
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-white/30">
+                {rosterInput.split('\n').filter(l => l.trim()).length} players
+              </span>
+              <button
+                onClick={handleSaveRoster}
+                disabled={rosterSaving}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                style={{
+                  background: rosterSaved ? 'rgba(16,185,129,0.2)' : 'rgba(251,146,60,0.15)',
+                  border: rosterSaved ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(251,146,60,0.3)',
+                  color: rosterSaved ? '#34d399' : '#fb923c',
+                }}
+              >
+                {rosterSaving ? 'Saving...' : rosterSaved ? 'Saved' : 'Save'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Pitch View with Substitutes */}

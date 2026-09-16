@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, ClipboardCheck, Pencil, Users, ChevronDown, ChevronUp, Flag, GraduationCap } from 'lucide-react'
@@ -52,7 +52,6 @@ function FormRow({ results }: { results: FormResult[] }) {
 export default function FixturePreview() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
   const { canEdit } = useAuth()
   const queryClient = useQueryClient()
   const [editingFixture, setEditingFixture] = useState<Match | null>(null)
@@ -61,19 +60,6 @@ export default function FixturePreview() {
   const [rosterSaving, setRosterSaving] = useState(false)
   const [rosterSaved, setRosterSaved] = useState(false)
   const [rosterLoaded, setRosterLoaded] = useState(false)
-
-  // Deep-link from the live match page's "Select Lineup" reminder
-  // (?openRoster=1) — same expand+load+scroll sequence the "Opposition
-  // Players" button above triggers manually, just auto-fired on arrival.
-  useEffect(() => {
-    if (searchParams.get('openRoster') !== '1' || !matchId) return
-    setRosterExpanded(true)
-    api.matchPrep.getOppositionRoster(matchId)
-      .then(r => { if (r.players?.length) setRosterInput(r.players.join('\n')); setRosterLoaded(true) })
-      .catch(() => setRosterLoaded(true))
-    setTimeout(() => document.getElementById('opposition-roster')?.scrollIntoView({ behavior: 'smooth' }), 150)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId])
 
   // AI opponent form state
   type FormState = 'idle' | 'loading' | 'loaded' | 'dismissed'
