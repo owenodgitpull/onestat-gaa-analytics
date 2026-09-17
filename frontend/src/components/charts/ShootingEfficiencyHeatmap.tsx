@@ -404,7 +404,7 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                 // line) rather than the plain bounding-box centre — user
                 // feedback 2026-09-18: the Close/2-Pt clusters read as too
                 // far from goal, Long's own bias was already right.
-                const textX = zone.arcBased ? tl.x + (br.x - tl.x) * 0.8 : tl.x + (br.x - tl.x) * 0.12
+                const textX = zone.arcBased ? tl.x + (br.x - tl.x) * 0.72 : tl.x + (br.x - tl.x) * 0.12
                 const labelW = zone.label.length * 17 + 24
                 return (
                   <g key={`text-${zone.id}`}>
@@ -438,7 +438,12 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                 // Biased toward the arc (goal-side edge of the crescent, arcXHere)
                 // rather than the plain midpoint with X45_SVG (the far/45m-line
                 // edge) — same "move closer to goal" feedback as the Close zone.
-                const cx = X45_SVG + (arcXHere - X45_SVG) * 0.7
+                // Plain proportional blend alone can't move the Centre label —
+                // the crescent bulges closest to the 45m line right at centre
+                // height, so (arcXHere - X45_SVG) is already near-zero there.
+                // A fixed goal-ward nudge on top guarantees all three 2-Pt
+                // labels (incl. Centre) visibly shift, not just Left/Right.
+                const cx = X45_SVG + (arcXHere - X45_SVG) * 0.7 + 55
                 const labelW = z.label.length * 17 + 24
                 return (
                   <g key={`text-${z.id}`}>
