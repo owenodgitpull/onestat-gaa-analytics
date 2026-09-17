@@ -22,31 +22,13 @@ const toSvg = (xPct: number, yPct: number) => ({
 // every distance/radius comparison in one uniform scale, so a circle in
 // SVG-space is actually a circle in metres.
 //
-// GAA pitch ~145m. This is the same value MatchRecording.tsx's live
-// commentary uses (field-verified against real matches) and it matches the
-// pitch-svg.svg artwork's own drawn 20m line marking almost pixel-perfectly:
-// the 20m line at (145-20)/145 lands at SVG x≈1841.6 against an artwork
-// edge at x≈1871.8. An earlier pass briefly switched this to 130m based on
-// the artwork's decorative 2-point arc curve read against the halfway-line
-// tick marks — that turned out to be ambiguous/invalid evidence (the
-// halfway line sits at 50% by construction regardless of real-world pitch
-// length, so it can never discriminate between candidate scales). Reverted
-// back to 145m. Only the Long-zone's far cutoff (X60_PCT below) depends on
-// this constant — the 2-point zone's boundary (the curved arc, PITCH_ARC_
-// POINTS, AND the straight 45m line, X45_SVG below) is pixel-locked to the
-// artwork's own drawn lines and unaffected by this value either way.
-//
-// Worth noting: the artwork isn't perfectly self-consistent under one
-// scale. The 20m line matches 145m best (20.1m vs 18.0m under 130m); the
-// arc's own bulge and the real 45m line (both found by scanning the
-// rendered artwork for its actual pixels — see their own comments below)
-// read cleaner under a 130m assumption (~40.0m and ~45.8m) than under 145m
-// (~44.7m and ~51.1m). Rather than pick one global number and force every
-// marking to fit it, each boundary this chart actually draws is pixel-
-// measured from the real artwork directly — same approach already used for
-// the arc, extended now to the straight line too.
-const PITCH_LENGTH_M = 145
-
+// This chart no longer assumes a global pitch-length-in-metres constant at
+// all (a 130m-vs-145m guess was the root cause of a long saga here — see
+// [[project-svg-clip-rule-bug]] memory). Every boundary the chart actually
+// draws (the arc, the 45m line, the Long zone's far edge) is pixel-traced
+// directly from pitch-svg.svg's own artwork instead, so there's no global
+// scale left to get wrong — each marking is measured against the real
+// drawing, not derived from an assumed real-world distance.
 const GOAL_SVG_X = PITCH.left + PITCH.playW
 
 // The 2-point arc boundary is traced directly from /pitch-svg.svg's own
@@ -186,12 +168,20 @@ function pointInPolygon(x: number, y: number, poly: { x: number; y: number }[]) 
 }
 
 const X45_PCT = ((X45_SVG - PITCH.left) / PITCH.playW) * 100 // derived from the same pixel-measured 45m line as X45_SVG above — long zone's near edge matches the 2-point zone's outer edge exactly, by construction
-// Long zone's outer (far) edge — realistic scoring range stops well short of
-// midfield, so cap it at 60m from goal rather than the old 35% mark (94m —
-// nearly the halfway line, which is why the chart read as reporting on
-// midfield shots). Anything beyond 60m simply falls outside every zone's
-// box, same as the existing sub-35% exclusion already did.
-const X60_PCT = 100 - (60 / PITCH_LENGTH_M) * 100 // ≈ 58.62
+// Long zone's outer (far) edge. User report 2026-09-17: the Long zone's
+// colour stopped visibly short of a real line drawn in the pitch artwork,
+// leaving a strip of bare pitch between the colour and that line. The
+// previous value here (a computed "60m from goal" formula, X60_PCT) was
+// never pixel-verified against the artwork the way X45_SVG/PITCH_ARC_POINTS
+// already were — same class of bug as the rest of this chart's history.
+// pitch-svg.svg turns out to have TWO real <line> elements (found by
+// grepping the raw SVG for <line>, not <path> — easy to miss since every
+// other marking in this file is a <path>): x=1264 and x=1062 (its mirror
+// at the far end). x=1264 sits ~5m goal-side of the current X60_PCT edge —
+// exactly the small, "close to it" gap reported — so use it directly
+// instead of the formula.
+const X_LONG_FAR_SVG = 1264
+const X60_PCT = ((X_LONG_FAR_SVG - PITCH.left) / PITCH.playW) * 100 // ≈ 55.15
 
 function isCloseRange(xPct: number, yPct: number) {
   const p = toSvg(xPct, yPct)
@@ -240,8 +230,10 @@ const ZONES: ZoneDef[] = [
   { id: 'two_point_left',   label: '2-Pt Left',   xMin: 65, xMax: 100, yMin: 0,  yMax: 33,  arcBased: 'outside', twoPoint: true },
   { id: 'two_point_center', label: '2-Pt Centre', xMin: 65, xMax: 100, yMin: 33, yMax: 67,  arcBased: 'outside', twoPoint: true },
   { id: 'two_point_right',  label: '2-Pt Right',  xMin: 65, xMax: 100, yMin: 67, yMax: 100, arcBased: 'outside', twoPoint: true },
-  // Long range: 45m–60m from goal — matches the 2-point zone's outer edge
-  // exactly so there's no gap, and stops well short of midfield.
+  // Long range: from the pixel-traced X_LONG_FAR_SVG line out to the 45m
+  // line — both real markings pixel-traced from the artwork, so this zone's
+  // colour touches both boundaries with no gap on either side, and stops
+  // well short of midfield.
   { id: 'long_left',   label: 'Long Left',   xMin: X60_PCT, xMax: X45_PCT, yMin: 0,  yMax: 33  },
   { id: 'long_center', label: 'Long Centre',  xMin: X60_PCT, xMax: X45_PCT, yMin: 33, yMax: 67  },
   { id: 'long_right',  label: 'Long Right',  xMin: X60_PCT, xMax: X45_PCT, yMin: 67, yMax: 100 },
