@@ -553,10 +553,10 @@ export default function MatchResult() {
         {hasEvents && hasEliteAccess && (
           <Link
             to={`/results/${matchId}/video`}
-            className="inline-flex items-center gap-1.5 text-white/50 hover:text-white text-sm transition-colors"
+            className="btn-glass inline-flex items-center gap-2 !px-4 !py-2 text-sm"
           >
             <Video size={16} />
-            <span>Video Analysis</span>
+            <span>Attach Video</span>
           </Link>
         )}
       </div>

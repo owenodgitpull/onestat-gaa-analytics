@@ -4,7 +4,7 @@
  * Accessible from MatchResult page via "Video Analysis" button.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { Video, Plus, Trash2, Clock, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
 import { useVideoSessions, useDeleteVideoSession } from '../hooks/useVideoSessions'
@@ -48,6 +48,17 @@ export default function VideoSessionList() {
   const deleteSession = useDeleteVideoSession()
 
   const sessions = data?.sessions || []
+
+  // Landing here with nothing attached yet is almost always someone who just
+  // clicked "Attach Video" specifically to upload -- go straight to the
+  // upload prompt instead of making them click again on an empty list.
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (!isLoading && sessions.length === 0 && !autoOpenedRef.current) {
+      autoOpenedRef.current = true
+      setShowUpload(true)
+    }
+  }, [isLoading, sessions.length])
 
   const handleDeleteConfirm = () => {
     if (!matchId || !deleteTarget) return
