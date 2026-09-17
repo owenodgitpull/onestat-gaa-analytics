@@ -103,7 +103,7 @@ export default function VideoCompilationsPage() {
         <div>
           <h1 className="text-2xl font-bold text-white">Video Compilations</h1>
           <p className="text-white/60 text-sm">
-            Ask the Analyst — "show me Conor Greene's wides this season" — and it builds a downloadable video here
+            Ask the Analyst — "show me a player's wides this season" — and it builds a downloadable video here
           </p>
         </div>
       </div>
@@ -116,7 +116,7 @@ export default function VideoCompilationsPage() {
           <p className="text-white/70 font-medium">No compilations yet</p>
           <p className="text-white/50 text-sm max-w-md mx-auto">
             Ask the Analyst to build one from tagged clips — e.g. "show me every high ball this season"
-            or "compile Conor Greene's wides" — and it'll show up here once it's ready.
+            or "compile a player's wides" — and it'll show up here once it's ready.
           </p>
         </div>
       ) : (
