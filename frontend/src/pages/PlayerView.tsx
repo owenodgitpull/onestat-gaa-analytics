@@ -629,62 +629,74 @@ export default function PlayerView() {
     enabled: !!playerId
   })
 
-  const { data: gpsData } = useQuery({
-    queryKey: ['player-gps', playerId],
-    queryFn: () => fetchPlayerGPSData(playerId!),
-    enabled: !!playerId
-  })
-
+  // shotEvents, gpsData and matchGpsHistory are all used by the Overview
+  // tab (the default view on mount) too, via matchesPlayed/maxSpeedDisplay/
+  // theWall/radarData below — not just their own Training/Fitness tabs —
+  // so they stay eager. quarterProfile/sleepHistory/disciplineTrend/
+  // positionalBenchmark (further below) and the 3 fitness-test queries are
+  // genuinely only read inside their own tab's render block, so those are
+  // gated behind activeTab: a fresh page load only fires the requests
+  // Overview actually needs, not all 13 queries this page has regardless
+  // of which tab is even open. First click into Training/Fitness pays a
+  // brief one-time fetch (still 60s-cached from then on, per the app-wide
+  // QueryClient default), rather than every page load paying for tabs the
+  // user may never open.
   const { data: shotEvents } = useQuery({
     queryKey: ['player-shot-events', playerId],
     queryFn: () => fetchPlayerShotEvents(playerId!),
     enabled: !!playerId
   })
 
+  const { data: gpsData } = useQuery({
+    queryKey: ['player-gps', playerId],
+    queryFn: () => fetchPlayerGPSData(playerId!),
+    enabled: !!playerId
+  })
+
   const { data: quarterProfile } = useQuery({
     queryKey: ['player-quarter-profile', playerId],
     queryFn: () => fetchPlayerQuarterProfile(playerId!),
-    enabled: !!playerId
+    enabled: !!playerId && activeTab === 'training'
   })
 
   const { data: sleepHistory } = useQuery({
     queryKey: ['player-sleep-history', playerId],
     queryFn: () => fetchPlayerSleepHistory(playerId!),
-    enabled: !!playerId
+    enabled: !!playerId && activeTab === 'training'
   })
 
   const { data: disciplineTrend } = useQuery({
     queryKey: ['player-discipline-trend', playerId],
     queryFn: () => fetchPlayerDisciplineTrend(playerId!),
-    enabled: !!playerId
+    enabled: !!playerId && activeTab === 'training'
   })
 
   const { data: positionalBenchmark } = useQuery({
     queryKey: ['player-positional-benchmark', playerId],
     queryFn: () => fetchPlayerPositionalBenchmark(playerId!),
-    enabled: !!playerId
+    enabled: !!playerId && activeTab === 'training'
   })
 
-  // Fitness test queries
+  // Fitness test queries — Fitness tab only
   const { data: latestFitnessTest } = useQuery({
     queryKey: ['player-fitness-latest', playerId],
     queryFn: () => api.fitnessTests.getPlayerLatest(playerId!),
-    enabled: !!playerId
+    enabled: !!playerId && activeTab === 'fitness'
   })
 
   const { data: fitnessHistory } = useQuery({
     queryKey: ['player-fitness-history', playerId],
     queryFn: () => api.fitnessTests.getPlayerHistory(playerId!),
-    enabled: !!playerId
+    enabled: !!playerId && activeTab === 'fitness'
   })
 
   const { data: fitnessComparison } = useQuery({
     queryKey: ['player-fitness-comparison', playerId],
     queryFn: () => api.fitnessTests.getPlayerComparison(playerId!),
-    enabled: !!playerId
+    enabled: !!playerId && activeTab === 'fitness'
   })
 
-  // Match GPS history
+  // Match GPS history — also feeds Overview's matchesPlayed/maxSpeedDisplay, stays eager
   const { data: matchGpsHistory } = useQuery({
     queryKey: ['player-match-gps', playerId],
     queryFn: () => api.matchGps.getPlayerMatchHistory(playerId!, 50),
