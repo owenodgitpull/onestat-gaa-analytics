@@ -43,6 +43,7 @@ const SeasonReport = lazyWithRetry(() => import('./pages/SeasonReport'))
 const SquadFitness = lazyWithRetry(() => import('./pages/SquadFitness'))
 const MatchPrep = lazyWithRetry(() => import('./pages/MatchPrep'))
 const PresentationsPage = lazyWithRetry(() => import('./pages/PresentationsPage'))
+const VideoCompilationsPage = lazyWithRetry(() => import('./pages/VideoCompilationsPage'))
 const PresentationEditor = lazyWithRetry(() => import('./pages/PresentationEditor'))
 const FixturePreview = lazyWithRetry(() => import('./pages/FixturePreview'))
 const PlayerComparison = lazyWithRetry(() => import('./pages/PlayerComparison'))
@@ -170,6 +171,7 @@ function App() {
                           <Route path="/settings" element={<Settings />} />
                           <Route path="/presentations" element={<PresentationsPage />} />
                           <Route path="/presentations/:presentationId" element={<PresentationEditor />} />
+                          <Route path="/video-compilations" element={<VideoCompilationsPage />} />
                         </Routes>
                         </Suspense>
                       </div>

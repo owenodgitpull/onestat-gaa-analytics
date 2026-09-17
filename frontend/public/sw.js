@@ -144,7 +144,11 @@ self.addEventListener('notificationclick', (event) => {
   const data = event.notification.data || {};
   let url = '/player';
 
-  if (data.slide_id) {
+  // Admin-side notification (the requester in chat, not a player-portal
+  // player) — goes to the coach's own Video Compilations list, not /player/*.
+  if (data.compilation_id) {
+    url = '/video-compilations';
+  } else if (data.slide_id) {
     url = '/player/clips';
   } else if (data.match_id) {
     url = '/player/stats';

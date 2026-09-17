@@ -19,6 +19,7 @@ import {
   Menu,
   X,
   MonitorPlay,
+  Film,
 } from 'lucide-react'
 import { useCreateMatch } from '../hooks/useMatches'
 import { useAuth } from '../contexts/AuthContext'
@@ -181,6 +182,14 @@ export default function Navigation() {
     if (location.pathname.startsWith('/analyst')) {
       return [
         { icon: History, label: 'Chat History', path: '#chat-history', active: false },
+        { icon: Film, label: 'Video Compilations', path: '/video-compilations', active: false },
+      ]
+    }
+    // Video Compilations
+    if (location.pathname.startsWith('/video-compilations')) {
+      return [
+        { icon: MessageSquare, label: 'Analyst', path: '/analyst', active: false },
+        { icon: BarChart3, label: 'Dashboard', path: '/', active: false },
       ]
     }
     // Settings
