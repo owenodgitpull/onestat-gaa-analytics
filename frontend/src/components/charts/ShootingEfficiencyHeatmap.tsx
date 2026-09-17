@@ -400,13 +400,13 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                 // clusters — the coloured zone itself is untouched, only
                 // where the text sits within it.
                 const textX = zone.arcBased ? cx : tl.x + (br.x - tl.x) * 0.12
-                const labelW = zone.label.length * 15 + 24
+                const labelW = zone.label.length * 17 + 24
                 return (
                   <g key={`text-${zone.id}`}>
                     <rect x={textX - 115} y={cy - 88} width={230} height={140} rx={18}
                       fill="rgba(0,0,0,0.45)" />
-                    <rect x={textX - labelW / 2} y={tl.y + 24} width={labelW} height={34} rx={8}
-                      fill="rgba(0,0,0,0.45)" />
+                    <rect x={textX - labelW / 2} y={tl.y + 20} width={labelW} height={40} rx={8}
+                      fill="rgba(0,0,0,0.7)" />
                     <text x={textX} y={cy - 28} textAnchor="middle" fill="white" fontSize="72" fontWeight="bold"
                       opacity={zone.total > 0 ? 1 : 0.3}>
                       {zone.total > 0 ? `${zone.pct}%` : '-'}
@@ -414,7 +414,7 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                     <text x={textX} y={cy + 32} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize="42">
                       {zone.total > 0 ? `${zone.scored}/${zone.total}` : ''}
                     </text>
-                    <text x={textX} y={tl.y + 52} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize="36">
+                    <text x={textX} y={tl.y + 55} textAnchor="middle" fill="white" fontSize="40" fontWeight="600">
                       {zone.label}
                     </text>
                   </g>
@@ -431,13 +431,13 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                 const cy = (toSvg(z.xMin, z.yMin).y + toSvg(z.xMin, z.yMax).y) / 2
                 const arcXHere = arcXAtY(cy)
                 const cx = (X45_SVG + arcXHere) / 2
-                const labelW = z.label.length * 15 + 24
+                const labelW = z.label.length * 17 + 24
                 return (
                   <g key={`text-${z.id}`}>
                     <rect x={cx - 115} y={cy - 88} width={230} height={140} rx={18}
                       fill="rgba(0,0,0,0.45)" />
-                    <rect x={cx - labelW / 2} y={cy - 112} width={labelW} height={34} rx={8}
-                      fill="rgba(0,0,0,0.45)" />
+                    <rect x={cx - labelW / 2} y={cy - 114} width={labelW} height={40} rx={8}
+                      fill="rgba(0,0,0,0.7)" />
                     <text x={cx} y={cy - 28} textAnchor="middle" fill="white" fontSize="72" fontWeight="bold"
                       opacity={z.total > 0 ? 1 : 0.3}>
                       {z.total > 0 ? `${z.pct}%` : '-'}
@@ -445,7 +445,7 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                     <text x={cx} y={cy + 32} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize="42">
                       {z.total > 0 ? `${z.scored}/${z.total}` : ''}
                     </text>
-                    <text x={cx} y={cy - 90} textAnchor="middle" fill="rgba(251,191,36,0.85)" fontSize="36" fontWeight="bold">
+                    <text x={cx} y={cy - 87} textAnchor="middle" fill="rgba(251,191,36,0.95)" fontSize="40" fontWeight="bold">
                       {z.label}
                     </text>
                   </g>
