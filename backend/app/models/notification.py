@@ -21,6 +21,7 @@ class NotificationType(str, enum.Enum):
     WEEKLY_BRIEF = "weekly_brief"
     SLEEP_REMINDER = "sleep_reminder"
     PRESENTATION_SHARED = "presentation_shared"
+    VIDEO_COMPILATION_READY = "video_compilation_ready"
 
 
 class Notification(Base):

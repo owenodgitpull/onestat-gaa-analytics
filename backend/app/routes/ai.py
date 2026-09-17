@@ -413,7 +413,8 @@ async def chat_endpoint(
             db,
             history,
             request.message,
-            club_id=user.club_id
+            club_id=user.club_id,
+            user_id=user.user_id,
         )
         return ChatResponse(response=response)
     except Exception as e:
@@ -477,7 +478,7 @@ async def chat_stream_endpoint(
 
         try:
             async for event_line in chat_with_analyst_stream(
-                db, history, request.message, session_id=session_id, club_id=user.club_id
+                db, history, request.message, session_id=session_id, club_id=user.club_id, user_id=user.user_id
             ):
                 # Parse and collect viz/text from the event
                 yield event_line

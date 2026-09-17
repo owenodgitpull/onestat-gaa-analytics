@@ -74,10 +74,10 @@ TIMEOUT_FALLBACK_MESSAGE = (
 )
 
 
-async def _execute_tool_with_timeout(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None) -> str:
+async def _execute_tool_with_timeout(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None, user_id=None) -> str:
     try:
         return await asyncio.wait_for(
-            execute_tool(tool_name, tool_input, db, club_id=club_id),
+            execute_tool(tool_name, tool_input, db, club_id=club_id, user_id=user_id),
             timeout=TOOL_EXECUTION_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
@@ -101,7 +101,7 @@ async def _create_with_timeout(timeout_seconds: int = CLAUDE_CALL_TIMEOUT_SECOND
     )
 
 
-async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_message: str, club_id=None) -> str:
+async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_message: str, club_id=None, user_id=None) -> str:
     """
     Conversational interface for asking questions about matches and players.
     Maintains conversation context.
@@ -210,7 +210,7 @@ INSTRUCTIONS:
                         "content": json.dumps({"error": "Skipped — response time budget exceeded this turn."}),
                     })
                     continue
-                tool_result = await _execute_tool_with_timeout(block.name, block.input, db, club_id=club_id)
+                tool_result = await _execute_tool_with_timeout(block.name, block.input, db, club_id=club_id, user_id=user_id)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -420,6 +420,7 @@ async def chat_with_analyst_stream(
     user_message: str,
     session_id: Optional[str] = None,
     club_id=None,
+    user_id=None,
     timeout_seconds: int = CLAUDE_CALL_TIMEOUT_SECONDS,
 ) -> AsyncGenerator[str, None]:
     """
@@ -501,7 +502,7 @@ async def chat_with_analyst_stream(
                         continue
 
                     yield f"data: {json.dumps({'type': 'thinking', 'tool': block.name})}\n\n"
-                    tool_result = await _execute_tool_with_timeout(block.name, block.input, db, club_id=club_id)
+                    tool_result = await _execute_tool_with_timeout(block.name, block.input, db, club_id=club_id, user_id=user_id)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,

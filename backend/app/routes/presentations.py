@@ -9,7 +9,7 @@ builder, which plays back in a distraction-free "Present" mode.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -17,9 +17,6 @@ from datetime import datetime
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.presentation import Presentation, PresentationSlide, SLIDE_TYPES
-from app.models.video_event import VideoEvent
-from app.models.video_session import VideoSession
-from app.models.match import Match
 from app.models.player import Player
 from app.schemas.presentation import (
     PresentationCreate, PresentationUpdate, PresentationResponse, PresentationListItem,
@@ -368,50 +365,13 @@ async def search_clip_library(
     db: AsyncSession = Depends(get_db),
 ):
     """Every tagged VideoEvent with a video position, presented as a candidate
-    clip — the shared source both Presentation clip slides and (per Phase 10,
-    once built) AI-driven compilations should query, rather than duplicating
-    this join elsewhere."""
-    query = (
-        select(VideoEvent, Match.opponent, Match.match_date, Player.name)
-        .join(Match, Match.id == VideoEvent.match_id)
-        .outerjoin(Player, Player.id == VideoEvent.player_id)
-        .where(
-            Match.club_id == user.club_id,
-            VideoEvent.video_timestamp_ms.isnot(None),
-        )
+    clip — thin wrapper over clip_library_service.search_clips, the shared
+    source both Presentation clip slides and Phase 10's AI-driven
+    compilation tool (create_video_compilation in ai/_shared.py) query,
+    rather than duplicating this join elsewhere."""
+    from app.services.clip_library_service import search_clips
+    matches = await search_clips(
+        db, user.club_id, player_id=player_id, event_type=event_type,
+        match_id=match_id, search=search, limit=limit,
     )
-    if player_id:
-        query = query.where(VideoEvent.player_id == player_id)
-    if event_type:
-        query = query.where(VideoEvent.event_type == event_type)
-    if match_id:
-        query = query.where(VideoEvent.match_id == match_id)
-    if search:
-        like = f"%{search}%"
-        query = query.where(or_(Match.opponent.ilike(like), Player.name.ilike(like)))
-
-    query = query.order_by(Match.match_date.desc(), VideoEvent.video_timestamp_ms.asc()).limit(limit)
-    result = await db.execute(query)
-
-    entries = []
-    for ve, opponent, match_date, player_name in result.all():
-        label_bits = [ve.event_type.replace('_', ' ').title()]
-        if player_name:
-            label_bits.append(f"— {player_name}")
-        elif ve.opponent_player_name:
-            label_bits.append(f"— {ve.opponent_player_name} (opp)")
-        label_bits.append(f"(v {opponent})")
-        entries.append(ClipLibraryEntry(
-            video_event_id=ve.id,
-            video_session_id=ve.video_session_id,
-            video_timestamp_ms=ve.video_timestamp_ms,
-            event_type=ve.event_type,
-            player_id=ve.player_id,
-            player_name=player_name,
-            opponent_player_name=ve.opponent_player_name,
-            match_id=ve.match_id,
-            opponent=opponent,
-            match_date=match_date.strftime('%d %b %Y') if match_date else None,
-            suggested_label=" ".join(label_bits),
-        ))
-    return entries
+    return [ClipLibraryEntry(**m.__dict__) for m in matches]

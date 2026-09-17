@@ -34,6 +34,7 @@ from app.routes import video_analysis, video_events, fixtures, club_members, pla
 from app.routes import match_analytics
 from app.routes import cron as cron_routes
 from app.routes import presentations
+from app.routes import video_compilations
 
 # Configure logging
 logging.basicConfig(
@@ -265,6 +266,7 @@ app.include_router(match_analytics.router, prefix="/api/v1/match-analytics", tag
 app.include_router(match_voice_notes.router, prefix="/api/v1/match-voice-notes", tags=["Match Voice Notes"])
 app.include_router(cron_routes.router, prefix="/api/v1/cron", tags=["Cron"])
 app.include_router(presentations.router, prefix="/api/v1/presentations", tags=["Presentations"])
+app.include_router(video_compilations.router, prefix="/api/v1/video-compilations", tags=["Video Compilations"])
 
 
 if __name__ == "__main__":

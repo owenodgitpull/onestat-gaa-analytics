@@ -56,6 +56,7 @@ from app.models.audit_log import AuditLog
 from app.models.sleep_log import SleepLog
 from app.models.match_voice_note import MatchVoiceNote
 from app.models.presentation import Presentation, PresentationSlide
+from app.models.video_compilation import VideoCompilation, VideoCompilationStatus
 
 # Import all models here as they're created
 # This ensures they're registered with SQLAlchemy Base
@@ -133,5 +134,7 @@ __all__ = [
     "MatchVoiceNote",
     "Presentation",
     "PresentationSlide",
+    "VideoCompilation",
+    "VideoCompilationStatus",
 ]
 

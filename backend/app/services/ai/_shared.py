@@ -990,6 +990,44 @@ TOOLS = [
             "required": ["match_id"]
         }
     },
+    {
+        "name": "create_video_compilation",
+        "description": (
+            "Build a single downloadable video file by stitching together tagged match clips matching a "
+            "player and/or event type — e.g. 'show me Conor Greene's wides this season'. Call search_players "
+            "FIRST if given a name, then pass its player_id here — never guess a player_id. This is NOT "
+            "instant: it starts a background job that can take a few minutes (re-encoding video is the "
+            "slow part, not finding the clips) and the requester gets notified in the app once the file is "
+            "ready to download from their Video Compilations list — don't tell the user to wait here in "
+            "chat, tell them you've started it and they'll be notified when it's ready, not that it's ready "
+            "now. If zero tagged clips match, say so plainly and do NOT start a job — never fabricate or "
+            "guess at footage that doesn't exist. Capped at "
+            f"{20} clips per compilation (most-recent-match-first) — mention if the real match count was "
+            "larger so the user knows the video isn't exhaustive."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "player_id": {
+                    "type": "string",
+                    "description": "Optional UUID from search_players. Omit to search across the whole squad (e.g. 'show me every high ball this season')."
+                },
+                "event_type": {
+                    "type": "string",
+                    "description": "Optional — one of the tagged video event types (e.g. WIDE, POINT_SCORED, GOAL_SCORED, TURNOVER_WON, INTERCEPTION, BLOCK_SHOT). Omit to include every event type for the given player."
+                },
+                "match_id": {
+                    "type": "string",
+                    "description": "Optional — restrict to one specific match instead of the whole season."
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Optional title for the compilation (e.g. 'Conor Greene — Wides 2026'). Defaults to a generated title from the filters."
+                }
+            },
+            "required": []
+        }
+    },
 ]
 
 def get_cached_tools() -> list:
@@ -1008,8 +1046,12 @@ def get_tools_subset(tool_names: list[str]) -> list[dict]:
 # TOOL EXECUTION
 # =============================================================================
 
-async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None) -> str:
-    """Execute a tool and return the result as a string."""
+async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None, user_id=None) -> str:
+    """Execute a tool and return the result as a string. user_id is only
+    threaded through from the ChatAgent entrypoint (routes/ai.py) — SeasonAgent/
+    MatchAgent call sites don't pass it, so it's None there. Only
+    create_video_compilation currently uses it (to notify the requester
+    when their job finishes); every other tool ignores it."""
 
     if tool_name == "get_match_events":
         return await get_match_events(db, **tool_input, club_id=club_id)
@@ -1083,6 +1125,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_turnover_to_shot_time(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_expected_points":
         return await get_match_expected_points(db, **tool_input, club_id=club_id)
+    elif tool_name == "create_video_compilation":
+        return await create_video_compilation(db, **tool_input, club_id=club_id, user_id=user_id)
     else:
         return safe_json({"error": f"Unknown tool: {tool_name}"})
 
@@ -5762,5 +5806,79 @@ async def get_match_expected_points(db: AsyncSession, match_id: str, club_id=Non
             "defensive pressure (real pressured-vs-not conversion rate, shrunk toward a literature estimate "
             "until enough tagged shots exist). model_sample_size / pressure_model_sample_size show exactly "
             "how many real shots back each shot group's numbers — cite these if asked how confident to be."
+        ),
+    })
+
+
+async def create_video_compilation(
+    db: AsyncSession,
+    player_id: str | None = None,
+    event_type: str | None = None,
+    match_id: str | None = None,
+    title: str | None = None,
+    club_id=None,
+    user_id=None,
+) -> str:
+    """Resolve matching clips, create a VideoCompilation row, and kick off
+    the background extraction+concat+upload job — see
+    video_compilation_service.py for the actual FFmpeg pipeline. Returns
+    immediately; the job runs after this tool call returns, since stitching
+    even a handful of clips is too slow to fit inside one chat turn."""
+    from app.services.clip_library_service import search_clips
+    from app.models.video_compilation import VideoCompilation
+    from app.services.video_compilation_service import run_compilation, fire_and_forget, MAX_CLIPS_PER_COMPILATION
+    from app.models.player import Player
+    import uuid as uuid_mod
+
+    try:
+        player_uuid = uuid_mod.UUID(player_id) if player_id else None
+        match_uuid = uuid_mod.UUID(match_id) if match_id else None
+    except ValueError:
+        return safe_json({"error": "player_id/match_id must be valid UUIDs — call search_players first if you only have a name."})
+
+    matches = await search_clips(
+        db, club_id, player_id=player_uuid, event_type=event_type, match_id=match_uuid,
+        limit=MAX_CLIPS_PER_COMPILATION,
+    )
+
+    if not matches:
+        return safe_json({
+            "found": False,
+            "message": "No tagged video clips found matching those filters. Don't guess or describe footage that doesn't exist — tell the user plainly that nothing matched.",
+        })
+
+    player_name = None
+    if player_uuid:
+        p_result = await db.execute(select(Player.name).where(Player.id == player_uuid))
+        player_name = p_result.scalar_one_or_none()
+
+    if not title:
+        bits = [b for b in [player_name, event_type.replace('_', ' ').title() if event_type else None] if b]
+        title = " — ".join(bits) if bits else "Video Compilation"
+
+    compilation = VideoCompilation(
+        club_id=club_id,
+        requested_by_user_id=user_id,
+        title=title,
+        player_id=player_uuid,
+        event_type=event_type,
+        video_event_ids=[str(m.video_event_id) for m in matches],
+        clip_count=len(matches),
+    )
+    db.add(compilation)
+    await db.commit()
+    await db.refresh(compilation)
+
+    fire_and_forget(run_compilation(compilation.id))
+
+    return safe_json({
+        "found": True,
+        "compilation_id": str(compilation.id),
+        "title": title,
+        "clip_count": len(matches),
+        "message": (
+            f"Started building a {len(matches)}-clip compilation titled '{title}'. This runs in the "
+            "background — tell the user it's processing now and they'll get a notification (and find it "
+            "in their Video Compilations list) once it's ready to download. Don't imply it's ready yet."
         ),
     })

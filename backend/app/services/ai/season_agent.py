@@ -64,6 +64,7 @@ SEASON_TOOLS = [
     "get_turnover_to_shot_time",
     "get_kickout_targets",
     "get_match_expected_points",
+    "create_video_compilation",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)
