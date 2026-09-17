@@ -57,6 +57,21 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
 
   const removeKeyframe = (t: number) => setKeyframes((prev) => prev.filter((k) => k.video_timestamp_ms !== t))
 
+  // Native <video controls> has no concept of a sub-range — its scrub bar
+  // spans the WHOLE source match by default, so dragging it (or just
+  // playing past the clip's own end) walks straight out of this clip into
+  // the rest of the game. Clamp on every timeupdate so the bar still looks
+  // and feels native, but visually "hits a wall" at the clip's own
+  // start/end exactly like a locked trim range would.
+  const clampToClipRange = useCallback(() => {
+    const video = videoRef.current
+    if (!video || slide.clip_start_ms == null || slide.clip_end_ms == null) return
+    const startSec = slide.clip_start_ms / 1000
+    const endSec = slide.clip_end_ms / 1000
+    if (video.currentTime < startSec) video.currentTime = startSec
+    else if (video.currentTime > endSec) video.currentTime = endSec
+  }, [slide.clip_start_ms, slide.clip_end_ms])
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
@@ -84,6 +99,8 @@ export default function TrackingKeyframeEditor({ presentationId, slide, onClose 
               onLoadedMetadata={() => {
                 if (videoRef.current && slide.clip_start_ms != null) videoRef.current.currentTime = slide.clip_start_ms / 1000
               }}
+              onTimeUpdate={clampToClipRange}
+              onSeeking={clampToClipRange}
             />
           ) : (
             <div className="w-[70vw] h-[40vh] flex items-center justify-center text-white/40 text-sm">Loading…</div>
