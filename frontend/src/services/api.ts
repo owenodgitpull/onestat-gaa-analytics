@@ -2369,7 +2369,7 @@ export interface PlayerFitnessCard {
   fitness_score: number | null;
   injury_risk: number | null;
   key_metrics: Record<string, number>;
-  status: 'optimal' | 'needs_attention' | 'at_risk' | 'no_data';
+  status: 'optimal' | 'needs_attention' | 'elevated_workload' | 'no_data';
 }
 
 const fitnessTestsAPI = {

@@ -31,7 +31,7 @@ export const dashboardSteps: DriveStep[] = [
     popover: {
       title: 'View Modes',
       description:
-        'Switch between Season Stats, Squad Health, and AI Insights. Squad Health analysis runs automatically after every training session and match — no manual action needed.',
+        'Switch between Season Stats, Squad Conditioning, and AI Insights. Squad Conditioning analysis runs automatically after every training session and match — no manual action needed.',
     },
   },
   {

@@ -227,7 +227,7 @@ export default function SquadFitnessReport({ players }: Props) {
                 <tr className="text-white/40 text-xs uppercase">
                   <th className="text-left py-2">Player</th>
                   <th className="text-right py-2">Fitness Score</th>
-                  <th className="text-right py-2">Injury Risk</th>
+                  <th className="text-right py-2">Workload Indicator</th>
                   <th className="text-center py-2">Status</th>
                   <th className="text-right py-2">Last Tested</th>
                 </tr>
@@ -240,7 +240,7 @@ export default function SquadFitnessReport({ players }: Props) {
                     const statusColors: Record<string, string> = {
                       optimal: 'text-emerald-400',
                       needs_attention: 'text-amber-400',
-                      at_risk: 'text-red-400',
+                      elevated_workload: 'text-red-400',
                       no_data: 'text-white/30',
                     }
                     return (

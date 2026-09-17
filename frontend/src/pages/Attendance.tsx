@@ -383,6 +383,9 @@ function NewSessionModal({ isOpen, onClose, onCreate }: {
               rows={2}
               className="w-full px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/40 resize-none"
             />
+            <p className="text-xs text-white/30 mt-1">
+              Avoid entering medical or other sensitive personal information unless necessary.
+            </p>
           </div>
         </div>
 

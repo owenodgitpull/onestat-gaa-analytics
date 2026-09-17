@@ -1,6 +1,6 @@
 /**
- * Squad Health View Component
- * Displays player workload data, health alerts, and injury risk indicators
+ * Squad Conditioning View Component
+ * Displays player workload data, readiness alerts, and elevated-workload indicators
  */
 import { useEffect, useState } from 'react'
 import {
@@ -204,7 +204,7 @@ export default function SquadHealthView({ onRefresh: _onRefresh }: Props) {
             <Heart size={24} className="text-rose-400" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-white">Squad Health Monitor</h2>
+            <h2 className="text-2xl font-bold text-white">Squad Conditioning Monitor</h2>
             <p className="text-white/60 text-sm">
               Event-driven workload analysis powered by AI
             </p>

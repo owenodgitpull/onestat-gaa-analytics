@@ -90,19 +90,25 @@ Provide your analysis in the following JSON format:
 {{
     "strengths": ["List 2-4 key strengths based on test results"],
     "weaknesses": ["List 2-4 areas that need improvement"],
-    "injury_risk_score": <number 1-10, where 10 is highest risk>,
-    "injury_risk_factors": ["List specific risk factors identified"],
+    "injury_risk_score": <number 1-10, where 10 is the strongest workload/mobility indicator>,
+    "injury_risk_factors": ["List specific indicator factors identified, hedged per the tone guidance below"],
     "recommendations": ["List 3-5 specific training recommendations"],
     "position_fit": ["List 2-3 GAA positions this fitness profile suits best"],
     "training_focus": ["List 2-3 priority areas for the next training block"]
 }}
 
 Consider:
-1. Left/right ankle mobility imbalance (injury risk)
+1. Left/right ankle mobility imbalance
 2. EUR ratio for power quality
 3. Aerobic capacity for GAA demands
 4. Upper body strength for contact situations
 5. Speed profile for positional requirements
+
+TONE — this is a fitness-testing indicator, not a medical assessment. This app is not a health/medical
+product and never diagnoses anything. Do NOT state or imply a diagnosed medical condition, an existing
+injury, or a certain future outcome ("will get injured", "has an injury"). Use hedged, indicator-style
+language instead — e.g. "elevated workload indicator", "potential mobility risk indicator", "worth
+monitoring" — framing each factor as something for coaching/S&C staff to review, not a verdict.
 
 Respond with ONLY the JSON object, no other text."""
 
@@ -197,16 +203,16 @@ Respond with ONLY the JSON object, no other text."""
             left = float(test.ktw_left_cm)
             diff = abs(right - left)
             if diff > 2:
-                injury_risk_factors.append(f"Ankle mobility imbalance: {diff:.1f}cm difference")
+                injury_risk_factors.append(f"Ankle mobility imbalance indicator: {diff:.1f}cm difference — worth monitoring")
                 recommendations.append("Address ankle mobility asymmetry with targeted stretching")
 
             if right < 10 or left < 10:
-                injury_risk_factors.append("Restricted ankle mobility increases knee injury risk")
+                injury_risk_factors.append("Restricted ankle mobility — a potential mobility indicator worth monitoring")
                 recommendations.append("Daily ankle mobility drills")
 
         # Analyze overhead squat
         if test.overhead_squat_score and test.overhead_squat_score < 2:
-            injury_risk_factors.append("Poor movement quality in overhead squat")
+            injury_risk_factors.append("Movement quality indicator in overhead squat — worth monitoring")
             recommendations.append("Movement quality screening and corrective exercise")
 
         # Calculate injury risk score

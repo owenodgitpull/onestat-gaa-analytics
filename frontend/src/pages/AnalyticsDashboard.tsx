@@ -45,6 +45,7 @@ import { useDashboardLayout } from '@/hooks/useDashboardLayout'
 import type { ChartRenderProps } from '@/config/chartRegistry'
 import { api, DashboardData, SeasonDashboardData, AIChartSpec, OutlierSuggestion, KPICardItem } from '@/services/api'
 import { consumeDashboard, consumeSeasonDashboard, consumeLiveMatch } from '@/services/prefetch'
+import { useAuth } from '@/contexts/AuthContext'
 import type { Match } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
 import { useTour } from '@/hooks/useTour'
@@ -115,6 +116,7 @@ export default function AnalyticsDashboard() {
   const [suggestions, setSuggestions] = useState<OutlierSuggestion[]>([])
   const [loadingSuggestions, setLoadingSuggestions] = useState(false)
   const [viewMode, setViewMode] = useState<'season' | 'health' | 'ai'>('season')
+  const { canEdit } = useAuth() // Squad Conditioning is fitness/readiness data — admin-only, viewers don't see the tab
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
   const [visibleKpis, setVisibleKpis] = useState<string[]>(DEFAULT_VISIBLE_KPIS)
@@ -510,19 +512,21 @@ export default function AnalyticsDashboard() {
             <span className="md:hidden">Stats</span>
             <span className="hidden md:inline">Season Stats</span>
           </button>
-          <button
-            onClick={() => setViewMode('health')}
-            className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${
-              viewMode === 'health'
-                ? 'text-[#0a1a10]'
-                : 'text-white/60 hover:text-white'
-            }`}
-            style={viewMode === 'health' ? { background: 'var(--gradient-primary)' } : {}}
-          >
-            <Heart size={16} />
-            <span className="md:hidden">Squad</span>
-            <span className="hidden md:inline">Squad Health</span>
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => setViewMode('health')}
+              className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${
+                viewMode === 'health'
+                  ? 'text-[#0a1a10]'
+                  : 'text-white/60 hover:text-white'
+              }`}
+              style={viewMode === 'health' ? { background: 'var(--gradient-primary)' } : {}}
+            >
+              <Heart size={16} />
+              <span className="md:hidden">Squad</span>
+              <span className="hidden md:inline">Squad Conditioning</span>
+            </button>
+          )}
           <button
             onClick={() => setViewMode('ai')}
             className={`flex items-center gap-1.5 px-3 lg:px-4 py-2 rounded-lg text-sm lg:text-base font-semibold transition-all ${

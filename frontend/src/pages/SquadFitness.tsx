@@ -264,7 +264,7 @@ export default function SquadFitness() {
     all: cards.length,
     optimal: cards.filter(c => c.status === 'optimal').length,
     needs_attention: cards.filter(c => c.status === 'needs_attention').length,
-    at_risk: cards.filter(c => c.status === 'at_risk').length,
+    elevated_workload: cards.filter(c => c.status === 'elevated_workload').length,
     no_data: cards.filter(c => c.status === 'no_data').length,
   }
 
@@ -499,7 +499,7 @@ export default function SquadFitness() {
               { key: 'all', label: 'All', count: statusCounts.all },
               { key: 'optimal', label: 'Optimal', count: statusCounts.optimal, color: 'text-emerald-400' },
               { key: 'needs_attention', label: 'Attention', count: statusCounts.needs_attention, color: 'text-amber-400' },
-              { key: 'at_risk', label: 'At Risk', count: statusCounts.at_risk, color: 'text-red-400' },
+              { key: 'elevated_workload', label: 'Elevated Workload', count: statusCounts.elevated_workload, color: 'text-red-400' },
               { key: 'no_data', label: 'No Data', count: statusCounts.no_data, color: 'text-white/40' },
             ].filter(f => f.count > 0).map(f => (
               <button key={f.key} onClick={() => setFilterStatus(f.key)}
@@ -544,7 +544,7 @@ export default function SquadFitness() {
                           'bg-red-500/20 text-red-400'
                         }`}>
                           {card.status === 'optimal' ? <CheckCircle size={10} /> : <AlertTriangle size={10} />}
-                          {card.status === 'optimal' ? 'Optimal' : card.status === 'needs_attention' ? 'Attention' : 'At Risk'}
+                          {card.status === 'optimal' ? 'Optimal' : card.status === 'needs_attention' ? 'Attention' : 'Elevated Workload'}
                         </div>
                         {trend && (
                           <div className="flex items-center gap-1 text-[10px]">

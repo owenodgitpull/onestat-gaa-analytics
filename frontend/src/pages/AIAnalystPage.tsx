@@ -331,11 +331,14 @@ function AIAnalystPageInner() {
                 className="input-glass w-full rounded-xl p-3 resize-none"
                 rows={3}
               />
-              <div className="flex justify-end mt-2">
+              <div className="flex items-center justify-between mt-2 gap-3">
+                <p className="text-white/30 text-xs">
+                  Don't enter information you wouldn't ordinarily record in OneStat.
+                </p>
                 <button
                   onClick={() => sendMessage()}
                   disabled={!input.trim()}
-                  className="btn-primary px-5 py-2 rounded-xl flex items-center gap-2"
+                  className="btn-primary px-5 py-2 rounded-xl flex items-center gap-2 flex-shrink-0"
                 >
                   <Send size={16} />
                   <span>Send</span>
@@ -497,6 +500,9 @@ function AIAnalystPageInner() {
             <Send size={18} className="text-white" />
           </button>
         </div>
+        <p className="text-white/25 text-[11px] mt-1.5">
+          Don't enter information you wouldn't ordinarily record in OneStat.
+        </p>
       </div>
     </div>
   )

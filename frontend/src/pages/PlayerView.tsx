@@ -1059,7 +1059,7 @@ export default function PlayerView() {
                   {latestFitnessTest.ai_analysis.injury_risk_score !== undefined && (
                     <div className="mb-6">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-white/60">Injury Risk Score</span>
+                        <span className="text-sm text-white/60">Workload Indicator Score</span>
                         <span className={`font-bold ${
                           latestFitnessTest.ai_analysis.injury_risk_score <= 3 ? 'text-emerald-400' :
                           latestFitnessTest.ai_analysis.injury_risk_score <= 6 ? 'text-amber-400' : 'text-red-400'
@@ -1127,7 +1127,7 @@ export default function PlayerView() {
                           <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">Pull-ups</th>
                           <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">Wt<span className="text-white/30 font-normal"> kg</span></th>
                           <th className="text-right py-2 px-3 text-white/50 font-medium whitespace-nowrap">KTW R/L</th>
-                          <th className="text-right py-2 pl-3 text-white/50 font-medium whitespace-nowrap">Risk</th>
+                          <th className="text-right py-2 pl-3 text-white/50 font-medium whitespace-nowrap">Workload</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
@@ -1192,7 +1192,7 @@ export default function PlayerView() {
             <div className="glass-card p-8 text-center">
               <Heart size={48} className="mx-auto text-white/20 mb-4" />
               <p className="text-white/60">No fitness test data recorded yet</p>
-              <p className="text-sm text-white/40 mt-2 mb-4">Upload fitness tests for your squad to see metrics, AI analysis, and injury risk.</p>
+              <p className="text-sm text-white/40 mt-2 mb-4">Upload fitness tests for your squad to see metrics, AI analysis, and workload indicators.</p>
               <Link
                 to="/fitness"
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all"

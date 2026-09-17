@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
@@ -17,7 +17,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4">
       <div
         className="w-full max-w-md rounded-2xl p-8 text-center"
         style={{
@@ -62,6 +62,12 @@ export default function Login() {
           </button>
         </p>
       </div>
+
+      <p className="text-white/25 text-xs mt-6 text-center">
+        <Link to="/terms" className="hover:text-white/50 transition-colors">Terms of Service</Link>
+        {' · '}
+        <Link to="/privacy" className="hover:text-white/50 transition-colors">Privacy Policy</Link>
+      </p>
     </div>
   );
 }

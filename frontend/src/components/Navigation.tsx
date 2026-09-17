@@ -34,7 +34,7 @@ export default function Navigation() {
   const location = useLocation()
   const navigate = useNavigate()
   const createMatch = useCreateMatch()
-  const { user, logout } = useAuth()
+  const { user, logout, canEdit } = useAuth()
   const { club, clubs, logoUrl } = useClub()
   const [isCreatingMatch, setIsCreatingMatch] = useState(false)
   const [isNewMatchModalOpen, setIsNewMatchModalOpen] = useState(false)
@@ -193,7 +193,8 @@ export default function Navigation() {
     return []
   }
 
-  const sidebarItems = getSidebarItems()
+  // Fitness/Squad Fitness is fitness-test/workload-indicator data — admin-only
+  const sidebarItems = getSidebarItems().filter(item => canEdit || item.path !== '/fitness')
 
   const NAV_LINKS = [
     { to: '/', matchPath: '/', label: 'Dashboard', icon: BarChart3 },

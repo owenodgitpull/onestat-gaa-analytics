@@ -19,7 +19,12 @@ import hashlib
 import uuid as uuid_mod
 
 from app.database import get_db
-from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
+from app.auth.dependencies import AuthenticatedUser, require_admin
+# Every route here is fitness/readiness/workload data — restricted to
+# club_admin only (not require_admin_or_viewer), per the DPIA's least-
+# privilege recommendation: this data shouldn't be visible to every viewer
+# by default. A viewer role that genuinely needs this can be added later
+# as an explicit, opted-in permission rather than the default.
 from app.models.player_health import PlayerHealthAlert, PlayerWorkloadSnapshot, AlertSeverity
 from app.models.season_cache import SeasonCache
 from app.services.workload_analysis_service import WorkloadAnalysisService
@@ -60,7 +65,7 @@ async def _compute_squad_health_fingerprint(db: AsyncSession, club_id) -> str:
 
 
 @router.get("/ai-summary")
-async def get_squad_health_ai_summary(user: AuthenticatedUser = Depends(require_admin_or_viewer), db: AsyncSession = Depends(get_db),):
+async def get_squad_health_ai_summary(user: AuthenticatedUser = Depends(require_admin), db: AsyncSession = Depends(get_db),):
     """
     Get a 1-2 sentence AI-generated summary of squad health status.
     Uses Haiku for fast, cheap inference. Cached via SeasonCache fingerprint.
@@ -148,7 +153,7 @@ async def get_squad_health_ai_summary(user: AuthenticatedUser = Depends(require_
 
 
 @router.get("/summary")
-async def get_squad_health_summary(user: AuthenticatedUser = Depends(require_admin_or_viewer), db: AsyncSession = Depends(get_db),):
+async def get_squad_health_summary(user: AuthenticatedUser = Depends(require_admin), db: AsyncSession = Depends(get_db),):
     """
     Get squad-wide health summary for dashboard.
 
@@ -165,7 +170,7 @@ async def get_squad_health_summary(user: AuthenticatedUser = Depends(require_adm
 async def get_all_alerts(
     severity: Optional[str] = None,
     active_only: bool = True,
-    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all health alerts, optionally filtered by severity."""
@@ -216,7 +221,7 @@ async def get_all_alerts(
 @router.get("/player/{player_id}")
 async def get_player_health(
     player_id: UUID,
-    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get health alerts and workload for a specific player."""

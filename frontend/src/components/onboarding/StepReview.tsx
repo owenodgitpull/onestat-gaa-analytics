@@ -4,6 +4,8 @@
  * "Complete Setup" button triggers the final onboarding completion.
  */
 
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Shield, MapPin, Users, Loader2, Check, ChevronLeft } from 'lucide-react';
 
 interface ClubData {
@@ -28,6 +30,7 @@ interface StepReviewProps {
 export default function StepReview({ clubData, playerCount, logoFile, onConfirm, onBack, loading }: StepReviewProps) {
   const primary = clubData.primary_colour || '#1e40af';
   const secondary = clubData.secondary_colour || '#ffffff';
+  const [agreed, setAgreed] = useState(false);
 
   return (
     <div className="space-y-6">
@@ -125,6 +128,22 @@ export default function StepReview({ clubData, playerCount, logoFile, onConfirm,
         </div>
       </div>
 
+      {/* Consent */}
+      <label className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/5 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={agreed}
+          onChange={(e) => setAgreed(e.target.checked)}
+          className="mt-0.5 w-4 h-4 flex-shrink-0 accent-emerald-500"
+        />
+        <span className="text-sm text-white/70">
+          I agree to the{' '}
+          <Link to="/terms" target="_blank" className="text-emerald-400 hover:underline">Terms of Service</Link>
+          {' '}and{' '}
+          <Link to="/privacy" target="_blank" className="text-emerald-400 hover:underline">Privacy Policy</Link>.
+        </span>
+      </label>
+
       {/* Action Buttons */}
       <div className="flex items-center justify-between mt-2 pt-6 border-t border-white/10">
         <button
@@ -139,7 +158,7 @@ export default function StepReview({ clubData, playerCount, logoFile, onConfirm,
 
         <button
           onClick={onConfirm}
-          disabled={loading}
+          disabled={loading || !agreed}
           className="btn-primary py-2.5 px-5 text-sm flex items-center gap-2
                      disabled:opacity-50 disabled:cursor-not-allowed"
         >

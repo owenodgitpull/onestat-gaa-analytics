@@ -178,4 +178,4 @@ class PlayerFitnessCard(BaseModel):
     fitness_score: Optional[float]  # Composite score 0-100
     injury_risk: Optional[int]  # 1-10
     key_metrics: dict  # {"cmj_cm": 38.5, "bronco_test_min": 4.8}
-    status: str  # "optimal", "needs_attention", "at_risk", "no_data"
+    status: str  # "optimal", "needs_attention", "elevated_workload", "no_data"

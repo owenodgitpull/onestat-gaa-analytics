@@ -14,7 +14,7 @@ interface RedZoneListProps {
 // training+match balance is off, and vice versa.
 const EXPLAINER =
   'Match-day GPS only — flags a match that spiked well above this player’s own recent match average. ' +
-  'This is a different signal from the training+match ACWR status on Squad Health, so the two can disagree without either being wrong.'
+  'This is a different signal from the training+match ACWR status on Squad Conditioning, so the two can disagree without either being wrong.'
 
 export default function RedZoneList({ data }: RedZoneListProps) {
   if (data.length === 0) {
@@ -53,7 +53,7 @@ export default function RedZoneList({ data }: RedZoneListProps) {
         </span>
       </div>
       <p className="text-white/40 text-xs -mt-2 mb-4">
-        Match-day GPS only, vs each player's own recent matches — a different signal from Squad Health's training+match status.
+        Match-day GPS only, vs each player's own recent matches — a different signal from Squad Conditioning's training+match status.
       </p>
 
       <div className="space-y-3">

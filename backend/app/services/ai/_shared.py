@@ -159,7 +159,7 @@ Events include a "location" field with human-readable zone descriptions. Use the
 - Opp kickout win %: % of the OPPONENT's kickouts that WE win — 35% means we won 35 of theirs.
   Above 40% is dominant; 30-40% is competitive. Do NOT confuse with our own kickout retention.
 - Our kickout retention %: % of OUR OWN kickouts we keep. Above 60% is the target.
-- ACWR > 1.5 = high injury risk; ACWR 0.8-1.3 = optimal; "INSUFFICIENT BASELINE" = early season, not enough history yet — do NOT flag as risky.
+- ACWR > 1.5 = elevated workload indicator (a training-load flag worth reviewing, never a diagnosed injury — do NOT say "injured" or "injury risk" as if it's a medical fact); ACWR 0.8-1.3 = optimal; "INSUFFICIENT BASELINE" = early season, not enough history yet — do NOT flag as risky.
 
 ## Newer Event Types (2026-09) — High Ball, Opposition Pass, Press Trigger, Pressure on xP
 These are all logged as event_type=OTHER with a specific notes string — a deliberate pragmatic choice
@@ -861,7 +861,7 @@ TOOLS = [
     },
     {
         "name": "get_workload_risk_assessment",
-        "description": "Calculate acute:chronic workload ratio (ACWR) for players using GPS data from matches and training. Flags players at injury risk (ACWR > 1.5) or detraining risk (ACWR < 0.8). Can check a specific player or all players.",
+        "description": "Calculate acute:chronic workload ratio (ACWR) for players using GPS data from matches and training. Flags players with an elevated workload indicator (ACWR > 1.5) or a possible-detraining indicator (ACWR < 0.8) — a training-load signal to review, not a medical diagnosis. Can check a specific player or all players.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -4816,7 +4816,7 @@ async def get_contextual_patterns(db: AsyncSession, split_by: str, club_id=None)
 
 
 async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, club_id=None) -> str:
-    """Calculate ACWR (acute:chronic workload ratio) for injury risk monitoring."""
+    """Calculate ACWR (acute:chronic workload ratio) — a training-load indicator, not a medical assessment."""
     from app.models.match_gps import MatchGPSData
     from app.models.training_performance import TrainingGPSData
     from app.models.attendance import TrainingSession
@@ -4928,7 +4928,7 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
         else:
             acwr = round(acute_total / max(chronic_weekly_avg, 0.01), 2)
             if acwr > 1.5:
-                risk = "HIGH — injury risk (overload)"
+                risk = "HIGH — elevated workload indicator (overload)"
             elif acwr > 1.3:
                 risk = "MODERATE — approaching overload"
             elif acwr < 0.8:
@@ -4966,7 +4966,7 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
         })
 
     # Sort: high risk first (insufficient baseline goes last — not a real flag)
-    risk_order = {"HIGH — injury risk (overload)": 0, "MODERATE — approaching overload": 1, "LOW LOAD — possible detraining": 2, "OPTIMAL": 3}
+    risk_order = {"HIGH — elevated workload indicator (overload)": 0, "MODERATE — approaching overload": 1, "LOW LOAD — possible detraining": 2, "OPTIMAL": 3}
     assessments.sort(key=lambda a: risk_order.get(a["risk"], 4))
 
     flagged = [a for a in assessments if a["risk"] not in ("OPTIMAL", ) and "INSUFFICIENT" not in a["risk"]]

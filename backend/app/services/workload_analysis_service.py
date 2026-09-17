@@ -35,14 +35,30 @@ from app.models.match_gps import MatchGPSData
 
 logger = logging.getLogger(__name__)
 
-# Thresholds for risk detection
+# Thresholds for workload-indicator detection — these flag a training-load
+# pattern worth a coach's attention, never a diagnosed medical state.
 ACWR_LOW_RISK = 0.8  # Below this = undertraining
 ACWR_OPTIMAL_LOW = 0.8
 ACWR_OPTIMAL_HIGH = 1.3
-ACWR_HIGH_RISK = 1.5  # Above this = injury risk
+ACWR_HIGH_RISK = 1.5  # Above this = elevated workload indicator
 
 CONSECUTIVE_HIGH_LOAD_DAYS = 3
 ATTENDANCE_DROP_THRESHOLD = 0.7  # Below 70% attendance in last 2 weeks
+
+# Deliberately not a mechanical alert_type.value.replace('_', ' ').title() —
+# that produced "Injury Risk Alert" for INJURY_RISK, reading as a medical
+# diagnosis rather than a training-load flag. These are the fallback titles
+# used only if the AI-generated alert content call fails (see
+# _generate_alert_content, which carries the same hedged-tone instruction).
+ALERT_TYPE_TITLES = {
+    AlertType.WORKLOAD_SPIKE: "Workload Spike Alert",
+    AlertType.CONSECUTIVE_HIGH_LOAD: "Consecutive High Load Alert",
+    AlertType.ATTENDANCE_DROP: "Attendance Drop Alert",
+    AlertType.PERFORMANCE_DECLINE: "Performance Decline Alert",
+    AlertType.RECOVERY_NEEDED: "Recovery Recommended",
+    AlertType.INJURY_RISK: "Elevated Workload Indicator",
+    AlertType.POSITIVE_TREND: "Positive Trend",
+}
 
 
 class WorkloadAnalysisService:
@@ -520,7 +536,7 @@ class WorkloadAnalysisService:
         except Exception as e:
             logger.error(f"AI alert generation failed: {e}")
             # Fallback to simple message
-            title = f"{alert_type.value.replace('_', ' ').title()} Alert"
+            title = ALERT_TYPE_TITLES.get(alert_type, f"{alert_type.value.replace('_', ' ').title()} Alert")
             message = f"{player.name}: {context}"
             recommendation = "Review player workload and consider rest if needed."
 
@@ -556,7 +572,7 @@ class WorkloadAnalysisService:
 
         client = anthropic.Anthropic(api_key=api_key)
 
-        prompt = f"""Generate a health alert for a GAA player.
+        prompt = f"""Generate a workload/conditioning alert for a GAA player, for coaching staff.
 
 Player: {player.name}
 Position: {player.position}
@@ -574,10 +590,16 @@ Metrics:
 - Total Distance (7d): {metrics.get('total_distance_7d', 0):.0f}m
 - Total Sprints (7d): {metrics.get('total_sprints_7d', 0)}
 
+TONE — this is a training-load indicator, not a medical assessment. This app is not a health/medical
+product and never diagnoses anything. Do NOT state or imply a diagnosed medical condition, an injury,
+or a certain outcome ("is injured", "will get injured", "has an injury risk"). Use hedged, indicator-style
+language instead — e.g. "elevated workload indicator", "potential injury risk indicator", "worth monitoring",
+"may benefit from reduced load". Frame it as a coaching flag to review, not a verdict.
+
 Return a JSON object with:
 {{
-    "title": "Short alert title (max 50 chars)",
-    "message": "2-3 sentence explanation of the concern",
+    "title": "Short alert title (max 50 chars) — indicator-style, not a diagnosis",
+    "message": "2-3 sentence explanation of the concern, hedged per the tone guidance above",
     "recommendation": "Specific actionable recommendation for coaching staff"
 }}
 
