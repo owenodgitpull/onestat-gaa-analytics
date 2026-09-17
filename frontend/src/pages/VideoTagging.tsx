@@ -2181,7 +2181,7 @@ export default function VideoTagging() {
     <div data-tour="video-quick-actions">
     <VideoQuickActions
       possession={possession}
-      onPossessionChange={setPossession}
+      onPossessionChange={(team) => { onCarrierPossessionSwap(); setPossession(team) }}
       selectedZone={null}
       currentTimestampMs={currentTimeMs}
       half={session.half || 1}
@@ -2199,10 +2199,12 @@ export default function VideoTagging() {
     </div>
   )
 
-  /** Possession status bar */
+  /** Possession status bar — carries the scoreboard inline (moved out of
+   *  the header) instead of the old team-name/dot possession toggle chip;
+   *  possession is still swappable, just from the sidebar's own toggle now. */
   const statusBar = ballPosition ? (
     <div
-      className={`flex items-center justify-between px-4 py-2 rounded-lg border transition-all ${
+      className={`flex items-center justify-between gap-3 px-4 py-2 rounded-lg border transition-all ${
         possession === 'team_a'
           ? 'bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-emerald-500/20'
           : 'bg-gradient-to-r from-orange-500/15 to-orange-500/5 border-orange-500/20'
@@ -2217,24 +2219,7 @@ export default function VideoTagging() {
           activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.playerName : null,
         )}
       </span>
-      <button
-        onClick={() => { onCarrierPossessionSwap(); setPossession(p => p === 'team_a' ? 'team_b' : 'team_a') }}
-        className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold transition-all ${
-          possession === 'team_a'
-            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-            : 'bg-orange-500/20 text-orange-300 border border-orange-500/30'
-        }`}
-      >
-        <span className="relative flex h-2 w-2">
-          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-            possession === 'team_a' ? 'bg-emerald-400' : 'bg-orange-400'
-          }`} />
-          <span className={`relative inline-flex rounded-full h-2 w-2 ${
-            possession === 'team_a' ? 'bg-emerald-500' : 'bg-orange-500'
-          }`} />
-        </span>
-        {possession === 'team_a' ? clubName : opponentName}
-      </button>
+      <div className="flex-shrink-0" data-tour="video-scoreboard">{scoreboard(true)}</div>
     </div>
   ) : null
 
@@ -2647,29 +2632,16 @@ export default function VideoTagging() {
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-3">
-      {/* ── Header with scoreboard ─────────────────────────────────────── */}
+      {/* ── Header ───────────────────────────────────────────────────────
+          Title/event-count and the scoreboard were dropped from here to
+          keep the video area in focus on laptop-height screens — the
+          scoreboard now lives inline in the status bar below instead. */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        {/* Left: back + title */}
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate(-1)} className="p-2 text-white/50 hover:text-white transition-colors">
-            <ArrowLeft size={20} />
-          </button>
-          <div>
-            <h1 className="text-lg font-bold text-white leading-tight">{session.title}</h1>
-            <p className="text-xs text-white/40">
-              {session.half ? `Half ${session.half}` : 'Full Match'} &bull; {events.length} events
-              {session.status === 'completed' && ' \u2022 Completed'}
-            </p>
-          </div>
-        </div>
-
-        {/* Centre: scoreboard */}
-        <div data-tour="video-scoreboard">{scoreboard()}</div>
-
-        {/* Right: action buttons */}
+        <button onClick={() => navigate(-1)} className="p-2 text-white/50 hover:text-white transition-colors flex-shrink-0">
+          <ArrowLeft size={20} />
+        </button>
         {actionButtons()}
       </div>
-
       {/* Auto-analyze processing banner */}
       {isAutoAnalyzing && (
         <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg px-4 py-3 space-y-2">
