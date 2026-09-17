@@ -389,7 +389,7 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                   artwork) happens to be behind it — text alone had no
                   guaranteed contrast against the lighter yellow/green fills. */}
               {standardZones.map(zone => {
-                const { tl, br, cx, cy } = zoneCentre(zone)
+                const { tl, br, cy } = zoneCentre(zone)
                 // Long zone sits directly against the 2-Pt zone with zero gap
                 // between them (by design — see X45_PCT above), and the 2-Pt
                 // crescent is narrowest right at centre, so its label crowds
@@ -398,8 +398,13 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                 // its midfield-side edge (away from goal, away from the 2-Pt
                 // boundary) to open up breathing room between the two label
                 // clusters — the coloured zone itself is untouched, only
-                // where the text sits within it.
-                const textX = zone.arcBased ? cx : tl.x + (br.x - tl.x) * 0.12
+                // where the text sits within it. Close zone's text cluster
+                // (percentage + count + label) is similarly biased toward
+                // its goal-side edge (br, since xMax=100 sits at the goal
+                // line) rather than the plain bounding-box centre — user
+                // feedback 2026-09-18: the Close/2-Pt clusters read as too
+                // far from goal, Long's own bias was already right.
+                const textX = zone.arcBased ? tl.x + (br.x - tl.x) * 0.8 : tl.x + (br.x - tl.x) * 0.12
                 const labelW = zone.label.length * 17 + 24
                 return (
                   <g key={`text-${zone.id}`}>
@@ -430,7 +435,10 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                 // colour in the narrow middle third.
                 const cy = (toSvg(z.xMin, z.yMin).y + toSvg(z.xMin, z.yMax).y) / 2
                 const arcXHere = arcXAtY(cy)
-                const cx = (X45_SVG + arcXHere) / 2
+                // Biased toward the arc (goal-side edge of the crescent, arcXHere)
+                // rather than the plain midpoint with X45_SVG (the far/45m-line
+                // edge) — same "move closer to goal" feedback as the Close zone.
+                const cx = X45_SVG + (arcXHere - X45_SVG) * 0.7
                 const labelW = z.label.length * 17 + 24
                 return (
                   <g key={`text-${z.id}`}>
