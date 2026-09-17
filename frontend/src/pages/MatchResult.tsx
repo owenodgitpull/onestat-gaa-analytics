@@ -537,13 +537,29 @@ export default function MatchResult() {
   return (
     <div className="min-h-screen pb-8">
       {/* Back Link */}
-      <Link
-        to="/results"
-        className="inline-flex items-center space-x-2 text-white/60 hover:text-white mb-4 transition-colors"
-      >
-        <ChevronLeft size={20} />
-        <span>Back to Results</span>
-      </Link>
+      <div className="flex items-center justify-between mb-4">
+        <Link
+          to="/results"
+          className="inline-flex items-center space-x-2 text-white/60 hover:text-white transition-colors"
+        >
+          <ChevronLeft size={20} />
+          <span>Back to Results</span>
+        </Link>
+        {/* The big "Start Video Analysis" CTA further down only renders when
+            this match has zero live events — a match that WAS recorded live
+            (e.g. attaching footage afterwards just to sync/verify a few
+            events against the video) had no way to reach video upload at
+            all. This link covers that case without duplicating the CTA. */}
+        {hasEvents && hasEliteAccess && (
+          <Link
+            to={`/results/${matchId}/video`}
+            className="inline-flex items-center gap-1.5 text-white/50 hover:text-white text-sm transition-colors"
+          >
+            <Video size={16} />
+            <span>Video Analysis</span>
+          </Link>
+        )}
+      </div>
 
       {/* Header */}
       <div className="glass-card p-6 mb-6">
