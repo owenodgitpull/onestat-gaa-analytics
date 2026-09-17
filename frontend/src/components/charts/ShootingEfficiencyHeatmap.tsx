@@ -443,7 +443,7 @@ export default function ShootingEfficiencyHeatmap({ shots }: Props) {
                 // height, so (arcXHere - X45_SVG) is already near-zero there.
                 // A fixed goal-ward nudge on top guarantees all three 2-Pt
                 // labels (incl. Centre) visibly shift, not just Left/Right.
-                const cx = X45_SVG + (arcXHere - X45_SVG) * 0.7 + 55
+                const cx = X45_SVG + (arcXHere - X45_SVG) * 0.45 + 55
                 const labelW = z.label.length * 17 + 24
                 return (
                   <g key={`text-${z.id}`}>
