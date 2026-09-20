@@ -2123,9 +2123,17 @@ async def get_fixture_context(db: AsyncSession, club_id=None) -> str:
         for f in fixtures:
             venue = f.venue.value if f.venue else "TBD"
             comp = f.competition or ""
+            if f.stage:
+                comp = f"{comp} {f.stage}".strip()
             line = f"  - {f.match_date.strftime('%a %d %b %Y %H:%M')} vs {f.opponent} ({venue})"
             if comp:
                 line += f" — {comp}"
+            else:
+                # No competition/stage saved at all -- say so explicitly so
+                # the model doesn't infer or guess a round it has no data
+                # for (e.g. previously fabricated "semi-final" for a
+                # fixture that had no stage field read into this context).
+                line += " — round/competition not recorded"
             lines.append(line)
 
         # Opponent form from scraped fixtures (for the NEXT match only)

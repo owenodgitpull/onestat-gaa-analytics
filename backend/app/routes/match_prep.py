@@ -523,6 +523,9 @@ async def get_opposition_roster(
     return {"players": match.opposition_roster or []}
 
 
+_NAME_SUFFIXES = {"jr", "sr", "jnr", "snr", "ii", "iii", "iv", "v"}
+
+
 def _last_name_only(name: str) -> str:
     """Data-minimization pass for opposition player names — these are
     people who have never used OneStat and never consented to anything, so
@@ -530,9 +533,19 @@ def _last_name_only(name: str) -> str:
     tagging (surname only, not a full name). Enforced here server-side
     (not just a frontend hint) so it holds regardless of what any client
     sends. Last whitespace-separated token — "Conor Cox" -> "Cox"; already
-    single-word names pass through unchanged."""
+    single-word names pass through unchanged.
+
+    Generational suffixes (Jr/Sr/II/...) are kept attached to the surname
+    rather than treated as the surname themselves — "C O'Donnell Jr" ->
+    "O'Donnell Jr", not "Jr". Without this, a Jr/Sr pair (the exact case
+    someone would type a suffix to disambiguate) would each lose their
+    actual surname and collide down to just the suffix."""
     parts = name.strip().split()
-    return parts[-1] if parts else name.strip()
+    if not parts:
+        return name.strip()
+    if len(parts) >= 2 and parts[-1].lower().rstrip(".") in _NAME_SUFFIXES:
+        return f"{parts[-2]} {parts[-1]}"
+    return parts[-1]
 
 
 @router.put("/matches/{match_id}/opposition-roster")
