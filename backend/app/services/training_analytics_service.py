@@ -64,12 +64,9 @@ class TrainingAnalyticsService:
     async def _leaderboard(db: AsyncSession, club_id=None) -> dict:
         """Aggregate GPS metrics across ALL sessions per player.
 
-        Only includes active players who have a gps_alias configured (indicating
-        they actually wear GPS). This excludes goalkeepers and players who don't
-        participate in GPS tracking from appearing with incorrect/test data.
-
-        Filters by BOTH player club_id AND session club_id to prevent cross-club
-        data leakage.
+        Only includes active outfield players (excludes goalkeepers who typically
+        don't wear GPS). Filters by BOTH player club_id AND session club_id to
+        prevent cross-club data leakage.
         """
         # Join with both Player and TrainingSession to filter by both club_ids
         query = (
@@ -87,8 +84,7 @@ class TrainingAnalyticsService:
             .where(
                 and_(
                     Player.active == True,  # Only active squad members
-                    Player.gps_alias.isnot(None),  # Only players who wear GPS
-                    Player.gps_alias != '',  # Exclude empty strings
+                    Player.position != 'goalkeeper',  # Exclude goalkeepers (don't wear GPS)
                 )
             )
         )
