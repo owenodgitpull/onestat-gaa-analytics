@@ -77,7 +77,7 @@ export default function SeasonFilterBar({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-2 z-30 w-72 bg-slate-900/98 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl p-4 space-y-4">
+        <div className="absolute right-0 md:left-0 top-full mt-2 z-30 w-[calc(100vw-2rem)] max-w-sm md:w-72 bg-slate-900/98 backdrop-blur-xl border border-white/15 rounded-2xl shadow-2xl p-4 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold text-white">Filter Season</span>
             <button onClick={() => setOpen(false)} className="p-1 rounded-lg hover:bg-white/10 transition-colors">
