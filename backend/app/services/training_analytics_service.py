@@ -67,8 +67,11 @@ class TrainingAnalyticsService:
         Only includes active players who have a gps_alias configured (indicating
         they actually wear GPS). This excludes goalkeepers and players who don't
         participate in GPS tracking from appearing with incorrect/test data.
+
+        Filters by BOTH player club_id AND session club_id to prevent cross-club
+        data leakage.
         """
-        # Always join with Player to access active status, gps_alias, and club_id
+        # Join with both Player and TrainingSession to filter by both club_ids
         query = (
             select(
                 TrainingGPSData.player_id,
@@ -80,6 +83,7 @@ class TrainingAnalyticsService:
                 func.count(TrainingGPSData.id).label("sessions_count"),
             )
             .join(Player, TrainingGPSData.player_id == Player.id)
+            .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
             .where(
                 and_(
                     Player.active == True,  # Only active squad members
@@ -89,7 +93,12 @@ class TrainingAnalyticsService:
             )
         )
         if club_id:
-            query = query.where(Player.club_id == club_id)
+            query = query.where(
+                and_(
+                    Player.club_id == club_id,  # Player belongs to this club
+                    TrainingSession.club_id == club_id,  # Session belongs to this club
+                )
+            )
         query = query.group_by(TrainingGPSData.player_id)
         result = await db.execute(query)
         rows = result.all()
@@ -179,11 +188,15 @@ class TrainingAnalyticsService:
 
         readiness_list = []
         for player in active_players:
-            # Get all GPS data for this player
+            # Get all GPS data for this player from THIS club's sessions only
+            gps_filters = [TrainingGPSData.player_id == player.id]
+            if club_id:
+                gps_filters.append(TrainingSession.club_id == club_id)
+
             gps_result = await db.execute(
                 select(TrainingGPSData)
                 .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
-                .where(TrainingGPSData.player_id == player.id)
+                .where(and_(*gps_filters))
                 .order_by(TrainingSession.session_date.desc())
             )
             gps_records = list(gps_result.scalars().all())
@@ -193,16 +206,18 @@ class TrainingAnalyticsService:
 
             latest = gps_records[0]
 
-            # Get 4-week records
+            # Get 4-week records from THIS club's sessions only
+            gps_4wk_filters = [
+                TrainingGPSData.player_id == player.id,
+                TrainingSession.session_date >= four_weeks_ago,
+            ]
+            if club_id:
+                gps_4wk_filters.append(TrainingSession.club_id == club_id)
+
             gps_4wk_result = await db.execute(
                 select(TrainingGPSData)
                 .join(TrainingSession, TrainingGPSData.session_id == TrainingSession.id)
-                .where(
-                    and_(
-                        TrainingGPSData.player_id == player.id,
-                        TrainingSession.session_date >= four_weeks_ago,
-                    )
-                )
+                .where(and_(*gps_4wk_filters))
             )
             records_4wk = list(gps_4wk_result.scalars().all())
 
