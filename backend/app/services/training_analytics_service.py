@@ -64,9 +64,11 @@ class TrainingAnalyticsService:
     async def _leaderboard(db: AsyncSession, club_id=None) -> dict:
         """Aggregate GPS metrics across ALL sessions per player.
 
-        Only includes active players to prevent inactive/former players from appearing.
+        Only includes active players who have a gps_alias configured (indicating
+        they actually wear GPS). This excludes goalkeepers and players who don't
+        participate in GPS tracking from appearing with incorrect/test data.
         """
-        # Always join with Player to access active status and club_id
+        # Always join with Player to access active status, gps_alias, and club_id
         query = (
             select(
                 TrainingGPSData.player_id,
@@ -78,7 +80,13 @@ class TrainingAnalyticsService:
                 func.count(TrainingGPSData.id).label("sessions_count"),
             )
             .join(Player, TrainingGPSData.player_id == Player.id)
-            .where(Player.active == True)  # Only show active players
+            .where(
+                and_(
+                    Player.active == True,  # Only active squad members
+                    Player.gps_alias.isnot(None),  # Only players who wear GPS
+                    Player.gps_alias != '',  # Exclude empty strings
+                )
+            )
         )
         if club_id:
             query = query.where(Player.club_id == club_id)
