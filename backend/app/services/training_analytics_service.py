@@ -62,18 +62,26 @@ class TrainingAnalyticsService:
 
     @staticmethod
     async def _leaderboard(db: AsyncSession, club_id=None) -> dict:
-        """Aggregate GPS metrics across ALL sessions per player."""
-        query = select(
-            TrainingGPSData.player_id,
-            func.avg(TrainingGPSData.total_distance_m).label("avg_total_distance_m"),
-            func.avg(TrainingGPSData.max_speed_ms).label("avg_max_speed_ms"),
-            func.avg(TrainingGPSData.high_speed_running_m).label("avg_high_speed_running_m"),
-            func.avg(TrainingGPSData.sprint_count).label("avg_sprint_count"),
-            func.avg(TrainingGPSData.dynamic_stress_load).label("avg_dynamic_stress_load"),
-            func.count(TrainingGPSData.id).label("sessions_count"),
+        """Aggregate GPS metrics across ALL sessions per player.
+
+        Only includes active players to prevent inactive/former players from appearing.
+        """
+        # Always join with Player to access active status and club_id
+        query = (
+            select(
+                TrainingGPSData.player_id,
+                func.avg(TrainingGPSData.total_distance_m).label("avg_total_distance_m"),
+                func.avg(TrainingGPSData.max_speed_ms).label("avg_max_speed_ms"),
+                func.avg(TrainingGPSData.high_speed_running_m).label("avg_high_speed_running_m"),
+                func.avg(TrainingGPSData.sprint_count).label("avg_sprint_count"),
+                func.avg(TrainingGPSData.dynamic_stress_load).label("avg_dynamic_stress_load"),
+                func.count(TrainingGPSData.id).label("sessions_count"),
+            )
+            .join(Player, TrainingGPSData.player_id == Player.id)
+            .where(Player.active == True)  # Only show active players
         )
         if club_id:
-            query = query.join(Player, TrainingGPSData.player_id == Player.id).where(Player.club_id == club_id)
+            query = query.where(Player.club_id == club_id)
         query = query.group_by(TrainingGPSData.player_id)
         result = await db.execute(query)
         rows = result.all()

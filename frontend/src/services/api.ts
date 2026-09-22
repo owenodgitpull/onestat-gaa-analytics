@@ -1150,11 +1150,11 @@ export interface SeasonExpectedPointsData {
 export interface LeaderboardPlayer {
   player_id: string;
   player_name: string;
-  avg_total_distance_m: number;
-  avg_max_speed_ms: number;
-  avg_high_speed_running_m: number;
-  avg_sprint_count: number;
-  avg_dynamic_stress_load: number;
+  avg_total_distance_m: number | null;
+  avg_max_speed_ms: number | null;
+  avg_high_speed_running_m: number | null;
+  avg_sprint_count: number | null;
+  avg_dynamic_stress_load: number | null;
   sessions_count: number;
 }
 
