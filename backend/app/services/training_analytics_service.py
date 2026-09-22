@@ -84,6 +84,7 @@ class TrainingAnalyticsService:
             .where(
                 and_(
                     Player.active == True,  # Only active squad members
+                    Player.position.isnot(None),  # Exclude players with no position set
                     Player.position != 'goalkeeper',  # Exclude goalkeepers (don't wear GPS)
                 )
             )
