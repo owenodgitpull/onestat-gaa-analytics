@@ -844,7 +844,7 @@ export default function Attendance() {
   })
 
   // Training overview (aggregated across all sessions)
-  const { data: trainingOverview } = useQuery({
+  const { data: trainingOverview, isLoading: isLoadingOverview } = useQuery({
     queryKey: ['training-overview'],
     queryFn: () => api.analytics.getTrainingOverview(),
     staleTime: 60_000,
@@ -1195,12 +1195,26 @@ export default function Attendance() {
       )}
 
       {/* Player Leaderboard — aggregated across all sessions */}
-      {trainingOverview && trainingOverview.leaderboard.length > 0 && (
+      {isLoadingOverview ? (
+        <div className="glass-card p-6">
+          <div className="h-8 w-48 bg-white/10 rounded animate-pulse mb-4" />
+          <div className="flex gap-2 mb-4">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="h-8 w-24 bg-white/10 rounded animate-pulse" />
+            ))}
+          </div>
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="h-12 bg-white/5 rounded animate-pulse" />
+            ))}
+          </div>
+        </div>
+      ) : trainingOverview && trainingOverview.leaderboard.length > 0 ? (
         <TrainingLeaderboard
           leaderboard={trainingOverview.leaderboard}
           squadAverages={trainingOverview.squad_averages}
         />
-      )}
+      ) : null}
 
       {/* Training Analytics Charts */}
       {trainingOverview && (

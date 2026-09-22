@@ -69,9 +69,11 @@ class TrainingAnalyticsService:
         prevent cross-club data leakage.
         """
         # Join with both Player and TrainingSession to filter by both club_ids
+        # Include Player.name in the query to avoid a separate round-trip
         query = (
             select(
                 TrainingGPSData.player_id,
+                Player.name.label("player_name"),  # Get name in same query
                 func.avg(TrainingGPSData.total_distance_m).label("avg_total_distance_m"),
                 func.avg(TrainingGPSData.max_speed_ms).label("avg_max_speed_ms"),
                 func.avg(TrainingGPSData.high_speed_running_m).label("avg_high_speed_running_m"),
@@ -96,19 +98,12 @@ class TrainingAnalyticsService:
                     TrainingSession.club_id == club_id,  # Session belongs to this club
                 )
             )
-        query = query.group_by(TrainingGPSData.player_id)
+        query = query.group_by(TrainingGPSData.player_id, Player.name)  # Group by name too
         result = await db.execute(query)
         rows = result.all()
 
         if not rows:
             return {"players": [], "squad_averages": {}}
-
-        # Get player names
-        player_ids = [r.player_id for r in rows]
-        players_result = await db.execute(
-            select(Player).where(Player.id.in_(player_ids))
-        )
-        names = {p.id: p.name for p in players_result.scalars().all()}
 
         players = []
         totals = {
@@ -120,7 +115,7 @@ class TrainingAnalyticsService:
         for r in rows:
             entry = {
                 "player_id": str(r.player_id),
-                "player_name": names.get(r.player_id, "Unknown"),
+                "player_name": r.player_name,  # Now comes directly from query
                 "avg_total_distance_m": round(r.avg_total_distance_m or 0, 1),
                 "avg_max_speed_ms": round(r.avg_max_speed_ms or 0, 2),
                 "avg_high_speed_running_m": round(r.avg_high_speed_running_m or 0, 1),
