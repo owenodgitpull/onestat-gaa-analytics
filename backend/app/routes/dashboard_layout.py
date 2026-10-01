@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from app.database import get_db
-from app.auth import require_admin_or_viewer, AuthenticatedUser
+from app.auth.dependencies import require_admin_or_viewer, AuthenticatedUser
 from app.models.dashboard_layout import DashboardLayout
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
