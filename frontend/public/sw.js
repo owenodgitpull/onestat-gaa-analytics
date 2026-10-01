@@ -5,7 +5,7 @@
 // fixing the "blank screen after a deploy" bug (see lazyWithRetry.ts for the
 // app-side half). A stale cache entry for an old-hashed JS chunk could keep
 // serving it from cache-first even after the server no longer has it.
-const CACHE_NAME = 'onestat-v3';
+const CACHE_NAME = 'onestat-v4';
 
 // ── Asset Caching (app shell loads offline) ──────────────────────────────
 
