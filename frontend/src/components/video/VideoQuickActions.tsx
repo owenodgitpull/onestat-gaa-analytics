@@ -69,7 +69,6 @@ const SCORING_ACTIONS: ActionButton[] = [
   { id: 'wide', label: 'Wide', eventType: 'WIDE', needsPlayer: true, needsPitch: true, playerModalTitle: 'Who Took?', playerModalEventType: 'wide', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'short', label: 'Short', eventType: 'SHORT', needsPlayer: true, needsPitch: true, playerModalTitle: 'Who Shot?', playerModalEventType: 'saved', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'block', label: 'Block', eventType: 'BLOCK_SHOT', needsPlayer: false, needsPitch: false },
-  { id: 'free_won', label: 'Free Won', eventType: 'FREE_WON_MARKER', needsPlayer: false, needsPitch: true },
   { id: 'forty_five', label: '45m Free', eventType: 'FORTY_FIVE_MARKER', needsPlayer: false, needsPitch: false },
   { id: 'pen_goal', label: 'Pen Goal', eventType: 'PENALTY_GOAL_MARKER', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Took?', playerModalEventType: 'goal', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'pen_miss', label: 'Pen Miss', eventType: 'PENALTY_MISS_MARKER', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Took?', playerModalEventType: 'wide', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
@@ -88,10 +87,10 @@ const TURNOVER_ACTIONS: ActionButton[] = [
 ]
 
 const OUR_KICKOUT_ACTIONS: ActionButton[] = [
-  { id: 'own_ko_won', label: 'We Won', eventType: 'OWN_KICKOUT_WON', needsPlayer: true, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
+  { id: 'own_ko_won', label: 'We Won', eventType: 'OWN_KICKOUT_WON', needsPlayer: true, needsPitch: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
   { id: 'own_ko_opp', label: 'Opp Won', eventType: 'OWN_KICKOUT_OPPOSITION_WON', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
-  { id: 'own_ko_won_brk', label: 'We Won Brk', eventType: 'OWN_KICKOUT_WON_BREAK', needsPlayer: true, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
-  { id: 'own_ko_opp_brk', label: 'Opp Won Brk', eventType: 'OWN_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  { id: 'own_ko_won_brk', label: 'We Won Break', eventType: 'OWN_KICKOUT_WON_BREAK', needsPlayer: true, needsPitch: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
+  { id: 'own_ko_opp_brk', label: 'Opp Won Break', eventType: 'OWN_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
   // Kickout goes out over the sideline — parity with live recording's
   // "Over Sideline" button (PitchActionOverlay.tsx). Unlike live recording
   // (which bakes team into own_kickout_sideline/opp_kickout_sideline as
@@ -103,10 +102,10 @@ const OUR_KICKOUT_ACTIONS: ActionButton[] = [
 ]
 
 const OPP_KICKOUT_ACTIONS: ActionButton[] = [
-  { id: 'opp_ko_won', label: 'We Won', eventType: 'OPP_KICKOUT_WON', needsPlayer: true, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
+  { id: 'opp_ko_won', label: 'We Won', eventType: 'OPP_KICKOUT_WON', needsPlayer: true, needsPitch: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
   { id: 'opp_ko_opp', label: 'Opp Won', eventType: 'OPP_KICKOUT_OPPOSITION_WON', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
-  { id: 'opp_ko_won_brk', label: 'We Won Brk', eventType: 'OPP_KICKOUT_WON_BREAK', needsPlayer: true, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
-  { id: 'opp_ko_opp_brk', label: 'Opp Won Brk', eventType: 'OPP_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  { id: 'opp_ko_won_brk', label: 'We Won Break', eventType: 'OPP_KICKOUT_WON_BREAK', needsPlayer: true, needsPitch: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
+  { id: 'opp_ko_opp_brk', label: 'Opp Won Break', eventType: 'OPP_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, needsPitch: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
   { id: 'opp_ko_sideline', label: 'Over Sideline', eventType: 'SIDELINE_KICK', needsPlayer: false, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'scoring' },
 ]
 

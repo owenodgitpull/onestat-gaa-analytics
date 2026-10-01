@@ -114,7 +114,7 @@ import { useQuery } from '@tanstack/react-query'
 import { PossessionTeam } from '../types'
 import type { Player, BallPosition } from '../types'
 
-type OverlayState = 'none' | 'player'
+type OverlayState = 'none' | 'player' | 'pitch'
 
 // Scoring event types that trigger the opposition-scorer name prompt when
 // team_b (the opponent) is credited with them.
@@ -783,6 +783,21 @@ export default function VideoTagging() {
   const handleTaggingBallCommit = useCallback((position: BallPosition) => {
     handleTaggingBallMove(position)
 
+    // If waiting for pitch position (e.g. kickout after player selected),
+    // finalize the event with this position
+    if (overlayState === 'pitch' && pendingOverlay) {
+      const data = {
+        ...pendingOverlay.eventData,
+        pitch_x: position.x,
+        pitch_y: position.y,
+        pitch_zone: xyToZone(position.x, position.y),
+      }
+      setOverlayState('none')
+      setTimeout(() => finalizeEventRef.current(pendingOverlay, data), 0)
+      setPendingOverlay(null)
+      return // Don't record possession point - the event will do that
+    }
+
     // If High Ball is armed, this commit IS the landing spot — log it, then
     // keep going: a long kick isn't a dead-ball restart, so the normal
     // possession recording below should still happen exactly as if this
@@ -838,7 +853,7 @@ export default function VideoTagging() {
     // TDZ error, not just a lint nit: this callback is created before that
     // declaration is reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleTaggingBallMove, session?.match_id, calcMatchTime, currentTimeMs, possession, pendingLongKick, sessionId, createEvent])
+  }, [handleTaggingBallMove, session?.match_id, calcMatchTime, currentTimeMs, possession, pendingLongKick, sessionId, createEvent, overlayState, pendingOverlay])
 
   // Which side the kicking team is attacking right now, for 45m-line
   // placement — mirrors MatchRecording.tsx's compute45LineX (34/66, the
@@ -1002,12 +1017,19 @@ export default function VideoTagging() {
     }
   }, [ballPosition, possession])
 
-  /** Player selected → finalize event */
+  /** Player selected → finalize event or wait for pitch tap if needsPitch */
   const handlePlayerSelect = useCallback((player: Player) => {
     setPendingOverlay(prev => {
       if (!prev) return prev
       const data = { ...prev.eventData, player_id: player.id }
-      // Schedule finalize after this setState completes
+
+      // If needsPitch, wait for user to tap the pitch before finalizing
+      if (prev.action.needsPitch) {
+        setOverlayState('pitch')
+        return { ...prev, eventData: data }
+      }
+
+      // Otherwise finalize immediately
       setTimeout(() => finalizeEventRef.current(prev, data), 0)
       return prev
     })
@@ -2300,6 +2322,17 @@ export default function VideoTagging() {
     />
   )
 
+  // "Tap pitch for position" overlay when waiting for kickout position
+  const pitchTapOverlay = overlayState === 'pitch' && (
+    <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto px-6 py-3 rounded-xl bg-amber-500/90 border-2 border-amber-300 shadow-2xl animate-pulse">
+        <p className="text-white font-bold text-sm">
+          Tap the pitch to set position
+        </p>
+      </div>
+    </div>
+  )
+
   const trackingOverlays = (
     <>
       {showExtraStats && (
@@ -2633,6 +2666,9 @@ export default function VideoTagging() {
             when a lineup exists, jersey-grid fallback otherwise */}
         {newEventPlayerPicker}
 
+        {/* Pitch position tap prompt (step 4 for kickouts) */}
+        {pitchTapOverlay}
+
         {/* Alert/error modal */}
         <ConfirmationModal
           isOpen={!!alertModal}
@@ -2962,6 +2998,9 @@ export default function VideoTagging() {
       {/* Player picker (step 3 of the tap flow) — pitch-formation circles
           when a lineup exists, jersey-grid fallback otherwise */}
       {newEventPlayerPicker}
+
+      {/* Pitch position tap prompt (step 4 for kickouts) */}
+      {pitchTapOverlay}
 
       {/* Edit-player modal — separate instance/state (editingPlayerEventId)
           from the new-event picker above, so editing an existing event's
