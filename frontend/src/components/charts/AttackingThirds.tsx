@@ -176,8 +176,8 @@ export default function AttackingThirds({ data, matchesInView = 0 }: AttackingTh
                 <text x={zoneX0 + 30} y={y0 + 56} fill="white" fontSize="48" fontWeight="bold">
                   {Math.round(pcts[c.key])}%
                 </text>
-                <rect x={zoneX1 - 118} y={y0 + 10} width={104} height={30} rx={8} fill="rgba(0,0,0,0.55)" />
-                <text x={zoneX1 - 66} y={y0 + 31} fill="rgba(255,255,255,0.85)" fontSize="20" fontWeight="700" textAnchor="middle" letterSpacing="1">
+                <rect x={zoneX1 - 160} y={y0 + 5} width={150} height={60} rx={8} fill="rgba(0,0,0,0.70)" />
+                <text x={zoneX1 - 85} y={y0 + 44} fill="rgba(255,255,255,1)" fontSize="52" fontWeight="800" textAnchor="middle" letterSpacing="1.5">
                   {c.label.toUpperCase()}
                 </text>
               </g>
