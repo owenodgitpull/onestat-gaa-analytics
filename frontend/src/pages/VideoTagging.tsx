@@ -40,7 +40,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, PanelRight, PanelBottom, Play, Target } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, PanelRight, PanelBottom, Play, Target, Undo2 } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -53,6 +53,7 @@ import WeatherPickerPopover from '../components/WeatherPickerPopover'
 import SyncPreviewModal from '../components/video/SyncPreviewModal'
 import ConfirmationModal from '../components/ConfirmationModal'
 import SetupFlowModal, { type SetupStep } from '../components/video/SetupFlowModal'
+import UndoToPointModal from '../components/video/UndoToPointModal'
 import AttackDirectionBadge from '../components/video/AttackDirectionBadge'
 import VideoStatsPanel from '../components/video/VideoStatsPanel'
 import VideoManualEventModal from '../components/video/VideoManualEventModal'
@@ -103,6 +104,8 @@ import {
   useVerifyVideoEvent,
   useSyncPreview,
   useSyncConfirm,
+  useDeleteVideoEventsAfter,
+  useDeleteCarrierSegmentsAfter,
 } from '../hooks/useVideoEvents'
 import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
 import type { VideoEventCreateData, VideoEventUpdateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
@@ -221,6 +224,11 @@ export default function VideoTagging() {
   const completeTracking = useCompleteTracking()
   const resetSession = useResetVideoSession()
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+
+  // Undo-to-point modal
+  const [showUndoModal, setShowUndoModal] = useState(false)
+  const deleteEventsAfter = useDeleteVideoEventsAfter()
+  const deleteSegmentsAfter = useDeleteCarrierSegmentsAfter()
 
   // Forward-scrub ceiling while tracking — the furthest point reached so
   // far. Initialized from the server-persisted high-water mark once (so a
@@ -510,6 +518,29 @@ export default function VideoTagging() {
     await completeTracking.mutateAsync({ sessionId })
     setShowFullTimeConfirm(false)
   }, [sessionId, completeTracking])
+
+  const handleUndoToPoint = useCallback(async (timestampMs: number) => {
+    if (!sessionId || !matchData) return
+
+    try {
+      // Delete events and segments after the selected point
+      await Promise.all([
+        deleteEventsAfter.mutateAsync({ sessionId, timestampMs }),
+        deleteSegmentsAfter.mutateAsync({ matchId: matchData.id, timestampMs }),
+      ])
+
+      // Reset high-water mark to allow re-recording from this point
+      setHighWaterMarkMs(timestampMs)
+      highWaterMarkRef.current = timestampMs
+
+      // Seek video to this point
+      playerRef.current?.seekTo(timestampMs)
+
+      // Modal will close automatically via onConfirm
+    } catch (error) {
+      console.error('Failed to undo to point:', error)
+    }
+  }, [sessionId, matchData, deleteEventsAfter, deleteSegmentsAfter])
 
   /** Convert video timestamp to match minute/second/half, accounting for throw-in offsets */
   const calcMatchTime = useCallback((videoMs: number): { minute: number; second: number; half: number } => {
@@ -1879,6 +1910,15 @@ export default function VideoTagging() {
           >
             End Tracking
           </button>
+          {(events && events.length > 0) && (
+            <button
+              onClick={() => setShowUndoModal(true)}
+              className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 font-medium transition-colors whitespace-nowrap flex items-center gap-1.5`}
+            >
+              <Undo2 size={compact ? 12 : 14} />
+              Undo to Point
+            </button>
+          )}
         </>
       )}
       {!isFullscreen && (
@@ -3077,6 +3117,19 @@ export default function VideoTagging() {
             <span className="text-sm text-white/60">Second yellow card — player sent off</span>
           </div>
         </div>
+      )}
+
+      {/* Undo to Point Modal */}
+      {showUndoModal && (
+        <UndoToPointModal
+          isOpen={showUndoModal}
+          onClose={() => setShowUndoModal(false)}
+          onConfirm={handleUndoToPoint}
+          currentTimeMs={highWaterMarkMs}
+          events={events || []}
+          segments={[]}
+          minUndoTimeMs={session?.first_half_start_ms ?? 0}
+        />
       )}
 
       <style>{`

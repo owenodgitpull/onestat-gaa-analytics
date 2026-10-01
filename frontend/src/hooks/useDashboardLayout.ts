@@ -1,15 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AIChartSpec } from '@/services/api'
+import { dashboardLayoutAPI } from '@/services/api'
 
-// Namespaced per club — was a single global key, so switching clubs on the
-// same browser (TeamSwitcher, or logging into a different club) silently
-// inherited whichever club's layout happened to be saved last. For the
-// canonical chart order/hidden list that's just a wrong-looking dashboard;
-// for pinnedAiCharts it's worse, since that array stores the actual
-// rendered chart DATA (not just an id) — one club's real match numbers
-// would render on another club's dashboard. See project memory for the
-// incident this was reported from.
-const STORAGE_KEY_BASE = 'gaa-dashboard-layout'
 const MAX_PINNED = 8
 
 const NEW_V3_CHART_IDS = [
@@ -86,118 +78,127 @@ function createDefault(pinnedAiCharts: AIChartSpec[] = []): DashboardLayout {
   }
 }
 
-function loadLayout(clubId: string): DashboardLayout {
-  const storageKey = `${STORAGE_KEY_BASE}:${clubId}`
-  try {
-    const raw = localStorage.getItem(storageKey)
-    if (raw) {
-      const parsed = JSON.parse(raw)
+// Apply migrations to a layout loaded from the server
+function migrateLayout(layout: DashboardLayout): { layout: DashboardLayout; needsSave: boolean } {
+  let migrated = { ...layout }
+  let needsSave = false
 
-      // v2 → v3 migration: add new chart IDs to hiddenCharts (not visible by default)
-      if (parsed.version === 2) {
-        parsed.version = 3
-        const existing = new Set([...parsed.chartOrder, ...parsed.hiddenCharts])
-        for (const id of NEW_V3_CHART_IDS) {
-          if (!existing.has(id)) {
-            parsed.hiddenCharts.push(id)
-          }
-        }
-        saveLayout(parsed, clubId)
-        return parsed
-      }
-
-      // v3 → v4 migration: remove sections that are no longer draggable
-      if (parsed.version === 3) {
-        parsed.version = 4
-        const removed = new Set(['recent-results', 'insight-alerts', 'ai-insights'])
-        parsed.sectionOrder = (parsed.sectionOrder || []).filter((s: string) => !removed.has(s))
-        // Ensure remaining defaults present
-        for (const s of DEFAULT_SECTION_ORDER) {
-          if (!parsed.sectionOrder.includes(s)) parsed.sectionOrder.push(s)
-        }
-        saveLayout(parsed, clubId)
-        return parsed
-      }
-
-      // v4 → v5 migration: remove top-scorers section (moved to player page)
-      if (parsed.version === 4) {
-        parsed.version = 5
-        parsed.sectionOrder = (parsed.sectionOrder || []).filter((s: string) => s !== 'top-scorers')
-        for (const s of DEFAULT_SECTION_ORDER) {
-          if (!parsed.sectionOrder.includes(s)) parsed.sectionOrder.push(s)
-        }
-        saveLayout(parsed, clubId)
-        return parsed
-      }
-
-      if (parsed.version === 5) {
-        // v5 → v6: add season-hmld to hiddenCharts (GPS chart, hidden by default)
-        parsed.version = 6
-        const savedSections: string[] = parsed.sectionOrder || []
-        const missing = DEFAULT_SECTION_ORDER.filter(s => !savedSections.includes(s))
-        if (missing.length > 0) {
-          parsed.sectionOrder = [...missing, ...savedSections]
-        }
-        const existing = new Set([...parsed.chartOrder, ...(parsed.hiddenCharts || [])])
-        for (const id of NEW_V6_CHART_IDS) {
-          if (!existing.has(id)) parsed.hiddenCharts.push(id)
-        }
-        saveLayout(parsed, clubId)
-        return parsed
-      }
-
-      if (parsed.version === 6) {
-        // v6 → v7: add transition-speed + press-trigger to hiddenCharts
-        parsed.version = 7
-        const existing = new Set([...parsed.chartOrder, ...(parsed.hiddenCharts || [])])
-        for (const id of NEW_V7_CHART_IDS) {
-          if (!existing.has(id)) parsed.hiddenCharts.push(id)
-        }
-        saveLayout(parsed, clubId)
-        return parsed
-      }
-
-      if (parsed.version === 7) {
-        return parsed
+  // v2 → v3 migration: add new chart IDs to hiddenCharts (not visible by default)
+  if (migrated.version === 2) {
+    migrated.version = 3
+    const existing = new Set([...migrated.chartOrder, ...migrated.hiddenCharts])
+    for (const id of NEW_V3_CHART_IDS) {
+      if (!existing.has(id)) {
+        migrated.hiddenCharts = [...migrated.hiddenCharts, id]
       }
     }
-  } catch {
-    // Corrupted storage
+    needsSave = true
   }
-  return createDefault()
+
+  // v3 → v4 migration: remove sections that are no longer draggable
+  if (migrated.version === 3) {
+    migrated.version = 4
+    const removed = new Set(['recent-results', 'insight-alerts', 'ai-insights'])
+    migrated.sectionOrder = (migrated.sectionOrder || []).filter((s: string) => !removed.has(s))
+    for (const s of DEFAULT_SECTION_ORDER) {
+      if (!migrated.sectionOrder.includes(s)) migrated.sectionOrder.push(s)
+    }
+    needsSave = true
+  }
+
+  // v4 → v5 migration: remove top-scorers section (moved to player page)
+  if (migrated.version === 4) {
+    migrated.version = 5
+    migrated.sectionOrder = (migrated.sectionOrder || []).filter((s: string) => s !== 'top-scorers')
+    for (const s of DEFAULT_SECTION_ORDER) {
+      if (!migrated.sectionOrder.includes(s)) migrated.sectionOrder.push(s)
+    }
+    needsSave = true
+  }
+
+  // v5 → v6 migration: add season-hmld to hiddenCharts (GPS chart, hidden by default)
+  if (migrated.version === 5) {
+    migrated.version = 6
+    const savedSections: string[] = migrated.sectionOrder || []
+    const missing = DEFAULT_SECTION_ORDER.filter(s => !savedSections.includes(s))
+    if (missing.length > 0) {
+      migrated.sectionOrder = [...missing, ...savedSections]
+    }
+    const existing = new Set([...migrated.chartOrder, ...(migrated.hiddenCharts || [])])
+    for (const id of NEW_V6_CHART_IDS) {
+      if (!existing.has(id)) migrated.hiddenCharts = [...migrated.hiddenCharts, id]
+    }
+    needsSave = true
+  }
+
+  // v6 → v7 migration: add transition-speed + press-trigger to hiddenCharts
+  if (migrated.version === 6) {
+    migrated.version = 7
+    const existing = new Set([...migrated.chartOrder, ...(migrated.hiddenCharts || [])])
+    for (const id of NEW_V7_CHART_IDS) {
+      if (!existing.has(id)) migrated.hiddenCharts = [...migrated.hiddenCharts, id]
+    }
+    needsSave = true
+  }
+
+  return { layout: migrated, needsSave }
 }
 
-function saveLayout(layout: DashboardLayout, clubId: string) {
+async function saveLayoutToServer(layout: DashboardLayout): Promise<void> {
   try {
-    localStorage.setItem(`${STORAGE_KEY_BASE}:${clubId}`, JSON.stringify(layout))
-  } catch {
-    // localStorage full
+    await dashboardLayoutAPI.save(layout)
+  } catch (error) {
+    console.error('Failed to save dashboard layout:', error)
   }
 }
 
 /**
  * @param clubId Current club's id (from useClub()). Layout stays at
- * in-memory defaults and nothing is read/written to localStorage until
- * this is known — avoids ever flashing a previous club's saved layout
+ * in-memory defaults until loaded from server — avoids flashing stale data
  * during the brief window before club context finishes loading.
  */
 export function useDashboardLayout(clubId: string | null | undefined) {
   const [layout, setLayout] = useState<DashboardLayout>(() => createDefault())
   const loadedForClubRef = useRef<string | null>(null)
 
+  // Load layout from server when clubId changes
   useEffect(() => {
     if (!clubId || loadedForClubRef.current === clubId) return
     loadedForClubRef.current = clubId
-    setLayout(loadLayout(clubId))
+
+    // Load from server
+    dashboardLayoutAPI.get()
+      .then(response => {
+        if (response) {
+          const { layout: migratedLayout, needsSave } = migrateLayout(response.layout_data)
+          setLayout(migratedLayout)
+          // If migrations were applied, save back to server
+          if (needsSave) {
+            saveLayoutToServer(migratedLayout)
+          }
+        } else {
+          // No saved layout, use defaults
+          const defaultLayout = createDefault()
+          setLayout(defaultLayout)
+          // Save defaults to server for this club
+          saveLayoutToServer(defaultLayout)
+        }
+      })
+      .catch(error => {
+        console.error('Failed to load dashboard layout:', error)
+        // Fall back to defaults on error
+        setLayout(createDefault())
+      })
   }, [clubId])
 
   const updateLayout = useCallback((updater: (prev: DashboardLayout) => DashboardLayout) => {
     setLayout(prev => {
       const next = updater(prev)
-      if (clubId) saveLayout(next, clubId)
+      // Save to server (non-blocking)
+      saveLayoutToServer(next)
       return next
     })
-  }, [clubId])
+  }, [])
 
   // Pin an AI chart → add to pinnedAiCharts + chartOrder, returns true if pinned
   const pinChart = useCallback((chart: AIChartSpec) => {
@@ -265,9 +266,9 @@ export function useDashboardLayout(clubId: string | null | undefined) {
   // Reset to defaults
   const resetLayout = useCallback(() => {
     const fresh = createDefault()
-    if (clubId) saveLayout(fresh, clubId)
     setLayout(fresh)
-  }, [clubId])
+    saveLayoutToServer(fresh)
+  }, [])
 
   return {
     layout,

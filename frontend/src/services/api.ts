@@ -2985,6 +2985,9 @@ const playerMovementAPI = {
   deleteCarrierSegment: (segmentId: string): Promise<void> =>
     fetchAPI(`/player-movement/carrier-segments/${segmentId}`, { method: 'DELETE' }),
 
+  deleteCarrierSegmentsAfter: (matchId: string, timestampMs: number): Promise<{ deleted_count: number; match_id: string; after_ms: number }> =>
+    fetchAPI(`/player-movement/carrier-segments/match/${matchId}/after/${timestampMs}`, { method: 'DELETE' }),
+
   // Formation snapshots
   createSnapshot: (data: {
     match_id: string;
@@ -3309,6 +3312,30 @@ export const matchVoiceNotesAPI = {
     fetchAPI(`/match-voice-notes/${noteId}`, { method: 'DELETE' }),
 };
 
+export interface DashboardLayoutData {
+  version: number;
+  chartOrder: string[];
+  hiddenCharts: string[];
+  sectionOrder: string[];
+  pinnedAiCharts: AIChartSpec[];
+}
+
+export interface DashboardLayoutResponse {
+  layout_data: DashboardLayoutData;
+  updated_at: string;
+}
+
+export const dashboardLayoutAPI = {
+  get: (): Promise<DashboardLayoutResponse | null> =>
+    fetchAPI('/dashboard/layout'),
+
+  save: (layout_data: DashboardLayoutData): Promise<DashboardLayoutResponse> =>
+    fetchAPI('/dashboard/layout', {
+      method: 'POST',
+      body: JSON.stringify({ layout_data }),
+    }),
+};
+
 export const api = {
   players: playersAPI,
   matches: matchesAPI,
@@ -3332,6 +3359,7 @@ export const api = {
   playbook: playbookAPI,
   auditLog: auditLogAPI,
   matchAnalytics: matchAnalyticsAPI,
+  dashboardLayout: dashboardLayoutAPI,
 };
 
 export default api;

@@ -8,6 +8,7 @@ import {
   type VideoEventCreateData,
   type VideoEventUpdateData,
 } from '../services/videoApi';
+import api from '../services/api';
 
 export const videoEventKeys = {
   all: ['videoEvents'] as const,
@@ -108,5 +109,28 @@ export function useSyncConfirm() {
         queryKey: videoEventKeys.bySession(sessionId),
       });
     },
+  });
+}
+
+/** Delete all video events after a timestamp (for undo-to-point). */
+export function useDeleteVideoEventsAfter() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (args: { sessionId: string; timestampMs: number }) =>
+      videoEventsAPI.deleteAfter(args.sessionId, args.timestampMs),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: videoEventKeys.bySession(variables.sessionId),
+      });
+    },
+  });
+}
+
+/** Delete all ball carrier segments after a timestamp (for undo-to-point). */
+export function useDeleteCarrierSegmentsAfter() {
+  return useMutation({
+    mutationFn: (args: { matchId: string; timestampMs: number }) =>
+      api.playerMovement.deleteCarrierSegmentsAfter(args.matchId, args.timestampMs),
   });
 }

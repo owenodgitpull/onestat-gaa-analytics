@@ -6,7 +6,7 @@ import logging
 from uuid import UUID
 from datetime import datetime
 from typing import Optional, Tuple, List
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -238,6 +238,31 @@ async def delete_video_event(
     await db.delete(event)
     await db.commit()
     return {"detail": "Event deleted"}
+
+
+@router.delete("/session/{session_id}/after/{timestamp_ms}", status_code=status.HTTP_200_OK)
+async def delete_video_events_after_timestamp(
+    session_id: UUID,
+    timestamp_ms: int,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all video events after a given timestamp (for undo-to-point feature)."""
+    from sqlalchemy import delete
+
+    # Verify session belongs to user's club
+    session = await _get_session_for_club(session_id, user.club_id, db)
+
+    # Convert timestamp_ms to minutes (events store minute as int)
+    timestamp_minutes = timestamp_ms / 60000.0
+
+    result = await db.execute(
+        delete(VideoEvent)
+        .where(VideoEvent.video_session_id == session_id)
+        .where(VideoEvent.minute > timestamp_minutes)
+    )
+    await db.commit()
+    return {"deleted_count": result.rowcount, "session_id": str(session_id), "after_ms": timestamp_ms}
 
 
 @router.post("/{session_id}/bulk", response_model=VideoEventListResponse)

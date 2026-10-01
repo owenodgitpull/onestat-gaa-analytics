@@ -137,6 +137,25 @@ class PlayerMovementService:
         await db.commit()
         return True
 
+    @staticmethod
+    async def delete_carrier_segments_after(
+        db: AsyncSession,
+        match_id: UUID,
+        timestamp_ms: int,
+    ) -> int:
+        """Delete all carrier segments that started after the given timestamp (in milliseconds).
+        Used for the undo-to-point feature in video tagging."""
+        # Convert timestamp_ms to minutes (segments store started_at_minute as Decimal)
+        timestamp_minutes = timestamp_ms / 60000.0
+
+        result = await db.execute(
+            delete(BallCarrierSegment)
+            .where(BallCarrierSegment.match_id == match_id)
+            .where(BallCarrierSegment.started_at_minute > timestamp_minutes)
+        )
+        await db.commit()
+        return result.rowcount
+
     # ── Formation Snapshots ────────────────────────────────────────────
 
     @staticmethod

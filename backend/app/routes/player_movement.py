@@ -155,6 +155,18 @@ async def delete_carrier_segment(
         raise HTTPException(status_code=404, detail="Segment not found")
 
 
+@router.delete("/carrier-segments/match/{match_id}/after/{timestamp_ms}", status_code=status.HTTP_200_OK)
+async def delete_carrier_segments_after_timestamp(
+    match_id: UUID,
+    timestamp_ms: int,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all ball carrier segments after a given timestamp (for undo-to-point feature)."""
+    deleted_count = await PlayerMovementService.delete_carrier_segments_after(db, match_id, timestamp_ms)
+    return {"deleted_count": deleted_count, "match_id": str(match_id), "after_ms": timestamp_ms}
+
+
 # ── Formation Snapshots ────────────────────────────────────────────────
 
 

@@ -2251,6 +2251,12 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     )
     events = events_result.scalars().all()
 
+    # If no events tagged yet, return error so AI knows match isn't ready for analysis
+    if not events:
+        return safe_json({
+            "error": f"Match {match.opponent} on {match.match_date.date().isoformat()} has no events tracked yet. This match is not ready for tactical analysis."
+        })
+
     # Calculate scores - use EventType and Team enums
     goal_types = {EventType.GOAL, EventType.PENALTY_GOAL}
     point_types = {EventType.POINT, EventType.POINT_FREE, EventType.FORTY_FIVE}

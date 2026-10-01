@@ -276,14 +276,20 @@ export const videoSessionsAPI = {
     ),
 
   /** Set throw-in markers for 1st and/or 2nd half. */
-  setHalfStarts: (sessionId: string, firstHalfStartMs?: number, secondHalfStartMs?: number) =>
-    fetchAPI<VideoSession>(
+  setHalfStarts: (sessionId: string, firstHalfStartMs?: number, secondHalfStartMs?: number) => {
+    const body: any = {}
+    // Only include fields with values > 0 (backend validation requires gt=0)
+    if (firstHalfStartMs !== undefined && firstHalfStartMs > 0) {
+      body.first_half_start_ms = firstHalfStartMs
+    }
+    if (secondHalfStartMs !== undefined && secondHalfStartMs > 0) {
+      body.second_half_start_ms = secondHalfStartMs
+    }
+    return fetchAPI<VideoSession>(
       `/video/session/${sessionId}/set-half-starts`,
-      { method: 'POST', body: JSON.stringify({
-        first_half_start_ms: firstHalfStartMs ?? null,
-        second_half_start_ms: secondHalfStartMs ?? null,
-      }) }
-    ),
+      { method: 'POST', body: JSON.stringify(body) }
+    )
+  },
 
   /** Set the full-time whistle/hooter timestamp. */
   setFullTime: (sessionId: string, fullTimeMs: number) =>
@@ -528,6 +534,10 @@ export const videoEventsAPI = {
   /** Delete an event. */
   delete: (eventId: string) =>
     fetchAPI<{ detail: string }>(`/video/events/event/${eventId}`, { method: 'DELETE' }),
+
+  /** Delete all events after a timestamp (for undo-to-point). */
+  deleteAfter: (sessionId: string, timestampMs: number) =>
+    fetchAPI<{ deleted_count: number; session_id: string; after_ms: number }>(`/video/events/session/${sessionId}/after/${timestampMs}`, { method: 'DELETE' }),
 
   /** Bulk create events. */
   bulkCreate: (sessionId: string, events: VideoEventCreateData[]) =>

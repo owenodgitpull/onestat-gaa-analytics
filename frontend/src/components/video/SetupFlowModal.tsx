@@ -92,10 +92,16 @@ export default function SetupFlowModal({
               Scrub the video to the exact moment the ball is thrown in to start the match, then mark it.
             </p>
             <VideoTimeReadout ms={currentTimeMs} />
+            {currentTimeMs < 1000 && (
+              <p className="text-xs text-amber-400/80 mb-2 flex items-center gap-1.5">
+                <span>👆</span> Scrub to the throw-in moment first
+              </p>
+            )}
             <ActionRow
               primaryLabel="Mark Throw-In"
               onPrimary={onMarkFirstHalf}
               isSaving={isSaving}
+              disabled={currentTimeMs < 1000}
             />
           </>
         )}
@@ -107,11 +113,17 @@ export default function SetupFlowModal({
               Scrub to the referee's half-time whistle so each half is timed correctly.
             </p>
             <VideoTimeReadout ms={currentTimeMs} />
+            {currentTimeMs < 1000 && (
+              <p className="text-xs text-amber-400/80 mb-2 flex items-center gap-1.5">
+                <span>👆</span> Scrub to the half-time whistle first
+              </p>
+            )}
             <ActionRow
               primaryLabel="Mark Half-Time"
               onPrimary={onMarkHalftime}
               onSkip={onSkipHalftime}
               isSaving={isSaving}
+              disabled={currentTimeMs < 1000}
             />
           </>
         )}
@@ -123,12 +135,18 @@ export default function SetupFlowModal({
               Scrub to the restart after half-time, then mark it.
             </p>
             <VideoTimeReadout ms={currentTimeMs} />
+            {currentTimeMs < 1000 && (
+              <p className="text-xs text-amber-400/80 mb-2 flex items-center gap-1.5">
+                <span>👆</span> Scrub to the 2nd half throw-in first
+              </p>
+            )}
             <ActionRow
               primaryLabel="Mark 2nd-Half Start"
               onPrimary={onMarkSecondHalf}
               onSkip={onSkipSecondHalf}
               skipLabel="Skip (single half)"
               isSaving={isSaving}
+              disabled={currentTimeMs < 1000}
             />
           </>
         )}
@@ -140,12 +158,18 @@ export default function SetupFlowModal({
               Scrub to the full-time whistle/hooter. This lets tracking end automatically when the match does.
             </p>
             <VideoTimeReadout ms={currentTimeMs} />
+            {currentTimeMs < 1000 && (
+              <p className="text-xs text-amber-400/80 mb-2 flex items-center gap-1.5">
+                <span>👆</span> Scrub to the full-time whistle first
+              </p>
+            )}
             <ActionRow
               primaryLabel="Mark Full-Time"
               onPrimary={onMarkFullTime}
               onSkip={onSkipFullTime}
               skipLabel="Skip for now"
               isSaving={isSaving}
+              disabled={currentTimeMs < 1000}
             />
           </>
         )}
@@ -241,20 +265,29 @@ function ActionRow({
   onSkip,
   skipLabel = 'Skip',
   isSaving,
+  disabled = false,
 }: {
   primaryLabel: string
   onPrimary: () => void
   onSkip?: () => void
   skipLabel?: string
   isSaving: boolean
+  disabled?: boolean
 }) {
+  const isDisabled = isSaving || disabled
   return (
     <div className="flex gap-2">
       <button
         onClick={onPrimary}
-        disabled={isSaving}
-        className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all animate-pulse hover:animate-none disabled:opacity-40"
-        style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+        disabled={isDisabled}
+        className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+        style={{
+          background: isDisabled ? 'rgba(255,255,255,0.1)' : 'var(--gradient-primary)',
+          color: isDisabled ? 'rgba(255,255,255,0.3)' : '#0a1a10',
+          border: '1px solid rgba(0,230,118,0.3)',
+          boxShadow: isDisabled ? 'none' : '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
+          animation: isDisabled ? 'none' : 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+        }}
       >
         {isSaving ? <Loader2 size={14} className="animate-spin mx-auto" /> : primaryLabel}
       </button>

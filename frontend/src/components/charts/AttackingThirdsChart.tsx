@@ -292,8 +292,8 @@ export default function AttackingThirdsChart({
                         overlay) so it's always pinned to its own band regardless
                         of how the svg itself gets scaled/letterboxed inside the
                         card. Sits top-right of the band, clear of the arrow. */}
-                    <rect x={zoneX1 - 118} y={y0 + 10} width={104} height={30} rx={8} fill="rgba(0,0,0,0.55)" />
-                    <text x={zoneX1 - 66} y={y0 + 31} fill="rgba(255,255,255,0.85)" fontSize="20" fontWeight="700" textAnchor="middle" letterSpacing="1">
+                    <rect x={zoneX1 - 150} y={y0 + 5} width={140} height={48} rx={8} fill="rgba(0,0,0,0.70)" />
+                    <text x={zoneX1 - 80} y={y0 + 36} fill="rgba(255,255,255,1)" fontSize="36" fontWeight="800" textAnchor="middle" letterSpacing="1.5">
                       {c.label.toUpperCase()}
                     </text>
                   </g>

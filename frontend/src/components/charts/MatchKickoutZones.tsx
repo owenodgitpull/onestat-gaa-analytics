@@ -216,10 +216,12 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
                     {(() => {
                       const radius = 75 + (count / maxCount) * 70
                       const wonAngle = (stats.won / count) * 2 * Math.PI
+                      // If 0% win rate, show full red circle; if 100% win rate, show full cyan; otherwise show split
+                      const baseColor = stats.won === 0 ? "rgba(239,68,68,0.55)" : "rgba(34,211,238,0.55)"
                       return (
                         <>
-                          <circle cx={cx} cy={cy} r={radius} fill="rgba(34,211,238,0.55)" />
-                          {stats.lost > 0 && (() => {
+                          <circle cx={cx} cy={cy} r={radius} fill={baseColor} />
+                          {stats.lost > 0 && stats.won > 0 && (() => {
                             const startAngle = wonAngle - Math.PI / 2
                             const endAngle = 2 * Math.PI - Math.PI / 2
                             const x1 = cx + radius * Math.cos(startAngle)
