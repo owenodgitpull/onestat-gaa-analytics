@@ -1,3 +1,10 @@
+// TEMPORARILY DISABLED FOR DEMO (2026-10-01)
+// No trial/upgrade banners during demo
+export default function TrialBanner() {
+  return null
+}
+
+/* Original implementation (restore after demo):
 import { useState } from 'react'
 import { X, Zap } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -20,18 +27,12 @@ export default function TrialBanner() {
   const [dismissed, setDismissed] = useState(wasDismissedToday)
 
   if (!user) return null
-  // Players never see the trial banner
   if (user.role === 'player') return null
-  // Paid or grandfathered — no banner
   if (user.on_paid_plan) return null
-  // No trial set — grandfathered
   if (!user.trial_ends_at) return null
-  // After expiry — handled at the recording gate, not banner
   if (user.trial_expired) return null
-  // Very early trial (> 22 days left) — stay quiet
   const days = user.trial_days_remaining ?? 30
   if (days > 22) return null
-  // Early window (15–22 days): show once, dismissible
   if (days > 14 && dismissed) return null
 
   const urgency =
@@ -90,3 +91,4 @@ export default function TrialBanner() {
     </div>
   )
 }
+*/
