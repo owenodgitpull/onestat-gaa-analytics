@@ -32,8 +32,12 @@ SLIDING_WINDOW_SIZE = 10
 # MAX_TOOL_ITERATIONS bounds the loop itself, and CLAUDE_CALL_TIMEOUT_SECONDS
 # bounds each individual API call (the SDK's own default is ~10 minutes,
 # far too long for a chat UI where "never hang" was the explicit ask).
-MAX_TOOL_ITERATIONS = 8
-CLAUDE_CALL_TIMEOUT_SECONDS = 45
+# Increased 2026-10-01 to handle complex multi-dimensional queries (e.g.
+# "analyze first half vs second half performance across possession chains,
+# ball recovery time, and transition speeds for the whole season") which
+# legitimately need 10+ tool calls to gather all the data.
+MAX_TOOL_ITERATIONS = 15
+CLAUDE_CALL_TIMEOUT_SECONDS = 60
 FALLBACK_MESSAGE = (
     "I wasn't able to pin that down after checking a few different angles — "
     "could you double-check the spelling (e.g. of a team or player name) or "
@@ -51,7 +55,9 @@ FALLBACK_MESSAGE = (
 # up later after a reload" report. Timing the tool call out and feeding
 # Claude a "this tool timed out" result lets the turn finish and stream a
 # real answer either way, instead of leaving the request to hang or die.
-TOOL_EXECUTION_TIMEOUT_SECONDS = 30
+# Increased to 45s (2026-10-01) for complex queries like get_ball_carrier_data
+# and possession chain analysis across full matches.
+TOOL_EXECUTION_TIMEOUT_SECONDS = 45
 
 # Per-step timeouts (Claude call, tool call) bound each individual step, but
 # nothing bounded the WHOLE turn — a query needing 2-3 tool rounds (common:
@@ -66,14 +72,15 @@ TOOL_EXECUTION_TIMEOUT_SECONDS = 30
 # calls and forces one last text-only reply summarising whatever's already
 # been gathered, so the turn reliably finishes well inside a sane window
 # instead of gambling on how long an intermediary will tolerate the stream.
-# Increased from 35s to 60s (2026-10-01) to handle team-wide queries -
-# RAG handles knowledge base efficiently, but multi-player stat queries
-# legitimately need more tool rounds without timing out prematurely.
-TOTAL_STREAM_BUDGET_SECONDS = 60
-WRAPUP_CALL_TIMEOUT_SECONDS = 20
+# Increased from 60s to 120s (2026-10-01) to handle complex multi-dimensional
+# queries that need to gather data from multiple tools (e.g. stats_by_half +
+# ball_carrier_data + ball_recovery_time + turnover_to_shot_time across
+# multiple matches for season-wide pattern analysis).
+TOTAL_STREAM_BUDGET_SECONDS = 120
+WRAPUP_CALL_TIMEOUT_SECONDS = 30
 TIMEOUT_FALLBACK_MESSAGE = (
-    "I've gathered what I could, but this query needs more time than I have in one turn. "
-    "Try asking again - sometimes breaking it into smaller questions helps, or I might just need another go at it."
+    "I've gathered substantial data, but this complex query needs more time to complete fully. "
+    "Here's what I found so far - you can ask follow-up questions to dive deeper into specific aspects."
 )
 
 

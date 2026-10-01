@@ -2321,8 +2321,8 @@ export default function VideoTagging() {
       onClose={handlePlayerSkip}
       onSelectPlayer={handlePlayerSelect}
       eventType={pendingOverlay?.action.playerModalEventType || 'point'}
-      team={(pendingOverlay?.eventData.team ?? possession) === 'team_a' ? 'own' : 'opponent'}
-      players={playerList}
+      team="own"
+      players={playerList.filter(p => matchLineup.some(ml => ml.player_id === p.id && ml.is_on_field))}
       matchLineup={matchLineup}
       teamPrimaryColor={club?.primary_colour || '#10B981'}
       teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
@@ -2336,7 +2336,7 @@ export default function VideoTagging() {
       onClose={handlePlayerSkip}
       onSelectPlayer={handlePlayerSelect}
       eventType={pendingOverlay?.action.playerModalEventType || 'point'}
-      team={(pendingOverlay?.eventData.team ?? possession) === 'team_a' ? 'own' : 'opponent'}
+      team="own"
       players={playerList}
     />
   )
