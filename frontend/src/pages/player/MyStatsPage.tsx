@@ -764,28 +764,8 @@ function AIInsightsCard() {
 
   const insights = data?.insights || [];
 
-  // Show fallback message if no insights available (error or empty)
-  if (insights.length === 0) {
-    return (
-      <div
-        className="rounded-xl p-4"
-        style={{
-          background: 'linear-gradient(135deg, rgba(168,85,247,0.08), rgba(139,92,246,0.04))',
-          border: '1px solid rgba(168,85,247,0.15)',
-        }}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles size={14} className="text-purple-400" />
-          <span className="text-xs font-semibold text-purple-300">AI Insights</span>
-        </div>
-        <p className="text-[11px] text-white/50 leading-relaxed mt-2">
-          {isError
-            ? "Unable to generate insights right now. Try refreshing in a moment."
-            : "No insights available yet. Play more matches to unlock personalized tips."}
-        </p>
-      </div>
-    );
-  }
+  // Hide card entirely if no insights available
+  if (insights.length === 0 || isError) return null;
 
   return (
     <div
