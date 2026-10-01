@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from datetime import datetime, timedelta, timezone
 from app.database import get_db
-from app.dependencies import require_admin
+from app.auth.dependencies import require_admin
 
 router = APIRouter()
 
