@@ -1551,21 +1551,35 @@ export default function VideoTagging() {
     'ff-left': 'CF', 'ff-center': 'FF', 'ff-right': 'CF',
   }
 
-  // Build jersey strip player list from lineup data
+  // Build jersey strip player list from lineup data, with fallback to players list
+  // when no lineup exists (allows ball carrier selection even without a lineup)
   const jerseyStripPlayers: JerseyPlayer[] = useMemo(() => {
-    if (!matchLineup || matchLineup.length === 0) return []
-    const playerMap = new Map((players || []).map(p => [p.id, p]))
-    return matchLineup.map((entry: any) => {
-      const player = playerMap.get(entry.player_id)
-      return {
-        playerId: entry.player_id,
-        jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? player?.jersey_number ?? null,
-        playerName: player?.name ?? entry.player_name ?? 'Unknown',
-        isOnField: entry.is_on_field ?? true,
-        positionLabel: POSITION_LABELS[entry.position_id] || entry.position_id || '',
-        positionId: entry.position_id || '',
-      }
-    })
+    if (matchLineup && matchLineup.length > 0) {
+      // Use lineup data when available (preferred - has positions)
+      const playerMap = new Map((players || []).map(p => [p.id, p]))
+      return matchLineup.map((entry: any) => {
+        const player = playerMap.get(entry.player_id)
+        return {
+          playerId: entry.player_id,
+          jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? player?.jersey_number ?? null,
+          playerName: player?.name ?? entry.player_name ?? 'Unknown',
+          isOnField: entry.is_on_field ?? true,
+          positionLabel: POSITION_LABELS[entry.position_id] || entry.position_id || '',
+          positionId: entry.position_id || '',
+        }
+      })
+    } else if (players && players.length > 0) {
+      // Fallback: use players list directly when no lineup (no position data)
+      return players.map(p => ({
+        playerId: p.id,
+        jerseyNumber: p.jersey_number ?? null,
+        playerName: p.name,
+        isOnField: true, // Assume all are on field when no lineup
+        positionLabel: '',
+        positionId: '',
+      }))
+    }
+    return []
   }, [matchLineup, players])
 
   // On-field roster for the manual-event/substitution modal — real lineup
