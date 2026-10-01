@@ -1577,6 +1577,13 @@ CRITICAL — competition context, don't cross-contaminate form narratives:
 - The reverse IS valid: if the most recent league match was, say, 2 weeks before the first championship game, that recency and proximity make it fair, relevant context ("carrying momentum/concern from the league into the championship opener").
 - When in doubt, only reference results from the SAME competition as whatever run of form you're describing, unless the older result is genuinely recent (days, not months) relative to it.
 
+CRITICAL — knockout stage elimination (championship context):
+- Check the `stage` field in match_results. Knockout stages include: "Quarter-Final", "Semi-Final", "Final", or similar wording.
+- **A LOSS in a knockout stage match = ELIMINATED** from that competition. There is NO next match in that championship.
+- Do NOT use phrases like "championship run on a knife-edge", "still very much alive", "next match crucial" after a knockout loss.
+- Correct wording: "Championship campaign ended with defeat to [opponent]" or "Season over after quarter-final loss"
+- Group/league stage losses CAN be recovered from - those ARE "on a knife-edge" situations. Only knockout losses = elimination.
+
 {GAA_ESSENTIALS}
 
 Return a single valid JSON object with these keys (omit any key if insufficient data):

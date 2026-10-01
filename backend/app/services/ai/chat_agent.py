@@ -66,11 +66,14 @@ TOOL_EXECUTION_TIMEOUT_SECONDS = 30
 # calls and forces one last text-only reply summarising whatever's already
 # been gathered, so the turn reliably finishes well inside a sane window
 # instead of gambling on how long an intermediary will tolerate the stream.
-TOTAL_STREAM_BUDGET_SECONDS = 35
+# Increased from 35s to 60s (2026-10-01) to handle team-wide queries -
+# RAG handles knowledge base efficiently, but multi-player stat queries
+# legitimately need more tool rounds without timing out prematurely.
+TOTAL_STREAM_BUDGET_SECONDS = 60
 WRAPUP_CALL_TIMEOUT_SECONDS = 20
 TIMEOUT_FALLBACK_MESSAGE = (
-    "That took longer than expected to pull together — probably too much data for one turn. "
-    "Could you narrow it down (fewer players, a specific match, or a shorter time window) and ask again?"
+    "I've gathered what I could, but this query needs more time than I have in one turn. "
+    "Try asking again - sometimes breaking it into smaller questions helps, or I might just need another go at it."
 )
 
 

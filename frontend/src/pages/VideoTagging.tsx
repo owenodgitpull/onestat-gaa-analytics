@@ -1569,14 +1569,19 @@ export default function VideoTagging() {
         }
       })
     } else if (players && players.length > 0) {
-      // Fallback: use players list directly when no lineup (no position data)
-      return players.map(p => ({
+      // Fallback: use players list directly when no lineup
+      // Assign default GAA formation positions (1=GK, 2-7=backs, 8-9=mids, 10-15=forwards)
+      const defaultPositions = [
+        'gk', 'fb-right', 'fb-center', 'fb-left', 'hb-right', 'hb-center', 'hb-left',
+        'mf-right', 'mf-left', 'hf-right', 'hf-center', 'hf-left', 'ff-right', 'ff-center', 'ff-left'
+      ]
+      return players.slice(0, 15).map((p, i) => ({
         playerId: p.id,
         jerseyNumber: p.jersey_number ?? null,
         playerName: p.name,
-        isOnField: true, // Assume all are on field when no lineup
-        positionLabel: '',
-        positionId: '',
+        isOnField: true,
+        positionLabel: POSITION_LABELS[defaultPositions[i]] || '',
+        positionId: defaultPositions[i] || 'mf-left', // Default to midfielder if > 15 players
       }))
     }
     return []
