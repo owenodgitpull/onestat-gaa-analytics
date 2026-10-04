@@ -1937,99 +1937,107 @@ export default function VideoTagging() {
     return `${normalMinute} (+${injuryMin}:${String(injurySec).padStart(2, '0')})`
   }
 
-  /** Action buttons row — tracking controls (when active), Report, Snapshot, Sync */
+  /** Action buttons row — tracking controls (when active), Report, Snapshot, Sync.
+   *  Reorganized for better UX - grouped related actions together. */
   const actionButtons = (compact = false) => (
-    <div className="flex items-center gap-1.5 flex-shrink-0">
+    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+      {/* Tracking Clock & Controls */}
       {trackingClock && (
-        <>
-          <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs px-1.5' : 'text-sm px-2'}`}>
+        <div className="flex items-center gap-1.5 bg-emerald-500/10 rounded-lg px-2 py-1">
+          <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs' : 'text-sm'}`}>
             {formatTrackingClock(trackingClock)}
           </span>
           <button
             onClick={handleRequestEndTracking}
-            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 hover:text-red-200 font-medium transition-colors whitespace-nowrap`}
+            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 font-medium transition-colors whitespace-nowrap`}
           >
-            End Tracking
+            End
           </button>
           {(events && events.length > 0) && (
             <button
               onClick={() => setShowUndoModal(true)}
-              className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 font-medium transition-colors whitespace-nowrap flex items-center gap-1.5`}
+              className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 font-medium transition-colors whitespace-nowrap flex items-center gap-1`}
             >
-              <Undo2 size={compact ? 12 : 14} />
-              Undo to Point
+              <Undo2 size={compact ? 10 : 12} />
+              Undo
             </button>
           )}
-        </>
+        </div>
       )}
+
+      {/* Main Action Buttons - Primary */}
+      <div className="flex items-center gap-1.5">
+        <button
+          onClick={handleEnrich}
+          disabled={isEnriching || events.length === 0}
+          className={`flex items-center gap-1.5 ${compact ? 'px-3 py-1.5' : 'px-4 py-2'} rounded-lg ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-violet-400/20 backdrop-blur-sm hover:border-violet-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 text-white whitespace-nowrap`}
+          style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.4) 0%, rgba(109,40,217,0.3) 100%)' }}
+        >
+          {isEnriching ? <Loader2 size={compact ? 11 : 13} className="animate-spin" /> : <FileText size={compact ? 11 : 13} />}
+          Report
+        </button>
+        <button
+          onClick={() => { playerRef.current?.pause(); setIsSnapshotOpen(true) }}
+          className={`flex items-center gap-1.5 ${compact ? 'px-3 py-1.5' : 'px-4 py-2'} rounded-lg ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-purple-400/20 backdrop-blur-sm hover:border-purple-400/30 hover:scale-[1.02] active:scale-[0.98] text-white whitespace-nowrap`}
+          style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.4) 0%, rgba(147,51,234,0.3) 100%)' }}
+          title="Take formation snapshot"
+        >
+          <Camera size={compact ? 11 : 13} />
+          {snapshotCount > 0 ? `${snapshotCount}` : 'Snap'}
+        </button>
+        <button
+          onClick={handleSyncClick}
+          disabled={syncPreview.isPending || events.length === 0}
+          className={`flex items-center gap-1.5 ${compact ? 'px-3 py-1.5' : 'px-4 py-2'} rounded-lg ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-emerald-400/20 backdrop-blur-sm hover:border-emerald-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 text-white whitespace-nowrap`}
+          style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.4) 0%, rgba(5,150,105,0.3) 100%)' }}
+        >
+          {syncPreview.isPending ? <Loader2 size={compact ? 11 : 13} className="animate-spin" /> : <Download size={compact ? 11 : 13} />}
+          Save
+        </button>
+      </div>
+
+      {/* Secondary Actions - View/Edit */}
       {!isFullscreen && (
-        <>
+        <div className="flex items-center gap-1 bg-white/5 rounded-lg px-2 py-1">
           <button
             onClick={() => statsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
           >
             Stats
           </button>
           <button
             onClick={() => chartsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
           >
             Charts
           </button>
           <button
             onClick={() => setShowViewLineup(true)}
-            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
           >
             Lineup
           </button>
           <button
             onClick={() => setShowWeatherPicker(true)}
-            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
           >
             Weather
           </button>
           <button
             onClick={() => setShowManualEvent(true)}
-            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
           >
-            + Event / Sub
+            + Event
           </button>
           <TacticalTagButton onTag={handleTacticalTag} tagCount={tacticalTagCount} />
           <button
             onClick={() => setShowResetConfirm(true)}
-            className={`${compact ? 'px-2 py-1.5 text-[10px]' : 'px-3 py-2 text-xs'} rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400/80 hover:text-red-300 font-medium transition-colors whitespace-nowrap`}
+            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-400/80 hover:text-red-300 font-medium transition-colors whitespace-nowrap`}
           >
-            Reset Match
+            Reset
           </button>
-        </>
+        </div>
       )}
-      <button
-        onClick={handleEnrich}
-        disabled={isEnriching || events.length === 0}
-        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-violet-400/20 backdrop-blur-sm shadow-lg shadow-violet-500/10 hover:shadow-violet-500/25 hover:border-violet-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white whitespace-nowrap`}
-        style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.45) 0%, rgba(109,40,217,0.35) 50%, rgba(139,92,246,0.25) 100%)' }}
-      >
-        {isEnriching ? <Loader2 size={compact ? 12 : 14} className="animate-spin" /> : <FileText size={compact ? 12 : 14} />}
-        Report
-      </button>
-      <button
-        onClick={() => { playerRef.current?.pause(); setIsSnapshotOpen(true) }}
-        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-purple-400/20 backdrop-blur-sm shadow-lg shadow-purple-500/10 hover:shadow-purple-500/25 hover:border-purple-400/30 hover:scale-[1.02] active:scale-[0.98] text-white whitespace-nowrap`}
-        style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.45) 0%, rgba(147,51,234,0.35) 50%, rgba(192,132,252,0.25) 100%)' }}
-        title="Take formation snapshot"
-      >
-        <Camera size={compact ? 12 : 14} />
-        {snapshotCount > 0 ? `Snapshot (${snapshotCount})` : compact ? 'Snapshot' : 'Formation Snapshot'}
-      </button>
-      <button
-        onClick={handleSyncClick}
-        disabled={syncPreview.isPending || events.length === 0}
-        className={`flex items-center gap-1.5 ${compact ? 'px-2.5 py-1.5' : 'px-4 py-2.5'} rounded-xl ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-emerald-400/20 backdrop-blur-sm shadow-lg shadow-emerald-500/10 hover:shadow-emerald-500/25 hover:border-emerald-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 disabled:shadow-none text-white whitespace-nowrap`}
-        style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.45) 0%, rgba(5,150,105,0.35) 50%, rgba(52,211,153,0.25) 100%)' }}
-      >
-        {syncPreview.isPending ? <Loader2 size={compact ? 12 : 14} className="animate-spin" /> : <Download size={compact ? 12 : 14} />}
-        {compact ? 'Save' : 'Save to Match'}
-      </button>
     </div>
   )
 
@@ -2102,16 +2110,37 @@ export default function VideoTagging() {
           />
         )}
 
+        {/* Awaiting Input Indicator — shown when a modal/picker is open and needs user action */}
+        {(overlayState !== 'none' || pendingKickoutAimedFor || assistPromptEventId || pendingBlockRecovery || pendingSidelineDecision || showManualEvent || showViewLineup || showWeatherPicker) && (
+          <div className="absolute top-0 left-0 right-0 z-40 pointer-events-none">
+            <div className="bg-gradient-to-r from-amber-500/90 via-orange-500/90 to-amber-500/90 text-white px-4 py-2.5 text-center text-sm font-semibold shadow-lg animate-pulse backdrop-blur-sm">
+              <div className="flex items-center justify-center gap-2">
+                <AlertTriangle size={18} className="shrink-0" />
+                <span>
+                  {pendingKickoutAimedFor && 'Select kickout target player →'}
+                  {assistPromptEventId && 'Select assist player (or skip) →'}
+                  {pendingBlockRecovery && 'Who recovered the block? →'}
+                  {pendingSidelineDecision && 'Select sideline decision →'}
+                  {overlayState === 'player' && 'Select player →'}
+                  {overlayState === 'pitch' && 'Tap pitch to place ball →'}
+                  {showManualEvent && 'Add manual event or substitution'}
+                  {showViewLineup && 'Viewing lineup'}
+                  {showWeatherPicker && 'Set weather conditions'}
+                  {overlayState === 'none' && !pendingKickoutAimedFor && !assistPromptEventId && !pendingBlockRecovery && !pendingSidelineDecision && !showManualEvent && !showViewLineup && !showWeatherPicker && 'Input required'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Resume-tracking cue — tracking mode is "started" server-side but
             play/pause is a separate signal (see mode gating throughout this
             file), so once the setup card is gone there'd otherwise be no
             obvious affordance telling the user how to actually resume
-            recording, especially after leaving and coming back. Placed in
-            the same corner the setup card used (mutually exclusive with it —
-            one is 'setup' mode only, this is 'tracking' mode only) so it
-            never competes with VideoPlayer's own centre play button. */}
+            recording, especially after leaving and coming back. Now placed on
+            the RIGHT to avoid covering the fullscreen video content. */}
         {mode === 'tracking' && !isPlaying && overlayState === 'none' && (
-          <div className="absolute top-3 left-3 z-30 pointer-events-none">
+          <div className="absolute top-3 right-3 z-30 pointer-events-none">
             <button
               onClick={() => playerRef.current?.play()}
               className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all hover:scale-105 active:scale-95 animate-pulse hover:animate-none"

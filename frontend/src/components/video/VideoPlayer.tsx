@@ -368,31 +368,53 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             )}
           </div>
 
-          {/* Playback speed */}
-          <div className="relative">
-            <button
-              onClick={() => setShowRateMenu(!showRateMenu)}
-              className="flex items-center gap-1 px-2 py-1 text-xs text-white/60 hover:text-white bg-white/5 rounded transition-colors"
-              title="Playback speed"
-            >
-              <Gauge size={14} />
-              {playbackRate}x
-            </button>
-            {showRateMenu && (
-              <div className="absolute bottom-full right-0 mb-1 bg-gray-800 rounded-lg shadow-lg border border-white/10 overflow-hidden z-30">
-                {PLAYBACK_RATES.map((rate) => (
-                  <button
-                    key={rate}
-                    onClick={() => changeRate(rate)}
-                    className={`block w-full px-4 py-1.5 text-xs text-left hover:bg-white/10 ${
-                      playbackRate === rate ? 'text-emerald-400' : 'text-white/70'
-                    }`}
-                  >
-                    {rate}x
-                  </button>
-                ))}
-              </div>
-            )}
+          {/* Playback speed - quick access buttons + full menu */}
+          <div className="flex items-center gap-1">
+            {/* Quick speed presets */}
+            {[0.5, 0.75, 1].map((rate) => (
+              <button
+                key={rate}
+                onClick={() => changeRate(rate)}
+                className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+                  playbackRate === rate
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+                title={`${rate}x speed`}
+              >
+                {rate}x
+              </button>
+            ))}
+
+            {/* Full menu for all speeds */}
+            <div className="relative">
+              <button
+                onClick={() => setShowRateMenu(!showRateMenu)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+                  [0.5, 0.75, 1].includes(playbackRate)
+                    ? 'text-white/50 hover:text-white/70 bg-white/5'
+                    : 'bg-violet-500/20 text-violet-400 border border-violet-500/30'
+                }`}
+                title="More speeds"
+              >
+                <Gauge size={13} />
+              </button>
+              {showRateMenu && (
+                <div className="absolute bottom-full right-0 mb-1 bg-gray-800 rounded-lg shadow-lg border border-white/10 overflow-hidden z-30">
+                  {PLAYBACK_RATES.map((rate) => (
+                    <button
+                      key={rate}
+                      onClick={() => changeRate(rate)}
+                      className={`block w-full px-4 py-1.5 text-xs text-left hover:bg-white/10 ${
+                        playbackRate === rate ? 'text-emerald-400' : 'text-white/70'
+                      }`}
+                    >
+                      {rate}x
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
