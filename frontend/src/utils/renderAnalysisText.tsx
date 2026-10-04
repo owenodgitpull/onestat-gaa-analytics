@@ -71,18 +71,26 @@ const components: Components = {
   hr: () => <hr className="border-white/10 my-3" />,
 
   // ── Table ────────────────────────────────────────────────────────────────────
-  // table-fixed + explicit column widths so all cells stay under their headers
+  // Mobile-first responsive table with horizontal scroll + scroll hint
   table: ({ children }) => (
-    <div className="overflow-x-auto my-3 rounded-xl border border-white/10">
-      <table
-        className="w-full text-sm border-collapse table-fixed [&_th:first-child]:text-left [&_th:not(:first-child)]:text-right [&_td:first-child]:text-left [&_td:not(:first-child)]:text-right [&_td:not(:first-child)]:tabular-nums"
-      >
-        {children}
-      </table>
+    <div className="relative my-3">
+      {/* Scroll hint shadow */}
+      <div className="absolute top-0 right-0 bottom-0 w-12 bg-gradient-to-l from-slate-900/60 to-transparent pointer-events-none z-10 md:hidden" />
+      <div className="overflow-x-auto rounded-xl border border-white/10 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+        <table
+          className="w-full text-sm border-collapse table-auto min-w-[600px] md:min-w-0 [&_th:first-child]:text-left [&_th:not(:first-child)]:text-right [&_td:first-child]:text-left [&_td:not(:first-child)]:text-right [&_td:not(:first-child)]:tabular-nums"
+        >
+          {children}
+        </table>
+      </div>
+      {/* Mobile scroll hint text */}
+      <div className="text-[10px] text-white/30 text-center mt-1 md:hidden">
+        ← Swipe to see all columns →
+      </div>
     </div>
   ),
   thead: ({ children }) => (
-    <thead className="border-b border-white/15 bg-white/5">{children}</thead>
+    <thead className="border-b border-white/15 bg-white/5 sticky top-0 z-10">{children}</thead>
   ),
   tbody: ({ children }) => <tbody>{children}</tbody>,
   tr: ({ children }) => (
@@ -91,11 +99,10 @@ const components: Components = {
     </tr>
   ),
   th: ({ children, style }) => {
-    // Give the first (metric) column more room; split remainder equally
     const extraStyle = style ?? {}
     return (
       <th
-        className="px-2 py-2 sm:px-4 sm:py-2.5 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-white/50 first:w-[38%]"
+        className="px-3 py-2 md:px-4 md:py-2.5 text-[10px] md:text-xs font-semibold uppercase tracking-wide text-white/50 whitespace-nowrap"
         style={extraStyle}
       >
         {children}
@@ -104,7 +111,7 @@ const components: Components = {
   },
   td: ({ children, style }) => (
     <td
-      className="px-2 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm text-white/80 break-words"
+      className="px-3 py-2 md:px-4 md:py-2.5 text-[11px] md:text-sm text-white/80 whitespace-nowrap"
       style={style ?? {}}
     >
       {children}
