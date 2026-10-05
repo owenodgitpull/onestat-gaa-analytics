@@ -493,6 +493,17 @@ export default function VideoTagging() {
 
   const handleStartTracking = useCallback(async () => {
     if (!sessionId || !session) return
+
+    // Check prerequisites before starting tracking
+    if (!matchLineup || matchLineup.length === 0) {
+      setAlertModal({
+        title: 'Lineup Required',
+        message: 'Please select your starting lineup before beginning to tag events. Click "Select Lineup" to set it up.',
+        variant: 'warning'
+      })
+      return
+    }
+
     const throwInMs = session.first_half_start_ms ?? 0
     // Prime the high-water mark (and its ref) synchronously, before the seek
     // below — otherwise maxSeekMs is still its stale pre-tracking value for
@@ -506,7 +517,7 @@ export default function VideoTagging() {
     fullTimeConfirmShownRef.current = false
     await startTracking.mutateAsync({ sessionId })
     playerRef.current?.seekTo(throwInMs)
-  }, [sessionId, session, startTracking])
+  }, [sessionId, session, startTracking, matchLineup])
 
   const handleRequestEndTracking = useCallback(() => {
     playerRef.current?.pause()
@@ -2012,10 +2023,18 @@ export default function VideoTagging() {
             Charts
           </button>
           <button
-            onClick={() => setShowViewLineup(true)}
+            onClick={() => {
+              if (!matchLineup || matchLineup.length === 0) {
+                // No lineup - navigate to setup
+                navigate(`/results/${session?.match_id}`)
+              } else {
+                // Lineup exists - view it
+                setShowViewLineup(true)
+              }
+            }}
             className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
           >
-            Lineup
+            {(!matchLineup || matchLineup.length === 0) ? 'Select Lineup' : 'Lineup'}
           </button>
           <button
             onClick={() => setShowWeatherPicker(true)}
