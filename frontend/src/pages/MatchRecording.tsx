@@ -5897,91 +5897,137 @@ export default function MatchRecording() {
           type" as two separate screens. */}
       {pendingTurnoverReason && (
         <div className="fixed inset-0 z-[180] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-sm bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-5 max-h-[85vh] overflow-y-auto">
+          <div className="w-full max-w-md bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-5">
             <p className="text-sm font-bold text-white mb-1">How was possession lost?</p>
             <p className="text-xs text-white/40 mb-4">
-              {pendingTurnoverReason.player?.name ?? 'Player'} — tap a category, or a specific reason within it
+              {pendingTurnoverReason.player?.name ?? 'Player'}
             </p>
 
-            <div className="flex flex-col gap-3 mb-4">
-              {/* Active Dispossession */}
-              <div>
-                <button
-                  onClick={() => handleTurnoverFlatSelect('dispossession')}
-                  className="w-full px-3 py-2 rounded-xl bg-white/10 hover:bg-red-600/25 border border-white/10 hover:border-red-500/40 text-left transition-all"
-                >
-                  <span className="block text-sm font-semibold text-white">Active Dispossession</span>
-                  <span className="block text-xs text-white/40">They won it</span>
-                </button>
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {DISPOSSESSION_SUBTYPES.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => handleTurnoverFlatSelect('dispossession', value)}
-                      className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-white/80 hover:text-white text-xs font-medium transition-all"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Unforced Error */}
-              <div>
-                <button
-                  onClick={() => handleTurnoverFlatSelect('unforced')}
-                  className="w-full px-3 py-2 rounded-xl bg-white/10 hover:bg-amber-600/25 border border-white/10 hover:border-amber-500/40 text-left transition-all"
-                >
-                  <span className="block text-sm font-semibold text-white">Unforced Error</span>
-                  <span className="block text-xs text-white/40">We gave it away</span>
-                </button>
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {UNFORCED_ERROR_SUBTYPES.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => handleTurnoverFlatSelect('unforced', value)}
-                      className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-amber-600/30 border border-white/10 hover:border-amber-500/40 text-white/80 hover:text-white text-xs font-medium transition-all"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Offensive Foul */}
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    onClick={() => handleTurnoverFlatSelect('offensive_foul')}
-                    className="flex-1 px-3 py-2 rounded-xl bg-white/10 hover:bg-orange-600/25 border border-white/10 hover:border-orange-500/40 text-left transition-all"
-                  >
-                    <span className="block text-sm font-semibold text-white">Offensive Foul</span>
-                    <span className="block text-xs text-white/40">Concedes a free</span>
-                  </button>
-                  <label className="flex items-center gap-1.5 cursor-pointer flex-shrink-0 pl-1">
-                    <input type="checkbox" checked={tacticalFoul} onChange={e => setTacticalFoul(e.target.checked)} className="w-4 h-4 rounded" />
-                    <span className="text-xs text-white/70">Tactical</span>
-                  </label>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {OFFENSIVE_FOUL_SUBTYPES.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onClick={() => handleTurnoverFlatSelect('offensive_foul', value)}
-                      className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-orange-600/30 border border-white/10 hover:border-orange-500/40 text-white/80 hover:text-white text-xs font-medium transition-all"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            {/* Quick-select 3x3 grid of most common */}
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <button
+                onClick={() => handleTurnoverFlatSelect('offensive_foul', 'overcarrying')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-orange-600/30 border border-white/10 hover:border-orange-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Overcarry
+              </button>
+              <button
+                onClick={() => handleTurnoverFlatSelect('dispossession', 'forced_interception')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Hard Pass
+              </button>
+              <button
+                onClick={() => handleTurnoverFlatSelect('unforced', 'kick_over_sideline')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-amber-600/30 border border-white/10 hover:border-amber-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Kick Pass
+              </button>
+              <button
+                onClick={() => handleTurnoverFlatSelect('unforced', 'dropped_ball')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-amber-600/30 border border-white/10 hover:border-amber-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Handling
+              </button>
+              <button
+                onClick={() => handleTurnoverFlatSelect('dispossession', 'tackle')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Tackled
+              </button>
+              <button
+                onClick={() => handleTurnoverFlatSelect('offensive_foul')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-orange-600/30 border border-white/10 hover:border-orange-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Foul
+              </button>
+              <button
+                onClick={() => handleTurnoverFlatSelect('unforced', 'stray_pass')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-amber-600/30 border border-white/10 hover:border-amber-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Stray Pass
+              </button>
+              <button
+                onClick={() => handleTurnoverFlatSelect('unforced', 'square_ball')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-amber-600/30 border border-white/10 hover:border-amber-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Square
+              </button>
+              <button
+                onClick={() => handleTurnoverFlatSelect('dispossession', 'strip')}
+                className="px-3 py-3 rounded-xl bg-white/10 hover:bg-red-600/30 border border-white/10 hover:border-red-500/40 text-white text-xs font-semibold transition-all active:scale-95"
+              >
+                Strip
+              </button>
             </div>
+
+            {/* Advanced expandable section */}
+            <details className="mb-3">
+              <summary className="text-xs text-white/50 hover:text-white/70 cursor-pointer mb-2 select-none">
+                Advanced ▾
+              </summary>
+              <div className="flex flex-col gap-2 pl-2">
+                {/* Active Dispossession */}
+                <div>
+                  <p className="text-[10px] font-semibold text-red-400/60 uppercase tracking-wide mb-1">Active Dispossession</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DISPOSSESSION_SUBTYPES.filter(s => !['tackle', 'strip', 'forced_interception'].includes(s.value)).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => handleTurnoverFlatSelect('dispossession', value)}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-red-600/20 border border-white/5 hover:border-red-500/30 text-white/70 hover:text-white text-xs transition-all active:scale-95"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Unforced Error */}
+                <div>
+                  <p className="text-[10px] font-semibold text-amber-400/60 uppercase tracking-wide mb-1">Unforced Error</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {UNFORCED_ERROR_SUBTYPES.filter(s => !['dropped_ball', 'kick_over_sideline', 'square_ball', 'stray_pass'].includes(s.value)).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => handleTurnoverFlatSelect('unforced', value)}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-amber-600/20 border border-white/5 hover:border-amber-500/30 text-white/70 hover:text-white text-xs transition-all active:scale-95"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Offensive Foul subtypes */}
+                <div>
+                  <p className="text-[10px] font-semibold text-orange-400/60 uppercase tracking-wide mb-1">Offensive Foul</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {OFFENSIVE_FOUL_SUBTYPES.filter(s => s.value !== 'overcarrying').map(({ value, label }) => (
+                      <button
+                        key={value}
+                        onClick={() => handleTurnoverFlatSelect('offensive_foul', value)}
+                        className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-orange-600/20 border border-white/5 hover:border-orange-500/30 text-white/70 hover:text-white text-xs transition-all active:scale-95"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => { setTacticalFoul(true); handleTurnoverFlatSelect('offensive_foul'); }}
+                      className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-orange-600/20 border border-white/5 hover:border-orange-500/30 text-white/70 hover:text-white text-xs transition-all active:scale-95"
+                    >
+                      Tactical Foul
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </details>
 
             <button
               onClick={() => setPendingTurnoverReason(null)}
-              className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+              className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs font-medium transition-colors"
             >
-              Cancel
+              Skip
             </button>
           </div>
         </div>
