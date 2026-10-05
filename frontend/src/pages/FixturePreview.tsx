@@ -255,22 +255,22 @@ export default function FixturePreview() {
             <div className="flex items-center gap-2">
               {venueBadge(match.venue)}
               {match.status === 'scheduled' && canEdit && (
-                <>
-                  <button
-                    onClick={() => setEditingFixture(match as unknown as Match)}
-                    className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-white/40 hover:text-white transition-all"
-                    title="Edit fixture"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400/60 hover:text-red-400 transition-all"
-                    title="Delete match"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </>
+                <button
+                  onClick={() => setEditingFixture(match as unknown as Match)}
+                  className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-white/40 hover:text-white transition-all"
+                  title="Edit fixture"
+                >
+                  <Pencil size={15} />
+                </button>
+              )}
+              {(match.status === 'scheduled' || match.status === 'in_progress') && canEdit && (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400/60 hover:text-red-400 transition-all"
+                  title="Delete match"
+                >
+                  <Trash2 size={15} />
+                </button>
               )}
             </div>
           </div>

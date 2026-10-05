@@ -169,6 +169,13 @@ class MatchEvent(Base):
     # Sub-type for unforced errors and fouls (e.g. 'stray_pass', 'pushing')
     sub_type: Column[Optional[str]] = Column(String(50), nullable=True)
 
+    # Foul brought forward — when a free kick is advanced due to dissent,
+    # interfering with set pieces, or breaching the Mark
+    brought_forward: Column[bool] = Column(Boolean, default=False, nullable=False)
+    brought_forward_reason: Column[Optional[str]] = Column(String(50), nullable=True)  # 'dissent', 'interfering_set_piece', 'breaching_mark'
+    advanced_position_x: Column[Optional[float]] = Column(Float, nullable=True)
+    advanced_position_y: Column[Optional[float]] = Column(Float, nullable=True)
+
     # Which half this event occurred in (1 or 2)
     half: Column[Optional[int]] = Column(Integer, nullable=True)
 

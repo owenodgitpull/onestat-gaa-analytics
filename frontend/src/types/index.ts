@@ -163,6 +163,10 @@ export interface MatchEvent {
   notes: string | null;
   under_pressure?: boolean | null;
   opposition_foot?: string | null;
+  brought_forward?: boolean;
+  brought_forward_reason?: 'dissent' | 'interfering_set_piece' | 'breaching_mark';
+  advanced_position_x?: number | null;
+  advanced_position_y?: number | null;
   created_at: string;
 }
 

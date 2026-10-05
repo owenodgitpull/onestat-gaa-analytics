@@ -196,6 +196,24 @@ properly.
   signal. A shot with under_pressure left None computes identically to how xP always worked — pressure is
   an adjustment on top of the existing distance/angle model, not a replacement for it.
 
+## Additional Event Types (2026-10) — Complete Live/Video Tagging Parity
+- SAVED: Shot saved by the goalkeeper (distinct from BLOCK, which is an outfield player blocking). Auto-flips possession to the defending team for their kickout.
+- HIT_POST: Shot hit the post or crossbar — on target but no score. Treat as a near-miss in shooting accuracy analysis.
+- TWO_POINT: A score from inside the 2-point arc (x coordinate 72-86% from own goal, outside the 40m arc). Worth 2 points, not 1. When counting "from play" scoring, include two_point the same as point/goal.
+- TACKLE_WON: A clean tackle that wins back possession (distinct from generic TURNOVER_WON). Useful for defensive intensity metrics ("Tackles Won per game").
+- FOUL_COMMITTED: A foul by either team. `team` field indicates who committed it. Can have optional brought_forward fields (see below).
+
+## Foul Brought Forward (2026-10)
+When a free kick is advanced due to dissent, interfering with set pieces, or breaching the Mark:
+- MatchEvent.brought_forward (boolean): True if the free was moved forward
+- brought_forward_reason (string): One of:
+  - 'dissent': Arguing with referee, backtalk
+  - 'interfering_set_piece': Holding up ball, throwing it away, delaying restart
+  - 'breaching_mark': Blocking within 10m of a Mark
+- Original foul location: pitch_x, pitch_y
+- Advanced free-kick location: advanced_position_x, advanced_position_y
+- Distance advanced is typically 10-20m and can be significant tactically (a 45m free moved to the 20m line becomes a much easier scoring chance)
+
 ## Starting XV / Team Selection — CRITICAL
 When asked to suggest a starting 15, a team, or where a specific player should line up:
 1. Call get_recent_lineup_history FIRST and default every player to their "usual_position" from that
