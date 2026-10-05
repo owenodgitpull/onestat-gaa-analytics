@@ -345,7 +345,7 @@ export default function VideoTagging() {
 
   // Alert/error modal (replaces native alert())
   const [alertModal, setAlertModal] = useState<{
-    title: string; message: string; variant: 'danger' | 'warning' | 'info'
+    title: string; message: string; variant: 'danger' | 'warning' | 'info'; onClose?: () => void
   } | null>(null)
 
   // Queries
@@ -552,8 +552,9 @@ export default function VideoTagging() {
     if (!matchLineup || matchLineup.length === 0) {
       setAlertModal({
         title: 'Lineup Required',
-        message: 'Please select your starting lineup before beginning to tag events. Click "Select Lineup" to set it up.',
-        variant: 'warning'
+        message: 'Please select your starting lineup before beginning to tag events.',
+        variant: 'warning',
+        onClose: () => setIsLineupModalOpen(true)
       })
       return
     }
@@ -2860,7 +2861,11 @@ export default function VideoTagging() {
         {/* Alert/error modal */}
         <ConfirmationModal
           isOpen={!!alertModal}
-          onClose={() => setAlertModal(null)}
+          onClose={() => {
+            const callback = alertModal?.onClose
+            setAlertModal(null)
+            callback?.()
+          }}
           title={alertModal?.title || ''}
           message={alertModal?.message || ''}
           variant={alertModal?.variant || 'danger'}
@@ -3309,7 +3314,11 @@ export default function VideoTagging() {
       {/* Alert/error modal */}
       <ConfirmationModal
         isOpen={!!alertModal}
-        onClose={() => setAlertModal(null)}
+        onClose={() => {
+          const callback = alertModal?.onClose
+          setAlertModal(null)
+          callback?.()
+        }}
         title={alertModal?.title || ''}
         message={alertModal?.message || ''}
         variant={alertModal?.variant || 'danger'}
