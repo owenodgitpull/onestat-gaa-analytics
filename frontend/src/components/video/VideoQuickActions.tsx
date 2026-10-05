@@ -16,7 +16,7 @@ import {
 import type { PitchZone } from './PitchZoneSelector'
 import { TWO_POINTER_ZONES, xyToZone } from './PitchZoneSelector'
 import type { VideoEventCreateData } from '../../services/videoApi'
-import { TURNOVER_REASON_CONFIG, FOUL_SUBTYPES, type TurnoverReason } from '../../constants/turnoverSubtypes'
+import { TURNOVER_REASON_CONFIG, type TurnoverReason } from '../../constants/turnoverSubtypes'
 
 export type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
 
@@ -157,7 +157,6 @@ export default function VideoQuickActions({
   const [flashButton, setFlashButton] = useState<string | null>(null)
   const [showFreePanel, setShowFreePanel] = useState(false)
   const [showFortyFivePanel, setShowFortyFivePanel] = useState(false)
-  const [showFoulPanel, setShowFoulPanel] = useState(false)
   // Turnover reason/subtype picker — parity with MatchRecording.tsx's flat
   // single-screen picker (all 3 reason groups + their subtype buttons shown
   // and directly tappable at once, no "pick reason, then pick type" as two
@@ -378,23 +377,6 @@ export default function VideoQuickActions({
     onEventTap({ action, eventData })
   }, [buildEventData, onEventTap])
 
-  const handleFoulSubtypeTap = useCallback((subtype?: string) => {
-    setShowFoulPanel(false)
-    const action: ActionButton = {
-      id: 'foul',
-      label: 'Foul',
-      eventType: 'FOUL_COMMITTED',
-      needsPlayer: true,
-      needsPitch: false,
-      playerModalTitle: 'Who Fouled?',
-      playerModalEventType: 'foul_committed',
-    }
-    const eventData = buildEventData(action)
-    if (subtype) eventData.sub_type = subtype
-    setFlashButton(action.id)
-    onEventTap({ action, eventData })
-  }, [buildEventData, onEventTap])
-
   const isButtonDisabled = (action: ActionButton): boolean => {
     if (disabled) return true
     if (action.disabledWhen === 'us' && isUs) return true
@@ -403,18 +385,37 @@ export default function VideoQuickActions({
   }
 
   const handleDiscipline = (type: 'YELLOW_CARD' | 'BLACK_CARD' | 'RED_CARD' | 'SUB_ON' | 'FOUL_COMMITTED') => {
-    if (disabled) {
-      console.log('Foul button clicked but disabled:', { disabled, isAutoAnalyzing: false, overlayState: 'checking' })
-      return
-    }
-    // For FOUL_COMMITTED, show the foul subtype panel instead of immediate player selection
+    if (disabled) return
+    // For FOUL_COMMITTED, just go straight to player selection with no subtype
+    // (Live Recording has foul subtypes in turnover panel only, not on standalone Foul button)
     if (type === 'FOUL_COMMITTED') {
-      console.log('Opening foul panel')
-      setShowFoulPanel(true)
-      setShowFreePanel(false)
-      setShowFortyFivePanel(false)
-      setTurnoverPanel(null)
-      onFortyFivePanelToggle?.(false)
+      const videoMs = currentTimestampMs ?? 0
+      const time = calcMatchTime
+        ? calcMatchTime(videoMs)
+        : { minute: Math.floor(videoMs / 60000), second: Math.floor((videoMs % 60000) / 1000), half }
+      const data: VideoEventCreateData = {
+        event_type: type,
+        team: possession,
+        half: time.half,
+        match_minute: time.minute,
+        match_second: time.second,
+        video_timestamp_ms: currentTimestampMs ?? undefined,
+        pitch_x: ballPitchX ?? undefined,
+        pitch_y: ballPitchY ?? undefined,
+        source: 'human_tag',
+      }
+      onEventTap({
+        action: {
+          id: 'foul',
+          label: 'Foul',
+          eventType: type,
+          needsPlayer: true,
+          needsPitch: false,
+          playerModalTitle: 'Who Fouled?',
+          playerModalEventType: 'foul_committed',
+        },
+        eventData: data,
+      })
       return
     }
     // For cards and subs, route through normal player selection flow
@@ -484,7 +485,7 @@ export default function VideoQuickActions({
         {CATEGORY_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false); setShowFoulPanel(false); onFortyFivePanelToggle?.(false); setTurnoverPanel(null) }}
+            onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false); setTurnoverPanel(null) }}
             className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all ${
               activeTab === id
                 ? 'text-emerald-400 bg-emerald-500/10 border-b-2 border-emerald-400'
@@ -572,39 +573,6 @@ export default function VideoQuickActions({
             </button>
             <button
               onClick={() => { setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false) }}
-              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
-            >
-              <ChevronLeft size={12} />
-              Back
-            </button>
-          </>
-        ) : showFoulPanel ? (
-          <>
-            {console.log('Rendering foul panel')}
-            <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
-              Foul Type
-            </div>
-            {FOUL_SUBTYPES.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => handleFoulSubtypeTap(opt.value)}
-                disabled={disabled}
-                className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 disabled:opacity-30"
-                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
-              >
-                {opt.label}
-              </button>
-            ))}
-            <button
-              onClick={() => handleFoulSubtypeTap()}
-              disabled={disabled}
-              className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/50 border-white/[0.06] hover:border-white/12 hover:text-white/70 disabled:opacity-30"
-              style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)' }}
-            >
-              General Foul
-            </button>
-            <button
-              onClick={() => setShowFoulPanel(false)}
               className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
             >
               <ChevronLeft size={12} />
