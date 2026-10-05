@@ -329,14 +329,18 @@ class MatchService:
     
     @staticmethod
     async def delete_match(db: AsyncSession, match_id: UUID, club_id: Optional[UUID] = None) -> bool:
-        """Soft delete a match."""
+        """
+        Hard delete a match and all associated data.
+
+        Cascades to: events, possession_events, player_stats, lineup, gps_data, video_sessions.
+        """
         match = await MatchService.get_match(db, match_id, club_id=club_id)
         if not match:
             return False
-        
-        match.is_deleted = True
+
+        await db.delete(match)
         await db.commit()
-        
+
         return True
     
     @staticmethod

@@ -482,9 +482,10 @@ async def delete_match(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Delete a match (soft delete).
-    
-    The match and all related events are marked as deleted but not removed from database.
+    Delete a match and all associated data.
+
+    Permanently removes the match and cascades to all related records:
+    events, possession_events, player_stats, lineup, gps_data, video_sessions.
     """
     success = await MatchService.delete_match(db, match_id, club_id=user.club_id)
     if not success:
