@@ -255,6 +255,7 @@ export default function VideoTagging() {
   // is already the shared component live recording uses.
   const [showViewLineup, setShowViewLineup] = useState(false)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
+  const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
   const [showWeatherPicker, setShowWeatherPicker] = useState(false)
   const [weatherOverride, setWeatherOverride] = useState<{ conditions: string[]; temp: number | null; notes: string | null } | null>(null)
 
@@ -521,6 +522,28 @@ export default function VideoTagging() {
       }
     }
   }, [session?.match_id, queryClient])
+
+  // Load last match lineup for quick copy
+  useEffect(() => {
+    const loadLastLineup = async () => {
+      try {
+        const lastLineup = await api.matchLineups.getLastLineup()
+        if (lastLineup && lastLineup.length > 0) {
+          const lineupObj: Record<string, LineupEntry> = {}
+          lastLineup.forEach((entry) => {
+            lineupObj[entry.position_id] = {
+              playerId: entry.player_id,
+              jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number,
+            }
+          })
+          setLastMatchLineup(lineupObj)
+        }
+      } catch (error) {
+        console.log('No previous lineup found')
+      }
+    }
+    loadLastLineup()
+  }, [])
 
   const handleStartTracking = useCallback(async () => {
     if (!sessionId || !session) return
@@ -1559,6 +1582,19 @@ export default function VideoTagging() {
   }
 
   // Build own players list for formation snapshot from lineup data,
+  // Convert matchLineup to saved lineup format for modal
+  const savedLineup = useMemo(() => {
+    if (!matchLineup || matchLineup.length === 0) return undefined
+    const lineupObj: Record<string, LineupEntry> = {}
+    matchLineup.forEach((entry: any) => {
+      lineupObj[entry.position_id] = {
+        playerId: entry.player_id,
+        jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number,
+      }
+    })
+    return lineupObj
+  }, [matchLineup])
+
   // pre-placed at their real lineup slot (FORMATION_XY, the same formation
   // coordinates the carrier-selection dots use) — matches live recording's
   // FormationSnapshotMode exactly, so the coach only drags players to where
@@ -2506,6 +2542,8 @@ export default function VideoTagging() {
           onClose={() => setIsLineupModalOpen(false)}
           onConfirm={handleLineupConfirm}
           players={playerList}
+          lastMatchLineup={lastMatchLineup}
+          savedLineup={savedLineup}
           matchId={session.match_id}
         />
       )}

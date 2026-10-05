@@ -69,7 +69,7 @@ export default function SetupFlowModal({
 
   // Steps that need video interaction (scrubbing) vs steps that are pure choice
   const needsVideoInteraction = ['first_half', 'half_time', 'second_half', 'full_time'].includes(step)
-  const showOverlay = !needsVideoInteraction && step !== 'ready' // Overlay for direction and throw_in_winner
+  const showOverlay = !needsVideoInteraction // Overlay for direction, throw_in_winner, and ready
 
   return (
     <>
