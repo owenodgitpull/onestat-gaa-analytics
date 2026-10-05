@@ -55,7 +55,7 @@ import ConfirmationModal from '../components/ConfirmationModal'
 import SetupFlowModal, { type SetupStep } from '../components/video/SetupFlowModal'
 import UndoToPointModal from '../components/video/UndoToPointModal'
 import AttackDirectionBadge from '../components/video/AttackDirectionBadge'
-import VideoStatsPanel from '../components/video/VideoStatsPanel'
+import MatchStatsPanel from '../components/MatchStatsPanel'
 import VideoManualEventModal from '../components/video/VideoManualEventModal'
 import OppositionScorerStrip from '../components/OppositionScorerStrip'
 import ExtendedStatsModal from '../components/ExtendedStatsModal'
@@ -2959,9 +2959,9 @@ export default function VideoTagging() {
 
       {/* ── Match Statistics — scroll target for the "Stats" button ────── */}
       <div ref={statsRef}>
-        <VideoStatsPanel
+        <MatchStatsPanel
           matchId={session.match_id}
-          chartEvents={chartEvents}
+          events={chartEvents}
           clubName={clubName}
           opponentName={opponentName}
           hasEvents={events.length > 0}

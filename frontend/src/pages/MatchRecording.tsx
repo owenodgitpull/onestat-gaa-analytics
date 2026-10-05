@@ -16,6 +16,7 @@ import SubstitutionModal from '@/components/SubstitutionModal'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '@/components/EventFilterToggles'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
+import MatchStatsPanel from '@/components/MatchStatsPanel'
 import PossessionTerritoryChart from '@/components/charts/PossessionTerritoryChart'
 import AttackingThirdsChart from '@/components/charts/AttackingThirdsChart'
 import ScoringTimeline from '@/components/charts/ScoringTimeline'
@@ -62,7 +63,6 @@ import { useMatchStateRestore } from '@/hooks/useMatchStateRestore'
 import { startActiveMonitoring, stopActiveMonitoring, offlineMatchEvents } from '@/services/offline'
 import {
   Clock,
-  Activity,
   Play,
   AlertCircle,
   Plus,
@@ -1491,77 +1491,15 @@ export default function MatchRecording() {
   // Head-to-head stat table — same numbers shown below the touch pitch during
   // normal recording, also rendered inside the half-time overlay (see
   // showHalfTimeView below) so a coach reading the half-time view actually
-  // sees the stat line, not just the charts. A plain const, not useMemo like
-  // matchInsightsCharts above — this is a ~15-row table, not a chart tree, so
-  // recomputing it every render (as it always has, inline) costs nothing.
+  // Shared Match Statistics panel - uses backend matchStats when available
   const matchStatsPanel = (
-    <div className="glass-card p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
-          <Activity size={20} className="text-emerald-400" />
-          <span>Match Statistics</span>
-        </h3>
-        {allEvents.length > 0 && (
-          <button
-            onClick={() => setShowExtendedStats(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 hover:text-white text-xs font-medium transition-colors"
-          >
-            More Stats
-          </button>
-        )}
-      </div>
-
-      <div className="rounded-xl border border-white/[0.08] overflow-hidden" style={{ boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 8px rgba(0,0,0,0.3)' }}>
-        {/* Header row */}
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 bg-white/[0.06] border-b border-white/[0.08]">
-          <div className="text-center text-xs font-bold text-emerald-400 uppercase tracking-wider">{clubName}</div>
-          <div className="min-w-[90px]" />
-          <div className="text-center text-xs font-bold text-white/50 uppercase tracking-wider">{matchDisplay.opponent}</div>
-        </div>
-
-        {[
-          { label: 'Possession', left: `${stats.possession.team}%`, right: `${stats.possession.opponent}%`, leftVal: stats.possession.team, rightVal: stats.possession.opponent },
-          { label: 'Poss. Count', left: matchStats?.team_possession_count ?? 0, right: matchStats?.opponent_possession_count ?? 0, leftVal: matchStats?.team_possession_count ?? 0, rightVal: matchStats?.opponent_possession_count ?? 0 },
-          { label: 'Shots', left: stats.shots.team, right: stats.shots.opponent, leftVal: stats.shots.team, rightVal: stats.shots.opponent },
-          { label: 'Scores', left: stats.scores.team, right: stats.scores.opponent, leftVal: stats.scores.team, rightVal: stats.scores.opponent },
-          { label: 'Goal Chances', left: matchStats?.team_goal_chances ?? 0, right: matchStats?.opponent_goal_chances ?? 0, leftVal: matchStats?.team_goal_chances ?? 0, rightVal: matchStats?.opponent_goal_chances ?? 0 },
-          { label: 'Wides', left: stats.wides.team, right: stats.wides.opponent, leftVal: stats.wides.opponent, rightVal: stats.wides.team },
-          { label: 'Accuracy', left: `${stats.accuracy}%`, right: `${stats.shots.opponent > 0 ? (stats.scores.opponent / stats.shots.opponent * 100).toFixed(1) : '0.0'}%`, leftVal: Number(stats.accuracy), rightVal: stats.shots.opponent > 0 ? stats.scores.opponent / stats.shots.opponent * 100 : 0 },
-          { label: 'Conversion', left: `${stats.conversionRate}%`, right: `${(stats.scores.opponent + stats.wides.opponent) > 0 ? ((stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100).toFixed(1) : '0.0'}%`, leftVal: Number(stats.conversionRate), rightVal: (stats.scores.opponent + stats.wides.opponent) > 0 ? (stats.scores.opponent / (stats.scores.opponent + stats.wides.opponent)) * 100 : 0 },
-          { label: 'Turnovers Won', left: stats.turnovers.won, right: stats.turnovers.lost, leftVal: stats.turnovers.won, rightVal: stats.turnovers.lost },
-          ...((matchStats?.team_ball_recovery_avg_min != null || matchStats?.opponent_ball_recovery_avg_min != null) ? [{
-            label: 'Ball Recovery',
-            left: matchStats?.team_ball_recovery_avg_min != null ? `${matchStats.team_ball_recovery_avg_min}m` : '–',
-            right: matchStats?.opponent_ball_recovery_avg_min != null ? `${matchStats.opponent_ball_recovery_avg_min}m` : '–',
-            leftVal: matchStats?.opponent_ball_recovery_avg_min ?? 0,
-            rightVal: matchStats?.team_ball_recovery_avg_min ?? 0,
-          }] : []),
-          { label: 'Unforced Errors', left: matchStats?.team_unforced_errors ?? 0, right: matchStats?.opponent_unforced_errors ?? 0, leftVal: matchStats?.opponent_unforced_errors ?? 0, rightVal: matchStats?.team_unforced_errors ?? 0 },
-          { label: 'Kickouts Won', left: `${stats.kickouts.teamWon}/${stats.kickouts.teamTotal}`, right: `${stats.kickouts.opponentWon}/${stats.kickouts.opponentTotal}`, leftVal: stats.kickouts.teamWon, rightVal: stats.kickouts.opponentWon },
-          { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
-          { label: 'Fouls', left: matchStats?.team_fouls || 0, right: matchStats?.opponent_fouls || 0, leftVal: matchStats?.opponent_fouls || 0, rightVal: matchStats?.team_fouls || 0 },
-          { label: '🟡 Yellow', left: matchStats?.team_yellow_cards || 0, right: matchStats?.opponent_yellow_cards || 0, leftVal: matchStats?.opponent_yellow_cards || 0, rightVal: matchStats?.team_yellow_cards || 0 },
-          ...((matchStats?.team_black_cards || 0) + (matchStats?.opponent_black_cards || 0) > 0 ? [{ label: '⬛ Black', left: matchStats?.team_black_cards || 0, right: matchStats?.opponent_black_cards || 0, leftVal: matchStats?.opponent_black_cards || 0, rightVal: matchStats?.team_black_cards || 0 }] : []),
-          ...((matchStats?.team_red_cards || 0) + (matchStats?.opponent_red_cards || 0) > 0 ? [{ label: '🔴 Red', left: matchStats?.team_red_cards || 0, right: matchStats?.opponent_red_cards || 0, leftVal: matchStats?.opponent_red_cards || 0, rightVal: matchStats?.team_red_cards || 0 }] : []),
-        ].map((row, idx) => {
-          const leftWins = row.leftVal > row.rightVal
-          const rightWins = row.rightVal > row.leftVal
-          return (
-            <div key={row.label} className={`grid grid-cols-[1fr_auto_1fr] items-center gap-2 py-2.5 px-3 transition-colors hover:bg-white/[0.05] ${idx % 2 === 0 ? 'bg-white/[0.02]' : ''} ${idx > 0 ? 'border-t border-white/[0.05]' : ''}`}>
-              <div className={`text-center text-base font-bold ${leftWins ? 'text-emerald-400' : 'text-white/80'}`}>
-                {row.left}
-              </div>
-              <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[90px]">
-                {row.label}
-              </div>
-              <div className={`text-center text-base font-bold ${rightWins ? 'text-emerald-400' : 'text-white/80'}`}>
-                {row.right}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <MatchStatsPanel
+      matchStats={matchStats}
+      clubName={clubName}
+      opponentName={matchDisplay.opponent}
+      hasEvents={allEvents.length > 0}
+      onOpenExtraStats={() => setShowExtendedStats(true)}
+    />
   )
 
   // Event map filtered events (same logic as MatchResult)

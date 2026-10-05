@@ -25,7 +25,6 @@ import {
   Video,
   Info,
   Users,
-  BarChart2,
   RotateCcw
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from 'recharts'
@@ -52,7 +51,7 @@ import ScoreOrigins from '../components/charts/ScoreOrigins'
 import ScoreableFreesAnalysis from '../components/charts/ScoreableFreesAnalysis'
 import AttackEfficiencyCard from '../components/charts/AttackEfficiencyCard'
 import SeasonBenchmarkCard from '../components/charts/SeasonBenchmarkCard'
-import StatsTable from '../components/charts/StatsTable'
+import MatchStatsPanel from '../components/MatchStatsPanel'
 import GPSConfirmModal from '../components/GPSConfirmModal'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
@@ -1068,54 +1067,59 @@ export default function MatchResult() {
         {/* Right column — stats sidebar */}
         <div className="flex-1 min-w-0 flex flex-col gap-4 overflow-hidden md:self-start md:sticky md:top-4">
           {/* Match Statistics */}
-          <div className="glass-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
-                <Activity size={20} className="text-emerald-400" />
-                <span>Match Statistics</span>
-              </h3>
-              {hasEvents && (
-                <button
-                  onClick={() => setShowExtendedStats(true)}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-white/60 hover:text-white text-xs font-medium transition-colors"
-                >
-                  <BarChart2 size={13} />
-                  More Stats
-                </button>
-              )}
-            </div>
-            {hasEvents ? (
-              matchStats ? (
-                <>
-                  {/* Half filter toggle */}
-                  <div className="flex gap-1.5 mb-3">
-                    {([undefined, 1, 2] as const).map((h) => (
-                      <button
-                        key={h ?? 'all'}
-                        onClick={() => setStatsHalf(h)}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                          statsHalf === h
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-white/10 text-white/50 hover:bg-white/15'
-                        }`}
-                      >
-                        {h === undefined ? 'Full Match' : h === 1 ? '1st Half' : '2nd Half'}
-                      </button>
-                    ))}
-                  </div>
-                  <StatsTable stats={matchStats} opponent={match.opponent} teamName={clubName} />
-                </>
-              ) : (
-                <div className="text-center text-white/40 py-8">Loading stats...</div>
-              )
+          {hasEvents ? (
+            matchStats ? (
+              <div className="space-y-3">
+                {/* Half filter toggle */}
+                <div className="flex gap-1.5">
+                  {([undefined, 1, 2] as const).map((h) => (
+                    <button
+                      key={h ?? 'all'}
+                      onClick={() => setStatsHalf(h)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                        statsHalf === h
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-white/10 text-white/50 hover:bg-white/15'
+                      }`}
+                    >
+                      {h === undefined ? 'Full Match' : h === 1 ? '1st Half' : '2nd Half'}
+                    </button>
+                  ))}
+                </div>
+                <MatchStatsPanel
+                  matchStats={matchStats}
+                  clubName={clubName}
+                  opponentName={match.opponent}
+                  hasEvents={hasEvents}
+                  onOpenExtraStats={() => setShowExtendedStats(true)}
+                />
+              </div>
             ) : (
+              <div className="glass-card p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
+                    <Activity size={20} className="text-emerald-400" />
+                    <span>Match Statistics</span>
+                  </h3>
+                </div>
+                <div className="text-center text-white/40 py-8">Loading stats...</div>
+              </div>
+            )
+          ) : (
+            <div className="glass-card p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center space-x-2 text-white">
+                  <Activity size={20} className="text-emerald-400" />
+                  <span>Match Statistics</span>
+                </h3>
+              </div>
               <div className="text-center py-8 space-y-2">
                 <Video size={24} className="text-purple-400/60 mx-auto" />
                 <p className="text-white/40 text-sm">Awaiting video analysis</p>
                 <p className="text-white/20 text-xs">Stats will populate once events are tagged from video</p>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Match Events */}
           <div className="glass-card p-5 flex-1 flex flex-col min-h-0">
