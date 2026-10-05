@@ -403,9 +403,13 @@ export default function VideoQuickActions({
   }
 
   const handleDiscipline = (type: 'YELLOW_CARD' | 'BLACK_CARD' | 'RED_CARD' | 'SUB_ON' | 'FOUL_COMMITTED') => {
-    if (disabled) return
+    if (disabled) {
+      console.log('Foul button clicked but disabled:', { disabled, isAutoAnalyzing: false, overlayState: 'checking' })
+      return
+    }
     // For FOUL_COMMITTED, show the foul subtype panel instead of immediate player selection
     if (type === 'FOUL_COMMITTED') {
+      console.log('Opening foul panel')
       setShowFoulPanel(true)
       setShowFreePanel(false)
       setShowFortyFivePanel(false)
@@ -576,6 +580,7 @@ export default function VideoQuickActions({
           </>
         ) : showFoulPanel ? (
           <>
+            {console.log('Rendering foul panel')}
             <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
               Foul Type
             </div>
