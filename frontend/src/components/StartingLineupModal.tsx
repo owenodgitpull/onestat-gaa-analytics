@@ -340,7 +340,7 @@ export default function StartingLineupModal({
                 className="glass-card-hover px-3 py-1.5 flex items-center space-x-1.5 ml-3"
               >
                 <Copy size={14} className="text-blue-400" />
-                <span className="text-white text-xs font-semibold">Use Last Match</span>
+                <span className="text-white text-xs font-semibold">Use Last Lineup</span>
               </button>
             )}
             {matchId && (
