@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, ClipboardCheck, Pencil, Users, ChevronDown, ChevronUp, Flag, GraduationCap } from 'lucide-react'
+import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, ClipboardCheck, Pencil, Users, ChevronDown, ChevronUp, Flag, GraduationCap, Trash2 } from 'lucide-react'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import EditFixtureModal from '../components/EditFixtureModal'
@@ -55,6 +55,8 @@ export default function FixturePreview() {
   const { canEdit } = useAuth()
   const queryClient = useQueryClient()
   const [editingFixture, setEditingFixture] = useState<Match | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [rosterExpanded, setRosterExpanded] = useState(false)
   const [rosterInput, setRosterInput] = useState('')
   const [rosterSaving, setRosterSaving] = useState(false)
@@ -73,10 +75,20 @@ export default function FixturePreview() {
     queryClient.invalidateQueries({ queryKey: ['fixtures'] })
   }
 
-  const handleDeleteFixture = async (id: string) => {
-    await api.matches.delete(id)
-    queryClient.invalidateQueries({ queryKey: ['fixtures'] })
-    navigate('/fixtures')
+  const handleDeleteFixture = async () => {
+    if (!matchId) return
+    setIsDeleting(true)
+    try {
+      await api.matches.delete(matchId)
+      queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+      navigate('/fixtures')
+    } catch (error) {
+      console.error('Failed to delete match:', error)
+      alert('Failed to delete match. Please try again.')
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteConfirm(false)
+    }
   }
 
   const { data, isLoading, error } = useQuery({
@@ -242,14 +254,23 @@ export default function FixturePreview() {
             </div>
             <div className="flex items-center gap-2">
               {venueBadge(match.venue)}
-              {match.status === 'scheduled' && (
-                <button
-                  onClick={() => setEditingFixture(match as unknown as Match)}
-                  className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-white/40 hover:text-white transition-all"
-                  title="Edit fixture"
-                >
-                  <Pencil size={15} />
-                </button>
+              {match.status === 'scheduled' && canEdit && (
+                <>
+                  <button
+                    onClick={() => setEditingFixture(match as unknown as Match)}
+                    className="p-2 rounded-lg bg-white/5 hover:bg-white/15 text-white/40 hover:text-white transition-all"
+                    title="Edit fixture"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400/60 hover:text-red-400 transition-all"
+                    title="Delete match"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -502,8 +523,48 @@ export default function FixturePreview() {
         fixture={editingFixture}
         onClose={() => setEditingFixture(null)}
         onSave={handleEditFixture}
-        onDelete={handleDeleteFixture}
+        onDelete={async (_id) => { setEditingFixture(null); setShowDeleteConfirm(true); }}
       />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-[#0f1a1a] border border-red-500/30 rounded-2xl shadow-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 rounded-lg bg-red-500/20">
+                <Trash2 size={20} className="text-red-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Delete Match?</h3>
+            </div>
+            <p className="text-white/60 text-sm mb-6">
+              This will permanently delete this match and all associated data (events, lineup, stats, etc.). This action cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteFixture}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete Match'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
