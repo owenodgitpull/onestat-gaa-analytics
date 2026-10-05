@@ -49,6 +49,7 @@ import VideoEventLog from '../components/video/VideoEventLog'
 import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
 import PitchPlayerSelector from '../components/PitchPlayerSelector'
+import StartingLineupModal, { type LineupEntry } from '../components/StartingLineupModal'
 import WeatherPickerPopover from '../components/WeatherPickerPopover'
 import SyncPreviewModal from '../components/video/SyncPreviewModal'
 import ConfirmationModal from '../components/ConfirmationModal'
@@ -110,7 +111,7 @@ import {
 import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
 import type { VideoEventCreateData, VideoEventUpdateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
 import { api, type BallCarrierSegment } from '../services/api'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PossessionTeam } from '../types'
 import type { Player, BallPosition } from '../types'
 
@@ -159,6 +160,7 @@ function getStatusLabel(
 export default function VideoTagging() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const playerRef = useRef<VideoPlayerHandle>(null)
   const clubName = useClubName()
   const { club } = useClub()
@@ -252,6 +254,7 @@ export default function VideoTagging() {
   // PitchPlayerSelector already has a readOnly mode and WeatherPickerPopover
   // is already the shared component live recording uses.
   const [showViewLineup, setShowViewLineup] = useState(false)
+  const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
   const [showWeatherPicker, setShowWeatherPicker] = useState(false)
   const [weatherOverride, setWeatherOverride] = useState<{ conditions: string[]; temp: number | null; notes: string | null } | null>(null)
 
@@ -490,6 +493,34 @@ export default function VideoTagging() {
     setPossession(winner)
     setThrowInWinnerChosen(true)
   }, [])
+
+  // Handle lineup selection confirmation
+  const handleLineupConfirm = useCallback(async (lineup: Record<string, LineupEntry>) => {
+    setIsLineupModalOpen(false)
+
+    // Save lineup to backend
+    if (session?.match_id) {
+      try {
+        const lineupEntries = Object.entries(lineup).map(([positionId, entry]) => ({
+          player_id: entry.playerId,
+          position_id: positionId,
+          is_substitute: positionId.startsWith('sub-'),
+          jersey_number: entry.jerseyNumber,
+        }))
+
+        await api.matchLineups.saveLineup(session.match_id, lineupEntries)
+        // Refetch lineup to update matchLineup state
+        queryClient.invalidateQueries({ queryKey: ['matchLineup', session.match_id] })
+      } catch (error) {
+        console.error('Failed to save lineup:', error)
+        setAlertModal({
+          title: 'Error',
+          message: 'Failed to save lineup. Please try again.',
+          variant: 'danger'
+        })
+      }
+    }
+  }, [session?.match_id, queryClient])
 
   const handleStartTracking = useCallback(async () => {
     if (!sessionId || !session) return
@@ -2050,8 +2081,8 @@ export default function VideoTagging() {
           <button
             onClick={() => {
               if (!matchLineup || matchLineup.length === 0) {
-                // No lineup - navigate to setup
-                navigate(`/results/${session?.match_id}`)
+                // No lineup - open modal to select
+                setIsLineupModalOpen(true)
               } else {
                 // Lineup exists - view it
                 setShowViewLineup(true)
@@ -2467,6 +2498,15 @@ export default function VideoTagging() {
           teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
           attackingRight={teamAttackingRightThisHalf ?? true}
           readOnly={true}
+        />
+      )}
+      {isLineupModalOpen && (
+        <StartingLineupModal
+          isOpen={isLineupModalOpen}
+          onClose={() => setIsLineupModalOpen(false)}
+          onConfirm={handleLineupConfirm}
+          players={playerList}
+          matchId={session.match_id}
         />
       )}
       {showWeatherPicker && (
