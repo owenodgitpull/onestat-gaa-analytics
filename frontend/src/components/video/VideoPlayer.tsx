@@ -52,12 +52,15 @@ interface VideoPlayerProps {
    * parent actually has (`flex-1 min-h-0`) instead of deriving one from
    * width, guaranteeing the controls row stays visible. */
   fillHeight?: boolean
+  /** Disable all video controls (play/pause/seek/speed) — used during setup
+   * flow when video scrubbing is allowed but tracking hasn't started yet. */
+  disabled?: boolean
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, maxSeekMs, initialTimeMs, fillHeight }, ref) => {
+  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, maxSeekMs, initialTimeMs, fillHeight, disabled = false }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null)
     const hasRestoredPositionRef = useRef(false)
     const [playing, setPlaying] = useState(false)
@@ -251,7 +254,9 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         </div>
 
         {/* Controls */}
-        <div className="flex-shrink-0 flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
+        <div className={`flex-shrink-0 flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2 transition-opacity ${
+          disabled ? 'opacity-30 pointer-events-none' : ''
+        }`}>
           {/* Skip back */}
           <button
             onClick={() => skip(-5)}

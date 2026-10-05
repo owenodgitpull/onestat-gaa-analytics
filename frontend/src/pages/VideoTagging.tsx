@@ -2127,6 +2127,7 @@ export default function VideoTagging() {
               : currentTimeMs
           }
           fillHeight={isFullscreen}
+          disabled={mode === 'setup'}
         />
 
         {/* Guided setup flow — replaces the old throw-in card + separate
@@ -2183,7 +2184,7 @@ export default function VideoTagging() {
             obvious affordance telling the user how to actually resume
             recording, especially after leaving and coming back. Now placed on
             the RIGHT to avoid covering the fullscreen video content. */}
-        {mode === 'tracking' && !isPlaying && overlayState === 'none' && (
+        {mode === 'tracking' && !isPlaying && overlayState === 'none' && currentTimeMs >= highWaterMarkMs && (
           <div className="absolute top-3 right-3 z-30 pointer-events-none">
             <button
               onClick={() => playerRef.current?.play()}
@@ -2193,6 +2194,22 @@ export default function VideoTagging() {
               <Play size={16} fill="#0a1a10" />
               Resume Tracking
             </button>
+          </div>
+        )}
+
+        {/* Reviewing past footage banner — shown when user has scrubbed backward
+            to review what happened. Tracking resumes when video catches up to
+            the high water mark. */}
+        {mode === 'tracking' && currentTimeMs < highWaterMarkMs - 1000 && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+            <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-amber-500/40 rounded-xl px-4 py-2.5 shadow-2xl shadow-amber-500/10">
+              <div className="flex items-center gap-2 text-amber-300">
+                <AlertTriangle size={16} className="shrink-0" />
+                <span className="text-sm font-semibold">
+                  Reviewing past footage — tracking will resume at {formatTrackingClock(calcMatchTime(highWaterMarkMs))}
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
