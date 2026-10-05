@@ -67,9 +67,23 @@ export default function SetupFlowModal({
 }: SetupFlowModalProps) {
   const stepIndex = STEP_ORDER.findIndex(s => s.key === step)
 
+  // Steps that need video interaction (scrubbing) vs steps that are pure choice
+  const needsVideoInteraction = ['first_half', 'half_time', 'second_half', 'full_time'].includes(step)
+  const showOverlay = !needsVideoInteraction && step !== 'ready' // Overlay for direction and throw_in_winner
+
   return (
-    <div className="absolute top-3 left-3 z-30 pointer-events-none">
-      <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-5 py-4 w-[360px] shadow-2xl shadow-emerald-500/10">
+    <>
+      {/* Dark overlay when user needs to focus on modal choice (not video scrubbing) */}
+      {showOverlay && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-20 pointer-events-auto" />
+      )}
+
+      <div className={`absolute z-30 pointer-events-none ${
+        showOverlay
+          ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2' // Centered when overlay is active
+          : 'top-3 left-3' // Top-left when video interaction needed
+      }`}>
+        <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-5 py-4 w-[360px] shadow-2xl shadow-emerald-500/10">
         {/* Step indicator */}
         {step !== 'ready' && (
           <div className="flex items-center gap-1 mb-3">
@@ -247,6 +261,7 @@ export default function SetupFlowModal({
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
       </div>
     </div>
+    </>
   )
 }
 

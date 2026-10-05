@@ -1948,6 +1948,21 @@ export default function VideoTagging() {
     return `${normalMinute} (+${injuryMin}:${String(injurySec).padStart(2, '0')})`
   }
 
+  /** Get the appropriate end button text based on current phase and time */
+  const getEndButtonText = (): string => {
+    if (!trackingClock) return 'End'
+    const hdm = matchData?.half_duration_mins ?? 30
+    const fullTime = hdm * 2
+
+    if (trackingClock.half === 1) {
+      return trackingClock.minute >= hdm ? 'Half Time' : 'End Half'
+    }
+    if (trackingClock.half === 2) {
+      return trackingClock.minute >= fullTime ? 'Full Time' : 'End Match'
+    }
+    return 'End'
+  }
+
   /** Action buttons row — tracking controls (when active), Report, Snapshot, Sync.
    *  Reorganized for better UX - grouped related actions together. */
   const actionButtons = (compact = false) => (
@@ -1955,14 +1970,24 @@ export default function VideoTagging() {
       {/* Tracking Clock & Controls */}
       {trackingClock && (
         <div className="flex items-center gap-1.5 bg-emerald-500/10 rounded-lg px-2 py-1">
-          <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs' : 'text-sm'}`}>
-            {formatTrackingClock(trackingClock)}
-          </span>
+          <div className="flex flex-col">
+            <span className={`${compact ? 'text-[8px]' : 'text-[9px]'} text-white/40 font-semibold uppercase tracking-wide`}>
+              Match Clock
+            </span>
+            <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs' : 'text-sm'} leading-tight`}>
+              {formatTrackingClock(trackingClock)}
+            </span>
+          </div>
           <button
             onClick={handleRequestEndTracking}
-            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200 font-medium transition-colors whitespace-nowrap`}
+            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md ${
+              (trackingClock.half === 1 && trackingClock.minute >= (matchData?.half_duration_mins ?? 30)) ||
+              (trackingClock.half === 2 && trackingClock.minute >= (matchData?.half_duration_mins ?? 30) * 2)
+                ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40'
+                : 'bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200'
+            } font-medium transition-colors whitespace-nowrap`}
           >
-            End
+            {getEndButtonText()}
           </button>
           {(events && events.length > 0) && (
             <button
