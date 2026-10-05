@@ -297,6 +297,7 @@ export default function VideoTagging() {
   const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string; mode: 'score' | 'turnover_forced'; scoringContext?: ScoringContext } | null>(null)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
   const [pendingSidelineDecision, setPendingSidelineDecision] = useState(false)
+  const [pendingFreeKick, setPendingFreeKick] = useState<'our_free' | 'opp_free' | null>(null)
   // High Ball — armed by tapping the "HB" icon (logs nothing yet), then the
   // very next ball tap/drag-release on the tracking pitch is captured as
   // the landing spot in handleTaggingBallCommit. Mirrors the equivalent
@@ -1021,19 +1022,29 @@ export default function VideoTagging() {
     if (data.event_type === 'SIDELINE_BALL') {
       setPendingSidelineDecision(true)
     }
+    // Foul → free kick outcome panel (mirrors Live Recording's pendingFreeKick).
+    // Possession flips to the team TAKING the free, and tab switches to scoring.
+    if (data.event_type === 'FOUL_COMMITTED') {
+      const freeForUs = data.team === 'team_b'
+      setPendingFreeKick(freeForUs ? 'our_free' : 'opp_free')
+      setPossession(freeForUs ? 'team_a' : 'team_b')
+      onCarrierPossessionSwap()
+      setActiveTab('scoring')
+    }
 
     // Auto-end carrier on terminal events (scores, turnovers, wides, etc.)
     onCarrierTerminalEvent(data.event_type)
 
-    // Auto-flip possession (action.autoFlipTo is the source of truth)
+    // Auto-flip possession (action.autoFlipTo is the source of truth) —
+    // skip for FOUL_COMMITTED since the foul handler above already flipped
     const action = pending.action
-    if (action.autoFlipTo) {
+    if (action.autoFlipTo && data.event_type !== 'FOUL_COMMITTED') {
       setPossession(action.autoFlipTo === 'us' ? 'team_a' : 'team_b')
       // End carrier on possession swap
       onCarrierPossessionSwap()
     }
-    // Context-aware tab switch (score/wide → kickouts)
-    if (action.autoSwitchTab) {
+    // Context-aware tab switch (score/wide → kickouts) — skip for fouls (handled above)
+    if (action.autoSwitchTab && data.event_type !== 'FOUL_COMMITTED') {
       setActiveTab(action.autoSwitchTab)
     }
 
@@ -1044,8 +1055,9 @@ export default function VideoTagging() {
     setOverlayState('none')
     setPendingOverlay(null)
 
-    // Resume video if it was playing
-    if (wasPlayingRef.current) {
+    // Resume video if it was playing — but NOT if a free kick outcome is
+    // pending (the user still needs to pick what happened with the free)
+    if (wasPlayingRef.current && data.event_type !== 'FOUL_COMMITTED') {
       setTimeout(() => playerRef.current?.play(), 100)
     }
   }
@@ -2435,6 +2447,12 @@ export default function VideoTagging() {
       ballPitchY={ballPosition?.y}
       calcMatchTime={calcMatchTime}
       onFortyFivePanelToggle={handleFortyFivePanelToggle}
+      pendingFreeKick={pendingFreeKick}
+      onFreeKickCancel={() => {
+        setPendingFreeKick(null)
+        if (wasPlayingRef.current) setTimeout(() => playerRef.current?.play(), 100)
+      }}
+      opponentName={opponentName}
     />
     </div>
   )

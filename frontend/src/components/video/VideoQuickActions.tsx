@@ -11,7 +11,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   Target, ArrowRightLeft, CircleDot, ArrowLeftRight,
-  ChevronLeft, Hand,
+  ChevronLeft, Hand, AlertTriangle, ArrowUpCircle,
+  XCircle, ArrowDownCircle,
 } from 'lucide-react'
 import type { PitchZone } from './PitchZoneSelector'
 import { TWO_POINTER_ZONES, xyToZone } from './PitchZoneSelector'
@@ -61,6 +62,14 @@ export interface VideoQuickActionsProps {
    * the persistent pitch's ball marker onto the 45m line and highlight it —
    * the same tap-accuracy aid MatchRecording.tsx gives live recording. */
   onFortyFivePanelToggle?: (open: boolean) => void
+  /** After a foul is logged, the parent sets this to show the free kick
+   * outcome panel — mirrors Live Recording's PitchActionOverlay free flow.
+   * 'our_free' = opposition fouled, we take the free.
+   * 'opp_free' = we fouled, opposition takes the free. */
+  pendingFreeKick?: 'our_free' | 'opp_free' | null
+  onFreeKickCancel?: () => void
+  /** Name shown for the team in the free kick header */
+  opponentName?: string
 }
 
 const SCORING_ACTIONS: ActionButton[] = [
@@ -129,7 +138,9 @@ const CATEGORY_TABS: { id: Category; label: string; icon: typeof Target }[] = [
 
 const FREE_KICK_ACTIONS: ActionButton[] = [
   { id: 'free_point', label: 'Point (Free)', eventType: 'POINT_SCORED', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Scored?', playerModalEventType: 'point', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
+  { id: 'free_2pt', label: '2PT (Free)', eventType: 'TWO_POINT_SCORED', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Scored?', playerModalEventType: 'point', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'free_wide', label: 'Wide (Free)', eventType: 'WIDE', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Took?', playerModalEventType: 'wide', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
+  { id: 'free_short', label: 'Dropped Short', eventType: 'SHORT', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Took?', playerModalEventType: 'saved', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
 ]
 
 const FORTY_FIVE_ACTIONS: ActionButton[] = [
@@ -153,6 +164,9 @@ export default function VideoQuickActions({
   ballPitchY,
   calcMatchTime,
   onFortyFivePanelToggle,
+  pendingFreeKick,
+  onFreeKickCancel,
+  opponentName = 'Opposition',
 }: VideoQuickActionsProps) {
   const [flashButton, setFlashButton] = useState<string | null>(null)
   const [showFreePanel, setShowFreePanel] = useState(false)
@@ -224,7 +238,7 @@ export default function VideoQuickActions({
       data.pitch_y = ballPitchY
     }
 
-    if (['POINT_SCORED', 'GOAL_SCORED', 'WIDE', 'SHORT'].includes(action.eventType)) {
+    if (['POINT_SCORED', 'GOAL_SCORED', 'TWO_POINT_SCORED', 'WIDE', 'SHORT'].includes(action.eventType)) {
       data.scoring_context = {
         is_two_pointer: action.eventType === 'POINT_SCORED' ? isTwoPointer : false,
         source: freeKickContext ? 'FROM_FREE' : 'FROM_PLAY',
@@ -325,8 +339,11 @@ export default function VideoQuickActions({
       }
     }
 
-    if (freeKickContext) setShowFreePanel(false)
-  }, [disabled, buildEventData, onEventTap, onCreateEvent, onPossessionChange, onTabChange, onFortyFivePanelToggle])
+    if (freeKickContext) {
+      setShowFreePanel(false)
+      onFreeKickCancel?.()
+    }
+  }, [disabled, buildEventData, onEventTap, onCreateEvent, onPossessionChange, onTabChange, onFortyFivePanelToggle, onFreeKickCancel])
 
   const handleFortyFiveTap = useCallback((scored: boolean) => {
     if (disabled) return
@@ -500,7 +517,72 @@ export default function VideoQuickActions({
 
       {/* Action buttons */}
       <div className={`flex-1 overflow-y-auto p-2 space-y-1.5 rounded-lg ${tabJustChanged ? 'qa-tab-pulse' : ''}`}>
-        {showFreePanel ? (
+        {pendingFreeKick ? (
+          <>
+            <div className="qa-free-kick-pulse rounded-xl border border-cyan-500/30 overflow-hidden">
+              <div
+                className="px-2.5 py-2 flex items-center justify-between border-b border-cyan-500/20"
+                style={{ background: 'linear-gradient(90deg, rgba(6,182,212,0.22), rgba(59,130,246,0.10))' }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle size={12} className="text-cyan-400" />
+                  <span className="text-[11px] font-bold text-cyan-300">
+                    {pendingFreeKick === 'our_free' ? `${teamName} Free` : `${opponentName} Free`}
+                  </span>
+                </div>
+                <button
+                  onClick={onFreeKickCancel}
+                  className="text-[10px] text-white/40 hover:text-white/70 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="p-1.5 grid grid-cols-2 gap-1.5">
+                {FREE_KICK_ACTIONS.map((action) => {
+                  const isPoint = action.id === 'free_point'
+                  const is2pt = action.id === 'free_2pt'
+                  const isWide = action.id === 'free_wide'
+                  const isShort = action.id === 'free_short'
+                  const variant = (isPoint || is2pt) ? 'emerald' : isWide ? 'rose' : 'amber'
+                  return (
+                    <button
+                      key={action.id}
+                      onClick={() => handleActionTap(action, true)}
+                      disabled={disabled}
+                      className={`py-2.5 rounded-xl border-2 font-semibold flex flex-col items-center gap-1 transition-all active:scale-[0.96] disabled:opacity-30
+                        ${variant === 'emerald' ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-200 hover:bg-emerald-500/30' : ''}
+                        ${variant === 'rose' ? 'bg-rose-500/20 border-rose-400/40 text-rose-200 hover:bg-rose-500/30' : ''}
+                        ${variant === 'amber' ? 'bg-amber-500/20 border-amber-400/40 text-amber-200 hover:bg-amber-500/30' : ''}
+                      `}
+                    >
+                      {(isPoint || is2pt) && <Target size={16} />}
+                      {isWide && <XCircle size={16} />}
+                      {isShort && <ArrowDownCircle size={16} />}
+                      <span className="text-[10px] leading-tight text-center">{action.label}</span>
+                    </button>
+                  )
+                })}
+                <button
+                  onClick={() => { onFreeKickCancel?.(); }}
+                  disabled={disabled}
+                  className="py-2 rounded-xl border-2 font-semibold text-[10px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.96] bg-teal-500/20 border-teal-400/40 text-teal-200 hover:bg-teal-500/30 disabled:opacity-30"
+                >
+                  <ArrowLeftRight size={14} />
+                  Short Pass
+                </button>
+                <button
+                  onClick={() => { onFreeKickCancel?.(); }}
+                  disabled={disabled}
+                  className="py-2 rounded-xl border-2 font-semibold text-[10px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.96] bg-teal-500/20 border-teal-400/40 text-teal-200 hover:bg-teal-500/30 disabled:opacity-30"
+                >
+                  <ArrowUpCircle size={14} />
+                  High Ball
+                </button>
+              </div>
+            </div>
+          </>
+        ) : showFreePanel ? (
           <>
             <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
               Free Kick Outcome
@@ -701,6 +783,13 @@ export default function VideoQuickActions({
         }
         .qa-tab-pulse {
           animation: qa-tab-pulse-glow 0.8s ease-in-out 2;
+        }
+        @keyframes qa-free-kick-pulse-glow {
+          0%, 100% { box-shadow: 0 0 0 2px rgba(6,182,212,0.5), 0 0 16px 4px rgba(6,182,212,0.25); }
+          50% { box-shadow: 0 0 0 3px rgba(6,182,212,0.7), 0 0 24px 8px rgba(6,182,212,0.4); }
+        }
+        .qa-free-kick-pulse {
+          animation: qa-free-kick-pulse-glow 1.2s ease-in-out infinite;
         }
       `}</style>
     </div>
