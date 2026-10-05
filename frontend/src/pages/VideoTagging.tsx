@@ -2225,6 +2225,7 @@ export default function VideoTagging() {
           actually started, and frozen again whenever paused — play/pause
           only controls video playback, never conflated with tracking. */}
       <TaggingPitch
+        key={`pitch-${taggingPitchOrientation}`}
         orientation={taggingPitchOrientation}
         containerClassName={
           pitchPanelMode === 'side'
