@@ -16,7 +16,7 @@ import {
 import type { PitchZone } from './PitchZoneSelector'
 import { TWO_POINTER_ZONES, xyToZone } from './PitchZoneSelector'
 import type { VideoEventCreateData } from '../../services/videoApi'
-import { TURNOVER_REASON_CONFIG, type TurnoverReason } from '../../constants/turnoverSubtypes'
+import { TURNOVER_REASON_CONFIG, FOUL_SUBTYPES, type TurnoverReason } from '../../constants/turnoverSubtypes'
 
 export type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
 
@@ -157,6 +157,7 @@ export default function VideoQuickActions({
   const [flashButton, setFlashButton] = useState<string | null>(null)
   const [showFreePanel, setShowFreePanel] = useState(false)
   const [showFortyFivePanel, setShowFortyFivePanel] = useState(false)
+  const [showFoulPanel, setShowFoulPanel] = useState(false)
   // Turnover reason/subtype picker — parity with MatchRecording.tsx's flat
   // single-screen picker (all 3 reason groups + their subtype buttons shown
   // and directly tappable at once, no "pick reason, then pick type" as two
@@ -350,17 +351,43 @@ export default function VideoQuickActions({
   // omitted when a group header (not a specific subtype button) was tapped.
   const handleTurnoverFlatTap = useCallback((reason: TurnoverReason, subtype?: string) => {
     const { eventType } = TURNOVER_REASON_CONFIG[reason]
-    const videoEventType = eventType === 'unforced_error' ? 'OUR_UNFORCED_ERROR' : 'TURNOVER_LOST'
+    const videoEventType =
+      eventType === 'unforced_error' ? 'OUR_UNFORCED_ERROR'
+      : eventType === 'foul_committed' ? 'FOUL_COMMITTED'
+      : 'TURNOVER_LOST'
     setTurnoverPanel(null)
     const action: ActionButton = {
-      id: videoEventType === 'OUR_UNFORCED_ERROR' ? 'our_error' : 'to_lost',
-      label: videoEventType === 'OUR_UNFORCED_ERROR' ? 'Our Error' : 'T/O Lost',
+      id: videoEventType === 'OUR_UNFORCED_ERROR' ? 'our_error'
+          : videoEventType === 'FOUL_COMMITTED' ? 'foul'
+          : 'to_lost',
+      label: videoEventType === 'OUR_UNFORCED_ERROR' ? 'Our Error'
+             : videoEventType === 'FOUL_COMMITTED' ? 'Offensive Foul'
+             : 'T/O Lost',
       eventType: videoEventType,
       autoFlipTo: 'them',
       needsPlayer: true,
       needsPitch: false,
-      playerModalTitle: videoEventType === 'OUR_UNFORCED_ERROR' ? 'Who Made the Error?' : 'Who Lost Possession?',
-      playerModalEventType: 'turnover_lost',
+      playerModalTitle: videoEventType === 'OUR_UNFORCED_ERROR' ? 'Who Made the Error?'
+                        : videoEventType === 'FOUL_COMMITTED' ? 'Who Fouled?'
+                        : 'Who Lost Possession?',
+      playerModalEventType: videoEventType === 'FOUL_COMMITTED' ? 'foul_committed' : 'turnover_lost',
+    }
+    const eventData = buildEventData(action)
+    if (subtype) eventData.sub_type = subtype
+    setFlashButton(action.id)
+    onEventTap({ action, eventData })
+  }, [buildEventData, onEventTap])
+
+  const handleFoulSubtypeTap = useCallback((subtype?: string) => {
+    setShowFoulPanel(false)
+    const action: ActionButton = {
+      id: 'foul',
+      label: 'Foul',
+      eventType: 'FOUL_COMMITTED',
+      needsPlayer: true,
+      needsPitch: false,
+      playerModalTitle: 'Who Fouled?',
+      playerModalEventType: 'foul_committed',
     }
     const eventData = buildEventData(action)
     if (subtype) eventData.sub_type = subtype
@@ -377,6 +404,16 @@ export default function VideoQuickActions({
 
   const handleDiscipline = (type: 'YELLOW_CARD' | 'BLACK_CARD' | 'RED_CARD' | 'SUB_ON' | 'FOUL_COMMITTED') => {
     if (disabled) return
+    // For FOUL_COMMITTED, show the foul subtype panel instead of immediate player selection
+    if (type === 'FOUL_COMMITTED') {
+      setShowFoulPanel(true)
+      setShowFreePanel(false)
+      setShowFortyFivePanel(false)
+      setTurnoverPanel(null)
+      onFortyFivePanelToggle?.(false)
+      return
+    }
+    // For cards and subs, route through normal player selection flow
     const videoMs = currentTimestampMs ?? 0
     const time = calcMatchTime
       ? calcMatchTime(videoMs)
@@ -395,7 +432,6 @@ export default function VideoQuickActions({
     const modalTitle = type === 'YELLOW_CARD' ? 'Yellow Card — Who?'
       : type === 'BLACK_CARD' ? 'Black Card — Who?'
       : type === 'RED_CARD' ? 'Red Card — Who?'
-      : type === 'FOUL_COMMITTED' ? 'Foul — Who?'
       : 'Substitution — Who?'
     // Route through overlay flow for player selection
     onEventTap({
@@ -444,7 +480,7 @@ export default function VideoQuickActions({
         {CATEGORY_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false); setTurnoverPanel(null) }}
+            onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false); setShowFoulPanel(false); onFortyFivePanelToggle?.(false); setTurnoverPanel(null) }}
             className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all ${
               activeTab === id
                 ? 'text-emerald-400 bg-emerald-500/10 border-b-2 border-emerald-400'
@@ -532,6 +568,38 @@ export default function VideoQuickActions({
             </button>
             <button
               onClick={() => { setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false) }}
+              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
+            >
+              <ChevronLeft size={12} />
+              Back
+            </button>
+          </>
+        ) : showFoulPanel ? (
+          <>
+            <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
+              Foul Type
+            </div>
+            {FOUL_SUBTYPES.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => handleFoulSubtypeTap(opt.value)}
+                disabled={disabled}
+                className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 disabled:opacity-30"
+                style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
+              >
+                {opt.label}
+              </button>
+            ))}
+            <button
+              onClick={() => handleFoulSubtypeTap()}
+              disabled={disabled}
+              className="w-full py-2.5 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/50 border-white/[0.06] hover:border-white/12 hover:text-white/70 disabled:opacity-30"
+              style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%)' }}
+            >
+              General Foul
+            </button>
+            <button
+              onClick={() => setShowFoulPanel(false)}
               className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
             >
               <ChevronLeft size={12} />
