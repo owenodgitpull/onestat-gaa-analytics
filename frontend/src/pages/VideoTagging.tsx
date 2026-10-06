@@ -1092,7 +1092,7 @@ export default function VideoTagging() {
 
     setPendingOverlay(pending)
 
-    if (pending.action.needsPlayer && possession === 'team_a') {
+    if (pending.action.needsPlayer && (possession === 'team_a' || pending.action.id === 'foul_own')) {
       setOverlayState('player')
     } else {
       // No player needed, or opponent event — finalize directly
