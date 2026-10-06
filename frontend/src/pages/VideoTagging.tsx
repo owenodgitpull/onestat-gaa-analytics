@@ -3260,7 +3260,7 @@ export default function VideoTagging() {
 
   /** CategorizedActionButtons — same component as live recording */
   const controlsBar = (
-    <div data-tour="video-quick-actions" className="max-w-2xl mx-auto w-full">
+    <div data-tour="video-quick-actions" className="max-w-4xl mx-auto w-full">
       <CategorizedActionButtons
         onActionSelect={handleQuickAction}
         onFoulClick={handleFoulClick}

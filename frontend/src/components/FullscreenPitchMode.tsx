@@ -1024,7 +1024,7 @@ export default function FullscreenPitchMode({
 
       {/* Bottom — CategorizedActionButtons (same layout in both orientations) */}
       <div className="flex-shrink-0 backdrop-blur-xl bg-white/5 border-t border-white/10 px-3 py-2">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <CategorizedActionButtons
             onActionSelect={onActionSelect}
             onFoulClick={onFoulClick}

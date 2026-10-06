@@ -34,20 +34,22 @@ interface MatchStatsPanelProps {
   onOpenExtraStats?: () => void
 }
 
-const SHOT_TYPES = new Set([
-  'goal', 'penalty_goal', 'point', 'two_point', 'wide', 'short', 'saved', 'hit_post',
-  'point_free', 'two_point_free', 'wide_free', 'forty_five', 'forty_five_missed', 'penalty_miss',
+// Event sets — copied from the backend's match_service so the panel counts
+// exactly what Live Recording / Match Result count.
+const SCORING_TYPES = new Set(['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'])
+const MISS_TYPES = new Set(['wide', 'wide_free', 'forty_five_missed'])
+const OWN_KO_WON = new Set(['own_kickout_won', 'own_kickout_won_break'])
+const OWN_KO_LOST = new Set(['own_kickout_opposition_won', 'own_kickout_opposition_won_break', 'own_kickout_sideline'])
+const OPP_KO_RETAINED = new Set(['opp_kickout_opposition_won', 'opp_kickout_opposition_won_break'])
+const OPP_KO_LOST = new Set(['opp_kickout_won', 'opp_kickout_won_break', 'opp_kickout_sideline'])
+const BALL_LOSS = new Set(['turnover_lost', 'unforced_error'])
+const BALL_RECOVERY = new Set([
+  'turnover_won', 'interception', 'tackle_won',
+  'own_kickout_won', 'opp_kickout_won', 'kickout_won', 'own_kickout_won_break', 'opp_kickout_won_break',
+  'own_kickout_opposition_won', 'own_kickout_opposition_won_break',
+  'opp_kickout_opposition_won', 'opp_kickout_opposition_won_break',
+  'goal', 'point', 'point_free', 'two_point', 'two_point_free', 'forty_five', 'penalty_goal',
 ])
-const SCORE_TYPES = new Set([
-  'goal', 'penalty_goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five',
-])
-const WIDE_TYPES = new Set(['wide', 'wide_free'])
-const DROPPED_SHORT_TYPES = new Set(['short'])
-
-function count(events: ChartEvent[], team: 'own' | 'opponent', predicate: (e: ChartEvent) => boolean): number {
-  return events.filter(e => e.team === team && predicate(e)).length
-}
-
 // Same set the backend counts as a goal chance (match_service _GOAL_CHANCE_TYPES):
 // goals, penalties, saves and hit-posts — the old local rule omitted saved/hit_post,
 // so Goal Chances read lower here than in Live Recording.
@@ -61,66 +63,86 @@ function computeStatsFromEvents(
   events: ChartEvent[],
   possessionEvents?: unknown[]
 ): MatchStats {
-  const ownShots = count(events, 'own', e => SHOT_TYPES.has(e.event_type))
-  const oppShots = count(events, 'opponent', e => SHOT_TYPES.has(e.event_type))
-  const ownScores = count(events, 'own', e => SCORE_TYPES.has(e.event_type))
-  const oppScores = count(events, 'opponent', e => SCORE_TYPES.has(e.event_type))
-  const ownWides = count(events, 'own', e => WIDE_TYPES.has(e.event_type))
-  const oppWides = count(events, 'opponent', e => WIDE_TYPES.has(e.event_type))
-  const ownDroppedShort = count(events, 'own', e => DROPPED_SHORT_TYPES.has(e.event_type))
-  const oppDroppedShort = count(events, 'opponent', e => DROPPED_SHORT_TYPES.has(e.event_type))
+  // Counting rules are a direct port of the backend's match_service
+  // get_match_stats (what Live Recording / Match Result show), so Video
+  // Tagging's panel behaves identically. Notably: kickouts are decoded from
+  // the event TYPE, not event.team (an opposition-won kickout is tagged to
+  // the opposition in video, which the old team-filtered code never counted as
+  // OUR lost kickout); a turnover/unforced error LOST by one side is a
+  // turnover WON by the other; penalties are goal chances but not shots.
+  const mk = () => ({
+    goal_chances: 0, total_shots: 0, scores: 0, wides: 0, dropped_short: 0, hit_post: 0,
+    turnovers_won: 0, turnovers_lost: 0, unforced_errors: 0,
+    kickouts_won: 0, kickouts_lost: 0, fouls: 0, yellow: 0, black: 0, red: 0,
+  })
+  const T = mk()
+  const O = mk()
+  for (const e of events) {
+    const me = e.team === 'own' ? T : O
+    const other = e.team === 'own' ? O : T
+    const ty = e.event_type
+    if (GOAL_CHANCE_TYPES.has(ty)) me.goal_chances++
 
-  const ownAccuracy = ownShots > 0 ? (ownScores / ownShots) * 100 : 0
-  const oppAccuracy = oppShots > 0 ? (oppScores / oppShots) * 100 : 0
+    if (SCORING_TYPES.has(ty)) { me.total_shots++; me.scores++ }
+    else if (MISS_TYPES.has(ty)) { me.total_shots++; me.wides++ }
+    else if (ty === 'short') { me.total_shots++; me.dropped_short++ }
+    else if (ty === 'saved') { me.total_shots++ }
+    else if (ty === 'hit_post') { me.total_shots++; me.hit_post++ }
+    else if (ty === 'turnover_won' || ty === 'interception' || ty === 'tackle_won') me.turnovers_won++
+    else if (ty === 'turnover_lost') { me.turnovers_lost++; other.turnovers_won++ }
+    else if (ty === 'unforced_error') { me.turnovers_lost++; other.turnovers_won++; me.unforced_errors++ }
+    else if (OWN_KO_WON.has(ty)) T.kickouts_won++
+    else if (OWN_KO_LOST.has(ty)) T.kickouts_lost++
+    else if (OPP_KO_RETAINED.has(ty)) O.kickouts_won++
+    else if (OPP_KO_LOST.has(ty)) O.kickouts_lost++
+    else if (ty === 'kickout_won' || ty === 'breaking_ball_won') T.kickouts_won++
+    else if (ty === 'kickout_lost' || ty === 'breaking_ball_lost') T.kickouts_lost++
+    else if (ty === 'foul_committed') me.fouls++
+    else if (ty === 'foul_won') other.fouls++
+    else if (ty === 'yellow_card') me.yellow++
+    else if (ty === 'black_card') me.black++
+    else if (ty === 'red_card') me.red++
+  }
 
-  const ownTurnoversWon = count(events, 'own', e => e.event_type === 'turnover_won' || e.event_type === 'tackle_won')
-  const ownTurnoversLost = count(events, 'own', e => e.event_type === 'turnover_lost')
-  const oppTurnoversWon = count(events, 'opponent', e => e.event_type === 'turnover_won' || e.event_type === 'tackle_won')
-  const oppTurnoversLost = count(events, 'opponent', e => e.event_type === 'turnover_lost')
+  const ownShots = T.total_shots, oppShots = O.total_shots
+  const ownScores = T.scores, oppScores = O.scores
+  const ownWides = T.wides, oppWides = O.wides
+  const ownDroppedShort = T.dropped_short, oppDroppedShort = O.dropped_short
+  const ownGoalChances = T.goal_chances, oppGoalChances = O.goal_chances
+  // Accuracy = scores / (scores + wides): saves and drop-shorts aren't inaccuracy
+  const ownAccuracy = ownScores + ownWides > 0 ? (ownScores / (ownScores + ownWides)) * 100 : 0
+  const oppAccuracy = oppScores + oppWides > 0 ? (oppScores / (oppScores + oppWides)) * 100 : 0
+  // Conversion = scores / total shots
+  const ownConversion = ownShots > 0 ? (ownScores / ownShots) * 100 : 0
+  const oppConversion = oppShots > 0 ? (oppScores / oppShots) * 100 : 0
+  const ownTurnoversWon = T.turnovers_won, oppTurnoversWon = O.turnovers_won
+  const ownTurnoversLost = T.turnovers_lost, oppTurnoversLost = O.turnovers_lost
+  const ownUnforcedErrors = T.unforced_errors, oppUnforcedErrors = O.unforced_errors
+  const ownKickoutWon = T.kickouts_won, ownKickoutLost = T.kickouts_lost
+  const oppKickoutWon = O.kickouts_won, oppKickoutLost = O.kickouts_lost
+  const ownFouls = T.fouls, oppFouls = O.fouls
+  const ownYellow = T.yellow, oppYellow = O.yellow
+  const ownBlack = T.black, oppBlack = O.black
+  const ownRed = T.red, oppRed = O.red
 
-  const ownUnforcedErrors = count(events, 'own', e => e.event_type === 'unforced_error')
-  const oppUnforcedErrors = count(events, 'opponent', e => e.event_type === 'unforced_error')
-
-  // Kickouts - own kickout events
-  const ownKickoutEvents = events.filter(e => e.team === 'own' && e.event_type.startsWith('own_kickout'))
-  const ownKickoutWon = ownKickoutEvents.filter(e =>
-    e.event_type === 'own_kickout_won' || e.event_type === 'own_kickout_won_break'
-  ).length
-  const ownKickoutLost = ownKickoutEvents.filter(e =>
-    e.event_type === 'own_kickout_opposition_won' ||
-    e.event_type === 'own_kickout_opposition_won_break' ||
-    e.event_type === 'own_kickout_sideline'
-  ).length
-
-  // Kickouts - opponent kickout events (we're contesting their kickouts)
-  const oppKickoutEvents = events.filter(e => e.team === 'opponent' && e.event_type.startsWith('opp_kickout'))
-  const oppKickoutWon = oppKickoutEvents.filter(e =>
-    e.event_type === 'opp_kickout_opposition_won' || e.event_type === 'opp_kickout_opposition_won_break'
-  ).length
-  const oppKickoutLost = oppKickoutEvents.filter(e =>
-    e.event_type === 'opp_kickout_won' ||
-    e.event_type === 'opp_kickout_won_break' ||
-    e.event_type === 'opp_kickout_sideline'
-  ).length
-
-  const ownFouls = count(events, 'own', e => e.event_type === 'foul_committed')
-  const oppFouls = count(events, 'opponent', e => e.event_type === 'foul_committed')
-
-  const ownYellow = count(events, 'own', e => e.event_type === 'yellow_card')
-  const oppYellow = count(events, 'opponent', e => e.event_type === 'yellow_card')
-  const ownBlack = count(events, 'own', e => e.event_type === 'black_card')
-  const oppBlack = count(events, 'opponent', e => e.event_type === 'black_card')
-  const ownRed = count(events, 'own', e => e.event_type === 'red_card')
-  const oppRed = count(events, 'opponent', e => e.event_type === 'red_card')
-
-  // Goal chances - shots from inside D zone (approximate based on existing logic)
-  const ownGoalChances = count(events, 'own', e =>
-    GOAL_CHANCE_TYPES.has(e.event_type)
-  )
-  const oppGoalChances = count(events, 'opponent', e =>
-    GOAL_CHANCE_TYPES.has(e.event_type)
-  )
-
+  // Ball recovery — average minutes to win the ball back after a loss event
+  // (same rule as the backend's _calc_recovery: only gaps of 0 < Δ ≤ 10 min).
+  const calcRecovery = (team: 'own' | 'opponent'): number | null => {
+    const timed = events
+      .filter(e => e.minute != null && e.team === team)
+      .sort((a, b) => a.minute - b.minute)
+    const gaps: number[] = []
+    let lossMin: number | null = null
+    for (const e of timed) {
+      if (BALL_LOSS.has(e.event_type)) lossMin = e.minute
+      else if (lossMin !== null && BALL_RECOVERY.has(e.event_type)) {
+        const diff = e.minute - lossMin
+        if (diff > 0 && diff <= 10) gaps.push(diff)
+        lossMin = null
+      }
+    }
+    return gaps.length ? Math.round((gaps.reduce((a, b) => a + b, 0) / gaps.length) * 10) / 10 : null
+  }
   // Possession from possession_events — same rules as the backend's
   // match_service stats (what Live Recording shows): % by TIME (sum of
   // duration_seconds), falling back to event counts only while no durations
@@ -159,22 +181,22 @@ function computeStatsFromEvents(
     opponent_possession_percentage: oppPossessionPct,
     team_possession_count: ownPossessionCount,
     opponent_possession_count: oppPossessionCount,
-    team_poss_converted_to_shots_pct: Math.round(teamPossToShotsPct),
-    opponent_poss_converted_to_shots_pct: Math.round(oppPossToShotsPct),
+    team_poss_converted_to_shots_pct: Math.round(teamPossToShotsPct * 10) / 10,
+    opponent_poss_converted_to_shots_pct: Math.round(oppPossToShotsPct * 10) / 10,
     team_total_shots: ownShots,
     team_scores: ownScores,
     team_wides: ownWides,
     team_dropped_short: ownDroppedShort,
     team_goal_chances: ownGoalChances,
     team_accuracy: ownAccuracy,
-    team_conversion_rate: ownAccuracy, // Same as accuracy for now
+    team_conversion_rate: ownConversion,
     opponent_total_shots: oppShots,
     opponent_scores: oppScores,
     opponent_wides: oppWides,
     opponent_dropped_short: oppDroppedShort,
     opponent_goal_chances: oppGoalChances,
     opponent_accuracy: oppAccuracy,
-    opponent_conversion_rate: oppAccuracy,
+    opponent_conversion_rate: oppConversion,
     team_turnovers_won: ownTurnoversWon,
     team_turnovers_lost: ownTurnoversLost,
     team_unforced_errors: ownUnforcedErrors,
@@ -193,8 +215,8 @@ function computeStatsFromEvents(
     opponent_yellow_cards: oppYellow,
     opponent_black_cards: oppBlack,
     opponent_red_cards: oppRed,
-    team_ball_recovery_avg_min: null, // Requires backend calculation
-    opponent_ball_recovery_avg_min: null,
+    team_ball_recovery_avg_min: calcRecovery('own'),
+    opponent_ball_recovery_avg_min: calcRecovery('opponent'),
   }
 }
 

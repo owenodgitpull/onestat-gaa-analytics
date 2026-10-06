@@ -5026,7 +5026,7 @@ export default function MatchRecording() {
               </div>
 
               {/* Categorized Action Buttons */}
-              <div className="max-w-2xl mx-auto -mt-6">
+              <div className="max-w-3xl mx-auto -mt-6">
                 <CategorizedActionButtons
                   onActionSelect={handleQuickAction}
                   onFoulClick={handleFoulClick}
