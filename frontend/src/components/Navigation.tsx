@@ -428,8 +428,8 @@ export default function Navigation() {
         </>
       )}
 
-      {/* Left Sidebar - Contextual Icons */}
-      {sidebarItems.length > 0 && (
+      {/* Left Sidebar - Contextual Icons (hidden on video tagging for max space) */}
+      {sidebarItems.length > 0 && !location.pathname.startsWith('/video/') && (
         <aside className="fixed left-0 bottom-0 w-14 backdrop-blur-xl border-r border-white/[0.10] z-40 hidden md:flex flex-col items-center py-4 space-y-1" style={{ top: 'calc(3.5rem + env(safe-area-inset-top, 0px))', background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.05))', boxShadow: '4px 0 24px rgba(0,0,0,0.3), inset 1px 0 0 rgba(255,255,255,0.08)' }}>
           {sidebarItems.map((item, idx) =>
             item.path.startsWith('#') ? (

@@ -3,48 +3,32 @@
  *
  * Event flow: tap event → tap player number (own-team events only) → done.
  * Position is always taken from the live ball position on the persistent
- * tracking pitch — there's no separate pitch-tap-to-confirm step (removed;
- * redundant once tracking moved from a small minimap to the big persistent
- * pitch, which already has the position by the time an event is tapped).
- * Video auto-pauses on event tap and auto-resumes after completion.
- * The continuous ball-carrier tracking pitch (TaggingPitch)
- * is a permanent panel beside or below the video (never overlaps it) —
- * user-toggleable Side/Below, remembered per-device via usePitchPanelLayout.
- * Scoreboard in header with GAA format (1-03) and total.
- * Fullscreen mode hides app header and maximises video area.
+ * tracking pitch. Video auto-pauses on event tap and auto-resumes after
+ * completion. Uses the same CategorizedActionButtons as Live Recording.
  *
- * Layout (normal, pitch panel mode = 'side'):
+ * Layout (50/50 split, both normal and fullscreen):
  * ┌──────────────────────────────────────────────────┐
- * │  ← Back | Title | Scoreboard | [Auto] [Sync]    │
- * ├──────────────────────────────┬─────────┬─────────┤
- * │                              │ Tagging │  Quick  │
- * │   Video Player               │ Pitch   │  Action │
- * │   (pitch confirm overlay)    │(vertical│  Sidebar│
- * │                              │ column) │(tabs+btn│
- * ├──────────────────────────────┴─────────┴─────────┤
+ * │  ← Back | Scoreboard | [Auto] [Sync]            │
+ * ├─────────────────────────┬────────────────────────┤
+ * │   Video Player (50%)    │  TaggingPitch (50%)    │
+ * ├─────────────────────────┴────────────────────────┤
+ * │  CategorizedActionButtons (centered)              │
+ * ├──────────────────────────────────────────────────┤
+ * │  Jersey Number Strip                              │
+ * ├──────────────────────────────────────────────────┤
  * │  Event Timeline                                   │
  * ├──────────────────────────────────────────────────┤
  * │  ▾ Event Log (collapsible)                        │
- * └──────────────────────────────────────────────────┘
- *
- * Layout (fullscreen, pitch panel mode = 'below'):
- * ┌──────────────────────────────────────────────────┐
- * │  [X] Title | Scoreboard | [Auto] [Report] [Sync] │
- * ├──────────────────────────────────┬───────────────┤
- * │   Video Player (flex-1)          │  Quick Action  │
- * │   TaggingPitch (horizontal strip)│  Sidebar       │
- * ├──────────────────────────────────┴───────────────┤
- * │  Possession status bar                            │
  * └──────────────────────────────────────────────────┘
  */
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, PanelRight, PanelBottom, Play, Target, Undo2 } from 'lucide-react'
+import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2 } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
-import VideoQuickActions, { type Category, type OverlayPendingEvent } from '../components/video/VideoQuickActions'
+import CategorizedActionButtons from '../components/CategorizedActionButtons'
 import VideoEventLog from '../components/video/VideoEventLog'
 import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
@@ -96,7 +80,7 @@ import {
   useCompleteTracking,
   useResetVideoSession,
 } from '../hooks/useVideoSessions'
-import { usePitchPanelLayout } from '../hooks/usePitchPanelLayout'
+import { FOUL_SUBTYPES } from '../constants/turnoverSubtypes'
 import {
   useVideoEvents,
   useCreateVideoEvent,
@@ -112,10 +96,76 @@ import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
 import type { VideoEventCreateData, VideoEventUpdateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
 import { api, type BallCarrierSegment } from '../services/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { PossessionTeam } from '../types'
+import { PossessionTeam, EventType } from '../types'
 import type { Player, BallPosition } from '../types'
 
 type OverlayState = 'none' | 'player' | 'pitch'
+type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
+
+interface ActionButton {
+  id: string
+  label: string
+  eventType: string
+  autoFlipTo?: 'us' | 'them'
+  autoSwitchTab?: Category
+  needsPlayer?: boolean
+  needsPitch?: boolean
+  playerModalTitle?: string
+  playerModalEventType?: string
+}
+
+interface OverlayPendingEvent {
+  action: ActionButton
+  eventData: VideoEventCreateData
+  freeKickContext?: boolean
+}
+
+interface EventConfig {
+  videoType: string
+  needsPlayer: boolean
+  autoFlipTo?: 'us' | 'them'
+  autoSwitchTab?: Category
+  playerModalTitle?: string
+  playerModalEventType?: string
+}
+
+const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
+  [EventType.GOAL]: { videoType: 'GOAL_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'goal' },
+  [EventType.POINT]: { videoType: 'POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
+  [EventType.TWO_POINT]: { videoType: 'TWO_POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
+  [EventType.WIDE]: { videoType: 'WIDE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
+  [EventType.SHORT]: { videoType: 'SHORT', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'saved' },
+  [EventType.SAVED]: { videoType: 'SAVED', needsPlayer: false, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts' },
+  [EventType.BLOCK]: { videoType: 'BLOCK_SHOT', needsPlayer: false },
+  [EventType.HIT_POST]: { videoType: 'HIT_POST', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'wide' },
+  [EventType.POINT_FREE]: { videoType: 'POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
+  [EventType.TWO_POINT_FREE]: { videoType: 'TWO_POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
+  [EventType.WIDE_FREE]: { videoType: 'WIDE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
+  [EventType.FORTY_FIVE]: { videoType: 'FORTY_FIVE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'point' },
+  [EventType.FORTY_FIVE_MISSED]: { videoType: 'FORTY_FIVE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
+  [EventType.PENALTY_GOAL]: { videoType: 'PENALTY_GOAL_MARKER', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'goal' },
+  [EventType.PENALTY_MISS]: { videoType: 'PENALTY_MISS_MARKER', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
+  [EventType.TURNOVER_WON]: { videoType: 'TURNOVER_WON', needsPlayer: true, autoFlipTo: 'us', playerModalTitle: 'Who Won Turnover?', playerModalEventType: 'turnover_won' },
+  [EventType.TACKLE_WON]: { videoType: 'TACKLE_WON', needsPlayer: true, autoFlipTo: 'us', playerModalTitle: 'Who Won Tackle?', playerModalEventType: 'turnover_won' },
+  [EventType.TURNOVER_LOST]: { videoType: 'TURNOVER_LOST', needsPlayer: true, autoFlipTo: 'them', playerModalTitle: 'Who Lost Possession?', playerModalEventType: 'turnover_lost' },
+  [EventType.INTERCEPTION]: { videoType: 'INTERCEPTION', needsPlayer: true, autoFlipTo: 'us', playerModalTitle: 'Who Intercepted?', playerModalEventType: 'turnover_won' },
+  [EventType.OUR_UNFORCED_ERROR]: { videoType: 'OUR_UNFORCED_ERROR', needsPlayer: true, autoFlipTo: 'them', playerModalTitle: 'Who Made the Error?', playerModalEventType: 'turnover_lost' },
+  [EventType.OPP_UNFORCED_ERROR]: { videoType: 'OPP_UNFORCED_ERROR', needsPlayer: false, autoFlipTo: 'us' },
+  [EventType.SIDELINE_BALL]: { videoType: 'SIDELINE_BALL', needsPlayer: false },
+  [EventType.OWN_KICKOUT_WON]: { videoType: 'OWN_KICKOUT_WON', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
+  [EventType.OWN_KICKOUT_OPPOSITION_WON]: { videoType: 'OWN_KICKOUT_OPPOSITION_WON', needsPlayer: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  [EventType.OWN_KICKOUT_WON_BREAK]: { videoType: 'OWN_KICKOUT_WON_BREAK', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
+  [EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK]: { videoType: 'OWN_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  [EventType.OWN_KICKOUT_SIDELINE]: { videoType: 'SIDELINE_KICK', needsPlayer: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  [EventType.OPP_KICKOUT_WON]: { videoType: 'OPP_KICKOUT_WON', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
+  [EventType.OPP_KICKOUT_OPPOSITION_WON]: { videoType: 'OPP_KICKOUT_OPPOSITION_WON', needsPlayer: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  [EventType.OPP_KICKOUT_WON_BREAK]: { videoType: 'OPP_KICKOUT_WON_BREAK', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
+  [EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK]: { videoType: 'OPP_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
+  [EventType.OPP_KICKOUT_SIDELINE]: { videoType: 'SIDELINE_KICK', needsPlayer: false, autoFlipTo: 'us', autoSwitchTab: 'scoring' },
+  [EventType.YELLOW_CARD]: { videoType: 'YELLOW_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Yellow Card?' },
+  [EventType.BLACK_CARD]: { videoType: 'BLACK_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Black Card?' },
+  [EventType.RED_CARD]: { videoType: 'RED_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Red Card?' },
+}
 
 // Scoring event types that trigger the opposition-scorer name prompt when
 // team_b (the opponent) is credited with them.
@@ -183,8 +233,9 @@ export default function VideoTagging() {
   // Fullscreen state
   const [isFullscreen, setIsFullscreen] = useState(false)
 
-  // Ball tracking pitch panel layout — Side (vertical pitch) or Below (horizontal pitch)
-  const { mode: pitchPanelMode, toggleMode: togglePitchPanelMode } = usePitchPanelLayout()
+  // 45m free pending state — mirrors MatchRecording's pending45 for the
+  // CategorizedActionButtons' built-in 45 Scored/Missed panel.
+  const [pending45, setPending45] = useState(false)
 
   // Ball tracking (TaggingPitch panel)
   const [ballPosition, setBallPosition] = useState<{ x: number; y: number } | null>({ x: 50, y: 50 })
@@ -950,22 +1001,6 @@ export default function VideoTagging() {
 
   const [highlight45LineX, setHighlight45LineX] = useState<number | null>(null)
 
-  // TaggingPitch previously had no 45m-line snap/highlight at all. When the
-  // 45m Free sub-panel opens, snap the persistent pitch's ball marker onto
-  // the real line (same as MatchRecording.tsx does on 45 initiation — the
-  // event's location is derived from wherever the ball marker sits, so this
-  // keeps it accurate) and highlight the line so the user can drag-correct
-  // along it before picking Scored/Missed.
-  const handleFortyFivePanelToggle = useCallback((open: boolean) => {
-    if (open) {
-      const lineX = compute45LineX(possession === 'team_a')
-      setHighlight45LineX(lineX)
-      setBallPosition(prev => (prev ? { ...prev, x: lineX } : prev))
-    } else {
-      setHighlight45LineX(null)
-    }
-  }, [possession, compute45LineX])
-
   // Refs for carrier lifecycle callbacks — defined later but needed by
   // handleFoulSubtypeSelect / handleDirectCreate which are declared first.
   const carrierTerminalRef = useRef<(eventType: string) => void>(() => {})
@@ -1150,6 +1185,180 @@ export default function VideoTagging() {
     setAiDismissed(true)
   }, [pendingFoulSubtype, sessionId, createEvent])
 
+  /** CategorizedActionButtons main dispatcher — translates EventType enum
+   *  into the existing OverlayPendingEvent + handleEventTap pipeline. */
+  const handleQuickAction = useCallback((eventType: EventType) => {
+    const config = EVENT_TYPE_CONFIG[eventType]
+    if (!config) return
+
+    const isFreeResult = [EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE].includes(eventType) ||
+      (eventType === EventType.SHORT && !!pendingFreeKick)
+    const is45Result = eventType === EventType.FORTY_FIVE || eventType === EventType.FORTY_FIVE_MISSED
+
+    const matchTime = calcMatchTime(currentTimeMs)
+    const zone = ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined
+    const isTwoPointer = zone ? TWO_POINTER_ZONES.includes(zone) : false
+
+    const scoringContext: Record<string, unknown> = {}
+    if (['GOAL_SCORED', 'POINT_SCORED', 'TWO_POINT_SCORED', 'WIDE', 'SHORT', 'HIT_POST', 'SAVED'].includes(config.videoType)) {
+      scoringContext.is_two_pointer = config.videoType === 'TWO_POINT_SCORED' || isTwoPointer
+      scoringContext.source = isFreeResult ? 'free' : 'from_play'
+    }
+    if (is45Result) {
+      scoringContext.source = '45'
+      scoringContext.scored = eventType === EventType.FORTY_FIVE
+    }
+
+    const team = possession === 'team_a' ? 'team_a' : 'team_b'
+    const data: VideoEventCreateData = {
+      event_type: config.videoType,
+      team,
+      half: matchTime.half,
+      match_minute: matchTime.minute,
+      match_second: matchTime.second,
+      video_timestamp_ms: currentTimeMs,
+      pitch_x: ballPosition?.x,
+      pitch_y: ballPosition?.y,
+      pitch_zone: zone,
+      scoring_context: Object.keys(scoringContext).length > 0 ? scoringContext as any : undefined,
+      source: 'human_tag',
+    }
+
+    if (isFreeResult) {
+      setPendingFreeKick(null)
+    }
+    if (is45Result) {
+      setPending45(false)
+      setHighlight45LineX(null)
+    }
+
+    const action: ActionButton = {
+      id: eventType,
+      label: eventType,
+      eventType: config.videoType,
+      needsPlayer: config.needsPlayer,
+      autoFlipTo: config.autoFlipTo,
+      autoSwitchTab: config.autoSwitchTab,
+      playerModalTitle: config.playerModalTitle,
+      playerModalEventType: config.playerModalEventType,
+    }
+
+    handleEventTap({ action, eventData: data, freeKickContext: isFreeResult })
+  }, [possession, calcMatchTime, currentTimeMs, ballPosition, pendingFreeKick, handleEventTap])
+
+  /** CategorizedActionButtons foul callback */
+  const handleFoulClick = useCallback((team: 'own' | 'opponent') => {
+    const matchTime = calcMatchTime(currentTimeMs)
+    const zone = ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined
+
+    if (team === 'own') {
+      const data: VideoEventCreateData = {
+        event_type: 'FOUL_COMMITTED',
+        team: 'team_a',
+        half: matchTime.half,
+        match_minute: matchTime.minute,
+        match_second: matchTime.second,
+        video_timestamp_ms: currentTimeMs,
+        pitch_x: ballPosition?.x,
+        pitch_y: ballPosition?.y,
+        pitch_zone: zone,
+        source: 'human_tag',
+      }
+      const action: ActionButton = {
+        id: 'foul_own',
+        label: 'Our Foul',
+        eventType: 'FOUL_COMMITTED',
+        needsPlayer: true,
+        playerModalTitle: 'Who Committed the Foul?',
+      }
+      handleEventTap({ action, eventData: data })
+    } else {
+      if (!sessionId) return
+      wasPlayingRef.current = playerRef.current?.isPlaying() || false
+      playerRef.current?.pause()
+      const data: VideoEventCreateData = {
+        event_type: 'FOUL_COMMITTED',
+        team: 'team_b',
+        half: matchTime.half,
+        match_minute: matchTime.minute,
+        match_second: matchTime.second,
+        video_timestamp_ms: currentTimeMs,
+        pitch_x: ballPosition?.x,
+        pitch_y: ballPosition?.y,
+        pitch_zone: zone,
+        source: 'human_tag',
+      }
+      createEvent.mutate({ sessionId, data })
+      carrierTerminalRef.current('FOUL_COMMITTED')
+      setPossession('team_a')
+      carrierPossessionSwapRef.current()
+      setPendingFreeKick('our_free')
+      setActiveTab('scoring')
+      setAiDismissed(true)
+    }
+  }, [calcMatchTime, currentTimeMs, ballPosition, sessionId, createEvent, handleEventTap])
+
+  /** CategorizedActionButtons 45 callback */
+  const handle45Click = useCallback(() => {
+    const lineX = compute45LineX(possession === 'team_a')
+    setHighlight45LineX(lineX)
+    setBallPosition(prev => (prev ? { ...prev, x: lineX } : prev))
+    setPending45(true)
+  }, [possession, compute45LineX])
+
+  /** CategorizedActionButtons discipline callback (cards) */
+  const handleDiscipline = useCallback((eventType: EventType) => {
+    const config = EVENT_TYPE_CONFIG[eventType]
+    if (!config) return
+    const matchTime = calcMatchTime(currentTimeMs)
+    const zone = ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined
+    const data: VideoEventCreateData = {
+      event_type: config.videoType,
+      team: 'team_a',
+      half: matchTime.half,
+      match_minute: matchTime.minute,
+      match_second: matchTime.second,
+      video_timestamp_ms: currentTimeMs,
+      pitch_x: ballPosition?.x,
+      pitch_y: ballPosition?.y,
+      pitch_zone: zone,
+      source: 'human_tag',
+    }
+    const action: ActionButton = {
+      id: eventType,
+      label: eventType,
+      eventType: config.videoType,
+      needsPlayer: true,
+      playerModalTitle: config.playerModalTitle,
+    }
+    handleEventTap({ action, eventData: data })
+  }, [calcMatchTime, currentTimeMs, ballPosition, handleEventTap])
+
+  /** Block deflected out for a sideline ball */
+  const handleBlockResultSideline = useCallback(() => {
+    setPendingBlockRecovery(false)
+    setPendingSidelineDecision(true)
+  }, [])
+
+  /** Block deflected behind end line → 45 to the attacking team */
+  const handleBlockResultFortyFive = useCallback(() => {
+    setPendingBlockRecovery(false)
+    const lineX = compute45LineX(possession === 'team_a')
+    setHighlight45LineX(lineX)
+    setBallPosition(prev => (prev ? { ...prev, x: lineX } : prev))
+    setPending45(true)
+  }, [possession, compute45LineX])
+
+  const handleCancelFree = useCallback(() => {
+    setPendingFreeKick(null)
+    if (wasPlayingRef.current) setTimeout(() => playerRef.current?.play(), 100)
+  }, [])
+
+  const handleCancel45 = useCallback(() => {
+    setPending45(false)
+    setHighlight45LineX(null)
+  }, [])
+
   /** Cancel the overlay flow and resume video */
   const cancelOverlay = useCallback(() => {
     setOverlayState('none')
@@ -1166,22 +1375,12 @@ export default function VideoTagging() {
     carrierTerminalRef.current(data.event_type)
     setAiDismissed(true)
 
-    // Start black card 10-min countdown
     if (data.event_type === 'BLACK_CARD') {
       setBlackCardTimers(prev => [...prev, {
         id: crypto.randomUUID(),
         playerLabel: data.jersey_number ? `#${data.jersey_number}` : `${data.match_minute}'`,
         startedAt: Date.now(),
       }])
-    }
-
-    // "Opp Foul" path — opposition committed the foul (team_b), we get the free.
-    // Possession already flipped by VideoQuickActions; just show the free kick panel.
-    if (data.event_type === 'FOUL_COMMITTED' && data.team === 'team_b') {
-      setPendingFreeKick('our_free')
-      // Pause video so user can pick the free outcome
-      wasPlayingRef.current = playerRef.current?.isPlaying() || false
-      playerRef.current?.pause()
     }
   }, [sessionId, createEvent])
 
@@ -2219,155 +2418,154 @@ export default function VideoTagging() {
   // prop, which DOES include `!isPlaying`, so this must too or arming it
   // while paused would leave the destination tap silently unable to fire.
   const highBallBlocked = mode !== 'tracking' || !isPlaying || overlayState !== 'none'
-  const taggingPitchOrientation: 'horizontal' | 'vertical' = pitchPanelMode === 'side' ? 'vertical' : 'horizontal'
+  const taggingPitchOrientation: 'horizontal' | 'vertical' = 'horizontal'
 
-  /** Video player + permanent TaggingPitch tracking panel, fullscreen/layout
-   *  toggle buttons, and the pitch-location confirm overlay. */
-  const videoArea = (
-    <div
-      data-tour="video-player"
-      className={`relative flex-1 flex min-w-0 min-h-0 ${pitchPanelMode === 'side' ? 'flex-row' : 'flex-col'}`}
-    >
-      <div className="relative flex-1 min-w-0 min-h-0 group/video">
-        <VideoPlayer
-          ref={playerRef}
-          src={stableVideoUrl.current}
-          onTimeUpdate={handleTimeUpdate}
-          onDurationChange={handleDurationChange}
-          onPlayStateChange={setIsPlaying}
-          halftimeMs={session.halftime_timestamp_ms ?? undefined}
-          firstHalfStartMs={session.first_half_start_ms ?? undefined}
-          secondHalfStartMs={session.second_half_start_ms ?? undefined}
-          fullTimeMs={session.full_time_ms ?? undefined}
-          maxSeekMs={mode === 'tracking' ? highWaterMarkMs : undefined}
-          initialTimeMs={
-            mode === 'tracking'
-              ? Math.max(currentTimeMs, session.tracking_progress_ms ?? session.first_half_start_ms ?? 0)
-              : currentTimeMs
-          }
-          fillHeight={isFullscreen}
-          disabled={mode === 'setup'}
-        />
+  // Derived state for CategorizedActionButtons
+  const cabPossession = possession === 'team_a' ? PossessionTeam.OWN : PossessionTeam.OPPONENT
+  const pendingFoulTeam: 'own' | 'opponent' | null =
+    pendingFreeKick === 'opp_free' ? 'own' : pendingFreeKick === 'our_free' ? 'opponent' : null
 
-        {/* Guided setup flow — replaces the old throw-in card + separate
-            HalftimeMarker banner. Rendered inside videoArea (shared between
-            fullscreen and normal layouts) so it works in both, unlike the
-            old HalftimeMarker which was only wired into normal mode. */}
-        {mode === 'setup' && (
-          <SetupFlowModal
-            step={setupStep}
-            currentTimeMs={currentTimeMs}
-            homeTeamName={clubName}
-            opponentName={opponentName}
-            isSaving={setupSaving}
-            error={setupError}
-            onMarkFirstHalf={handleMarkFirstHalf}
-            onMarkHalftime={() => handleMarkHalftime(currentTimeMs)}
-            onSkipHalftime={handleSkipHalftime}
-            onMarkSecondHalf={handleMarkSecondHalf}
-            onSkipSecondHalf={handleSkipSecondHalf}
-            onMarkFullTime={handleMarkFullTime}
-            onSkipFullTime={handleSkipFullTime}
-            onSetDirection={handleSetDirection}
-            onSelectThrowInWinner={handleSelectThrowInWinner}
-            onStartTracking={handleStartTracking}
-          />
-        )}
+  const isIn2PointZone = useMemo(() => {
+    if (!ballPosition) return false
+    const X_RADIUS_PERCENT = 29.0
+    const Y_RADIUS_PERCENT = 46.0
+    const team = pendingFreeKick
+      ? (pendingFreeKick === 'our_free' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
+      : cabPossession
+    const attackingRight = teamAttackingRightThisHalf ?? true
+    const attackingGoalX = team === PossessionTeam.OWN
+      ? (attackingRight ? 100 : 0)
+      : (attackingRight ? 0 : 100)
+    const dx = (ballPosition.x - attackingGoalX) / X_RADIUS_PERCENT
+    const dy = (ballPosition.y - 50) / Y_RADIUS_PERCENT
+    return (dx * dx + dy * dy) > 1
+  }, [ballPosition, pendingFreeKick, cabPossession, teamAttackingRightThisHalf])
 
-        {/* Awaiting Input Indicator — shown when a modal/picker is open and needs user action */}
-        {(overlayState !== 'none' || pendingKickoutAimedFor || assistPromptEventId || pendingBlockRecovery || pendingSidelineDecision || showManualEvent || showViewLineup || showWeatherPicker) && (
-          <div className="absolute top-0 left-0 right-0 z-40 pointer-events-none">
-            <div className="bg-gradient-to-r from-amber-500/90 via-orange-500/90 to-amber-500/90 text-white px-4 py-2.5 text-center text-sm font-semibold shadow-lg animate-pulse backdrop-blur-sm">
-              <div className="flex items-center justify-center gap-2">
-                <AlertTriangle size={18} className="shrink-0" />
-                <span>
-                  {pendingKickoutAimedFor && 'Select kickout target player →'}
-                  {assistPromptEventId && 'Select assist player (or skip) →'}
-                  {pendingBlockRecovery && 'Who recovered the block? →'}
-                  {pendingSidelineDecision && 'Select sideline decision →'}
-                  {overlayState === 'player' && 'Select player →'}
-                  {overlayState === 'pitch' && 'Tap pitch to place ball →'}
-                  {showManualEvent && 'Add manual event or substitution'}
-                  {showViewLineup && 'Viewing lineup'}
-                  {showWeatherPicker && 'Set weather conditions'}
-                  {overlayState === 'none' && !pendingKickoutAimedFor && !assistPromptEventId && !pendingBlockRecovery && !pendingSidelineDecision && !showManualEvent && !showViewLineup && !showWeatherPicker && 'Input required'}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
+  const isInPenaltyArea = useMemo(() => {
+    if (!ballPosition) return false
+    const team = pendingFreeKick
+      ? (pendingFreeKick === 'our_free' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
+      : cabPossession
+    const attackingRight = teamAttackingRightThisHalf ?? true
+    const attackingGoalX = team === PossessionTeam.OWN
+      ? (attackingRight ? 100 : 0)
+      : (attackingRight ? 0 : 100)
+    return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
+  }, [ballPosition, pendingFreeKick, cabPossession, teamAttackingRightThisHalf])
 
-        {/* Resume-tracking cue — tracking mode is "started" server-side but
-            play/pause is a separate signal (see mode gating throughout this
-            file), so once the setup card is gone there'd otherwise be no
-            obvious affordance telling the user how to actually resume
-            recording, especially after leaving and coming back. Now placed on
-            the RIGHT to avoid covering the fullscreen video content. */}
-        {mode === 'tracking' && !isPlaying && overlayState === 'none' && currentTimeMs >= highWaterMarkMs && (
-          <div className="absolute top-3 right-3 z-30 pointer-events-none">
-            <button
-              onClick={() => playerRef.current?.play()}
-              className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all hover:scale-105 active:scale-95 animate-pulse hover:animate-none"
-              style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
-            >
-              <Play size={16} fill="#0a1a10" />
-              Resume Tracking
-            </button>
-          </div>
-        )}
-
-        {/* Reviewing past footage banner — shown when user has scrubbed backward
-            to review what happened. Tracking resumes when video catches up to
-            the high water mark. */}
-        {mode === 'tracking' && currentTimeMs < highWaterMarkMs - 1000 && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-            <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-amber-500/40 rounded-xl px-4 py-2.5 shadow-2xl shadow-amber-500/10">
-              <div className="flex items-center gap-2 text-amber-300">
-                <AlertTriangle size={16} className="shrink-0" />
-                <span className="text-sm font-semibold">
-                  Reviewing past footage — tracking will resume at {formatTrackingClock(calcMatchTime(highWaterMarkMs))}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Fullscreen + pitch-panel layout toggle — overlaid on video, top-left, visible on hover */}
-        {overlayState === 'none' && (
-          <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover/video:opacity-100 transition-all">
-            <button
-              onClick={() => setIsFullscreen(prev => !prev)}
-              className="p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg transition-colors"
-              title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen (F)'}
-            >
-              <Maximize size={18} />
-            </button>
-            <button
-              onClick={togglePitchPanelMode}
-              className="p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg transition-colors"
-              title={pitchPanelMode === 'side' ? 'Move tracking pitch below video' : 'Move tracking pitch beside video'}
-            >
-              {pitchPanelMode === 'side' ? <PanelBottom size={18} /> : <PanelRight size={18} />}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Ball-carrier tracking pitch — permanent panel, never overlays the
-          video. 'side': vertical pitch column next to the video (landscape
-          tablets, width to spare). 'below': horizontal pitch strip under
-          the video (portrait tablets, height to spare). Replaces the old
-          floating BallMinimap widget. Locked until tracking mode has
-          actually started, and frozen again whenever paused — play/pause
-          only controls video playback, never conflated with tracking. */}
-      <TaggingPitch
-        key={`pitch-${taggingPitchOrientation}`}
-        orientation={taggingPitchOrientation}
-        containerClassName={
-          pitchPanelMode === 'side'
-            ? 'relative h-full w-[300px] md:w-[340px] flex-shrink-0 bg-gradient-to-br from-green-900/40 to-green-800/40 overflow-hidden'
-            : 'relative w-full flex-shrink-0 bg-gradient-to-br from-green-900/40 to-green-800/40 overflow-hidden aspect-[1960/1167]'
+  /** Video player panel — left half of the 50/50 split */
+  const videoPanel = (
+    <div data-tour="video-player" className="relative flex-1 min-w-0 min-h-0 group/video">
+      <VideoPlayer
+        ref={playerRef}
+        src={stableVideoUrl.current}
+        onTimeUpdate={handleTimeUpdate}
+        onDurationChange={handleDurationChange}
+        onPlayStateChange={setIsPlaying}
+        halftimeMs={session.halftime_timestamp_ms ?? undefined}
+        firstHalfStartMs={session.first_half_start_ms ?? undefined}
+        secondHalfStartMs={session.second_half_start_ms ?? undefined}
+        fullTimeMs={session.full_time_ms ?? undefined}
+        maxSeekMs={mode === 'tracking' ? highWaterMarkMs : undefined}
+        initialTimeMs={
+          mode === 'tracking'
+            ? Math.max(currentTimeMs, session.tracking_progress_ms ?? session.first_half_start_ms ?? 0)
+            : currentTimeMs
         }
+        fillHeight={isFullscreen}
+        disabled={mode === 'setup'}
+      />
+
+      {mode === 'setup' && (
+        <SetupFlowModal
+          step={setupStep}
+          currentTimeMs={currentTimeMs}
+          homeTeamName={clubName}
+          opponentName={opponentName}
+          isSaving={setupSaving}
+          error={setupError}
+          onMarkFirstHalf={handleMarkFirstHalf}
+          onMarkHalftime={() => handleMarkHalftime(currentTimeMs)}
+          onSkipHalftime={handleSkipHalftime}
+          onMarkSecondHalf={handleMarkSecondHalf}
+          onSkipSecondHalf={handleSkipSecondHalf}
+          onMarkFullTime={handleMarkFullTime}
+          onSkipFullTime={handleSkipFullTime}
+          onSetDirection={handleSetDirection}
+          onSelectThrowInWinner={handleSelectThrowInWinner}
+          onStartTracking={handleStartTracking}
+        />
+      )}
+
+      {(overlayState !== 'none' || pendingKickoutAimedFor || assistPromptEventId || pendingBlockRecovery || pendingSidelineDecision || showManualEvent || showViewLineup || showWeatherPicker) && (
+        <div className="absolute top-0 left-0 right-0 z-40 pointer-events-none">
+          <div className="bg-gradient-to-r from-amber-500/90 via-orange-500/90 to-amber-500/90 text-white px-4 py-2.5 text-center text-sm font-semibold shadow-lg animate-pulse backdrop-blur-sm">
+            <div className="flex items-center justify-center gap-2">
+              <AlertTriangle size={18} className="shrink-0" />
+              <span>
+                {pendingKickoutAimedFor && 'Select kickout target player →'}
+                {assistPromptEventId && 'Select assist player (or skip) →'}
+                {pendingBlockRecovery && 'Select outcome below ↓'}
+                {pendingSidelineDecision && 'Select outcome below ↓'}
+                {overlayState === 'player' && 'Select player →'}
+                {overlayState === 'pitch' && 'Tap pitch to place ball →'}
+                {showManualEvent && 'Add manual event or substitution'}
+                {showViewLineup && 'Viewing lineup'}
+                {showWeatherPicker && 'Set weather conditions'}
+                {overlayState === 'none' && !pendingKickoutAimedFor && !assistPromptEventId && !pendingBlockRecovery && !pendingSidelineDecision && !showManualEvent && !showViewLineup && !showWeatherPicker && 'Input required'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mode === 'tracking' && !isPlaying && overlayState === 'none' && currentTimeMs >= highWaterMarkMs && (
+        <div className="absolute top-3 right-3 z-30 pointer-events-none">
+          <button
+            onClick={() => playerRef.current?.play()}
+            className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all hover:scale-105 active:scale-95 animate-pulse hover:animate-none"
+            style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+          >
+            <Play size={16} fill="#0a1a10" />
+            Resume Tracking
+          </button>
+        </div>
+      )}
+
+      {mode === 'tracking' && currentTimeMs < highWaterMarkMs - 1000 && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+          <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-amber-500/40 rounded-xl px-4 py-2.5 shadow-2xl shadow-amber-500/10">
+            <div className="flex items-center gap-2 text-amber-300">
+              <AlertTriangle size={16} className="shrink-0" />
+              <span className="text-sm font-semibold">
+                Reviewing past footage — tracking will resume at {formatTrackingClock(calcMatchTime(highWaterMarkMs))}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {overlayState === 'none' && (
+        <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover/video:opacity-100 transition-all">
+          <button
+            onClick={() => setIsFullscreen(prev => !prev)}
+            className="p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg transition-colors"
+            title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen (F)'}
+          >
+            <Maximize size={18} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+
+  /** Ball-carrier tracking pitch panel — right half of the 50/50 split */
+  const pitchPanel = (
+    <div className="relative flex-1 min-w-0 min-h-0">
+      <TaggingPitch
+        key="pitch-horizontal"
+        orientation="horizontal"
+        containerClassName="relative w-full h-full bg-gradient-to-br from-green-900/40 to-green-800/40 overflow-hidden"
         ballPosition={taggingBallPosition}
         onBallMove={handleTaggingBallCommit}
         onDragUpdate={handleTaggingBallMove}
@@ -2396,10 +2594,6 @@ export default function VideoTagging() {
                   orientation={taggingPitchOrientation}
                 />
               )}
-              {/* Opposition has no per-player carrier radial (we don't track
-                  their identities) — this quick "Pass" icon takes the same
-                  up-right slot the radial-opener icon occupies for our own
-                  team, so exactly one icon ever sits there. */}
               {possession === 'team_b' && (
                 <BallQuickActionIcon
                   ballSvgX={ballSvgX}
@@ -2414,12 +2608,6 @@ export default function VideoTagging() {
                   orientation={taggingPitchOrientation}
                 />
               )}
-              {/* High Ball — both teams. -135° (up-left) rather than -90 —
-                  a full 90° away from the radial/pass icon at -45° (up-
-                  right) instead of just 45°, so the two never crowd
-                  together at the small container sizes the side pitch
-                  panel actually renders at. Hidden while the carrier
-                  radial's chips are fanned out to avoid visual clutter. */}
               <BallQuickActionIcon
                 ballSvgX={ballSvgX}
                 ballSvgY={ballSvgY}
@@ -2456,47 +2644,76 @@ export default function VideoTagging() {
         }
       />
       {teamAttackingRightThisHalf != null && (
-        <div className={pitchPanelMode === 'side' ? 'absolute top-1/2 right-1.5 -translate-y-1/2 z-20' : 'absolute bottom-2 right-2 z-20'}>
+        <div className="absolute bottom-2 right-2 z-20">
           <AttackDirectionBadge
             attackingRight={teamAttackingRightThisHalf}
             teamName={clubName}
-            orientation={pitchPanelMode === 'side' ? 'vertical' : 'horizontal'}
+            orientation="horizontal"
           />
         </div>
       )}
     </div>
   )
 
-  /** Quick Actions sidebar */
-  const sidebar = (
-    <div data-tour="video-quick-actions">
-    <VideoQuickActions
-      possession={possession}
-      onPossessionChange={(team) => { onCarrierPossessionSwap(); setPossession(team) }}
-      selectedZone={null}
-      currentTimestampMs={currentTimeMs}
-      half={session.half || 1}
-      onEventTap={handleEventTap}
-      onCreateEvent={handleDirectCreate}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      disabled={isAutoAnalyzing || overlayState !== 'none' || mode === 'setup'}
-      teamName={clubName}
-      ballPitchX={ballPosition?.x}
-      ballPitchY={ballPosition?.y}
-      calcMatchTime={calcMatchTime}
-      onFortyFivePanelToggle={handleFortyFivePanelToggle}
-      pendingFreeKick={pendingFreeKick}
-      onFreeKickCancel={() => {
-        setPendingFreeKick(null)
-        if (wasPlayingRef.current) setTimeout(() => playerRef.current?.play(), 100)
-      }}
-      opponentName={opponentName}
-      pendingFoulSubtype={!!pendingFoulSubtype}
-      onFoulSubtypeSelect={handleFoulSubtypeSelect}
-    />
+  /** Foul subtype picker — shown between pitch and controls after
+   *  player is selected for "Our Foul", before the free kick panel. */
+  const foulSubtypePicker = pendingFoulSubtype && (
+    <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg animate-pulse">
+      <span className="text-xs font-bold text-red-300 whitespace-nowrap">Foul type:</span>
+      <div className="flex flex-wrap gap-1.5">
+        {FOUL_SUBTYPES.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => handleFoulSubtypeSelect(value)}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white/80 border border-white/10 hover:border-red-400/40 hover:text-white hover:bg-red-500/15 transition-all active:scale-95"
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          onClick={() => handleFoulSubtypeSelect()}
+          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white/40 border border-white/5 hover:text-white/60 transition-all"
+        >
+          Skip
+        </button>
+      </div>
     </div>
   )
+
+  /** CategorizedActionButtons — same component as live recording */
+  const controlsBar = (
+    <div data-tour="video-quick-actions">
+      <CategorizedActionButtons
+        onActionSelect={handleQuickAction}
+        onFoulClick={handleFoulClick}
+        on45Click={handle45Click}
+        onDiscipline={handleDiscipline}
+        disabled={isAutoAnalyzing || overlayState !== 'none' || mode === 'setup'}
+        activeCategory={activeTab}
+        onCategoryChange={(cat) => setActiveTab((cat || 'scoring') as Category)}
+        currentPossession={cabPossession}
+        isIn2PointZone={isIn2PointZone}
+        isInPenaltyArea={isInPenaltyArea}
+        pendingFreeKick={!!pendingFreeKick}
+        pendingFoul={pendingFoulTeam}
+        pendingBlockRecovery={pendingBlockRecovery}
+        onBlockRecovery={handleBlockRecovery}
+        onBlockResultSideline={handleBlockResultSideline}
+        onBlockResultFortyFive={handleBlockResultFortyFive}
+        pendingSidelineDecision={pendingSidelineDecision}
+        onSidelineDecision={handleSidelineDecision}
+        pending45={pending45}
+        pendingKickoutPosition={false}
+        pendingFortyFivePosition={false}
+        awaitingKickout={false}
+        onCancelFree={handleCancelFree}
+        onCancel45={handleCancel45}
+        onCancelKickout={() => {}}
+        onCancelFortyFivePosition={() => {}}
+      />
+    </div>
+  )
+
 
   /** Possession status bar — carries the scoreboard inline (moved out of
    *  the header) instead of the old team-name/dot possession toggle chip;
@@ -2769,50 +2986,6 @@ export default function VideoTagging() {
           />
         </div>
       )}
-      {pendingBlockRecovery && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl">
-            <h3 className="text-sm font-bold text-white mb-4">Who recovered the ball?</h3>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleBlockRecovery(true)}
-                className="flex-1 px-4 py-3 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all"
-              >
-                We Did
-              </button>
-              <button
-                onClick={() => handleBlockRecovery(false)}
-                className="flex-1 px-4 py-3 rounded-lg text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white transition-all"
-              >
-                They Did
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {pendingSidelineDecision && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60" />
-          <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl">
-            <h3 className="text-sm font-bold text-white mb-4">Who's in possession now?</h3>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleSidelineDecision(true)}
-                className="flex-1 px-4 py-3 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all"
-              >
-                {clubName}
-              </button>
-              <button
-                onClick={() => handleSidelineDecision(false)}
-                className="flex-1 px-4 py-3 rounded-lg text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white transition-all"
-              >
-                {opponentName}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {showFullTimeConfirm && (
         <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => setShowFullTimeConfirm(false)}>
           <div className="absolute inset-0 bg-black/60" />
@@ -2874,20 +3047,24 @@ export default function VideoTagging() {
           {actionButtons(true)}
         </div>
 
-        {/* Status bar — right under the header, always visible without scrolling */}
         {statusBar && (
           <div className="flex-shrink-0 px-3 py-1.5 bg-slate-900/60 border-b border-white/5">
             {statusBar}
           </div>
         )}
 
-        {/* Main area: video + sidebar */}
+        {/* 50/50 video + pitch */}
         <div className="flex-1 flex overflow-hidden min-h-0">
-          {videoArea}
-          {sidebar}
+          {videoPanel}
+          {pitchPanel}
         </div>
 
-        {/* Ball carrier strip — below video */}
+        {/* Foul subtype picker + CategorizedActionButtons */}
+        <div className="flex-shrink-0 px-2 py-1.5 bg-slate-900/80 border-t border-white/5 space-y-1.5">
+          {foulSubtypePicker}
+          {controlsBar}
+        </div>
+
         {jerseyStripPlayers.length > 0 && (
           <div className="flex-shrink-0 px-2 py-0.5 bg-slate-900/80 border-t border-white/5">
             <JerseyNumberStrip
@@ -2903,21 +3080,15 @@ export default function VideoTagging() {
           </div>
         )}
 
-        {/* Black card sin bin timers */}
         {blackCardTimers.length > 0 && (
-          <div className="absolute top-14 right-[192px] z-30">
+          <div className="absolute top-14 right-4 z-30">
             <BlackCardTimer entries={blackCardTimers} onRemove={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))} />
           </div>
         )}
 
-        {/* Player picker (step 3 of the tap flow) — pitch-formation circles
-            when a lineup exists, jersey-grid fallback otherwise */}
         {newEventPlayerPicker}
-
-        {/* Pitch position tap prompt (step 4 for kickouts) */}
         {pitchTapOverlay}
 
-        {/* Alert/error modal */}
         <ConfirmationModal
           isOpen={!!alertModal}
           onClose={() => {
@@ -2930,7 +3101,6 @@ export default function VideoTagging() {
           variant={alertModal?.variant || 'danger'}
         />
 
-        {/* Formation Snapshot Overlay */}
         <FormationSnapshotMode
           isOpen={isSnapshotOpen}
           onClose={() => setIsSnapshotOpen(false)}
@@ -2938,7 +3108,6 @@ export default function VideoTagging() {
           ownPlayers={snapshotOwnPlayers}
         />
 
-        {/* Tactical View Overlay */}
         {showTacticalView && playerRef.current?.getVideoElement() && (
           <VideoTacticalView
             videoElement={playerRef.current.getVideoElement()!}
@@ -3039,19 +3208,24 @@ export default function VideoTagging() {
       {/* ── Possession status bar — right under the header, always visible ── */}
       {statusBar}
 
-      {/* ── Video Player + Quick Actions sidebar ───────────────────────── */}
+      {/* ── 50/50 Video + Pitch ─────────────────────────────────────── */}
       <div className="relative bg-black rounded-lg overflow-hidden">
-        <div className="flex">
-          {videoArea}
-          {sidebar}
+        <div className="flex" style={{ aspectRatio: '16/7' }}>
+          {videoPanel}
+          {pitchPanel}
         </div>
-        {/* Black card sin bin timers */}
         {blackCardTimers.length > 0 && (
-          <div className="absolute top-2 right-[192px] z-30">
+          <div className="absolute top-2 right-4 z-30">
             <BlackCardTimer entries={blackCardTimers} onRemove={(id) => setBlackCardTimers(prev => prev.filter(t => t.id !== id))} />
           </div>
         )}
       </div>
+
+      {/* ── Foul subtype picker (between pitch and controls) ──────── */}
+      {foulSubtypePicker}
+
+      {/* ── CategorizedActionButtons (centered below 50/50 split) ──── */}
+      {controlsBar}
 
       {/* ── Ball Carrier Strip ─────────────────────────────────────────── */}
       {jerseyStripPlayers.length > 0 && (

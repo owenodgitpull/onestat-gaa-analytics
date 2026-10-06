@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
 import { ClubProvider } from './contexts/ClubContext'
@@ -78,6 +78,18 @@ function PlayerLoading() {
   )
 }
 
+function AdminMain({ children }: { children: React.ReactNode }) {
+  const loc = useLocation()
+  const isVideo = loc.pathname.startsWith('/video/')
+  return (
+    <main className={`${isVideo ? '' : 'md:ml-14 px-4 py-6'} overflow-x-hidden`}>
+      <div className={isVideo ? '' : 'max-w-7xl mx-auto'}>
+        {children}
+      </div>
+    </main>
+  )
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -145,8 +157,7 @@ function App() {
                   <ClubProvider>
                     <Navigation />
                     <TrialBanner />
-                    <main className="md:ml-14 px-4 py-6 overflow-x-hidden">
-                      <div className="max-w-7xl mx-auto">
+                    <AdminMain>
                         <Suspense fallback={<PlayerLoading />}>
                         <Routes>
                           <Route path="/" element={<AnalyticsDashboard />} />
@@ -174,8 +185,7 @@ function App() {
                           <Route path="/video-compilations" element={<VideoCompilationsPage />} />
                         </Routes>
                         </Suspense>
-                      </div>
-                    </main>
+                    </AdminMain>
                   </ClubProvider>
                 </RequireAuth>
               } />
