@@ -48,6 +48,11 @@ function count(events: ChartEvent[], team: 'own' | 'opponent', predicate: (e: Ch
   return events.filter(e => e.team === team && predicate(e)).length
 }
 
+// Same set the backend counts as a goal chance (match_service _GOAL_CHANCE_TYPES):
+// goals, penalties, saves and hit-posts — the old local rule omitted saved/hit_post,
+// so Goal Chances read lower here than in Live Recording.
+const GOAL_CHANCE_TYPES = new Set(['goal', 'penalty_goal', 'penalty_miss', 'saved', 'hit_post'])
+
 /**
  * Compute MatchStats from in-memory events — uses the exact same logic as
  * MatchRecording.tsx's stats computation (lines 1154-1300).
@@ -110,10 +115,10 @@ function computeStatsFromEvents(
 
   // Goal chances - shots from inside D zone (approximate based on existing logic)
   const ownGoalChances = count(events, 'own', e =>
-    (e.event_type === 'goal' || e.event_type === 'penalty_goal' || e.event_type === 'penalty_miss')
+    GOAL_CHANCE_TYPES.has(e.event_type)
   )
   const oppGoalChances = count(events, 'opponent', e =>
-    (e.event_type === 'goal' || e.event_type === 'penalty_goal' || e.event_type === 'penalty_miss')
+    GOAL_CHANCE_TYPES.has(e.event_type)
   )
 
   // Possession from possession_events — same rules as the backend's
