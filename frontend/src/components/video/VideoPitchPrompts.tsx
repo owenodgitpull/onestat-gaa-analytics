@@ -1,4 +1,4 @@
-/**
+﻿/**
  * VideoPitchPrompts — the on-pitch prompts Live Recording shows over its pitch
  * (foul type, turnover reason, unforced-error type, kickout landing, free
  * adjust, 45-line tap), rebuilt as overlays for Video Tagging's pitch panel so
@@ -10,7 +10,7 @@
  * drift apart.
  */
 
-import { Minus, MapPin, Flag } from 'lucide-react'
+import { MapPin } from 'lucide-react'
 import {
   UNFORCED_ERROR_SUBTYPES, FOUL_SUBTYPES, DISPOSSESSION_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES,
   type SubtypeOption, type TurnoverReason,
@@ -164,106 +164,32 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip }: TurnoverR
   )
 }
 
-// ── Banners (don't block the pitch — the pitch must stay tappable) ───────
+// ── Optional "aimed for" jersey chips for our own kickouts. Rendered in the
+// button-bar kickout panel (off the pitch) so the pitch stays fully tappable.
 
-interface LandingBannerProps {
-  /** Sideline kickouts need the touchline tapped, so the banner moves to the top. */
-  atTop?: boolean
-  onCancel: () => void
-  onMinimize?: () => void
-  /** Own kickouts only: optional "aimed for" jersey chips. */
-  aimedFor?: {
-    players: Array<{ playerId: string; jerseyNumber: number | null }>
-    selectedId?: string
-    onToggle: (playerId: string) => void
-  }
-}
-
-export function KickoutLandingBanner({ atTop, onCancel, onMinimize, aimedFor }: LandingBannerProps) {
+export function AimedForChips({ players, selectedId, onToggle }: {
+  players: Array<{ playerId: string; jerseyNumber: number | null }>
+  selectedId?: string
+  onToggle: (playerId: string) => void
+}) {
+  if (players.length === 0) return null
   return (
-    <div className={`absolute inset-x-3 z-20 space-y-1.5 ${atTop ? 'top-3' : 'bottom-3'}`}>
-      <div
-        className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
-        style={{
-          background: 'linear-gradient(90deg, rgba(245,158,11,0.22), rgba(234,179,8,0.10))',
-          border: '1px solid rgba(245,158,11,0.38)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
-        }}
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
-          <span className="text-amber-200 text-sm font-bold flex-shrink-0">Tap landing position</span>
-          <span className="text-amber-300/60 text-xs hidden xl:block truncate">tap the pitch to mark where the ball landed</span>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          {onMinimize && (
-            <button
-              onClick={onMinimize}
-              title="Minimise"
-              className="text-amber-400/60 hover:text-amber-300 p-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
-            >
-              <Minus size={13} />
-            </button>
-          )}
-          <button
-            onClick={onCancel}
-            className="text-amber-400/60 hover:text-amber-300 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-      {aimedFor && aimedFor.players.length > 0 && (
-        <div
-          className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 overflow-x-auto"
-          style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+    <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 overflow-x-auto bg-black/30">
+      <span className="text-white/50 text-[10px] font-semibold flex-shrink-0 pr-0.5">Aimed for (optional):</span>
+      {players.map(p => (
+        <button
+          key={p.playerId}
+          onClick={() => onToggle(p.playerId)}
+          className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-all ${
+            selectedId === p.playerId ? 'bg-emerald-400 text-black scale-110' : 'bg-white/10 text-white/60 hover:bg-white/20'
+          }`}
         >
-          <span className="text-white/40 text-[10px] font-semibold flex-shrink-0 pr-0.5">Aimed for (optional):</span>
-          {aimedFor.players.map(p => (
-            <button
-              key={p.playerId}
-              onClick={() => aimedFor.onToggle(p.playerId)}
-              className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold transition-all ${
-                aimedFor.selectedId === p.playerId ? 'bg-amber-400 text-black scale-110' : 'bg-white/10 text-white/60 hover:bg-white/20'
-              }`}
-            >
-              {p.jerseyNumber ?? '?'}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-export function FortyFiveTapBanner({ onCancel }: { onCancel: () => void }) {
-  return (
-    <div className="absolute inset-x-3 top-3 z-20">
-      <div
-        className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
-        style={{
-          background: 'linear-gradient(90deg, rgba(245,158,11,0.22), rgba(249,115,22,0.10))',
-          border: '1px solid rgba(245,158,11,0.38)',
-          backdropFilter: 'blur(14px)',
-          WebkitBackdropFilter: 'blur(14px)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
-        }}
-      >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Flag size={14} className="text-amber-400 animate-pulse flex-shrink-0" />
-          <span className="text-amber-200 text-sm font-bold">Tap the 45m line</span>
-          <span className="text-amber-300/60 text-xs hidden xl:block truncate">level with where the ball went out</span>
-        </div>
-        <button onClick={onCancel} className="text-amber-400/60 hover:text-amber-300 text-xs px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors">
-          Cancel
+          {p.jerseyNumber ?? '?'}
         </button>
-      </div>
+      ))}
     </div>
   )
 }
-
 export function AdjustFreeBanner({ onDone }: { onDone: () => void }) {
   return (
     <div className="absolute inset-x-3 top-3 z-20">

@@ -85,8 +85,7 @@ import PitchActionOverlay from '../components/PitchActionOverlay'
 import {
   SubtypePrompt,
   TurnoverReasonPrompt,
-  KickoutLandingBanner,
-  FortyFiveTapBanner,
+  AimedForChips,
   AdjustFreeBanner,
 } from '../components/video/VideoPitchPrompts'
 import {
@@ -3074,7 +3073,7 @@ export default function VideoTagging() {
             : undefined
         }
       />
-      {teamAttackingRightThisHalf != null && (
+      {teamAttackingRightThisHalf != null && overlayState !== 'pitch' && (
         <div className="absolute bottom-2 right-2 z-20">
           <AttackDirectionBadge
             attackingRight={teamAttackingRightThisHalf}
@@ -3154,30 +3153,10 @@ export default function VideoTagging() {
         <AdjustFreeBanner onDone={() => setIsAdjustingFree(false)} />
       )}
 
-      {/* Kickout landing-position tap (+ optional "aimed for" on our own) */}
-      {overlayState === 'pitch' && (pendingOverlay?.action.pitchPrompt === 'kickout' || pendingOverlay?.action.pitchPrompt === 'kickout_sideline') && (
-        <KickoutLandingBanner
-          atTop={pendingOverlay?.action.pitchPrompt === 'kickout_sideline'}
-          onCancel={handleCancelPitchStep}
-          aimedFor={
-            pendingOverlay?.action.eventType.startsWith('OWN_KICKOUT') || (pendingOverlay?.action.pitchPrompt === 'kickout_sideline' && pendingOverlay.eventData.team === 'team_a')
-              ? {
-                  players: jerseyStripPlayers
-                    .filter(p => p.isOnField)
-                    .sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99))
-                    .map(p => ({ playerId: p.playerId, jerseyNumber: p.jerseyNumber })),
-                  selectedId: kickoutAimedForId,
-                  onToggle: (id: string) => setKickoutAimedForId(prev => (prev === id ? undefined : id)),
-                }
-              : undefined
-          }
-        />
-      )}
-
-      {/* 45m-line tap */}
-      {overlayState === 'pitch' && pendingOverlay?.action.pitchPrompt === 'forty_five' && (
-        <FortyFiveTapBanner onCancel={handleCancelPitchStep} />
-      )}
+      {/* (The kickout-landing and 45-line tap instructions deliberately do NOT
+          draw anything over the pitch — they cover the area being tapped.
+          The banner over the video + the button-bar panel (with Cancel and
+          the "aimed for" chips) carry the instruction instead.) */}
 
       {/* Foul type — Our Foul, after the player is picked */}
       {pendingFoulSubtype && (
@@ -3239,6 +3218,21 @@ export default function VideoTagging() {
         onSidelineDecision={handleSidelineDecision}
         pending45={pending45}
         pendingKickoutPosition={overlayState === 'pitch' && (pendingOverlay?.action.pitchPrompt === 'kickout' || pendingOverlay?.action.pitchPrompt === 'kickout_sideline')}
+        kickoutPositionExtra={
+          // Optional "aimed for" — our own kickouts only
+          pendingOverlay && (pendingOverlay.action.eventType.startsWith('OWN_KICKOUT') || (pendingOverlay.action.pitchPrompt === 'kickout_sideline' && pendingOverlay.eventData.team === 'team_a'))
+            ? (
+              <AimedForChips
+                players={jerseyStripPlayers
+                  .filter(p => p.isOnField)
+                  .sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99))
+                  .map(p => ({ playerId: p.playerId, jerseyNumber: p.jerseyNumber }))}
+                selectedId={kickoutAimedForId}
+                onToggle={(id: string) => setKickoutAimedForId(prev => (prev === id ? undefined : id))}
+              />
+            )
+            : undefined
+        }
         pendingFortyFivePosition={overlayState === 'pitch' && pendingOverlay?.action.pitchPrompt === 'forty_five'}
         awaitingKickout={awaitingKickout && !kickoutMinimised && overlayState === 'none'}
         onCancelFree={handleCancelFree}

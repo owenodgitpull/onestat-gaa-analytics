@@ -42,6 +42,7 @@ interface CategorizedActionButtonsProps {
   onSidelineDecision?: (weWonIt: boolean) => void
   pending45?: boolean
   pendingKickoutPosition?: boolean  // Waiting for user to click pitch for kickout position
+  kickoutPositionExtra?: React.ReactNode  // Optional content shown in the kickout-position panel
   pendingFortyFivePosition?: boolean  // "45 Scored"/"45 Missed" picked, waiting for a tap on the 45m line
   awaitingKickout?: boolean  // Score just happened, kickout expected next
   isInPenaltyArea?: boolean  // Ball is near opponent's goal (inside 13m line)
@@ -141,6 +142,7 @@ export default function CategorizedActionButtons({
   onSidelineDecision,
   pending45 = false,
   pendingKickoutPosition = false,
+  kickoutPositionExtra,
   pendingFortyFivePosition = false,
   awaitingKickout = false,
   isInPenaltyArea: _isInPenaltyArea = false,
@@ -312,6 +314,10 @@ export default function CategorizedActionButtons({
             Click on pitch where kickout was won
           </p>
         </div>
+
+        {/* Optional extra step (Video Tagging: "aimed for" jersey chips) —
+            lives here, off the pitch, so the pitch stays fully tappable */}
+        {kickoutPositionExtra && <div className="px-3 pb-3">{kickoutPositionExtra}</div>}
 
         {/* Tip */}
         <div className="px-3 py-2 bg-white/5 border-t border-white/10">
