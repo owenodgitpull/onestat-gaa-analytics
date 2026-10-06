@@ -24,7 +24,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2 } from 'lucide-react'
+import { ChevronsRight, ChevronsDown, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2 } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -507,6 +507,10 @@ export default function VideoTagging() {
   const deadBall = !!pendingFreeKick || awaitingKickout || overlayState !== 'none' || pending45 ||
     !!pendingFoulSubtype || !!pendingTurnoverReason || !!pendingErrorSubtype ||
     pendingBlockRecovery || pendingSidelineDecision || isAdjustingFree
+  // Input is needed ON the pitch (overlay / tap step) — drives the pulsing
+  // pitch border that the top banner points to.
+  const pitchInputNeeded = overlayState === 'pitch' || !!pendingFoulSubtype || !!pendingTurnoverReason ||
+    !!pendingErrorSubtype || !!pendingFreeKick || (awaitingKickout && !kickoutMinimised)
   const possLive = mode === 'tracking' && isPlaying && !deadBall
   const possLiveRef = useRef(false)
   possLiveRef.current = possLive
@@ -1423,9 +1427,14 @@ export default function VideoTagging() {
     // Create the FOUL_COMMITTED event
     createEvent.mutate({ sessionId, data })
 
-    // Our team fouled → opposition gets the free (video stays paused until
-    // the free's outcome is picked, then resumes)
+    // Our team fouled → opposition gets the free. Resume the video now so the
+    // coach can watch the free being taken; the free-outcome overlay stays up
+    // and possession stays frozen (dead ball) until the outcome is picked.
     beginOppositionFree(data.event_type)
+    if (wasPlayingRef.current) {
+      wasPlayingRef.current = false
+      setTimeout(() => playerRef.current?.play(), 100)
+    }
   }, [pendingFoulSubtype, sessionId, createEvent, tacticalFoul, beginOppositionFree])
 
   /** "How was possession lost?" resolved — dispossession / unforced error /
@@ -1443,6 +1452,10 @@ export default function VideoTagging() {
       // Offensive foul concedes a free — same handling as any other foul
       createEvent.mutate({ sessionId, data })
       beginOppositionFree(videoType)
+      if (wasPlayingRef.current) {
+        wasPlayingRef.current = false
+        setTimeout(() => playerRef.current?.play(), 100)
+      }
       return
     }
     commitEventRef.current({ ...stash.pending, action: { ...stash.pending.action, autoFlipTo: 'them' } }, data)
@@ -1591,10 +1604,10 @@ export default function VideoTagging() {
       handleEventTap({ action, eventData: data })
     } else {
       if (!sessionId) return
-      // Dead ball from here until the free's outcome is picked — the video
-      // pauses now and resumes as soon as the outcome is chosen.
-      wasPlayingRef.current = playerRef.current?.isPlaying() || false
-      playerRef.current?.pause()
+      // Dead ball from here until the free's outcome is picked, but nothing
+      // needs picking first — leave the video playing so the free can be
+      // watched; the outcome overlay appears on the pitch and possession is
+      // frozen meanwhile. (Picking an own-team taker later pauses briefly.)
       const data: VideoEventCreateData = {
         event_type: 'FOUL_COMMITTED',
         team: 'team_b',
@@ -2828,27 +2841,65 @@ export default function VideoTagging() {
       )}
 
       {(deadBall || assistPromptEventId || showManualEvent || showViewLineup || showWeatherPicker) && (
-        <div className="absolute top-0 left-0 right-0 z-40 pointer-events-none">
-          <div className="bg-gradient-to-r from-amber-500/90 via-orange-500/90 to-amber-500/90 text-white px-4 py-2.5 text-center text-sm font-semibold shadow-lg animate-pulse backdrop-blur-sm">
-            <div className="flex items-center justify-center gap-2">
-              <AlertTriangle size={18} className="shrink-0" />
-              <span>
-                {assistPromptEventId ? 'Select assist player (or skip) →'
-                  : overlayState === 'player' ? 'Select player →'
-                  : overlayState === 'pitch' ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? 'Tap the 45m line on the pitch →' : 'Tap where the kickout landed →')
-                  : pendingFoulSubtype ? 'Select foul type on the pitch →'
-                  : pendingTurnoverReason ? 'How was possession lost? Select on the pitch →'
-                  : pendingErrorSubtype ? 'Select error type on the pitch →'
-                  : pendingFreeKick && !isAdjustingFree ? 'Select free outcome on the pitch →'
-                  : isAdjustingFree ? 'Drag the ball to the free\'s real spot →'
-                  : awaitingKickout ? 'Select kickout outcome on the pitch →'
-                  : (pendingBlockRecovery || pendingSidelineDecision || pending45) ? 'Select outcome below ↓'
-                  : showManualEvent ? 'Add manual event or substitution'
-                  : showViewLineup ? 'Viewing lineup'
-                  : showWeatherPicker ? 'Set weather conditions'
-                  : 'Input required'}
-              </span>
+        <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
+          <style>{`
+            @keyframes _vtChevR { 0%{transform:translateX(-4px);opacity:.25} 50%{opacity:1} 100%{transform:translateX(6px);opacity:.25} }
+            @keyframes _vtChevD { 0%{transform:translateY(-4px);opacity:.25} 50%{opacity:1} 100%{transform:translateY(6px);opacity:.25} }
+            @keyframes _vtStream { 0%{background-position:0% 0} 100%{background-position:200% 0} }
+          `}</style>
+          {/* Glass banner — dark translucent card, emerald accent, animated
+              chevrons pointing at where the input is needed. Same visual
+              language as the on-pitch prompt cards (no solid orange). */}
+          <div
+            className="relative overflow-hidden rounded-2xl px-4 py-2.5"
+            style={{
+              background: 'linear-gradient(135deg, rgba(10,26,32,0.78), rgba(8,20,26,0.62))',
+              border: '1px solid rgba(0,230,118,0.38)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.5), 0 0 18px rgba(0,230,118,0.18), inset 0 1px 0 rgba(255,255,255,0.12)',
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                </span>
+                <span className="text-sm font-semibold text-white truncate">
+                  {assistPromptEventId ? 'Select assist player (or skip)'
+                    : overlayState === 'player' ? 'Select player'
+                    : overlayState === 'pitch' ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? 'Tap the 45m line on the pitch' : 'Tap where the kickout landed')
+                    : pendingFoulSubtype ? 'Select foul type on the pitch'
+                    : pendingTurnoverReason ? 'How was possession lost? Select on the pitch'
+                    : pendingErrorSubtype ? 'Select error type on the pitch'
+                    : pendingFreeKick && !isAdjustingFree ? 'Select free outcome on the pitch'
+                    : isAdjustingFree ? 'Drag the ball to the free\'s real spot'
+                    : awaitingKickout ? 'Select kickout outcome on the pitch'
+                    : (pendingBlockRecovery || pendingSidelineDecision || pending45) ? 'Select outcome below'
+                    : showManualEvent ? 'Add manual event or substitution'
+                    : showViewLineup ? 'Viewing lineup'
+                    : showWeatherPicker ? 'Set weather conditions'
+                    : 'Input required'}
+                </span>
+              </div>
+              {/* Direction cue — points to the pitch (right) or the controls (down) */}
+              {pitchInputNeeded ? (
+                <ChevronsRight size={22} className="text-emerald-300 flex-shrink-0" style={{ animation: '_vtChevR 1.1s ease-in-out infinite' }} />
+              ) : (pendingBlockRecovery || pendingSidelineDecision || pending45) ? (
+                <ChevronsDown size={22} className="text-emerald-300 flex-shrink-0" style={{ animation: '_vtChevD 1.1s ease-in-out infinite' }} />
+              ) : null}
             </div>
+            {/* Animated stream along the bottom edge, leading toward the pitch */}
+            <div
+              className="absolute bottom-0 left-0 right-0 h-[2px]"
+              style={{
+                background: 'linear-gradient(90deg, transparent, rgba(0,230,118,0.9), rgba(0,176,255,0.9), transparent)',
+                backgroundSize: '50% 100%',
+                backgroundRepeat: 'repeat-x',
+                animation: '_vtStream 1.6s linear infinite',
+              }}
+            />
           </div>
         </div>
       )}
@@ -3031,6 +3082,41 @@ export default function VideoTagging() {
             orientation="horizontal"
           />
         </div>
+      )}
+
+      {/* Possession-frozen indicator — shown while the footage plays through a
+          dead ball (free being taken, kickout/45 restart, a prompt open), so
+          it's obvious no possession time is being counted. */}
+      {mode === 'tracking' && deadBall && isPlaying && (
+        <div
+          className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-cyan-100 pointer-events-none"
+          style={{
+            background: 'rgba(8,20,26,0.7)',
+            border: '1px solid rgba(0,176,255,0.4)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+          }}
+        >
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-300" />
+          Dead ball — possession paused
+        </div>
+      )}
+
+      {/* Pulsing glass border around the pitch while input is needed here —
+          the banner over the video points at it. Non-interactive. */}
+      {pitchInputNeeded && (
+        <>
+          <style>{`
+            @keyframes _vtPitchPulse {
+              0%,100% { box-shadow: inset 0 0 0 2px rgba(0,230,118,0.35), inset 0 0 22px rgba(0,230,118,0.12), 0 0 0 rgba(0,230,118,0); }
+              50%     { box-shadow: inset 0 0 0 3px rgba(0,230,118,0.9), inset 0 0 38px rgba(0,176,255,0.28), 0 0 22px rgba(0,230,118,0.45); }
+            }
+          `}</style>
+          <div
+            className="absolute inset-0 z-40 pointer-events-none"
+            style={{ animation: '_vtPitchPulse 1.4s ease-in-out infinite' }}
+          />
+        </>
       )}
 
       {/* ── On-pitch prompts — same overlays live recording shows over its
