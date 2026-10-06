@@ -244,8 +244,12 @@ export default function SetupFlowModal({
           <>
             <h3 className="text-sm font-bold text-white mb-1">Ready to Track</h3>
             <p className="text-xs text-white/60 mb-3">
-              Setup's done. Starting will jump to the throw-in — from there, play only controls the video; tracking
-              (ball movement, possession, events) only records while you're actually playing.
+              Start jumps to the throw-in and begins playing. Events, ball movement and possession time are
+              recorded only while the video is playing — pause any time and nothing is counted until you press
+              play again.
+            </p>
+            <p className="text-xs text-white/40 mb-3">
+              Possession also pauses automatically during frees, kickouts and 45s while you pick the outcome.
             </p>
             <button
               onClick={onStartTracking}
