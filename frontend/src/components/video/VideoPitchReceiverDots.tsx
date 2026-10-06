@@ -70,37 +70,45 @@ export default function VideoPitchReceiverDots({
         const radius = isLikely ? DOT_R_BRIGHT : DOT_R_DIM
 
         return (
+          // EVERY dot is selectable (not just the "likely" ones) — a short
+          // hand-pass to a player who isn't near the ball must be one tap.
+          // Selecting only sets the new carrier; the ball does NOT move, so
+          // the coach can carry on dragging from where the pass was given.
+          // Uses `click` (press AND release on the same dot): a drag that
+          // starts on the ball is pointer-captured by the ball, and a drag
+          // that starts on empty pitch and merely ends/passes over a dot
+          // produces no click on it — so dragging never selects a player.
           <g
             key={r.player.playerId}
-            {...(isLikely
-              ? {
-                  onPointerDown: stop,
-                  onPointerUp: (e: React.PointerEvent) => {
-                    stop(e)
-                    onSelect(r.player.playerId, r.player.jerseyNumber)
-                  },
-                  onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
-                  style: { cursor: 'pointer', touchAction: 'none', transition: 'opacity 0.25s ease' },
-                }
-              : { style: { pointerEvents: 'none' as const, transition: 'opacity 0.25s ease' } })}
+            onPointerDown={stop}
+            onPointerUp={stop}
+            onClick={(e) => {
+              stop(e)
+              onSelect(r.player.playerId, r.player.jerseyNumber)
+            }}
+            onContextMenu={(e: React.MouseEvent) => e.preventDefault()}
+            style={{ cursor: 'pointer', touchAction: 'none', transition: 'opacity 0.25s ease' }}
           >
+            {/* Lit (likely receiver): solid team colour, bigger. Dim (everyone
+                else): dark disc with a team-colour ring + bold white number —
+                clearly tappable but visibly less prominent than a lit one. */}
             <circle
               cx={cx} cy={cy} r={radius}
-              fill={isLikely ? teamPrimaryColor : 'rgba(6,14,10,0.55)'}
-              stroke={isActive ? '#6ee7b7' : (isLikely ? teamSecondaryColor : 'rgba(255,255,255,0.3)')}
-              strokeWidth={isActive ? 3.5 : 1.5}
-              opacity={isLikely ? 1 : 0.38}
+              fill={isLikely ? teamPrimaryColor : 'rgba(14,22,24,0.78)'}
+              stroke={isActive ? '#6ee7b7' : (isLikely ? teamSecondaryColor : teamPrimaryColor)}
+              strokeWidth={isActive ? 3.5 : (isLikely ? 1.5 : 3.5)}
+              opacity={isLikely ? 1 : 0.9}
               style={{ transition: 'r 0.25s ease, opacity 0.25s ease, fill 0.25s ease' }}
             />
             <text
               x={cx} y={cy}
               textAnchor="middle" dominantBaseline="central"
-              fill={isLikely ? '#fff' : 'rgba(234,255,243,0.6)'}
+              fill="#fff"
               fontWeight="700"
-              fontSize={hasJersey ? (isLikely ? 43 : 30) : (isLikely ? 29 : 20)}
-              opacity={isLikely ? 1 : 0.38}
+              fontSize={hasJersey ? (isLikely ? 43 : 32) : (isLikely ? 29 : 22)}
+              opacity={isLikely ? 1 : 0.92}
               transform={orientation === 'vertical' ? `rotate(-90 ${cx} ${cy})` : undefined}
-              style={{ transition: 'opacity 0.25s ease, font-size 0.25s ease' }}
+              style={{ transition: 'opacity 0.25s ease, font-size 0.25s ease', pointerEvents: 'none' }}
             >
               {hasJersey ? r.player.jerseyNumber : (r.player.positionLabel || '?')}
             </text>
