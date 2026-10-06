@@ -17,7 +17,7 @@ import {
 import type { PitchZone } from './PitchZoneSelector'
 import { TWO_POINTER_ZONES, xyToZone } from './PitchZoneSelector'
 import type { VideoEventCreateData } from '../../services/videoApi'
-import { TURNOVER_REASON_CONFIG, type TurnoverReason } from '../../constants/turnoverSubtypes'
+import { TURNOVER_REASON_CONFIG, FOUL_SUBTYPES, type TurnoverReason } from '../../constants/turnoverSubtypes'
 
 export type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
 
@@ -70,6 +70,10 @@ export interface VideoQuickActionsProps {
   onFreeKickCancel?: () => void
   /** Name shown for the team in the free kick header */
   opponentName?: string
+  /** When true, sidebar shows foul subtype picker (pushing, pulling, etc.)
+   * after player has been selected for an "Our Foul". */
+  pendingFoulSubtype?: boolean
+  onFoulSubtypeSelect?: (subtype?: string) => void
 }
 
 const SCORING_ACTIONS: ActionButton[] = [
@@ -167,10 +171,13 @@ export default function VideoQuickActions({
   pendingFreeKick,
   onFreeKickCancel,
   opponentName = 'Opposition',
+  pendingFoulSubtype,
+  onFoulSubtypeSelect,
 }: VideoQuickActionsProps) {
   const [flashButton, setFlashButton] = useState<string | null>(null)
   const [showFreePanel, setShowFreePanel] = useState(false)
   const [showFortyFivePanel, setShowFortyFivePanel] = useState(false)
+  const [showFoulTeamPanel, setShowFoulTeamPanel] = useState(false)
   // Turnover reason/subtype picker — parity with MatchRecording.tsx's flat
   // single-screen picker (all 3 reason groups + their subtype buttons shown
   // and directly tappable at once, no "pick reason, then pick type" as two
@@ -401,18 +408,20 @@ export default function VideoQuickActions({
     return false
   }
 
-  const handleDiscipline = (type: 'YELLOW_CARD' | 'BLACK_CARD' | 'RED_CARD' | 'SUB_ON' | 'FOUL_COMMITTED') => {
+  const handleFoulTeamSelect = useCallback((foulTeam: 'own' | 'opponent') => {
     if (disabled) return
-    // For FOUL_COMMITTED, just go straight to player selection with no subtype
-    // (Live Recording has foul subtypes in turnover panel only, not on standalone Foul button)
-    if (type === 'FOUL_COMMITTED') {
-      const videoMs = currentTimestampMs ?? 0
-      const time = calcMatchTime
-        ? calcMatchTime(videoMs)
-        : { minute: Math.floor(videoMs / 60000), second: Math.floor((videoMs % 60000) / 1000), half }
+    setShowFoulTeamPanel(false)
+    const videoMs = currentTimestampMs ?? 0
+    const time = calcMatchTime
+      ? calcMatchTime(videoMs)
+      : { minute: Math.floor(videoMs / 60000), second: Math.floor((videoMs % 60000) / 1000), half }
+
+    if (foulTeam === 'own') {
+      // Our team fouled — select which player committed it.
+      // team='team_a' because OUR player committed the foul.
       const data: VideoEventCreateData = {
-        event_type: type,
-        team: possession,
+        event_type: 'FOUL_COMMITTED',
+        team: 'team_a',
         half: time.half,
         match_minute: time.minute,
         match_second: time.second,
@@ -423,9 +432,9 @@ export default function VideoQuickActions({
       }
       onEventTap({
         action: {
-          id: 'foul',
-          label: 'Foul',
-          eventType: type,
+          id: 'foul_own',
+          label: 'Our Foul',
+          eventType: 'FOUL_COMMITTED',
           needsPlayer: true,
           needsPitch: false,
           playerModalTitle: 'Who Fouled?',
@@ -433,8 +442,29 @@ export default function VideoQuickActions({
         },
         eventData: data,
       })
-      return
+    } else {
+      // Opposition fouled us — create FOUL_COMMITTED with team_b (opp committed it),
+      // no player selection needed (we don't track opposition players).
+      const data: VideoEventCreateData = {
+        event_type: 'FOUL_COMMITTED',
+        team: 'team_b',
+        half: time.half,
+        match_minute: time.minute,
+        match_second: time.second,
+        video_timestamp_ms: currentTimestampMs ?? undefined,
+        pitch_x: ballPitchX ?? undefined,
+        pitch_y: ballPitchY ?? undefined,
+        source: 'human_tag',
+      }
+      onCreateEvent(data)
+      // Possession flips to us (we won the free) + show scoring tab
+      onPossessionChange('team_a')
+      onTabChange('scoring')
     }
+  }, [disabled, currentTimestampMs, calcMatchTime, half, ballPitchX, ballPitchY, onEventTap, onCreateEvent, onPossessionChange, onTabChange])
+
+  const handleDiscipline = (type: 'YELLOW_CARD' | 'BLACK_CARD' | 'RED_CARD' | 'SUB_ON') => {
+    if (disabled) return
     // For cards and subs, route through normal player selection flow
     const videoMs = currentTimestampMs ?? 0
     const time = calcMatchTime
@@ -517,7 +547,77 @@ export default function VideoQuickActions({
 
       {/* Action buttons */}
       <div className={`flex-1 overflow-y-auto p-2 space-y-1.5 rounded-lg ${tabJustChanged ? 'qa-tab-pulse' : ''}`}>
-        {pendingFreeKick ? (
+        {pendingFoulSubtype ? (
+          <>
+            <div className="rounded-xl border border-red-500/30 overflow-hidden">
+              <div
+                className="px-2.5 py-2 border-b border-red-500/20"
+                style={{ background: 'linear-gradient(90deg, rgba(239,68,68,0.22), rgba(220,38,38,0.10))' }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Hand size={12} className="text-red-400" />
+                  <span className="text-[11px] font-bold text-red-300">What type of foul?</span>
+                </div>
+              </div>
+              <div className="p-1.5 space-y-1">
+                {FOUL_SUBTYPES.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => onFoulSubtypeSelect?.(value)}
+                    className="w-full py-2 px-2 rounded-xl text-xs font-semibold transition-all border active:scale-[0.96] text-white/70 border-white/[0.08] hover:border-red-400/30 hover:text-white/90 hover:bg-red-500/10"
+                    style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' }}
+                  >
+                    {label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => onFoulSubtypeSelect?.(undefined)}
+                  className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 transition-all"
+                >
+                  Skip — log without type
+                </button>
+              </div>
+            </div>
+          </>
+        ) : showFoulTeamPanel ? (
+          <>
+            <div className="rounded-xl border border-red-500/30 overflow-hidden">
+              <div
+                className="px-2.5 py-2 flex items-center justify-between border-b border-red-500/20"
+                style={{ background: 'linear-gradient(90deg, rgba(239,68,68,0.22), rgba(220,38,38,0.10))' }}
+              >
+                <div className="flex items-center gap-1.5">
+                  <Hand size={12} className="text-red-400" />
+                  <span className="text-[11px] font-bold text-red-300">Who Committed the Foul?</span>
+                </div>
+                <button
+                  onClick={() => setShowFoulTeamPanel(false)}
+                  className="text-[10px] text-white/40 hover:text-white/70 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              <div className="p-1.5 space-y-1.5">
+                <button
+                  onClick={() => handleFoulTeamSelect('own')}
+                  disabled={disabled}
+                  className="w-full py-3 rounded-xl border-2 font-semibold flex flex-col items-center gap-0.5 transition-all active:scale-[0.96] bg-emerald-500/20 border-emerald-400/40 text-emerald-200 hover:bg-emerald-500/30 disabled:opacity-30"
+                >
+                  <span className="text-xs font-bold">Our Foul</span>
+                  <span className="text-[10px] text-white/40">Select who fouled</span>
+                </button>
+                <button
+                  onClick={() => handleFoulTeamSelect('opponent')}
+                  disabled={disabled}
+                  className="w-full py-3 rounded-xl border-2 font-semibold flex flex-col items-center gap-0.5 transition-all active:scale-[0.96] bg-rose-500/20 border-rose-400/40 text-rose-200 hover:bg-rose-500/30 disabled:opacity-30"
+                >
+                  <span className="text-xs font-bold">Opp Foul</span>
+                  <span className="text-[10px] text-white/40">We win free</span>
+                </button>
+              </div>
+            </div>
+          </>
+        ) : pendingFreeKick ? (
           <>
             <div className="qa-free-kick-pulse rounded-xl border border-cyan-500/30 overflow-hidden">
               <div
@@ -725,7 +825,7 @@ export default function VideoQuickActions({
 
       {/* Foul button - prominent, always visible */}
       <button
-        onClick={() => handleDiscipline('FOUL_COMMITTED')}
+        onClick={() => setShowFoulTeamPanel(true)}
         disabled={disabled}
         className="mx-2 my-1 py-2.5 px-3 rounded-xl text-sm font-bold transition-all border border-red-400/30 text-red-300 hover:border-red-400/50 hover:text-red-200 disabled:opacity-30 active:scale-[0.96] flex items-center justify-center gap-2"
         style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.25) 0%, rgba(220,38,38,0.15) 100%)' }}

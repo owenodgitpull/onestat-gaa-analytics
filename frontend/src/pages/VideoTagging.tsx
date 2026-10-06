@@ -298,6 +298,11 @@ export default function VideoTagging() {
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
   const [pendingSidelineDecision, setPendingSidelineDecision] = useState(false)
   const [pendingFreeKick, setPendingFreeKick] = useState<'our_free' | 'opp_free' | null>(null)
+  // Holds event data while user picks a foul subtype in the sidebar (Our Foul path)
+  const [pendingFoulSubtype, setPendingFoulSubtype] = useState<{
+    pending: OverlayPendingEvent
+    data: VideoEventCreateData
+  } | null>(null)
   // High Ball — armed by tapping the "HB" icon (logs nothing yet), then the
   // very next ball tap/drag-release on the tracking pitch is captured as
   // the landing spot in handleTaggingBallCommit. Mirrors the equivalent
@@ -961,11 +966,26 @@ export default function VideoTagging() {
     }
   }, [possession, compute45LineX])
 
+  // Refs for carrier lifecycle callbacks — defined later but needed by
+  // handleFoulSubtypeSelect / handleDirectCreate which are declared first.
+  const carrierTerminalRef = useRef<(eventType: string) => void>(() => {})
+  const carrierPossessionSwapRef = useRef<() => void>(() => {})
+
   /** Create the event, apply auto-flip/auto-switch, resume video.
    *  Stored in a ref so overlay handlers always call the latest version. */
   const finalizeEventRef = useRef<(pending: OverlayPendingEvent, data: VideoEventCreateData) => void>(() => {})
   finalizeEventRef.current = (pending: OverlayPendingEvent, data: VideoEventCreateData) => {
     if (!sessionId) return
+
+    // "Our Foul" → stash for subtype picker instead of creating immediately.
+    // The sidebar will show the foul subtype panel; when a subtype is picked,
+    // handleFoulSubtypeSelect finalizes the event.
+    if (data.event_type === 'FOUL_COMMITTED' && pending.action.id === 'foul_own') {
+      setPendingFoulSubtype({ pending, data })
+      setOverlayState('none')
+      setPendingOverlay(null)
+      return
+    }
 
     // Second yellow card → automatic red card
     if (data.event_type === 'YELLOW_CARD' && data.player_id && yellowCardPlayerIds.has(data.player_id)) {
@@ -1022,29 +1042,16 @@ export default function VideoTagging() {
     if (data.event_type === 'SIDELINE_BALL') {
       setPendingSidelineDecision(true)
     }
-    // Foul → free kick outcome panel (mirrors Live Recording's pendingFreeKick).
-    // Possession flips to the team TAKING the free, and tab switches to scoring.
-    if (data.event_type === 'FOUL_COMMITTED') {
-      const freeForUs = data.team === 'team_b'
-      setPendingFreeKick(freeForUs ? 'our_free' : 'opp_free')
-      setPossession(freeForUs ? 'team_a' : 'team_b')
-      onCarrierPossessionSwap()
-      setActiveTab('scoring')
-    }
-
     // Auto-end carrier on terminal events (scores, turnovers, wides, etc.)
     onCarrierTerminalEvent(data.event_type)
 
-    // Auto-flip possession (action.autoFlipTo is the source of truth) —
-    // skip for FOUL_COMMITTED since the foul handler above already flipped
+    // Auto-flip possession (action.autoFlipTo is the source of truth)
     const action = pending.action
-    if (action.autoFlipTo && data.event_type !== 'FOUL_COMMITTED') {
+    if (action.autoFlipTo) {
       setPossession(action.autoFlipTo === 'us' ? 'team_a' : 'team_b')
-      // End carrier on possession swap
       onCarrierPossessionSwap()
     }
-    // Context-aware tab switch (score/wide → kickouts) — skip for fouls (handled above)
-    if (action.autoSwitchTab && data.event_type !== 'FOUL_COMMITTED') {
+    if (action.autoSwitchTab) {
       setActiveTab(action.autoSwitchTab)
     }
 
@@ -1055,9 +1062,8 @@ export default function VideoTagging() {
     setOverlayState('none')
     setPendingOverlay(null)
 
-    // Resume video if it was playing — but NOT if a free kick outcome is
-    // pending (the user still needs to pick what happened with the free)
-    if (wasPlayingRef.current && data.event_type !== 'FOUL_COMMITTED') {
+    // Resume video if it was playing
+    if (wasPlayingRef.current) {
       setTimeout(() => playerRef.current?.play(), 100)
     }
   }
@@ -1122,6 +1128,28 @@ export default function VideoTagging() {
     })
   }, [])
 
+  /** Foul subtype selected (or skipped) — finalize the stashed Our Foul event */
+  const handleFoulSubtypeSelect = useCallback((subtype?: string) => {
+    if (!pendingFoulSubtype || !sessionId) {
+      setPendingFoulSubtype(null)
+      return
+    }
+    const { data } = pendingFoulSubtype
+    if (subtype) data.sub_type = subtype
+    setPendingFoulSubtype(null)
+
+    // Create the FOUL_COMMITTED event
+    createEvent.mutate({ sessionId, data })
+
+    // Our team fouled → opposition gets the free
+    setPendingFreeKick('opp_free')
+    setPossession('team_b')
+    carrierPossessionSwapRef.current()
+    setActiveTab('scoring')
+    carrierTerminalRef.current(data.event_type)
+    setAiDismissed(true)
+  }, [pendingFoulSubtype, sessionId, createEvent])
+
   /** Cancel the overlay flow and resume video */
   const cancelOverlay = useCallback(() => {
     setOverlayState('none')
@@ -1135,7 +1163,7 @@ export default function VideoTagging() {
   const handleDirectCreate = useCallback((data: VideoEventCreateData) => {
     if (!sessionId) return
     createEvent.mutate({ sessionId, data })
-    onCarrierTerminalEvent(data.event_type)
+    carrierTerminalRef.current(data.event_type)
     setAiDismissed(true)
 
     // Start black card 10-min countdown
@@ -1145,6 +1173,15 @@ export default function VideoTagging() {
         playerLabel: data.jersey_number ? `#${data.jersey_number}` : `${data.match_minute}'`,
         startedAt: Date.now(),
       }])
+    }
+
+    // "Opp Foul" path — opposition committed the foul (team_b), we get the free.
+    // Possession already flipped by VideoQuickActions; just show the free kick panel.
+    if (data.event_type === 'FOUL_COMMITTED' && data.team === 'team_b') {
+      setPendingFreeKick('our_free')
+      // Pause video so user can pick the free outcome
+      wasPlayingRef.current = playerRef.current?.isPlaying() || false
+      playerRef.current?.pause()
     }
   }, [sessionId, createEvent])
 
@@ -1833,6 +1870,8 @@ export default function VideoTagging() {
     const by = ballPosition?.y ?? null
     await endCarrierSegment(bx, by, 'turnover')
   }, [endCarrierSegment, ballPosition])
+  carrierTerminalRef.current = onCarrierTerminalEvent
+  carrierPossessionSwapRef.current = onCarrierPossessionSwap
 
   // Drag-end: append the full downsampled waypoint path (collected by
   // TaggingPitch during the drag) to the active carrier segment in one
@@ -2453,6 +2492,8 @@ export default function VideoTagging() {
         if (wasPlayingRef.current) setTimeout(() => playerRef.current?.play(), 100)
       }}
       opponentName={opponentName}
+      pendingFoulSubtype={!!pendingFoulSubtype}
+      onFoulSubtypeSelect={handleFoulSubtypeSelect}
     />
     </div>
   )
