@@ -28,13 +28,22 @@ export default function AttackDirectionBadge({ attackingRight, teamName, orienta
   const Icon = vertical ? (attackingRight ? ArrowUp : ArrowDown) : (attackingRight ? ArrowRight : ArrowLeft)
   const directionLabel = vertical ? (attackingRight ? 'up' : 'down') : (attackingRight ? 'right' : 'left')
 
+  // Spell the direction out in words — an arrow + team name alone wasn't
+  // obvious what it meant.
+  const plainLabel = vertical
+    ? (attackingRight ? 'bottom to top' : 'top to bottom')
+    : (attackingRight ? 'left to right' : 'right to left')
+
   return (
     <div
-      className={`flex ${vertical ? 'flex-col' : 'flex-row'} items-center gap-1 bg-slate-900/90 border border-emerald-500/30 rounded-full px-2 py-1.5 text-[10px] font-semibold text-white whitespace-nowrap ${className}`}
+      className={`flex ${vertical ? 'flex-col' : 'flex-row'} items-center gap-2 bg-slate-900/90 border border-emerald-500/40 rounded-xl px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap shadow-lg ${className}`}
       title={`${teamName} attacks ${directionLabel} this half`}
     >
-      <Icon size={14} className="text-emerald-400 flex-shrink-0" />
-      <span className={vertical ? 'truncate [writing-mode:vertical-rl]' : 'truncate'}>{teamName}</span>
+      {!attackingRight && !vertical && <Icon size={16} className="text-emerald-400 flex-shrink-0" />}
+      <span className={vertical ? '[writing-mode:vertical-rl]' : ''}>
+        {teamName} attacking <span className="text-emerald-300">{plainLabel}</span>
+      </span>
+      {(attackingRight || vertical) && <Icon size={16} className="text-emerald-400 flex-shrink-0" />}
     </div>
   )
 }

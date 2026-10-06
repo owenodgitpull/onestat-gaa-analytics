@@ -552,6 +552,9 @@ export const possessionAPI = {
     is_home_team: boolean;
     x_coord: number;
     y_coord: number;
+    /** Video Tagging only — possession time in video time; see backend
+     *  PossessionEventCreate.duration_seconds. */
+    duration_seconds?: number;
   }): Promise<PossessionEvent> => {
     // Convert is_home_team to team field expected by backend
     const { is_home_team, half, ...rest } = event;

@@ -60,7 +60,7 @@ import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video
 import BlackCardTimer, { type BlackCardEntry } from '../components/BlackCardTimer'
 import FormationSnapshotMode from '../components/FormationSnapshotMode'
 import { FORMATION_XY } from '@/utils/likelyReceivers'
-import JerseyNumberStrip, { type JerseyPlayer } from '../components/JerseyNumberStrip'
+import { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
 import BallQuickActionIcon from '../components/video/BallQuickActionIcon'
@@ -80,7 +80,15 @@ import {
   useCompleteTracking,
   useResetVideoSession,
 } from '../hooks/useVideoSessions'
-import { FOUL_SUBTYPES } from '../constants/turnoverSubtypes'
+import { FOUL_SUBTYPES, UNFORCED_ERROR_SUBTYPES, TURNOVER_REASON_CONFIG, type TurnoverReason } from '../constants/turnoverSubtypes'
+import PitchActionOverlay from '../components/PitchActionOverlay'
+import {
+  SubtypePrompt,
+  TurnoverReasonPrompt,
+  KickoutLandingBanner,
+  FortyFiveTapBanner,
+  AdjustFreeBanner,
+} from '../components/video/VideoPitchPrompts'
 import {
   useVideoEvents,
   useCreateVideoEvent,
@@ -102,6 +110,9 @@ import type { Player, BallPosition } from '../types'
 type OverlayState = 'none' | 'player' | 'pitch'
 type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
 
+/** What the on-pitch tap step is for (drives the banner + which CAB panel). */
+type PitchPrompt = 'kickout' | 'kickout_sideline' | 'forty_five'
+
 interface ActionButton {
   id: string
   label: string
@@ -110,6 +121,11 @@ interface ActionButton {
   autoSwitchTab?: Category
   needsPlayer?: boolean
   needsPitch?: boolean
+  /** When the pitch tap happens relative to the player pick. Kickouts: the
+   *  player (who won it) first, then the landing tap. 45s: the 45m-line tap
+   *  first, then who took it — same orders as live recording. */
+  pitchStep?: 'before_player' | 'after_player'
+  pitchPrompt?: PitchPrompt
   playerModalTitle?: string
   playerModalEventType?: string
 }
@@ -127,7 +143,18 @@ interface EventConfig {
   autoSwitchTab?: Category
   playerModalTitle?: string
   playerModalEventType?: string
+  description?: string
 }
+
+/** Scores / wides / 45s / penalties — the ball is dead and the OTHER team
+ *  restarts with a kickout (live recording's awaitingKickout). */
+const KICKOUT_RESTART_VIDEO_TYPES = new Set([
+  'GOAL_SCORED', 'POINT_SCORED', 'TWO_POINT_SCORED', 'WIDE', 'FORTY_FIVE',
+  'PENALTY_GOAL_MARKER', 'PENALTY_MISS_MARKER',
+])
+/** Shot outcomes where play continues and the other team gets the ball, with
+ *  no kickout prompt (matches live recording). */
+const SHOT_TURNOVER_VIDEO_TYPES = new Set(['SHORT', 'SAVED', 'HIT_POST'])
 
 const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.GOAL]: { videoType: 'GOAL_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'goal' },
@@ -136,7 +163,9 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.WIDE]: { videoType: 'WIDE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
   [EventType.SHORT]: { videoType: 'SHORT', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'saved' },
   [EventType.SAVED]: { videoType: 'SAVED', needsPlayer: false, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts' },
-  [EventType.BLOCK]: { videoType: 'BLOCK_SHOT', needsPlayer: false },
+  [EventType.BLOCK]: { videoType: 'BLOCK_SHOT', needsPlayer: true, playerModalTitle: 'Who Blocked?', playerModalEventType: 'block' },
+  [EventType.FREE_SHORT_PASS]: { videoType: 'PASS_HAND', needsPlayer: true, autoSwitchTab: 'scoring', playerModalTitle: 'Who Took the Free?', playerModalEventType: 'point_free', description: 'Free short pass' },
+  [EventType.FREE_HIGH_BALL]: { videoType: 'PASS_KICK', needsPlayer: true, autoSwitchTab: 'scoring', playerModalTitle: 'Who Took the Free?', playerModalEventType: 'point_free', description: 'High ball (free)' },
   [EventType.HIT_POST]: { videoType: 'HIT_POST', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'wide' },
   [EventType.POINT_FREE]: { videoType: 'POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
   [EventType.TWO_POINT_FREE]: { videoType: 'TWO_POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
@@ -359,10 +388,27 @@ export default function VideoTagging() {
   // the landing spot in handleTaggingBallCommit. Mirrors the equivalent
   // pendingLongKick added to live recording's MatchRecording.tsx.
   const [pendingLongKick, setPendingLongKick] = useState<{ team: 'team_a' | 'team_b'; playerId?: string | null } | null>(null)
-  // Kickout "aimed for" — optional target-player step after we win our own
-  // kickout, own kickouts only (not the landing-position banner, which
-  // doesn't apply to video's continuous-tracking model).
-  const [pendingKickoutAimedFor, setPendingKickoutAimedFor] = useState<{ eventId: string } | null>(null)
+  // Awaiting a kickout after a score/wide/45/penalty — the on-pitch kickout
+  // outcome overlay (PitchActionOverlay), same as live recording.
+  const [awaitingKickout, setAwaitingKickout] = useState(false)
+  const [kickoutTab, setKickoutTab] = useState<'our_kickouts' | 'opp_kickouts' | null>(null)
+  const [kickoutMinimised, setKickoutMinimised] = useState(false)
+  // Optional "aimed for" jersey chosen during the landing-position step.
+  const [kickoutAimedForId, setKickoutAimedForId] = useState<string | undefined>(undefined)
+  // "Adjust Free Position" — overlay hidden so the ball can be dragged.
+  const [isAdjustingFree, setIsAdjustingFree] = useState(false)
+  // Foul subtype "Tactical" checkbox + the T/O-lost and unforced-error pickers.
+  const [tacticalFoul, setTacticalFoul] = useState(false)
+  const [pendingTurnoverReason, setPendingTurnoverReason] = useState<{
+    pending: OverlayPendingEvent
+    data: VideoEventCreateData
+    playerName?: string
+  } | null>(null)
+  const [pendingErrorSubtype, setPendingErrorSubtype] = useState<{
+    pending: OverlayPendingEvent
+    data: VideoEventCreateData
+    playerName?: string
+  } | null>(null)
 
   // Black card sin bin timers
   const [blackCardTimers, setBlackCardTimers] = useState<BlackCardEntry[]>([])
@@ -448,6 +494,30 @@ export default function VideoTagging() {
     if (session?.tracking_started_at != null) return 'tracking'
     return 'setup'
   }, [session?.tracking_completed_at, session?.tracking_started_at])
+
+  // ── Possession is only "live" while the footage is actually playing in
+  // tracking mode AND no dead-ball situation is pending (free being taken,
+  // kickout/45 restart, any follow-up prompt, block/sideline undecided).
+  // Mirrors live recording's `isPlaying` guard on its possession tick
+  // (!isStopped && !isDeadBall && !awaitingKickout && !pendingFreeKick).
+  // Paused video never accrues: no timeupdate events fire, and isPlaying is
+  // false. Time is accumulated in VIDEO time per team (see handleTimeUpdate)
+  // and flushed with an explicit duration, because the backend's wall-clock
+  // chaining is meaningless for video (pauses, 0.5x playback, scrubbing).
+  const deadBall = !!pendingFreeKick || awaitingKickout || overlayState !== 'none' || pending45 ||
+    !!pendingFoulSubtype || !!pendingTurnoverReason || !!pendingErrorSubtype ||
+    pendingBlockRecovery || pendingSidelineDecision || isAdjustingFree
+  const possLive = mode === 'tracking' && isPlaying && !deadBall
+  const possLiveRef = useRef(false)
+  possLiveRef.current = possLive
+  const possessionRef = useRef(possession)
+  possessionRef.current = possession
+  const possAccumMsRef = useRef({ team_a: 0, team_b: 0 })
+  const lastPossTickMsRef = useRef<number | null>(null)
+  const ballPosRef = useRef(ballPosition)
+  ballPosRef.current = ballPosition
+  const currentTimeMsRef = useRef(0)
+  currentTimeMsRef.current = currentTimeMs
 
   // Stats/charts data — converts the session's own tagged (but not yet
   // synced to the match) events into the shape live recording's chart
@@ -628,7 +698,15 @@ export default function VideoTagging() {
     lastPersistedProgressRef.current = throwInMs
     fullTimeConfirmShownRef.current = false
     await startTracking.mutateAsync({ sessionId })
+    // Fresh tracking run — no stale possession time from an earlier session
+    possAccumMsRef.current = { team_a: 0, team_b: 0 }
+    lastPossTickMsRef.current = null
     playerRef.current?.seekTo(throwInMs)
+    // Start playing from the throw-in straight away — previously it sat
+    // paused at the throw-in with a "Resume Tracking" button to press.
+    // Small delay so the seek lands before play() (and so the mode flip to
+    // 'tracking' has re-rendered, which un-clamps the forward-seek ceiling).
+    setTimeout(() => playerRef.current?.play(), 150)
   }, [sessionId, session, startTracking, matchLineup])
 
   const handleRequestEndTracking = useCallback(() => {
@@ -788,9 +866,53 @@ export default function VideoTagging() {
     }
   }, [highWaterMarkMs, mode, session?.full_time_ms])
 
-  // ── Ball position sampling (every 5s while playing AND tracking) ────
+  // ── Possession flush — posts the VIDEO-time possession accumulated per
+  // team (see possAccumMsRef / handleTimeUpdate) as explicit-duration
+  // possession events. `forcePoint` also writes a (possibly 0s) point for the
+  // team currently in possession so territory/heat charts still get a
+  // location for every ball placement, as they did before.
+  const flushPossession = useCallback((forcePoint = false, at?: { x: number; y: number }) => {
+    const matchId = session?.match_id
+    if (!matchId) return
+    const pos = at ?? ballPosRef.current
+    if (!pos) return
+    const mt = calcMatchTime(currentTimeMsRef.current)
+    for (const team of ['team_a', 'team_b'] as const) {
+      const secs = Math.floor(possAccumMsRef.current[team] / 1000)
+      const isCurrent = possessionRef.current === team
+      if (secs < 1 && !(forcePoint && isCurrent)) continue
+      possAccumMsRef.current[team] -= secs * 1000
+      api.possession.create({
+        match_id: matchId,
+        x_coord: pos.x,
+        y_coord: pos.y,
+        is_home_team: team === 'team_a',
+        minute: Math.min(mt.minute, 120),
+        half: mt.half,
+        duration_seconds: secs,
+      }).catch(err => {
+        // Put the time back so it isn't lost on a transient failure
+        possAccumMsRef.current[team] += secs * 1000
+        console.error('Failed to record possession (video tagging):', err)
+      })
+    }
+  }, [session?.match_id, calcMatchTime])
+
+  // Flush every 15s while tracking, on pause, and on unmount/leave.
   useEffect(() => {
-    if (!isPlaying || !ballPosition || mode !== 'tracking') return
+    if (mode !== 'tracking') return
+    const interval = setInterval(() => flushPossession(false), 15000)
+    return () => clearInterval(interval)
+  }, [mode, flushPossession])
+  useEffect(() => {
+    if (!isPlaying && mode === 'tracking') flushPossession(false)
+  }, [isPlaying, mode, flushPossession])
+  useEffect(() => () => flushPossession(false), [flushPossession])
+
+  // ── Ball position sampling (every 5s while playing AND tracking, and not
+  // during a dead-ball situation — same gate as possession time) ────
+  useEffect(() => {
+    if (!isPlaying || !ballPosition || mode !== 'tracking' || deadBall) return
     const interval = setInterval(() => {
       const ms = playerRef.current?.getCurrentTimeMs?.()
       const tsMs = ms ?? currentTimeMs
@@ -803,7 +925,7 @@ export default function VideoTagging() {
       setBallTrail(prev => [...prev.slice(-49), { x: ballPosition.x, y: ballPosition.y }])
     }, 5000)
     return () => clearInterval(interval)
-  }, [isPlaying, ballPosition, possession, currentTimeMs])
+  }, [isPlaying, ballPosition, possession, currentTimeMs, deadBall])
 
   // ── Bulk save samples every 30s + on unmount/beforeunload ──────────
   const flushSamples = useCallback(() => {
@@ -867,6 +989,15 @@ export default function VideoTagging() {
   // ── Handlers ──────────────────────────────────────────────────────────
 
   const handleTimeUpdate = useCallback((ms: number) => {
+    // Accrue possession in VIDEO time: only forward deltas small enough to be
+    // normal playback (a seek/scrub shows up as a large or negative delta and
+    // is ignored), and only while possession is "live" (see possLive).
+    const prev = lastPossTickMsRef.current
+    lastPossTickMsRef.current = ms
+    if (prev != null && possLiveRef.current) {
+      const delta = ms - prev
+      if (delta > 0 && delta < 2000) possAccumMsRef.current[possessionRef.current] += delta
+    }
     setCurrentTimeMs(ms)
     if (mode === 'tracking') {
       setHighWaterMarkMs(prev => (ms > prev ? ms : prev))
@@ -896,28 +1027,65 @@ export default function VideoTagging() {
     setBallTrail(prev => [...prev.slice(-49), { x: position.x, y: position.y }])
   }, [])
 
+  // Which side the kicking team is attacking right now, for 45m-line
+  // placement — mirrors MatchRecording.tsx's compute45LineX (34/66, the
+  // live-tuned real line position confirmed against the pitch SVG's actual
+  // drawn line, not the theoretical 45/145≈31/69).
+  const compute45LineX = useCallback((isHomeTeam: boolean): number => {
+    const attackingRightFirstHalf = matchData?.attacking_right_first_half ?? true
+    const currentHalf = calcMatchTime(currentTimeMs).half
+    const teamAttackingRight = currentHalf === 2 ? !attackingRightFirstHalf : attackingRightFirstHalf
+    const kickingTeamAttacksRight = isHomeTeam ? teamAttackingRight : !teamAttackingRight
+    return kickingTeamAttacksRight ? 66 : 34
+  }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
+
   // Discrete possession-change point — fires on a tap or drag-END commit
   // only (bound to onBallMove, never onDragUpdate's live-drag callback, so
   // this doesn't fire dozens of times per drag). Mirrors MatchRecording.tsx's
-  // handleBallMove writing a PossessionEvent on every commit. Video tagging
-  // previously wrote none at all, so PossessionEvent-dependent season charts
-  // (Territory Distribution, Possession Funnel) had zero data for any
-  // video-tagged match.
+  // handleBallMove writing a PossessionEvent on every commit. Also resolves
+  // the on-pitch tap steps (kickout landing, 45 line) and the free-position
+  // adjust drag, none of which are open-play possession.
   const handleTaggingBallCommit = useCallback((position: BallPosition) => {
     handleTaggingBallMove(position)
 
-    // If waiting for pitch position (e.g. kickout after player selected),
-    // finalize the event with this position
+    // Dead ball — repositioning a free before it's taken. Just moves the
+    // ball; never writes possession (matches live recording).
+    if (pendingFreeKick) return
+
+    // If waiting for a pitch tap (kickout landing / 45 line), resolve it
     if (overlayState === 'pitch' && pendingOverlay) {
-      const data = {
+      const isFortyFive = pendingOverlay.action.pitchPrompt === 'forty_five'
+      const isKickout = pendingOverlay.action.pitchPrompt === 'kickout' || pendingOverlay.action.pitchPrompt === 'kickout_sideline'
+      // A 45 is always taken ON the 45m line — the tap only decides the y
+      // (left/right); x snaps to the real line for the taking team.
+      const px = isFortyFive ? compute45LineX(pendingOverlay.eventData.team === 'team_a') : position.x
+      const data: VideoEventCreateData = {
         ...pendingOverlay.eventData,
-        pitch_x: position.x,
+        pitch_x: px,
         pitch_y: position.y,
-        pitch_zone: xyToZone(position.x, position.y),
+        pitch_zone: xyToZone(px, position.y),
+      }
+      if (isFortyFive) {
+        setBallPosition(prev => (prev ? { ...prev, x: px } : prev))
+        setHighlight45LineX(null)
+      }
+      // Optional "aimed for" target chosen on the landing banner
+      if (isKickout && kickoutAimedForId) {
+        const target = (players || []).find((p: any) => p.id === kickoutAimedForId)
+        if (target) data.description = `Aimed for: ${(target as any).name}`
+      }
+      setKickoutAimedForId(undefined)
+      const pending = { ...pendingOverlay, eventData: data }
+
+      // 45: the line tap comes first, THEN who took it (own team only)
+      if (pending.action.pitchStep === 'before_player' && pending.action.needsPlayer && data.team === 'team_a') {
+        setPendingOverlay(pending)
+        setOverlayState('player')
+        return
       }
       setOverlayState('none')
-      setTimeout(() => finalizeEventRef.current(pendingOverlay, data), 0)
       setPendingOverlay(null)
+      setTimeout(() => finalizeEventRef.current(pending, data), 0)
       return // Don't record possession point - the event will do that
     }
 
@@ -960,35 +1128,20 @@ export default function VideoTagging() {
       }
     }
 
-    if (!session?.match_id) return
-    const matchTime = calcMatchTime(currentTimeMs)
-    api.possession.create({
-      match_id: session.match_id,
-      x_coord: position.x,
-      y_coord: position.y,
-      is_home_team: possession === 'team_a',
-      minute: matchTime.minute,
-      half: matchTime.half,
-    }).catch(err => console.error('Failed to record possession point (video tagging):', err))
+    // Discrete placement point — written with the VIDEO-time possession
+    // accumulated since the last flush (and only if there is any, plus one
+    // location point for the team in possession). Live possession time is
+    // measured in video time, not wall-clock — see flushPossession.
+    if (!isPlaying) return // paused: repositioning isn't possession time
+    flushPossession(true, { x: position.x, y: position.y })
     // endCarrierSegment deliberately omitted — it's declared further down
     // the component (useCallback with a stable `[]` dep array, so its
     // identity never changes) and including it here would be a genuine
     // TDZ error, not just a lint nit: this callback is created before that
     // declaration is reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleTaggingBallMove, session?.match_id, calcMatchTime, currentTimeMs, possession, pendingLongKick, sessionId, createEvent, overlayState, pendingOverlay])
+  }, [handleTaggingBallMove, flushPossession, compute45LineX, players, sessionId, createEvent, overlayState, pendingOverlay, pendingFreeKick, kickoutAimedForId, isPlaying])
 
-  // Which side the kicking team is attacking right now, for 45m-line
-  // placement — mirrors MatchRecording.tsx's compute45LineX (34/66, the
-  // live-tuned real line position confirmed against the pitch SVG's actual
-  // drawn line, not the theoretical 45/145≈31/69).
-  const compute45LineX = useCallback((isHomeTeam: boolean): number => {
-    const attackingRightFirstHalf = matchData?.attacking_right_first_half ?? true
-    const currentHalf = calcMatchTime(currentTimeMs).half
-    const teamAttackingRight = currentHalf === 2 ? !attackingRightFirstHalf : attackingRightFirstHalf
-    const kickingTeamAttacksRight = isHomeTeam ? teamAttackingRight : !teamAttackingRight
-    return kickingTeamAttacksRight ? 66 : 34
-  }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
 
   // Persistent attack-direction indicator — null until direction is known
   // (i.e. until the setup flow's direction step is complete).
@@ -1009,18 +1162,47 @@ export default function VideoTagging() {
   /** Create the event, apply auto-flip/auto-switch, resume video.
    *  Stored in a ref so overlay handlers always call the latest version. */
   const finalizeEventRef = useRef<(pending: OverlayPendingEvent, data: VideoEventCreateData) => void>(() => {})
+  /** Creates the event + applies every follow-on effect (possession flip,
+   *  kickout restart, tab switch, video resume). Split from finalizeEventRef
+   *  so the on-pitch pickers can stash an event and commit it later. */
+  const commitEventRef = useRef<(pending: OverlayPendingEvent, data: VideoEventCreateData) => void>(() => {})
+
   finalizeEventRef.current = (pending: OverlayPendingEvent, data: VideoEventCreateData) => {
     if (!sessionId) return
+    const stash = () => { setOverlayState('none'); setPendingOverlay(null) }
+    const playerName = data.player_id ? (players || []).find((p: any) => p.id === data.player_id)?.name : undefined
 
-    // "Our Foul" → stash for subtype picker instead of creating immediately.
-    // The sidebar will show the foul subtype panel; when a subtype is picked,
-    // handleFoulSubtypeSelect finalizes the event.
+    // "Our Foul" → stash for the on-pitch foul-type picker instead of creating
+    // immediately; handleFoulSubtypeSelect finalizes the event.
     if (data.event_type === 'FOUL_COMMITTED' && pending.action.id === 'foul_own') {
+      setTacticalFoul(false)
       setPendingFoulSubtype({ pending, data })
-      setOverlayState('none')
-      setPendingOverlay(null)
+      stash()
       return
     }
+
+    // "T/O Lost" → ask WHY first (dispossession / unforced error / offensive
+    // foul) instead of always logging a bare TURNOVER_LOST — same flat picker
+    // as live recording. Needs a player, like live (skipping the player
+    // records the bare event, as live does).
+    if (data.event_type === 'TURNOVER_LOST' && data.team === 'team_a' && data.player_id) {
+      setPendingTurnoverReason({ pending, data, playerName })
+      stash()
+      return
+    }
+
+    // "Our unforced error" → ask which type of error (stray pass, dropped ball…)
+    if (data.event_type === 'OUR_UNFORCED_ERROR' && data.team === 'team_a' && data.player_id) {
+      setPendingErrorSubtype({ pending, data, playerName })
+      stash()
+      return
+    }
+
+    commitEventRef.current(pending, data)
+  }
+
+  commitEventRef.current = (pending: OverlayPendingEvent, data: VideoEventCreateData) => {
+    if (!sessionId) return
 
     // Second yellow card → automatic red card
     if (data.event_type === 'YELLOW_CARD' && data.player_id && yellowCardPlayerIds.has(data.player_id)) {
@@ -1054,10 +1236,6 @@ export default function VideoTagging() {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => { if (created?.id) setPendingOppScorer({ eventId: created.id, mode: 'turnover_forced' }) },
       })
-    } else if (data.team === 'team_a' && (data.event_type === 'OWN_KICKOUT_WON' || data.event_type === 'OWN_KICKOUT_WON_BREAK')) {
-      createEvent.mutate({ sessionId, data }, {
-        onSuccess: (created: any) => { if (created?.id) setPendingKickoutAimedFor({ eventId: created.id }) },
-      })
     } else if (data.team === 'team_a' && PRESSURE_ELIGIBLE_TYPES.includes(data.event_type)) {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
@@ -1080,14 +1258,50 @@ export default function VideoTagging() {
     // Auto-end carrier on terminal events (scores, turnovers, wides, etc.)
     onCarrierTerminalEvent(data.event_type)
 
-    // Auto-flip possession (action.autoFlipTo is the source of truth)
+    // Possession flip. Scores/wides/45s/penalties and shot turnovers (short,
+    // saved, post) hand the ball to the OTHER team than whoever took the shot
+    // (the config's fixed 'us'/'them' assumed it was always our shot, which
+    // was wrong whenever the opposition scored); an interception goes to the
+    // intercepting team; everything else follows the action's own flip.
     const action = pending.action
-    if (action.autoFlipTo) {
-      setPossession(action.autoFlipTo === 'us' ? 'team_a' : 'team_b')
+    const otherTeam: 'team_a' | 'team_b' = data.team === 'team_a' ? 'team_b' : 'team_a'
+    const isRestart = KICKOUT_RESTART_VIDEO_TYPES.has(data.event_type)
+    const isShotTurnover = SHOT_TURNOVER_VIDEO_TYPES.has(data.event_type)
+    const flipTo: 'team_a' | 'team_b' | null =
+      isRestart || isShotTurnover ? otherTeam
+      : data.event_type === 'INTERCEPTION' ? (data.team === 'team_a' ? 'team_a' : 'team_b')
+      : action.autoFlipTo ? (action.autoFlipTo === 'us' ? 'team_a' : 'team_b')
+      : null
+    if (flipTo) {
+      setPossession(flipTo)
       onCarrierPossessionSwap()
     }
-    if (action.autoSwitchTab) {
-      setActiveTab(action.autoSwitchTab)
+
+    if (isRestart) {
+      // Dead ball — the other team takes a kickout. Ball goes to their
+      // goalkeeper area and the kickout outcome overlay appears on the pitch
+      // (live recording's awaitingKickout). No possession accrues meanwhile.
+      const attackRight = teamAttackingRightThisHalf ?? true
+      const kickoutTeamIsOwn = otherTeam === 'team_a'
+      const ownGoalX = attackRight ? 5 : 95
+      const oppGoalX = attackRight ? 95 : 5
+      setBallPosition({ x: kickoutTeamIsOwn ? ownGoalX : oppGoalX, y: 50 })
+      const tab = data.team === 'team_a' ? 'opp_kickouts' : 'our_kickouts'
+      setKickoutTab(tab)
+      setKickoutMinimised(false)
+      setAwaitingKickout(true)
+      setActiveTab(tab)
+    } else {
+      // A kickout just resolved (or any non-restart event): clear the await.
+      const isKickoutResult = data.event_type.includes('KICKOUT') || data.event_type === 'SIDELINE_KICK'
+      // (Only a kickout result clears the await — a card/sub logged while a
+      // kickout is pending must not cancel the kickout prompt.)
+      if (isKickoutResult) {
+        setAwaitingKickout(false)
+        setKickoutTab(null)
+      }
+      if (isShotTurnover) setActiveTab('scoring')
+      else if (action.autoSwitchTab && !(awaitingKickout && !isKickoutResult)) setActiveTab(action.autoSwitchTab)
     }
 
     // Dismiss AI banner on first manual event
@@ -1097,8 +1311,10 @@ export default function VideoTagging() {
     setOverlayState('none')
     setPendingOverlay(null)
 
-    // Resume video if it was playing
+    // Resume video if it was playing when the flow started. Reset the flag so
+    // a stale `true` can't resume a video the coach later paused on purpose.
     if (wasPlayingRef.current) {
+      wasPlayingRef.current = false
       setTimeout(() => playerRef.current?.play(), 100)
     }
   }
@@ -1111,8 +1327,14 @@ export default function VideoTagging() {
    *  extra tap is redundant and has been removed. needsPitch still exists
    *  on ActionButton (used elsewhere, e.g. the 45m/Free Won flow) but no
    *  longer triggers its own overlay step here. */
-  const handleEventTap = useCallback((pending: OverlayPendingEvent) => {
-    wasPlayingRef.current = playerRef.current?.isPlaying() || false
+  const handleEventTap = useCallback((pending: OverlayPendingEvent, opts?: { keepResumeState?: boolean }) => {
+    // The video is usually already paused when a free/45 outcome is picked
+    // (it was paused when the foul/45 started), so re-reading isPlaying()
+    // there would say "wasn't playing" and the video would never resume
+    // after the selection. Those continuations keep the state captured when
+    // the flow began.
+    const nowPlaying = playerRef.current?.isPlaying() || false
+    wasPlayingRef.current = opts?.keepResumeState ? (nowPlaying || wasPlayingRef.current) : nowPlaying
     playerRef.current?.pause()
 
     // Position always comes from the live tracking-pitch ball position
@@ -1127,8 +1349,16 @@ export default function VideoTagging() {
 
     setPendingOverlay(pending)
 
-    if (pending.action.needsPlayer && (possession === 'team_a' || pending.action.id === 'foul_own')) {
+    const a = pending.action
+    const isOwn = pending.eventData.team === 'team_a'
+    if (a.pitchStep === 'before_player') {
+      // 45: tap the 45m line first, who took it second (handled on the tap)
+      setOverlayState('pitch')
+    } else if (a.needsPlayer && (isOwn || a.id === 'foul_own')) {
       setOverlayState('player')
+    } else if (a.pitchStep === 'after_player') {
+      // Opposition kickout: no player to pick, straight to the landing tap
+      setOverlayState('pitch')
     } else {
       // No player needed, or opponent event — finalize directly
       setOverlayState('none')
@@ -1136,14 +1366,14 @@ export default function VideoTagging() {
     }
   }, [ballPosition, possession])
 
-  /** Player selected → finalize event or wait for pitch tap if needsPitch */
+  /** Player selected → finalize event, or go on to the pitch tap (kickouts) */
   const handlePlayerSelect = useCallback((player: Player) => {
     setPendingOverlay(prev => {
       if (!prev) return prev
       const data = { ...prev.eventData, player_id: player.id }
 
-      // If needsPitch, wait for user to tap the pitch before finalizing
-      if (prev.action.needsPitch) {
+      // Kickouts: who won it first, THEN tap where it landed
+      if (prev.action.pitchStep === 'after_player') {
         setOverlayState('pitch')
         return { ...prev, eventData: data }
       }
@@ -1154,13 +1384,28 @@ export default function VideoTagging() {
     })
   }, [])
 
-  /** Player skipped → finalize without player */
+  /** Player skipped → finalize without a player (kickouts still get the landing tap) */
   const handlePlayerSkip = useCallback(() => {
     setPendingOverlay(prev => {
       if (!prev) return prev
+      if (prev.action.pitchStep === 'after_player') {
+        setOverlayState('pitch')
+        return prev
+      }
       setTimeout(() => finalizeEventRef.current(prev, prev.eventData), 0)
       return prev
     })
+  }, [])
+
+  /** Our team conceded a foul → the opposition takes the free. Shared by the
+   *  foul-type picker and the T/O-lost "offensive foul" path. */
+  const beginOppositionFree = useCallback((eventType: string) => {
+    setPendingFreeKick('opp_free')
+    setPossession('team_b')
+    carrierPossessionSwapRef.current()
+    setActiveTab('scoring')
+    carrierTerminalRef.current(eventType)
+    setAiDismissed(true)
   }, [])
 
   /** Foul subtype selected (or skipped) — finalize the stashed Our Foul event */
@@ -1170,20 +1415,57 @@ export default function VideoTagging() {
       return
     }
     const { data } = pendingFoulSubtype
-    if (subtype) data.sub_type = subtype
+    const resolved = tacticalFoul ? 'tactical' : subtype
+    if (resolved) data.sub_type = resolved
+    setTacticalFoul(false)
     setPendingFoulSubtype(null)
 
     // Create the FOUL_COMMITTED event
     createEvent.mutate({ sessionId, data })
 
-    // Our team fouled → opposition gets the free
-    setPendingFreeKick('opp_free')
-    setPossession('team_b')
-    carrierPossessionSwapRef.current()
-    setActiveTab('scoring')
-    carrierTerminalRef.current(data.event_type)
-    setAiDismissed(true)
-  }, [pendingFoulSubtype, sessionId, createEvent])
+    // Our team fouled → opposition gets the free (video stays paused until
+    // the free's outcome is picked, then resumes)
+    beginOppositionFree(data.event_type)
+  }, [pendingFoulSubtype, sessionId, createEvent, tacticalFoul, beginOppositionFree])
+
+  /** "How was possession lost?" resolved — dispossession / unforced error /
+   *  offensive foul, mirrors live recording's handleTurnoverFlatSelect. */
+  const handleTurnoverReasonSelect = useCallback((reason: TurnoverReason, subType?: string, tactical?: boolean) => {
+    const stash = pendingTurnoverReason
+    setPendingTurnoverReason(null)
+    if (!stash || !sessionId) return
+    const cfg = TURNOVER_REASON_CONFIG[reason]
+    const resolvedSub = cfg.foulMode && tactical ? 'tactical' : subType
+    const videoType = reason === 'dispossession' ? 'TURNOVER_LOST' : reason === 'unforced' ? 'OUR_UNFORCED_ERROR' : 'FOUL_COMMITTED'
+    const data: VideoEventCreateData = { ...stash.data, event_type: videoType, ...(resolvedSub ? { sub_type: resolvedSub } : {}) }
+
+    if (cfg.foulMode) {
+      // Offensive foul concedes a free — same handling as any other foul
+      createEvent.mutate({ sessionId, data })
+      beginOppositionFree(videoType)
+      return
+    }
+    commitEventRef.current({ ...stash.pending, action: { ...stash.pending.action, autoFlipTo: 'them' } }, data)
+  }, [pendingTurnoverReason, sessionId, createEvent, beginOppositionFree])
+
+  /** "Skip" on the turnover-reason picker cancels it (live recording drops
+   *  the event too) — just resume the video. */
+  const handleTurnoverReasonSkip = useCallback(() => {
+    setPendingTurnoverReason(null)
+    if (wasPlayingRef.current) {
+      wasPlayingRef.current = false
+      setTimeout(() => playerRef.current?.play(), 100)
+    }
+  }, [])
+
+  /** Unforced-error type chosen (or skipped) */
+  const handleErrorSubtypeSelect = useCallback((subtype?: string) => {
+    const stash = pendingErrorSubtype
+    setPendingErrorSubtype(null)
+    if (!stash || !sessionId) return
+    const data: VideoEventCreateData = { ...stash.data, ...(subtype ? { sub_type: subtype } : {}) }
+    commitEventRef.current(stash.pending, data)
+  }, [pendingErrorSubtype, sessionId])
 
   /** CategorizedActionButtons main dispatcher — translates EventType enum
    *  into the existing OverlayPendingEvent + handleEventTap pipeline. */
@@ -1191,9 +1473,28 @@ export default function VideoTagging() {
     const config = EVENT_TYPE_CONFIG[eventType]
     if (!config) return
 
-    const isFreeResult = [EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE].includes(eventType) ||
+    const isFreeResult = [EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE, EventType.FREE_SHORT_PASS, EventType.FREE_HIGH_BALL].includes(eventType) ||
       (eventType === EventType.SHORT && !!pendingFreeKick)
     const is45Result = eventType === EventType.FORTY_FIVE || eventType === EventType.FORTY_FIVE_MISSED
+
+    // Which team the event belongs to — decided by the event itself, same
+    // rules as live recording's handleQuickAction (NOT blindly "whoever has
+    // possession": after a score possession has already flipped, so "We Won"
+    // a kickout was wrongly treated as an opposition event and skipped the
+    // who-won prompt).
+    const evStr = String(eventType).toUpperCase()
+    const team: 'team_a' | 'team_b' =
+      evStr.includes('KICKOUT_SIDELINE') ? (evStr.startsWith('OWN_') ? 'team_a' : 'team_b')
+      : evStr.includes('OPPOSITION_WON') ? 'team_b'
+      : evStr.includes('_WON') ? 'team_a'
+      : (eventType === EventType.TURNOVER_LOST || eventType === EventType.OUR_UNFORCED_ERROR) ? 'team_a'
+      : eventType === EventType.OPP_UNFORCED_ERROR ? 'team_b'
+      // Interception / block: the team WITHOUT the ball wins it
+      : (eventType === EventType.INTERCEPTION || eventType === EventType.BLOCK) ? (possession === 'team_a' ? 'team_b' : 'team_a')
+      // Free results: whoever was awarded the free takes it
+      : isFreeResult ? (pendingFreeKick === 'our_free' ? 'team_a' : pendingFreeKick === 'opp_free' ? 'team_b' : possession)
+      : evStr.startsWith('OWN_') ? 'team_a'
+      : possession
 
     const matchTime = calcMatchTime(currentTimeMs)
     const zone = ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined
@@ -1209,7 +1510,6 @@ export default function VideoTagging() {
       scoringContext.scored = eventType === EventType.FORTY_FIVE
     }
 
-    const team = possession === 'team_a' ? 'team_a' : 'team_b'
     const data: VideoEventCreateData = {
       event_type: config.videoType,
       team,
@@ -1221,16 +1521,24 @@ export default function VideoTagging() {
       pitch_y: ballPosition?.y,
       pitch_zone: zone,
       scoring_context: Object.keys(scoringContext).length > 0 ? scoringContext as any : undefined,
+      description: config.description,
       source: 'human_tag',
     }
 
     if (isFreeResult) {
       setPendingFreeKick(null)
+      setIsAdjustingFree(false)
     }
+    // (45: the pending45 outcome panel closes now; the 45m-line highlight
+    // stays until the line is tapped — see handleTaggingBallCommit)
     if (is45Result) {
       setPending45(false)
-      setHighlight45LineX(null)
     }
+
+    // Kickouts always need the landing tap (and, for our own, an optional
+    // "aimed for") — same as live recording's pendingKickoutEvent step.
+    const isKickoutAction = config.videoType.includes('KICKOUT') || config.videoType === 'SIDELINE_KICK'
+    const isSidelineKickout = config.videoType === 'SIDELINE_KICK'
 
     const action: ActionButton = {
       id: eventType,
@@ -1241,9 +1549,18 @@ export default function VideoTagging() {
       autoSwitchTab: config.autoSwitchTab,
       playerModalTitle: config.playerModalTitle,
       playerModalEventType: config.playerModalEventType,
+      ...(isKickoutAction ? {
+        pitchStep: 'after_player' as const,
+        pitchPrompt: (isSidelineKickout ? 'kickout_sideline' : 'kickout') as PitchPrompt,
+      } : {}),
+      ...(is45Result ? { pitchStep: 'before_player' as const, pitchPrompt: 'forty_five' as PitchPrompt } : {}),
     }
+    setKickoutAimedForId(undefined)
 
-    handleEventTap({ action, eventData: data, freeKickContext: isFreeResult })
+    handleEventTap(
+      { action, eventData: data, freeKickContext: isFreeResult },
+      { keepResumeState: isFreeResult || is45Result },
+    )
   }, [possession, calcMatchTime, currentTimeMs, ballPosition, pendingFreeKick, handleEventTap])
 
   /** CategorizedActionButtons foul callback */
@@ -1274,6 +1591,8 @@ export default function VideoTagging() {
       handleEventTap({ action, eventData: data })
     } else {
       if (!sessionId) return
+      // Dead ball from here until the free's outcome is picked — the video
+      // pauses now and resumes as soon as the outcome is chosen.
       wasPlayingRef.current = playerRef.current?.isPlaying() || false
       playerRef.current?.pause()
       const data: VideoEventCreateData = {
@@ -1351,7 +1670,11 @@ export default function VideoTagging() {
 
   const handleCancelFree = useCallback(() => {
     setPendingFreeKick(null)
-    if (wasPlayingRef.current) setTimeout(() => playerRef.current?.play(), 100)
+    setIsAdjustingFree(false)
+    if (wasPlayingRef.current) {
+      wasPlayingRef.current = false
+      setTimeout(() => playerRef.current?.play(), 100)
+    }
   }, [])
 
   const handleCancel45 = useCallback(() => {
@@ -1359,11 +1682,38 @@ export default function VideoTagging() {
     setHighlight45LineX(null)
   }, [])
 
+  /** Cancel a kickout (awaiting outcome, or waiting on the landing tap) or a
+   *  45 line-tap and resume the video. Mirrors live recording's
+   *  handleCancelKickout / handleCancelFortyFivePosition. */
+  const handleCancelPitchStep = useCallback(() => {
+    const pend = pendingOverlay
+    // Cancelling a "we won it" kickout still leaves the ball with us
+    if (pend && pend.action.pitchPrompt?.startsWith('kickout') && pend.eventData.team === 'team_a') {
+      setPossession('team_a')
+    }
+    setAwaitingKickout(false)
+    setKickoutTab(null)
+    setKickoutAimedForId(undefined)
+    setHighlight45LineX(null)
+    setOverlayState('none')
+    setPendingOverlay(null)
+    if (wasPlayingRef.current) {
+      wasPlayingRef.current = false
+      setTimeout(() => playerRef.current?.play(), 100)
+    }
+  }, [pendingOverlay])
+
+  const handleCategoryChange = useCallback((cat: string | null) => {
+    setActiveTab((cat || 'scoring') as Category)
+  }, [])
+
   /** Cancel the overlay flow and resume video */
   const cancelOverlay = useCallback(() => {
     setOverlayState('none')
     setPendingOverlay(null)
+    setHighlight45LineX(null)
     if (wasPlayingRef.current) {
+      wasPlayingRef.current = false
       playerRef.current?.play()
     }
   }, [])
@@ -1519,16 +1869,6 @@ export default function VideoTagging() {
   }, [sessionId, pendingOppScorer, updateEvent])
 
   const handleOppScorerSkip = useCallback(() => setPendingOppScorer(null), [])
-
-  /** Kickout "aimed for" — records who the kickout was aimed at, on top of
-   *  who won it. No dedicated schema field for this, so it's written into
-   *  the event's description like the opposition-scorer name is. */
-  const handleKickoutAimedForSelect = useCallback((player: Player) => {
-    if (sessionId && pendingKickoutAimedFor) {
-      updateEvent.mutate({ eventId: pendingKickoutAimedFor.eventId, sessionId, data: { description: `Aimed for: ${player.name}` } })
-    }
-    setPendingKickoutAimedFor(null)
-  }, [sessionId, pendingKickoutAimedFor, updateEvent])
 
   /** Block → who recovered it? Own blocks only (matches live recording,
    *  which only asks this after we make the block). No extra event is
@@ -2425,33 +2765,23 @@ export default function VideoTagging() {
   const pendingFoulTeam: 'own' | 'opponent' | null =
     pendingFreeKick === 'opp_free' ? 'own' : pendingFreeKick === 'our_free' ? 'opponent' : null
 
-  const isIn2PointZone = useMemo(() => {
+  // Plain computations, NOT hooks — this code runs after the early
+  // loading/not-found returns, so a hook here breaks the Rules of Hooks
+  // (React error #310) when the page transitions from loading to loaded.
+  const cabAttackingTeam = pendingFreeKick
+    ? (pendingFreeKick === 'our_free' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
+    : cabPossession
+  const cabAttackingRight = teamAttackingRightThisHalf ?? true
+  const cabAttackingGoalX = cabAttackingTeam === PossessionTeam.OWN
+    ? (cabAttackingRight ? 100 : 0)
+    : (cabAttackingRight ? 0 : 100)
+  const isIn2PointZone = (() => {
     if (!ballPosition) return false
-    const X_RADIUS_PERCENT = 29.0
-    const Y_RADIUS_PERCENT = 46.0
-    const team = pendingFreeKick
-      ? (pendingFreeKick === 'our_free' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
-      : cabPossession
-    const attackingRight = teamAttackingRightThisHalf ?? true
-    const attackingGoalX = team === PossessionTeam.OWN
-      ? (attackingRight ? 100 : 0)
-      : (attackingRight ? 0 : 100)
-    const dx = (ballPosition.x - attackingGoalX) / X_RADIUS_PERCENT
-    const dy = (ballPosition.y - 50) / Y_RADIUS_PERCENT
+    const dx = (ballPosition.x - cabAttackingGoalX) / 29.0
+    const dy = (ballPosition.y - 50) / 46.0
     return (dx * dx + dy * dy) > 1
-  }, [ballPosition, pendingFreeKick, cabPossession, teamAttackingRightThisHalf])
-
-  const isInPenaltyArea = useMemo(() => {
-    if (!ballPosition) return false
-    const team = pendingFreeKick
-      ? (pendingFreeKick === 'our_free' ? PossessionTeam.OWN : PossessionTeam.OPPONENT)
-      : cabPossession
-    const attackingRight = teamAttackingRightThisHalf ?? true
-    const attackingGoalX = team === PossessionTeam.OWN
-      ? (attackingRight ? 100 : 0)
-      : (attackingRight ? 0 : 100)
-    return Math.abs(attackingGoalX - ballPosition.x) <= 10.5
-  }, [ballPosition, pendingFreeKick, cabPossession, teamAttackingRightThisHalf])
+  })()
+  const isInPenaltyArea = !!ballPosition && Math.abs(cabAttackingGoalX - ballPosition.x) <= 10.5
 
   /** Video player panel — left half of the 50/50 split */
   const videoPanel = (
@@ -2497,29 +2827,33 @@ export default function VideoTagging() {
         />
       )}
 
-      {(overlayState !== 'none' || pendingKickoutAimedFor || assistPromptEventId || pendingBlockRecovery || pendingSidelineDecision || showManualEvent || showViewLineup || showWeatherPicker) && (
+      {(deadBall || assistPromptEventId || showManualEvent || showViewLineup || showWeatherPicker) && (
         <div className="absolute top-0 left-0 right-0 z-40 pointer-events-none">
           <div className="bg-gradient-to-r from-amber-500/90 via-orange-500/90 to-amber-500/90 text-white px-4 py-2.5 text-center text-sm font-semibold shadow-lg animate-pulse backdrop-blur-sm">
             <div className="flex items-center justify-center gap-2">
               <AlertTriangle size={18} className="shrink-0" />
               <span>
-                {pendingKickoutAimedFor && 'Select kickout target player →'}
-                {assistPromptEventId && 'Select assist player (or skip) →'}
-                {pendingBlockRecovery && 'Select outcome below ↓'}
-                {pendingSidelineDecision && 'Select outcome below ↓'}
-                {overlayState === 'player' && 'Select player →'}
-                {overlayState === 'pitch' && 'Tap pitch to place ball →'}
-                {showManualEvent && 'Add manual event or substitution'}
-                {showViewLineup && 'Viewing lineup'}
-                {showWeatherPicker && 'Set weather conditions'}
-                {overlayState === 'none' && !pendingKickoutAimedFor && !assistPromptEventId && !pendingBlockRecovery && !pendingSidelineDecision && !showManualEvent && !showViewLineup && !showWeatherPicker && 'Input required'}
+                {assistPromptEventId ? 'Select assist player (or skip) →'
+                  : overlayState === 'player' ? 'Select player →'
+                  : overlayState === 'pitch' ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? 'Tap the 45m line on the pitch →' : 'Tap where the kickout landed →')
+                  : pendingFoulSubtype ? 'Select foul type on the pitch →'
+                  : pendingTurnoverReason ? 'How was possession lost? Select on the pitch →'
+                  : pendingErrorSubtype ? 'Select error type on the pitch →'
+                  : pendingFreeKick && !isAdjustingFree ? 'Select free outcome on the pitch →'
+                  : isAdjustingFree ? 'Drag the ball to the free\'s real spot →'
+                  : awaitingKickout ? 'Select kickout outcome on the pitch →'
+                  : (pendingBlockRecovery || pendingSidelineDecision || pending45) ? 'Select outcome below ↓'
+                  : showManualEvent ? 'Add manual event or substitution'
+                  : showViewLineup ? 'Viewing lineup'
+                  : showWeatherPicker ? 'Set weather conditions'
+                  : 'Input required'}
               </span>
             </div>
           </div>
         </div>
       )}
 
-      {mode === 'tracking' && !isPlaying && overlayState === 'none' && currentTimeMs >= highWaterMarkMs && (
+      {mode === 'tracking' && !isPlaying && !deadBall && currentTimeMs >= highWaterMarkMs && (
         <div className="absolute top-3 right-3 z-30 pointer-events-none">
           <button
             onClick={() => playerRef.current?.play()}
@@ -2559,6 +2893,45 @@ export default function VideoTagging() {
     </div>
   )
 
+  /** "Dungloe inside the 21m line" — drawn on the pitch's top sideline, same
+   *  pill and styling as live recording's svgOverlay (it used to sit in its
+   *  own full-width container above the video, wasting a row of screen). */
+  const statusText = ballPosition
+    ? getStatusLabel(
+        ballPosition,
+        possession,
+        clubName,
+        opponentName,
+        activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.playerName : null,
+      )
+    : ''
+  const pitchStatusOverlay = mode === 'tracking' && ballPosition ? (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div
+        data-tour="possession-indicator"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '10px 20px', borderRadius: 14,
+          background: 'rgba(0,0,0,0.75)',
+          border: pendingLongKick
+            ? '2px solid rgba(217,119,6,0.6)'
+            : `2px solid ${possession === 'team_a' ? 'rgba(16,185,129,0.5)' : 'rgba(249,115,22,0.4)'}`,
+        }}
+      >
+        <div style={{
+          width: 14, height: 14, borderRadius: '50%', flexShrink: 0,
+          background: pendingLongKick ? '#d97706' : (possession === 'team_a' ? '#34d399' : '#fb923c'),
+        }} />
+        <span style={{
+          fontSize: 30, fontWeight: 700, whiteSpace: 'nowrap',
+          color: pendingLongKick ? '#fbbf24' : (possession === 'team_a' ? '#6ee7b7' : '#fdba74'),
+        }}>
+          {pendingLongKick ? 'High Ball — tap pitch for landing spot' : statusText}
+        </span>
+      </div>
+    </div>
+  ) : undefined
+
   /** Ball-carrier tracking pitch panel — right half of the 50/50 split */
   const pitchPanel = (
     <div className="relative flex-1 min-w-0 min-h-0">
@@ -2572,8 +2945,15 @@ export default function VideoTagging() {
         onDragPath={handleTaggingDragPath}
         trail={ballTrail}
         carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
-        disabled={mode !== 'tracking' || !isPlaying || overlayState !== 'none'}
+        // Ball moves/taps normally need the video playing; the on-pitch tap
+        // steps (kickout landing, 45 line) and free-position adjust happen
+        // while it's paused, so they must be tappable then.
+        disabled={
+          mode !== 'tracking' ||
+          (!(overlayState === 'pitch' || isAdjustingFree) && (!isPlaying || overlayState !== 'none'))
+        }
         highlight45LineX={highlight45LineX}
+        svgOverlay={pitchStatusOverlay}
         ballAnchoredOverlay={
           (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
             <>
@@ -2652,49 +3032,118 @@ export default function VideoTagging() {
           />
         </div>
       )}
-    </div>
-  )
 
-  /** Foul subtype picker — shown between pitch and controls after
-   *  player is selected for "Our Foul", before the free kick panel. */
-  const foulSubtypePicker = pendingFoulSubtype && (
-    <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg animate-pulse">
-      <span className="text-xs font-bold text-red-300 whitespace-nowrap">Foul type:</span>
-      <div className="flex flex-wrap gap-1.5">
-        {FOUL_SUBTYPES.map(({ value, label }) => (
-          <button
-            key={value}
-            onClick={() => handleFoulSubtypeSelect(value)}
-            className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white/80 border border-white/10 hover:border-red-400/40 hover:text-white hover:bg-red-500/15 transition-all active:scale-95"
-          >
-            {label}
-          </button>
-        ))}
+      {/* ── On-pitch prompts — same overlays live recording shows over its
+          pitch, so free outcome / kickout outcome / foul type etc. never make
+          the coach look away from the pitch. ── */}
+
+      {/* Kickout outcome (after a score/wide/45/penalty) + free outcome */}
+      <PitchActionOverlay
+        awaitingKickout={awaitingKickout && overlayState === 'none' && !kickoutMinimised && !pendingFoulSubtype && !pendingTurnoverReason && !pendingErrorSubtype}
+        pendingFreeKick={!!pendingFreeKick && !isAdjustingFree && overlayState === 'none' && !pendingFoulSubtype && !pendingTurnoverReason && !pendingErrorSubtype}
+        pendingFoul={pendingFoulTeam}
+        kickoutTab={kickoutTab}
+        isIn2PointZone={isIn2PointZone}
+        onAction={handleQuickAction}
+        onCancelFree={handleCancelFree}
+        onCancelKickout={handleCancelPitchStep}
+        onAdjustFreePosition={() => setIsAdjustingFree(true)}
+        onMinimize={() => setKickoutMinimised(true)}
+      />
+
+      {/* Minimised kickout pill — tap to bring the outcome overlay back */}
+      {kickoutMinimised && awaitingKickout && overlayState === 'none' && (
         <button
-          onClick={() => handleFoulSubtypeSelect()}
-          className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white/40 border border-white/5 hover:text-white/60 transition-all"
+          onClick={() => setKickoutMinimised(false)}
+          className="absolute top-2 left-2 z-20 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/20 border-2 border-amber-400/40 text-amber-200 hover:bg-amber-500/30 text-[11px] font-semibold transition-all"
+          title="Resume the kickout prompt"
         >
-          Skip
+          <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+          <span>Kickout pending</span>
         </button>
-      </div>
+      )}
+
+      {/* Free-position adjust (overlay hidden so the ball is draggable) */}
+      {!!pendingFreeKick && isAdjustingFree && (
+        <AdjustFreeBanner onDone={() => setIsAdjustingFree(false)} />
+      )}
+
+      {/* Kickout landing-position tap (+ optional "aimed for" on our own) */}
+      {overlayState === 'pitch' && (pendingOverlay?.action.pitchPrompt === 'kickout' || pendingOverlay?.action.pitchPrompt === 'kickout_sideline') && (
+        <KickoutLandingBanner
+          atTop={pendingOverlay?.action.pitchPrompt === 'kickout_sideline'}
+          onCancel={handleCancelPitchStep}
+          aimedFor={
+            pendingOverlay?.action.eventType.startsWith('OWN_KICKOUT') || (pendingOverlay?.action.pitchPrompt === 'kickout_sideline' && pendingOverlay.eventData.team === 'team_a')
+              ? {
+                  players: jerseyStripPlayers
+                    .filter(p => p.isOnField)
+                    .sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99))
+                    .map(p => ({ playerId: p.playerId, jerseyNumber: p.jerseyNumber })),
+                  selectedId: kickoutAimedForId,
+                  onToggle: (id: string) => setKickoutAimedForId(prev => (prev === id ? undefined : id)),
+                }
+              : undefined
+          }
+        />
+      )}
+
+      {/* 45m-line tap */}
+      {overlayState === 'pitch' && pendingOverlay?.action.pitchPrompt === 'forty_five' && (
+        <FortyFiveTapBanner onCancel={handleCancelPitchStep} />
+      )}
+
+      {/* Foul type — Our Foul, after the player is picked */}
+      {pendingFoulSubtype && (
+        <SubtypePrompt
+          title="What type of foul?"
+          playerName={(players || []).find((p: any) => p.id === pendingFoulSubtype.data.player_id)?.name}
+          options={FOUL_SUBTYPES}
+          tactical={tacticalFoul}
+          onTacticalChange={setTacticalFoul}
+          onSelect={handleFoulSubtypeSelect}
+        />
+      )}
+
+      {/* "How was possession lost?" — T/O Lost */}
+      {pendingTurnoverReason && (
+        <TurnoverReasonPrompt
+          playerName={pendingTurnoverReason.playerName}
+          onSelect={handleTurnoverReasonSelect}
+          onSkip={handleTurnoverReasonSkip}
+        />
+      )}
+
+      {/* Unforced error type */}
+      {pendingErrorSubtype && (
+        <SubtypePrompt
+          title="What type of error?"
+          playerName={pendingErrorSubtype.playerName}
+          options={UNFORCED_ERROR_SUBTYPES}
+          onSelect={handleErrorSubtypeSelect}
+        />
+      )}
     </div>
   )
 
   /** CategorizedActionButtons — same component as live recording */
   const controlsBar = (
-    <div data-tour="video-quick-actions">
+    <div data-tour="video-quick-actions" className="max-w-2xl mx-auto w-full">
       <CategorizedActionButtons
         onActionSelect={handleQuickAction}
         onFoulClick={handleFoulClick}
         on45Click={handle45Click}
         onDiscipline={handleDiscipline}
-        disabled={isAutoAnalyzing || overlayState !== 'none' || mode === 'setup'}
+        // Only the player-pick step locks the buttons; the pitch-tap steps
+        // swap the bar for a panel with a live Cancel button (as in live).
+        disabled={isAutoAnalyzing || overlayState === 'player' || mode === 'setup' || !!pendingFoulSubtype || !!pendingTurnoverReason || !!pendingErrorSubtype}
         activeCategory={activeTab}
-        onCategoryChange={(cat) => setActiveTab((cat || 'scoring') as Category)}
+        onCategoryChange={handleCategoryChange}
         currentPossession={cabPossession}
         isIn2PointZone={isIn2PointZone}
         isInPenaltyArea={isInPenaltyArea}
-        pendingFreeKick={!!pendingFreeKick}
+        // Free outcome lives on the pitch (PitchActionOverlay), like live
+        pendingFreeKick={false}
         pendingFoul={pendingFoulTeam}
         pendingBlockRecovery={pendingBlockRecovery}
         onBlockRecovery={handleBlockRecovery}
@@ -2703,41 +3152,17 @@ export default function VideoTagging() {
         pendingSidelineDecision={pendingSidelineDecision}
         onSidelineDecision={handleSidelineDecision}
         pending45={pending45}
-        pendingKickoutPosition={false}
-        pendingFortyFivePosition={false}
-        awaitingKickout={false}
+        pendingKickoutPosition={overlayState === 'pitch' && (pendingOverlay?.action.pitchPrompt === 'kickout' || pendingOverlay?.action.pitchPrompt === 'kickout_sideline')}
+        pendingFortyFivePosition={overlayState === 'pitch' && pendingOverlay?.action.pitchPrompt === 'forty_five'}
+        awaitingKickout={awaitingKickout && !kickoutMinimised && overlayState === 'none'}
         onCancelFree={handleCancelFree}
         onCancel45={handleCancel45}
-        onCancelKickout={() => {}}
-        onCancelFortyFivePosition={() => {}}
+        onCancelKickout={handleCancelPitchStep}
+        onCancelFortyFivePosition={handleCancelPitchStep}
       />
     </div>
   )
 
-
-  /** Possession status bar — carries the scoreboard inline (moved out of
-   *  the header) instead of the old team-name/dot possession toggle chip;
-   *  possession is still swappable, just from the sidebar's own toggle now. */
-  const statusBar = ballPosition ? (
-    <div
-      className={`flex items-center justify-between gap-3 px-4 py-2 rounded-lg border transition-all ${
-        possession === 'team_a'
-          ? 'bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-emerald-500/20'
-          : 'bg-gradient-to-r from-orange-500/15 to-orange-500/5 border-orange-500/20'
-      }`}
-    >
-      <span className="text-sm text-white/80 font-medium whitespace-nowrap truncate">
-        {getStatusLabel(
-          ballPosition,
-          possession,
-          clubName,
-          opponentName,
-          activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.playerName : null,
-        )}
-      </span>
-      <div className="flex-shrink-0" data-tour="video-scoreboard">{scoreboard(true)}</div>
-    </div>
-  ) : null
 
   /** Stats-so-far panel + full-time/end-tracking confirm dialog — shared
    *  JSX so both the fullscreen and normal-mode returns below stay in sync
@@ -2774,17 +3199,6 @@ export default function VideoTagging() {
       team="own"
       players={playerList}
     />
-  )
-
-  // "Tap pitch for position" overlay when waiting for kickout position
-  const pitchTapOverlay = overlayState === 'pitch' && (
-    <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
-      <div className="pointer-events-auto px-6 py-3 rounded-xl bg-amber-500/90 border-2 border-amber-300 shadow-2xl animate-pulse">
-        <p className="text-white font-bold text-sm">
-          Tap the pitch to set position
-        </p>
-      </div>
-    </div>
   )
 
   const trackingOverlays = (
@@ -2929,21 +3343,6 @@ export default function VideoTagging() {
           </div>
         </div>
       )}
-      {pendingKickoutAimedFor && matchLineup && matchLineup.length > 0 && (
-        <PitchPlayerSelector
-          isOpen={!!pendingKickoutAimedFor}
-          onClose={() => setPendingKickoutAimedFor(null)}
-          onSelectPlayer={handleKickoutAimedForSelect}
-          eventType="kickout_target"
-          team="own"
-          players={playerList}
-          matchLineup={matchLineup}
-          teamPrimaryColor={club?.primary_colour || '#10B981'}
-          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-          attackingRight={teamAttackingRightThisHalf ?? true}
-          ballPosition={ballPosition}
-        />
-      )}
       {showResetConfirm && (
         <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => setShowResetConfirm(false)}>
           <div className="absolute inset-0 bg-black/60" />
@@ -3047,38 +3446,16 @@ export default function VideoTagging() {
           {actionButtons(true)}
         </div>
 
-        {statusBar && (
-          <div className="flex-shrink-0 px-3 py-1.5 bg-slate-900/60 border-b border-white/5">
-            {statusBar}
-          </div>
-        )}
-
         {/* 50/50 video + pitch */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           {videoPanel}
           {pitchPanel}
         </div>
 
-        {/* Foul subtype picker + CategorizedActionButtons */}
-        <div className="flex-shrink-0 px-2 py-1.5 bg-slate-900/80 border-t border-white/5 space-y-1.5">
-          {foulSubtypePicker}
+        {/* CategorizedActionButtons */}
+        <div className="flex-shrink-0 px-2 py-1.5 bg-slate-900/80 border-t border-white/5">
           {controlsBar}
         </div>
-
-        {jerseyStripPlayers.length > 0 && (
-          <div className="flex-shrink-0 px-2 py-0.5 bg-slate-900/80 border-t border-white/5">
-            <JerseyNumberStrip
-              players={jerseyStripPlayers}
-              activeCarrierId={activeCarrierId}
-              currentPossession={possession === 'team_a' ? 'team_a' as any : 'team_b' as any}
-              onCarrierSelect={handleCarrierSelect}
-              teamPrimaryColor={club?.primary_colour || '#10B981'}
-              teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-              currentHalf={calcMatchTime(currentTimeMs).half as 1 | 2}
-              recentCarrierIds={recentCarrierIds}
-            />
-          </div>
-        )}
 
         {blackCardTimers.length > 0 && (
           <div className="absolute top-14 right-4 z-30">
@@ -3087,7 +3464,6 @@ export default function VideoTagging() {
         )}
 
         {newEventPlayerPicker}
-        {pitchTapOverlay}
 
         <ConfirmationModal
           isOpen={!!alertModal}
@@ -3133,10 +3509,12 @@ export default function VideoTagging() {
           Title/event-count and the scoreboard were dropped from here to
           keep the video area in focus on laptop-height screens — the
           scoreboard now lives inline in the status bar below instead. */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
         <button onClick={() => navigate(-1)} className="p-2 text-white/50 hover:text-white transition-colors flex-shrink-0">
           <ArrowLeft size={20} />
         </button>
+        {/* Scoreboard lives here now that the status container is gone */}
+        <div className="flex-shrink-0" data-tour="video-scoreboard">{scoreboard(true)}</div>
         {actionButtons()}
       </div>
       {/* Auto-analyze processing banner */}
@@ -3205,12 +3583,9 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {/* ── Possession status bar — right under the header, always visible ── */}
-      {statusBar}
-
       {/* ── 50/50 Video + Pitch ─────────────────────────────────────── */}
       <div className="relative bg-black rounded-lg overflow-hidden">
-        <div className="flex" style={{ aspectRatio: '16/7' }}>
+        <div className="flex items-stretch">
           {videoPanel}
           {pitchPanel}
         </div>
@@ -3221,28 +3596,10 @@ export default function VideoTagging() {
         )}
       </div>
 
-      {/* ── Foul subtype picker (between pitch and controls) ──────── */}
-      {foulSubtypePicker}
-
       {/* ── CategorizedActionButtons (centered below 50/50 split) ──── */}
       {controlsBar}
 
       {/* ── Ball Carrier Strip ─────────────────────────────────────────── */}
-      {jerseyStripPlayers.length > 0 && (
-        <div className="bg-slate-900/60 rounded-lg border border-white/5 px-1 py-0.5">
-          <JerseyNumberStrip
-            players={jerseyStripPlayers}
-            activeCarrierId={activeCarrierId}
-            currentPossession={possession === 'team_a' ? 'team_a' as any : 'team_b' as any}
-            onCarrierSelect={handleCarrierSelect}
-            teamPrimaryColor={club?.primary_colour || '#10B981'}
-            teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-            currentHalf={calcMatchTime(currentTimeMs).half as 1 | 2}
-            recentCarrierIds={recentCarrierIds}
-          />
-        </div>
-      )}
-
       {/* ── Event Timeline ──────────────────────────────────────────────── */}
       <div data-tour="event-timeline">
         <EventTimeline
@@ -3424,9 +3781,6 @@ export default function VideoTagging() {
       {/* Player picker (step 3 of the tap flow) — pitch-formation circles
           when a lineup exists, jersey-grid fallback otherwise */}
       {newEventPlayerPicker}
-
-      {/* Pitch position tap prompt (step 4 for kickouts) */}
-      {pitchTapOverlay}
 
       {/* Edit-player modal — separate instance/state (editingPlayerEventId)
           from the new-event picker above, so editing an existing event's

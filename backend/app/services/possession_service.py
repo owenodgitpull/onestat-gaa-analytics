@@ -45,6 +45,8 @@ class PossessionService:
         Returns:
             Created possession event
         """
+        explicit_duration = getattr(event_data, 'duration_seconds', None)
+
         # Get the most recent possession event for this match
         result = await db.execute(
             select(PossessionEvent)
@@ -53,7 +55,7 @@ class PossessionService:
             .limit(1)
         )
         previous_event = result.scalar_one_or_none()
-        
+
         # Create the new possession event
         # .value ensures the enum string ("own"/"opponent") is stored, not "PossessionTeam.OWN"
         team_value = event_data.team.value if hasattr(event_data.team, 'value') else event_data.team
@@ -63,17 +65,21 @@ class PossessionService:
             minute=event_data.minute,
             pitch_x=event_data.pitch_x,
             pitch_y=event_data.pitch_y,
-            duration_seconds=None,  # Will be set when next event is created
+            # Explicit (video-time) duration is final; otherwise it's set when
+            # the next event arrives (live recording's wall-clock chaining).
+            duration_seconds=explicit_duration,
             client_event_id=getattr(event_data, 'client_event_id', None),
         )
-        
+
         db.add(new_event)
         await db.flush()  # Get the new event's timestamp
-        
+
         # Calculate duration for the previous event
         # Cap at MAX_POSSESSION_SECONDS — any larger gap means the app was
         # paused/restarted overnight and should not count as possession time
-        if previous_event:
+        # Skipped for explicit-duration (video) events: wall-clock gaps are
+        # meaningless there and would overwrite a correct video-time value.
+        if previous_event and explicit_duration is None:
             duration = (new_event.created_at - previous_event.created_at).total_seconds()
             previous_event.duration_seconds = int(min(duration, MAX_POSSESSION_SECONDS))
 

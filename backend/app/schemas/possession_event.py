@@ -26,6 +26,13 @@ class PossessionEventCreate(PossessionEventBase):
     """Schema for creating a new possession event."""
     match_id: UUID = Field(..., description="Match this possession belongs to")
     client_event_id: Optional[str] = Field(None, max_length=64, description="Client-generated UUID for offline deduplication")
+    # Video Tagging only: possession time measured in VIDEO time (play-time
+    # accumulated client-side while the footage was playing and not in a
+    # dead-ball state). When set, this event's own duration is stored as-is
+    # and the previous event's duration is NOT chained from wall-clock
+    # created_at gaps — those gaps are meaningless for video (pauses, 0.5x
+    # playback, scrubbing and tagging time would all be counted as possession).
+    duration_seconds: Optional[int] = Field(None, ge=0, le=3600, description="Explicit possession duration (video time)")
 
 
 class PossessionEventBulkCreate(BaseModel):

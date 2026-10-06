@@ -62,11 +62,22 @@ export default function VideoStatsPanel({
     enabled: !!matchId,
     refetchInterval: 15000,
   })
-  const ownPossession = possessionEvents?.filter(p => p.is_home_team).length ?? 0
-  const oppPossession = possessionEvents?.filter(p => !p.is_home_team).length ?? 0
+  // The API returns `team: 'own' | 'opponent'` and `duration_seconds` (the
+  // PossessionEvent TS type is stale and still says is_home_team, which the
+  // backend never sends — reading it counted EVERY event as the opposition's).
+  // Possession % is by time (video-time durations written by Video Tagging),
+  // falling back to event counts only if no durations exist yet.
+  const isOwnPoss = (p: any) => (p.team != null ? p.team === 'own' : !!p.is_home_team)
+  const ownPossession = possessionEvents?.filter(isOwnPoss).length ?? 0
+  const oppPossession = (possessionEvents?.length ?? 0) - ownPossession
+  const ownSeconds = possessionEvents?.filter(isOwnPoss).reduce((s, p: any) => s + (p.duration_seconds ?? 0), 0) ?? 0
+  const oppSeconds = possessionEvents?.filter(p => !isOwnPoss(p)).reduce((s, p: any) => s + (p.duration_seconds ?? 0), 0) ?? 0
+  const secondsTotal = ownSeconds + oppSeconds
   const possessionTotal = ownPossession + oppPossession
-  const ownPossessionPct = possessionTotal > 0 ? Math.round((ownPossession / possessionTotal) * 100) : 0
-  const oppPossessionPct = possessionTotal > 0 ? 100 - ownPossessionPct : 0
+  const ownPossessionPct = secondsTotal > 0
+    ? Math.round((ownSeconds / secondsTotal) * 100)
+    : possessionTotal > 0 ? Math.round((ownPossession / possessionTotal) * 100) : 0
+  const oppPossessionPct = secondsTotal > 0 || possessionTotal > 0 ? 100 - ownPossessionPct : 0
 
   const ownShots = count(chartEvents, 'own', e => SHOT_TYPES.has(e.event_type))
   const oppShots = count(chartEvents, 'opponent', e => SHOT_TYPES.has(e.event_type))

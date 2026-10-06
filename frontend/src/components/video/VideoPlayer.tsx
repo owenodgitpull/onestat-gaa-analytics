@@ -86,7 +86,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       },
       play: () => videoRef.current?.play(),
       pause: () => videoRef.current?.pause(),
-      isPlaying: () => playing,
+      isPlaying: () => (videoRef.current ? !videoRef.current.paused : playing),
       getVideoElement: () => videoRef.current,
     }))
 
