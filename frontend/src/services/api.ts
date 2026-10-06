@@ -585,6 +585,26 @@ export const possessionAPI = {
   },
 
   /**
+   * Video Tagging: batched video-time possession points (explicit durations,
+   * one request for many points — see backend create_video_batch).
+   */
+  videoBatch: async (data: {
+    match_id: string;
+    points: Array<{
+      team: 'own' | 'opponent';
+      pitch_x?: number | null;
+      pitch_y?: number | null;
+      minute?: number | null;
+      duration_seconds: number;
+    }>;
+  }): Promise<{ created: number }> => {
+    return fetchAPI<{ created: number }>('/possession-events/video-batch', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
    * Get all possession events for a match
    */
   getByMatch: async (matchId: string): Promise<PossessionEvent[]> => {

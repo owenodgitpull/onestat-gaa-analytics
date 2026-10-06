@@ -43,6 +43,23 @@ class PossessionEventBulkCreate(BaseModel):
     waypoints: List[dict] = Field(..., description="List of {x, y} coordinates", min_length=1, max_length=50)
 
 
+class PossessionVideoPoint(BaseModel):
+    """One video-time possession point (Video Tagging)."""
+    team: PossessionTeam
+    pitch_x: Optional[float] = Field(None, ge=0, le=100)
+    pitch_y: Optional[float] = Field(None, ge=0, le=100)
+    minute: Optional[int] = Field(None, ge=0, le=120)
+    # Seconds of VIDEO time this point represents (0 for pure path/location points)
+    duration_seconds: int = Field(0, ge=0, le=3600)
+
+
+class PossessionVideoBatch(BaseModel):
+    """Batched video-time possession points — one request instead of one per
+    tap/drag. Durations are final as sent: no wall-clock chaining."""
+    match_id: UUID
+    points: List[PossessionVideoPoint] = Field(..., min_length=1, max_length=500)
+
+
 class PossessionEventUpdate(BaseModel):
     """Schema for updating an existing possession event."""
     team: Optional[PossessionTeam] = None

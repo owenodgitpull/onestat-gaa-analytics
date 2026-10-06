@@ -151,6 +151,32 @@ class PossessionService:
         return count
 
     @staticmethod
+    async def create_video_batch(db: AsyncSession, match_id, points: list) -> int:
+        """Insert many video-time possession points in ONE transaction.
+
+        Video Tagging measures possession in video time on the client and
+        sends explicit durations, so unlike create/bulk there is deliberately
+        no "find the latest event" lookup and no wall-clock duration chaining
+        (both would corrupt video-time values, and the lookup is a per-request
+        query that grows with the match's event count — the same class of
+        cost that hurt live recording). One INSERT batch, one commit.
+        """
+        rows = [
+            PossessionEvent(
+                match_id=match_id,
+                team=p.team.value if hasattr(p.team, 'value') else p.team,
+                minute=p.minute,
+                pitch_x=p.pitch_x,
+                pitch_y=p.pitch_y,
+                duration_seconds=p.duration_seconds,
+            )
+            for p in points
+        ]
+        db.add_all(rows)
+        await db.commit()
+        return len(rows)
+
+    @staticmethod
     async def get_possession_event(
         db: AsyncSession,
         event_id: UUID

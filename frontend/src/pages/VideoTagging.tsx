@@ -869,48 +869,83 @@ export default function VideoTagging() {
     }
   }, [highWaterMarkMs, mode, session?.full_time_ms])
 
-  // ── Possession flush — posts the VIDEO-time possession accumulated per
-  // team (see possAccumMsRef / handleTimeUpdate) as explicit-duration
-  // possession events. `forcePoint` also writes a (possibly 0s) point for the
-  // team currently in possession so territory/heat charts still get a
-  // location for every ball placement, as they did before.
-  const flushPossession = useCallback((forcePoint = false, at?: { x: number; y: number }) => {
+  // ── Possession writes — buffered and BATCHED. Live recording hit a real
+  // backend bottleneck from per-tap/per-tick possession requests (and
+  // overlapping flushes), so video tagging never sends one request per tap or
+  // drag: points (location + VIDEO-time duration, see possAccumMsRef /
+  // handleTimeUpdate) go into a client buffer and are POSTed together to
+  // /possession-events/video-batch every 15s, on pause, when 100 points are
+  // queued, and on leave. One in-flight request at a time (like live's
+  // isFlushingRef guard); a failed batch is put back and retried.
+  type PossPoint = { team: 'own' | 'opponent'; pitch_x: number; pitch_y: number; minute: number; duration_seconds: number }
+  const possBufferRef = useRef<PossPoint[]>([])
+  const isPossSendingRef = useRef(false)
+
+  const sendPossessionBuffer = useCallback(async () => {
     const matchId = session?.match_id
-    if (!matchId) return
-    const pos = at ?? ballPosRef.current
-    if (!pos) return
-    const mt = calcMatchTime(currentTimeMsRef.current)
-    for (const team of ['team_a', 'team_b'] as const) {
-      const secs = Math.floor(possAccumMsRef.current[team] / 1000)
-      const isCurrent = possessionRef.current === team
-      if (secs < 1 && !(forcePoint && isCurrent)) continue
-      possAccumMsRef.current[team] -= secs * 1000
-      api.possession.create({
-        match_id: matchId,
-        x_coord: pos.x,
-        y_coord: pos.y,
-        is_home_team: team === 'team_a',
-        minute: Math.min(mt.minute, 120),
-        half: mt.half,
-        duration_seconds: secs,
-      }).catch(err => {
-        // Put the time back so it isn't lost on a transient failure
-        possAccumMsRef.current[team] += secs * 1000
-        console.error('Failed to record possession (video tagging):', err)
-      })
+    if (!matchId || isPossSendingRef.current || possBufferRef.current.length === 0) return
+    isPossSendingRef.current = true
+    const batch = possBufferRef.current.splice(0, 500)
+    try {
+      await api.possession.videoBatch({ match_id: matchId, points: batch })
+    } catch (err) {
+      possBufferRef.current.unshift(...batch)
+      console.error('Failed to send possession batch (video tagging):', err)
+    } finally {
+      isPossSendingRef.current = false
     }
-  }, [session?.match_id, calcMatchTime])
+  }, [session?.match_id])
+
+  // Turn the accumulated video-time possession into buffered points. With
+  // `forcePoint`, also queue a (possibly 0s) location point for the team in
+  // possession so territory/heat charts get a position for every placement.
+  const flushPossession = useCallback((forcePoint = false, at?: { x: number; y: number }, sendNow = false) => {
+    if (!session?.match_id) return
+    const pos = at ?? ballPosRef.current
+    if (pos) {
+      const mt = calcMatchTime(currentTimeMsRef.current)
+      for (const team of ['team_a', 'team_b'] as const) {
+        const secs = Math.floor(possAccumMsRef.current[team] / 1000)
+        const isCurrent = possessionRef.current === team
+        if (secs < 1 && !(forcePoint && isCurrent)) continue
+        possAccumMsRef.current[team] -= secs * 1000
+        possBufferRef.current.push({
+          team: team === 'team_a' ? 'own' : 'opponent',
+          pitch_x: pos.x, pitch_y: pos.y,
+          minute: Math.min(mt.minute, 120),
+          duration_seconds: secs,
+        })
+      }
+    }
+    if (sendNow || possBufferRef.current.length >= 100) void sendPossessionBuffer()
+  }, [session?.match_id, calcMatchTime, sendPossessionBuffer])
 
   // Flush every 15s while tracking, on pause, and on unmount/leave.
   useEffect(() => {
     if (mode !== 'tracking') return
-    const interval = setInterval(() => flushPossession(false), 15000)
+    const interval = setInterval(() => flushPossession(false, undefined, true), 15000)
     return () => clearInterval(interval)
   }, [mode, flushPossession])
   useEffect(() => {
-    if (!isPlaying && mode === 'tracking') flushPossession(false)
+    if (!isPlaying && mode === 'tracking') flushPossession(false, undefined, true)
   }, [isPlaying, mode, flushPossession])
-  useEffect(() => () => flushPossession(false), [flushPossession])
+  useEffect(() => () => flushPossession(false, undefined, true), [flushPossession])
+  // Tab close / navigate away: best-effort beacon of whatever is still buffered
+  useEffect(() => {
+    const onUnload = () => {
+      const matchId = session?.match_id
+      if (!matchId) return
+      flushPossession(false)
+      if (possBufferRef.current.length === 0) return
+      const blob = new Blob(
+        [JSON.stringify({ match_id: matchId, points: possBufferRef.current.splice(0, 500) })],
+        { type: 'application/json' },
+      )
+      navigator.sendBeacon('/api/v1/possession-events/video-batch', blob)
+    }
+    window.addEventListener('beforeunload', onUnload)
+    return () => window.removeEventListener('beforeunload', onUnload)
+  }, [session?.match_id, flushPossession])
 
   // ── Ball position sampling (every 5s while playing AND tracking, and not
   // during a dead-ball situation — same gate as possession time) ────
@@ -1127,7 +1162,7 @@ export default function VideoTagging() {
       // an opposition high ball shouldn't be able to close out OUR active
       // carrier's segment if one happens to be open.
       if (kickTeam === 'team_a') {
-        endCarrierSegment(position.x, position.y, 'pass')
+        endCarrierQueued(position.x, position.y, 'pass')
       }
     }
 
@@ -2277,30 +2312,40 @@ export default function VideoTagging() {
     return ids
   }, [matchLineup, subOverrides])
 
-  // ── Ball carrier segment management (direct API, no offline layer) ───
+  // ── Ball carrier segment management ───
+  // Selecting a carrier must feel instant — live recording had this exact
+  // lag and fixed it in 294ed39 by updating the visible carrier immediately
+  // and doing the network work behind it. Same here: activeCarrierId (the
+  // highlight + status label) changes synchronously on tap; flushing the path,
+  // ending the old segment and starting the new one run behind it in a
+  // serialized queue, so rapid taps stay correctly ordered on the server.
+  const activeCarrierIdRef = useRef<string | null>(null)
+  activeCarrierIdRef.current = activeCarrierId
+  const carrierQueueRef = useRef<Promise<unknown>>(Promise.resolve())
+  const enqueueCarrierOp = useCallback((op: () => Promise<unknown>) => {
+    carrierQueueRef.current = carrierQueueRef.current
+      .then(op)
+      .catch(err => console.error('Carrier segment operation failed:', err))
+  }, [])
 
+  /** Runs inside the queue: flush `points` to the active segment, then end it. */
   const endCarrierSegment = useCallback(async (
-    endX?: number | null,
-    endY?: number | null,
-    endedBy?: string,
+    endX: number | null | undefined,
+    endY: number | null | undefined,
+    endedBy: string | undefined,
+    points: Array<{ x: number; y: number }>,
   ) => {
     const seg = activeSegmentRef.current
     if (!seg) return
+    activeSegmentRef.current = null // claim it so nothing can double-end it
 
-    // Flush buffered path points
-    if (carrierPathBufferRef.current.length > 0) {
+    if (points.length > 0) {
       try {
-        await api.playerMovement.appendPathPoints(seg.id, carrierPathBufferRef.current)
+        await api.playerMovement.appendPathPoints(seg.id, points)
       } catch (err) {
         console.error('Failed to flush carrier path points:', err)
       }
-      carrierPathBufferRef.current = []
     }
-    if (carrierFlushTimerRef.current) {
-      clearTimeout(carrierFlushTimerRef.current)
-      carrierFlushTimerRef.current = null
-    }
-
     try {
       await api.playerMovement.endCarrierSegment(seg.id, {
         end_x: endX ?? undefined,
@@ -2310,11 +2355,28 @@ export default function VideoTagging() {
     } catch (err) {
       console.error('Failed to end carrier segment:', err)
     }
-
-    activeSegmentRef.current = null
-    setActiveCarrierId(null)
   }, [])
 
+  /** Instant end: clear the visible carrier now, snapshot the buffered path,
+   *  and queue the network work. `keepState` when immediately switching carrier. */
+  const endCarrierQueued = useCallback((
+    endX: number | null | undefined,
+    endY: number | null | undefined,
+    endedBy: string,
+    keepState = false,
+  ) => {
+    const points = carrierPathBufferRef.current
+    carrierPathBufferRef.current = []
+    if (carrierFlushTimerRef.current) {
+      clearTimeout(carrierFlushTimerRef.current)
+      carrierFlushTimerRef.current = null
+    }
+    if (!keepState) setActiveCarrierId(null)
+    enqueueCarrierOp(() => endCarrierSegment(endX, endY, endedBy, points))
+  }, [enqueueCarrierOp, endCarrierSegment])
+
+  /** Runs inside the queue: create the new segment, then send any path points
+   *  buffered while it was being created. */
   const startCarrierSegment = useCallback(async (
     playerId: string,
     jerseyNumber: number | null,
@@ -2322,14 +2384,7 @@ export default function VideoTagging() {
     startY: number | null,
   ) => {
     if (!session?.match_id) return null
-
-    // End current segment first
-    if (activeSegmentRef.current) {
-      await endCarrierSegment(startX, startY, 'pass')
-    }
-
     const matchTime = calcMatchTime(currentTimeMs)
-
     try {
       const segment = await api.playerMovement.startCarrierSegment({
         match_id: session.match_id,
@@ -2343,33 +2398,44 @@ export default function VideoTagging() {
         source: 'video',
       })
       activeSegmentRef.current = segment
-      setActiveCarrierId(playerId)
-      carrierPathBufferRef.current = []
+      if (carrierPathBufferRef.current.length > 0) {
+        const pts = carrierPathBufferRef.current
+        carrierPathBufferRef.current = []
+        api.playerMovement.appendPathPoints(segment.id, pts).catch(err => {
+          console.error('Failed to append carrier path points:', err)
+        })
+      }
       return segment
     } catch (err) {
       console.error('Failed to start carrier segment:', err)
       return null
     }
-  }, [session?.match_id, calcMatchTime, currentTimeMs, possession, endCarrierSegment])
+  }, [session?.match_id, calcMatchTime, currentTimeMs, possession])
 
-  const handleCarrierSelect = useCallback(async (playerId: string, jerseyNumber: number | null) => {
+  const handleCarrierSelect = useCallback((playerId: string, jerseyNumber: number | null) => {
     const bx = ballPosition?.x ?? null
     const by = ballPosition?.y ?? null
+    const current = activeCarrierIdRef.current
 
-    if (activeCarrierId === playerId) {
-      // Deselect — end segment
-      await endCarrierSegment(bx, by, 'manual')
-    } else {
-      // Select new carrier
-      await startCarrierSegment(playerId, jerseyNumber, bx, by)
-      // Track recent carriers (most recent first, max 10)
-      setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
+    if (current === playerId) {
+      // Deselect
+      endCarrierQueued(bx, by, 'manual')
+      return
     }
-  }, [activeCarrierId, ballPosition, startCarrierSegment, endCarrierSegment])
+    // Switching carrier: close the previous carry at the pass spot, then
+    // start the new one — all behind the instant visible update below.
+    if (current) endCarrierQueued(bx, by, 'pass', true)
+    setActiveCarrierId(playerId)
+    // Track recent carriers (most recent first, max 10)
+    setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
+    enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by))
+  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment])
 
-  // Append path points to active carrier segment (throttled 200ms batching)
+  // Append path points to the carrier's segment (throttled 200ms batching).
+  // Points are buffered even while the new segment is still being created
+  // (no segment id yet) and sent as soon as it exists.
   const appendCarrierPathPoint = useCallback((x: number, y: number) => {
-    if (!activeSegmentRef.current) return
+    if (!activeCarrierIdRef.current) return
     carrierPathBufferRef.current.push({ x, y })
 
     if (!carrierFlushTimerRef.current) {
@@ -2388,8 +2454,8 @@ export default function VideoTagging() {
   }, [])
 
   // Auto-end carrier on terminal events (scores, turnovers, wides)
-  const onCarrierTerminalEvent = useCallback(async (eventType: string) => {
-    if (!activeSegmentRef.current) return
+  const onCarrierTerminalEvent = useCallback((eventType: string) => {
+    if (!activeCarrierIdRef.current && !activeSegmentRef.current) return
 
     const terminalMap: Record<string, string> = {
       GOAL_SCORED: 'score',
@@ -2408,19 +2474,15 @@ export default function VideoTagging() {
 
     const endReason = terminalMap[eventType]
     if (endReason) {
-      const bx = ballPosition?.x ?? null
-      const by = ballPosition?.y ?? null
-      await endCarrierSegment(bx, by, endReason)
+      endCarrierQueued(ballPosition?.x ?? null, ballPosition?.y ?? null, endReason)
     }
-  }, [endCarrierSegment, ballPosition])
+  }, [endCarrierQueued, ballPosition])
 
   // Auto-end carrier on possession swap
-  const onCarrierPossessionSwap = useCallback(async () => {
-    if (!activeSegmentRef.current) return
-    const bx = ballPosition?.x ?? null
-    const by = ballPosition?.y ?? null
-    await endCarrierSegment(bx, by, 'turnover')
-  }, [endCarrierSegment, ballPosition])
+  const onCarrierPossessionSwap = useCallback(() => {
+    if (!activeCarrierIdRef.current && !activeSegmentRef.current) return
+    endCarrierQueued(ballPosition?.x ?? null, ballPosition?.y ?? null, 'turnover')
+  }, [endCarrierQueued, ballPosition])
   carrierTerminalRef.current = onCarrierTerminalEvent
   carrierPossessionSwapRef.current = onCarrierPossessionSwap
 
@@ -2436,19 +2498,24 @@ export default function VideoTagging() {
       appendCarrierPathPoint(wp.x, wp.y)
     }
 
-    // Bulk-record the same waypoints as PossessionEvent rows — the drag-path
-    // counterpart to handleTaggingBallCommit's single-point write, same call
-    // pattern as MatchRecording.tsx's handleDragPath.
-    if (session?.match_id) {
+    // Queue the same waypoints as 0-duration possession path points (the
+    // drag-path counterpart to handleTaggingBallCommit's single point). Goes
+    // into the shared batched buffer — NOT the old /bulk endpoint, which
+    // rewrites the previous event's duration from wall-clock time and would
+    // overwrite the video-time durations. Skipped during dead-ball states
+    // (e.g. repositioning a free), like live recording's handleDragPath.
+    if (session?.match_id && possLiveRef.current) {
       const matchTime = calcMatchTime(currentTimeMs)
-      api.possession.bulkCreate({
-        match_id: session.match_id,
-        team: possession === 'team_a' ? 'own' : 'opponent',
-        minute: matchTime.minute,
-        waypoints,
-      }).catch(err => console.error('Failed to record possession drag path (video tagging):', err))
+      const team = possession === 'team_a' ? 'own' : 'opponent'
+      for (const wp of waypoints) {
+        possBufferRef.current.push({
+          team, pitch_x: wp.x, pitch_y: wp.y,
+          minute: Math.min(matchTime.minute, 120), duration_seconds: 0,
+        })
+      }
+      if (possBufferRef.current.length >= 100) void sendPossessionBuffer()
     }
-  }, [appendCarrierPathPoint, session?.match_id, calcMatchTime, currentTimeMs, possession])
+  }, [appendCarrierPathPoint, session?.match_id, calcMatchTime, currentTimeMs, possession, sendPossessionBuffer])
 
   // Clean up carrier segment on unmount
   useEffect(() => {
@@ -3453,6 +3520,9 @@ export default function VideoTagging() {
                   possAccumMsRef.current = { team_a: 0, team_b: 0 }
                   lastPossTickMsRef.current = null
                   positionSamples.current = []
+                  possBufferRef.current = []
+                  carrierPathBufferRef.current = []
+                  activeSegmentRef.current = null
                   setThrowInWinnerChosen(false)
                   resetSession.mutate({ sessionId })
                   setShowResetConfirm(false)

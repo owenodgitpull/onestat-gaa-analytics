@@ -17,10 +17,22 @@ from app.schemas.possession_event import (
     PossessionEventCreate,
     PossessionEventBulkCreate,
     PossessionEventResponse,
+    PossessionVideoBatch,
 )
 from app.services.possession_service import PossessionService
 
 router = APIRouter()
+
+
+@router.post("/video-batch", status_code=status.HTTP_201_CREATED)
+async def create_video_possession_batch(
+    data: PossessionVideoBatch,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Video Tagging: batched video-time possession points (explicit durations)."""
+    created = await PossessionService.create_video_batch(db, data.match_id, data.points)
+    return {"created": created}
 
 
 @router.post("/bulk", status_code=status.HTTP_201_CREATED)
