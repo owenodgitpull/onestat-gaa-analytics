@@ -608,7 +608,9 @@ export const possessionAPI = {
    * Get all possession events for a match
    */
   getByMatch: async (matchId: string): Promise<PossessionEvent[]> => {
-    return fetchAPI<PossessionEvent[]>(`/possession-events/?match_id=${matchId}&limit=5000`);
+    // 10000 = the backend's max. Oldest-first + a cap silently drops the NEWEST
+    // events once a long match's drag waypoints exceed it, skewing possession.
+    return fetchAPI<PossessionEvent[]>(`/possession-events/?match_id=${matchId}&limit=10000`);
   },
 };
 

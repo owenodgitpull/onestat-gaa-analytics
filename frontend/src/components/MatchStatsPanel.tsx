@@ -54,7 +54,7 @@ function count(events: ChartEvent[], team: 'own' | 'opponent', predicate: (e: Ch
  */
 function computeStatsFromEvents(
   events: ChartEvent[],
-  possessionEvents?: { is_home_team: boolean }[]
+  possessionEvents?: unknown[]
 ): MatchStats {
   const ownShots = count(events, 'own', e => SHOT_TYPES.has(e.event_type))
   const oppShots = count(events, 'opponent', e => SHOT_TYPES.has(e.event_type))
@@ -116,12 +116,33 @@ function computeStatsFromEvents(
     (e.event_type === 'goal' || e.event_type === 'penalty_goal' || e.event_type === 'penalty_miss')
   )
 
-  // Possession from possession_events (if provided)
-  const ownPossessionCount = possessionEvents?.filter(p => p.is_home_team).length ?? 0
-  const oppPossessionCount = possessionEvents?.filter(p => !p.is_home_team).length ?? 0
-  const possessionTotal = ownPossessionCount + oppPossessionCount
-  const teamPossessionPct = possessionTotal > 0 ? (ownPossessionCount / possessionTotal) * 100 : 0
-  const oppPossessionPct = possessionTotal > 0 ? 100 - teamPossessionPct : 0
+  // Possession from possession_events — same rules as the backend's
+  // match_service stats (what Live Recording shows): % by TIME (sum of
+  // duration_seconds), falling back to event counts only while no durations
+  // exist; "possession count" = spells (consecutive runs of the same team).
+  // The API returns `team: 'own' | 'opponent'` — NOT is_home_team (the old
+  // code read that nonexistent field, so every event counted as the
+  // opposition's and Dungloe showed 0% regardless of what was recorded).
+  const isOwnPoss = (p: any) => (p.team != null ? p.team === 'own' : !!p.is_home_team)
+  const possList = (possessionEvents ?? []) as any[]
+  const sortedPoss = [...possList].sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')))
+  let ownPossessionCount = 0
+  let oppPossessionCount = 0
+  let prevPoss: 'own' | 'opponent' | null = null
+  for (const p of sortedPoss) {
+    const curr = isOwnPoss(p) ? 'own' : 'opponent'
+    if (curr !== prevPoss) {
+      if (curr === 'own') ownPossessionCount++
+      else oppPossessionCount++
+      prevPoss = curr
+    }
+  }
+  const ownPossSecs = possList.filter(isOwnPoss).reduce((s, p) => s + (p.duration_seconds ?? 0), 0)
+  const totalPossSecs = possList.reduce((s, p) => s + (p.duration_seconds ?? 0), 0)
+  const teamPossessionPct = totalPossSecs > 0
+    ? (ownPossSecs / totalPossSecs) * 100
+    : possList.length > 0 ? (possList.filter(isOwnPoss).length / possList.length) * 100 : 0
+  const oppPossessionPct = totalPossSecs > 0 || possList.length > 0 ? 100 - teamPossessionPct : 0
 
   // Poss → Shots %
   const teamPossToShotsPct = ownPossessionCount > 0 ? (ownShots / ownPossessionCount) * 100 : 0
