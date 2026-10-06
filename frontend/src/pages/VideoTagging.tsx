@@ -3125,8 +3125,8 @@ export default function VideoTagging() {
 
       {/* Kickout outcome (after a score/wide/45/penalty) + free outcome */}
       <PitchActionOverlay
-        awaitingKickout={awaitingKickout && overlayState === 'none' && !kickoutMinimised && !pendingFoulSubtype && !pendingTurnoverReason && !pendingErrorSubtype}
-        pendingFreeKick={!!pendingFreeKick && !isAdjustingFree && overlayState === 'none' && !pendingFoulSubtype && !pendingTurnoverReason && !pendingErrorSubtype}
+        awaitingKickout={mode === 'tracking' && awaitingKickout && overlayState === 'none' && !kickoutMinimised && !pendingFoulSubtype && !pendingTurnoverReason && !pendingErrorSubtype}
+        pendingFreeKick={mode === 'tracking' && !!pendingFreeKick && !isAdjustingFree && overlayState === 'none' && !pendingFoulSubtype && !pendingTurnoverReason && !pendingErrorSubtype}
         pendingFoul={pendingFoulTeam}
         kickoutTab={kickoutTab}
         isIn2PointZone={isIn2PointZone}
@@ -3442,6 +3442,24 @@ export default function VideoTagging() {
               <button
                 onClick={() => {
                   if (!sessionId) return
+                  // Server-side reset clears events/progress; every in-flight
+                  // client prompt must go too, or e.g. an open kickout/free
+                  // overlay lingers into the throw-in setup flow.
+                  playerRef.current?.pause()
+                  wasPlayingRef.current = false
+                  setAwaitingKickout(false); setKickoutTab(null); setKickoutMinimised(false); setKickoutAimedForId(undefined)
+                  setPendingFreeKick(null); setIsAdjustingFree(false); setPending45(false); setHighlight45LineX(null)
+                  setPendingFoulSubtype(null); setTacticalFoul(false); setPendingTurnoverReason(null); setPendingErrorSubtype(null)
+                  setOverlayState('none'); setPendingOverlay(null); setPendingLongKick(null)
+                  setPendingBlockRecovery(false); setPendingSidelineDecision(false)
+                  setPendingOppScorer(null); setPendingPressure(null); setAssistPromptEventId(null)
+                  setBlackCardTimers([]); setActiveTab('scoring'); setPossession('team_a')
+                  setBallPosition({ x: 50, y: 50 }); setBallTrail([])
+                  setActiveCarrierId(null); setRecentCarrierIds([])
+                  possAccumMsRef.current = { team_a: 0, team_b: 0 }
+                  lastPossTickMsRef.current = null
+                  positionSamples.current = []
+                  setThrowInWinnerChosen(false)
                   resetSession.mutate({ sessionId })
                   setShowResetConfirm(false)
                 }}
