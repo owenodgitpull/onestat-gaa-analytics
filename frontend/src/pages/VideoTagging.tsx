@@ -590,9 +590,9 @@ export default function VideoTagging() {
     }
   }, [session, sessionLoading, startVideoTour])
 
-  const handleMarkFirstHalf = useCallback(async () => {
+  const handleMarkFirstHalf = useCallback(async (clockOffsetMs?: number) => {
     if (!sessionId) return
-    await videoSessionsAPI.setHalfStarts(sessionId, currentTimeMs, undefined)
+    await videoSessionsAPI.setHalfStarts(sessionId, currentTimeMs, undefined, clockOffsetMs)
     await refetchSession()
   }, [sessionId, currentTimeMs, refetchSession])
 
@@ -774,11 +774,13 @@ export default function VideoTagging() {
       return { minute: hdm + Math.floor(totalSec / 60), second: totalSec % 60, half: 2 }
     }
 
-    // Otherwise first half (relative to 1st half throw-in)
-    const elapsed = Math.max(0, videoMs - h1Start)
+    // Otherwise first half (relative to the 1st-half mark). The offset is the
+    // match clock at that mark: 0 for a real throw-in, >0 when the footage
+    // joins mid-match (e.g. the TV clock already reads 2:05).
+    const elapsed = Math.max(0, videoMs - h1Start) + (session.first_half_clock_offset_ms ?? 0)
     const totalSec = Math.floor(elapsed / 1000)
     return { minute: Math.floor(totalSec / 60), second: totalSec % 60, half: 1 }
-  }, [session?.first_half_start_ms, session?.second_half_start_ms])
+  }, [session?.first_half_start_ms, session?.first_half_clock_offset_ms, session?.second_half_start_ms])
 
   // Clean up polling + SSE on unmount
   useEffect(() => {
@@ -2847,6 +2849,28 @@ export default function VideoTagging() {
               </span>
             </button>
             <div className="my-1 h-px bg-white/10" />
+            <button
+              onClick={async () => {
+                setShowMoreMenu(false)
+                if (!sessionId) return
+                const hasEvents = events.length > 0
+                const ok = window.confirm(
+                  hasEvents
+                    ? 'You have tagged events. Their minutes were set from the current throw-in mark and will NOT change. Reset the match first if you want them recalculated. Re-mark the throw-in / clock anyway?'
+                    : 'Re-mark the first-half throw-in (or set the clock for footage that joins mid-match)?'
+                )
+                if (!ok) return
+                await videoSessionsAPI.clearFirstHalfMark(sessionId)
+                await refetchSession()
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-sm text-white hover:bg-white/10 transition-colors"
+            >
+              <Target size={15} className="text-sky-300" />
+              <span className="flex flex-col">
+                <span className="font-semibold">Re-mark Throw-In / Clock</span>
+                <span className="text-[11px] text-white/45">Change the start mark or match clock</span>
+              </span>
+            </button>
             <button
               onClick={() => { setShowMoreMenu(false); setShowResetConfirm(true) }}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-sm text-red-300 hover:bg-red-500/15 transition-colors"

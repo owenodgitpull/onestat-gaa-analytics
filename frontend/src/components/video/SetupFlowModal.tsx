@@ -11,7 +11,8 @@
  * then attack direction, ending in a clear "Start Match Tracking" CTA.
  */
 
-import { Loader2, SkipForward, ArrowLeftRight } from 'lucide-react'
+import { useState } from 'react'
+import { Loader2, SkipForward, ArrowLeftRight, ChevronDown } from 'lucide-react'
 
 export type SetupStep = 'first_half' | 'half_time' | 'second_half' | 'full_time' | 'direction' | 'throw_in_winner' | 'ready'
 
@@ -22,7 +23,8 @@ interface SetupFlowModalProps {
   opponentName: string
   isSaving: boolean
   error?: string | null
-  onMarkFirstHalf: () => void
+  /** clockOffsetMs = match clock at the marked frame (0 / undefined = a real throw-in) */
+  onMarkFirstHalf: (clockOffsetMs?: number) => void
   onMarkHalftime: () => void
   onSkipHalftime: () => void
   onMarkSecondHalf: () => void
@@ -47,6 +49,13 @@ function formatVideoTime(ms: number): string {
   return `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`
 }
 
+/** "2:05" / "02:05" / "12:30" -> ms, or null if it isn't a valid mm:ss. */
+function parseClock(text: string): number | null {
+  const m = text.trim().match(/^(\d{1,3}):([0-5]\d)$/)
+  if (!m) return null
+  return (parseInt(m[1], 10) * 60 + parseInt(m[2], 10)) * 1000
+}
+
 export default function SetupFlowModal({
   step,
   currentTimeMs,
@@ -66,6 +75,11 @@ export default function SetupFlowModal({
   onStartTracking,
 }: SetupFlowModalProps) {
   const stepIndex = STEP_ORDER.findIndex(s => s.key === step)
+  // Optional: footage joins mid-match (broadcast cut in after the throw-in)
+  const [joinsMidMatch, setJoinsMidMatch] = useState(false)
+  const [clockText, setClockText] = useState('')
+  const clockMs = parseClock(clockText)
+  const midMatchInvalid = joinsMidMatch && clockMs == null
 
   // Steps that need video interaction (scrubbing) vs steps that are pure choice
   const needsVideoInteraction = ['first_half', 'half_time', 'second_half', 'full_time'].includes(step)
@@ -101,21 +115,71 @@ export default function SetupFlowModal({
 
         {step === 'first_half' && (
           <>
-            <h3 className="text-sm font-bold text-white mb-1">Mark 1st-Half Throw-In</h3>
+            <h3 className="text-sm font-bold text-white mb-1">
+              {joinsMidMatch ? 'Mark Where You Can Read the Clock' : 'Mark 1st-Half Throw-In'}
+            </h3>
             <p className="text-xs text-white/60 mb-3">
-              Scrub the video to the exact moment the ball is thrown in to start the match, then mark it.
+              {joinsMidMatch
+                ? 'Scrub to a moment where the match clock is visible, enter it below, then mark it. The app clock carries on from there.'
+                : 'Scrub the video to the exact moment the ball is thrown in to start the match, then mark it.'}
             </p>
             <VideoTimeReadout ms={currentTimeMs} />
             {currentTimeMs < 1000 && (
               <p className="text-xs text-amber-400/80 mb-2 flex items-center gap-1.5">
-                <span>👆</span> Scrub to the throw-in moment first
+                <span>👆</span> {joinsMidMatch ? 'Scrub to a moment with the clock visible first' : 'Scrub to the throw-in moment first'}
               </p>
             )}
+
+            <button
+              type="button"
+              onClick={() => setJoinsMidMatch(v => !v)}
+              className="w-full flex items-center justify-between text-left text-xs text-emerald-300/90 hover:text-emerald-200 mb-2 transition-colors"
+            >
+              <span>{joinsMidMatch ? 'Back to normal throw-in marking' : 'Footage starts after the throw-in?'}</span>
+              <ChevronDown size={14} className={`transition-transform ${joinsMidMatch ? 'rotate-180' : ''}`} />
+            </button>
+
+            {joinsMidMatch && (
+              <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-2.5">
+                <label className="block">
+                  <span className="text-[11px] text-white/60">Match clock at this moment (mm:ss)</span>
+                  <input
+                    value={clockText}
+                    onChange={e => setClockText(e.target.value)}
+                    placeholder="e.g. 2:05"
+                    inputMode="numeric"
+                    className={`mt-1 w-full rounded-lg bg-black/30 border px-3 py-2 text-sm font-mono text-white placeholder:text-white/25 outline-none ${
+                      clockText && clockMs == null ? 'border-red-400/60' : 'border-white/15 focus:border-emerald-400/60'
+                    }`}
+                  />
+                </label>
+                <div className="text-[11px] leading-relaxed text-white/55 space-y-1.5">
+                  <p className="text-white/70 font-semibold">Which one is you?</p>
+                  <p>
+                    <span className="text-emerald-300">TV broadcast with a clock graphic:</span> scrub to any
+                    moment the clock is on screen, type what it shows (e.g. 2:05), and mark. Nothing else needed.
+                  </p>
+                  <p>
+                    <span className="text-emerald-300">No clock, but you know roughly how far in it is</span>{' '}
+                    (commentary, a score change): enter your best estimate. Event minutes will be only as
+                    accurate as that guess.
+                  </p>
+                  <p>
+                    <span className="text-emerald-300">Footage starts at the throw-in or earlier</span>{' '}
+                    (warm-up, team walk-out): you don't need this. Switch back and mark the throw-in as normal.
+                  </p>
+                  <p className="text-white/40">
+                    Anything before this moment has no events, as it isn't in the video.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <ActionRow
-              primaryLabel="Mark Throw-In"
-              onPrimary={onMarkFirstHalf}
+              primaryLabel={joinsMidMatch && clockMs != null ? `Mark Start (clock ${clockText.trim()})` : joinsMidMatch ? 'Enter the clock to mark' : 'Mark Throw-In'}
+              onPrimary={() => onMarkFirstHalf(joinsMidMatch ? clockMs ?? 0 : 0)}
               isSaving={isSaving}
-              disabled={currentTimeMs < 1000}
+              disabled={currentTimeMs < 1000 || midMatchInvalid}
             />
           </>
         )}

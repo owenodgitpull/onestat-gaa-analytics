@@ -79,6 +79,7 @@ def _session_to_response(session: VideoSession, download_url: str = None) -> Vid
         halftime_timestamp_ms=session.halftime_timestamp_ms,
         first_half_start_ms=session.first_half_start_ms,
         second_half_start_ms=session.second_half_start_ms,
+        first_half_clock_offset_ms=session.first_half_clock_offset_ms or 0,
         full_time_ms=session.full_time_ms,
         tracking_started_at=session.tracking_started_at,
         tracking_completed_at=session.tracking_completed_at,
@@ -410,6 +411,8 @@ async def set_half_starts(
 
     if body.first_half_start_ms is not None:
         session.first_half_start_ms = body.first_half_start_ms
+    if body.first_half_clock_offset_ms is not None:
+        session.first_half_clock_offset_ms = body.first_half_clock_offset_ms
     if body.second_half_start_ms is not None:
         session.second_half_start_ms = body.second_half_start_ms
 
@@ -421,6 +424,39 @@ async def set_half_starts(
         download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
 
     logger.info(f"Half starts set: session={session_id}, 1H={session.first_half_start_ms}ms, 2H={session.second_half_start_ms}ms")
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/clear-first-half-mark", response_model=VideoSessionResponse)
+async def clear_first_half_mark(
+    session_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Forget the first-half throw-in mark + clock offset (and the tracking-start
+    markers) so the setup flow asks for it again. Tagged events are NOT touched —
+    their minutes were computed from the old mark, so reset first if any exist."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    session.first_half_start_ms = None
+    session.first_half_clock_offset_ms = 0
+    session.tracking_started_at = None
+    session.tracking_completed_at = None
+    session.tracking_progress_ms = None
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
     return _session_to_response(session, download_url=download_url)
 
 

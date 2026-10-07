@@ -38,6 +38,9 @@ class VideoSession(Base):
     halftime_timestamp_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
     first_half_start_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
     second_half_start_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    # Match clock (ms) at first_half_start_ms. 0 = marked at the real throw-in;
+    # >0 when the footage joins mid-match (e.g. TV clock already at 2:05).
+    first_half_clock_offset_ms: Column[int] = Column(BigInteger, nullable=False, default=0, server_default="0")
     full_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
 
     # Tracking-mode state: setup (none set) -> tracking (started, not completed)

@@ -66,6 +66,8 @@ class SetHalfStartsRequest(BaseModel):
     be omitted to leave that half's marker untouched."""
     first_half_start_ms: Optional[int] = Field(None, gt=0)
     second_half_start_ms: Optional[int] = Field(None, gt=0)
+    # Match clock (ms) at the first-half mark, for footage that joins mid-match
+    first_half_clock_offset_ms: Optional[int] = Field(None, ge=0)
 
 
 class SetFullTimeRequest(BaseModel):
@@ -97,6 +99,7 @@ class VideoSessionResponse(BaseModel):
     video_size_bytes: Optional[int]
     halftime_timestamp_ms: Optional[int]
     first_half_start_ms: Optional[int] = None
+    first_half_clock_offset_ms: int = 0
     second_half_start_ms: Optional[int] = None
     full_time_ms: Optional[int] = None
     tracking_started_at: Optional[datetime] = None

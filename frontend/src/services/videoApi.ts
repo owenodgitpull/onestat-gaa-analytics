@@ -22,6 +22,8 @@ export interface VideoSession {
   video_size_bytes: number | null;
   halftime_timestamp_ms: number | null;
   first_half_start_ms: number | null;
+  /** Match clock (ms) at first_half_start_ms — 0 unless the footage joins mid-match */
+  first_half_clock_offset_ms?: number;
   second_half_start_ms: number | null;
   full_time_ms: number | null;
   tracking_started_at: string | null;
@@ -276,11 +278,13 @@ export const videoSessionsAPI = {
     ),
 
   /** Set throw-in markers for 1st and/or 2nd half. */
-  setHalfStarts: (sessionId: string, firstHalfStartMs?: number, secondHalfStartMs?: number) => {
+  setHalfStarts: (sessionId: string, firstHalfStartMs?: number, secondHalfStartMs?: number, firstHalfClockOffsetMs?: number) => {
     const body: any = {}
     // Only include fields with values > 0 (backend validation requires gt=0)
     if (firstHalfStartMs !== undefined && firstHalfStartMs > 0) {
       body.first_half_start_ms = firstHalfStartMs
+      // Always sent with the first-half mark so re-marking resets a stale offset
+      body.first_half_clock_offset_ms = Math.max(0, firstHalfClockOffsetMs ?? 0)
     }
     if (secondHalfStartMs !== undefined && secondHalfStartMs > 0) {
       body.second_half_start_ms = secondHalfStartMs
@@ -290,6 +294,13 @@ export const videoSessionsAPI = {
       { method: 'POST', body: JSON.stringify(body) }
     )
   },
+
+  /** Forget the first-half throw-in mark + clock offset so setup asks again. */
+  clearFirstHalfMark: (sessionId: string) =>
+    fetchAPI<VideoSession>(
+      `/video/session/${sessionId}/clear-first-half-mark`,
+      { method: 'POST' }
+    ),
 
   /** Set the full-time whistle/hooter timestamp. */
   setFullTime: (sessionId: string, fullTimeMs: number) =>
