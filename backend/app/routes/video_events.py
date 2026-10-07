@@ -51,6 +51,12 @@ def _event_to_response(event: VideoEvent) -> VideoEventResponse:
         pitch_zone=event.pitch_zone,
         pitch_x=event.pitch_x,
         pitch_y=event.pitch_y,
+        end_x=event.end_x,
+        end_y=event.end_y,
+        brought_forward=bool(event.brought_forward),
+        brought_forward_reason=event.brought_forward_reason,
+        advanced_position_x=event.advanced_position_x,
+        advanced_position_y=event.advanced_position_y,
         player_id=event.player_id,
         player_name=event.player.name if event.player else None,
         sub_in_player_id=event.sub_in_player_id,
@@ -138,6 +144,8 @@ async def create_video_event(
         pitch_zone=body.pitch_zone,
         pitch_x=body.pitch_x,
         pitch_y=body.pitch_y,
+        end_x=body.end_x,
+        end_y=body.end_y,
         player_id=body.player_id,
         sub_in_player_id=body.sub_in_player_id,
         assist_player_id=body.assist_player_id,
@@ -260,7 +268,7 @@ async def delete_video_events_after_timestamp(
 ):
     """Delete all video events after a given timestamp (for undo-to-point feature)."""
     # Verify session belongs to user's club
-    await _get_session_for_club(session_id, user.club_id, db)
+    session = await _get_session_for_club(session_id, user.club_id, db)
 
     result = await db.execute(
         select(VideoEvent)
@@ -269,8 +277,11 @@ async def delete_video_events_after_timestamp(
     )
     doomed = list(result.scalars().all())
     for ve in doomed:
-        await live_sync.remove(db, ve)
+        await live_sync.remove(db, ve, recalc=False)
         await db.delete(ve)
+    if doomed:
+        await db.flush()
+        await live_sync.recalc_scores(db, session.match_id)
     await db.commit()
     return {"deleted_count": len(doomed), "session_id": str(session_id), "after_ms": timestamp_ms}
 

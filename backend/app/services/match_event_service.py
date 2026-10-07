@@ -52,6 +52,8 @@ class MatchEventService:
             minute=event_data.minute,
             pitch_x=event_data.pitch_x,
             pitch_y=event_data.pitch_y,
+            end_x=getattr(event_data, 'end_x', None),
+            end_y=getattr(event_data, 'end_y', None),
             notes=event_data.notes,
             opponent_player_name=getattr(event_data, 'opponent_player_name', None),
             under_pressure=getattr(event_data, 'under_pressure', None),

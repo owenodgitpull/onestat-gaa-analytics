@@ -161,6 +161,9 @@ export interface MatchEvent {
   half: number;
   pitch_x: number | null;
   pitch_y: number | null;
+  /** Where a long kick pass / high ball landed (pitch_x/y = where it was kicked from) */
+  end_x?: number | null;
+  end_y?: number | null;
   is_home_team: boolean;
   notes: string | null;
   under_pressure?: boolean | null;
@@ -187,6 +190,8 @@ export enum EventType {
   WIDE_FREE = 'wide_free',
   FREE_SHORT_PASS = 'free_short_pass',  // Free played short/quick instead of a shot at goal
   FREE_HIGH_BALL = 'free_high_ball',  // Free played long/high (contestable ball) instead of a shot at goal
+  LONG_KICK_PASS = 'long_kick_pass',  // Direct long kick to a team-mate (end_x/end_y = where it landed)
+  HIGH_BALL = 'high_ball',  // Contestable high ball into a crowd (end_x/end_y = where it landed)
   FORTY_FIVE = 'forty_five',  // 45m free scored - always 1 point
   FORTY_FIVE_MISSED = 'forty_five_missed',  // 45m free missed
   // Penalty

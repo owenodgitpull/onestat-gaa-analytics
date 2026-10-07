@@ -8,6 +8,7 @@ import TacticalTagButton from '@/components/TacticalTagButton'
 import FormationSnapshotButton from '@/components/FormationSnapshotButton'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw, Zap } from 'lucide-react'
+import { BroughtForwardChips, type BroughtForwardReason } from './video/VideoPitchPrompts'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import PitchActionOverlay from '@/components/PitchActionOverlay'
 import JerseyNumberStrip, { getPositionLine, type JerseyPlayer } from '@/components/JerseyNumberStrip'
@@ -81,6 +82,9 @@ interface FullscreenPitchModeProps {
   isAdjustingFreePosition?: boolean
   onAdjustFreePosition?: () => void
   onDoneAdjustingFreePosition?: () => void
+  /** Optional reason the ref brought the free forward (chosen while adjusting its spot) */
+  broughtForwardReason?: BroughtForwardReason | null
+  onBroughtForwardReason?: (r: BroughtForwardReason | null) => void
   activeCategory?: string | null
   onCategoryChange?: (cat: string | null) => void
   awaitingKickout?: boolean
@@ -128,6 +132,9 @@ interface FullscreenPitchModeProps {
   // separate <GAAPitch> render rather than sharing MatchRecording.tsx's.
   pendingLongKickArmed?: boolean
   onToggleLongKickArm?: () => void
+  /** Long Kick Pass (LK) icon — the direct-kick counterpart to High Ball */
+  pendingLongKickPassArmed?: boolean
+  onToggleLongKickPassArm?: () => void
   oppPassCount?: number
   onLogOppositionPass?: () => void
   // Press Trigger, Tactical Tag, Formation Snapshot — same toolbar buttons
@@ -193,6 +200,8 @@ export default function FullscreenPitchMode({
   isAdjustingFreePosition = false,
   onAdjustFreePosition,
   onDoneAdjustingFreePosition,
+  broughtForwardReason = null,
+  onBroughtForwardReason,
   activeCategory,
   onCategoryChange,
   kickoutBannerMinimised = false,
@@ -227,6 +236,8 @@ export default function FullscreenPitchMode({
   onTurnoverForcedFromSelect,
   pendingLongKickArmed = false,
   onToggleLongKickArm,
+  pendingLongKickPassArmed = false,
+  onToggleLongKickPassArm,
   oppPassCount = 0,
   onLogOppositionPass,
   pressTriggerActive = false,
@@ -743,6 +754,23 @@ export default function FullscreenPitchMode({
                     }
                   />
                 )}
+                {(matchPhase === 'first_half' || matchPhase === 'second_half') && onToggleLongKickPassArm && (
+                  <BallQuickActionIcon
+                    ballSvgX={ballSvgX}
+                    ballSvgY={ballSvgY}
+                    angleDeg={-135}
+                    label="LK"
+                    title="Log Long Kick Pass"
+                    color="#0d9488"
+                    onTap={onToggleLongKickPassArm}
+                    armed={pendingLongKickPassArmed}
+                    disabled={
+                      isStopped || isDeadBall || awaitingKickout ||
+                      pendingFreeKick || pending45 || pendingFortyFivePosition || pendingKickoutPosition ||
+                      pendingBlockRecovery || pendingSidelineDecision
+                    }
+                  />
+                )}
                 {(matchPhase === 'first_half' || matchPhase === 'second_half') && onToggleLongKickArm && (
                   <BallQuickActionIcon
                     ballSvgX={ballSvgX}
@@ -867,6 +895,11 @@ export default function FullscreenPitchMode({
                 Done
               </button>
             </div>
+            {onBroughtForwardReason && (
+              <div className="mt-1.5">
+                <BroughtForwardChips reason={broughtForwardReason} onChange={onBroughtForwardReason} />
+              </div>
+            )}
           </div>
         )}
 

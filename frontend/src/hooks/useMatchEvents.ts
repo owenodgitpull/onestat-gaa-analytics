@@ -107,6 +107,9 @@ export function useRecordEvent() {
       half: number;
       x_coord?: number;
       y_coord?: number;
+      /** Long kick pass / high ball landing spot (x_coord/y_coord = kicked from) */
+      end_x?: number;
+      end_y?: number;
       is_home_team: boolean;
       notes?: string;
       opponent_player_name?: string;

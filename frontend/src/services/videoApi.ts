@@ -72,6 +72,14 @@ export interface VideoEvent {
   pitch_zone: string | null;
   pitch_x: number | null;
   pitch_y: number | null;
+  /** Where a long kick pass / high ball landed (pitch_x/y = where it was kicked from) */
+  end_x?: number | null;
+  end_y?: number | null;
+  /** Foul events: the ref brought the free forward */
+  brought_forward?: boolean;
+  brought_forward_reason?: string | null;
+  advanced_position_x?: number | null;
+  advanced_position_y?: number | null;
   player_id: string | null;
   player_name: string | null;
   // SUBSTITUTION only: player_id = who came off, sub_in_player_id = who came on.
@@ -108,6 +116,8 @@ export interface VideoEventCreateData {
   pitch_zone?: string;
   pitch_x?: number;
   pitch_y?: number;
+  end_x?: number;
+  end_y?: number;
   player_id?: string;
   // SUBSTITUTION only: player_id = who came off, sub_in_player_id = who came on.
   sub_in_player_id?: string;
@@ -135,6 +145,12 @@ export interface VideoEventUpdateData {
   pitch_zone?: string;
   pitch_x?: number;
   pitch_y?: number;
+  end_x?: number;
+  end_y?: number;
+  brought_forward?: boolean;
+  brought_forward_reason?: string | null;
+  advanced_position_x?: number;
+  advanced_position_y?: number;
   // Nullable — editing an event's team to the opponent clears any player
   // attribution outright (opponent events never carry one of our players).
   player_id?: string | null;

@@ -665,8 +665,9 @@ async def reset_match(
         select(VideoEvent).where(VideoEvent.video_session_id == session_id)
     )).scalars().all()
     for ve in tagged:
-        await live_sync.remove(db, ve)
+        await live_sync.remove(db, ve, recalc=False)
     await db.flush()
+    await live_sync.recalc_scores(db, session.match_id)  # once, not per event
 
     await db.execute(delete(VideoEvent).where(VideoEvent.video_session_id == session_id))
     await db.execute(delete(PossessionChain).where(PossessionChain.video_session_id == session_id))

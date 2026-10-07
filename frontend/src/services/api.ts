@@ -524,6 +524,10 @@ export const matchEventsAPI = {
     notes: string | null;
     under_pressure: boolean | null;
     opposition_foot: string | null;
+    brought_forward: boolean;
+    brought_forward_reason: string | null;
+    advanced_position_x: number | null;
+    advanced_position_y: number | null;
   }>): Promise<MatchEvent> => {
     // Transform x_coord/y_coord to pitch_x/pitch_y for backend
     const { x_coord, y_coord, ...rest } = data;

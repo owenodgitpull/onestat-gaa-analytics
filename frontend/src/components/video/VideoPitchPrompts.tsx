@@ -190,9 +190,67 @@ export function AimedForChips({ players, selectedId, onToggle }: {
     </div>
   )
 }
-export function AdjustFreeBanner({ onDone }: { onDone: () => void }) {
+export type BroughtForwardReason = 'dissent' | 'interfering_set_piece' | 'breaching_mark'
+
+const BROUGHT_FORWARD_REASONS: { value: BroughtForwardReason; label: string }[] = [
+  { value: 'dissent', label: 'Dissent' },
+  { value: 'interfering_set_piece', label: 'Blocking the free' },
+  { value: 'breaching_mark', label: 'Breach of mark' },
+]
+
+/** Optional "why did the ref bring it forward?" chips — shown while the free's spot is
+ *  being adjusted. Tapping one marks the free as brought forward for that reason (tap again
+ *  to clear). Moving the ball without choosing a reason is just correcting the spot. */
+export function BroughtForwardChips({
+  reason,
+  onChange,
+}: {
+  reason: BroughtForwardReason | null
+  onChange: (r: BroughtForwardReason | null) => void
+}) {
   return (
-    <div className="absolute inset-x-3 top-3 z-20">
+    <div
+      className="flex flex-wrap items-center gap-1.5 rounded-2xl px-3 py-2"
+      style={{
+        background: 'linear-gradient(90deg, rgba(14,34,42,0.78), rgba(8,20,26,0.7))',
+        border: '1px solid rgba(255,255,255,0.12)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
+      }}
+    >
+      <span className="text-[11px] font-semibold text-white/60 mr-1">Ref brought it forward? Why:</span>
+      {BROUGHT_FORWARD_REASONS.map(r => {
+        const active = reason === r.value
+        return (
+          <button
+            key={r.value}
+            onClick={() => onChange(active ? null : r.value)}
+            className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-colors ${
+              active
+                ? 'bg-amber-500/30 border-amber-400/60 text-amber-100'
+                : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            {r.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export function AdjustFreeBanner({
+  onDone,
+  reason,
+  onReason,
+}: {
+  onDone: () => void
+  reason?: BroughtForwardReason | null
+  onReason?: (r: BroughtForwardReason | null) => void
+}) {
+  return (
+    <div className="absolute inset-x-3 top-3 z-20 space-y-1.5">
       <div
         className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
         style={{
@@ -214,6 +272,7 @@ export function AdjustFreeBanner({ onDone }: { onDone: () => void }) {
           Done
         </button>
       </div>
+      {onReason && <BroughtForwardChips reason={reason ?? null} onChange={onReason} />}
     </div>
   )
 }

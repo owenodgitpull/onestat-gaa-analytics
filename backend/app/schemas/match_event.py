@@ -22,6 +22,13 @@ class MatchEventBase(BaseModel):
     minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match (0-120)")
     pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
+    end_x: Optional[float] = Field(None, ge=0, le=100, description="Where a long kick pass / high ball landed (X)")
+    end_y: Optional[float] = Field(None, ge=0, le=100, description="Where a long kick pass / high ball landed (Y)")
+    # Foul events: the ref brought the free forward (pitch_x/y = foul spot, advanced_position = where it was taken)
+    brought_forward: bool = Field(False, description="Free brought forward by the referee")
+    brought_forward_reason: Optional[str] = Field(None, max_length=50, description="dissent | interfering_set_piece | breaching_mark")
+    advanced_position_x: Optional[float] = Field(None, ge=0, le=100)
+    advanced_position_y: Optional[float] = Field(None, ge=0, le=100)
     notes: Optional[str] = Field(None, max_length=500, description="Optional event notes")
     opponent_player_name: Optional[str] = Field(None, max_length=200, description="Opposition player name for opponent scoring events")
     sub_type: Optional[str] = Field(None, max_length=50, description="Sub-category (e.g. 'stray_pass' for unforced errors, 'pushing' for fouls)")
@@ -79,16 +86,17 @@ class MatchEventCreate(MatchEventBase):
 
     @validator('kickout_target_player_id')
     def validate_kickout_target(cls, v, values):
-        """Ensure a kickout target is only provided on our own kickout events."""
+        """Ensure a target player is only provided on our own kickouts, long kick passes and high balls."""
         if v is not None:
             event_type = values.get('event_type')
             own_kickout_events = [
                 EventType.OWN_KICKOUT_WON, EventType.OWN_KICKOUT_WON_BREAK,
                 EventType.OWN_KICKOUT_OPPOSITION_WON, EventType.OWN_KICKOUT_OPPOSITION_WON_BREAK,
                 EventType.OWN_KICKOUT_SIDELINE,
+                EventType.LONG_KICK_PASS, EventType.HIGH_BALL,
             ]
             if event_type not in own_kickout_events:
-                raise ValueError('kickout_target_player_id can only be recorded on own_kickout_* events')
+                raise ValueError('kickout_target_player_id can only be recorded on own_kickout_*, long_kick_pass and high_ball events')
         return v
 
     @validator('sub_in_player_id')
@@ -112,6 +120,12 @@ class MatchEventUpdate(BaseModel):
     minute: Optional[int] = Field(None, ge=0, le=120)
     pitch_x: Optional[float] = Field(None, ge=0, le=100)
     pitch_y: Optional[float] = Field(None, ge=0, le=100)
+    end_x: Optional[float] = Field(None, ge=0, le=100)
+    end_y: Optional[float] = Field(None, ge=0, le=100)
+    brought_forward: Optional[bool] = None
+    brought_forward_reason: Optional[str] = Field(None, max_length=50)
+    advanced_position_x: Optional[float] = Field(None, ge=0, le=100)
+    advanced_position_y: Optional[float] = Field(None, ge=0, le=100)
     notes: Optional[str] = Field(None, max_length=500)
     under_pressure: Optional[bool] = None
     opposition_foot: Optional[str] = Field(None, max_length=1)

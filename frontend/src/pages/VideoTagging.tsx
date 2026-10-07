@@ -56,7 +56,7 @@ import TurnoverMap from '../components/charts/TurnoverMap'
 import ShootingEfficiencyHeatmap from '../components/charts/ShootingEfficiencyHeatmap'
 import KickoutSequence from '../components/charts/KickoutSequence'
 import { videoEventsToChartEvents, computeShotLocations } from '../utils/videoEventChartAdapter'
-import { type PitchZone, TWO_POINTER_ZONES, xyToZone } from '../components/video/PitchZoneSelector'
+import { xyToZone } from '../components/video/PitchZoneSelector'
 import BlackCardTimer, { type BlackCardEntry } from '../components/BlackCardTimer'
 import FormationSnapshotMode from '../components/FormationSnapshotMode'
 import { FORMATION_XY } from '@/utils/likelyReceivers'
@@ -87,6 +87,7 @@ import {
   TurnoverReasonPrompt,
   AimedForChips,
   AdjustFreeBanner,
+  type BroughtForwardReason,
 } from '../components/video/VideoPitchPrompts'
 import {
   useVideoEvents,
@@ -100,7 +101,7 @@ import {
   useDeleteCarrierSegmentsAfter,
 } from '../hooks/useVideoEvents'
 import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
-import type { VideoEventCreateData, VideoEventUpdateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
+import type { VideoEvent, VideoEventCreateData, VideoEventUpdateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
 import { api, type BallCarrierSegment } from '../services/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PossessionTeam, EventType } from '../types'
@@ -171,7 +172,7 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.SAVED]: { videoType: 'SAVED', needsPlayer: false, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts' },
   [EventType.BLOCK]: { videoType: 'BLOCK_SHOT', needsPlayer: true, playerModalTitle: 'Who Blocked?', playerModalEventType: 'block' },
   [EventType.FREE_SHORT_PASS]: { videoType: 'PASS_HAND', needsPlayer: true, autoSwitchTab: 'scoring', playerModalTitle: 'Who Took the Free?', playerModalEventType: 'point_free', description: 'Free short pass' },
-  [EventType.FREE_HIGH_BALL]: { videoType: 'PASS_KICK', needsPlayer: true, autoSwitchTab: 'scoring', playerModalTitle: 'Who Took the Free?', playerModalEventType: 'point_free', description: 'High ball (free)' },
+  [EventType.FREE_HIGH_BALL]: { videoType: 'HIGH_BALL', needsPlayer: true, autoSwitchTab: 'scoring', playerModalTitle: 'Who Took the Free?', playerModalEventType: 'point_free', description: 'High ball (free)' },
   [EventType.HIT_POST]: { videoType: 'HIT_POST', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'wide' },
   [EventType.POINT_FREE]: { videoType: 'POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
   [EventType.TWO_POINT_FREE]: { videoType: 'POINT_SCORED', twoPointer: true, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
@@ -401,7 +402,13 @@ export default function VideoTagging() {
   // very next ball tap/drag-release on the tracking pitch is captured as
   // the landing spot in handleTaggingBallCommit. Mirrors the equivalent
   // pendingLongKick added to live recording's MatchRecording.tsx.
-  const [pendingLongKick, setPendingLongKick] = useState<{ team: 'team_a' | 'team_b'; playerId?: string | null } | null>(null)
+  // `kind` = HB (contestable high ball) vs LK (direct long kick pass); `from` = where it was kicked.
+  const [pendingLongKick, setPendingLongKick] = useState<{
+    team: 'team_a' | 'team_b'
+    playerId?: string | null
+    kind: 'high_ball' | 'long_kick_pass'
+    from?: { x: number; y: number } | null
+  } | null>(null)
   // Awaiting a kickout after a score/wide/45/penalty — the on-pitch kickout
   // outcome overlay (PitchActionOverlay), same as live recording.
   const [awaitingKickout, setAwaitingKickout] = useState(false)
@@ -411,6 +418,9 @@ export default function VideoTagging() {
   const [kickoutAimedForId, setKickoutAimedForId] = useState<string | undefined>(undefined)
   // "Adjust Free Position" — overlay hidden so the ball can be dragged.
   const [isAdjustingFree, setIsAdjustingFree] = useState(false)
+  // Why the ref brought the free forward (optional, chosen while adjusting its spot)
+  const [broughtForwardReason, setBroughtForwardReason] = useState<BroughtForwardReason | null>(null)
+  useEffect(() => { if (!pendingFreeKick) setBroughtForwardReason(null) }, [pendingFreeKick])
   // Foul subtype "Tactical" checkbox + the T/O-lost and unforced-error pickers.
   const [tacticalFoul, setTacticalFoul] = useState(false)
   const [pendingTurnoverReason, setPendingTurnoverReason] = useState<{
@@ -1160,24 +1170,29 @@ export default function VideoTagging() {
     if (pendingLongKick && sessionId) {
       const kickTeam = pendingLongKick.team
       const kickPlayerId = pendingLongKick.playerId
+      const kind = pendingLongKick.kind
+      const kickedFrom = pendingLongKick.from ?? { x: position.x, y: position.y }
       setPendingLongKick(null)
       const matchTime = calcMatchTime(currentTimeMs)
+      // pitch_x/y = where it was kicked FROM; end_x/y = where it landed
       const data: VideoEventCreateData = {
-        event_type: 'PASS_KICK',
+        event_type: kind === 'high_ball' ? 'HIGH_BALL' : 'LONG_KICK_PASS',
         team: kickTeam,
         half: matchTime.half,
         match_minute: matchTime.minute,
         match_second: matchTime.second,
         video_timestamp_ms: currentTimeMs,
-        pitch_x: position.x,
-        pitch_y: position.y,
-        pitch_zone: xyToZone(position.x, position.y),
-        description: 'High ball',
+        pitch_x: kickedFrom.x,
+        pitch_y: kickedFrom.y,
+        end_x: position.x,
+        end_y: position.y,
+        pitch_zone: xyToZone(kickedFrom.x, kickedFrom.y),
+        description: kind === 'high_ball' ? 'High ball' : 'Long kick pass',
         source: 'human_tag',
         ...(kickPlayerId ? { player_id: kickPlayerId } : {}),
       }
       createEvent.mutate({ sessionId, data })
-      // 'PASS_KICK' isn't in onCarrierTerminalEvent's terminalMap (that call
+      // A long ball isn't in onCarrierTerminalEvent's terminalMap (that call
       // was a silent no-op) — the launching carrier is NOT who the high
       // ball lands with, so their segment must actually end here, not stay
       // open until something else eventually closes it. 'pass' matches
@@ -1613,6 +1628,30 @@ export default function VideoTagging() {
     }
 
     if (isFreeResult) {
+      // Ref brought the free forward: record it on the FOUL event that won the free
+      // (foul spot stays in pitch_x/y, where it was actually taken goes in advanced_position)
+      if (broughtForwardReason && ballPosition && sessionId) {
+        const foulTeam = pendingFreeKick === 'our_free' ? 'team_b' : 'team_a'
+        const reason = broughtForwardReason
+        const apply = (attempt = 0) => {
+          const cached = queryClient.getQueryData<{ events: VideoEvent[] }>(['videoEvents', sessionId])
+          const foul = [...(cached?.events ?? [])].reverse().find(e => e.event_type === 'FOUL_COMMITTED' && e.team === foulTeam)
+          if (!foul) return
+          // The foul may still be saving (optimistic id) — try again shortly
+          if (foul.id.startsWith('temp-') && attempt < 6) { setTimeout(() => apply(attempt + 1), 1000); return }
+          updateEvent.mutate({
+            eventId: foul.id,
+            sessionId,
+            data: {
+              brought_forward: true,
+              brought_forward_reason: reason,
+              advanced_position_x: ballPosition.x,
+              advanced_position_y: ballPosition.y,
+            },
+          })
+        }
+        apply()
+      }
       setPendingFreeKick(null)
       setIsAdjustingFree(false)
     }
@@ -1648,7 +1687,7 @@ export default function VideoTagging() {
       { action, eventData: data, freeKickContext: isFreeResult },
       { keepResumeState: isFreeResult || is45Result },
     )
-  }, [possession, calcMatchTime, currentTimeMs, ballPosition, pendingFreeKick, handleEventTap, teamAttackingRightThisHalf])
+  }, [possession, calcMatchTime, currentTimeMs, ballPosition, pendingFreeKick, handleEventTap, teamAttackingRightThisHalf, broughtForwardReason, sessionId, queryClient, updateEvent])
 
   /** CategorizedActionButtons foul callback */
   const handleFoulClick = useCallback((team: 'own' | 'opponent') => {
@@ -1906,15 +1945,21 @@ export default function VideoTagging() {
    *  "tap the pitch to resolve a pending action" pattern live recording
    *  uses for kickouts/45s, so nothing new is being trusted here. Tapping
    *  the icon again while armed cancels it. */
-  const handleToggleLongKickArm = useCallback(() => {
+  const handleToggleLongKickArm = useCallback((kind: 'high_ball' | 'long_kick_pass') => {
     // Capture the launcher at arm-time (whoever's the active carrier) —
     // was recorded with no player_id at all, so the event read as a bare
     // "our player" instead of a real name. Only meaningful for our own
     // team (activeCarrierId only ever tracks our players).
-    setPendingLongKick(prev => prev
+    // Tapping the SAME icon again cancels; tapping the other one switches kind.
+    setPendingLongKick(prev => prev && prev.kind === kind
       ? null
-      : { team: possession, playerId: possession === 'team_a' ? activeCarrierId : null })
-  }, [possession, activeCarrierId])
+      : {
+        team: possession,
+        playerId: possession === 'team_a' ? activeCarrierId : null,
+        kind,
+        from: ballPosition ? { x: ballPosition.x, y: ballPosition.y } : null,
+      })
+  }, [possession, activeCarrierId, ballPosition])
 
   const handleTacticalTag = useCallback(async (tagType: string, label?: string) => {
     if (!session?.match_id) return
@@ -1986,20 +2031,16 @@ export default function VideoTagging() {
     verifyEvent.mutate({ eventId, sessionId })
   }, [sessionId, verifyEvent])
 
-  const handleEditZone = useCallback((eventId: string, zone: PitchZone) => {
+  /** Explicit 1pt <-> 2pt correction from the event log. The pitch position stays as
+   *  tagged; only the flag changes (merged into the existing scoring_context, since the
+   *  update route replaces it wholesale and would drop source/scored/wide). */
+  const handleToggleTwoPointer = useCallback((eventId: string, makeTwoPointer: boolean) => {
     if (!sessionId) return
-    const isTwoPointer = TWO_POINTER_ZONES.includes(zone)
-    // The update route replaces scoring_context wholesale — merge with the
-    // event's existing one so source (FROM_FREE...), scored, wide etc. survive
-    // a zone edit (a free point used to turn into a plain point).
     const existing = events.find(e => e.id === eventId)?.scoring_context || {}
     updateEvent.mutate({
       eventId,
       sessionId,
-      data: {
-        pitch_zone: zone,
-        scoring_context: { ...existing, is_two_pointer: isTwoPointer },
-      },
+      data: { scoring_context: { ...existing, is_two_pointer: makeTwoPointer } },
     })
   }, [sessionId, updateEvent, events])
 
@@ -3132,7 +3173,7 @@ export default function VideoTagging() {
           fontSize: 30, fontWeight: 700, whiteSpace: 'nowrap',
           color: pendingLongKick ? '#fbbf24' : (possession === 'team_a' ? '#6ee7b7' : '#fdba74'),
         }}>
-          {pendingLongKick ? 'High Ball — tap pitch for landing spot' : statusText}
+          {pendingLongKick ? `${pendingLongKick.kind === 'high_ball' ? 'High Ball' : 'Long Kick Pass'} — tap pitch for landing spot` : statusText}
         </span>
       </div>
     </div>
@@ -3202,8 +3243,20 @@ export default function VideoTagging() {
                 title="Log High Ball"
                 color="#d97706"
                 orientation={taggingPitchOrientation}
-                onTap={handleToggleLongKickArm}
-                armed={!!pendingLongKick}
+                onTap={() => handleToggleLongKickArm('high_ball')}
+                armed={pendingLongKick?.kind === 'high_ball'}
+                disabled={highBallBlocked || isCarrierRadialOpen}
+              />
+              <BallQuickActionIcon
+                ballSvgX={ballSvgX}
+                ballSvgY={ballSvgY}
+                angleDeg={-90}
+                label="LK"
+                title="Log Long Kick Pass"
+                color="#0d9488"
+                orientation={taggingPitchOrientation}
+                onTap={() => handleToggleLongKickArm('long_kick_pass')}
+                armed={pendingLongKick?.kind === 'long_kick_pass'}
                 disabled={highBallBlocked || isCarrierRadialOpen}
               />
             </>
@@ -3321,7 +3374,7 @@ export default function VideoTagging() {
 
       {/* Free-position adjust (overlay hidden so the ball is draggable) */}
       {!!pendingFreeKick && isAdjustingFree && (
-        <AdjustFreeBanner onDone={() => setIsAdjustingFree(false)} />
+        <AdjustFreeBanner onDone={() => setIsAdjustingFree(false)} reason={broughtForwardReason} onReason={setBroughtForwardReason} />
       )}
 
       {/* (The kickout-landing and 45-line tap instructions deliberately do NOT
@@ -3911,7 +3964,7 @@ export default function VideoTagging() {
           onSeek={handleSeek}
           onDelete={handleDeleteEvent}
           onVerify={handleVerifyEvent}
-          onEditZone={handleEditZone}
+          onToggleTwoPointer={handleToggleTwoPointer}
           onEditTeam={handleEditEventTeam}
           onEditPlayer={handleEditEventPlayer}
           collapsed={!eventLogExpanded}

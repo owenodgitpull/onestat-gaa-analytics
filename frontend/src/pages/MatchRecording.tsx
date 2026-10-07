@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
 import BallCarrierPicker from '@/components/BallCarrierPicker'
 import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
+import { BroughtForwardChips, type BroughtForwardReason } from '@/components/video/VideoPitchPrompts'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
@@ -228,7 +229,13 @@ export default function MatchRecording() {
   // NOT a dead-ball restart, so handleBallMove does not return early after
   // logging it — normal ball movement/possession recording continues right
   // after.
-  const [pendingLongKick, setPendingLongKick] = useState<{ isHomeTeam: boolean; playerId?: string | null } | null>(null)
+  // `kind`: HB = contestable high ball, LK = direct long kick pass. `from` = where it was kicked.
+  const [pendingLongKick, setPendingLongKick] = useState<{
+    isHomeTeam: boolean
+    playerId?: string | null
+    kind: 'high_ball' | 'long_kick_pass'
+    from?: { x: number; y: number } | null
+  } | null>(null)
   // Opposition quick-pass counter — mirrors Video Tagging's identical "P"
   // icon exactly: how many passes logged so far in the CURRENT opposition
   // possession spell, resets the moment possession changes hands. Feeds
@@ -277,6 +284,9 @@ export default function MatchRecording() {
   // is visible/draggable; handleBallMove already repositions pendingFreeKick
   // while it's set, this just exposes that via the UI.
   const [isAdjustingFreePosition, setIsAdjustingFreePosition] = useState(false)
+  // Why the ref brought the free forward (optional, chosen while adjusting its spot)
+  const [broughtForwardReason, setBroughtForwardReason] = useState<BroughtForwardReason | null>(null)
+  useEffect(() => { if (!pendingFreeKick) setBroughtForwardReason(null) }, [pendingFreeKick])
   useEffect(() => {
     if (!pendingFreeKick) setIsAdjustingFreePosition(false)
   }, [pendingFreeKick])
@@ -588,15 +598,21 @@ export default function MatchRecording() {
   // tapping (whoever currently has the ball), so a possession flip between
   // arming and the destination tap can't retroactively change who gets
   // credited. Tapping the icon again while armed cancels it.
-  const handleToggleLongKickArm = () => {
+  const handleToggleLongKickArm = (kind: 'high_ball' | 'long_kick_pass') => {
     // Capture the launcher at arm-time — whoever's currently the active
     // carrier IS the player kicking the high ball. Was recorded with no
     // player_id at all, so the event read as "our player" instead of a
     // real name. Only meaningful for our own team (activeCarrierId only
     // ever tracks our players, never opposition).
-    setPendingLongKick(prev => prev
+    // Same icon again cancels; the other icon switches kind.
+    setPendingLongKick(prev => prev && prev.kind === kind
       ? null
-      : { isHomeTeam: ballPosition.team === PossessionTeam.OWN, playerId: ballPosition.team === PossessionTeam.OWN ? activeCarrierId : null })
+      : {
+        isHomeTeam: ballPosition.team === PossessionTeam.OWN,
+        playerId: ballPosition.team === PossessionTeam.OWN ? activeCarrierId : null,
+        kind,
+        from: { x: ballPosition.x, y: ballPosition.y },
+      })
   }
 
   // Opposition quick-pass log — mirrors Video Tagging's identical "P" icon:
@@ -1889,6 +1905,12 @@ export default function MatchRecording() {
     // their own readable lines instead of falling into the generic
     // "other - X" default below. Same fix as MatchResult.tsx's own copy of
     // this function.
+    if (event.event_type === 'high_ball') {
+      return isOwn ? `${playerName} played a high ball into ${area}` : `${teamName} played a high ball into ${area}`
+    }
+    if (event.event_type === 'long_kick_pass') {
+      return isOwn ? `${playerName} played a long kick pass into ${area}` : `${teamName} played a long kick pass into ${area}`
+    }
     if (event.event_type === 'other') {
       if (event.notes === 'High ball') {
         return isOwn ? `${playerName} played a high ball into ${area}` : `${teamName} played a high ball into ${area}`
@@ -2654,13 +2676,12 @@ export default function MatchRecording() {
     console.log('45 cancelled')
   }
 
-  // Log a High Ball MatchEvent at wherever the ball was tapped/dropped once
-  // armed — no dedicated EventType exists for this (mirrors the video-side
-  // gap; VideoEventMapper maps PASS_KICK to EventType.OTHER for the same
-  // reason), so it's recorded as OTHER with a "High ball" note, same
-  // treatment block-recovery gives its own OTHER-typed marker.
+  // Log a High Ball / Long Kick Pass at wherever the ball was tapped/dropped once
+  // armed. These are real event types now (long_kick_pass / high_ball): pitch_x/y
+  // = where it was kicked FROM, end_x/y = where it landed. (They used to be
+  // saved as a generic OTHER with a note, which showed up as "other <player>".)
   const recordLongKickAtPosition = async (
-    pending: { isHomeTeam: boolean; playerId?: string | null },
+    pending: { isHomeTeam: boolean; playerId?: string | null; kind: 'high_ball' | 'long_kick_pass'; from?: { x: number; y: number } | null },
     position: BallPosition
   ) => {
     if (!matchId) return
@@ -2668,13 +2689,14 @@ export default function MatchRecording() {
       await recordEvent.mutateAsync({
         match_id: matchId,
         player_id: pending.playerId ?? undefined,
-        event_type: mapEventTypeToBackend(EventType.OTHER),
+        event_type: pending.kind,
         minute,
         half: currentHalf,
-        x_coord: position.x,
-        y_coord: position.y,
+        x_coord: pending.from?.x ?? position.x,
+        y_coord: pending.from?.y ?? position.y,
+        end_x: position.x,
+        end_y: position.y,
         is_home_team: pending.isHomeTeam,
-        notes: 'High ball',
       })
     } catch (err) {
       console.error('Failed to record long kick:', err)
@@ -2980,6 +3002,20 @@ export default function MatchRecording() {
       // If pendingFoul is 'own', opponent takes the free. If 'opponent', own team takes the free.
       isTeamTakingFree = pendingFoul === 'opponent'
       console.log('Recording free kick result, team taking free:', isTeamTakingFree ? 'Own team' : 'Opponent', ', clearing pending free kick')
+      // Ref brought the free forward: record it on the FOUL event that won the free
+      // (foul spot stays in pitch_x/y, where it was actually taken goes in advanced_position)
+      if (broughtForwardReason) {
+        const foulType = pendingFoul === 'opponent' ? 'foul_won' : 'foul_committed'
+        const foul = allEvents.find((e: any) => e.event_type === foulType)
+        if (foul) {
+          api.matchEvents.update(String(foul.id), {
+            brought_forward: true,
+            brought_forward_reason: broughtForwardReason,
+            advanced_position_x: actionPosition.x,
+            advanced_position_y: actionPosition.y,
+          }).catch(err => console.error('Failed to record brought-forward free:', err))
+        }
+      }
       setPendingFreeKick(null)
     } else if (is45Result && pending45) {
       actionPosition = pending45.position
@@ -4616,6 +4652,24 @@ export default function MatchRecording() {
                             }
                           />
                         )}
+                        {/* Long Kick Pass — either team, -135° (up-left), mirroring Video Tagging's LK icon */}
+                        {(matchPhase === 'first_half' || matchPhase === 'second_half') && (
+                          <BallQuickActionIcon
+                            ballSvgX={ballSvgX}
+                            ballSvgY={ballSvgY}
+                            angleDeg={-135}
+                            label="LK"
+                            title="Log Long Kick Pass"
+                            color="#0d9488"
+                            onTap={() => handleToggleLongKickArm('long_kick_pass')}
+                            armed={pendingLongKick?.kind === 'long_kick_pass'}
+                            disabled={
+                              isStopped || isDeadBall || awaitingKickout ||
+                              !!pendingFreeKick || !!pending45 || !!pendingFortyFivePosition || !!pendingKickoutEvent ||
+                              !!pendingBlockRecovery || !!pendingSidelineDecision
+                            }
+                          />
+                        )}
                         {/* High Ball — either team, -90° (straight up) — a
                             clean 45° gap from the carrier radial/pass icon at
                             -45° (up-right) without sitting on the opposite
@@ -4631,8 +4685,8 @@ export default function MatchRecording() {
                             label="HB"
                             title="Log High Ball"
                             color="#d97706"
-                            onTap={handleToggleLongKickArm}
-                            armed={!!pendingLongKick}
+                            onTap={() => handleToggleLongKickArm('high_ball')}
+                            armed={pendingLongKick?.kind === 'high_ball'}
                             disabled={
                               isStopped || isDeadBall || awaitingKickout ||
                               !!pendingFreeKick || !!pending45 || !!pendingFortyFivePosition || !!pendingKickoutEvent ||
@@ -4757,6 +4811,9 @@ export default function MatchRecording() {
                       >
                         Done
                       </button>
+                    </div>
+                    <div className="mt-1.5">
+                      <BroughtForwardChips reason={broughtForwardReason} onChange={setBroughtForwardReason} />
                     </div>
                   </div>
                 )}
@@ -5652,6 +5709,8 @@ export default function MatchRecording() {
         isAdjustingFreePosition={isAdjustingFreePosition}
         onAdjustFreePosition={() => setIsAdjustingFreePosition(true)}
         onDoneAdjustingFreePosition={() => setIsAdjustingFreePosition(false)}
+        broughtForwardReason={broughtForwardReason}
+        onBroughtForwardReason={setBroughtForwardReason}
         activeCategory={activeKickoutTab}
         onCategoryChange={setActiveKickoutTab}
         awaitingKickout={awaitingKickout}
@@ -5710,8 +5769,10 @@ export default function MatchRecording() {
         onOpponentScorerSkip={handleOpponentScorerSkip}
         pendingTurnoverForcedFrom={!!pendingTurnoverForcedFrom}
         onTurnoverForcedFromSelect={handleTurnoverForcedFromSelect}
-        pendingLongKickArmed={!!pendingLongKick}
-        onToggleLongKickArm={handleToggleLongKickArm}
+        pendingLongKickArmed={pendingLongKick?.kind === 'high_ball'}
+        onToggleLongKickArm={() => handleToggleLongKickArm('high_ball')}
+        pendingLongKickPassArmed={pendingLongKick?.kind === 'long_kick_pass'}
+        onToggleLongKickPassArm={() => handleToggleLongKickArm('long_kick_pass')}
         oppPassCount={oppPassCount}
         onLogOppositionPass={handleLogOppositionPass}
       />

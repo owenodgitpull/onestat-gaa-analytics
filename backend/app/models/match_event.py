@@ -69,6 +69,8 @@ class EventType(enum.Enum):
     WIDE_FREE = "wide_free"  # Free kick went wide
     FREE_SHORT_PASS = "free_short_pass"  # Free played short/quick instead of a shot at goal
     FREE_HIGH_BALL = "free_high_ball"  # Free played long/high (contestable ball) instead of a shot at goal
+    LONG_KICK_PASS = "long_kick_pass"  # Direct long kick to a team-mate (pitch_x/y = kicked from, end_x/y = landed)
+    HIGH_BALL = "high_ball"  # Contestable high ball into a crowd (end_x/y = where it landed)
     FORTY_FIVE = "forty_five"  # 45m free kick scored (always 1 point)
     FORTY_FIVE_MISSED = "forty_five_missed"  # 45m free kick missed
     PENALTY_GOAL = "penalty_goal"  # Penalty scored (counts as goal = 3 points)
@@ -165,6 +167,10 @@ class MatchEvent(Base):
     # for opponent_player_name (a further optional sub-step there, not a
     # separate flow).
     opposition_foot: Column[Optional[str]] = Column(String(1), nullable=True)
+
+    # Where a long kick pass / high ball LANDED (pitch_x/pitch_y = where it was kicked from)
+    end_x: Column[Optional[float]] = Column(Float, nullable=True)
+    end_y: Column[Optional[float]] = Column(Float, nullable=True)
 
     # Sub-type for unforced errors and fouls (e.g. 'stray_pass', 'pushing')
     sub_type: Column[Optional[str]] = Column(String(50), nullable=True)

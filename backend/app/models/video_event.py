@@ -41,6 +41,8 @@ VIDEO_EVENT_TYPES = [
     # Shot outcomes / defensive events the Video Tagging action bar emits
     # (previously rejected with a 422 — the event silently never saved)
     "SAVED", "HIT_POST", "TACKLE_WON",
+    # Long balls (PASS_KICK is kept for older events and maps to LONG_KICK_PASS)
+    "LONG_KICK_PASS", "HIGH_BALL",
 ]
 
 PITCH_ZONES = [
@@ -99,6 +101,15 @@ class VideoEvent(Base):
     pitch_zone: Column[Optional[str]] = Column(String(20), nullable=True)
     pitch_x: Column[Optional[float]] = Column(Float, nullable=True)
     pitch_y: Column[Optional[float]] = Column(Float, nullable=True)
+    # Where a long kick pass / high ball landed (pitch_x/y = where it was kicked from)
+    end_x: Column[Optional[float]] = Column(Float, nullable=True)
+    end_y: Column[Optional[float]] = Column(Float, nullable=True)
+    # Foul events only: the ref brought the free forward (mirrors MatchEvent.brought_forward*).
+    # pitch_x/y = where the foul happened; advanced_position_x/y = where the free was taken.
+    brought_forward: Column[bool] = Column(Boolean, default=False, nullable=False, server_default="false")
+    brought_forward_reason: Column[Optional[str]] = Column(String(50), nullable=True)  # dissent | interfering_set_piece | breaching_mark
+    advanced_position_x: Column[Optional[float]] = Column(Float, nullable=True)
+    advanced_position_y: Column[Optional[float]] = Column(Float, nullable=True)
 
     # Player attribution
     player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)

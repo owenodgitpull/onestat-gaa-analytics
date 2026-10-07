@@ -52,6 +52,12 @@ def _match_event_fields(ve: VideoEvent) -> Optional[dict]:
         half=ve.half,
         pitch_x=ve.pitch_x,
         pitch_y=ve.pitch_y,
+        end_x=ve.end_x,
+        end_y=ve.end_y,
+        brought_forward=bool(ve.brought_forward),
+        brought_forward_reason=ve.brought_forward_reason,
+        advanced_position_x=ve.advanced_position_x,
+        advanced_position_y=ve.advanced_position_y,
         player_id=ve.player_id,
         sub_in_player_id=ve.sub_in_player_id,
         assist_player_id=ve.assist_player_id,
@@ -104,8 +110,12 @@ async def write_through(db: AsyncSession, ve: VideoEvent) -> None:
         await MatchEventService._update_player_stats(db, existing, is_delete=False)
 
 
-async def remove(db: AsyncSession, ve: VideoEvent) -> None:
-    """Delete the MatchEvent mirroring `ve` (if any). Caller commits."""
+async def remove(db: AsyncSession, ve: VideoEvent, recalc: bool = True) -> None:
+    """Delete the MatchEvent mirroring `ve` (if any). Caller commits.
+
+    `recalc=False` skips the per-event scoreboard recalculation — bulk callers
+    (reset, undo-to-point) remove many events and call `recalc_scores` once at
+    the end instead of re-reading every scoring event after each delete."""
     if not ve.match_event_id:
         return
     me = await db.get(MatchEvent, ve.match_event_id)
@@ -116,6 +126,11 @@ async def remove(db: AsyncSession, ve: VideoEvent) -> None:
     await _remove_stats(db, me)
     await db.delete(me)
     await db.flush()
+    if recalc:
+        await MatchEventService._recalculate_match_scores(db, match_id)
+
+
+async def recalc_scores(db: AsyncSession, match_id) -> None:
     await MatchEventService._recalculate_match_scores(db, match_id)
 
 

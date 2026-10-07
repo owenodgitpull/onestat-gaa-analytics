@@ -4,21 +4,21 @@
  * Shows running score with two-pointer annotations.
  * AI events (gemini_auto / keyframe_auto) get a purple "AI" badge and render dimmer until verified.
  * Supports collapsible mode: collapsed shows ~5 recent events, expanded scrolls full list.
- * Inline "add zone" button opens a pitch zone picker for events missing a pitch_zone.
+ * Scoring points carry an explicit 1pt / 2pt toggle (the exact pitch position, not a coarse zone label,
+ * is the source of truth for where an event happened).
  */
 
-import { useMemo, useRef, useEffect, useState } from 'react'
-import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, MapPin, X, Pencil } from 'lucide-react'
+import { useMemo, useRef, useEffect } from 'react'
+import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, Pencil } from 'lucide-react'
 import type { VideoEvent } from '../../services/videoApi'
-import PitchZoneSelector from './PitchZoneSelector'
-import type { PitchZone } from './PitchZoneSelector'
 
 interface VideoEventLogProps {
   events: VideoEvent[]
   onSeek: (timestampMs: number) => void
   onDelete: (eventId: string) => void
   onVerify: (eventId: string) => void
-  onEditZone?: (eventId: string, zone: PitchZone) => void
+  /** Flip a scoring point between 1pt and 2pt (explicit — never derived from a zone label). */
+  onToggleTwoPointer?: (eventId: string, makeTwoPointer: boolean) => void
   /** Open the team-swap confirm for this event — parity with live
    * recording's handleEditEventClick/editChoice flow. */
   onEditTeam?: (eventId: string) => void
@@ -33,7 +33,7 @@ interface VideoEventLogProps {
 const EVENT_LABELS: Record<string, string> = {
   POINT_SCORED: 'Point', GOAL_SCORED: 'Goal', WIDE: 'Wide', SHORT: 'Short',
   POST_HIT: 'Post', GOAL_CHANCE: 'Goal Chance',
-  PASS_HAND: 'Hand Pass', PASS_KICK: 'Kick Pass', SOLO_RUN: 'Solo',
+  PASS_HAND: 'Hand Pass', PASS_KICK: 'Long Kick Pass', LONG_KICK_PASS: 'Long Kick Pass', HIGH_BALL: 'High Ball', SOLO_RUN: 'Solo',
   CATCH: 'Catch', PICKUP: 'Pick Up', MARK_CLAIMED: 'Mark',
   TACKLE: 'Tackle', BLOCK_SHOT: 'Block Shot', BLOCK_PASS: 'Block Pass',
   INTERCEPTION: 'Intercept', HOOK: 'Hook', SPOIL: 'Spoil',
@@ -45,16 +45,6 @@ const EVENT_LABELS: Record<string, string> = {
   SUB_ON: 'Sub On', SUB_OFF: 'Sub Off',
   HALF_TIME: 'Half Time', FULL_TIME: 'Full Time',
   INJURY_STOPPAGE: 'Injury Stop', WATER_BREAK: 'Water Break',
-}
-
-/** Short zone labels for the event row */
-const ZONE_SHORT: Record<string, string> = {
-  DEF_LEFT: 'DEF L', DEF_CENTRE: 'DEF', DEF_RIGHT: 'DEF R',
-  MID_LEFT: 'MID L', MID_CENTRE: 'MID', MID_RIGHT: 'MID R',
-  HF_LEFT: 'HF L', HF_CENTRE: 'HF', HF_RIGHT: 'HF R',
-  FWD_LEFT: 'FWD L', FWD_CENTRE: 'FWD', FWD_RIGHT: 'FWD R',
-  IF_LEFT: 'IF L', IF_CENTRE: 'IF', IF_RIGHT: 'IF R',
-  SQ_LEFT: 'SQ L', SQ_CENTRE: 'SQ', SQ_RIGHT: 'SQ R',
 }
 
 const SCORING_EVENTS = ['POINT_SCORED', 'GOAL_SCORED', 'FREE_KICK', 'FORTY_FIVE', 'PENALTY']
@@ -81,7 +71,7 @@ export default function VideoEventLog({
   onSeek,
   onDelete,
   onVerify,
-  onEditZone,
+  onToggleTwoPointer,
   onEditTeam,
   onEditPlayer,
   selectedEventId,
@@ -90,7 +80,6 @@ export default function VideoEventLog({
   onVerifyAll,
 }: VideoEventLogProps) {
   const listRef = useRef<HTMLDivElement>(null)
-  const [zonePicker, setZonePicker] = useState<{ eventId: string; currentZone: PitchZone | null } | null>(null)
 
   // Calculate running score alongside events
   const eventsWithScore = useMemo(() => {
@@ -152,13 +141,6 @@ export default function VideoEventLog({
       listRef.current.scrollTop = listRef.current.scrollHeight
     }
   }, [events.length])
-
-  const handleZoneSelect = (zone: PitchZone) => {
-    if (zonePicker && onEditZone) {
-      onEditZone(zonePicker.eventId, zone)
-    }
-    setZonePicker(null)
-  }
 
   return (
     <div className="flex flex-col">
@@ -257,13 +239,6 @@ export default function VideoEventLog({
                     </span>
                   )}
 
-                  {/* Zone badge (if set) */}
-                  {event.pitch_zone && (
-                    <span className="text-[9px] bg-white/10 text-white/50 px-1.5 py-0.5 rounded-full shrink-0">
-                      {ZONE_SHORT[event.pitch_zone] || event.pitch_zone}
-                    </span>
-                  )}
-
                   {/* Two-pointer badge */}
                   {isTwoPointer && (
                     <span className="text-[10px] bg-cyan-500/30 text-cyan-300 px-1.5 py-0.5 rounded-full font-bold shrink-0">
@@ -285,24 +260,16 @@ export default function VideoEventLog({
 
                   {/* Actions */}
                   <div className="flex gap-1 shrink-0">
-                    {/* Add/edit zone button */}
-                    {onEditZone && (
+                    {/* 1pt / 2pt toggle — only for scoring points. Explicit, so a
+                        mis-flagged score is a one-tap fix (no zone labels involved). */}
+                    {onToggleTwoPointer && (event.event_type === 'POINT_SCORED' ||
+                      (event.event_type === 'FREE_KICK' && event.scoring_context?.scored)) && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setZonePicker({
-                            eventId: event.id,
-                            currentZone: (event.pitch_zone as PitchZone) || null,
-                          })
-                        }}
-                        className={`p-1 transition-colors ${
-                          event.pitch_zone
-                            ? 'text-white/20 hover:text-blue-400'
-                            : 'text-orange-400/60 hover:text-orange-400'
-                        }`}
-                        title={event.pitch_zone ? 'Change zone' : 'Add zone'}
+                        onClick={(e) => { e.stopPropagation(); onToggleTwoPointer(event.id, !isTwoPointer) }}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                        title={isTwoPointer ? 'Change to a 1-point score' : 'Change to a 2-point score'}
                       >
-                        <MapPin size={14} />
+                        {isTwoPointer ? '→1pt' : '→2pt'}
                       </button>
                     )}
                     {!event.is_verified && event.source !== 'human_tag' && (
@@ -350,34 +317,6 @@ export default function VideoEventLog({
         </div>
       </div>
 
-      {/* Inline zone picker popup */}
-      {zonePicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setZonePicker(null)}>
-          <div className="absolute inset-0 bg-black/60" />
-          <div
-            className="relative bg-slate-900 border border-white/10 rounded-xl p-4 w-full max-w-lg shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <MapPin size={16} className="text-blue-400" />
-                <span className="text-sm font-semibold text-white">Select Pitch Zone</span>
-              </div>
-              <button
-                onClick={() => setZonePicker(null)}
-                className="p-1 text-white/40 hover:text-white transition-colors"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <PitchZoneSelector
-              selectedZone={zonePicker.currentZone}
-              onZoneSelect={handleZoneSelect}
-              highlightTwoPointer
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }

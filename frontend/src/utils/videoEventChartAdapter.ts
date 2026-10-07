@@ -103,6 +103,10 @@ const DIRECT_MAP: Record<string, string> = {
   OPP_KICKOUT_OPPOSITION_WON_BREAK: 'opp_kickout_opposition_won_break',
   OUR_UNFORCED_ERROR: 'unforced_error',
   OPP_UNFORCED_ERROR: 'unforced_error',
+  // Long balls are real event types now (PASS_KICK = the old name for a long kick pass)
+  LONG_KICK_PASS: 'long_kick_pass',
+  PASS_KICK: 'long_kick_pass',
+  HIGH_BALL: 'high_ball',
 }
 
 /** Display-only leniency: micro-events the backend drops on sync map to
@@ -110,7 +114,7 @@ const DIRECT_MAP: Record<string, string> = {
  *  bucket gracefully by simply not matching any of their known-type sets). */
 const LENIENT_OTHER: Set<string> = new Set([
   'POST_HIT', 'GOAL_CHANCE', 'KICKOUT_SHORT', 'KICKOUT_LONG', 'CATCH', 'PICKUP',
-  'PASS_HAND', 'PASS_KICK', 'SOLO_RUN', 'MARK_CLAIMED', 'BALL_WON', 'TACKLE',
+  'PASS_HAND', 'SOLO_RUN', 'MARK_CLAIMED', 'BALL_WON', 'TACKLE',
   'HOOK', 'SPOIL',
 ])
 

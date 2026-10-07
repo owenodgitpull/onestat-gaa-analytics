@@ -159,6 +159,9 @@ class VideoEventCreateRequest(BaseModel):
     pitch_zone: Optional[str] = Field(None, max_length=20)
     pitch_x: Optional[float] = None
     pitch_y: Optional[float] = None
+    # Long kick pass / high ball landing spot
+    end_x: Optional[float] = None
+    end_y: Optional[float] = None
     player_id: Optional[UUID] = None
     # SUBSTITUTION only: player_id = who came off, sub_in_player_id = who came on.
     sub_in_player_id: Optional[UUID] = None
@@ -199,6 +202,12 @@ class VideoEventUpdateRequest(BaseModel):
     pitch_zone: Optional[str] = None
     pitch_x: Optional[float] = None
     pitch_y: Optional[float] = None
+    end_x: Optional[float] = None
+    end_y: Optional[float] = None
+    brought_forward: Optional[bool] = None
+    brought_forward_reason: Optional[str] = Field(None, max_length=50)
+    advanced_position_x: Optional[float] = None
+    advanced_position_y: Optional[float] = None
     player_id: Optional[UUID] = None
     sub_in_player_id: Optional[UUID] = None
     assist_player_id: Optional[UUID] = None
@@ -239,6 +248,12 @@ class VideoEventResponse(BaseModel):
     pitch_zone: Optional[str]
     pitch_x: Optional[float]
     pitch_y: Optional[float]
+    end_x: Optional[float] = None
+    end_y: Optional[float] = None
+    brought_forward: bool = False
+    brought_forward_reason: Optional[str] = None
+    advanced_position_x: Optional[float] = None
+    advanced_position_y: Optional[float] = None
     player_id: Optional[UUID]
     player_name: Optional[str] = None
     sub_in_player_id: Optional[UUID] = None

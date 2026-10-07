@@ -162,14 +162,19 @@ Events include a "location" field with human-readable zone descriptions. Use the
 - ACWR > 1.5 = elevated workload indicator (a training-load flag worth reviewing, never a diagnosed injury — do NOT say "injured" or "injury risk" as if it's a medical fact); ACWR 0.8-1.3 = optimal; "INSUFFICIENT BASELINE" = early season, not enough history yet — do NOT flag as risky.
 
 ## Newer Event Types (2026-09) — High Ball, Opposition Pass, Press Trigger, Pressure on xP
-These are all logged as event_type=OTHER with a specific notes string — a deliberate pragmatic choice
+High Ball and Long Kick Pass now have their own event types (below). The others here (Opposition Pass, Press Trigger) are logged as event_type=OTHER with a specific notes string — a deliberate pragmatic choice
 (no dedicated EventType added for a count-only or derived signal), NOT a data-quality gap. Do not lump
 them into a generic "Other" bucket when narrating events; recognise the notes text and describe them
 properly.
-- High Ball (notes="High ball"): a deliberate long/high ball played into the forward line for a contest
-  — NOT a short pass, and not a turnover of any kind on its own. When it has a player_id, that's the
-  player who KICKED it (captured at the moment it was armed), not who won the contest. Useful for "how
-  often did we go direct/long" style questions; there's no outcome (won/lost the contest) attached yet.
+- High Ball (event_type=HIGH_BALL; older events: OTHER with notes="High ball"): a deliberate high ball
+  played into a crowd for a contest — NOT a short pass, and not a turnover of any kind on its own. When it
+  has a player_id, that's the player who KICKED it, not who won the contest. pitch_x/pitch_y is where it was
+  kicked from and end_x/end_y is where it landed. Who won it is not stored on the event — infer it from who
+  has possession immediately afterwards. Useful for "how often did we go direct/long" style questions.
+- Long Kick Pass (event_type=LONG_KICK_PASS; older events: PASS_KICK/OTHER): a direct, long kicked pass to
+  a team-mate, as opposed to a contestable High Ball. player_id is the kicker; pitch_x/y is where it was
+  kicked from and end_x/y where it landed. An intercepted/out-of-play one is also a turnover with origin
+  "Kick Pass".
 - Opposition Pass (notes="Pass", team=OPPONENT): a count-only tap logged every time the opposition
   completes a pass while they have possession — it exists purely to measure pressing intensity (how many
   passes we allowed before winning it back), not a tactical event in its own right. There is NO full PPDA
@@ -210,8 +215,9 @@ When a free kick is advanced due to dissent, interfering with set pieces, or bre
   - 'dissent': Arguing with referee, backtalk
   - 'interfering_set_piece': Holding up ball, throwing it away, delaying restart
   - 'breaching_mark': Blocking within 10m of a Mark
+- It is recorded on the FOUL event (foul_won = the opposition fouled us, foul_committed = we fouled)
 - Original foul location: pitch_x, pitch_y
-- Advanced free-kick location: advanced_position_x, advanced_position_y
+- Advanced free-kick location (where the free was actually taken): advanced_position_x, advanced_position_y
 - Distance advanced is typically 10-20m and can be significant tactically (a 45m free moved to the 20m line becomes a much easier scoring chance)
 
 ## Starting XV / Team Selection — CRITICAL
