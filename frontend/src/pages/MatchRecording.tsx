@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
 import BallCarrierPicker from '@/components/BallCarrierPicker'
 import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
-import { BroughtForwardChips, type BroughtForwardReason } from '@/components/video/VideoPitchPrompts'
+import { BroughtForwardChips, HighBallChips, type BroughtForwardReason } from '@/components/video/VideoPitchPrompts'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
@@ -236,6 +236,48 @@ export default function MatchRecording() {
     kind: 'high_ball' | 'long_kick_pass'
     from?: { x: number; y: number } | null
   } | null>(null)
+  // ── Long kick pass / high ball OUTCOME — stored on the event, inferred from what happens next ──
+  // Our player picked as the carrier => completed / won (and they're the target); possession going to
+  // the other side => intercepted / lost. High balls also offer optional clean / break chips.
+  type BallOutcomeCtx = {
+    eventId: string | null
+    kind: 'high_ball' | 'long_kick_pass'
+    kickTeam: 'own' | 'opponent'
+    outcome?: string
+    targetPlayerId?: string
+    contact?: 'clean' | 'break'
+    sent?: string
+  }
+  const ballOutcomeRef = useRef<BallOutcomeCtx | null>(null)
+  const [showHighBallChips, setShowHighBallChips] = useState(false)
+  const persistBallOutcome = () => {
+    const ctx = ballOutcomeRef.current
+    if (!ctx || !ctx.eventId || !ctx.outcome) return
+    const sub = ctx.contact && ctx.kind === 'high_ball' ? `${ctx.outcome}_${ctx.contact}` : ctx.outcome
+    const key = `${sub}|${ctx.targetPlayerId ?? ''}`
+    if (ctx.sent === key) return
+    ctx.sent = key
+    api.matchEvents.update(ctx.eventId, {
+      sub_type: sub,
+      ...(ctx.targetPlayerId ? { kickout_target_player_id: ctx.targetPlayerId } : {}),
+    }).catch(err => console.error('Failed to record long ball outcome:', err))
+  }
+  const resolveBallOutcome = (team: 'own' | 'opponent', playerId?: string) => {
+    const ctx = ballOutcomeRef.current
+    if (!ctx || ctx.outcome) return
+    const same = team === ctx.kickTeam
+    ctx.outcome = ctx.kind === 'long_kick_pass' ? (same ? 'completed' : 'intercepted') : (same ? 'won' : 'lost')
+    if (team === 'own' && playerId) ctx.targetPlayerId = playerId
+    persistBallOutcome()
+  }
+  // Possession going to the other side after a long ball = they won / intercepted it
+  useEffect(() => {
+    const c = ballOutcomeRef.current
+    if (!c || c.outcome) return
+    const t = ballPosition.team === PossessionTeam.OWN ? 'own' : ballPosition.team === PossessionTeam.OPPONENT ? 'opponent' : null
+    if (t && t !== c.kickTeam) resolveBallOutcome(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ballPosition.team])
   // Opposition quick-pass counter — mirrors Video Tagging's identical "P"
   // icon exactly: how many passes logged so far in the CURRENT opposition
   // possession spell, resets the moment possession changes hands. Feeds
@@ -587,6 +629,7 @@ export default function MatchRecording() {
       setActiveCarrierId(null)
     } else {
       setActiveCarrierId(playerId)
+      resolveBallOutcome('own', playerId)
       setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     }
     playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y).catch(err => {
@@ -2685,8 +2728,10 @@ export default function MatchRecording() {
     position: BallPosition
   ) => {
     if (!matchId) return
+    ballOutcomeRef.current = { eventId: null, kind: pending.kind, kickTeam: pending.isHomeTeam ? 'own' : 'opponent' }
+    setShowHighBallChips(pending.kind === 'high_ball')
     try {
-      await recordEvent.mutateAsync({
+      const created = await recordEvent.mutateAsync({
         match_id: matchId,
         player_id: pending.playerId ?? undefined,
         event_type: pending.kind,
@@ -2698,6 +2743,8 @@ export default function MatchRecording() {
         end_y: position.y,
         is_home_team: pending.isHomeTeam,
       })
+      const ctx = ballOutcomeRef.current
+      if (ctx && !ctx.eventId && created?.id) { ctx.eventId = String(created.id); persistBallOutcome() }
     } catch (err) {
       console.error('Failed to record long kick:', err)
     }
@@ -4791,6 +4838,19 @@ export default function MatchRecording() {
                   />
                 )}
 
+                {/* High ball: optional clean / break chips (fade after a few seconds) */}
+                {showHighBallChips && (
+                  <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
+                    <HighBallChips
+                      onPick={(contact) => {
+                        if (ballOutcomeRef.current) { ballOutcomeRef.current.contact = contact; persistBallOutcome() }
+                        setShowHighBallChips(false)
+                      }}
+                      onDismiss={() => setShowHighBallChips(false)}
+                    />
+                  </div>
+                )}
+
                 {/* Adjust Free Position mode — overlay hidden, pitch is draggable */}
                 {!!pendingFreeKick && isAdjustingFreePosition && (
                   <div className="absolute inset-x-3 top-3 z-20 animate-fade-in">
@@ -5711,6 +5771,11 @@ export default function MatchRecording() {
         onDoneAdjustingFreePosition={() => setIsAdjustingFreePosition(false)}
         broughtForwardReason={broughtForwardReason}
         onBroughtForwardReason={setBroughtForwardReason}
+        showHighBallChips={showHighBallChips}
+        onHighBallContact={(contact) => {
+          if (contact && ballOutcomeRef.current) { ballOutcomeRef.current.contact = contact; persistBallOutcome() }
+          setShowHighBallChips(false)
+        }}
         activeCategory={activeKickoutTab}
         onCategoryChange={setActiveKickoutTab}
         awaitingKickout={awaitingKickout}

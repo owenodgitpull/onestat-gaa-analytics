@@ -528,17 +528,31 @@ export const matchEventsAPI = {
     brought_forward_reason: string | null;
     advanced_position_x: number | null;
     advanced_position_y: number | null;
+    // Long kick pass / high ball outcome + who came away with it
+    sub_type: string | null;
+    kickout_target_player_id: string | null;
   }>): Promise<MatchEvent> => {
     // Transform x_coord/y_coord to pitch_x/pitch_y for backend
     const { x_coord, y_coord, ...rest } = data;
-    return fetchAPI<MatchEvent>(`/match-events/${eventId}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        ...rest,
-        pitch_x: x_coord,
-        pitch_y: y_coord
-      }),
+    const body = JSON.stringify({
+      ...rest,
+      pitch_x: x_coord,
+      pitch_y: y_coord
     });
+    // Live Recording is offline-first: the id handed back for a just-recorded event is the
+    // client-generated one, and the event may not have reached the server yet. The server
+    // resolves either id; if it simply hasn't synced yet, retry a few times with backoff.
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        return await fetchAPI<MatchEvent>(`/match-events/${eventId}`, { method: 'PUT', body });
+      } catch (err) {
+        lastError = err;
+        if (!/not found/i.test(String((err as Error)?.message ?? err))) throw err;
+        await new Promise(resolve => setTimeout(resolve, 800 * 2 ** attempt));
+      }
+    }
+    throw lastError;
   },
 };
 

@@ -7,7 +7,7 @@ Automatically updates match scores and player stats.
 
 from typing import List, Optional
 from uuid import UUID
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, or_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.match import Match
 from app.models.match_event import MatchEvent, EventType, Team
@@ -78,11 +78,17 @@ class MatchEventService:
     
     @staticmethod
     async def get_event(db: AsyncSession, event_id: UUID) -> Optional[MatchEvent]:
-        """Get a match event by ID."""
+        """Get a match event by its server id OR the client_event_id it was created with.
+
+        Live Recording is offline-first: it hands the UI the client-generated id the moment an
+        event is queued, and follow-up edits (under pressure, assist, long-ball outcome, brought
+        forward...) reference that id — the server's own id only exists once it has synced."""
         result = await db.execute(
-            select(MatchEvent).where(MatchEvent.id == event_id)
+            select(MatchEvent).where(
+                or_(MatchEvent.id == event_id, MatchEvent.client_event_id == str(event_id))
+            )
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()
     
     @staticmethod
     async def list_events(

@@ -8,7 +8,7 @@ import TacticalTagButton from '@/components/TacticalTagButton'
 import FormationSnapshotButton from '@/components/FormationSnapshotButton'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw, Zap } from 'lucide-react'
-import { BroughtForwardChips, type BroughtForwardReason } from './video/VideoPitchPrompts'
+import { BroughtForwardChips, HighBallChips, type BroughtForwardReason } from './video/VideoPitchPrompts'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import PitchActionOverlay from '@/components/PitchActionOverlay'
 import JerseyNumberStrip, { getPositionLine, type JerseyPlayer } from '@/components/JerseyNumberStrip'
@@ -85,6 +85,9 @@ interface FullscreenPitchModeProps {
   /** Optional reason the ref brought the free forward (chosen while adjusting its spot) */
   broughtForwardReason?: BroughtForwardReason | null
   onBroughtForwardReason?: (r: BroughtForwardReason | null) => void
+  /** High ball clean / break chips (optional, fade after a few seconds) */
+  showHighBallChips?: boolean
+  onHighBallContact?: (contact: 'clean' | 'break' | null) => void
   activeCategory?: string | null
   onCategoryChange?: (cat: string | null) => void
   awaitingKickout?: boolean
@@ -202,6 +205,8 @@ export default function FullscreenPitchMode({
   onDoneAdjustingFreePosition,
   broughtForwardReason = null,
   onBroughtForwardReason,
+  showHighBallChips = false,
+  onHighBallContact,
   activeCategory,
   onCategoryChange,
   kickoutBannerMinimised = false,
@@ -872,6 +877,12 @@ export default function FullscreenPitchMode({
             eventType="turnover_won"
             mode="turnover_forced"
           />
+        )}
+
+        {showHighBallChips && onHighBallContact && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
+            <HighBallChips onPick={onHighBallContact} onDismiss={() => onHighBallContact(null)} />
+          </div>
         )}
 
         {/* Adjust Free Position mode — overlay hidden, pitch is draggable */}

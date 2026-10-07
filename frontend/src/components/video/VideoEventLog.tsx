@@ -9,7 +9,7 @@
  */
 
 import { useMemo, useRef, useEffect } from 'react'
-import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, Pencil } from 'lucide-react'
+import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, Pencil, MapPin } from 'lucide-react'
 import type { VideoEvent } from '../../services/videoApi'
 
 interface VideoEventLogProps {
@@ -17,6 +17,8 @@ interface VideoEventLogProps {
   onSeek: (timestampMs: number) => void
   onDelete: (eventId: string) => void
   onVerify: (eventId: string) => void
+  /** Move this event to a new spot — the next tap(s) on the pitch set its position. */
+  onMovePosition?: (eventId: string) => void
   /** Flip a scoring point between 1pt and 2pt (explicit — never derived from a zone label). */
   onToggleTwoPointer?: (eventId: string, makeTwoPointer: boolean) => void
   /** Open the team-swap confirm for this event — parity with live
@@ -72,6 +74,7 @@ export default function VideoEventLog({
   onDelete,
   onVerify,
   onToggleTwoPointer,
+  onMovePosition,
   onEditTeam,
   onEditPlayer,
   selectedEventId,
@@ -270,6 +273,15 @@ export default function VideoEventLog({
                         title={isTwoPointer ? 'Change to a 1-point score' : 'Change to a 2-point score'}
                       >
                         {isTwoPointer ? '→1pt' : '→2pt'}
+                      </button>
+                    )}
+                    {onMovePosition && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onMovePosition(event.id) }}
+                        className="p-1 text-white/20 hover:text-purple-300 transition-colors"
+                        title="Move on the pitch"
+                      >
+                        <MapPin size={14} />
                       </button>
                     )}
                     {!event.is_verified && event.source !== 'human_tag' && (

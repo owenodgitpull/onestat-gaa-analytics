@@ -88,6 +88,8 @@ import {
   AimedForChips,
   AdjustFreeBanner,
   type BroughtForwardReason,
+  HighBallChips,
+  RepositionBanner,
 } from '../components/video/VideoPitchPrompts'
 import {
   useVideoEvents,
@@ -409,6 +411,93 @@ export default function VideoTagging() {
     kind: 'high_ball' | 'long_kick_pass'
     from?: { x: number; y: number } | null
   } | null>(null)
+  // ── Long kick pass / high ball OUTCOME — stored on the event, inferred from what happens next ──
+  // After the landing spot is tapped: our player picked as the carrier => completed / won (and that
+  // player is recorded as the target); possession going to the opposition => intercepted / lost.
+  // High balls also offer optional clean / break chips. No prompt blocks the flow.
+  type BallOutcomeCtx = {
+    eventId: string | null
+    kind: 'high_ball' | 'long_kick_pass'
+    kickTeam: 'team_a' | 'team_b'
+    outcome?: string
+    targetPlayerId?: string
+    contact?: 'clean' | 'break'
+    sent?: string
+  }
+  const ballOutcomeRef = useRef<BallOutcomeCtx | null>(null)
+  const [showHighBallChips, setShowHighBallChips] = useState(false)
+  const persistBallOutcomeRef = useRef<() => void>(() => {})
+  persistBallOutcomeRef.current = () => {
+    const ctx = ballOutcomeRef.current
+    if (!ctx || !ctx.eventId || !ctx.outcome || !sessionId) return
+    const sub = ctx.contact && ctx.kind === 'high_ball' ? `${ctx.outcome}_${ctx.contact}` : ctx.outcome
+    const key = `${sub}|${ctx.targetPlayerId ?? ''}`
+    if (ctx.sent === key) return
+    ctx.sent = key
+    updateEvent.mutate({
+      eventId: ctx.eventId,
+      sessionId,
+      data: { sub_type: sub, ...(ctx.targetPlayerId ? { target_player_id: ctx.targetPlayerId } : {}) },
+    })
+  }
+  const resolveBallOutcomeRef = useRef<(team: 'team_a' | 'team_b', playerId?: string) => void>(() => {})
+  resolveBallOutcomeRef.current = (team, playerId) => {
+    const ctx = ballOutcomeRef.current
+    if (!ctx || ctx.outcome) return
+    const same = team === ctx.kickTeam
+    ctx.outcome = ctx.kind === 'long_kick_pass' ? (same ? 'completed' : 'intercepted') : (same ? 'won' : 'lost')
+    if (team === 'team_a' && playerId) ctx.targetPlayerId = playerId
+    persistBallOutcomeRef.current()
+  }
+  // Possession going to the other side after a long ball = they won / intercepted it
+  useEffect(() => {
+    const c = ballOutcomeRef.current
+    if (c && !c.outcome && possession !== c.kickTeam) resolveBallOutcomeRef.current(possession)
+  }, [possession])
+
+  // ── Move an existing event on the pitch (from the event log) ──
+  const [repositioning, setRepositioning] = useState<{
+    eventId: string; label: string; step: 'start' | 'end'; hasEnd: boolean; start?: { x: number; y: number }
+  } | null>(null)
+  const repositionRef = useRef(repositioning)
+  repositionRef.current = repositioning
+  const handleMovePosition = (eventId: string) => {
+    const ev = events.find(e => e.id === eventId)
+    if (!ev || !sessionId) return
+    if (eventId.startsWith('temp-')) return // still saving — try again in a second
+    playerRef.current?.pause()
+    setRepositioning({ eventId, label: ev.event_type.replace(/_/g, ' ').toLowerCase(), step: 'start', hasEnd: ev.end_x != null })
+  }
+  const repositionApplyRef = useRef<(p: { x: number; y: number }) => void>(() => {})
+  repositionApplyRef.current = (pt) => {
+    const rp = repositionRef.current
+    if (!rp || !sessionId) return
+    if (rp.step === 'start' && rp.hasEnd) {
+      setRepositioning({ ...rp, step: 'end', start: { x: pt.x, y: pt.y } })
+      return
+    }
+    const ev = events.find(e => e.id === rp.eventId)
+    if (!ev) { setRepositioning(null); return }
+    const startPt = rp.step === 'end' && rp.start ? rp.start : pt
+    const data: VideoEventUpdateData = {
+      pitch_x: startPt.x,
+      pitch_y: startPt.y,
+      pitch_zone: xyToZone(startPt.x, startPt.y),
+    }
+    if (rp.step === 'end') { data.end_x = pt.x; data.end_y = pt.y }
+    // A moved score is re-measured against the real 40m arc (the 1pt/2pt toggle can still override it)
+    if (ev.event_type === 'POINT_SCORED' || (ev.event_type === 'FREE_KICK' && ev.scoring_context?.scored)) {
+      const firstRight = matchData?.attacking_right_first_half ?? true
+      const ownRight = ev.half === 2 ? !firstRight : firstRight
+      const takingRight = ev.team === 'team_a' ? ownRight : !ownRight
+      const goalX = takingRight ? 100 : 0
+      const outside = (((startPt.x - goalX) / 29.0) ** 2 + ((startPt.y - 50) / 46.0) ** 2) > 1
+      data.scoring_context = { ...(ev.scoring_context || {}), is_two_pointer: outside }
+    }
+    updateEvent.mutate({ eventId: rp.eventId, sessionId, data })
+    setRepositioning(null)
+  }
+
   // Awaiting a kickout after a score/wide/45/penalty — the on-pitch kickout
   // outcome overlay (PitchActionOverlay), same as live recording.
   const [awaitingKickout, setAwaitingKickout] = useState(false)
@@ -1120,6 +1209,12 @@ export default function VideoTagging() {
   // the on-pitch tap steps (kickout landing, 45 line) and the free-position
   // adjust drag, none of which are open-play possession.
   const handleTaggingBallCommit = useCallback((position: BallPosition) => {
+    // Moving an existing event: this tap only picks its new spot — it doesn't move the ball
+    if (repositionRef.current) {
+      repositionApplyRef.current({ x: position.x, y: position.y })
+      setBallPosition(prev => (prev ? { ...prev } : prev)) // snap the pitch ball back
+      return
+    }
     handleTaggingBallMove(position)
 
     // Dead ball — repositioning a free before it's taken. Just moves the
@@ -1191,7 +1286,14 @@ export default function VideoTagging() {
         source: 'human_tag',
         ...(kickPlayerId ? { player_id: kickPlayerId } : {}),
       }
-      createEvent.mutate({ sessionId, data })
+      ballOutcomeRef.current = { eventId: null, kind, kickTeam }
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => {
+          const c = ballOutcomeRef.current
+          if (c && created?.id && !c.eventId) { c.eventId = created.id; persistBallOutcomeRef.current() }
+        },
+      })
+      setShowHighBallChips(kind === 'high_ball')
       // A long ball isn't in onCarrierTerminalEvent's terminalMap (that call
       // was a silent no-op) — the launching carrier is NOT who the high
       // ball lands with, so their segment must actually end here, not stay
@@ -2511,6 +2613,7 @@ export default function VideoTagging() {
     // start the new one — all behind the instant visible update below.
     if (current) endCarrierQueued(bx, by, 'pass', true)
     setActiveCarrierId(playerId)
+    resolveBallOutcomeRef.current('team_a', playerId)
     // Track recent carriers (most recent first, max 10)
     setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by))
@@ -3196,8 +3299,8 @@ export default function VideoTagging() {
         // steps (kickout landing, 45 line) and free-position adjust happen
         // while it's paused, so they must be tappable then.
         disabled={
-          mode !== 'tracking' ||
-          (!(overlayState === 'pitch' || isAdjustingFree) && (!isPlaying || overlayState !== 'none'))
+          (mode !== 'tracking' && !repositioning) ||
+          (!(overlayState === 'pitch' || isAdjustingFree || !!repositioning) && (!isPlaying || overlayState !== 'none'))
         }
         highlight45LineX={highlight45LineX}
         svgOverlay={pitchStatusOverlay}
@@ -3370,6 +3473,28 @@ export default function VideoTagging() {
           <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
           <span>Kickout pending</span>
         </button>
+      )}
+
+      {/* High ball: optional clean / break chips (fade after a few seconds) */}
+      {showHighBallChips && !repositioning && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
+          <HighBallChips
+            onPick={(contact) => {
+              if (ballOutcomeRef.current) { ballOutcomeRef.current.contact = contact; persistBallOutcomeRef.current() }
+              setShowHighBallChips(false)
+            }}
+            onDismiss={() => setShowHighBallChips(false)}
+          />
+        </div>
+      )}
+
+      {/* Moving an existing event on the pitch */}
+      {repositioning && (
+        <RepositionBanner
+          label={repositioning.label}
+          step={repositioning.step}
+          onCancel={() => setRepositioning(null)}
+        />
       )}
 
       {/* Free-position adjust (overlay hidden so the ball is draggable) */}
@@ -3670,7 +3795,7 @@ export default function VideoTagging() {
                   setAwaitingKickout(false); setKickoutTab(null); setKickoutMinimised(false); setKickoutAimedForId(undefined)
                   setPendingFreeKick(null); setIsAdjustingFree(false); setPending45(false); setHighlight45LineX(null)
                   setPendingFoulSubtype(null); setTacticalFoul(false); setPendingTurnoverReason(null); setPendingErrorSubtype(null)
-                  setOverlayState('none'); setPendingOverlay(null); setPendingLongKick(null)
+                  setOverlayState('none'); setPendingOverlay(null); setPendingLongKick(null); ballOutcomeRef.current = null; setShowHighBallChips(false); setRepositioning(null)
                   setPendingBlockRecovery(false); setPendingSidelineDecision(false)
                   setPendingOppScorer(null); setPendingPressure(null); setAssistPromptEventId(null)
                   setBlackCardTimers([]); setActiveTab('scoring'); setPossession('team_a')
@@ -3967,6 +4092,7 @@ export default function VideoTagging() {
           onToggleTwoPointer={handleToggleTwoPointer}
           onEditTeam={handleEditEventTeam}
           onEditPlayer={handleEditEventPlayer}
+          onMovePosition={handleMovePosition}
           collapsed={!eventLogExpanded}
           onToggle={() => setEventLogExpanded(v => !v)}
           onVerifyAll={hasAiEvents ? handleVerifyAll : undefined}

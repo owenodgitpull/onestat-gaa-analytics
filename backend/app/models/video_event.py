@@ -110,6 +110,8 @@ class VideoEvent(Base):
     brought_forward_reason: Column[Optional[str]] = Column(String(50), nullable=True)  # dissent | interfering_set_piece | breaching_mark
     advanced_position_x: Column[Optional[float]] = Column(Float, nullable=True)
     advanced_position_y: Column[Optional[float]] = Column(Float, nullable=True)
+    # Long kick pass / high ball: our player it was completed to / won by (outcome itself lives in sub_type)
+    target_player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True)
 
     # Player attribution
     player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="SET NULL"), nullable=True, index=True)

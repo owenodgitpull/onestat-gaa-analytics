@@ -126,6 +126,8 @@ class MatchEventUpdate(BaseModel):
     brought_forward_reason: Optional[str] = Field(None, max_length=50)
     advanced_position_x: Optional[float] = Field(None, ge=0, le=100)
     advanced_position_y: Optional[float] = Field(None, ge=0, le=100)
+    # Long kick pass / high ball outcome (completed | intercepted | won[_clean|_break] | lost[_clean|_break])
+    sub_type: Optional[str] = Field(None, max_length=50)
     notes: Optional[str] = Field(None, max_length=500)
     under_pressure: Optional[bool] = None
     opposition_foot: Optional[str] = Field(None, max_length=1)

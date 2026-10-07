@@ -57,6 +57,7 @@ def _event_to_response(event: VideoEvent) -> VideoEventResponse:
         brought_forward_reason=event.brought_forward_reason,
         advanced_position_x=event.advanced_position_x,
         advanced_position_y=event.advanced_position_y,
+        target_player_id=event.target_player_id,
         player_id=event.player_id,
         player_name=event.player.name if event.player else None,
         sub_in_player_id=event.sub_in_player_id,

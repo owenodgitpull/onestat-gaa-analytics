@@ -208,6 +208,7 @@ class VideoEventUpdateRequest(BaseModel):
     brought_forward_reason: Optional[str] = Field(None, max_length=50)
     advanced_position_x: Optional[float] = None
     advanced_position_y: Optional[float] = None
+    target_player_id: Optional[UUID] = None
     player_id: Optional[UUID] = None
     sub_in_player_id: Optional[UUID] = None
     assist_player_id: Optional[UUID] = None
@@ -254,6 +255,7 @@ class VideoEventResponse(BaseModel):
     brought_forward_reason: Optional[str] = None
     advanced_position_x: Optional[float] = None
     advanced_position_y: Optional[float] = None
+    target_player_id: Optional[UUID] = None
     player_id: Optional[UUID]
     player_name: Optional[str] = None
     sub_in_player_id: Optional[UUID] = None

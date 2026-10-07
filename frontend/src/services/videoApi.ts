@@ -80,6 +80,8 @@ export interface VideoEvent {
   brought_forward_reason?: string | null;
   advanced_position_x?: number | null;
   advanced_position_y?: number | null;
+  /** Long kick pass / high ball: our player it was completed to / won by (outcome is in sub_type) */
+  target_player_id?: string | null;
   player_id: string | null;
   player_name: string | null;
   // SUBSTITUTION only: player_id = who came off, sub_in_player_id = who came on.
@@ -151,6 +153,7 @@ export interface VideoEventUpdateData {
   brought_forward_reason?: string | null;
   advanced_position_x?: number;
   advanced_position_y?: number;
+  target_player_id?: string;
   // Nullable — editing an event's team to the opponent clears any player
   // attribution outright (opponent events never carry one of our players).
   player_id?: string | null;

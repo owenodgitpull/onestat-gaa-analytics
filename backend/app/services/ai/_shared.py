@@ -169,12 +169,14 @@ properly.
 - High Ball (event_type=HIGH_BALL; older events: OTHER with notes="High ball"): a deliberate high ball
   played into a crowd for a contest — NOT a short pass, and not a turnover of any kind on its own. When it
   has a player_id, that's the player who KICKED it, not who won the contest. pitch_x/pitch_y is where it was
-  kicked from and end_x/end_y is where it landed. Who won it is not stored on the event — infer it from who
-  has possession immediately afterwards. Useful for "how often did we go direct/long" style questions.
+  kicked from and end_x/end_y is where it landed. sub_type is the outcome: won / lost (who ended up with
+  possession), optionally with _clean or _break (clean catch vs broken/breaking ball), e.g. won_break.
+  When we won it, kickout_target_player_id is the player who came away with it. Useful for "how often did
+  we go direct/long" and "do we win our high balls" style questions.
 - Long Kick Pass (event_type=LONG_KICK_PASS; older events: PASS_KICK/OTHER): a direct, long kicked pass to
   a team-mate, as opposed to a contestable High Ball. player_id is the kicker; pitch_x/y is where it was
-  kicked from and end_x/y where it landed. An intercepted/out-of-play one is also a turnover with origin
-  "Kick Pass".
+  kicked from and end_x/y where it landed. sub_type is the outcome: completed (kickout_target_player_id is
+  the receiver) or intercepted. An intercepted one is also a turnover with origin "Kick Pass".
 - Opposition Pass (notes="Pass", team=OPPONENT): a count-only tap logged every time the opposition
   completes a pass while they have possession — it exists purely to measure pressing intensity (how many
   passes we allowed before winning it back), not a tactical event in its own right. There is NO full PPDA

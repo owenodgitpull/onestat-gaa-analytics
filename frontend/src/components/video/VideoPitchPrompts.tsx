@@ -10,6 +10,7 @@
  * drift apart.
  */
 
+import { useEffect, useRef } from 'react'
 import { MapPin } from 'lucide-react'
 import {
   UNFORCED_ERROR_SUBTYPES, FOUL_SUBTYPES, DISPOSSESSION_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES,
@@ -190,6 +191,87 @@ export function AimedForChips({ players, selectedId, onToggle }: {
     </div>
   )
 }
+/** Optional, non-blocking "how was the high ball won?" chips — shown for a few seconds after a
+ *  High Ball's landing spot is tapped, then fade away. Ignoring them just means "not recorded". */
+export function HighBallChips({
+  onPick,
+  onDismiss,
+}: {
+  onPick: (contact: 'clean' | 'break') => void
+  onDismiss: () => void
+}) {
+  const dismissRef = useRef(onDismiss)
+  dismissRef.current = onDismiss
+  useEffect(() => {
+    const t = setTimeout(() => dismissRef.current(), 8000)
+    return () => clearTimeout(t)
+  }, [])
+  return (
+    <div
+      className="flex items-center gap-1.5 rounded-2xl px-3 py-2 animate-fade-in"
+      style={{
+        background: 'linear-gradient(90deg, rgba(14,34,42,0.82), rgba(8,20,26,0.74))',
+        border: '1px solid rgba(217,119,6,0.4)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
+      }}
+    >
+      <span className="text-[11px] font-semibold text-amber-200/80 mr-1">High ball:</span>
+      <button
+        onClick={() => onPick('clean')}
+        className="text-[11px] font-bold px-2.5 py-1 rounded-lg border bg-white/5 border-white/15 text-white/80 hover:bg-emerald-500/20 hover:border-emerald-400/50 hover:text-white transition-colors"
+      >
+        Clean catch
+      </button>
+      <button
+        onClick={() => onPick('break')}
+        className="text-[11px] font-bold px-2.5 py-1 rounded-lg border bg-white/5 border-white/15 text-white/80 hover:bg-amber-500/20 hover:border-amber-400/50 hover:text-white transition-colors"
+      >
+        Break
+      </button>
+      <button onClick={onDismiss} className="text-white/40 hover:text-white text-xs px-1" title="Skip">✕</button>
+    </div>
+  )
+}
+
+/** Banner while an existing event is being moved on the pitch (Video Tagging event log). */
+export function RepositionBanner({
+  label,
+  step,
+  onCancel,
+}: {
+  label: string
+  step: 'start' | 'end'
+  onCancel: () => void
+}) {
+  return (
+    <div className="absolute inset-x-3 top-3 z-20">
+      <div
+        className="flex items-center justify-between gap-3 rounded-2xl px-4 py-2.5"
+        style={{
+          background: 'linear-gradient(90deg, rgba(168,85,247,0.28), rgba(99,102,241,0.14))',
+          border: '1px solid rgba(168,85,247,0.45)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
+        }}
+      >
+        <span className="text-purple-100 text-sm font-semibold flex items-center gap-2">
+          <MapPin size={14} className="flex-shrink-0" />
+          {step === 'start' ? `Tap the pitch where the ${label} happened` : `Now tap where the ${label} landed`}
+        </span>
+        <button
+          onClick={onCancel}
+          className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white/80 hover:bg-white/20 transition-colors flex-shrink-0"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export type BroughtForwardReason = 'dissent' | 'interfering_set_piece' | 'breaching_mark'
 
 const BROUGHT_FORWARD_REASONS: { value: BroughtForwardReason; label: string }[] = [

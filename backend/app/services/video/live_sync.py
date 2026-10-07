@@ -58,6 +58,7 @@ def _match_event_fields(ve: VideoEvent) -> Optional[dict]:
         brought_forward_reason=ve.brought_forward_reason,
         advanced_position_x=ve.advanced_position_x,
         advanced_position_y=ve.advanced_position_y,
+        kickout_target_player_id=ve.target_player_id,
         player_id=ve.player_id,
         sub_in_player_id=ve.sub_in_player_id,
         assist_player_id=ve.assist_player_id,
