@@ -3243,7 +3243,7 @@ export default function VideoTagging() {
           it's obvious no possession time is being counted. */}
       {mode === 'tracking' && deadBall && isPlaying && (
         <div
-          className="absolute bottom-12 left-2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-cyan-100 pointer-events-none"
+          className="absolute bottom-2 left-2 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-cyan-100 whitespace-nowrap pointer-events-none"
           style={{
             background: 'rgba(8,20,26,0.7)',
             border: '1px solid rgba(0,176,255,0.4)',
