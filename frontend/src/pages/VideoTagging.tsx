@@ -105,6 +105,7 @@ import { api, type BallCarrierSegment } from '../services/api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PossessionTeam, EventType } from '../types'
 import type { Player, BallPosition } from '../types'
+import { confirmDialog } from '../utils/dialog'
 
 type OverlayState = 'none' | 'player' | 'pitch'
 type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
@@ -2854,11 +2855,13 @@ export default function VideoTagging() {
                 setShowMoreMenu(false)
                 if (!sessionId) return
                 const hasEvents = events.length > 0
-                const ok = window.confirm(
-                  hasEvents
-                    ? 'You have tagged events. Their minutes were set from the current throw-in mark and will NOT change. Reset the match first if you want them recalculated. Re-mark the throw-in / clock anyway?'
-                    : 'Re-mark the first-half throw-in (or set the clock for footage that joins mid-match)?'
-                )
+                const ok = await confirmDialog({
+                  title: 'Re-mark throw-in / clock?',
+                  message: hasEvents
+                    ? 'You have tagged events. Their minutes were set from the current throw-in mark and will NOT change. Reset the match first if you want them recalculated.'
+                    : 'Set the first-half throw-in again, or set the match clock for footage that joins mid-match.',
+                  confirmText: 'Re-mark',
+                })
                 if (!ok) return
                 await videoSessionsAPI.clearFirstHalfMark(sessionId)
                 await refetchSession()

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { fetchAPI } from '@/services/api'
 import type { Player } from '@/types'
+import { alertDialog } from '../../utils/dialog'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -177,7 +178,7 @@ export default function PlayerFormReport({ players }: Props) {
       const pdf = new jsPDF('p', 'mm', [pdfWidth, pdfHeight])
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       pdf.save(`player-report-${data?.player_name?.toLowerCase().replace(/\s+/g, '-') ?? 'player'}.pdf`)
-    } catch { alert('Export failed. Please try again.') }
+    } catch { void alertDialog({ title: 'Export failed', message: 'Please try again.', variant: 'danger' }) }
     finally { setIsExporting(false) }
   }
 

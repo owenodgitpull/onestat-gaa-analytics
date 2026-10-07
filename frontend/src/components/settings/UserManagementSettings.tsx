@@ -4,6 +4,7 @@ import { clubMembersAPI } from '../../services/api'
 import { useAuth } from '../../contexts/AuthContext'
 // ClubContext no longer needed — invite code fetched from API
 import type { ClubMember } from '../../types'
+import { confirmDialog } from '../../utils/dialog'
 
 const ROLE_LABELS: Record<string, string> = { club_admin: 'Admin', player: 'Player', viewer: 'Viewer' }
 const ROLE_BADGE_CLASS: Record<string, string> = {
@@ -88,7 +89,7 @@ export default function UserManagementSettings() {
   }
 
   const handleRoleChange = async (memberId: string, newRole: string) => {
-    if (!confirm(`Change this user's role to ${roleLabel(newRole)}?`)) return
+    if (!(await confirmDialog({ title: 'Change role?', message: `Change this user's role to ${roleLabel(newRole)}?`, confirmText: 'Change role' }))) return
     setActionLoading(memberId)
     try {
       await clubMembersAPI.changeRole(memberId, newRole)
@@ -102,7 +103,7 @@ export default function UserManagementSettings() {
 
   const handleToggleActive = async (memberId: string, isActive: boolean) => {
     const action = isActive ? 'deactivate' : 'reactivate'
-    if (!confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} this user?`)) return
+    if (!(await confirmDialog({ title: `${action.charAt(0).toUpperCase() + action.slice(1)} user?`, message: `Are you sure you want to ${action} this user?`, confirmText: action.charAt(0).toUpperCase() + action.slice(1), variant: isActive ? 'danger' : 'warning' }))) return
     setActionLoading(memberId)
     try {
       if (isActive) {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Upload, Trash2, FileText, Loader2, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react'
 import { knowledgeBaseAPI } from '../../services/api'
 import type { KnowledgeDoc } from '../../types'
+import { confirmDialog } from '../../utils/dialog'
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   rules: 'Rules',
@@ -134,7 +135,7 @@ export default function KnowledgeBaseSettings() {
   }
 
   const handleDelete = async (docId: string) => {
-    if (!confirm('Delete this document? Its knowledge will be removed from AI context.')) return
+    if (!(await confirmDialog({ title: 'Delete document?', message: 'Its knowledge will be removed from AI context.', confirmText: 'Delete', variant: 'danger' }))) return
 
     setDeleting(docId)
     try {

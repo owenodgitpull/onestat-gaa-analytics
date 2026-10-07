@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 import EditFixtureModal from '../components/EditFixtureModal'
 import { hasPendingTutorial } from '../components/MatchRecordingTutorial'
 import type { Match, FormResult } from '../types'
+import { alertDialog } from '../utils/dialog'
 
 function FormBadge({ result }: { result: 'W' | 'L' | 'D' }) {
   const colors = {
@@ -84,7 +85,7 @@ export default function FixturePreview() {
       navigate('/fixtures')
     } catch (error) {
       console.error('Failed to delete match:', error)
-      alert('Failed to delete match. Please try again.')
+      void alertDialog({ title: 'Failed to delete match', message: 'Please try again.', variant: 'danger' })
     } finally {
       setIsDeleting(false)
       setShowDeleteConfirm(false)

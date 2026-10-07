@@ -18,6 +18,7 @@ import { renderAnalysisText } from '@/utils/renderAnalysisText'
 import { getWeatherIcon, getWeatherLabel } from '@/components/WeatherPickerPopover'
 import type { Match, MatchStats } from '@/types'
 import type { PostMatchReport } from '@/services/api'
+import { alertDialog } from '../../utils/dialog'
 
 // ─── Local Types ───────────────────────────────────────────────────────────────
 
@@ -342,7 +343,7 @@ export default function MatchDayReport({ matches }: Props) {
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       pdf.save(`match-report-${match?.opponent ?? 'report'}-${match?.match_date?.slice(0, 10) ?? ''}.pdf`)
     } catch {
-      alert('Export failed. Please try again.')
+      void alertDialog({ title: 'Export failed', message: 'Please try again.', variant: 'danger' })
     } finally {
       setIsExporting(false)
     }

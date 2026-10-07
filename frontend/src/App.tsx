@@ -1,3 +1,4 @@
+import DialogHost from './components/DialogHost'
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
@@ -103,6 +104,7 @@ function App() {
           </div>
 
           <InstallBanner />
+          <DialogHost />
           <div className="min-h-screen relative z-10">
             <Routes>
               {/* Public routes — no auth required */}

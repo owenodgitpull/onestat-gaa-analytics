@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { AlertTriangle, Info, AlertCircle } from 'lucide-react'
 
 interface ConfirmationModalProps {
@@ -9,6 +10,8 @@ interface ConfirmationModalProps {
   confirmText?: string
   cancelText?: string
   variant?: 'danger' | 'warning' | 'info'
+  /** Optional extra content under the message (e.g. a text input for prompt dialogs) */
+  children?: ReactNode
 }
 
 export default function ConfirmationModal({
@@ -19,7 +22,8 @@ export default function ConfirmationModal({
   message,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  variant = 'warning'
+  variant = 'warning',
+  children,
 }: ConfirmationModalProps) {
   if (!isOpen) return null
 
@@ -47,7 +51,7 @@ export default function ConfirmationModal({
   const alertOnly = !onConfirm
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 animate-fade-in">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -69,9 +73,10 @@ export default function ConfirmationModal({
         </h2>
 
         {/* Message */}
-        <p className="text-white/70 text-center mb-8 leading-relaxed">
+        <p className={`text-white/70 text-center leading-relaxed whitespace-pre-line ${children ? 'mb-4' : 'mb-8'}`}>
           {message}
         </p>
+        {children && <div className="mb-8">{children}</div>}
 
         {/* Action Buttons */}
         {alertOnly ? (

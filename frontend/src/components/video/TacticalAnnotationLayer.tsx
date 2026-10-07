@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { promptDialog } from '../../utils/dialog'
 
 interface PlayerDot {
   id: string;
@@ -81,7 +82,7 @@ export default function TacticalAnnotationLayer({
     }
   };
 
-  const handleMouseUp = (e: React.MouseEvent) => {
+  const handleMouseUp = async (e: React.MouseEvent) => {
     if (mode === 'arrow' && arrowStart) {
       const end = getSVGCoords(e);
       const dist = Math.hypot(end.x - arrowStart.x, end.y - arrowStart.y);
@@ -105,7 +106,7 @@ export default function TacticalAnnotationLayer({
 
     if (mode === 'label' && !dragging) {
       const coords = getSVGCoords(e);
-      const text = prompt('Enter label text:');
+      const text = await promptDialog({ title: 'Add label', placeholder: 'Label text' });
       if (text) {
         onAnnotationsChange({
           ...annotations,

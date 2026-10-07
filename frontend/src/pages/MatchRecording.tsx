@@ -83,6 +83,7 @@ import {
   Loader2,
   ChevronRight,
 } from 'lucide-react'
+import { confirmDialog } from '../utils/dialog'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
 
@@ -3665,9 +3666,11 @@ export default function MatchRecording() {
       )
       if (alreadyLogged) {
         const label = String(event.eventType).toLowerCase().replace(/_/g, ' ')
-        const confirmed = window.confirm(
-          `${player.name} already has a ${label} logged at minute ${capturedMinute}. Log another one?`
-        )
+        const confirmed = await confirmDialog({
+          title: 'Possible duplicate',
+          message: `${player.name} already has a ${label} logged at minute ${capturedMinute}. Log another one?`,
+          confirmText: 'Log another',
+        })
         if (!confirmed) return
       }
     }

@@ -6,6 +6,7 @@ import {
 import { Trophy, TrendingUp, Home, Plane, Download, Loader2 } from 'lucide-react'
 import type { Match } from '@/types'
 import type { DashboardData } from '@/services/api'
+import { alertDialog } from '../../utils/dialog'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export default function SeasonProgressReport({ matches, dashboardData }: Props) 
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       pdf.save(`season-progress-report.pdf`)
     } catch {
-      alert('Export failed. Please try again.')
+      void alertDialog({ title: 'Export failed', message: 'Please try again.', variant: 'danger' })
     } finally {
       setIsExporting(false)
     }

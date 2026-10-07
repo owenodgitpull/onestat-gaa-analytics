@@ -3,6 +3,7 @@ import { CheckCircle, AlertCircle, XCircle, Download, Loader2 } from 'lucide-rea
 import { api } from '@/services/api'
 import type { SquadHealthSummary, PlayerFitnessCard } from '@/services/api'
 import type { Player } from '@/types'
+import { alertDialog } from '../../utils/dialog'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ export default function SquadFitnessReport({ players }: Props) {
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       pdf.save(`squad-fitness-report.pdf`)
     } catch {
-      alert('Export failed. Please try again.')
+      void alertDialog({ title: 'Export failed', message: 'Please try again.', variant: 'danger' })
     } finally {
       setIsExporting(false)
     }

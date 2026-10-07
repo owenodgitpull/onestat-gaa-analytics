@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Search, Loader2, AlertCircle, Download } from 'lucide-react'
 import { API_BASE } from '@/services/api'
 import type { Match } from '@/types'
+import { alertDialog } from '../../utils/dialog'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ export default function OppositionScoutReport({ matches }: Props) {
       const opponent = selectedMatch?.opponent?.toLowerCase().replace(/\s+/g, '-') ?? 'opposition'
       pdf.save(`opposition-scout-report-${opponent}.pdf`)
     } catch {
-      alert('Export failed. Please try again.')
+      void alertDialog({ title: 'Export failed', message: 'Please try again.', variant: 'danger' })
     } finally {
       setIsExporting(false)
     }

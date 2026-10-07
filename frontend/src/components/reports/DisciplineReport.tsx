@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import { AlertTriangle, Download, Loader2 } from 'lucide-react'
 import { fetchAPI } from '@/services/api'
+import { alertDialog } from '../../utils/dialog'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,7 +71,7 @@ export default function DisciplineReport() {
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
       pdf.save(`discipline-report.pdf`)
     } catch {
-      alert('Export failed. Please try again.')
+      void alertDialog({ title: 'Export failed', message: 'Please try again.', variant: 'danger' })
     } finally {
       setIsExporting(false)
     }
