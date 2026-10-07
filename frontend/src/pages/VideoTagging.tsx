@@ -2946,7 +2946,9 @@ export default function VideoTagging() {
             : currentTimeMs
         }
         fillHeight={isFullscreen}
-        disabled={mode === 'setup'}
+        // Setup steps that mark a moment in the video (throw-in, half-time, 2nd half,
+        // full-time) MUST be scrubbable; only the pure-choice steps lock the player.
+        disabled={mode === 'setup' && !['first_half', 'half_time', 'second_half', 'full_time'].includes(setupStep)}
       />
 
       {mode === 'setup' && (
