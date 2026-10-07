@@ -73,7 +73,7 @@ async def _get_club_completed_matches(
         select(Match).where(
             and_(
                 Match.club_id == club_id,
-                Match.status == MatchStatus.COMPLETED,
+                Match.counts_in_stats,
                 Match.is_deleted .is_(False),
             )
         ).order_by(Match.match_date.asc())
@@ -101,7 +101,7 @@ async def get_competitions(
     result = await db.execute(
         select(Match.competition).where(
             Match.club_id == user.club_id,
-            Match.status == MatchStatus.COMPLETED,
+            Match.counts_in_stats,
             Match.is_deleted.is_(False),
             Match.competition.isnot(None),
             Match.competition != "",

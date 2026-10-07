@@ -56,7 +56,7 @@ export default function SyncPreviewModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <h2 className="text-lg font-semibold text-white">
-            {isComplete ? 'Sync Complete' : isProcessing ? 'Syncing...' : 'Sync to Match'}
+            {isComplete ? 'Tagging Finished' : isProcessing ? 'Finishing...' : 'Finish & Generate Report'}
           </h2>
           {!isProcessing && (
             <button onClick={onClose} className="p-1 text-white/40 hover:text-white transition-colors">
@@ -82,7 +82,7 @@ export default function SyncPreviewModal({
                 </div>
                 <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
                   <div className="text-2xl font-bold text-white/50">{preview.skipped_events.length}</div>
-                  <div className="text-xs text-white/30 mt-1">Already exist</div>
+                  <div className="text-xs text-white/30 mt-1">Already in match</div>
                 </div>
               </div>
 
@@ -124,7 +124,7 @@ export default function SyncPreviewModal({
               {preview.skipped_events.length > 0 && (
                 <div>
                   <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
-                    Skipped — Already Exist ({preview.skipped_events.length})
+                    Already in the match ({preview.skipped_events.length})
                   </h3>
                   <div className="space-y-1 max-h-24 overflow-y-auto">
                     {preview.skipped_events.map((e) => (
@@ -138,11 +138,12 @@ export default function SyncPreviewModal({
               <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3">
                 <div className="flex items-center gap-2 mb-1">
                   <FileText size={14} className="text-purple-400" />
-                  <span className="text-sm font-medium text-purple-300">After sync</span>
+                  <span className="text-sm font-medium text-purple-300">When you finish</span>
                 </div>
                 <p className="text-xs text-purple-200/60">
-                  The full AI match report will be regenerated with all events (manual + video).
-                  This takes 15-30 seconds.
+                  Your tagged events are already in the match. Finishing marks tagging as done so the match
+                  counts in season stats and leaderboards, and generates the AI match report and insights
+                  (15-30 seconds). Check the event list first and fix anything that's wrong.
                 </p>
               </div>
             </>
@@ -154,12 +155,12 @@ export default function SyncPreviewModal({
               <Loader2 size={36} className="animate-spin text-emerald-400" />
               <div className="text-center">
                 <p className="text-white font-medium">
-                  {syncStatus?.status === 'analyzing' ? 'Generating AI Report...' : 'Syncing events...'}
+                  {syncStatus?.status === 'analyzing' ? 'Generating AI Report...' : 'Finishing up...'}
                 </p>
                 <p className="text-sm text-white/40 mt-1">
                   {syncStatus?.status === 'analyzing'
                     ? 'The AI is analyzing all match events to create a comprehensive report.'
-                    : 'Merging video events into match analytics...'}
+                    : 'Adding the match to your season stats...'}
                 </p>
               </div>
             </div>
@@ -170,9 +171,9 @@ export default function SyncPreviewModal({
             <div className="flex flex-col items-center py-8 space-y-4">
               <CheckCircle2 size={40} className="text-emerald-400" />
               <div className="text-center">
-                <p className="text-white font-medium">Sync Complete</p>
+                <p className="text-white font-medium">Tagging finished</p>
                 <p className="text-sm text-white/50 mt-1">
-                  {syncStatus.synced_count} events synced. AI report is ready.
+                  The match now counts in season stats and the AI report is ready.
                 </p>
               </div>
             </div>
@@ -183,7 +184,7 @@ export default function SyncPreviewModal({
             <div className="flex flex-col items-center py-8 space-y-4">
               <AlertTriangle size={40} className="text-red-400" />
               <div className="text-center">
-                <p className="text-white font-medium">Sync Failed</p>
+                <p className="text-white font-medium">Couldn't finish</p>
                 <p className="text-sm text-red-300/70 mt-1">
                   {syncStatus?.error_message || 'An unexpected error occurred.'}
                 </p>
@@ -205,11 +206,11 @@ export default function SyncPreviewModal({
               </button>
               <button
                 onClick={onConfirm}
-                disabled={isConfirming || (preview.new_events.length === 0 && preview.replaced_events.length === 0)}
+                disabled={isConfirming}
                 className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-all"
               >
                 {isConfirming ? <Loader2 size={14} className="animate-spin" /> : null}
-                Confirm Sync
+                Finish & Generate Report
               </button>
             </>
           )}

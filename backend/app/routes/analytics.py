@@ -678,7 +678,7 @@ async def _get_dashboard_data_fresh(db: AsyncSession, club_id) -> DashboardData:
     matches_result = await db.execute(
         select(Match).where(
             and_(
-                Match.status == MatchStatus.COMPLETED,
+                Match.counts_in_stats,
                 Match.is_deleted.is_(False),
                 Match.club_id == club_id,
                 event_count > 0,
@@ -951,7 +951,7 @@ async def get_player_match_stats(
     matches_result = await db.execute(
         select(Match).where(
             and_(
-                Match.status == MatchStatus.COMPLETED,
+                Match.counts_in_stats,
                 Match.is_deleted.is_(False),
                 Match.club_id == user.club_id,
             )
@@ -1194,7 +1194,7 @@ async def get_player_shot_events(
     matches_result = await db.execute(
         select(Match).where(
             and_(
-                Match.status == MatchStatus.COMPLETED,
+                Match.counts_in_stats,
                 Match.is_deleted.is_(False),
                 Match.club_id == user.club_id,
             )
@@ -1279,7 +1279,7 @@ async def _compute_quarter_profile(db: AsyncSession, club_id, player_uuid) -> "P
     matches_result = await db.execute(
         select(Match).where(
             and_(
-                Match.status == MatchStatus.COMPLETED,
+                Match.counts_in_stats,
                 Match.is_deleted.is_(False),
                 Match.club_id == club_id,
             )
@@ -1485,7 +1485,7 @@ async def _compute_discipline_trend(db: AsyncSession, club_id, player_uuid) -> "
     matches_result = await db.execute(
         select(Match).where(
             and_(
-                Match.status == MatchStatus.COMPLETED,
+                Match.counts_in_stats,
                 Match.is_deleted.is_(False),
                 Match.club_id == club_id,
             )
@@ -1654,7 +1654,7 @@ async def _compute_positional_benchmark(db: AsyncSession, club_id, player_uuid) 
 
     matches_result = await db.execute(
         select(Match).where(
-            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == club_id)
+            and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id)
         )
     )
     match_ids = [m.id for m in matches_result.scalars().all()]
@@ -2469,7 +2469,7 @@ async def _get_player_form_fresh(db: AsyncSession, club_id, player, player_uuid)
     # ── Completed matches for this club ─────────────────────────────────────
     matches_result = await db.execute(
         select(Match).where(
-            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == club_id)
+            and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id)
         ).order_by(Match.match_date.desc())
     )
     matches = matches_result.scalars().all()
@@ -2878,7 +2878,7 @@ async def _get_discipline_summary_fresh(db: AsyncSession, club_id) -> Discipline
 
     matches_result = await db.execute(
         select(Match).where(
-            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == club_id)
+            and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id)
         ).order_by(Match.match_date.asc())
     )
     matches = matches_result.scalars().all()
@@ -3079,7 +3079,7 @@ async def _get_kickout_summary_fresh(db: AsyncSession, club_id) -> KickoutSummar
     """The actual full season scan — only called on a get_kickout_summary() cache miss."""
     matches_result = await db.execute(
         select(Match).where(
-            and_(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False), Match.club_id == club_id)
+            and_(Match.counts_in_stats, Match.is_deleted.is_(False), Match.club_id == club_id)
         ).order_by(Match.match_date.asc())
     )
     matches = matches_result.scalars().all()

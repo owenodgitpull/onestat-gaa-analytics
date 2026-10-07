@@ -16,6 +16,7 @@ from app.models.video_session import VideoSession
 from app.models.video_event import VideoEvent, TWO_POINTER_ZONES, SCORING_EVENT_TYPES
 from app.models.match_event import MatchEvent, Team
 from app.services.video.event_mapper import VideoEventMapper
+from app.services.video import live_sync
 from app.schemas.video_analysis import (
     VideoEventCreateRequest,
     VideoEventUpdateRequest,
@@ -150,6 +151,12 @@ async def create_video_event(
         is_verified=body.source == "human_tag",
     )
     db.add(event)
+    await db.flush()
+    # Write straight into the match (same as live recording) and hide the
+    # match from season stats until the user finishes tagging.
+    await live_sync.write_through(db, event)
+    if event.is_verified:
+        await live_sync.mark_in_progress(db, session)
     await db.commit()
     await db.refresh(event)
 
@@ -213,6 +220,7 @@ async def update_video_event(
     event.scoring_context = scoring_ctx
 
     event.updated_at = datetime.utcnow()
+    await live_sync.write_through(db, event)
     await db.commit()
     await db.refresh(event)
 
@@ -235,6 +243,7 @@ async def delete_video_event(
     if not event:
         raise HTTPException(status_code=404, detail="Video event not found")
 
+    await live_sync.remove(db, event)
     await db.delete(event)
     await db.commit()
     return {"detail": "Event deleted"}
@@ -248,21 +257,20 @@ async def delete_video_events_after_timestamp(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete all video events after a given timestamp (for undo-to-point feature)."""
-    from sqlalchemy import delete
-
     # Verify session belongs to user's club
-    session = await _get_session_for_club(session_id, user.club_id, db)
-
-    # Convert timestamp_ms to minutes (events store minute as int)
-    timestamp_minutes = timestamp_ms / 60000.0
+    await _get_session_for_club(session_id, user.club_id, db)
 
     result = await db.execute(
-        delete(VideoEvent)
+        select(VideoEvent)
         .where(VideoEvent.video_session_id == session_id)
-        .where(VideoEvent.minute > timestamp_minutes)
+        .where(VideoEvent.video_timestamp_ms > timestamp_ms)
     )
+    doomed = list(result.scalars().all())
+    for ve in doomed:
+        await live_sync.remove(db, ve)
+        await db.delete(ve)
     await db.commit()
-    return {"deleted_count": result.rowcount, "session_id": str(session_id), "after_ms": timestamp_ms}
+    return {"deleted_count": len(doomed), "session_id": str(session_id), "after_ms": timestamp_ms}
 
 
 @router.post("/{session_id}/bulk", response_model=VideoEventListResponse)
@@ -336,6 +344,10 @@ async def verify_video_event(
 
     event.is_verified = True
     event.updated_at = datetime.utcnow()
+    await live_sync.write_through(db, event)
+    session = await db.get(VideoSession, event.video_session_id)
+    if session is not None:
+        await live_sync.mark_in_progress(db, session)
     await db.commit()
     await db.refresh(event)
 
@@ -364,6 +376,11 @@ def _compute_sync_plan(
     skipped = []
 
     for ve in verified_events:
+        # Already written live into the match — nothing to merge
+        if ve.match_event_id:
+            skipped.append(ve)
+            continue
+
         match_event_type = VideoEventMapper.to_match_event_type(
             ve.event_type,
             scoring_context=ve.scoring_context,
@@ -580,33 +597,7 @@ async def process_video_sync(
                 if not ve:
                     continue
 
-                match_event_type = VideoEventMapper.to_match_event_type(
-                    ve.event_type,
-                    scoring_context=ve.scoring_context,
-                    pitch_zone=ve.pitch_zone,
-                    team=ve.team,
-                )
-                if not match_event_type:
-                    continue
-
-                team = VideoEventMapper.video_team_to_match_team(ve.team)
-                match_event = MatchEvent(
-                    match_id=ve.match_id,
-                    event_type=match_event_type,
-                    sub_type=ve.sub_type,
-                    team=team,
-                    minute=ve.match_minute,
-                    pitch_x=ve.pitch_x,
-                    pitch_y=ve.pitch_y,
-                    player_id=ve.player_id,
-                    sub_in_player_id=ve.sub_in_player_id,
-                    assist_player_id=ve.assist_player_id,
-                    under_pressure=(ve.scoring_context or {}).get("under_pressure"),
-                    opposition_foot=_normalize_foot(ve.scoring_context),
-                    opponent_player_name=ve.opponent_player_name,
-                    notes=f"[video-sync] {ve.description or ''}".strip(),
-                )
-                db.add(match_event)
+                await live_sync.write_through(db, ve)
                 synced_count += 1
 
             # 2. Replace near-matched MatchEvents with richer video data
@@ -644,6 +635,8 @@ async def process_video_sync(
                 me.notes = f"[video-enriched] {ve.description or me.notes or ''}".strip()
                 synced_count += 1
 
+            # Tagging finished — match now counts in season stats
+            await live_sync.mark_finished(db, match_id)
             await db.commit()
             logger.info(f"Video sync: {synced_count} events merged for session {session_id}")
 

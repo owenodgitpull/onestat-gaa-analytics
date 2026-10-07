@@ -106,7 +106,7 @@ class SeasonDashboardService:
             .scalar_subquery()
         )
         conditions = [
-            Match.status == MatchStatus.COMPLETED,
+            Match.counts_in_stats,
             Match.is_deleted.is_(False),
             event_count > 0,
         ]
@@ -144,7 +144,7 @@ class SeasonDashboardService:
         club (unfiltered) — powers the filter dropdown so its options don't
         shrink to whatever the current filter already narrowed down to."""
         conditions = [
-            Match.status == MatchStatus.COMPLETED,
+            Match.counts_in_stats,
             Match.is_deleted.is_(False),
             Match.competition.isnot(None),
             Match.competition != "",
@@ -164,7 +164,7 @@ class SeasonDashboardService:
         with it, so the dropdown never offers an option that returns zero
         matches."""
         conditions = [
-            Match.status == MatchStatus.COMPLETED,
+            Match.counts_in_stats,
             Match.is_deleted.is_(False),
             Match.stage.isnot(None),
             Match.stage != "",
@@ -3352,7 +3352,7 @@ async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
 
     # Count of completed matches
     match_count_q = select(func.count(Match.id)).where(
-        Match.status == MatchStatus.COMPLETED,
+        Match.counts_in_stats,
         Match.is_deleted.is_(False),
     )
     if club_id:
@@ -3362,7 +3362,7 @@ async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
 
     # Latest match completed_at
     latest_match_q = select(func.max(Match.completed_at)).where(
-        Match.status == MatchStatus.COMPLETED,
+        Match.counts_in_stats,
         Match.is_deleted.is_(False),
     )
     if club_id:

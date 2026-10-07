@@ -342,7 +342,7 @@ async def _compute_match_stats(db: AsyncSession, m_id: UUID) -> dict:
 async def get_season_benchmark(db: AsyncSession, match_id: UUID, club_id: UUID) -> dict:
     matches_result = await db.execute(
         select(Match.id, Match.opponent, Match.match_date)
-        .where(and_(Match.club_id == club_id, Match.status == MatchStatus.COMPLETED))
+        .where(and_(Match.club_id == club_id, Match.counts_in_stats))
         .order_by(Match.match_date.asc())
     )
     completed_matches = matches_result.all()

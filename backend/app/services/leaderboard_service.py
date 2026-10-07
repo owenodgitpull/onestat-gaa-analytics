@@ -113,7 +113,7 @@ class LeaderboardService:
             select(Match).where(
                 and_(
                     Match.club_id == club_id,
-                    Match.status == MatchStatus.COMPLETED,
+                    Match.counts_in_stats,
                     Match.is_deleted.is_(False),
                 )
             ).options(
@@ -840,7 +840,7 @@ class LeaderboardService:
         # reason (6 redundant queries per call otherwise).
         _conditions = [
             Match.club_id == club_id,
-            Match.status == MatchStatus.COMPLETED,
+            Match.counts_in_stats,
             Match.is_deleted.is_(False),
         ]
         if competition:

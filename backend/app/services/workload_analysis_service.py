@@ -263,7 +263,7 @@ class WorkloadAnalysisService:
                     MatchGPSData.player_id == player_id,
                     Match.match_date >= date,
                     Match.match_date < next_day,
-                    Match.status == MatchStatus.COMPLETED
+                    Match.counts_in_stats
                 )
             )
         )
@@ -296,7 +296,7 @@ class WorkloadAnalysisService:
                     MatchLineup.player_id == player_id,
                     Match.match_date >= date,
                     Match.match_date < next_day,
-                    Match.status == MatchStatus.COMPLETED
+                    Match.counts_in_stats
                 )
             )
         )
@@ -683,7 +683,7 @@ Be concise and actionable. Reference GAA-specific training practices when releva
             select(MatchGPSData.player_id, MatchGPSData.total_distance_m,
                    MatchGPSData.player_load, Match.match_date)
             .join(Match, MatchGPSData.match_id == Match.id)
-            .where(Match.status == MatchStatus.COMPLETED)
+            .where(Match.counts_in_stats)
         )
         if club_player_ids is not None:
             match_gps_q = match_gps_q.where(MatchGPSData.player_id.in_(club_player_ids))

@@ -263,7 +263,7 @@ async def _get_data_summary(db: AsyncSession, club_id=None) -> dict:
 
 async def _get_raw_data_for_charts(db: AsyncSession, club_id=None) -> dict:
     """Get raw data for LLM code to transform into charts."""
-    match_query = select(Match).where(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)).order_by(Match.match_date)
+    match_query = select(Match).where(Match.counts_in_stats, Match.is_deleted.is_(False)).order_by(Match.match_date)
     if club_id:
         match_query = match_query.where(Match.club_id == club_id)
     matches_result = await db.execute(match_query)

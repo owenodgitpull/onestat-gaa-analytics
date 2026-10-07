@@ -7,7 +7,8 @@ Represents a single match with opponent, date, venue, and final scores.
 import uuid
 from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING
-from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text, ForeignKey, JSON, Float
+from sqlalchemy import Column, String, DateTime, Integer, Boolean, Enum, Text, ForeignKey, JSON, Float, and_
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, Mapped
 from app.database import Base
@@ -93,7 +94,10 @@ class Match(Base):
     match_date: Column[datetime] = Column(DateTime, nullable=False, index=True)
     venue: Column[MatchVenue] = Column(Enum(MatchVenue), nullable=False)
     status: Column[MatchStatus] = Column(Enum(MatchStatus), default=MatchStatus.SCHEDULED, nullable=False)
-    
+    # True while the match is being tagged from video and hasn't been
+    # "finished" — season stats / leaderboards skip it (see counts_in_stats).
+    video_tagging_in_progress: Column[bool] = Column(Boolean, default=False, nullable=False, server_default="false")
+
     # Scores (updated as match progresses)
     team_goals: Column[int] = Column(Integer, default=0, nullable=False)
     team_points: Column[int] = Column(Integer, default=0, nullable=False)
@@ -242,6 +246,16 @@ class Match(Base):
     def __repr__(self):
         score = f"{self.team_goals}-{self.team_points} vs {self.opponent_goals}-{self.opponent_points}"
         return f"<Match(id={self.id}, opponent='{self.opponent}', score='{score}', status='{self.status.value}')>"
+
+    @hybrid_property
+    def counts_in_stats(self) -> bool:
+        """Completed AND not mid video-tagging — what season stats, charts and
+        leaderboards should count."""
+        return self.status == MatchStatus.COMPLETED and not self.video_tagging_in_progress
+
+    @counts_in_stats.expression
+    def counts_in_stats(cls):  # noqa: N805
+        return and_(cls.status == MatchStatus.COMPLETED, cls.video_tagging_in_progress.is_(False))
 
     @property
     def team_total_score(self) -> int:

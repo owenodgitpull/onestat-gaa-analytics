@@ -1519,7 +1519,7 @@ async def get_kickout_targets(db: AsyncSession, match_id: str = None, club_id=No
             return safe_json({"success": False, "error": f"'{match_id}' is not a valid match UUID"})
         conditions.append(MatchEvent.match_id == match_id)
     else:
-        completed_conditions = [Match.status == MatchStatus.COMPLETED]
+        completed_conditions = [Match.counts_in_stats]
         if club_id:
             completed_conditions.append(Match.club_id == club_id)
         completed_ids = await db.execute(select(Match.id).where(*completed_conditions))
@@ -1602,7 +1602,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
 
     # Resolve match_id
     if match_id and match_id.lower() in ("recent", "latest", "last"):
-        recent_conditions = [Match.status == MatchStatus.COMPLETED]
+        recent_conditions = [Match.counts_in_stats]
         if club_id:
             recent_conditions.append(Match.club_id == club_id)
         result = await db.execute(
@@ -1631,7 +1631,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         query = query.where(MatchEvent.match_id == match_id)
     else:
         # Only completed matches
-        completed_conditions = [Match.status == MatchStatus.COMPLETED]
+        completed_conditions = [Match.counts_in_stats]
         if club_id:
             completed_conditions.append(Match.club_id == club_id)
         completed_ids = await db.execute(
@@ -1919,7 +1919,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     except (ValueError, AttributeError):
         # Try to resolve descriptive strings to an actual match
         if match_id.lower() in ("recent", "latest", "last"):
-            recent_conditions = [Match.status == MatchStatus.COMPLETED]
+            recent_conditions = [Match.counts_in_stats]
             if club_id:
                 recent_conditions.append(Match.club_id == club_id)
             result = await db.execute(
@@ -2189,7 +2189,7 @@ async def get_weather_context(db: AsyncSession, limit: int = 5, club_id=None) ->
         from app.models.match import WeatherCondition, PitchCondition
 
         conditions = [
-            Match.status == MatchStatus.COMPLETED,
+            Match.counts_in_stats,
             Match.is_deleted.is_(False),
             Match.weather_condition.isnot(None),
         ]
@@ -2238,7 +2238,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
         uuid_mod.UUID(str(match_id))
     except (ValueError, AttributeError):
         if str(match_id).lower() in ("recent", "latest", "last"):
-            recent_conditions = [Match.status == MatchStatus.COMPLETED]
+            recent_conditions = [Match.counts_in_stats]
             if club_id:
                 recent_conditions.append(Match.club_id == club_id)
             result = await db.execute(
@@ -2724,7 +2724,7 @@ async def get_recent_lineup_history(db: AsyncSession, player_name: str = None, n
     from collections import defaultdict
 
     match_q = select(Match.id, Match.match_date).where(
-        Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)
+        Match.counts_in_stats, Match.is_deleted.is_(False)
     )
     if club_id:
         match_q = match_q.where(Match.club_id == club_id)
@@ -2869,7 +2869,7 @@ async def get_squad_season_stats(db: AsyncSession, club_id=None, competition: st
     filter to narrow with, so the model resorted to pulling raw per-match
     events to filter manually instead — exactly the kind of heavy workaround
     that blows the response-time budget the bulk tool was built to avoid."""
-    club_match_ids_sq = select(Match.id).where(Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False))
+    club_match_ids_sq = select(Match.id).where(Match.counts_in_stats, Match.is_deleted.is_(False))
     if club_id:
         club_match_ids_sq = club_match_ids_sq.where(Match.club_id == club_id)
     if competition:
@@ -3057,7 +3057,7 @@ async def get_team_season_stats(db: AsyncSession, club_id=None, competition: str
         .scalar_subquery()
     )
     query_filters = [
-        Match.status == MatchStatus.COMPLETED,
+        Match.counts_in_stats,
         Match.is_deleted.is_(False),
         event_count > 0,
     ]
@@ -3213,7 +3213,7 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
             .scalar_subquery()
         )
         all_conditions = [
-            Match.status == MatchStatus.COMPLETED,
+            Match.counts_in_stats,
             Match.is_deleted.is_(False),
             ec > 0,
         ]
@@ -4495,7 +4495,7 @@ async def get_performance_correlations(db: AsyncSession, metric: str, club_id=No
         return safe_json({"error": f"Invalid metric: {metric}. Use one of: {list(metric_col_map.keys())}"})
 
     # Get per-match average of the chosen metric
-    match_conditions = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+    match_conditions = [Match.counts_in_stats, Match.is_deleted.is_(False)]
     if club_id:
         match_conditions.append(Match.club_id == club_id)
 
@@ -4586,7 +4586,7 @@ async def get_player_form_trajectory(db: AsyncSession, player_id: str, window: i
         return safe_json({"error": "Player not found"})
 
     # Get recent matches where player had events, ordered by date
-    match_conditions = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+    match_conditions = [Match.counts_in_stats, Match.is_deleted.is_(False)]
     if club_id:
         match_conditions.append(Match.club_id == club_id)
     matches_result = await db.execute(
@@ -4809,7 +4809,7 @@ async def get_contextual_patterns(db: AsyncSession, split_by: str, club_id=None)
     from app.models.match_gps import MatchGPSData
     from sqlalchemy import func as sqla_func
 
-    match_conditions = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+    match_conditions = [Match.counts_in_stats, Match.is_deleted.is_(False)]
     if club_id:
         match_conditions.append(Match.club_id == club_id)
     matches_result = await db.execute(
@@ -4923,7 +4923,7 @@ async def get_workload_risk_assessment(db: AsyncSession, player_id: str = None, 
     # Get all match GPS in chronic window
     match_gps_conditions = [
         Match.match_date >= chronic_start_of_day,
-        Match.status == MatchStatus.COMPLETED,
+        Match.counts_in_stats,
     ]
     if club_id:
         match_gps_conditions.append(Match.club_id == club_id)
@@ -5598,7 +5598,7 @@ async def get_ball_recovery_time(db: AsyncSession, match_id: str | None = None, 
             scope_ids = [match_uuid]
             match_labels = {match_uuid: f"{match.opponent} ({match.match_date.strftime('%d %b') if match.match_date else 'Unknown'})"}
         else:
-            where_clauses = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+            where_clauses = [Match.counts_in_stats, Match.is_deleted.is_(False)]
             if club_id:
                 where_clauses.append(Match.club_id == club_id)
             matches_result = await db.execute(
@@ -5711,7 +5711,7 @@ async def get_turnover_to_shot_time(db: AsyncSession, match_id: str | None = Non
             scope_ids = [match_uuid]
             match_labels = {match_uuid: f"{match.opponent} ({match.match_date.strftime('%d %b') if match.match_date else 'Unknown'})"}
         else:
-            where_clauses = [Match.status == MatchStatus.COMPLETED, Match.is_deleted.is_(False)]
+            where_clauses = [Match.counts_in_stats, Match.is_deleted.is_(False)]
             if club_id:
                 where_clauses.append(Match.club_id == club_id)
             matches_result = await db.execute(
@@ -5800,7 +5800,7 @@ async def get_match_expected_points(db: AsyncSession, match_id: str, club_id=Non
         uuid_mod.UUID(str(match_id))
     except (ValueError, AttributeError):
         if str(match_id).lower() in ("recent", "latest", "last"):
-            recent_conditions = [Match.status == MatchStatus.COMPLETED]
+            recent_conditions = [Match.counts_in_stats]
             if club_id:
                 recent_conditions.append(Match.club_id == club_id)
             result = await db.execute(

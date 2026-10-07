@@ -630,7 +630,7 @@ INSTRUCTIONS:
                 prior_matches_result = await db.execute(
                     select(Match.id).where(
                         Match.club_id == match.club_id,
-                        Match.status == MatchStatus.COMPLETED,
+                        Match.counts_in_stats,
                         Match.id != match_uuid,
                         Match.match_date < match.match_date,
                     )

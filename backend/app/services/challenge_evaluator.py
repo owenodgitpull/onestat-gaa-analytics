@@ -44,7 +44,7 @@ class ChallengeEvaluator:
             select(Match).where(
                 and_(
                     Match.club_id == club_id,
-                    Match.status == MatchStatus.COMPLETED,
+                    Match.counts_in_stats,
                     Match.is_deleted.is_(False),
                 )
             ).order_by(Match.match_date.asc())

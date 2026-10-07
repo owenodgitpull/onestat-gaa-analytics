@@ -24,7 +24,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2 } from 'lucide-react'
+import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2 } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -2782,10 +2782,28 @@ export default function VideoTagging() {
     )
   }
 
-  /** "More" menu — the less-frequent / higher-stakes actions: Save to Match,
+  /** "More" menu — the less-frequent / higher-stakes actions: Finish & Generate Report,
    *  Tactical Report, Reset (kept away from the everyday buttons). */
+  const taggingFinished = session?.status === 'completed'
   const moreMenu = (
-    <div className="relative">
+    <div className="relative flex items-center gap-2">
+      {events.length > 0 && (
+        <button
+          onClick={() => handleSyncClick()}
+          disabled={syncPreview.isPending}
+          title={taggingFinished
+            ? 'Tagging finished — this match counts in season stats. Edits still save straight to the match.'
+            : 'Events save to the match as you tag. This match stays out of season stats until you finish tagging.'}
+          className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+            taggingFinished
+              ? 'bg-emerald-500/10 border-emerald-400/25 text-emerald-300 hover:bg-emerald-500/20'
+              : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
+          }`}
+        >
+          {taggingFinished ? <CheckCircle2 size={13} /> : <span className="w-1.5 h-1.5 rounded-full bg-sky-300 animate-pulse" />}
+          {taggingFinished ? 'Finished' : 'Tagging in progress · Finish'}
+        </button>
+      )}
       <button
         onClick={() => setShowMoreMenu(v => !v)}
         title="More"
@@ -2813,8 +2831,8 @@ export default function VideoTagging() {
             >
               {syncPreview.isPending ? <Loader2 size={15} className="animate-spin text-emerald-300" /> : <Download size={15} className="text-emerald-300" />}
               <span className="flex flex-col">
-                <span className="font-semibold">Save to Match</span>
-                <span className="text-[11px] text-white/45">Commit tagged events to the match</span>
+                <span className="font-semibold">Finish &amp; Generate Report</span>
+                <span className="text-[11px] text-white/45">Add to season stats + AI match report</span>
               </span>
             </button>
             <button
@@ -3914,7 +3932,7 @@ export default function VideoTagging() {
         </div>
         <p className="text-xs text-white/30 text-center px-4">
           Paths Taken, Score Origins, Scoreable Frees, Attack Efficiency and Season Benchmark need this match's
-          events to be saved via "Save to Match" first — they're not shown here yet.
+          events saved to the match first — they're not shown here yet.
         </p>
       </div>
 

@@ -119,6 +119,10 @@ class VideoEvent(Base):
     kickout_context: Column[Optional[dict]] = Column(JSON, nullable=True)
 
     # Possession chain link
+    # The match_events row this tag was written to live (kept in step on
+    # edit/delete). NULL = not written yet (e.g. unverified AI draft).
+    match_event_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("match_events.id", ondelete="SET NULL"), nullable=True, index=True)
+
     possession_chain_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("possession_chains.id", ondelete="SET NULL"), nullable=True)
     possession_team: Column[Optional[str]] = Column(String(20), nullable=True)
 

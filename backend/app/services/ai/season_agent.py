@@ -344,7 +344,7 @@ class SeasonAgent:
         # 2. Match context
         match_context = ""
         try:
-            _match_conds = [Match.status == MatchStatus.COMPLETED]
+            _match_conds = [Match.counts_in_stats]
             if club_id:
                 _match_conds.append(Match.club_id == club_id)
             matches_query = (
@@ -909,7 +909,7 @@ class SeasonAgent:
         last_match_row = (await db.execute(
             select(Match.match_date, Match.opponent, Match.team_goals, Match.team_points,
                    Match.opponent_goals, Match.opponent_points)
-            .where(Match.club_id == club_id, Match.status == MatchStatus.COMPLETED, Match.is_deleted == False)
+            .where(Match.club_id == club_id, Match.counts_in_stats, Match.is_deleted == False)
             .order_by(Match.match_date.desc())
             .limit(1)
         )).first()

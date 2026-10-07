@@ -622,6 +622,16 @@ async def reset_match(
     if not session:
         raise HTTPException(status_code=404, detail="Video session not found")
 
+    # Tagged events are mirrored into match_events live — remove those first
+    # (also unwinds the scoreboard + player stats they contributed).
+    from app.services.video import live_sync
+    tagged = (await db.execute(
+        select(VideoEvent).where(VideoEvent.video_session_id == session_id)
+    )).scalars().all()
+    for ve in tagged:
+        await live_sync.remove(db, ve)
+    await db.flush()
+
     await db.execute(delete(VideoEvent).where(VideoEvent.video_session_id == session_id))
     await db.execute(delete(PossessionChain).where(PossessionChain.video_session_id == session_id))
     await db.execute(delete(BallPositionSample).where(BallPositionSample.video_session_id == session_id))
@@ -638,6 +648,9 @@ async def reset_match(
     session.tracking_started_at = None
     session.tracking_completed_at = None
     session.tracking_progress_ms = None
+    await live_sync.mark_finished(db, session.match_id)
+    if session.status == "completed":
+        session.status = "uploaded"  # re-tagging starts a fresh, unfinished pass
     await db.commit()
     await db.refresh(session)
 
