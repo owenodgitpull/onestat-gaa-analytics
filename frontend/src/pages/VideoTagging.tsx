@@ -209,7 +209,14 @@ const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT', 'F
 // Shot attempts (make + miss) eligible for the post-hoc "Under pressure?"
 // prompt — own team only, mirrors live recording's PRESSURE_ELIGIBLE_TYPES
 // as closely as video's more generic event-type set allows.
-const PRESSURE_ELIGIBLE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT', 'POST_HIT', 'GOAL_CHANCE', 'FREE_KICK', 'FORTY_FIVE', 'PENALTY']
+const PRESSURE_ELIGIBLE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT', 'POST_HIT', 'GOAL_CHANCE', 'SAVED', 'HIT_POST']
+
+/** Dead-ball shots (frees, 45s, penalties) are never "under pressure" — no prompt. */
+function isDeadBallShot(data: { event_type: string; scoring_context?: any }): boolean {
+  if (['FREE_KICK', 'FORTY_FIVE', 'PENALTY'].includes(data.event_type)) return true
+  const src = String(data.scoring_context?.source ?? '').toUpperCase()
+  return src === 'FROM_FREE' || src === 'FREE' || src === 'FROM_45' || !!data.scoring_context?.wide
+}
 
 /** Derive a human-readable status label from ball position and possession.
  *  Mirrors live recording's getStatusLabel — when our own team has the ball
@@ -1290,7 +1297,7 @@ export default function VideoTagging() {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => { if (created?.id) setPendingOppScorer({ eventId: created.id, mode: 'turnover_forced' }) },
       })
-    } else if (data.team === 'team_a' && PRESSURE_ELIGIBLE_TYPES.includes(data.event_type)) {
+    } else if (data.team === 'team_a' && PRESSURE_ELIGIBLE_TYPES.includes(data.event_type) && !isDeadBallShot(data)) {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
           if (created?.id) setPendingPressure({ eventId: created.id, scoringContext: created.scoring_context || {} })
