@@ -1977,15 +1977,19 @@ export default function VideoTagging() {
   const handleEditZone = useCallback((eventId: string, zone: PitchZone) => {
     if (!sessionId) return
     const isTwoPointer = TWO_POINTER_ZONES.includes(zone)
+    // The update route replaces scoring_context wholesale — merge with the
+    // event's existing one so source (FROM_FREE...), scored, wide etc. survive
+    // a zone edit (a free point used to turn into a plain point).
+    const existing = events.find(e => e.id === eventId)?.scoring_context || {}
     updateEvent.mutate({
       eventId,
       sessionId,
       data: {
         pitch_zone: zone,
-        scoring_context: { is_two_pointer: isTwoPointer },
+        scoring_context: { ...existing, is_two_pointer: isTwoPointer },
       },
     })
-  }, [sessionId, updateEvent])
+  }, [sessionId, updateEvent, events])
 
   // ── Event team/player re-editing — parity with MatchRecording.tsx's
   // handleEditEventClick/editChoice flow. VideoEventLog previously only

@@ -85,11 +85,13 @@ def _normalize_foot(scoring_context: Optional[dict]) -> Optional[str]:
 
 
 def _auto_set_two_pointer(event_type: str, pitch_zone: str, scoring_context: dict) -> dict:
-    """Auto-detect two-pointer based on pitch zone for scoring events."""
+    """Auto-detect two-pointer from the pitch zone for scoring events — only when
+    the caller didn't say. The zone grid is coarse (whole rows), so an explicit
+    is_two_pointer from the client (the 2PT button, or an edit) always wins."""
     if event_type in SCORING_EVENT_TYPES and pitch_zone:
-        is_two_pointer = pitch_zone in TWO_POINTER_ZONES
         scoring_context = scoring_context or {}
-        scoring_context["is_two_pointer"] = is_two_pointer
+        if scoring_context.get("is_two_pointer") is None:
+            scoring_context["is_two_pointer"] = pitch_zone in TWO_POINTER_ZONES
     return scoring_context
 
 
@@ -120,7 +122,7 @@ async def create_video_event(
     session = await _get_session_for_club(session_id, user.club_id, db)
 
     # Auto-detect two-pointer from zone
-    scoring_ctx = body.scoring_context.dict() if body.scoring_context else None
+    scoring_ctx = body.scoring_context.dict(exclude_unset=True) if body.scoring_context else None
     scoring_ctx = _auto_set_two_pointer(body.event_type, body.pitch_zone, scoring_ctx)
 
     event = VideoEvent(
@@ -206,7 +208,7 @@ async def update_video_event(
 
     # Handle nested schemas
     if "scoring_context" in update_data and update_data["scoring_context"] is not None:
-        update_data["scoring_context"] = body.scoring_context.dict()
+        update_data["scoring_context"] = body.scoring_context.dict(exclude_unset=True)
     if "kickout_context" in update_data and update_data["kickout_context"] is not None:
         update_data["kickout_context"] = body.kickout_context.dict()
 
@@ -285,7 +287,7 @@ async def bulk_create_video_events(
 
     created = []
     for req in body.events:
-        scoring_ctx = req.scoring_context.dict() if req.scoring_context else None
+        scoring_ctx = req.scoring_context.dict(exclude_unset=True) if req.scoring_context else None
         scoring_ctx = _auto_set_two_pointer(req.event_type, req.pitch_zone, scoring_ctx)
 
         event = VideoEvent(
