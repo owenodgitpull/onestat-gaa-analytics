@@ -24,7 +24,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronsRight, ChevronsDown, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2 } from 'lucide-react'
+import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2 } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -305,6 +305,7 @@ export default function VideoTagging() {
   const completeTracking = useCompleteTracking()
   const resetSession = useResetVideoSession()
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
 
   // Undo-to-point modal
   const [showUndoModal, setShowUndoModal] = useState(false)
@@ -2700,128 +2701,129 @@ export default function VideoTagging() {
     return 'End'
   }
 
-  /** Action buttons row — tracking controls (when active), Report, Snapshot, Sync.
-   *  Reorganized for better UX - grouped related actions together. */
-  const actionButtons = (compact = false) => (
-    <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-      {/* Tracking Clock & Controls */}
-      {trackingClock && (
-        <div className="flex items-center gap-1.5 bg-emerald-500/10 rounded-lg px-2 py-1">
-          <div className="flex flex-col">
-            <span className={`${compact ? 'text-[8px]' : 'text-[9px]'} text-white/40 font-semibold uppercase tracking-wide`}>
-              Match Clock
-            </span>
-            <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs' : 'text-sm'} leading-tight`}>
-              {formatTrackingClock(trackingClock)}
-            </span>
-          </div>
-          <button
-            onClick={handleRequestEndTracking}
-            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md ${
-              (trackingClock.half === 1 && trackingClock.minute >= (matchData?.half_duration_mins ?? 30)) ||
-              (trackingClock.half === 2 && trackingClock.minute >= (matchData?.half_duration_mins ?? 30) * 2)
-                ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40'
-                : 'bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200'
-            } font-medium transition-colors whitespace-nowrap`}
-          >
-            {getEndButtonText()}
-          </button>
-          {(events && events.length > 0) && (
-            <button
-              onClick={() => setShowUndoModal(true)}
-              className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 font-medium transition-colors whitespace-nowrap flex items-center gap-1`}
-            >
-              <Undo2 size={compact ? 10 : 12} />
-              Undo
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Main Action Buttons - Primary */}
-      <div className="flex items-center gap-1.5">
-        <button
-          onClick={handleEnrich}
-          disabled={isEnriching || events.length === 0}
-          className={`flex items-center gap-1.5 ${compact ? 'px-3 py-1.5' : 'px-4 py-2'} rounded-lg ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-violet-400/20 backdrop-blur-sm hover:border-violet-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 text-white whitespace-nowrap`}
-          style={{ background: 'linear-gradient(135deg, rgba(124,58,237,0.4) 0%, rgba(109,40,217,0.3) 100%)' }}
-        >
-          {isEnriching ? <Loader2 size={compact ? 11 : 13} className="animate-spin" /> : <FileText size={compact ? 11 : 13} />}
-          Report
-        </button>
-        <button
-          onClick={() => { playerRef.current?.pause(); setIsSnapshotOpen(true) }}
-          className={`flex items-center gap-1.5 ${compact ? 'px-3 py-1.5' : 'px-4 py-2'} rounded-lg ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-purple-400/20 backdrop-blur-sm hover:border-purple-400/30 hover:scale-[1.02] active:scale-[0.98] text-white whitespace-nowrap`}
-          style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.4) 0%, rgba(147,51,234,0.3) 100%)' }}
-          title="Take formation snapshot"
-        >
-          <Camera size={compact ? 11 : 13} />
-          {snapshotCount > 0 ? `${snapshotCount}` : 'Snap'}
-        </button>
-        <button
-          onClick={handleSyncClick}
-          disabled={syncPreview.isPending || events.length === 0}
-          className={`flex items-center gap-1.5 ${compact ? 'px-3 py-1.5' : 'px-4 py-2'} rounded-lg ${compact ? 'text-[10px]' : 'text-xs'} font-semibold transition-all border border-emerald-400/20 backdrop-blur-sm hover:border-emerald-400/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-40 disabled:hover:scale-100 text-white whitespace-nowrap`}
-          style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.4) 0%, rgba(5,150,105,0.3) 100%)' }}
-        >
-          {syncPreview.isPending ? <Loader2 size={compact ? 11 : 13} className="animate-spin" /> : <Download size={compact ? 11 : 13} />}
-          Save
-        </button>
+  /** Match clock + End Half + Undo — centre of the header. */
+  const clockControls = (compact = false) => trackingClock ? (
+    <div className="flex items-center gap-1.5 bg-emerald-500/10 rounded-lg px-2 py-1">
+      <div className="flex flex-col">
+        <span className={`${compact ? 'text-[8px]' : 'text-[9px]'} text-white/40 font-semibold uppercase tracking-wide`}>
+          Match Clock
+        </span>
+        <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs' : 'text-sm'} leading-tight`}>
+          {formatTrackingClock(trackingClock)}
+        </span>
       </div>
+      <button
+        onClick={handleRequestEndTracking}
+        className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md ${
+          (trackingClock.half === 1 && trackingClock.minute >= (matchData?.half_duration_mins ?? 30)) ||
+          (trackingClock.half === 2 && trackingClock.minute >= (matchData?.half_duration_mins ?? 30) * 2)
+            ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40'
+            : 'bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200'
+        } font-medium transition-colors whitespace-nowrap`}
+      >
+        {getEndButtonText()}
+      </button>
+      {(events && events.length > 0) && (
+        <button
+          onClick={() => setShowUndoModal(true)}
+          className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 font-medium transition-colors whitespace-nowrap flex items-center gap-1`}
+        >
+          <Undo2 size={compact ? 10 : 12} />
+          Undo
+        </button>
+      )}
+    </div>
+  ) : null
 
-      {/* Secondary Actions - View/Edit */}
-      {!isFullscreen && (
-        <div className="flex items-center gap-1 bg-white/5 rounded-lg px-2 py-1">
+  /** View tools — right-aligned, icon + label (label hidden on narrow screens). */
+  const viewToolsBar = () => {
+    const tools: Array<{ key: string; icon: React.ReactNode; label: string; onClick: () => void }> = [
+      { key: 'stats', icon: <BarChart3 size={15} />, label: 'Stats', onClick: () => statsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+      { key: 'charts', icon: <PieChart size={15} />, label: 'Charts', onClick: () => chartsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
+      {
+        key: 'lineup', icon: <Users size={15} />,
+        label: (!matchLineup || matchLineup.length === 0) ? 'Select Lineup' : 'Lineup',
+        onClick: () => { if (!matchLineup || matchLineup.length === 0) setIsLineupModalOpen(true); else setShowViewLineup(true) },
+      },
+      { key: 'weather', icon: <CloudSun size={15} />, label: 'Weather', onClick: () => setShowWeatherPicker(true) },
+      { key: 'event', icon: <Plus size={15} />, label: 'Event', onClick: () => setShowManualEvent(true) },
+    ]
+    return (
+      <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1.5 py-1">
+        {tools.map(t => (
           <button
-            onClick={() => statsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
+            key={t.key}
+            onClick={t.onClick}
+            title={t.label}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-xs font-medium transition-colors whitespace-nowrap"
           >
-            Stats
+            {t.icon}
+            <span className="hidden lg:inline">{t.label}</span>
           </button>
-          <button
-            onClick={() => chartsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
-          >
-            Charts
-          </button>
-          <button
-            onClick={() => {
-              if (!matchLineup || matchLineup.length === 0) {
-                // No lineup - open modal to select
-                setIsLineupModalOpen(true)
-              } else {
-                // Lineup exists - view it
-                setShowViewLineup(true)
-              }
+        ))}
+      </div>
+    )
+  }
+
+  /** "More" menu — the less-frequent / higher-stakes actions: Save to Match,
+   *  Tactical Report, Reset (kept away from the everyday buttons). */
+  const moreMenu = (
+    <div className="relative">
+      <button
+        onClick={() => setShowMoreMenu(v => !v)}
+        title="More"
+        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+      >
+        <MoreHorizontal size={18} />
+      </button>
+      {showMoreMenu && (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={() => setShowMoreMenu(false)} />
+          <div
+            className="absolute right-0 top-full mt-2 z-[70] w-60 rounded-xl p-1.5"
+            style={{
+              background: 'linear-gradient(135deg, rgba(10,26,32,0.92), rgba(8,20,26,0.86))',
+              border: '1px solid rgba(255,255,255,0.14)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1)',
             }}
-            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
           >
-            {(!matchLineup || matchLineup.length === 0) ? 'Select Lineup' : 'Lineup'}
-          </button>
-          <button
-            onClick={() => setShowWeatherPicker(true)}
-            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
-          >
-            Weather
-          </button>
-          <button
-            onClick={() => setShowManualEvent(true)}
-            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md hover:bg-white/10 text-white/70 hover:text-white font-medium transition-colors whitespace-nowrap`}
-          >
-            + Event
-          </button>
-          <TacticalTagButton onTag={handleTacticalTag} tagCount={tacticalTagCount} />
-          <button
-            onClick={() => setShowResetConfirm(true)}
-            className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-red-500/10 hover:bg-red-500/20 text-red-400/80 hover:text-red-300 font-medium transition-colors whitespace-nowrap`}
-          >
-            Reset
-          </button>
-        </div>
+            <button
+              onClick={() => { setShowMoreMenu(false); handleSyncClick() }}
+              disabled={syncPreview.isPending || events.length === 0}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-sm text-white hover:bg-emerald-500/15 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            >
+              {syncPreview.isPending ? <Loader2 size={15} className="animate-spin text-emerald-300" /> : <Download size={15} className="text-emerald-300" />}
+              <span className="flex flex-col">
+                <span className="font-semibold">Save to Match</span>
+                <span className="text-[11px] text-white/45">Commit tagged events to the match</span>
+              </span>
+            </button>
+            <button
+              onClick={() => { setShowMoreMenu(false); handleEnrich() }}
+              disabled={isEnriching || events.length === 0}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-sm text-white hover:bg-violet-500/15 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
+            >
+              {isEnriching ? <Loader2 size={15} className="animate-spin text-violet-300" /> : <FileText size={15} className="text-violet-300" />}
+              <span className="flex flex-col">
+                <span className="font-semibold">Tactical Report</span>
+                <span className="text-[11px] text-white/45">AI write-up of tagged events</span>
+              </span>
+            </button>
+            <div className="my-1 h-px bg-white/10" />
+            <button
+              onClick={() => { setShowMoreMenu(false); setShowResetConfirm(true) }}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-sm text-red-300 hover:bg-red-500/15 transition-colors"
+            >
+              <RotateCcw size={15} />
+              <span className="font-semibold">Reset Match…</span>
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
-
   // The opposition Pass icon is a single-tap quick-logger, meant to work at
   // any paused moment (unlike TaggingPitch's own `disabled` prop below,
   // which also gates on `!isPlaying` for ball drag/tap-to-place and would
@@ -3150,12 +3152,27 @@ export default function VideoTagging() {
         </div>
       )}
 
+      {/* Pitch toolbar — Snap (formation snapshot) + Tag (tactical moment) on
+          the pitch's own sideline, same place live recording keeps them. */}
+      <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+        <button
+          onClick={() => { playerRef.current?.pause(); setIsSnapshotOpen(true) }}
+          title="Take formation snapshot"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white border border-purple-400/30 hover:border-purple-400/50 transition-all"
+          style={{ background: 'linear-gradient(135deg, rgba(168,85,247,0.45) 0%, rgba(147,51,234,0.3) 100%)', backdropFilter: 'blur(8px)' }}
+        >
+          <Camera size={14} />
+          {snapshotCount > 0 ? snapshotCount : 'Snap'}
+        </button>
+        <TacticalTagButton onTag={handleTacticalTag} tagCount={tacticalTagCount} />
+      </div>
+
       {/* Possession-frozen indicator — shown while the footage plays through a
           dead ball (free being taken, kickout/45 restart, a prompt open), so
           it's obvious no possession time is being counted. */}
       {mode === 'tracking' && deadBall && isPlaying && (
         <div
-          className="absolute top-2 right-2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-cyan-100 pointer-events-none"
+          className="absolute bottom-12 left-2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-cyan-100 pointer-events-none"
           style={{
             background: 'rgba(8,20,26,0.7)',
             border: '1px solid rgba(0,176,255,0.4)',
@@ -3207,7 +3224,7 @@ export default function VideoTagging() {
       {kickoutMinimised && awaitingKickout && overlayState === 'none' && (
         <button
           onClick={() => setKickoutMinimised(false)}
-          className="absolute top-2 left-2 z-20 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/20 border-2 border-amber-400/40 text-amber-200 hover:bg-amber-500/30 text-[11px] font-semibold transition-all"
+          className="absolute bottom-2 left-2 z-20 flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/20 border-2 border-amber-400/40 text-amber-200 hover:bg-amber-500/30 text-[11px] font-semibold transition-all"
           title="Resume the kickout prompt"
         >
           <div className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
@@ -3611,7 +3628,8 @@ export default function VideoTagging() {
           </div>
 
           {scoreboard(true)}
-          {actionButtons(true)}
+          {clockControls(true)}
+          {moreMenu}
         </div>
 
         {/* 50/50 video + pitch */}
@@ -3677,13 +3695,21 @@ export default function VideoTagging() {
           Title/event-count and the scoreboard were dropped from here to
           keep the video area in focus on laptop-height screens — the
           scoreboard now lives inline in the status bar below instead. */}
-      <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
-        <button onClick={() => navigate(-1)} className="p-2 text-white/50 hover:text-white transition-colors flex-shrink-0">
-          <ArrowLeft size={20} />
-        </button>
-        {/* Scoreboard lives here now that the status container is gone */}
-        <div className="flex-shrink-0" data-tour="video-scoreboard">{scoreboard(true)}</div>
-        {actionButtons()}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2 xl:grid xl:grid-cols-[1fr_auto_1fr]">
+        {/* Left: back + scoreline */}
+        <div className="flex items-center gap-2 justify-self-start min-w-0">
+          <button onClick={() => navigate(-1)} className="p-2 text-white/50 hover:text-white transition-colors flex-shrink-0">
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex-shrink-0" data-tour="video-scoreboard">{scoreboard(true)}</div>
+        </div>
+        {/* Centre: match clock */}
+        <div className="justify-self-center">{clockControls()}</div>
+        {/* Right: view tools + More */}
+        <div className="flex items-center gap-2 justify-self-end">
+          {viewToolsBar()}
+          {moreMenu}
+        </div>
       </div>
       {/* Auto-analyze processing banner */}
       {isAutoAnalyzing && (
