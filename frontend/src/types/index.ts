@@ -234,6 +234,16 @@ export enum PossessionTeam {
   CONTESTED = 'contested',
 }
 
+/** Server-side possession totals for a match (GET /possession-events/summary). */
+export interface PossessionSummary {
+  own_seconds: number
+  opponent_seconds: number
+  own_count: number
+  opponent_count: number
+  own_spells: number
+  opponent_spells: number
+}
+
 export interface PossessionEvent {
   id: number;
   match_id: number;

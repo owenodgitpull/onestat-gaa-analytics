@@ -7,12 +7,13 @@ Handles ball movement and possession changes during matches.
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select
+from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.possession_event import PossessionEvent, PossessionTeam
+from app.models.match import Match
 from app.schemas.possession_event import (
     PossessionEventCreate,
     PossessionEventBulkCreate,
@@ -22,6 +23,63 @@ from app.schemas.possession_event import (
 from app.services.possession_service import PossessionService
 
 router = APIRouter()
+
+
+@router.get("/summary")
+async def possession_summary(
+    match_id: UUID = Query(..., description="Match ID"),
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Possession totals for a match, computed in the database.
+
+    The stats panels only need totals (time split, event counts, spells), not
+    the thousands of rows behind them — fetching every row on a timer made each
+    poll heavier as the match went on. One indexed aggregate returns ~6 numbers.
+
+    Rules mirror the previous client-side maths: anything that isn't "own" counts
+    as the opposition; a "spell" is a run of consecutive events by the same side.
+    """
+    owner = await db.execute(
+        select(Match.id).where(Match.id == match_id, Match.club_id == user.club_id)
+    )
+    if owner.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    is_own = case((PossessionEvent.team == "own", True), else_=False)
+    prev_own = func.lag(is_own).over(order_by=(PossessionEvent.created_at, PossessionEvent.id))
+    rows = (
+        select(
+            is_own.label("own"),
+            func.coalesce(PossessionEvent.duration_seconds, 0).label("secs"),
+            prev_own.label("prev_own"),
+        )
+        .where(PossessionEvent.match_id == match_id)
+        .subquery()
+    )
+    # IS DISTINCT FROM so the very first row (prev NULL) starts a spell
+    own_spell = (rows.c.own.is_(True)) & (rows.c.prev_own.is_distinct_from(True))
+    opp_spell = (rows.c.own.is_(False)) & (rows.c.prev_own.is_distinct_from(False))
+    result = await db.execute(
+        select(
+            func.coalesce(func.sum(rows.c.secs).filter(rows.c.own.is_(True)), 0),
+            func.coalesce(func.sum(rows.c.secs).filter(rows.c.own.is_(False)), 0),
+            func.count().filter(rows.c.own.is_(True)),
+            func.count().filter(rows.c.own.is_(False)),
+            func.count().filter(own_spell),
+            func.count().filter(opp_spell),
+        )
+    )
+    own_s, opp_s, own_n, opp_n, own_spells, opp_spells = result.one()
+    return {
+        "own_seconds": int(own_s),
+        "opponent_seconds": int(opp_s),
+        "own_count": int(own_n),
+        "opponent_count": int(opp_n),
+        "own_spells": int(own_spells),
+        "opponent_spells": int(opp_spells),
+    }
 
 
 @router.post("/video-batch", status_code=status.HTTP_201_CREATED)

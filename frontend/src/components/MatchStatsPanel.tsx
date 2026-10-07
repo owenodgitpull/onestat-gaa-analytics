@@ -12,11 +12,10 @@
  * Renders via the existing StatsTable component.
  */
 
-import { useQuery } from '@tanstack/react-query'
 import { Activity } from 'lucide-react'
-import { api } from '../services/api'
+import { usePossessionSummary } from '../hooks/useMatchEvents'
 import StatsTable from './charts/StatsTable'
-import type { MatchStats } from '../types'
+import type { MatchStats, PossessionSummary } from '../types'
 import type { ChartEvent } from '../utils/videoEventChartAdapter'
 
 interface MatchStatsPanelProps {
@@ -61,7 +60,7 @@ const GOAL_CHANCE_TYPES = new Set(['goal', 'penalty_goal', 'penalty_miss', 'save
  */
 function computeStatsFromEvents(
   events: ChartEvent[],
-  possessionEvents?: unknown[]
+  possession?: PossessionSummary
 ): MatchStats {
   // Counting rules are a direct port of the backend's match_service
   // get_match_stats (what Live Recording / Match Result show), so Video
@@ -150,26 +149,17 @@ function computeStatsFromEvents(
   // The API returns `team: 'own' | 'opponent'` — NOT is_home_team (the old
   // code read that nonexistent field, so every event counted as the
   // opposition's and Dungloe showed 0% regardless of what was recorded).
-  const isOwnPoss = (p: any) => (p.team != null ? p.team === 'own' : !!p.is_home_team)
-  const possList = (possessionEvents ?? []) as any[]
-  const sortedPoss = [...possList].sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')))
-  let ownPossessionCount = 0
-  let oppPossessionCount = 0
-  let prevPoss: 'own' | 'opponent' | null = null
-  for (const p of sortedPoss) {
-    const curr = isOwnPoss(p) ? 'own' : 'opponent'
-    if (curr !== prevPoss) {
-      if (curr === 'own') ownPossessionCount++
-      else oppPossessionCount++
-      prevPoss = curr
-    }
-  }
-  const ownPossSecs = possList.filter(isOwnPoss).reduce((s, p) => s + (p.duration_seconds ?? 0), 0)
-  const totalPossSecs = possList.reduce((s, p) => s + (p.duration_seconds ?? 0), 0)
+  // The server now does the counting (usePossessionSummary) — same rules, a
+  // handful of numbers instead of every row.
+  const ownPossessionCount = possession?.own_spells ?? 0
+  const oppPossessionCount = possession?.opponent_spells ?? 0
+  const ownPossSecs = possession?.own_seconds ?? 0
+  const totalPossSecs = ownPossSecs + (possession?.opponent_seconds ?? 0)
+  const possEventCount = (possession?.own_count ?? 0) + (possession?.opponent_count ?? 0)
   const teamPossessionPct = totalPossSecs > 0
     ? (ownPossSecs / totalPossSecs) * 100
-    : possList.length > 0 ? (possList.filter(isOwnPoss).length / possList.length) * 100 : 0
-  const oppPossessionPct = totalPossSecs > 0 || possList.length > 0 ? 100 - teamPossessionPct : 0
+    : possEventCount > 0 ? ((possession?.own_count ?? 0) / possEventCount) * 100 : 0
+  const oppPossessionPct = totalPossSecs > 0 || possEventCount > 0 ? 100 - teamPossessionPct : 0
 
   // Poss → Shots %
   const teamPossToShotsPct = ownPossessionCount > 0 ? (ownShots / ownPossessionCount) * 100 : 0
@@ -229,19 +219,15 @@ export default function MatchStatsPanel({
   hasEvents,
   onOpenExtraStats,
 }: MatchStatsPanelProps) {
-  // Fetch live possession count if computing from events
-  const { data: possessionEvents } = useQuery({
-    queryKey: ['possession-events', matchId],
-    queryFn: () => api.possession.getByMatch(matchId!),
-    enabled: !!matchId && !!events && !matchStats,
-    refetchInterval: 15000,
-  })
+  // Possession totals when computing from events (one cheap aggregate, shared
+  // with every other panel on the page — not every possession row on a timer)
+  const { data: possessionSummary } = usePossessionSummary(matchId, !!events && !matchStats)
 
   // Use provided matchStats OR compute from events
   const stats: MatchStats | undefined = matchStats
     ? matchStats
     : events
-      ? computeStatsFromEvents(events, possessionEvents)
+      ? computeStatsFromEvents(events, possessionSummary)
       : undefined
 
   if (!stats) {

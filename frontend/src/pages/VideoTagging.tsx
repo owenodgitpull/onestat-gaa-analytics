@@ -911,13 +911,16 @@ export default function VideoTagging() {
     const batch = possBufferRef.current.splice(0, 500)
     try {
       await api.possession.videoBatch({ match_id: matchId, points: batch })
+      // Possession stats panels read a server-side aggregate — refresh it now
+      // that new durations are saved (cheap: ~6 numbers)
+      queryClient.invalidateQueries({ queryKey: ['possession-summary', matchId] })
     } catch (err) {
       possBufferRef.current.unshift(...batch)
       console.error('Failed to send possession batch (video tagging):', err)
     } finally {
       isPossSendingRef.current = false
     }
-  }, [session?.match_id])
+  }, [session?.match_id, queryClient])
 
   // Turn the accumulated video-time possession into buffered points. With
   // `forcePoint`, also queue a (possibly 0s) location point for the team in

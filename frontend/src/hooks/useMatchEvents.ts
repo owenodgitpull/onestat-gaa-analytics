@@ -22,7 +22,29 @@ export const matchEventKeys = {
 export const possessionKeys = {
   all: ['possession'] as const,
   byMatch: (matchId: string) => ['possession', 'match', matchId] as const,
+  summary: (matchId: string) => ['possession-summary', matchId] as const,
 };
+
+/**
+ * Possession totals (time split, counts, spells) from one cheap server-side
+ * aggregate — what the stats panels need. Shared key, so every panel on the
+ * page reuses a single request. Live Recording refreshes on a slow timer;
+ * Video Tagging also invalidates this key whenever it saves a possession batch.
+ */
+export function usePossessionSummary(matchId: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: possessionKeys.summary(matchId!),
+    queryFn: () => api.possession.summary(matchId!),
+    enabled: !!matchId && enabled,
+    staleTime: 10_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+    retry: (failureCount, error) => {
+      if (error instanceof TypeError && error.message === 'Failed to fetch') return false
+      return failureCount < 1
+    },
+  });
+}
 
 // ============================================================================
 // Match Event Queries

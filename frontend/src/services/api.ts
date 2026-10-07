@@ -8,6 +8,7 @@ import type {
   Player,
   MatchEvent,
   PossessionEvent,
+  PossessionSummary,
   MatchStats,
   FixturePreview,
   FormResult,
@@ -602,6 +603,14 @@ export const possessionAPI = {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  /**
+   * Possession totals for a match, computed server-side (~6 numbers). Use this
+   * for stats panels instead of downloading every row.
+   */
+  summary: async (matchId: string): Promise<PossessionSummary> => {
+    return fetchAPI<PossessionSummary>(`/possession-events/summary?match_id=${matchId}`);
   },
 
   /**

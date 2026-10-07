@@ -19,9 +19,8 @@
  * the same way live recording does).
  */
 
-import { useQuery } from '@tanstack/react-query'
 import { Activity } from 'lucide-react'
-import { api } from '../../services/api'
+import { usePossessionSummary } from '../../hooks/useMatchEvents'
 import type { ChartEvent } from '../../utils/videoEventChartAdapter'
 
 interface VideoStatsPanelProps {
@@ -56,22 +55,18 @@ export default function VideoStatsPanel({
 }: VideoStatsPanelProps) {
   // Possession genuinely is live — ball drags on the tracking pitch already
   // write into the same possession_events table live recording reads.
-  const { data: possessionEvents } = useQuery({
-    queryKey: ['possession-events', matchId],
-    queryFn: () => api.possession.getByMatch(matchId),
-    enabled: !!matchId,
-    refetchInterval: 15000,
-  })
+  // Totals come from one server-side aggregate (shared with MatchStatsPanel),
+  // refreshed every time Video Tagging saves a possession batch.
+  const { data: possessionSummary } = usePossessionSummary(matchId)
   // The API returns `team: 'own' | 'opponent'` and `duration_seconds` (the
   // PossessionEvent TS type is stale and still says is_home_team, which the
   // backend never sends — reading it counted EVERY event as the opposition's).
   // Possession % is by time (video-time durations written by Video Tagging),
   // falling back to event counts only if no durations exist yet.
-  const isOwnPoss = (p: any) => (p.team != null ? p.team === 'own' : !!p.is_home_team)
-  const ownPossession = possessionEvents?.filter(isOwnPoss).length ?? 0
-  const oppPossession = (possessionEvents?.length ?? 0) - ownPossession
-  const ownSeconds = possessionEvents?.filter(isOwnPoss).reduce((s, p: any) => s + (p.duration_seconds ?? 0), 0) ?? 0
-  const oppSeconds = possessionEvents?.filter(p => !isOwnPoss(p)).reduce((s, p: any) => s + (p.duration_seconds ?? 0), 0) ?? 0
+  const ownPossession = possessionSummary?.own_count ?? 0
+  const oppPossession = possessionSummary?.opponent_count ?? 0
+  const ownSeconds = possessionSummary?.own_seconds ?? 0
+  const oppSeconds = possessionSummary?.opponent_seconds ?? 0
   const secondsTotal = ownSeconds + oppSeconds
   const possessionTotal = ownPossession + oppPossession
   const ownPossessionPct = secondsTotal > 0
