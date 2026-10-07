@@ -1571,7 +1571,16 @@ export default function VideoTagging() {
 
     const matchTime = calcMatchTime(currentTimeMs)
     const zone = ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined
-    const isTwoPointer = zone ? TWO_POINTER_ZONES.includes(zone) : false
+    // Two-pointer = outside the taking team's 40m arc, measured on the ACTUAL
+    // ball position (so an adjusted free counts from where it's really taken).
+    // Same ellipse the Point / 2PT buttons use to enable themselves. The coarse
+    // zone grid (TWO_POINTER_ZONES) is NOT used here: it marks whole rows of the
+    // pitch, so a free brought inside the arc still came out as a 2-pointer.
+    const takingRight = team === 'team_a' ? (teamAttackingRightThisHalf ?? true) : !(teamAttackingRightThisHalf ?? true)
+    const takingGoalX = takingRight ? 100 : 0
+    const isTwoPointer = ballPosition
+      ? (((ballPosition.x - takingGoalX) / 29.0) ** 2 + ((ballPosition.y - 50) / 46.0) ** 2) > 1
+      : false
 
     const scoringContext: Record<string, unknown> = {}
     // Sources use the backend's uppercase vocabulary (FROM_FREE / FROM_PLAY /
@@ -1639,7 +1648,7 @@ export default function VideoTagging() {
       { action, eventData: data, freeKickContext: isFreeResult },
       { keepResumeState: isFreeResult || is45Result },
     )
-  }, [possession, calcMatchTime, currentTimeMs, ballPosition, pendingFreeKick, handleEventTap])
+  }, [possession, calcMatchTime, currentTimeMs, ballPosition, pendingFreeKick, handleEventTap, teamAttackingRightThisHalf])
 
   /** CategorizedActionButtons foul callback */
   const handleFoulClick = useCallback((team: 'own' | 'opponent') => {
@@ -3586,13 +3595,15 @@ export default function VideoTagging() {
         </div>
       )}
       {showResetConfirm && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => setShowResetConfirm(false)}>
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => { if (!resetSession.isPending) setShowResetConfirm(false) }}>
           <div className="absolute inset-0 bg-black/60" />
           <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-white mb-2">Reset Match?</h3>
+            <h3 className="text-sm font-bold text-white mb-2">{resetSession.isPending ? 'Resetting match…' : 'Reset Match?'}</h3>
             <p className="text-xs text-white/60 mb-4">
-              This deletes every tagged event and clears tracking progress so you can re-track from scratch.
-              Your throw-in, half-time, full-time and attack-direction marks are kept.
+              {resetSession.isPending
+                ? 'Clearing tagged events, possession and ball tracking. This can take a few seconds — please wait.'
+                : <>This deletes every tagged event and clears tracking progress so you can re-track from scratch.
+                    Your throw-in, half-time, full-time and attack-direction marks are kept.</>}
             </p>
             <div className="flex gap-2">
               <button
@@ -3619,17 +3630,24 @@ export default function VideoTagging() {
                   carrierPathBufferRef.current = []
                   activeSegmentRef.current = null
                   setThrowInWinnerChosen(false)
-                  resetSession.mutate({ sessionId })
-                  setShowResetConfirm(false)
+                  resetSession.mutate({ sessionId }, {
+                    onSuccess: () => setShowResetConfirm(false),
+                    onError: (err: any) => {
+                      setShowResetConfirm(false)
+                      setAlertModal({ title: 'Reset failed', message: err?.message || 'Could not reset the match. Please try again.', variant: 'danger' })
+                    },
+                  })
                 }}
                 disabled={resetSession.isPending}
-                className="flex-1 px-4 py-2.5 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-all disabled:opacity-40"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-all disabled:opacity-70 disabled:cursor-wait"
               >
+                {resetSession.isPending && <Loader2 size={15} className="animate-spin" />}
                 {resetSession.isPending ? 'Resetting…' : 'Reset Match'}
               </button>
               <button
                 onClick={() => setShowResetConfirm(false)}
-                className="px-4 py-2.5 rounded-lg bg-white/10 text-white/60 hover:text-white text-sm transition-colors"
+                disabled={resetSession.isPending}
+                className="px-4 py-2.5 rounded-lg bg-white/10 text-white/60 hover:text-white text-sm transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>

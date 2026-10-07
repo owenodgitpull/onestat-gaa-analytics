@@ -157,8 +157,10 @@ class VideoEventMapper:
         if video_event_type == "SIDELINE_KICK":
             return EventType.OWN_KICKOUT_SIDELINE if team == "team_a" else EventType.OPP_KICKOUT_SIDELINE
 
-        # If zone provided but is_two_pointer not set, derive from zone
-        if not is_two_pointer and pitch_zone:
+        # Derive from the (coarse) zone ONLY when the client didn't say either way
+        # (e.g. AI-detected events). An explicit False from Video Tagging means the
+        # shot was inside the 40m arc and must not be flipped back by the zone row.
+        if ctx.get("is_two_pointer") is None and pitch_zone:
             is_two_pointer = pitch_zone in TWO_POINTER_ZONES
 
         if video_event_type == "POINT_SCORED":
