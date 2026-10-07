@@ -143,13 +143,19 @@ interface EventConfig {
   playerModalTitle?: string
   playerModalEventType?: string
   description?: string
+  /** 2-pointer: sent as POINT_SCORED + scoring_context.is_two_pointer (the
+   *  backend has no TWO_POINT_SCORED type — it rejected it with a 422). */
+  twoPointer?: boolean
+  /** Penalty outcome: sent as PENALTY + scoring_context.scored. */
+  scored?: boolean
+  /** Free that missed: sent as FREE_KICK + scoring_context.wide (maps to WIDE_FREE). */
+  wideFree?: boolean
 }
 
 /** Scores / wides / 45s / penalties — the ball is dead and the OTHER team
  *  restarts with a kickout (live recording's awaitingKickout). */
 const KICKOUT_RESTART_VIDEO_TYPES = new Set([
-  'GOAL_SCORED', 'POINT_SCORED', 'TWO_POINT_SCORED', 'WIDE', 'FORTY_FIVE',
-  'PENALTY_GOAL_MARKER', 'PENALTY_MISS_MARKER',
+  'GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'FORTY_FIVE', 'PENALTY', 'FREE_KICK',
 ])
 /** Shot outcomes where play continues and the other team gets the ball, with
  *  no kickout prompt (matches live recording). */
@@ -158,7 +164,7 @@ const SHOT_TURNOVER_VIDEO_TYPES = new Set(['SHORT', 'SAVED', 'HIT_POST'])
 const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.GOAL]: { videoType: 'GOAL_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'goal' },
   [EventType.POINT]: { videoType: 'POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
-  [EventType.TWO_POINT]: { videoType: 'TWO_POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
+  [EventType.TWO_POINT]: { videoType: 'POINT_SCORED', twoPointer: true, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
   [EventType.WIDE]: { videoType: 'WIDE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
   [EventType.SHORT]: { videoType: 'SHORT', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'saved' },
   [EventType.SAVED]: { videoType: 'SAVED', needsPlayer: false, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts' },
@@ -167,12 +173,12 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.FREE_HIGH_BALL]: { videoType: 'PASS_KICK', needsPlayer: true, autoSwitchTab: 'scoring', playerModalTitle: 'Who Took the Free?', playerModalEventType: 'point_free', description: 'High ball (free)' },
   [EventType.HIT_POST]: { videoType: 'HIT_POST', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'wide' },
   [EventType.POINT_FREE]: { videoType: 'POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
-  [EventType.TWO_POINT_FREE]: { videoType: 'TWO_POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
-  [EventType.WIDE_FREE]: { videoType: 'WIDE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
+  [EventType.TWO_POINT_FREE]: { videoType: 'POINT_SCORED', twoPointer: true, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
+  [EventType.WIDE_FREE]: { videoType: 'FREE_KICK', wideFree: true, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
   [EventType.FORTY_FIVE]: { videoType: 'FORTY_FIVE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'point' },
   [EventType.FORTY_FIVE_MISSED]: { videoType: 'FORTY_FIVE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
-  [EventType.PENALTY_GOAL]: { videoType: 'PENALTY_GOAL_MARKER', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'goal' },
-  [EventType.PENALTY_MISS]: { videoType: 'PENALTY_MISS_MARKER', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
+  [EventType.PENALTY_GOAL]: { videoType: 'PENALTY', scored: true, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'goal' },
+  [EventType.PENALTY_MISS]: { videoType: 'PENALTY', scored: false, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
   [EventType.TURNOVER_WON]: { videoType: 'TURNOVER_WON', needsPlayer: true, autoFlipTo: 'us', playerModalTitle: 'Who Won Turnover?', playerModalEventType: 'turnover_won' },
   [EventType.TACKLE_WON]: { videoType: 'TACKLE_WON', needsPlayer: true, autoFlipTo: 'us', playerModalTitle: 'Who Won Tackle?', playerModalEventType: 'turnover_won' },
   [EventType.TURNOVER_LOST]: { videoType: 'TURNOVER_LOST', needsPlayer: true, autoFlipTo: 'them', playerModalTitle: 'Who Lost Possession?', playerModalEventType: 'turnover_lost' },
@@ -197,7 +203,7 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
 
 // Scoring event types that trigger the opposition-scorer name prompt when
 // team_b (the opponent) is credited with them.
-const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT']
+const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT', 'FREE_KICK']
 
 // Shot attempts (make + miss) eligible for the post-hoc "Under pressure?"
 // prompt — own team only, mirrors live recording's PRESSURE_ELIGIBLE_TYPES
@@ -563,7 +569,13 @@ export default function VideoTagging() {
   })
 
   // Mutations
-  const createEvent = useCreateVideoEvent()
+  const createEvent = useCreateVideoEvent({
+    onError: (err, data) => setAlertModal({
+      title: 'Event not saved',
+      message: `${data.event_type.replace(/_/g, ' ').toLowerCase()} could not be saved (${err.message}). Please try again.`,
+      variant: 'danger',
+    }),
+  })
   const updateEvent = useUpdateVideoEvent()
   const deleteEvent = useDeleteVideoEvent()
   const verifyEvent = useVerifyVideoEvent()
@@ -1549,12 +1561,17 @@ export default function VideoTagging() {
     const isTwoPointer = zone ? TWO_POINTER_ZONES.includes(zone) : false
 
     const scoringContext: Record<string, unknown> = {}
-    if (['GOAL_SCORED', 'POINT_SCORED', 'TWO_POINT_SCORED', 'WIDE', 'SHORT', 'HIT_POST', 'SAVED'].includes(config.videoType)) {
-      scoringContext.is_two_pointer = config.videoType === 'TWO_POINT_SCORED' || isTwoPointer
-      scoringContext.source = isFreeResult ? 'free' : 'from_play'
+    // Sources use the backend's uppercase vocabulary (FROM_FREE / FROM_PLAY /
+    // FROM_45) — the sync mapper and chart adapter key off 'FROM_FREE', so the
+    // old lowercase 'free' made every free point sync as an ordinary point.
+    if (['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT', 'HIT_POST', 'SAVED', 'FREE_KICK'].includes(config.videoType)) {
+      scoringContext.is_two_pointer = !!config.twoPointer || isTwoPointer
+      scoringContext.source = isFreeResult ? 'FROM_FREE' : 'FROM_PLAY'
     }
+    if (config.wideFree) scoringContext.wide = true
+    if (config.videoType === 'PENALTY') scoringContext.scored = !!config.scored
     if (is45Result) {
-      scoringContext.source = '45'
+      scoringContext.source = 'FROM_45'
       scoringContext.scored = eventType === EventType.FORTY_FIVE
     }
 

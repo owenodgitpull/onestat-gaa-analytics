@@ -38,6 +38,9 @@ VIDEO_EVENT_TYPES = [
     "OPP_KICKOUT_WON_BREAK", "OPP_KICKOUT_OPPOSITION_WON_BREAK",
     # Unforced errors
     "OUR_UNFORCED_ERROR", "OPP_UNFORCED_ERROR",
+    # Shot outcomes / defensive events the Video Tagging action bar emits
+    # (previously rejected with a 422 — the event silently never saved)
+    "SAVED", "HIT_POST", "TACKLE_WON",
 ]
 
 PITCH_ZONES = [

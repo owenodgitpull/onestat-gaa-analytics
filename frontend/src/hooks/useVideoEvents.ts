@@ -25,7 +25,11 @@ export function useVideoEvents(sessionId: string | null) {
 }
 
 /** Create a single video event. */
-export function useCreateVideoEvent() {
+export function useCreateVideoEvent(opts?: {
+  /** Called when the server rejects/fails an event — without it a rejected
+   *  event (e.g. a 422 on an unknown type) just silently never appears. */
+  onError?: (error: Error, data: VideoEventCreateData) => void;
+}) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -35,6 +39,10 @@ export function useCreateVideoEvent() {
       queryClient.invalidateQueries({
         queryKey: videoEventKeys.bySession(variables.sessionId),
       });
+    },
+    onError: (error, variables) => {
+      console.error('Failed to create video event:', error, variables.data);
+      opts?.onError?.(error as Error, variables.data);
     },
   });
 }

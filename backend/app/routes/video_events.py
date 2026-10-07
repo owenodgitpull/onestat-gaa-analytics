@@ -368,6 +368,7 @@ def _compute_sync_plan(
             ve.event_type,
             scoring_context=ve.scoring_context,
             pitch_zone=ve.pitch_zone,
+            team=ve.team,
         )
         if not match_event_type:
             skipped.append(ve)
@@ -583,6 +584,7 @@ async def process_video_sync(
                     ve.event_type,
                     scoring_context=ve.scoring_context,
                     pitch_zone=ve.pitch_zone,
+                    team=ve.team,
                 )
                 if not match_event_type:
                     continue
@@ -620,6 +622,7 @@ async def process_video_sync(
                     ve.event_type,
                     scoring_context=ve.scoring_context,
                     pitch_zone=ve.pitch_zone,
+                    team=ve.team,
                 )
                 if match_event_type:
                     me.event_type = match_event_type
@@ -712,6 +715,7 @@ async def sync_events_to_match(
                 ve.event_type,
                 scoring_context=ve.scoring_context,
                 pitch_zone=ve.pitch_zone,
+                team=ve.team,
             )
             if not match_event_type:
                 skipped += 1

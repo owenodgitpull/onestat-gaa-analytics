@@ -22,6 +22,13 @@ class VideoEventMapper:
         "WIDE": EventType.WIDE,
         "SHORT": EventType.SHORT,
 
+        # Shot outcomes / tackles (previously not mapped -> silently dropped on sync)
+        "SAVED": EventType.SAVED,
+        "HIT_POST": EventType.HIT_POST,
+        "TACKLE_WON": EventType.TACKLE_WON,
+        # Our foul (we concede a free) — previously dropped on sync
+        "FOUL_COMMITTED": EventType.FOUL_COMMITTED,
+
         # Turnovers
         "TURNOVER_WON": EventType.TURNOVER_WON,
         "TURNOVER_LOST": EventType.TURNOVER_LOST,
@@ -126,6 +133,7 @@ class VideoEventMapper:
         video_event_type: str,
         scoring_context: Optional[dict] = None,
         pitch_zone: Optional[str] = None,
+        team: Optional[str] = None,
     ) -> Optional[EventType]:
         """
         Map a VideoEvent type to a MatchEvent EventType.
@@ -140,14 +148,21 @@ class VideoEventMapper:
         """
         ctx = scoring_context or {}
         is_two_pointer = ctx.get("is_two_pointer", False)
+        # Tolerate the legacy lowercase source value ("free") as well as FROM_FREE
+        source_norm = str(ctx.get("source", "") or "").upper()
+        is_from_free = source_norm in ("FROM_FREE", "FREE")
+
+        # Kickout that went straight over the sideline — whose kickout it was
+        # decides the type (team_a = us)
+        if video_event_type == "SIDELINE_KICK":
+            return EventType.OWN_KICKOUT_SIDELINE if team == "team_a" else EventType.OPP_KICKOUT_SIDELINE
 
         # If zone provided but is_two_pointer not set, derive from zone
         if not is_two_pointer and pitch_zone:
             is_two_pointer = pitch_zone in TWO_POINTER_ZONES
 
         if video_event_type == "POINT_SCORED":
-            source = ctx.get("source", "")
-            if source == "FROM_FREE":
+            if is_from_free:
                 return EventType.TWO_POINT_FREE if is_two_pointer else EventType.POINT_FREE
             return EventType.TWO_POINT if is_two_pointer else EventType.POINT
 

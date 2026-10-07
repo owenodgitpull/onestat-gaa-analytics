@@ -59,7 +59,7 @@ function mapContextDependent(ve: VideoEvent, isTwoPointer: boolean): string | nu
   const ctx = ve.scoring_context || {}
   switch (ve.event_type) {
     case 'POINT_SCORED':
-      if (ctx.source === 'FROM_FREE') return isTwoPointer ? 'two_point_free' : 'point_free'
+      if (String(ctx.source ?? '').toUpperCase() === 'FROM_FREE' || String(ctx.source ?? '').toUpperCase() === 'FREE') return isTwoPointer ? 'two_point_free' : 'point_free'
       return isTwoPointer ? 'two_point' : 'point'
     case 'FREE_KICK':
       if (ctx.scored) return isTwoPointer ? 'two_point_free' : 'point_free'
@@ -77,6 +77,10 @@ function mapContextDependent(ve: VideoEvent, isTwoPointer: boolean): string | nu
 /** Direct 1:1 mappings — same table as VideoEventMapper._TO_MATCH_EVENT. */
 const DIRECT_MAP: Record<string, string> = {
   GOAL_SCORED: 'goal',
+  SAVED: 'saved',
+  HIT_POST: 'hit_post',
+  TACKLE_WON: 'tackle_won',
+  FOUL_COMMITTED: 'foul_committed',
   WIDE: 'wide',
   SHORT: 'short',
   TURNOVER_WON: 'turnover_won',
