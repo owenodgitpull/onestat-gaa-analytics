@@ -111,10 +111,13 @@ export default function MatchResult() {
     if (!matchId || matchLoading || eventsLoading || videoSessionsLoading) return
     const hasLiveEvents = (eventsData?.events?.length ?? 0) > 0
     const hasVideoSessions = (videoSessionsData?.sessions?.length ?? 0) > 0
-    if (!hasLiveEvents && hasVideoSessions) {
+    // Tagged video events now go straight into the match, so "no live events"
+    // no longer means "tagging in progress". A match that is mid video-tagging
+    // always resumes at its video session(s), whatever events it has so far.
+    if (hasVideoSessions && (!hasLiveEvents || match?.video_tagging_in_progress)) {
       navigate(`/results/${matchId}/video`, { replace: true })
     }
-  }, [matchId, matchLoading, eventsLoading, videoSessionsLoading, eventsData, videoSessionsData, navigate])
+  }, [matchId, matchLoading, eventsLoading, videoSessionsLoading, eventsData, videoSessionsData, match?.video_tagging_in_progress, navigate])
 
   // Fetch post-match AI analysis.
   // A first-ever (uncached) report can take 1-3 minutes to generate (multiple
@@ -555,7 +558,7 @@ export default function MatchResult() {
             className="btn-glass inline-flex items-center gap-2 !px-4 !py-2 text-sm"
           >
             <Video size={16} />
-            <span>Attach Video</span>
+            <span>{(videoSessionsData?.sessions?.length ?? 0) > 0 ? 'Open Video Tagging' : 'Attach Video'}</span>
           </Link>
         )}
       </div>

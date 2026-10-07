@@ -116,6 +116,8 @@ class MatchResponse(MatchBase):
     """Schema for match responses."""
     id: UUID
     status: MatchStatus
+    # True while the match is being tagged from video and not yet finished
+    video_tagging_in_progress: bool = False
     team_goals: int
     team_points: int
     opponent_goals: int

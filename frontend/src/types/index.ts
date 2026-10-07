@@ -86,6 +86,8 @@ export interface Match {
   current_phase?: string | null;
   second_half_started_at?: string | null;
   attacking_right_first_half?: boolean | null;
+  /** True while being tagged from video and not yet finished (kept out of season stats) */
+  video_tagging_in_progress?: boolean;
   half_duration_mins?: number;
   // Actual dimensions of this ground in metres, if known (GAA regulation
   // 130-145m x 80-90m) — optional, falls back to the app-wide 145x90m
