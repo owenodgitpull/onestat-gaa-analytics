@@ -24,7 +24,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2 } from 'lucide-react'
+import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -333,6 +333,23 @@ export default function VideoTagging() {
   // far. Initialized from the server-persisted high-water mark once (so a
   // refresh mid-tracking resumes the lock correctly), then only grows.
   const [highWaterMarkMs, setHighWaterMarkMs] = useState(0)
+  // ── Tracking vs Review ───────────────────────────────────────────────────────
+  // TRACKING: events, possession and ball movement are being recorded (the normal state).
+  // REVIEW: free roam — rewind, fast-forward and play (even ahead of where tracking stopped) to
+  // work something out. Nothing is recorded: no possession time, no events, the tracking mark
+  // never moves, and any open prompt is PARKED (kept, not lost) until you Return to Tracking.
+  const [reviewing, setReviewing] = useState(false)
+  const reviewingRef = useRef(false)
+  // "Review last 10 seconds": returns to tracking by itself once playback reaches this time
+  const autoReturnAtRef = useRef<number | null>(null)
+  // Ignore stale time updates for a moment after returning (the seek hasn't landed yet)
+  const reviewExitedAtRef = useRef(0)
+  // Review last 10s only auto-returns after playback has actually started from the earlier point
+  const autoReturnArmedRef = useRef(false)
+  const enterReviewRef = useRef<(opts?: { pause?: boolean }) => void>(() => {})
+  const exitReviewRef = useRef<(opts?: { seek?: boolean }) => void>(() => {})
+  const replayLast10Ref = useRef<() => void>(() => {})
+  const inputPendingRef = useRef(false)
   const highWaterMarkRef = useRef(0)
   const highWaterMarkInitRef = useRef(false)
   const lastPersistedProgressRef = useRef(0)
@@ -624,9 +641,10 @@ export default function VideoTagging() {
   // pitch border that the top banner points to.
   const pitchInputNeeded = overlayState === 'pitch' || !!pendingFoulSubtype || !!pendingTurnoverReason ||
     !!pendingErrorSubtype || !!pendingFreeKick || (awaitingKickout && !kickoutMinimised)
-  const possLive = mode === 'tracking' && isPlaying && !deadBall
+  const possLive = mode === 'tracking' && isPlaying && !deadBall && !reviewing
   const possLiveRef = useRef(false)
   possLiveRef.current = possLive
+  inputPendingRef.current = pitchInputNeeded || overlayState !== 'none' || deadBall
   const possessionRef = useRef(possession)
   possessionRef.current = possession
   const possAccumMsRef = useRef({ team_a: 0, team_b: 0 })
@@ -1163,10 +1181,55 @@ export default function VideoTagging() {
     }
     setCurrentTimeMs(ms)
     if (mode === 'tracking') {
-      setHighWaterMarkMs(prev => (ms > prev ? ms : prev))
+      if (reviewingRef.current) {
+        // Review last 10s: reached where tracking stopped -> carry on tracking, no seek needed
+        const ret = autoReturnAtRef.current
+        if (ret != null) {
+          if (ms < ret - 1000) autoReturnArmedRef.current = true // replay has really started from the earlier point
+          else if (autoReturnArmedRef.current && ms >= ret) exitReviewRef.current({ seek: false })
+        }
+      } else if (
+        // Jumped back from (near) the tracking mark: a real scrub / skip-back, not a stale update on page load
+        prev != null && prev >= highWaterMarkRef.current - 3000 &&
+        ms < highWaterMarkRef.current - 1500 && Date.now() - reviewExitedAtRef.current > 1200
+      ) {
+        // Scrubbed / skipped back behind the tracking mark -> automatically Review (nothing recorded)
+        enterReviewRef.current()
+      } else {
+        setHighWaterMarkMs(prev => (ms > prev ? ms : prev))
+      }
     }
   }, [mode])
   const handleDurationChange = useCallback((ms: number) => setVideoDurationMs(ms), [])
+  enterReviewRef.current = (opts) => {
+    if (reviewingRef.current || mode !== 'tracking') return
+    reviewingRef.current = true
+    autoReturnAtRef.current = null
+    setReviewing(true)
+    if (opts?.pause) playerRef.current?.pause()
+  }
+  exitReviewRef.current = (opts) => {
+    if (!reviewingRef.current) return
+    reviewingRef.current = false
+    autoReturnAtRef.current = null
+    reviewExitedAtRef.current = Date.now()
+    setReviewing(false)
+    // Back to exactly where tracking stopped (unless we're already there, as after Review last 10s)
+    if (opts?.seek !== false) playerRef.current?.seekTo(highWaterMarkRef.current)
+    // A parked prompt is still open — leave the video paused so it can be finished; otherwise carry on
+    if (opts?.seek !== false && !inputPendingRef.current) playerRef.current?.play()
+  }
+  replayLast10Ref.current = () => {
+    if (mode !== 'tracking') return
+    const mark = highWaterMarkRef.current
+    const from = Math.max(session?.first_half_start_ms ?? 0, mark - 10000)
+    reviewingRef.current = true
+    autoReturnAtRef.current = mark
+    autoReturnArmedRef.current = false
+    setReviewing(true)
+    playerRef.current?.seekTo(from)
+    playerRef.current?.play()
+  }
   const handleSeek = useCallback((ms: number) => playerRef.current?.seekTo(ms), [])
 
   // TaggingPitch's ballPosition prop needs a `team` field (for ring/trail
@@ -3062,12 +3125,12 @@ export default function VideoTagging() {
   // High Ball is different — see highBallBlocked below, it DOES need
   // `!isPlaying` since its destination tap depends on that same
   // tap-to-place mechanic being active.
-  const quickBallIconsBlocked = mode !== 'tracking' || overlayState !== 'none'
+  const quickBallIconsBlocked = mode !== 'tracking' || reviewing || overlayState !== 'none'
   // High Ball depends on the pitch's own tap-to-place mechanic (unlike Pass,
   // which logs immediately) — that's gated by TaggingPitch's own `disabled`
   // prop, which DOES include `!isPlaying`, so this must too or arming it
   // while paused would leave the destination tap silently unable to fire.
-  const highBallBlocked = mode !== 'tracking' || !isPlaying || overlayState !== 'none'
+  const highBallBlocked = mode !== 'tracking' || reviewing || !isPlaying || overlayState !== 'none'
   const taggingPitchOrientation: 'horizontal' | 'vertical' = 'horizontal'
 
   // Derived state for CategorizedActionButtons
@@ -3093,6 +3156,19 @@ export default function VideoTagging() {
   })()
   const isInPenaltyArea = !!ballPosition && Math.abs(cabAttackingGoalX - ballPosition.x) <= 10.5
 
+  // What was left open when the user stepped out to Review (kept, shown as a chip)
+  const parkedPromptLabel =
+    assistPromptEventId ? 'Assist player'
+    : overlayState === 'player' ? 'Player selection'
+    : overlayState === 'pitch' ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? '45m line tap' : 'Kickout landing tap')
+    : pendingFoulSubtype ? 'Foul type'
+    : pendingTurnoverReason ? 'Turnover reason'
+    : pendingErrorSubtype ? 'Error type'
+    : pendingFreeKick ? 'Free outcome'
+    : awaitingKickout ? 'Kickout outcome'
+    : (pendingBlockRecovery || pendingSidelineDecision || pending45) ? 'Outcome'
+    : null
+
   /** Video player panel — left half of the 50/50 split */
   const videoPanel = (
     <div data-tour="video-player" className="relative flex-1 min-w-0 min-h-0 group/video">
@@ -3106,7 +3182,7 @@ export default function VideoTagging() {
         firstHalfStartMs={session.first_half_start_ms ?? undefined}
         secondHalfStartMs={session.second_half_start_ms ?? undefined}
         fullTimeMs={session.full_time_ms ?? undefined}
-        maxSeekMs={mode === 'tracking' ? highWaterMarkMs : undefined}
+        maxSeekMs={mode === 'tracking' && !reviewing ? highWaterMarkMs : undefined}
         initialTimeMs={
           mode === 'tracking'
             ? Math.max(currentTimeMs, session.tracking_progress_ms ?? session.first_half_start_ms ?? 0)
@@ -3139,7 +3215,7 @@ export default function VideoTagging() {
         />
       )}
 
-      {(deadBall || assistPromptEventId || showManualEvent || showViewLineup || showWeatherPicker) && (
+      {!reviewing && (deadBall || assistPromptEventId || showManualEvent || showViewLineup || showWeatherPicker) && (
         <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
           <style>{`
             @keyframes _vtChevR { 0%{transform:translateX(-4px);opacity:.25} 50%{opacity:1} 100%{transform:translateX(6px);opacity:.25} }
@@ -3203,7 +3279,7 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {mode === 'tracking' && !isPlaying && !deadBall && currentTimeMs >= highWaterMarkMs && (
+      {mode === 'tracking' && !reviewing && !isPlaying && !deadBall && currentTimeMs >= highWaterMarkMs && (
         <div className="absolute top-3 right-3 z-30 pointer-events-none">
           <button
             onClick={() => playerRef.current?.play()}
@@ -3216,16 +3292,76 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {mode === 'tracking' && currentTimeMs < highWaterMarkMs - 1000 && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-          <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-amber-500/40 rounded-xl px-4 py-2.5 shadow-2xl shadow-amber-500/10">
-            <div className="flex items-center gap-2 text-amber-300">
-              <AlertTriangle size={16} className="shrink-0" />
-              <span className="text-sm font-semibold">
-                Reviewing past footage — tracking will resume at {formatTrackingClock(calcMatchTime(highWaterMarkMs))}
-              </span>
+      {/* REVIEW banner — free roam, nothing recorded. Prominent Return button. */}
+      {mode === 'tracking' && reviewing && (
+        <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
+          <div
+            className="rounded-2xl px-4 py-2.5 pointer-events-auto"
+            style={{
+              background: 'linear-gradient(135deg, rgba(10,24,44,0.86), rgba(8,18,34,0.74))',
+              border: '1px solid rgba(96,165,250,0.5)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.5), 0 0 18px rgba(96,165,250,0.2), inset 0 1px 0 rgba(255,255,255,0.12)',
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sky-200 text-sm font-bold">
+                  <Eye size={16} className="flex-shrink-0" />
+                  REVIEW — nothing is being recorded
+                </div>
+                <div className="text-[11px] text-sky-100/60 mt-0.5 truncate">
+                  Rewind, fast-forward and play freely. Tracking resumes at {formatTrackingClock(calcMatchTime(highWaterMarkMs))}.
+                  {parkedPromptLabel && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-200 font-semibold">Parked: {parkedPromptLabel}</span>}
+                </div>
+              </div>
+              <button
+                onClick={() => exitReviewRef.current()}
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+              >
+                <Play size={15} fill="#0a1a10" />
+                Return to Tracking
+              </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Always-visible state: TRACKING (recording) vs REVIEW, with the way to switch */}
+      {mode === 'tracking' && (
+        <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1.5">
+          <div
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold tracking-wide border backdrop-blur-md ${
+              reviewing
+                ? 'bg-sky-500/20 border-sky-400/50 text-sky-100'
+                : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100'
+            }`}
+            title={reviewing ? 'Review: nothing is being recorded' : 'Tracking: events and possession are being recorded'}
+          >
+            {reviewing
+              ? <><Eye size={12} /> REVIEW</>
+              : <><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" /></span> TRACKING</>}
+          </div>
+          {!reviewing && (
+            <>
+              <button
+                onClick={() => replayLast10Ref.current()}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border bg-black/55 border-white/20 text-white/85 hover:bg-black/75 hover:text-white backdrop-blur-md transition-colors"
+                title="Replay the last 10 seconds, then carry on tracking automatically"
+              >
+                <RotateCcw size={12} /> Review last 10 seconds
+              </button>
+              <button
+                onClick={() => enterReviewRef.current({ pause: true })}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border bg-black/55 border-white/20 text-white/85 hover:bg-black/75 hover:text-white backdrop-blur-md transition-colors"
+                title="Step out of tracking to rewind, fast-forward and look around — nothing is recorded"
+              >
+                <Eye size={12} /> Review
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -3300,6 +3436,7 @@ export default function VideoTagging() {
         // while it's paused, so they must be tappable then.
         disabled={
           (mode !== 'tracking' && !repositioning) ||
+          (reviewing && !repositioning) ||
           (!(overlayState === 'pitch' || isAdjustingFree || !!repositioning) && (!isPlaying || overlayState !== 'none'))
         }
         highlight45LineX={highlight45LineX}
@@ -3475,6 +3612,20 @@ export default function VideoTagging() {
         </button>
       )}
 
+      {/* REVIEW: pitch is paused — taps are blocked and any open prompt is parked */}
+      {reviewing && !repositioning && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 backdrop-blur-[1px] rounded-lg">
+          <div className="text-center px-4">
+            <div className="inline-flex items-center gap-2 text-sky-100 text-sm font-bold">
+              <Eye size={16} /> Review mode — tracking is paused
+            </div>
+            <div className="text-[11px] text-white/60 mt-1">
+              {parkedPromptLabel ? `${parkedPromptLabel} is parked — ` : ''}tap "Return to Tracking" to continue.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* High ball: optional clean / break chips (fade after a few seconds) */}
       {showHighBallChips && !repositioning && (
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20">
@@ -3542,7 +3693,10 @@ export default function VideoTagging() {
 
   /** CategorizedActionButtons — same component as live recording */
   const controlsBar = (
-    <div data-tour="video-quick-actions" className="max-w-4xl mx-auto w-full">
+    <div
+      data-tour="video-quick-actions"
+      className={`max-w-4xl mx-auto w-full transition-opacity ${reviewing ? 'opacity-40 pointer-events-none select-none' : ''}`}
+    >
       <CategorizedActionButtons
         onActionSelect={handleQuickAction}
         onFoulClick={handleFoulClick}
@@ -3795,7 +3949,7 @@ export default function VideoTagging() {
                   setAwaitingKickout(false); setKickoutTab(null); setKickoutMinimised(false); setKickoutAimedForId(undefined)
                   setPendingFreeKick(null); setIsAdjustingFree(false); setPending45(false); setHighlight45LineX(null)
                   setPendingFoulSubtype(null); setTacticalFoul(false); setPendingTurnoverReason(null); setPendingErrorSubtype(null)
-                  setOverlayState('none'); setPendingOverlay(null); setPendingLongKick(null); ballOutcomeRef.current = null; setShowHighBallChips(false); setRepositioning(null)
+                  setOverlayState('none'); setPendingOverlay(null); setPendingLongKick(null); ballOutcomeRef.current = null; setShowHighBallChips(false); setRepositioning(null); reviewingRef.current = false; autoReturnAtRef.current = null; setReviewing(false)
                   setPendingBlockRecovery(false); setPendingSidelineDecision(false)
                   setPendingOppScorer(null); setPendingPressure(null); setAssistPromptEventId(null)
                   setBlackCardTimers([]); setActiveTab('scoring'); setPossession('team_a')
