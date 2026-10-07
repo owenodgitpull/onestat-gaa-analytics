@@ -94,10 +94,12 @@ export default function SetupFlowModal({
 
       <div className={`absolute z-30 pointer-events-none ${
         showOverlay
-          ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2' // Centered when overlay is active
-          : 'top-3 left-3' // Top-left when video interaction needed
+          ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-h-[92%]' // Centered when overlay is active
+          : 'top-3 left-3 bottom-3' // Top-left when video interaction needed; bottom-3 caps height to the video container
       }`}>
-        <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-5 py-4 w-[360px] shadow-2xl shadow-emerald-500/10">
+        {/* max-h-full + overflow-y-auto: the card never grows past the video container (the
+            expanded "footage starts after the throw-in" scenarios used to get clipped) */}
+        <div className="pointer-events-auto bg-slate-900/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl px-5 py-4 w-[360px] max-w-full max-h-full overflow-y-auto overscroll-contain shadow-2xl shadow-emerald-500/10">
         {/* Step indicator */}
         {step !== 'ready' && (
           <div className="flex items-center gap-1 mb-3">
