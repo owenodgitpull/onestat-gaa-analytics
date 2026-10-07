@@ -2954,13 +2954,13 @@ export default function VideoTagging() {
                 <span className="text-sm font-semibold text-white truncate">
                   {assistPromptEventId ? 'Select assist player (or skip)'
                     : overlayState === 'player' ? 'Select player'
-                    : overlayState === 'pitch' ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? 'Tap the 45m line on the pitch' : 'Tap where the kickout landed')
-                    : pendingFoulSubtype ? 'Select foul type on the pitch'
-                    : pendingTurnoverReason ? 'How was possession lost? Select on the pitch'
-                    : pendingErrorSubtype ? 'Select error type on the pitch'
-                    : pendingFreeKick && !isAdjustingFree ? 'Select free outcome on the pitch'
+                    : overlayState === 'pitch' ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? 'Tap the 45m line on the pitch graphic' : 'Tap where the kickout landed')
+                    : pendingFoulSubtype ? 'Select foul type on the pitch graphic'
+                    : pendingTurnoverReason ? 'How was possession lost? Select on the pitch graphic'
+                    : pendingErrorSubtype ? 'Select error type on the pitch graphic'
+                    : pendingFreeKick && !isAdjustingFree ? 'Select free outcome on the pitch graphic'
                     : isAdjustingFree ? 'Drag the ball to the free\'s real spot'
-                    : awaitingKickout ? 'Select kickout outcome on the pitch'
+                    : awaitingKickout ? 'Select kickout outcome on the pitch graphic'
                     : (pendingBlockRecovery || pendingSidelineDecision || pending45) ? 'Select outcome below'
                     : showManualEvent ? 'Add manual event or substitution'
                     : showViewLineup ? 'Viewing lineup'
