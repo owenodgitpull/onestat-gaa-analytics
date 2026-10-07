@@ -75,7 +75,7 @@ export default function SetupFlowModal({
   onStartTracking,
 }: SetupFlowModalProps) {
   const stepIndex = STEP_ORDER.findIndex(s => s.key === step)
-  // Optional: footage joins mid-match (broadcast cut in after the throw-in)
+  // Optional: footage starts after the throw-in (e.g. broadcast cut in late)
   const [joinsMidMatch, setJoinsMidMatch] = useState(false)
   const [clockText, setClockText] = useState('')
   const clockMs = parseClock(clockText)

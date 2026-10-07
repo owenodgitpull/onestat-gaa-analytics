@@ -22,7 +22,7 @@ export interface VideoSession {
   video_size_bytes: number | null;
   halftime_timestamp_ms: number | null;
   first_half_start_ms: number | null;
-  /** Match clock (ms) at first_half_start_ms — 0 unless the footage joins mid-match */
+  /** Match clock (ms) at first_half_start_ms — 0 unless the footage starts after the throw-in */
   first_half_clock_offset_ms?: number;
   second_half_start_ms: number | null;
   full_time_ms: number | null;

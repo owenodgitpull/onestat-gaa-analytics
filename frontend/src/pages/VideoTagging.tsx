@@ -2859,7 +2859,7 @@ export default function VideoTagging() {
                   title: 'Re-mark throw-in / clock?',
                   message: hasEvents
                     ? 'You have tagged events. Their minutes were set from the current throw-in mark and will NOT change. Reset the match first if you want them recalculated.'
-                    : 'Set the first-half throw-in again, or set the match clock for footage that joins mid-match.',
+                    : 'Mark the first-half throw-in again, or set the match clock if your footage starts after the throw-in.',
                   confirmText: 'Re-mark',
                 })
                 if (!ok) return
