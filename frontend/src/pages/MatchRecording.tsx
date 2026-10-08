@@ -5136,9 +5136,11 @@ export default function MatchRecording() {
                     tapping the landing spot, not picking a carrier, so
                     showing both here would visually collide. */}
                 {!pendingOpponentScore && jerseyStripPlayers.length > 0 && matchPhase !== 'not_started' && matchPhase !== 'finished' && !(!!pendingKickoutEvent && !kickoutBannerMinimised) && (
-                  <div data-tour="jersey-strip" className="absolute bottom-2 left-2 right-2 z-10">
-                    <div className="text-center text-[9px] text-white/40 font-semibold uppercase tracking-wider mb-1">
-                      Switch Carrier
+                  <div data-tour="jersey-strip" className="absolute bottom-1 left-2 right-2 z-10">
+                    <div className="flex justify-center mb-1.5">
+                      <span className="px-2 py-0.5 rounded-full bg-black/55 backdrop-blur-sm text-[9px] text-white/80 font-semibold uppercase tracking-wider">
+                        Switch Carrier
+                      </span>
                     </div>
                     <JerseyNumberStrip
                       players={jerseyStripPlayers}
