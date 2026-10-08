@@ -626,8 +626,8 @@ export const possessionAPI = {
   },
 
   /** Video Tagging Undo to Point: delete possession recorded after a video time. */
-  deleteAfterVideo: async (matchId: string, timestampMs: number, minute: number): Promise<{ deleted_count: number; team_at_point?: string | null }> => {
-    return fetchAPI<{ deleted_count: number; team_at_point?: string | null }>(
+  deleteAfterVideo: async (matchId: string, timestampMs: number, minute: number): Promise<{ deleted_count: number; team_at_point?: string | null; ball_x?: number | null; ball_y?: number | null; carrier?: { player_id: string; jersey_number: number | null } | null }> => {
+    return fetchAPI<{ deleted_count: number; team_at_point?: string | null; ball_x?: number | null; ball_y?: number | null; carrier?: { player_id: string; jersey_number: number | null } | null }>(
       `/possession-events/match/${matchId}/after-video/${Math.round(timestampMs)}?minute=${Math.max(0, Math.floor(minute))}`,
       { method: 'DELETE' },
     );
@@ -3019,6 +3019,7 @@ const playerMovementAPI = {
     start_x?: number | null;
     start_y?: number | null;
     source?: string;
+    video_timestamp_ms?: number | null;
   }): Promise<BallCarrierSegment> =>
     fetchAPI('/player-movement/carrier-segments', {
       method: 'POST',

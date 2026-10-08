@@ -869,6 +869,7 @@ export default function VideoTagging() {
     setShowFullTimeConfirm(false)
   }, [sessionId, completeTracking])
 
+  const restoreCarrierRef = useRef<(matchId: string, playerId: string, jersey: number | null, atMs: number, x: number | null, y: number | null) => void>(() => {})
   const handleUndoToPoint = useCallback(async (timestampMs: number) => {
     if (!sessionId || !matchData) return
 
@@ -884,6 +885,13 @@ export default function VideoTagging() {
       // Hand the ball back to whoever had it at the rollback point (from the recorded possession)
       if (possResult?.team_at_point === 'own') setPossession('team_a')
       else if (possResult?.team_at_point === 'opponent') setPossession('team_b')
+      // Put the ball back where it was, and the carrier back on it
+      if (possResult?.ball_x != null && possResult?.ball_y != null) setBallPosition({ x: possResult.ball_x, y: possResult.ball_y })
+      carrierPathBufferRef.current = []
+      activeSegmentRef.current = null
+      const carrier = possResult?.carrier
+      setActiveCarrierId(carrier ? carrier.player_id : null)
+      if (carrier) restoreCarrierRef.current(matchData.id, carrier.player_id, carrier.jersey_number ?? null, timestampMs, possResult?.ball_x ?? null, possResult?.ball_y ?? null)
       // Local tracking state restarts cleanly from the rollback point
       possAccumMsRef.current = { team_a: 0, team_b: 0 }
       lastPossTickMsRef.current = null
@@ -2709,6 +2717,7 @@ export default function VideoTagging() {
         start_x: startX,
         start_y: startY,
         source: 'video',
+        video_timestamp_ms: Math.round(currentTimeMsRef.current),
       })
       activeSegmentRef.current = segment
       if (carrierPathBufferRef.current.length > 0) {
@@ -2724,6 +2733,18 @@ export default function VideoTagging() {
       return null
     }
   }, [session?.match_id, calcMatchTime, currentTimeMs, possession])
+
+  restoreCarrierRef.current = (matchId, playerId, jersey, atMs, x, y) => {
+    const t = calcMatchTimeRef.current(atMs)
+    enqueueCarrierOp(async () => {
+      try {
+        activeSegmentRef.current = await api.playerMovement.startCarrierSegment({
+          match_id: matchId, player_id: playerId, jersey_number: jersey, team: 'own',
+          half: t.half, minute: t.minute, start_x: x, start_y: y, source: 'video', video_timestamp_ms: Math.round(atMs),
+        })
+      } catch (err) { console.error('Failed to restart carrier after undo:', err) }
+    })
+  }
 
   const handleCarrierSelect = useCallback((playerId: string, jerseyNumber: number | null) => {
     const bx = ballPosition?.x ?? null

@@ -36,6 +36,7 @@ class PlayerMovementService:
         start_y: Optional[float],
         source: str = "live",
         client_event_id: Optional[str] = None,
+        video_timestamp_ms: Optional[int] = None,
     ) -> BallCarrierSegment:
         # Get next sequence number
         result = await db.execute(
@@ -58,6 +59,7 @@ class PlayerMovementService:
             source=source,
             sequence_number=next_seq,
             client_event_id=client_event_id,
+            video_timestamp_ms=video_timestamp_ms,
         )
         db.add(segment)
         await db.commit()

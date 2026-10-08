@@ -23,6 +23,8 @@ PLUMBING = (
     "services/video/", "services/attack_frame.py",
     # Carry distance = straight-line magnitude sqrt(dx² + dy²): direction can't change it.
     "services/leaderboard_service.py",
+    # Echoes raw screen coords straight back to the screen (Video Tagging undo restores the ball spot) — same frame, no analytics.
+    "routes/possession_events.py",
 )
 
 HELPER_MARKERS = (

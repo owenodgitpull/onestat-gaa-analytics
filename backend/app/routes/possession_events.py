@@ -14,6 +14,7 @@ from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.models.match import Match
+from app.models.ball_carrier_segment import BallCarrierSegment
 from app.schemas.possession_event import (
     PossessionEventCreate,
     PossessionEventBulkCreate,
@@ -114,14 +115,40 @@ async def delete_possession_after_video_time(
     await db.commit()
     # Who had the ball at the rollback point = the latest remaining possession row up to it
     last = await db.execute(
-        select(PossessionEvent.team)
+        select(PossessionEvent.team, PossessionEvent.pitch_x, PossessionEvent.pitch_y)
         .where(PossessionEvent.match_id == match_id, PossessionEvent.video_ms.is_not(None), PossessionEvent.video_ms <= timestamp_ms)
         .order_by(PossessionEvent.video_ms.desc(), PossessionEvent.created_at.desc())
         .limit(1)
     )
-    team_at_point = last.scalar_one_or_none()
-    team_at_point = getattr(team_at_point, "value", team_at_point)
-    return {"deleted_count": result.rowcount, "match_id": str(match_id), "after_ms": timestamp_ms, "team_at_point": team_at_point}
+    row = last.first()
+    team_at_point = getattr(row[0], "value", row[0]) if row else None
+    # Ball spot: the latest remaining row that has coordinates
+    spot = await db.execute(
+        select(PossessionEvent.pitch_x, PossessionEvent.pitch_y)
+        .where(PossessionEvent.match_id == match_id, PossessionEvent.video_ms.is_not(None),
+               PossessionEvent.video_ms <= timestamp_ms, PossessionEvent.pitch_x.is_not(None), PossessionEvent.pitch_y.is_not(None))
+        .order_by(PossessionEvent.video_ms.desc(), PossessionEvent.created_at.desc())
+        .limit(1)
+    )
+    spot_row = spot.first()
+    # Carrier: the latest remaining carry that began by this point and hadn't ended terminally
+    seg = await db.execute(
+        select(BallCarrierSegment.player_id, BallCarrierSegment.jersey_number, BallCarrierSegment.team, BallCarrierSegment.ended_by)
+        .where(BallCarrierSegment.match_id == match_id, BallCarrierSegment.video_timestamp_ms.is_not(None),
+               BallCarrierSegment.video_timestamp_ms <= timestamp_ms)
+        .order_by(BallCarrierSegment.video_timestamp_ms.desc())
+        .limit(1)
+    )
+    seg_row = seg.first()
+    carrier = None
+    if seg_row and seg_row[2] == "own" and (seg_row[3] is None or seg_row[3] == "pass"):
+        carrier = {"player_id": str(seg_row[0]), "jersey_number": seg_row[1]}
+    return {
+        "deleted_count": result.rowcount, "match_id": str(match_id), "after_ms": timestamp_ms,
+        "team_at_point": team_at_point,
+        "ball_x": spot_row[0] if spot_row else None, "ball_y": spot_row[1] if spot_row else None,
+        "carrier": carrier,
+    }
 
 
 @router.post("/video-batch", status_code=status.HTTP_201_CREATED)
