@@ -869,6 +869,7 @@ export default function VideoTagging() {
     setShowFullTimeConfirm(false)
   }, [sessionId, completeTracking])
 
+  const ballHistoryRef = useRef<Array<{ ms: number; x: number; y: number }>>([])
   const restoreCarrierRef = useRef<(matchId: string, playerId: string, jersey: number | null, atMs: number, x: number | null, y: number | null) => void>(() => {})
   const handleUndoToPoint = useCallback(async (timestampMs: number) => {
     if (!sessionId || !matchData) return
@@ -886,12 +887,17 @@ export default function VideoTagging() {
       if (possResult?.team_at_point === 'own') setPossession('team_a')
       else if (possResult?.team_at_point === 'opponent') setPossession('team_b')
       // Put the ball back where it was, and the carrier back on it
-      if (possResult?.ball_x != null && possResult?.ball_y != null) setBallPosition({ x: possResult.ball_x, y: possResult.ball_y })
+      // (From the page's own ball history — same frame as the pitch. If there's none, leave the ball alone rather than guess.)
+      const hist = ballHistoryRef.current
+      let spot: { x: number; y: number } | null = null
+      for (let i = hist.length - 1; i >= 0; i--) { if (hist[i].ms <= timestampMs) { spot = hist[i]; break } }
+      ballHistoryRef.current = hist.filter(h => h.ms <= timestampMs)
+      if (spot) { setBallPosition({ x: spot.x, y: spot.y }); setBallTrail([{ x: spot.x, y: spot.y }]) }
       carrierPathBufferRef.current = []
       activeSegmentRef.current = null
       const carrier = possResult?.carrier
       setActiveCarrierId(carrier ? carrier.player_id : null)
-      if (carrier) restoreCarrierRef.current(matchData.id, carrier.player_id, carrier.jersey_number ?? null, timestampMs, possResult?.ball_x ?? null, possResult?.ball_y ?? null)
+      if (carrier) restoreCarrierRef.current(matchData.id, carrier.player_id, carrier.jersey_number ?? null, timestampMs, spot?.x ?? null, spot?.y ?? null)
       // Local tracking state restarts cleanly from the rollback point
       possAccumMsRef.current = { team_a: 0, team_b: 0 }
       lastPossTickMsRef.current = null
@@ -1302,6 +1308,11 @@ export default function VideoTagging() {
   // both just update the display state the sidebar and the 5s/30s
   // position-sample pipeline read from `ballPosition`/`ballTrail`.
   const handleTaggingBallMove = useCallback((position: BallPosition) => {
+    // Remember where the ball was at each video moment so Undo to Point can put it back exactly
+    // (same on-screen frame as the pitch, unlike server rows which are stamped at flush time)
+    const hist = ballHistoryRef.current
+    hist.push({ ms: Math.round(currentTimeMsRef.current), x: position.x, y: position.y })
+    if (hist.length > 3000) hist.splice(0, hist.length - 2000)
     setBallPosition({ x: position.x, y: position.y })
     setBallTrail(prev => [...prev.slice(-49), { x: position.x, y: position.y }])
   }, [])
