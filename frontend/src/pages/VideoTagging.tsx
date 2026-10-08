@@ -214,6 +214,7 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
 // Scoring event types that trigger the opposition-scorer name prompt when
 // team_b (the opponent) is credited with them.
 // Actual scores only — a wide or short has no scorer to ask about (matches live recording)
+const KICKOUT_WON_BY_US_TYPES = ['OWN_KICKOUT_WON', 'OWN_KICKOUT_WON_BREAK', 'OPP_KICKOUT_WON', 'OPP_KICKOUT_WON_BREAK']
 const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'FREE_KICK']
 
 // Shot attempts (make + miss) eligible for the post-hoc "Under pressure?"
@@ -1548,6 +1549,7 @@ export default function VideoTagging() {
 
   /** Create the event, apply auto-flip/auto-switch, resume video.
    *  Stored in a ref so overlay handlers always call the latest version. */
+  const carrierSelectRef = useRef<(playerId: string, jerseyNumber: number | null) => void>(() => {})
   const finalizeEventRef = useRef<(pending: OverlayPendingEvent, data: VideoEventCreateData) => void>(() => {})
   /** Creates the event + applies every follow-on effect (possession flip,
    *  kickout restart, tab switch, video resume). Split from finalizeEventRef
@@ -1643,6 +1645,11 @@ export default function VideoTagging() {
     }
     // Auto-end carrier on terminal events (scores, turnovers, wides, etc.)
     onCarrierTerminalEvent(data.event_type)
+    // We won a kickout and the winner was picked: they're the ball carrier from the landing spot
+    if (data.team === 'team_a' && data.player_id && KICKOUT_WON_BY_US_TYPES.includes(data.event_type)) {
+      const winnerId = data.player_id
+      setTimeout(() => { if (activeCarrierIdRef.current !== winnerId) carrierSelectRef.current(winnerId, null) }, 60)
+    }
 
     // Possession flip. Scores/wides/45s/penalties and shot turnovers (short,
     // saved, post) hand the ball to the OTHER team than whoever took the shot
@@ -2855,6 +2862,8 @@ export default function VideoTagging() {
     setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by))
   }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment])
+
+  carrierSelectRef.current = handleCarrierSelect
 
   // Append path points to the carrier's segment (throttled 200ms batching).
   // Points are buffered even while the new segment is still being created
