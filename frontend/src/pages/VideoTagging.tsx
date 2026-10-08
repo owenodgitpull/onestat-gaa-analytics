@@ -3450,17 +3450,6 @@ export default function VideoTagging() {
                 >
                   <Eye size={12} /> Review
                 </button>
-                <button
-                  onClick={() => { setPossession(possession === 'team_a' ? 'team_b' : 'team_a'); onCarrierPossessionSwap() }}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border backdrop-blur-md transition-colors ${
-                    possession === 'team_a'
-                      ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100 hover:bg-emerald-500/30'
-                      : 'bg-rose-500/20 border-rose-400/40 text-rose-100 hover:bg-rose-500/30'
-                  }`}
-                  title="Ball is with this team. Tap to hand it to the other team (nothing else is logged)."
-                >
-                  <ArrowLeftRight size={12} /> Ball: {possession === 'team_a' ? 'Us' : (matchData?.opponent || 'Opposition')}
-                </button>
               </>
             )}
           </div>
@@ -3647,6 +3636,19 @@ export default function VideoTagging() {
       {/* Pitch toolbar — Snap (formation snapshot) + Tag (tactical moment) on
           the pitch's own sideline, same place live recording keeps them. */}
       <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+        {mode === 'tracking' && !reviewing && (
+          <button
+            onClick={() => { setPossession(possession === 'team_a' ? 'team_b' : 'team_a'); onCarrierPossessionSwap() }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border backdrop-blur-md transition-colors ${
+              possession === 'team_a'
+                ? 'bg-emerald-500/25 border-emerald-400/40 text-emerald-100 hover:bg-emerald-500/35'
+                : 'bg-rose-500/25 border-rose-400/40 text-rose-100 hover:bg-rose-500/35'
+            }`}
+            title="Ball is with this team. Tap to hand it to the other team (nothing else is logged)."
+          >
+            <ArrowLeftRight size={14} /> Ball: {possession === 'team_a' ? 'Us' : (matchData?.opponent || 'Opposition')}
+          </button>
+        )}
         <button
           onClick={() => { playerRef.current?.pause(); setIsSnapshotOpen(true) }}
           title="Take formation snapshot"
