@@ -2851,12 +2851,22 @@ export default function VideoTagging() {
     // overwrite the video-time durations. Skipped during dead-ball states
     // (e.g. repositioning a free), like live recording's handleDragPath.
     if (session?.match_id && possLiveRef.current) {
-      const matchTime = calcMatchTime(currentTimeMs)
       const team = possession === 'team_a' ? 'own' : 'opponent'
+      // Each waypoint gets the video time it was actually passed at (from the per-move ball history),
+      // not the moment the batch is sent. Unmatched points inherit the previous point's time.
+      const hist = ballHistoryRef.current
+      let cursor = 0
+      let lastMs: number | null = null
       for (const wp of waypoints) {
+        let ms: number | null = null
+        for (let i = cursor; i < hist.length; i++) {
+          if (Math.abs(hist[i].x - wp.x) < 0.01 && Math.abs(hist[i].y - wp.y) < 0.01) { ms = hist[i].ms; cursor = i + 1; break }
+        }
+        const at: number = ms ?? lastMs ?? Math.round(currentTimeMs)
+        lastMs = at
         possBufferRef.current.push({
           team, pitch_x: wp.x, pitch_y: wp.y,
-          minute: Math.min(matchTime.minute, 120), duration_seconds: 0, video_ms: Math.round(currentTimeMs),
+          minute: Math.min(calcMatchTime(at).minute, 120), duration_seconds: 0, video_ms: at,
         })
       }
       if (possBufferRef.current.length >= 100) void sendPossessionBuffer()
