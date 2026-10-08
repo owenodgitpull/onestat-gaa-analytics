@@ -112,7 +112,16 @@ async def delete_possession_after_video_time(
         )
     )
     await db.commit()
-    return {"deleted_count": result.rowcount, "match_id": str(match_id), "after_ms": timestamp_ms}
+    # Who had the ball at the rollback point = the latest remaining possession row up to it
+    last = await db.execute(
+        select(PossessionEvent.team)
+        .where(PossessionEvent.match_id == match_id, PossessionEvent.video_ms.is_not(None), PossessionEvent.video_ms <= timestamp_ms)
+        .order_by(PossessionEvent.video_ms.desc(), PossessionEvent.created_at.desc())
+        .limit(1)
+    )
+    team_at_point = last.scalar_one_or_none()
+    team_at_point = getattr(team_at_point, "value", team_at_point)
+    return {"deleted_count": result.rowcount, "match_id": str(match_id), "after_ms": timestamp_ms, "team_at_point": team_at_point}
 
 
 @router.post("/video-batch", status_code=status.HTTP_201_CREATED)

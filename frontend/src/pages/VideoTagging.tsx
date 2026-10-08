@@ -24,7 +24,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye } from 'lucide-react'
+import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -876,11 +876,14 @@ export default function VideoTagging() {
       // Get anything not yet sent onto the server first, so the cut below sees it all
       await undoFlushRef.current()
       // Delete events, carrier segments AND possession after the selected point
-      await Promise.all([
+      const [, , possResult] = await Promise.all([
         deleteEventsAfter.mutateAsync({ sessionId, timestampMs }),
         deleteSegmentsAfter.mutateAsync({ matchId: matchData.id, timestampMs }),
         api.possession.deleteAfterVideo(matchData.id, timestampMs, calcMatchTimeRef.current(timestampMs).minute),
       ])
+      // Hand the ball back to whoever had it at the rollback point (from the recorded possession)
+      if (possResult?.team_at_point === 'own') setPossession('team_a')
+      else if (possResult?.team_at_point === 'opponent') setPossession('team_b')
       // Local tracking state restarts cleanly from the rollback point
       possAccumMsRef.current = { team_a: 0, team_b: 0 }
       lastPossTickMsRef.current = null
@@ -3446,6 +3449,17 @@ export default function VideoTagging() {
                   title="Step out of tracking to rewind, fast-forward and look around — nothing is recorded"
                 >
                   <Eye size={12} /> Review
+                </button>
+                <button
+                  onClick={() => { setPossession(possession === 'team_a' ? 'team_b' : 'team_a'); onCarrierPossessionSwap() }}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border backdrop-blur-md transition-colors ${
+                    possession === 'team_a'
+                      ? 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100 hover:bg-emerald-500/30'
+                      : 'bg-rose-500/20 border-rose-400/40 text-rose-100 hover:bg-rose-500/30'
+                  }`}
+                  title="Ball is with this team. Tap to hand it to the other team (nothing else is logged)."
+                >
+                  <ArrowLeftRight size={12} /> Ball: {possession === 'team_a' ? 'Us' : (matchData?.opponent || 'Opposition')}
                 </button>
               </>
             )}

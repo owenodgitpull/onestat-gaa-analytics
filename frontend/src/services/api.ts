@@ -626,8 +626,8 @@ export const possessionAPI = {
   },
 
   /** Video Tagging Undo to Point: delete possession recorded after a video time. */
-  deleteAfterVideo: async (matchId: string, timestampMs: number, minute: number): Promise<{ deleted_count: number }> => {
-    return fetchAPI<{ deleted_count: number }>(
+  deleteAfterVideo: async (matchId: string, timestampMs: number, minute: number): Promise<{ deleted_count: number; team_at_point?: string | null }> => {
+    return fetchAPI<{ deleted_count: number; team_at_point?: string | null }>(
       `/possession-events/match/${matchId}/after-video/${Math.round(timestampMs)}?minute=${Math.max(0, Math.floor(minute))}`,
       { method: 'DELETE' },
     );
