@@ -400,7 +400,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
             </div>
             <div className="flex flex-wrap gap-1.5 mt-2.5">
               {activeDetail.origin && <Chip>From {activeDetail.origin.toLowerCase()}</Chip>}
-              {typeof gained === 'number' && <Chip tone={gained > 0 ? 'good' : gained < 0 ? 'bad' : 'neutral'}>{gained > 0 ? '+' : ''}{gained}m towards goal</Chip>}
+              {typeof gained === 'number' && (activeDetail.metres_total ?? 0) > 0 && <Chip tone={gained > 0 ? 'good' : gained < 0 ? 'bad' : 'neutral'}>{gained > 0 ? '+' : ''}{gained}m towards goal</Chip>}
               {typeof activeDetail.metres_total === 'number' && activeDetail.metres_total > 0 && <Chip>{activeDetail.metres_total}m of ball movement</Chip>}
               {typeof activeDetail.directness_pct === 'number' && <Chip>{activeDetail.directness_pct}% direct</Chip>}
               {typeof activeDetail.touches === 'number' && <Chip>{activeDetail.touches} tagged action{activeDetail.touches === 1 ? '' : 's'}</Chip>}
