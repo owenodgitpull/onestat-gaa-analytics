@@ -2213,11 +2213,30 @@ export default function VideoTagging() {
    *  logged either way — the BLOCK_SHOT event already stands; this only
    *  decides who has the ball now. */
   const handleBlockRecovery = useCallback((weRecovered: boolean) => {
+    // They recovered → a turnover lost for us at the block spot, exactly as live recording logs it
+    if (!weRecovered && sessionId) {
+      const t = calcMatchTime(currentTimeMs)
+      createEvent.mutate({
+        sessionId,
+        data: {
+          event_type: 'TURNOVER_LOST',
+          team: 'team_a',
+          half: t.half,
+          match_minute: t.minute,
+          match_second: t.second,
+          video_timestamp_ms: Math.round(currentTimeMs),
+          ...(ballPosition ? { pitch_x: ballPosition.x, pitch_y: ballPosition.y, pitch_zone: xyToZone(ballPosition.x, ballPosition.y) } : {}),
+          possession_team: 'team_a',
+          description: 'block_recovery',
+          source: 'human_tag',
+        },
+      })
+    }
     setPossession(weRecovered ? 'team_a' : 'team_b')
     onCarrierPossessionSwap()
     setPendingBlockRecovery(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [sessionId, calcMatchTime, currentTimeMs, ballPosition, createEvent])
 
   /** Open-play sideline ball → who's in possession now? */
   const handleSidelineDecision = useCallback((weWonIt: boolean) => {
