@@ -4,7 +4,8 @@
  * Events displayed as colored dots. Click to seek video to that timestamp.
  */
 
-import { useMemo } from 'react'
+import { useMemo } from 'react'
+import { seekTimeForEvent } from '../../utils/videoSeek'
 import type { VideoEvent } from '../../services/videoApi'
 
 interface EventTimelineProps {
@@ -151,7 +152,7 @@ export default function EventTimeline({
               }}
               onClick={(e) => {
                 e.stopPropagation()
-                onSeek(event.video_timestamp_ms!)
+                onSeek(seekTimeForEvent(event.video_timestamp_ms!))
               }}
               title={`${event.match_minute}:${String(event.match_second).padStart(2, '0')} - ${event.event_type}${isTwoPointer ? ' (2pt)' : ''}`}
             />

@@ -9,6 +9,7 @@
  */
 
 import { useMemo, useRef, useEffect } from 'react'
+import { seekTimeForEvent } from '../../utils/videoSeek'
 import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, Pencil, MapPin } from 'lucide-react'
 import type { VideoEvent } from '../../services/videoApi'
 
@@ -217,7 +218,7 @@ export default function VideoEventLog({
                       ? 'bg-emerald-500/20 ring-1 ring-emerald-400/50'
                       : 'bg-white/[0.03] hover:bg-white/[0.06]'
                   } ${isUnverifiedAI ? 'opacity-70' : ''}`}
-                  onClick={() => event.video_timestamp_ms != null && onSeek(event.video_timestamp_ms)}
+                  onClick={() => event.video_timestamp_ms != null && onSeek(seekTimeForEvent(event.video_timestamp_ms))}
                 >
                   {/* Time */}
                   <span className="text-xs text-white/40 w-10 shrink-0 font-mono">
