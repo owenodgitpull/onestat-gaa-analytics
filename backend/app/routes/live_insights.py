@@ -19,6 +19,7 @@ from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.services.live_insights_service import LiveInsightsService
 from app.models.live_insight import InsightTrigger
+from app.auth.tenancy import assert_match_in_club
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ async def get_match_insights(
 
     Returns insights in reverse chronological order (newest first).
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     insights = await LiveInsightsService.get_match_insights(db, match_id, limit)
 
     return InsightsListResponse(
@@ -104,6 +106,7 @@ async def trigger_insight_check(
     This is called periodically by the frontend (every 5 minutes)
     and after significant events.
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     try:
         insight = await LiveInsightsService.check_and_generate_insight(
             db, match_id, request.minute, request.half
@@ -147,6 +150,7 @@ async def trigger_half_time_insight(
 
     Call this when the first half ends.
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     try:
         insight = await LiveInsightsService.trigger_half_time_insight(db, match_id)
 
@@ -177,6 +181,7 @@ async def get_latest_insight(
 
     Useful for displaying in the match recording UI.
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     insights = await LiveInsightsService.get_match_insights(db, match_id, limit=1)
 
     if insights:

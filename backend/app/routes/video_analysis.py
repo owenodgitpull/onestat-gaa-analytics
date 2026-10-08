@@ -16,6 +16,7 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.auth.tenancy import assert_video_session_in_club
 from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.match import Match
 from app.models.match_lineup import MatchLineup
@@ -1115,6 +1116,7 @@ async def keyframe_analyze_video(
 async def analysis_progress_sse(
     session_id: UUID,
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     SSE stream of analysis progress for a running background task.
@@ -1123,6 +1125,8 @@ async def analysis_progress_sse(
     (_run_keyframe_analysis) pushes progress events to an in-memory queue;
     this endpoint just reads them and streams to the client.
     """
+    # Tenant isolation: this stream must only ever show a session that belongs to the caller's club
+    await assert_video_session_in_club(db, session_id, user.club_id)
     sid = str(session_id)
 
     async def generator():

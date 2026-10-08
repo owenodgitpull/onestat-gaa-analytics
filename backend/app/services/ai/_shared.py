@@ -1117,6 +1117,11 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
     create_video_compilation currently uses it (to notify the requester
     when their job finishes); every other tool ignores it."""
 
+    # Tenant isolation: every tool filters by club only `if club_id:`, so a missing club would mean
+    # "all clubs". Fail closed instead — no club, no data.
+    if not club_id and tool_name not in ("web_search", "display_starting_lineup", "create_data_table"):
+        return safe_json({"error": "No club context for this request; refusing to read data."})
+
     if tool_name == "get_match_events":
         return await get_match_events(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_summary":

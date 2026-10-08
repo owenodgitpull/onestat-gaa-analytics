@@ -1053,8 +1053,8 @@ class SeasonDashboardService:
                         gap = minute - last_own_minute
                         droughts.append(gap)
                     last_own_minute = minute
-                    # Final 10 minutes
-                    if minute >= 60:
+                    # Final 10 minutes of THIS match (club 2x30 = from 50', inter-county 2x35 = from 60')
+                    if minute >= 2 * (m.half_duration_mins or 30) - 10:
                         final_10_scores += 1
                 else:
                     cumulative_diff -= value

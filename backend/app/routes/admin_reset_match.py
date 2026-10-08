@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from datetime import datetime, timedelta, timezone
 from app.database import get_db
-from app.auth.dependencies import require_admin
+from app.auth.dependencies import AuthenticatedUser, require_admin
+from app.auth.tenancy import assert_match_in_club
 
 router = APIRouter()
 
@@ -15,13 +16,16 @@ async def reset_match_timer(
     match_id: str,
     target_minute: float = 5.0,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin)
+    user: AuthenticatedUser = Depends(require_admin),
 ):
     """
     Reset a match timer to a specific minute and pause it.
 
     Admin-only endpoint for demo preparation.
     """
+    # 0. The match must belong to the caller's club
+    await assert_match_in_club(db, match_id, user.club_id)
+
     # 1. Check match exists
     result = await db.execute(
         text('SELECT id, started_at, current_phase FROM matches WHERE id = :id'),

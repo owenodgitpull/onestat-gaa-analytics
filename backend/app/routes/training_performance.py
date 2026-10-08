@@ -38,6 +38,7 @@ from app.schemas.training_performance import (
     PlayerGPSTrend,
     TeamGPSSummary
 )
+from app.auth.tenancy import assert_training_session_in_club
 
 logger = logging.getLogger(__name__)
 
@@ -987,6 +988,7 @@ async def get_session_weight_data(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all weight training data for a session."""
+    await assert_training_session_in_club(db, session_id, user.club_id)
     query = (
         select(WeightTrainingSession)
         .options(selectinload(WeightTrainingSession.exercises))

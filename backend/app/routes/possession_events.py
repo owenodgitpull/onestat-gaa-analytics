@@ -21,6 +21,7 @@ from app.schemas.possession_event import (
     PossessionVideoBatch,
 )
 from app.services.possession_service import PossessionService
+from app.auth.tenancy import assert_match_in_club, assert_possession_event_in_club
 
 router = APIRouter()
 
@@ -121,6 +122,7 @@ async def create_video_possession_batch(
     db: AsyncSession = Depends(get_db),
 ):
     """Video Tagging: batched video-time possession points (explicit durations)."""
+    await assert_match_in_club(db, data.match_id, user.club_id)
     created = await PossessionService.create_video_batch(db, data.match_id, data.points)
     return {"created": created}
 
@@ -137,6 +139,7 @@ async def bulk_create_possession_events(
     Accepts up to 50 waypoints in a single request.
     Duration chaining is handled sequentially server-side.
     """
+    await assert_match_in_club(db, data.match_id, user.club_id)
     count = await PossessionService.bulk_create_possession_events(
         db,
         match_id=data.match_id,
@@ -171,6 +174,7 @@ async def create_possession_event(
     Result: Dungloe 71% (300s), Opponent 29% (120s)
     """
     # Idempotent deduplication
+    await assert_match_in_club(db, event_data.match_id, user.club_id)
     if event_data.client_event_id:
         result = await db.execute(
             select(PossessionEvent).where(PossessionEvent.client_event_id == event_data.client_event_id)
@@ -199,6 +203,7 @@ async def get_possession_event(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single possession event by ID."""
+    await assert_possession_event_in_club(db, event_id, user.club_id)
     event = await PossessionService.get_possession_event(db, event_id)
     if not event:
         raise HTTPException(
@@ -227,6 +232,7 @@ async def list_possession_events(
     Returns events in chronological order (oldest first).
     Use this to build possession timeline or heat maps.
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     events = await PossessionService.list_possession_events(
         db, match_id, team, limit
     )
@@ -253,5 +259,6 @@ async def finalize_match_possession(
     Sets duration for the last possession event.
     Should be called automatically when completing a match.
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     await PossessionService.finalize_match_possession(db, match_id)
     return None

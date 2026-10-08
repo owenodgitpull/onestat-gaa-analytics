@@ -1188,7 +1188,7 @@ export default function MatchResult() {
 
           <div className="[&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Kickout Sequence">
-              <KickoutSequence events={eventsData?.events || []} teamName={clubName} opponentName={match.opponent} />
+              <KickoutSequence events={eventsData?.events || []} teamName={clubName} opponentName={match.opponent} halfDurationMins={match?.half_duration_mins} />
             </ChartZoomModal>
           </div>
 

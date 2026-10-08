@@ -22,6 +22,7 @@ from app.schemas.match_event import (
     QuickEventRequest,
 )
 from app.services.match_event_service import MatchEventService
+from app.auth.tenancy import assert_event_in_club
 
 router = APIRouter()
 
@@ -201,6 +202,7 @@ async def get_event(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific event by ID."""
+    await assert_event_in_club(db, event_id, user.club_id)
     event = await MatchEventService.get_event(db, event_id)
     if not event:
         raise HTTPException(
@@ -231,6 +233,7 @@ async def update_event(
     
     Recalculates match scores and player stats after update.
     """
+    await assert_event_in_club(db, event_id, user.club_id)
     event = await MatchEventService.update_event(db, event_id, event_data)
     if not event:
         raise HTTPException(
@@ -260,6 +263,7 @@ async def delete_event(
     
     Recalculates match scores and player stats after deletion.
     """
+    await assert_event_in_club(db, event_id, user.club_id)
     success = await MatchEventService.delete_event(db, event_id)
     if not success:
         raise HTTPException(

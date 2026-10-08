@@ -16,6 +16,7 @@ from app.auth.dependencies import AuthenticatedUser, require_admin, require_admi
 from app.models.match_lineup import MatchLineup
 from app.models.match import Match
 from app.models.player import Player
+from app.auth.tenancy import assert_match_in_club, assert_player_in_club
 
 router = APIRouter(
     prefix="/api/v1/match-lineups",
@@ -62,6 +63,7 @@ async def set_match_lineup(
     exactly the "save and start took a moment" delay reported from the
     match-prep screen. Batched below to a handful of round-trips total.
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     try:
         match_uuid = uuid.UUID(match_id)
     except ValueError:
@@ -139,6 +141,7 @@ async def get_match_lineup(
 
     Returns starting XI and substitutes.
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     try:
         match_uuid = uuid.UUID(match_id)
     except ValueError:
@@ -232,6 +235,8 @@ async def record_substitution(
     Optionally accepts new_position_id so the incoming sub inherits the
     position slot of the player going off (keeps pitch circles intact).
     """
+    await assert_player_in_club(db, player_id, user.club_id)
+    await assert_match_in_club(db, match_id, user.club_id)
     try:
         match_uuid = uuid.UUID(match_id)
         player_uuid = uuid.UUID(player_id)

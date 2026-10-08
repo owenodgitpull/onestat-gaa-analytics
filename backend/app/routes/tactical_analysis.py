@@ -23,6 +23,7 @@ import re
 from app.database import get_db
 from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
 from app.models.tactical_snapshot import TacticalAnalysisSnapshot
+from app.auth.tenancy import assert_match_in_club, assert_tactical_snapshot_in_club
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,7 @@ async def list_snapshots(
     db: AsyncSession = Depends(get_db),
 ):
     """List tactical snapshots for a match."""
+    await assert_match_in_club(db, match_id, user.club_id)
     result = await db.execute(
         select(TacticalAnalysisSnapshot)
         .where(TacticalAnalysisSnapshot.match_id == match_id)
@@ -225,6 +227,7 @@ async def get_snapshot(
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific tactical snapshot."""
+    await assert_tactical_snapshot_in_club(db, snapshot_id, user.club_id)
     result = await db.execute(
         select(TacticalAnalysisSnapshot).where(TacticalAnalysisSnapshot.id == snapshot_id)
     )
@@ -241,6 +244,7 @@ async def delete_snapshot(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a tactical snapshot."""
+    await assert_tactical_snapshot_in_club(db, snapshot_id, user.club_id)
     result = await db.execute(
         select(TacticalAnalysisSnapshot).where(TacticalAnalysisSnapshot.id == snapshot_id)
     )

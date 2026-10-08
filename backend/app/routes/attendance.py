@@ -34,6 +34,7 @@ from app.schemas.attendance import (
     PlayerAttendanceSummary,
     AttendanceOverview,
 )
+from app.auth.tenancy import assert_training_session_in_club
 
 router = APIRouter()
 
@@ -255,6 +256,7 @@ async def add_attendance(
 ):
     """Add a single attendance record to a session."""
     # Verify session exists
+    await assert_training_session_in_club(db, session_id, user.club_id)
     session_query = select(TrainingSession).where(TrainingSession.id == session_id)
     result = await db.execute(session_query)
     if not result.scalar_one_or_none():

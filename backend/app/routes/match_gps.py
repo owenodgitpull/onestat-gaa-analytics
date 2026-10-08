@@ -36,6 +36,7 @@ from app.schemas.match_gps import (
     MatchGPSSummary,
     MatchReanalysisResponse,
 )
+from app.auth.tenancy import assert_match_in_club
 
 logger = logging.getLogger(__name__)
 
@@ -701,6 +702,7 @@ async def get_match_gps_upload_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the status of a match GPS upload."""
+    await assert_match_in_club(db, match_id, user.club_id)
     query = select(GPSUploadLog).where(
         GPSUploadLog.id == upload_id,
         GPSUploadLog.match_id == match_id

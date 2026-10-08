@@ -42,6 +42,7 @@ from app.schemas.movement_arrow import (
     MovementArrowResponse,
     MovementArrowListResponse,
 )
+from app.auth.tenancy import assert_match_in_club, assert_segment_in_club, assert_snapshot_in_club, assert_tag_in_club
 
 router = APIRouter()
 
@@ -93,6 +94,7 @@ async def end_carrier_segment(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_segment_in_club(db, segment_id, user.club_id)
     segment = await PlayerMovementService.end_carrier_segment(
         db=db,
         segment_id=segment_id,
@@ -115,6 +117,7 @@ async def append_path_points(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_segment_in_club(db, segment_id, user.club_id)
     segment = await PlayerMovementService.append_path_points(
         db=db,
         segment_id=segment_id,
@@ -134,6 +137,7 @@ async def list_carrier_segments(
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_match_in_club(db, match_id, user.club_id)
     segments = await PlayerMovementService.list_carrier_segments(db, match_id)
     items = []
     for s in segments:
@@ -150,6 +154,7 @@ async def delete_carrier_segment(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_segment_in_club(db, segment_id, user.club_id)
     deleted = await PlayerMovementService.delete_carrier_segment(db, segment_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Segment not found")
@@ -163,6 +168,7 @@ async def delete_carrier_segments_after_timestamp(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete all ball carrier segments after a given timestamp (for undo-to-point feature)."""
+    await assert_match_in_club(db, match_id, user.club_id)
     deleted_count = await PlayerMovementService.delete_carrier_segments_after(db, match_id, timestamp_ms)
     return {"deleted_count": deleted_count, "match_id": str(match_id), "after_ms": timestamp_ms}
 
@@ -210,6 +216,7 @@ async def list_formation_snapshots(
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_match_in_club(db, match_id, user.club_id)
     snapshots = await PlayerMovementService.list_formation_snapshots(db, match_id)
     return FormationSnapshotListResponse(
         snapshots=[FormationSnapshotResponse.model_validate(s) for s in snapshots],
@@ -223,6 +230,7 @@ async def delete_formation_snapshot(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_snapshot_in_club(db, snapshot_id, user.club_id)
     deleted = await PlayerMovementService.delete_formation_snapshot(db, snapshot_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Snapshot not found")
@@ -257,6 +265,7 @@ async def list_tactical_tags(
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_match_in_club(db, match_id, user.club_id)
     tags = await PlayerMovementService.list_tactical_tags(db, match_id)
     return TacticalTagListResponse(
         tags=[TacticalTagResponse.model_validate(t) for t in tags],
@@ -270,6 +279,7 @@ async def delete_tactical_tag(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_tag_in_club(db, tag_id, user.club_id)
     deleted = await PlayerMovementService.delete_tactical_tag(db, tag_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Tag not found")
@@ -356,6 +366,7 @@ async def list_movement_arrows(
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_match_in_club(db, match_id, user.club_id)
     arrows = await PlayerMovementService.list_movement_arrows(db, match_id)
     return MovementArrowListResponse(
         arrows=[MovementArrowResponse.model_validate(a) for a in arrows],
@@ -383,6 +394,7 @@ async def derive_possession_chains(
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_match_in_club(db, match_id, user.club_id)
     chains = await PlayerMovementService.derive_possession_chains(db, match_id)
     return {
         "chains_derived": len(chains),

@@ -39,6 +39,7 @@ from app.services.ai import (
 from app.services.ai._shared import client as anthropic_client
 from app.models.insight_alert import InsightAlert
 from app.models.chat_session import ChatSession, ChatSessionMessage
+from app.auth.tenancy import assert_match_in_club
 
 logger = logging.getLogger(__name__)
 
@@ -573,6 +574,7 @@ async def post_match_report_endpoint(
     Query params:
     - force_regenerate: If true, regenerate even if cached (e.g. after GPS upload)
     """
+    await assert_match_in_club(db, match_id, user.club_id)
     try:
         # Check if match has any events before generating AI report
         from sqlalchemy import func as sql_func

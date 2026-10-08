@@ -1,16 +1,19 @@
 import { useState, useMemo } from 'react'
 import { Zap } from 'lucide-react'
+import { isFirstHalf } from '../../utils/attackDirection'
 
 interface Props {
   events: any[]
   teamName?: string
   opponentName?: string
+  /** Length of a half in minutes (30 club / 35 inter-county) — used when an event has no stored half */
+  halfDurationMins?: number | null
 }
 
 type Mode = 'own' | 'opp'
 
-function getHalf(e: { minute: number | null; half: number | null }): number {
-  return e.half ?? (e.minute != null ? (e.minute <= 40 ? 1 : 2) : 1)
+function getHalf(e: { minute: number | null; half: number | null }, halfDurationMins?: number | null): number {
+  return isFirstHalf(e.half, e.minute, halfDurationMins) ? 1 : 2
 }
 
 interface KickoutDot {
@@ -19,13 +22,13 @@ interface KickoutDot {
   half: number
 }
 
-function classifyEvents(events: any[], mode: Mode): KickoutDot[] {
+function classifyEvents(events: any[], mode: Mode, halfDurationMins?: number | null): KickoutDot[] {
   const dots: KickoutDot[] = []
   for (const e of events) {
     const t = e.event_type
     const team = e.team || (e.is_home_team ? 'own' : 'opponent')
     const minute = e.minute ?? null
-    const half = getHalf({ minute, half: e.half ?? null })
+    const half = getHalf({ minute, half: e.half ?? null }, halfDurationMins)
 
     if (mode === 'own') {
       if (
@@ -83,10 +86,10 @@ function HalfSection({ label, dots }: { label: string; dots: KickoutDot[] }) {
   )
 }
 
-export default function KickoutSequence({ events, teamName = 'Our', opponentName = 'Opp' }: Props) {
+export default function KickoutSequence({ events, teamName = 'Our', opponentName = 'Opp', halfDurationMins }: Props) {
   const [mode, setMode] = useState<Mode>('own')
 
-  const allDots = useMemo(() => classifyEvents(events, mode), [events, mode])
+  const allDots = useMemo(() => classifyEvents(events, mode, halfDurationMins), [events, mode, halfDurationMins])
   const h1Dots = useMemo(() => allDots.filter(d => d.half === 1), [allDots])
   const h2Dots = useMemo(() => allDots.filter(d => d.half === 2), [allDots])
 

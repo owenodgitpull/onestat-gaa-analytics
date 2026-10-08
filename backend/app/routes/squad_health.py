@@ -30,6 +30,7 @@ from app.models.season_cache import SeasonCache
 from app.services.workload_analysis_service import WorkloadAnalysisService
 
 import logging
+from app.auth.tenancy import assert_player_in_club
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +227,7 @@ async def get_player_health(
 ):
     """Get health alerts and workload for a specific player."""
     # Get active alerts
+    await assert_player_in_club(db, player_id, user.club_id)
     result = await db.execute(
         select(PlayerHealthAlert)
         .where(
@@ -352,6 +354,7 @@ async def trigger_player_analysis(
     db: AsyncSession = Depends(get_db),
 ):
     """Manually trigger workload analysis for a player."""
+    await assert_player_in_club(db, player_id, user.club_id)
     alerts = await WorkloadAnalysisService.trigger_analysis_for_player(
         db, player_id, "manual_trigger"
     )

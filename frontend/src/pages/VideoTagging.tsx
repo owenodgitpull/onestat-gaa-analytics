@@ -614,6 +614,8 @@ export default function VideoTagging() {
     queryFn: () => api.matches.getById(session!.match_id),
     enabled: !!session?.match_id,
   })
+  // Half length for THIS match: the match's own setting, else the club's configured default (30 club / 35 inter-county)
+  const matchHalfMins = matchData?.half_duration_mins || club?.default_half_duration || 30
 
   // Tracking mode: derived from session fields, not stored client-side, so
   // it survives a refresh. 'setup' (nothing started) -> 'tracking' (started,
@@ -910,7 +912,7 @@ export default function VideoTagging() {
     if (h2Start != null && videoMs >= h2Start) {
       const elapsed = Math.max(0, videoMs - h2Start)
       const totalSec = Math.floor(elapsed / 1000)
-      const hdm = matchData?.half_duration_mins ?? 30
+      const hdm = matchHalfMins
       return { minute: hdm + Math.floor(totalSec / 60), second: totalSec % 60, half: 2 }
     }
 
@@ -2949,7 +2951,7 @@ export default function VideoTagging() {
   /** "35 (+2:00)" once a half runs past its normal duration — matches live
    *  recording's injury-time clock format. */
   const formatTrackingClock = (clock: { minute: number; second: number; half: number }): string => {
-    const hdm = matchData?.half_duration_mins ?? 30
+    const hdm = matchHalfMins
     const normalMinute = clock.half === 2 ? hdm * 2 : hdm
     if (clock.minute <= normalMinute) {
       return `${clock.minute}:${String(clock.second).padStart(2, '0')}`
@@ -2963,7 +2965,7 @@ export default function VideoTagging() {
   /** Get the appropriate end button text based on current phase and time */
   const getEndButtonText = (): string => {
     if (!trackingClock) return 'End'
-    const hdm = matchData?.half_duration_mins ?? 30
+    const hdm = matchHalfMins
     const fullTime = hdm * 2
 
     if (trackingClock.half === 1) {
@@ -2989,8 +2991,8 @@ export default function VideoTagging() {
       <button
         onClick={handleRequestEndTracking}
         className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md ${
-          (trackingClock.half === 1 && trackingClock.minute >= (matchData?.half_duration_mins ?? 30)) ||
-          (trackingClock.half === 2 && trackingClock.minute >= (matchData?.half_duration_mins ?? 30) * 2)
+          (trackingClock.half === 1 && trackingClock.minute >= (matchHalfMins)) ||
+          (trackingClock.half === 2 && trackingClock.minute >= (matchHalfMins) * 2)
             ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40'
             : 'bg-red-500/20 hover:bg-red-500/30 text-red-300 hover:text-red-200'
         } font-medium transition-colors whitespace-nowrap`}
@@ -3829,7 +3831,7 @@ export default function VideoTagging() {
           events={chartEvents}
           opponent={opponentName}
           teamName={clubName}
-          halfDurationMins={matchData?.half_duration_mins || 30}
+          halfDurationMins={matchHalfMins}
           onClose={() => setShowExtraStats(false)}
         />
       )}
@@ -4314,7 +4316,7 @@ export default function VideoTagging() {
               opponent={opponentName}
               pollInterval={20000}
               attackingRightFirstHalf={matchData?.attacking_right_first_half}
-              halfDurationMins={matchData?.half_duration_mins || 30}
+              halfDurationMins={matchHalfMins}
             />
           </ChartZoomModal>
           <div className="[&>div]:h-full [&_.glass-card]:h-full">
@@ -4325,7 +4327,7 @@ export default function VideoTagging() {
                 events={chartEvents}
                 pollInterval={20000}
                 attackingRightFirstHalf={matchData?.attacking_right_first_half}
-                halfDurationMins={matchData?.half_duration_mins || 30}
+                halfDurationMins={matchHalfMins}
               />
             </ChartZoomModal>
           </div>
@@ -4359,7 +4361,7 @@ export default function VideoTagging() {
             <ShootingEfficiencyHeatmap shots={shotLocations} />
           </ChartZoomModal>
           <ChartZoomModal title="Kickout Sequence">
-            <KickoutSequence events={chartEvents} teamName={clubName} opponentName={opponentName} />
+            <KickoutSequence events={chartEvents} teamName={clubName} opponentName={opponentName} halfDurationMins={matchHalfMins} />
           </ChartZoomModal>
         </div>
         <p className="text-xs text-white/30 text-center px-4">

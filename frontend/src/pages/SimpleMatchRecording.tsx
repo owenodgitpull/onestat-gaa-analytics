@@ -956,7 +956,7 @@ export default function SimpleMatchRecording() {
             <MatchKickoutOutcomes events={matchEventsData?.events || []} teamName={clubName} opponentName={match?.opponent || 'Opponent'} />
           </ChartZoomModal>
           <ChartZoomModal title="Kickout Sequence">
-            <KickoutSequence events={matchEventsData?.events || []} teamName={clubName} opponentName={match?.opponent || 'Opponent'} />
+            <KickoutSequence events={matchEventsData?.events || []} teamName={clubName} opponentName={match?.opponent || 'Opponent'} halfDurationMins={match?.half_duration_mins} />
           </ChartZoomModal>
           <ChartZoomModal title="Scoring Zone Map">
             <ScoringZoneMap events={matchEventsData?.events || []} teamName={clubName || 'Us'} opponent={match?.opponent || 'Opponent'} />

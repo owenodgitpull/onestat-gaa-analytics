@@ -114,6 +114,8 @@ export default function MatchRecording() {
 
   // Fetch data from backend
   const { data: match, isLoading: matchLoading } = useMatch(matchId, { live: true })
+  // Half length for THIS match: the match's own setting, else the club's configured default (30 club / 35 inter-county)
+  const matchHalfMins = match?.half_duration_mins || club?.default_half_duration || 30
   const { data: matchStats, isLoading: statsLoading } = useMatchStats(matchId, undefined, true)
   const { data: players = [] } = usePlayers()
   const [matchLineup, setMatchLineup] = useState<any[]>([])
@@ -904,7 +906,7 @@ export default function MatchRecording() {
         const elapsed = (Date.now() - parseTS(match.started_at)) * DEV_SPEED_MULTIPLIER
         const mins = Math.floor(elapsed / 60000)
         const secs = Math.floor((elapsed % 60000) / 1000)
-        const hdm = match.half_duration_mins || 30
+        const hdm = matchHalfMins
         if (mins >= hdm) {
           // Timer has overrun half duration without half-time being clicked — freeze clock at hdm
           setMinute(hdm)
@@ -919,7 +921,7 @@ export default function MatchRecording() {
       } else if (phase === 'half_time') {
         // Force half-time minute — overrides any crash restore value
         setTimeout(() => {
-          setMinute(match.half_duration_mins || 30)
+          setMinute(matchHalfMins)
           setSeconds(0)
         }, 100)
         setCurrentHalf(1)
@@ -1083,7 +1085,7 @@ export default function MatchRecording() {
           if (prev >= 59) {
             setMinute((m) => {
               const next = m + 1
-              const hdm = match?.half_duration_mins || 30
+              const hdm = matchHalfMins
               const fullTimeMins = (hdm * 2) - 1
               if (next >= fullTimeMins && matchPhase === 'second_half') {
                 setFullTimeReached(true)
@@ -1322,7 +1324,7 @@ export default function MatchRecording() {
   const shotLocations = useMemo(() => {
     const shotTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'wide', 'short', 'saved', 'point_free', 'two_point_free', 'wide_free', 'forty_five', 'forty_five_missed', 'penalty_miss'])
     const scoreTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'])
-    const halfDuration = match?.half_duration_mins || 30
+    const halfDuration = matchHalfMins
     const attackingRightFirstHalf = match?.attacking_right_first_half ?? true
     const normalizeX = (rawX: number, isOwn: boolean, minute: number | null | undefined): number => {
       const isFirstHalf = (minute ?? 0) <= halfDuration
@@ -1453,7 +1455,7 @@ export default function MatchRecording() {
             opponent={matchDisplay.opponent}
             pollInterval={20000}
             attackingRightFirstHalf={match?.attacking_right_first_half}
-            halfDurationMins={match?.half_duration_mins || 30}
+            halfDurationMins={matchHalfMins}
           />
         </ChartZoomModal>
       </div>
@@ -1465,7 +1467,7 @@ export default function MatchRecording() {
             events={matchEventsData.events}
             pollInterval={20000}
             attackingRightFirstHalf={match?.attacking_right_first_half}
-            halfDurationMins={match?.half_duration_mins || 30}
+            halfDurationMins={matchHalfMins}
           />
         </ChartZoomModal>
       </div>
@@ -1525,7 +1527,7 @@ export default function MatchRecording() {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
         <ChartZoomModal title="Kickout Sequence">
-          <KickoutSequence events={matchEventsData.events} teamName={clubName} opponentName={matchDisplay.opponent} />
+          <KickoutSequence events={matchEventsData.events} teamName={clubName} opponentName={matchDisplay.opponent} halfDurationMins={matchHalfMins} />
         </ChartZoomModal>
         {seasonBenchmarkData && (
           <ChartZoomModal title="vs Season Average">
@@ -1567,7 +1569,7 @@ export default function MatchRecording() {
   const filteredMapEvents = useMemo(() => {
     if (!matchEventsData?.events) return []
     const eventTypes = getEventTypesForFilters(eventMapFilters)
-    const halfDuration = match?.half_duration_mins || 30
+    const halfDuration = matchHalfMins
     let events = matchEventsData.events.map((e: any) => ({
       id: e.id,
       pitch_x: e.pitch_x,
@@ -3961,7 +3963,7 @@ export default function MatchRecording() {
       }
       setMatchPhase('second_half')
       setCurrentHalf(2)
-      setMinute(match?.half_duration_mins || 30)
+      setMinute(matchHalfMins)
       setSeconds(0)
     }
   }
@@ -4015,7 +4017,7 @@ export default function MatchRecording() {
   }
 
   const getEndButtonText = () => {
-    const hdm = match?.half_duration_mins || 30
+    const hdm = matchHalfMins
     if (matchPhase === 'first_half') return minute >= hdm ? 'Half Time' : 'End Half'
     if (matchPhase === 'second_half') {
       return fullTimeReached ? 'Full Time' : 'End Match'
@@ -4036,7 +4038,7 @@ export default function MatchRecording() {
   }
 
   const formatTime = () => {
-    const hdm = match?.half_duration_mins || 30
+    const hdm = matchHalfMins
     const fullTime = hdm * 2
     // Injury time format: "35 (+1:32)" for first half, "70 (+2:15)" for second half
     if (matchPhase === 'first_half' && minute >= hdm) {
@@ -4085,7 +4087,7 @@ export default function MatchRecording() {
       // Second half elapsed is measured from second_half_started_at alone (see
       // the resync effect: `mins = 30 + elapsed since second_half_started_at`),
       // so the timestamp only needs to encode time-into-the-half, not hdm + that.
-      const hdm = match?.half_duration_mins || 30
+      const hdm = matchHalfMins
       const elapsedForTimestamp = currentHalf === 2 ? Math.max(0, elapsed - hdm * 60) : elapsed
       const newStartedAt = new Date(Date.now() - elapsedForTimestamp * 1000).toISOString()
       const startedAtField = currentHalf === 1 ? 'started_at' : 'second_half_started_at'
@@ -4141,7 +4143,7 @@ export default function MatchRecording() {
 
     // Clock is running — shift the relevant start timestamp so elapsed-time
     // derivation lands on the target value (same trick as resume-from-stoppage).
-    const hdm = match?.half_duration_mins || 30
+    const hdm = matchHalfMins
     const elapsedForTimestamp = currentHalf === 2 ? Math.max(0, targetTotal - hdm * 60) : targetTotal
     const newStartedAt = new Date(Date.now() - elapsedForTimestamp * 1000).toISOString()
     const startedAtField = currentHalf === 1 ? 'started_at' : 'second_half_started_at'
@@ -4572,7 +4574,7 @@ export default function MatchRecording() {
                       className={`px-4 py-2 rounded-xl font-medium transition-all text-sm backdrop-blur-md ${
                         !isEndButtonEnabled()
                           ? 'bg-white/10 text-white/40 border border-white/10 cursor-not-allowed'
-                          : (fullTimeReached || (matchPhase === 'first_half' && minute >= (match?.half_duration_mins || 30)))
+                          : (fullTimeReached || (matchPhase === 'first_half' && minute >= (matchHalfMins)))
                             ? 'bg-white/15 text-white border border-amber-500/40 shadow-lg shadow-amber-500/10 ring-1 ring-amber-400/30'
                             : 'bg-white/10 text-white/80 border border-white/15 hover:bg-white/15 hover:text-white hover:border-white/25'
                       }`}
@@ -4619,7 +4621,7 @@ export default function MatchRecording() {
             {/* Left column — pitch, action buttons, event map */}
             <div className="order-1 md:col-span-2 min-w-0 space-y-6">
               {/* Half Time Banner */}
-              {minute >= (match?.half_duration_mins || 30) && matchPhase === 'first_half' && (
+              {minute >= (matchHalfMins) && matchPhase === 'first_half' && (
                 <div className="backdrop-blur-xl bg-white/5 border border-amber-500/20 rounded-xl px-4 py-3 mb-4">
                   <div className="flex items-center justify-center space-x-2">
                     <Clock size={16} className="text-amber-400" />
@@ -5319,10 +5321,10 @@ export default function MatchRecording() {
                             className={`flex items-start space-x-3 p-3 rounded-lg border ${eventColor} backdrop-blur-sm transition-all hover:scale-[1.02] hover:shadow-lg`}
                           >
                             <div className="flex-shrink-0 w-10 h-10 rounded-md bg-gradient-to-br from-emerald-600 to-cyan-600 flex items-center justify-center font-bold text-white text-xs shadow-md">
-                              {event.half === 1 && event.minute > 30
-                                ? `30+${event.minute - 30}'`
-                                : event.half === 2 && event.minute > 60
-                                  ? `60+${event.minute - 60}'`
+                              {event.half === 1 && event.minute > matchHalfMins
+                                ? `${matchHalfMins}+${event.minute - matchHalfMins}'`
+                                : event.half === 2 && event.minute > matchHalfMins * 2
+                                  ? `${matchHalfMins * 2}+${event.minute - matchHalfMins * 2}'`
                                   : `${event.minute}'`}
                             </div>
                             <div className="flex-1 min-w-0">
@@ -5616,7 +5618,7 @@ export default function MatchRecording() {
               <input
                 type="range"
                 min={0}
-                max={(match?.half_duration_mins || 30) * 2 + 10}
+                max={(matchHalfMins) * 2 + 10}
                 step={1}
                 value={clockEditorDraft.minute}
                 onChange={(e) => setClockEditorDraft(prev => ({ ...prev, minute: parseInt(e.target.value, 10) }))}
@@ -5624,7 +5626,7 @@ export default function MatchRecording() {
               />
               <div className="flex justify-between text-[10px] text-white/40 mt-1">
                 <span>0</span>
-                <span>{(match?.half_duration_mins || 30) * 2 + 10} min</span>
+                <span>{(matchHalfMins) * 2 + 10} min</span>
               </div>
             </div>
 
@@ -5699,7 +5701,7 @@ export default function MatchRecording() {
         onDragPath={handleDragPath}
         matchPhase={matchPhase}
         minute={minute}
-        halfDurationMins={match?.half_duration_mins || 30}
+        halfDurationMins={matchHalfMins}
         seconds={seconds}
         teamGoals={teamGoals}
         teamPoints={teamPoints}
@@ -6154,7 +6156,7 @@ export default function MatchRecording() {
           events={allEvents}
           opponent={matchDisplay.opponent}
           teamName={clubName || 'Us'}
-          halfDurationMins={match?.half_duration_mins || 30}
+          halfDurationMins={matchHalfMins}
           onClose={() => setShowExtendedStats(false)}
         />
       )}
