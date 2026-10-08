@@ -3156,6 +3156,8 @@ export default function VideoTagging() {
   })()
   const isInPenaltyArea = !!ballPosition && Math.abs(cabAttackingGoalX - ballPosition.x) <= 10.5
 
+  // A top banner (input prompt or Review) is showing — the status controls sit just below it
+  const topBannerShown = reviewing || deadBall || !!assistPromptEventId || showManualEvent || showViewLineup || showWeatherPicker
   // What was left open when the user stepped out to Review (kept, shown as a chip)
   const parkedPromptLabel =
     assistPromptEventId ? 'Assist player'
@@ -3279,19 +3281,6 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {mode === 'tracking' && !reviewing && !isPlaying && !deadBall && currentTimeMs >= highWaterMarkMs && (
-        <div className="absolute top-3 right-3 z-30 pointer-events-none">
-          <button
-            onClick={() => playerRef.current?.play()}
-            className="pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all hover:scale-105 active:scale-95 animate-pulse hover:animate-none"
-            style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
-          >
-            <Play size={16} fill="#0a1a10" />
-            Resume Tracking
-          </button>
-        </div>
-      )}
-
       {/* REVIEW banner — free roam, nothing recorded. Prominent Return button. */}
       {mode === 'tracking' && reviewing && (
         <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
@@ -3329,38 +3318,51 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {/* Always-visible state: TRACKING (recording) vs REVIEW, with the way to switch */}
+      {/* Always-visible state: TRACKING (recording) vs REVIEW, with the way to switch.
+          Top-right, clear of the play button / timeline; drops below the banner when one is showing. */}
       {mode === 'tracking' && (
-        <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1.5">
-          <div
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold tracking-wide border backdrop-blur-md ${
-              reviewing
-                ? 'bg-sky-500/20 border-sky-400/50 text-sky-100'
-                : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100'
-            }`}
-            title={reviewing ? 'Review: nothing is being recorded' : 'Tracking: events and possession are being recorded'}
-          >
-            {reviewing
-              ? <><Eye size={12} /> REVIEW</>
-              : <><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" /></span> TRACKING</>}
+        <div className={`absolute right-3 z-30 flex flex-col items-end gap-2 ${topBannerShown ? 'top-[4.5rem]' : 'top-3'}`}>
+          <div className="flex items-center gap-1.5">
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold tracking-wide border backdrop-blur-md ${
+                reviewing
+                  ? 'bg-sky-500/25 border-sky-400/50 text-sky-100'
+                  : 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100'
+              }`}
+              title={reviewing ? 'Review: nothing is being recorded' : 'Tracking: events and possession are being recorded'}
+            >
+              {reviewing
+                ? <><Eye size={12} /> REVIEW</>
+                : <><span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" /><span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" /></span> TRACKING</>}
+            </div>
+            {!reviewing && (
+              <>
+                <button
+                  onClick={() => replayLast10Ref.current()}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border bg-black/55 border-white/20 text-white/85 hover:bg-black/75 hover:text-white backdrop-blur-md transition-colors"
+                  title="Replay the last 10 seconds, then carry on tracking automatically"
+                >
+                  <RotateCcw size={12} /> Review last 10 seconds
+                </button>
+                <button
+                  onClick={() => enterReviewRef.current({ pause: true })}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border bg-black/55 border-white/20 text-white/85 hover:bg-black/75 hover:text-white backdrop-blur-md transition-colors"
+                  title="Step out of tracking to rewind, fast-forward and look around — nothing is recorded"
+                >
+                  <Eye size={12} /> Review
+                </button>
+              </>
+            )}
           </div>
-          {!reviewing && (
-            <>
-              <button
-                onClick={() => replayLast10Ref.current()}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border bg-black/55 border-white/20 text-white/85 hover:bg-black/75 hover:text-white backdrop-blur-md transition-colors"
-                title="Replay the last 10 seconds, then carry on tracking automatically"
-              >
-                <RotateCcw size={12} /> Review last 10 seconds
-              </button>
-              <button
-                onClick={() => enterReviewRef.current({ pause: true })}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border bg-black/55 border-white/20 text-white/85 hover:bg-black/75 hover:text-white backdrop-blur-md transition-colors"
-                title="Step out of tracking to rewind, fast-forward and look around — nothing is recorded"
-              >
-                <Eye size={12} /> Review
-              </button>
-            </>
+          {!reviewing && !isPlaying && !deadBall && currentTimeMs >= highWaterMarkMs && (
+            <button
+              onClick={() => playerRef.current?.play()}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold transition-all hover:scale-105 active:scale-95 animate-pulse hover:animate-none"
+              style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+            >
+              <Play size={16} fill="#0a1a10" />
+              Resume Tracking
+            </button>
           )}
         </div>
       )}
