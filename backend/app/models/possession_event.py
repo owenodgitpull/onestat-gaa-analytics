@@ -8,7 +8,7 @@ Used to generate heat maps, possession stats, and flow diagrams.
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, DateTime, Float, Integer, String, ForeignKey
+from sqlalchemy import Column, DateTime, Float, Integer, String, ForeignKey, BigInteger
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -61,6 +61,10 @@ class PossessionEvent(Base):
     # Calculated from time between this event and next event
     duration_seconds: Column[Optional[int]] = Column(Integer, nullable=True)
     
+    # Video Tagging only: the video time (ms) this point was recorded at — lets Undo to Point
+    # remove the possession tracked after a chosen moment. NULL for Live Recording / older rows.
+    video_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+
     # Offline sync — client-generated UUID for idempotent deduplication
     client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
 

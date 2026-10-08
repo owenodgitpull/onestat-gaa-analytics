@@ -47,10 +47,9 @@ export default function UndoToPointModal({
 
   // Calculate what will be deleted at the selected point
   const deletionPreview = useMemo(() => {
-    const eventsToDelete = events.filter(e => {
-      const eventTimeMs = (e.match_minute || 0) * 60 * 1000
-      return eventTimeMs > selectedTimeMs
-    })
+    // Events are compared in VIDEO time — the slider is a video time. (This used the match-clock
+    // minute, which never lines up with video time, so nothing ever showed as deletable.)
+    const eventsToDelete = events.filter(e => (e.video_timestamp_ms ?? -1) > selectedTimeMs)
 
     const segmentsToDelete = segments.filter(s => {
       const segmentStartMs = (s.minute || 0) * 60 * 1000
@@ -87,7 +86,8 @@ export default function UndoToPointModal({
 
   if (!isOpen) return null
 
-  const canUndo = selectedTimeMs >= minUndoTimeMs && (deletionPreview.totalEvents > 0 || deletionPreview.totalSegments > 0)
+  // Possession and ball tracking after the point are cleared too, so any rollback with footage after it is valid
+  const canUndo = selectedTimeMs >= minUndoTimeMs && selectedTimeMs < currentTimeMs - 500
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -152,9 +152,13 @@ export default function UndoToPointModal({
                 <h3 className="font-semibold text-white">What will be deleted:</h3>
 
                 {deletionPreview.totalEvents === 0 && deletionPreview.totalSegments === 0 ? (
-                  <p className="text-sm text-white/60">
-                    No events or ball carrying segments after this point.
-                  </p>
+                  <>
+                    <p className="text-sm text-white/60">No tagged events after this point.</p>
+                    <p className="text-sm text-white/60">Possession and ball tracking after it will be cleared.</p>
+                    <p className="text-sm text-amber-300 pt-2 border-t border-amber-500/20">
+                      Video will resume tracking from {formatTime(selectedTimeMs)}
+                    </p>
+                  </>
                 ) : (
                   <>
                     {deletionPreview.totalEvents > 0 && (
@@ -184,6 +188,7 @@ export default function UndoToPointModal({
                       </div>
                     )}
 
+                    <p className="text-sm text-white/60">Possession and ball tracking after this point will be cleared too.</p>
                     <p className="text-sm text-amber-300 pt-2 border-t border-amber-500/20">
                       Video will resume tracking from {formatTime(selectedTimeMs)}
                     </p>

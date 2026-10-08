@@ -169,6 +169,7 @@ class PossessionService:
                 pitch_x=p.pitch_x,
                 pitch_y=p.pitch_y,
                 duration_seconds=p.duration_seconds,
+                video_ms=getattr(p, 'video_ms', None),
             )
             for p in points
         ]

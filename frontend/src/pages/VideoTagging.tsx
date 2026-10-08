@@ -339,6 +339,8 @@ export default function VideoTagging() {
   // work something out. Nothing is recorded: no possession time, no events, the tracking mark
   // never moves, and any open prompt is PARKED (kept, not lost) until you Return to Tracking.
   const [reviewing, setReviewing] = useState(false)
+  const undoFlushRef = useRef<() => Promise<void>>(async () => {})
+  const calcMatchTimeRef = useRef<(ms: number) => { minute: number; second: number; half: number }>(() => ({ minute: 0, second: 0, half: 1 }))
   const reviewingRef = useRef(false)
   // "Review last 10 seconds": returns to tracking by itself once playback reaches this time
   const autoReturnAtRef = useRef<number | null>(null)
@@ -865,11 +867,24 @@ export default function VideoTagging() {
     if (!sessionId || !matchData) return
 
     try {
-      // Delete events and segments after the selected point
+      // Get anything not yet sent onto the server first, so the cut below sees it all
+      await undoFlushRef.current()
+      // Delete events, carrier segments AND possession after the selected point
       await Promise.all([
         deleteEventsAfter.mutateAsync({ sessionId, timestampMs }),
         deleteSegmentsAfter.mutateAsync({ matchId: matchData.id, timestampMs }),
+        api.possession.deleteAfterVideo(matchData.id, timestampMs, calcMatchTimeRef.current(timestampMs).minute),
       ])
+      // Local tracking state restarts cleanly from the rollback point
+      possAccumMsRef.current = { team_a: 0, team_b: 0 }
+      lastPossTickMsRef.current = null
+      possBufferRef.current = []
+      ballOutcomeRef.current = null
+      setShowHighBallChips(false)
+      reviewingRef.current = false
+      autoReturnAtRef.current = null
+      setReviewing(false)
+      queryClient.invalidateQueries({ queryKey: ['possession-summary', matchData.id] })
 
       // Reset high-water mark to allow re-recording from this point
       setHighWaterMarkMs(timestampMs)
@@ -882,7 +897,7 @@ export default function VideoTagging() {
     } catch (error) {
       console.error('Failed to undo to point:', error)
     }
-  }, [sessionId, matchData, deleteEventsAfter, deleteSegmentsAfter])
+  }, [sessionId, matchData, deleteEventsAfter, deleteSegmentsAfter, queryClient])
 
   /** Convert video timestamp to match minute/second/half, accounting for throw-in offsets */
   const calcMatchTime = useCallback((videoMs: number): { minute: number; second: number; half: number } => {
@@ -906,6 +921,8 @@ export default function VideoTagging() {
     const totalSec = Math.floor(elapsed / 1000)
     return { minute: Math.floor(totalSec / 60), second: totalSec % 60, half: 1 }
   }, [session?.first_half_start_ms, session?.first_half_clock_offset_ms, session?.second_half_start_ms])
+
+  calcMatchTimeRef.current = calcMatchTime
 
   // Clean up polling + SSE on unmount
   useEffect(() => {
@@ -1017,7 +1034,7 @@ export default function VideoTagging() {
   // /possession-events/video-batch every 15s, on pause, when 100 points are
   // queued, and on leave. One in-flight request at a time (like live's
   // isFlushingRef guard); a failed batch is put back and retried.
-  type PossPoint = { team: 'own' | 'opponent'; pitch_x: number; pitch_y: number; minute: number; duration_seconds: number }
+  type PossPoint = { team: 'own' | 'opponent'; pitch_x: number; pitch_y: number; minute: number; duration_seconds: number; video_ms: number }
   const possBufferRef = useRef<PossPoint[]>([])
   const isPossSendingRef = useRef(false)
 
@@ -1057,11 +1074,18 @@ export default function VideoTagging() {
           pitch_x: pos.x, pitch_y: pos.y,
           minute: Math.min(mt.minute, 120),
           duration_seconds: secs,
+          video_ms: Math.round(currentTimeMsRef.current),
         })
       }
     }
     if (sendNow || possBufferRef.current.length >= 100) void sendPossessionBuffer()
   }, [session?.match_id, calcMatchTime, sendPossessionBuffer])
+
+  // Undo to Point needs everything tracked so far to be on the server before it cuts after a chosen moment
+  undoFlushRef.current = async () => {
+    flushPossession(false, undefined, false)
+    await sendPossessionBuffer()
+  }
 
   // Flush every 15s while tracking, on pause, and on unmount/leave.
   useEffect(() => {
@@ -2761,7 +2785,7 @@ export default function VideoTagging() {
       for (const wp of waypoints) {
         possBufferRef.current.push({
           team, pitch_x: wp.x, pitch_y: wp.y,
-          minute: Math.min(matchTime.minute, 120), duration_seconds: 0,
+          minute: Math.min(matchTime.minute, 120), duration_seconds: 0, video_ms: Math.round(currentTimeMs),
         })
       }
       if (possBufferRef.current.length >= 100) void sendPossessionBuffer()
@@ -3786,6 +3810,18 @@ export default function VideoTagging() {
     />
   )
 
+  // Edit-player picker: what's being edited decides the title + the direction the pitch is drawn
+  const editingEvent = editingPlayerEventId ? events.find(e => e.id === editingPlayerEventId) ?? null : null
+  const editPickerEventType: string = (() => {
+    if (!editingEvent) return 'point'
+    const cfg = Object.values(EVENT_TYPE_CONFIG).find(c => c.videoType === editingEvent.event_type && c.playerModalEventType)
+    return cfg?.playerModalEventType || editingEvent.event_type.toLowerCase()
+  })()
+  const editPickerAttackingRight: boolean = (() => {
+    const firstRight = matchData?.attacking_right_first_half ?? true
+    return editingEvent?.half === 2 ? !firstRight : firstRight
+  })()
+
   const trackingOverlays = (
     <>
       {showExtraStats && (
@@ -4410,14 +4446,34 @@ export default function VideoTagging() {
       {/* Edit-player modal — separate instance/state (editingPlayerEventId)
           from the new-event picker above, so editing an existing event's
           player/team never interferes with an in-flight new-event tap. */}
-      <PlayerSelectionModal
-        isOpen={!!editingPlayerEventId}
-        onClose={handleEditPlayerSkip}
-        onSelectPlayer={handleEditPlayerSelect}
-        eventType="point"
-        team="own"
-        players={playerList}
-      />
+      {matchLineup && matchLineup.length > 0 ? (
+        // Same on-pitch formation picker as tagging a new event / live recording (team colours,
+        // ranked by where THIS event happened). The real event type drives the title, e.g.
+        // "who won the kickout" instead of a hard-coded "Who Scored?".
+        <PitchPlayerSelector
+          isOpen={!!editingPlayerEventId}
+          onClose={handleEditPlayerSkip}
+          onSelectPlayer={handleEditPlayerSelect}
+          eventType={editPickerEventType}
+          team="own"
+          players={playerList}
+          matchLineup={matchLineup}
+          teamPrimaryColor={club?.primary_colour || '#10B981'}
+          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+          attackingRight={editPickerAttackingRight}
+          ballPosition={editingEvent?.pitch_x != null && editingEvent?.pitch_y != null ? { x: editingEvent.pitch_x, y: editingEvent.pitch_y } : ballPosition}
+          suggestedPlayerId={editingEvent?.player_id ?? null}
+        />
+      ) : (
+        <PlayerSelectionModal
+          isOpen={!!editingPlayerEventId}
+          onClose={handleEditPlayerSkip}
+          onSelectPlayer={handleEditPlayerSelect}
+          eventType={editPickerEventType}
+          team="own"
+          players={playerList}
+        />
+      )}
 
       {/* Team-swap confirm — parity with live recording's editChoice card */}
       {editTeamChoice && (

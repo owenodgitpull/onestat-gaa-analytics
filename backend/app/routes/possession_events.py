@@ -7,7 +7,7 @@ Handles ball movement and possession changes during matches.
 from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func, case, delete, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -80,6 +80,38 @@ async def possession_summary(
         "own_spells": int(own_spells),
         "opponent_spells": int(opp_spells),
     }
+
+
+@router.delete("/match/{match_id}/after-video/{timestamp_ms}")
+async def delete_possession_after_video_time(
+    match_id: UUID,
+    timestamp_ms: int,
+    minute: int = Query(..., ge=0, description="Match minute at the rollback point (fallback for rows without video_ms)"),
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Video Tagging "Undo to Point": delete the possession recorded after a video time.
+    Rows that know their video time are cut exactly; older rows without it fall back to the
+    match minute (anything in a LATER minute than the rollback point).
+    """
+    owner = await db.execute(
+        select(Match.id).where(Match.id == match_id, Match.club_id == user.club_id)
+    )
+    if owner.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    result = await db.execute(
+        delete(PossessionEvent).where(
+            PossessionEvent.match_id == match_id,
+            or_(
+                PossessionEvent.video_ms > timestamp_ms,
+                and_(PossessionEvent.video_ms.is_(None), PossessionEvent.minute > minute),
+            ),
+        )
+    )
+    await db.commit()
+    return {"deleted_count": result.rowcount, "match_id": str(match_id), "after_ms": timestamp_ms}
 
 
 @router.post("/video-batch", status_code=status.HTTP_201_CREATED)

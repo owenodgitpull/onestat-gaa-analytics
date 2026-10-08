@@ -615,12 +615,22 @@ export const possessionAPI = {
       pitch_y?: number | null;
       minute?: number | null;
       duration_seconds: number;
+      /** Video time (ms) the point was recorded at — lets Undo to Point cut possession exactly */
+      video_ms?: number | null;
     }>;
   }): Promise<{ created: number }> => {
     return fetchAPI<{ created: number }>('/possession-events/video-batch', {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  /** Video Tagging Undo to Point: delete possession recorded after a video time. */
+  deleteAfterVideo: async (matchId: string, timestampMs: number, minute: number): Promise<{ deleted_count: number }> => {
+    return fetchAPI<{ deleted_count: number }>(
+      `/possession-events/match/${matchId}/after-video/${Math.round(timestampMs)}?minute=${Math.max(0, Math.floor(minute))}`,
+      { method: 'DELETE' },
+    );
   },
 
   /**

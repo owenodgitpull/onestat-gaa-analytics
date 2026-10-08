@@ -51,6 +51,8 @@ class PossessionVideoPoint(BaseModel):
     minute: Optional[int] = Field(None, ge=0, le=120)
     # Seconds of VIDEO time this point represents (0 for pure path/location points)
     duration_seconds: int = Field(0, ge=0, le=3600)
+    # Video time (ms) the point was recorded at (enables Undo to Point)
+    video_ms: Optional[int] = Field(None, ge=0)
 
 
 class PossessionVideoBatch(BaseModel):
