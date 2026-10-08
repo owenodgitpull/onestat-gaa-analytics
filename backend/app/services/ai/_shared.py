@@ -1762,6 +1762,42 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         fx, fy = _to_frame_p(float(pt["x"]), float(pt["y"]), _own_right_p(atk_first, None, minute, hdm))
         return _pitch_location(fx, fy)
 
+    import math as _math
+
+    def _move_metrics(points, minute, mid):
+        """Distance covered, metres gained towards goal, directness and start/end thirds for a move.
+        Pitch is 145m x 90m (1% of x = 1.45m, 1% of y = 0.9m); gain is measured in OUR attacking frame."""
+        if not points:
+            return {}
+        atk_first, hdm = match_dir.get(mid, (None, 30))
+        right = _own_right_p(atk_first, None, minute, hdm)
+        fr = [_to_frame_p(float(pt["x"]), float(pt["y"]), right) for pt in points]
+        total = 0.0
+        for (x1, y1), (x2, y2) in zip(fr, fr[1:]):
+            total += _math.hypot((x2 - x1) * 1.45, (y2 - y1) * 0.90)
+        gained = (fr[-1][0] - fr[0][0]) * 1.45
+
+        def third(x):
+            return "defensive third" if x <= 31 else ("middle third" if x <= 69 else "attacking third")
+
+        return {
+            "metres_total": round(total),
+            "metres_gained": round(gained),
+            "directness_pct": round(max(0.0, gained) / total * 100) if total >= 5 else None,
+            "start_third": third(fr[0][0]),
+            "end_third": third(fr[-1][0]),
+        }
+
+    def _origin_label(started_with):
+        t = (started_with or "").lower()
+        if "kickout" in t:
+            return "Kickout"
+        if t in ("turnover_won", "interception", "block", "tackle_won", "breaking_ball_won"):
+            return "Turnover"
+        if t in ("free_won", "foul_won", "free_short_pass", "free_high_ball", "forty_five", "point_free", "wide_free"):
+            return "Free"
+        return "Open play"
+
     paths = []
     for mid, events in events_by_match.items():
         opponent = match_info.get(mid, "Unknown")
@@ -1885,7 +1921,26 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             started_by = players.get(str(first_event.player_id), "Unknown") if first_event.player_id else None
             started_with = first_event.event_type.value if hasattr(first_event.event_type, 'value') else str(first_event.event_type)
 
+            nodes = []
+            for ce in chain:
+                if ce.pitch_x is None or ce.pitch_y is None:
+                    continue
+                nd = {
+                    "x": round(ce.pitch_x, 1), "y": round(ce.pitch_y, 1),
+                    "type": ce.event_type.value if hasattr(ce.event_type, 'value') else str(ce.event_type),
+                    "player": players.get(str(ce.player_id)) if ce.player_id else None,
+                    "minute": ce.minute,
+                }
+                if getattr(ce, "end_x", None) is not None and getattr(ce, "end_y", None) is not None:
+                    nd["end_x"] = round(ce.end_x, 1)
+                    nd["end_y"] = round(ce.end_y, 1)
+                nodes.append(nd)
+
             paths.append({
+                **_move_metrics(points, oe.minute, mid),
+                "origin": _origin_label(started_with),
+                "touches": len(chain),
+                "nodes": nodes,
                 "label": path_label,
                 "outcome": outcome_str,
                 "minute": oe.minute,

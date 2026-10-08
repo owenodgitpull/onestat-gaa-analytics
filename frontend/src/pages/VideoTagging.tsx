@@ -4643,6 +4643,62 @@ export default function VideoTagging() {
         />
       </div>
 
+      {/* ── Event Map — near the top, like live recording ─────── */}
+      <div className="space-y-3 max-w-4xl mx-auto w-full">
+        <div className="glass-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-bold text-white flex items-center space-x-2">
+              <Target size={16} />
+              <span>Event Map</span>
+            </h2>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(['all', 1, 2] as const).map((h) => (
+                <button
+                  key={h}
+                  onClick={() => setEventMapHalfFilter(h)}
+                  className={`px-2.5 py-1 rounded-lg font-medium text-xs transition-all ${
+                    eventMapHalfFilter === h ? 'bg-white/25 text-white' : 'bg-white/8 text-white/40 hover:bg-white/15'
+                  }`}
+                >
+                  {h === 'all' ? 'All' : h === 1 ? '1st' : '2nd'}
+                </button>
+              ))}
+              <span className="text-white/20 text-xs">·</span>
+              <button
+                onClick={() => setEventMapTeamFilter('all')}
+                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                  eventMapTeamFilter === 'all' ? 'bg-cyan-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setEventMapTeamFilter('own')}
+                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                  eventMapTeamFilter === 'own' ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                {clubName}
+              </button>
+              <button
+                onClick={() => setEventMapTeamFilter('opponent')}
+                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
+                  eventMapTeamFilter === 'opponent' ? 'bg-orange-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                }`}
+              >
+                {opponentName}
+              </button>
+            </div>
+          </div>
+          <div className="mb-1 text-xs text-white/40 text-center">
+            {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown
+          </div>
+          <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
+        </div>
+        <EventFilterToggles activeFilters={eventMapFilters} onToggle={setEventMapFilters} />
+        <EventMapLegend />
+      </div>
+
       {/* ── Match Statistics — scroll target for the "Stats" button ────── */}
       <div ref={statsRef}>
         <MatchStatsPanel
@@ -4741,62 +4797,6 @@ export default function VideoTagging() {
             {seasonBenchmarkData && <SeasonBenchmarkCard data={seasonBenchmarkData} teamName={clubName} />}
           </ChartZoomModal>
         </div>
-      </div>
-
-      {/* ── Event Map — exact same filterable map as live recording ─────── */}
-      <div className="space-y-3">
-        <div className="glass-card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-bold text-white flex items-center space-x-2">
-              <Target size={16} />
-              <span>Event Map</span>
-            </h2>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {(['all', 1, 2] as const).map((h) => (
-                <button
-                  key={h}
-                  onClick={() => setEventMapHalfFilter(h)}
-                  className={`px-2.5 py-1 rounded-lg font-medium text-xs transition-all ${
-                    eventMapHalfFilter === h ? 'bg-white/25 text-white' : 'bg-white/8 text-white/40 hover:bg-white/15'
-                  }`}
-                >
-                  {h === 'all' ? 'All' : h === 1 ? '1st' : '2nd'}
-                </button>
-              ))}
-              <span className="text-white/20 text-xs">·</span>
-              <button
-                onClick={() => setEventMapTeamFilter('all')}
-                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
-                  eventMapTeamFilter === 'all' ? 'bg-cyan-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setEventMapTeamFilter('own')}
-                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
-                  eventMapTeamFilter === 'own' ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
-                }`}
-              >
-                {clubName}
-              </button>
-              <button
-                onClick={() => setEventMapTeamFilter('opponent')}
-                className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
-                  eventMapTeamFilter === 'opponent' ? 'bg-orange-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
-                }`}
-              >
-                {opponentName}
-              </button>
-            </div>
-          </div>
-          <div className="mb-1 text-xs text-white/40 text-center">
-            {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown
-          </div>
-          <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
-        </div>
-        <EventFilterToggles activeFilters={eventMapFilters} onToggle={setEventMapFilters} />
-        <EventMapLegend />
       </div>
 
       {/* Enrichment Report */}

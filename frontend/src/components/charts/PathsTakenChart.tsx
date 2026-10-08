@@ -20,6 +20,8 @@ const OUTCOME_COLORS: Record<string, string> = {
   wide_free: '#fbbf24',
   forty_five: '#06b6d4',
   penalty_goal: '#10b981',
+  turnover_lost: '#ef4444',
+  unforced_error: '#f87171',
 }
 
 const OUTCOME_LABELS: Record<string, string> = {
@@ -27,6 +29,39 @@ const OUTCOME_LABELS: Record<string, string> = {
   two_point: '2-Pointer', two_point_free: '2-Pointer (free)',
   wide: 'Wide', wide_free: 'Wide (free)', forty_five: '45m free',
   short: 'Short', saved: 'Saved', penalty_goal: 'Penalty',
+  turnover_lost: 'Turnover lost', unforced_error: 'Unforced error',
+}
+
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  own_kickout_won: 'Kickout won', own_kickout_won_break: 'Kickout won (break)',
+  opp_kickout_won: 'Won their kickout', opp_kickout_won_break: 'Won their kickout (break)',
+  turnover_won: 'Turnover won', interception: 'Interception', block: 'Block', tackle_won: 'Tackle won',
+  free_won: 'Free won', foul_won: 'Free won', free_short_pass: 'Free short', free_high_ball: 'Free high ball',
+  long_kick_pass: 'Long kick pass', high_ball: 'High ball', forty_five: '45', point_free: 'Free (point)',
+  goal: 'Goal', point: 'Point', two_point: '2-pointer', two_point_free: '2-pointer (free)',
+  wide: 'Wide', wide_free: 'Wide (free)', turnover_lost: 'Turnover lost', unforced_error: 'Unforced error',
+  breaking_ball_won: 'Breaking ball won',
+}
+const eventLabel = (t: string) => EVENT_TYPE_LABELS[t] || t.replace(/_/g, ' ')
+
+const LOSS_TYPES = new Set(['turnover_lost', 'unforced_error'])
+const ORIGIN_LETTER: Record<string, string> = { Kickout: 'K', Turnover: 'T', Free: 'F', 'Open play': 'O' }
+
+const surname = (n: string | null | undefined) => (n ? (n.trim().split(' ').pop() || n) : '')
+
+// A small triangle pointing from a towards b, sitting `t` of the way along the segment
+const arrowTriangle = (a: { x: number; y: number }, b: { x: number; y: number }, t = 0.55, size = 30): string => {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len = Math.hypot(dx, dy) || 1
+  const ux = dx / len
+  const uy = dy / len
+  const mx = a.x + dx * t
+  const my = a.y + dy * t
+  const tip = { x: mx + ux * size, y: my + uy * size }
+  const l = { x: mx - ux * size * 0.5 - uy * size * 0.6, y: my - uy * size * 0.5 + ux * size * 0.6 }
+  const r = { x: mx - ux * size * 0.5 + uy * size * 0.6, y: my - uy * size * 0.5 - ux * size * 0.6 }
+  return `${tip.x},${tip.y} ${l.x},${l.y} ${r.x},${r.y}`
 }
 
 const SCORING_TYPES = new Set(['goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five', 'penalty_goal'])
@@ -204,12 +239,19 @@ const describePath = (
 }
 
 export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTakenChartProps) {
-  const [mode, setMode] = useState<'scores' | 'wides'>('scores')
+  const [mode, setMode] = useState<'scores' | 'wides' | 'losses'>('scores')
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
 
   const { data: pathsData } = useQuery({
     queryKey: ['pitch-paths', matchId],
     queryFn: () => matchesAPI.getPitchPaths(matchId),
+    enabled: !!matchId,
+    refetchInterval: pollInterval || false,
+  })
+  // Moves that ended in losing the ball — where our attacks broke down
+  const { data: lossData } = useQuery({
+    queryKey: ['pitch-paths-losses', matchId],
+    queryFn: () => matchesAPI.getPitchPaths(matchId, ['turnover_lost', 'unforced_error']),
     enabled: !!matchId,
     refetchInterval: pollInterval || false,
   })
@@ -227,11 +269,12 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
     }
     return { scores, wides }
   }, [allPaths])
+  const losses: PitchPath[] = useMemo(() => (lossData?.paths || []).filter((p: PitchPath) => LOSS_TYPES.has(p.outcome)), [lossData])
 
-  const currentPaths = mode === 'scores' ? scores : wides
+  const currentPaths = mode === 'scores' ? scores : mode === 'wides' ? wides : losses
   const hasData = currentPaths.length > 0
 
-  const handleModeChange = (newMode: 'scores' | 'wides') => {
+  const handleModeChange = (newMode: 'scores' | 'wides' | 'losses') => {
     setMode(newMode)
     setSelectedIdx(null)
   }
@@ -265,38 +308,68 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
     )
   })() : null
 
+  // Summary across the paths in this tab (shown when no single path is focused)
+  const summary = useMemo(() => {
+    if (currentPaths.length === 0) return null
+    const withGain = currentPaths.filter(p => typeof p.metres_gained === 'number')
+    const withDirect = currentPaths.filter(p => typeof p.directness_pct === 'number')
+    const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null)
+    const origins: Record<string, number> = {}
+    for (const p of currentPaths) origins[p.origin || 'Open play'] = (origins[p.origin || 'Open play'] || 0) + 1
+    return {
+      avgGain: avg(withGain.map(p => p.metres_gained as number)),
+      avgDirect: avg(withDirect.map(p => p.directness_pct as number)),
+      avgTouches: avg(currentPaths.map(p => p.touches ?? 0).filter(n => n > 0)),
+      origins: Object.entries(origins).sort((a, b) => b[1] - a[1]),
+      fromAttackingThird: currentPaths.filter(p => p.start_third === 'attacking third').length,
+      fromDefensiveThird: currentPaths.filter(p => p.start_third === 'defensive third').length,
+    }
+  }, [currentPaths])
+
+  const Chip = ({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'neutral' | 'good' | 'bad' }) => (
+    <span
+      className={`px-2 py-1 rounded-md text-[11px] font-semibold border ${
+        tone === 'good' ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-200'
+        : tone === 'bad' ? 'bg-red-500/15 border-red-400/30 text-red-200'
+        : 'bg-white/5 border-white/10 text-white/70'
+      }`}
+    >
+      {children}
+    </span>
+  )
+
+  const tabClass = (active: boolean, activeColor: string) =>
+    `flex-1 py-2 rounded-lg text-sm font-medium transition-all ${active ? `${activeColor} text-white` : 'bg-white/10 text-white/60 hover:bg-white/20'}`
+
   return (
     <div className="glass-card p-4 overflow-hidden">
       {/* Mode Toggle */}
       <div className="flex gap-2 mb-3">
-        <button
-          onClick={() => handleModeChange('scores')}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-            mode === 'scores' ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
-          }`}
-        >
+        <button onClick={() => handleModeChange('scores')} className={tabClass(mode === 'scores', 'bg-emerald-600')}>
           Scores ({scores.length})
         </button>
-        <button
-          onClick={() => handleModeChange('wides')}
-          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-            mode === 'wides' ? 'bg-amber-600 text-white' : 'bg-white/10 text-white/60 hover:bg-white/20'
-          }`}
-        >
+        <button onClick={() => handleModeChange('wides')} className={tabClass(mode === 'wides', 'bg-amber-600')}>
           Wides ({wides.length})
+        </button>
+        <button onClick={() => handleModeChange('losses')} className={tabClass(mode === 'losses', 'bg-red-600')} title="Moves that ended with us losing the ball">
+          Lost ball ({losses.length})
         </button>
       </div>
 
-      {/* Start/end marker legend */}
+      {/* Legend */}
       {hasData && (
-        <div className="flex items-center justify-center gap-4 mb-2 text-[10px] text-white/40">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mb-2 text-[10px] text-white/40">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-full bg-slate-900 border-2 border-white" />
-            Start
+            <span className="inline-flex w-4 h-4 rounded-full bg-slate-900 border-2 border-white items-center justify-center text-[8px] font-bold text-white">K</span>
+            Start (K kickout · T turnover · F free · O open play)
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
             End (outcome)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-5 border-t-2 border-dashed border-amber-400" />
+            Kick pass
           </span>
         </div>
       )}
@@ -305,26 +378,60 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
       {activeDetail && (() => {
         const color = OUTCOME_COLORS[activeDetail.outcome] || '#10b981'
         const outcomeLabel = OUTCOME_LABELS[activeDetail.outcome] || activeDetail.outcome?.replace(/_/g, ' ')
+        const gained = activeDetail.metres_gained
         return (
-          <div className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 mb-3">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-              style={{ backgroundColor: color }}
-            >
-              {selectedIdx! + 1}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-white font-semibold text-sm">
-                {activeDetail.player || 'Unknown'} — <span style={{ color }}>{outcomeLabel}</span>
-                <span className="text-white/40 font-normal ml-1">{activeDetail.minute}'</span>
+          <div className="px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 mb-3">
+            <div className="flex items-start gap-3">
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                style={{ backgroundColor: color }}
+              >
+                {selectedIdx! + 1}
               </div>
-              <div className="text-white/50 text-xs leading-relaxed mt-0.5">
-                {activeDescription}
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-semibold text-sm">
+                  {activeDetail.player || 'Unknown'} — <span style={{ color }}>{outcomeLabel}</span>
+                  <span className="text-white/40 font-normal ml-1">{activeDetail.minute}'</span>
+                </div>
+                <div className="text-white/50 text-xs leading-relaxed mt-0.5">
+                  {activeDescription}
+                </div>
               </div>
             </div>
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
+              {activeDetail.origin && <Chip>From {activeDetail.origin.toLowerCase()}</Chip>}
+              {typeof gained === 'number' && <Chip tone={gained > 0 ? 'good' : gained < 0 ? 'bad' : 'neutral'}>{gained > 0 ? '+' : ''}{gained}m towards goal</Chip>}
+              {typeof activeDetail.metres_total === 'number' && activeDetail.metres_total > 0 && <Chip>{activeDetail.metres_total}m of ball movement</Chip>}
+              {typeof activeDetail.directness_pct === 'number' && <Chip>{activeDetail.directness_pct}% direct</Chip>}
+              {typeof activeDetail.touches === 'number' && <Chip>{activeDetail.touches} tagged action{activeDetail.touches === 1 ? '' : 's'}</Chip>}
+              {activeDetail.start_third && activeDetail.end_third && <Chip>{activeDetail.start_third} → {activeDetail.end_third}</Chip>}
+            </div>
+            {(activeDetail.nodes?.length ?? 0) > 1 && (
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-2.5 text-[11px] text-white/60">
+                {activeDetail.nodes!.map((n, ni) => (
+                  <span key={ni} className="flex items-center gap-1">
+                    <span className="inline-flex w-4 h-4 rounded-full bg-slate-900 border border-white/60 items-center justify-center text-[9px] font-bold text-white">{ni + 1}</span>
+                    <span>{eventLabel(n.type)}{n.player ? ` (${surname(n.player)})` : ''}</span>
+                    {ni < activeDetail.nodes!.length - 1 && <span className="text-white/25">›</span>}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )
       })()}
+
+      {/* Whole-tab summary when no single path is focused */}
+      {!activeDetail && summary && (
+        <div className="flex flex-wrap gap-1.5 mb-3 justify-center">
+          {summary.avgGain != null && <Chip tone={summary.avgGain > 0 ? 'good' : 'neutral'}>Avg {summary.avgGain > 0 ? '+' : ''}{summary.avgGain}m gained per move</Chip>}
+          {summary.avgDirect != null && <Chip>Avg {summary.avgDirect}% direct</Chip>}
+          {summary.avgTouches != null && <Chip>Avg {summary.avgTouches} tagged actions</Chip>}
+          {summary.origins.map(([o, n]) => <Chip key={o}>{n} from {o.toLowerCase()}</Chip>)}
+          {summary.fromAttackingThird > 0 && <Chip>{summary.fromAttackingThird} won in the attacking third</Chip>}
+          {summary.fromDefensiveThird > 0 && <Chip>{summary.fromDefensiveThird} started in our defensive third</Chip>}
+        </div>
+      )}
 
       {/* Pitch SVG */}
       <div className="rounded-lg overflow-hidden w-full">
@@ -339,17 +446,19 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
           <rect width="2332" height="1446" fill="rgba(0,0,0,0.3)" />
 
           {hasData && visiblePaths.map((path, vIdx) => {
+            const focused = selectedIdx !== null
             const rawPoints = path.points || []
-            // Display only the last MAX_DISPLAY_POINTS — keeps path readable
-            const displayPoints = rawPoints.slice(-MAX_DISPLAY_POINTS)
+            // One focused move shows everything; the all-paths view keeps the last few positions so it stays readable
+            const displayPoints = focused ? rawPoints : rawPoints.slice(-MAX_DISPLAY_POINTS)
             if (displayPoints.length === 0) return null
 
-            const points = thinPoints(displayPoints, selectedIdx === null ? 6 : 4)
-            const realIdx = selectedIdx !== null ? selectedIdx : currentPaths.indexOf(path)
+            const points = thinPoints(displayPoints, focused ? 3 : 6)
+            const realIdx = focused ? selectedIdx! : currentPaths.indexOf(path)
             const svgPoints = points.map(p => toSvg(p.x, p.y))
             const color = OUTCOME_COLORS[path.outcome] || '#10b981'
             const num = realIdx + 1
-            const isHighlighted = selectedIdx === null || vIdx === 0
+            const isHighlighted = !focused || vIdx === 0
+            const letter = ORIGIN_LETTER[path.origin || 'Open play'] || 'O'
 
             if (svgPoints.length === 1) {
               return (
@@ -364,21 +473,65 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
               i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
             ).join(' ')
             const last = svgPoints[svgPoints.length - 1]
-            const showDots = selectedIdx !== null
+
+            // Direction arrows: one per long-enough segment on a focused move, just the final run-in otherwise
+            const arrows: string[] = []
+            for (let si = 0; si < svgPoints.length - 1; si++) {
+              const a = svgPoints[si]
+              const b = svgPoints[si + 1]
+              const segLen = Math.hypot(b.x - a.x, b.y - a.y)
+              if (focused ? segLen > 110 : si === svgPoints.length - 2 && segLen > 110) arrows.push(arrowTriangle(a, b, 0.55, focused ? 30 : 26))
+            }
+
+            const nodes = focused ? (path.nodes || []) : []
 
             return (
-              <g key={vIdx} opacity={isHighlighted ? 0.9 : 0.2}>
+              <g key={vIdx} opacity={isHighlighted ? 0.95 : 0.2}>
                 <path d={pathD} fill="none" stroke={color} strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" opacity={0.2} />
                 <path d={pathD} fill="none" stroke={color} strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" />
-                {showDots && svgPoints.slice(1, -1).map((p, di) => (
-                  <circle key={di} cx={p.x} cy={p.y} r={14} fill={color} stroke="white" strokeWidth={2} opacity={0.7} />
+                {arrows.map((pts, ai) => (
+                  <polygon key={ai} points={pts} fill="white" stroke={color} strokeWidth={4} strokeLinejoin="round" opacity={0.95} />
                 ))}
-                {/* Start marker: hollow white ring so it reads distinctly from the solid,
-                    outcome-colored end marker below — same color for both made it hard
-                    to tell at a glance which end of the path was the start. */}
-                <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={22} fill="#0f172a" stroke="white" strokeWidth={4} opacity={0.95} />
+
+                {/* Kick passes: dashed amber arrow from where it was kicked to where it landed */}
+                {nodes.map((n, ni) => {
+                  if (n.end_x == null || n.end_y == null) return null
+                  const a = toSvg(n.x, n.y)
+                  const b = toSvg(n.end_x, n.end_y)
+                  return (
+                    <g key={`k${ni}`}>
+                      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#fbbf24" strokeWidth={9} strokeDasharray="26 16" strokeLinecap="round" opacity={0.95} />
+                      <polygon points={arrowTriangle(a, b, 0.97, 34)} fill="#fbbf24" stroke="#78350f" strokeWidth={3} strokeLinejoin="round" />
+                    </g>
+                  )
+                })}
+
+                {/* Numbered tagged actions with the player's surname */}
+                {nodes.map((n, ni) => {
+                  const p = toSvg(n.x, n.y)
+                  const isLast = ni === nodes.length - 1
+                  if (isLast) return null // the outcome has its own marker below
+                  return (
+                    <g key={`n${ni}`}>
+                      <circle cx={p.x} cy={p.y} r={22} fill="#0f172a" stroke="white" strokeWidth={4} />
+                      <text x={p.x} y={p.y + 9} textAnchor="middle" fill="white" fontSize={26} fontWeight="bold">{ni + 1}</text>
+                      {n.player && (
+                        <text x={p.x} y={p.y + 62} textAnchor="middle" fill="white" fontSize={34} fontWeight="bold" stroke="#0f172a" strokeWidth={7} paintOrder="stroke">{surname(n.player)}</text>
+                      )}
+                    </g>
+                  )
+                })}
+
+                {/* Start marker: hollow dark ring with the origin letter (K kickout, T turnover, F free, O open play) */}
+                <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={focused ? 30 : 22} fill="#0f172a" stroke="white" strokeWidth={4} opacity={0.95} />
+                {focused && (
+                  <text x={svgPoints[0].x} y={svgPoints[0].y + 11} textAnchor="middle" fill="white" fontSize={30} fontWeight="bold">{letter}</text>
+                )}
                 <circle cx={last.x} cy={last.y} r={36} fill={color} stroke="white" strokeWidth={4} />
                 <text x={last.x} y={last.y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
+                {focused && path.player && (
+                  <text x={last.x} y={last.y + 78} textAnchor="middle" fill="white" fontSize={36} fontWeight="bold" stroke="#0f172a" strokeWidth={7} paintOrder="stroke">{surname(path.player)}</text>
+                )}
               </g>
             )
           })}
@@ -453,7 +606,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
 
       {!hasData && (
         <div className="mt-4 text-center text-white/40 text-sm py-4">
-          {mode === 'scores' ? 'No scoring paths recorded yet' : 'No wide paths recorded yet'}
+          {mode === 'scores' ? 'No scoring paths recorded yet' : mode === 'wides' ? 'No wide paths recorded yet' : 'No lost-ball moves recorded yet'}
         </div>
       )}
     </div>

@@ -1785,6 +1785,16 @@ export interface PitchPath {
   started_with: string | null;
   points: { x: number; y: number }[];
   carriers?: string[];
+  /** Move metrics, measured in OUR attacking frame (pitch 145m x 90m) */
+  metres_total?: number;
+  metres_gained?: number;
+  directness_pct?: number | null;
+  start_third?: string;
+  end_third?: string;
+  origin?: string;
+  touches?: number;
+  /** The tagged events that make up the move, in order (kicks carry their landing spot as end_x/end_y) */
+  nodes?: { x: number; y: number; type: string; player: string | null; minute: number; end_x?: number; end_y?: number }[];
 }
 
 export interface PitchPathsResponse {
