@@ -35,6 +35,11 @@ interface PitchPlayerSelectorProps {
 
 const LIKELY_COUNT = 5
 
+// The pitch drawing is 2332x1446 with the play area inset (left 183, top 123, 1960x1167) — same numbers as
+// utils/pitchGeometry. Pitch-% (0-100 along/across the playing area) -> % of the drawing box.
+const pitchLeftPct = (x: number) => ((183 + (x / 100) * 1960) / 2332) * 100
+const pitchTopPct = (y: number) => ((123 + (y / 100) * 1167) / 1446) * 100
+
 // Standard GAA formation: 1-3-3-2-3-3 (15 players)
 const FORMATION_POSITIONS = [
   { id: 'gk', x: 7, y: 50, label: 'GK' },
@@ -246,8 +251,15 @@ export default function PitchPlayerSelector({
         )}
       </div>
 
-      {/* Pitch with players */}
-      <div className="relative flex-1 mx-2 mb-2">
+      {/* Pitch with players. The pitch drawing keeps its own 2332:1446 shape (letterboxed on wide screens), so
+          everything is placed inside a box of exactly that shape and positioned by the real play-area
+          geometry — otherwise on a wide monitor the circles spread wider than the pitch and the keeper and
+          forwards land off the field. */}
+      <div className="relative flex-1 mx-2 mb-2" style={{ containerType: 'size' }}>
+      <div
+        className="absolute left-1/2 top-1/2"
+        style={{ width: 'min(100cqw, calc(100cqh * 2332 / 1446))', aspectRatio: '2332 / 1446', transform: 'translate(-50%, -50%)' }}
+      >
         {/* Pitch background */}
         <div className="absolute inset-0 rounded-xl overflow-hidden">
           <svg viewBox="0 0 2332 1446" className="absolute inset-0 w-full h-full opacity-30">
@@ -266,8 +278,8 @@ export default function PitchPlayerSelector({
           <div
             className="absolute rounded-full transition-opacity duration-300"
             style={{
-              left: `${ballPosition.x}%`,
-              top: `${ballPosition.y}%`,
+              left: `${pitchLeftPct(ballPosition.x)}%`,
+              top: `${pitchTopPct(ballPosition.y)}%`,
               width: 22,
               height: 22,
               transform: 'translate(-50%, -50%)',
@@ -302,8 +314,8 @@ export default function PitchPlayerSelector({
               key={item.player.id}
               className="absolute transform -translate-x-1/2 -translate-y-1/2 flex flex-col items-center focus:outline-none"
               style={{
-                left: `${attackingRight ? item.x : 100 - item.x}%`,
-                top: `${item.y}%`,
+                left: `${pitchLeftPct(attackingRight ? item.x : 100 - item.x)}%`,
+                top: `${pitchTopPct(item.y)}%`,
                 zIndex: isSuggested ? 4 : isLikely ? 3 : 2,
                 opacity: animateOut ? (isSelected ? 1 : 0) : (animateIn ? restOpacity : 0),
                 transform: `translate(-50%, -50%) scale(${
@@ -367,6 +379,7 @@ export default function PitchPlayerSelector({
             </button>
           )
         })}
+      </div>
       </div>
 
       {/* Skip button */}
