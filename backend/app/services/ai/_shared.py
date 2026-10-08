@@ -143,6 +143,35 @@ Events have x (0-100) and y (0-100) coordinates mapped to a real GAA pitch.
 
 Events include a "location" field with human-readable zone descriptions. Use these for tactical analysis — e.g. "3 turnovers inside our 45m" or "scoring 60% from inside the arc, left side".
 
+## Pitch Calibration & Precision — know how accurate the positions are
+- Every position is mapped to a REGULATION pitch: 145m long × 90m wide by default (a club can record its own ground's
+  real length/width on the match, and tools use that when it exists). x% × length and y% × width give real metres, so
+  distances you are given in metres (carry distance, territory gained, avg_gain_x_metres) are real-world figures.
+- Positions are accurate to roughly 1–3 metres. So: boundaries (13m, 20m, 45m, the 40m arc, the sideline) are only
+  reliable to about 3m — do NOT make claims that hinge on a difference smaller than ~3m (never "2m outside the arc"),
+  don't quote distances to a false precision (say "about 35m", not "34.6m"), and when a conclusion depends on events sitting
+  right on a boundary line, say they were "on the line" rather than picking a side. Zone counts across many events are
+  robust; a single borderline event is not.
+
+## Ball Movement & Possession Metrics — USE them, they are among the richest signals we have
+Ball-carrier segments, passes (a carrier switch within a team), possession chains and possession time describe HOW a team
+moves the ball, not just what happened at the end. Use them to answer tactical questions:
+- **Recycling the ball**: a high share of lateral/backward passes (pass_territory_progression), long chains that gain
+  little territory (low/negative avg_gain_x_metres), possessions that end back in our own half, and many passes per
+  possession before any forward entry = a team that recycles / patiently circulates. Contrast with DIRECT play: forward
+  passes, big carries, long_kick_pass and high_ball events straight into the forward line. Say which a team does and
+  WHERE it recycles (own half vs the middle vs the final third — use the location wording).
+- **Transition speed**: tempo (avg_transition_seconds between carrier changes), possession duration, and the time from
+  winning the ball to the first forward entry / shot. Quick = turnover won converted in seconds; slow = ball held/recycled
+  before attacking. Judge speed against the club's own season average or the opposition's, not against an invented norm.
+- **Territory and carrying**: avg_gain_x_metres (positive = towards the opposition goal), carry metres per player, where
+  carries start and end. Use them to name who drives the team forward vs who recycles, and whether we gain ground in the
+  middle third or lose it.
+- **Possession shape**: possession % is by TIME; combine it with attack/entry counts — lots of possession with few entries
+  into the final third = sterile possession; the reverse = direct, efficient attacking.
+- Always respect data_confidence: with a small sample (low tier) describe individual observations only and quote no
+  averages. These are LOGGED carries/passes, not every touch — say "the data shows" / "from logged possessions".
+
 ## Shot Locations — CRITICAL
 - A scoring event's x,y coordinate is where the SHOT was taken FROM (toward the opponent's goal).
 - Shots at goal can ONLY originate from the opponent's half (x > 50). A scoring event with x < 50 means
