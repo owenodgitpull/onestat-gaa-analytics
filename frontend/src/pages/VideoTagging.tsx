@@ -3318,9 +3318,9 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {/* Always-visible state: TRACKING (recording) vs REVIEW, with the way to switch.
-          Top-right, clear of the play button / timeline; drops below the banner when one is showing. */}
-      {mode === 'tracking' && (
+      {/* Tracking state + the way into Review. Top-right, clear of the play button / timeline; drops below
+          a banner when one is showing. Hidden while reviewing — the REVIEW banner already says it all. */}
+      {mode === 'tracking' && !reviewing && (
         <div className={`absolute right-3 z-30 flex flex-col items-end gap-2 ${topBannerShown ? 'top-[4.5rem]' : 'top-3'}`}>
           <div className="flex items-center gap-1.5">
             <div
