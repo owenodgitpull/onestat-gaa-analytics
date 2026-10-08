@@ -398,6 +398,8 @@ export default function FullscreenPitchMode({
   const actionsDisabled = matchPhase === 'not_started' || matchPhase === 'finished'
   const currentTicker = tickerItems[tickerIndex]
 
+  // The user must tap a landing spot (kickout / 45 line / long kick or high ball): hide the player circles and pulse the ball
+  const landingTapActive = pendingKickoutPosition || pendingFortyFivePosition || pendingLongKickArmed || pendingLongKickPassArmed
   return (
     <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: 'linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0b1420 65%, #080c16 100%)' }}>
       {/* Top bar — hidden in phone landscape (overlaid on pitch instead) */}
@@ -723,10 +725,11 @@ export default function FullscreenPitchMode({
           carrierJerseyNumber={carrierJerseyNumber}
           highlightSidelines={highlightSidelines}
           highlight45LineX={highlight45LineX}
+          pulseBall={landingTapActive}
           ballAnchoredOverlay={
             (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
               <>
-                {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN && (
+                {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN && (
                   <BallCarrierPicker
                     players={jerseyStripPlayers}
                     activeCarrierId={activeCarrierId ?? null}
@@ -797,7 +800,7 @@ export default function FullscreenPitchMode({
             )
           }
           pitchOverlay={
-            (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN
+            (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN
               ? (ballPctX, ballPctY) => (
                 <PitchReceiverDots
                   players={jerseyStripPlayers}

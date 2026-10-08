@@ -58,6 +58,8 @@ interface GAAPitchProps {
    * the whole point.
    */
   pitchOverlay?: (ballPctX: number, ballPctY: number) => React.ReactNode
+  /** Pulsing ring on the ball — used while the user must tap a landing spot */
+  pulseBall?: boolean
   /** Show gradient border around the pitch edge inside the SVG */
   gradientBorder?: boolean
   /** Active ball carrier jersey number — renders badge on ball icon */
@@ -146,6 +148,7 @@ export default function GAAPitch({
   svgOverlay,
   ballAnchoredOverlay,
   pitchOverlay,
+  pulseBall,
   gradientBorder = false,
   carrierJerseyNumber,
   highlightSidelines = false,
@@ -533,6 +536,23 @@ export default function GAAPitch({
             onPointerUp={handleBallPointerUp}
             onPointerCancel={handleBallPointerCancel}
           >
+            {/* Attention pulse — two staggered expanding rings; never intercepts taps */}
+            {pulseBall && [0, 0.8].map(delay => (
+              <circle
+                key={delay}
+                cx={toSvgX(displayPosition.x)}
+                cy={toSvgY(displayPosition.y)}
+                r="30"
+                fill="none"
+                stroke="#fbbf24"
+                strokeWidth="5"
+                style={{ pointerEvents: 'none' }}
+              >
+                <animate attributeName="r" values="30;95" dur="1.6s" begin={`${delay}s`} repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.95;0" dur="1.6s" begin={`${delay}s`} repeatCount="indefinite" />
+              </circle>
+            ))}
+
             {/* Shadow */}
             <ellipse
               cx={toSvgX(displayPosition.x)}
