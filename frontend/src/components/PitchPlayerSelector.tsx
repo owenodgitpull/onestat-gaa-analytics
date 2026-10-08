@@ -43,9 +43,9 @@ const pitchTopPct = (y: number) => ((123 + (y / 100) * 1167) / 1446) * 100
 // Standard GAA formation: 1-3-3-2-3-3 (15 players)
 const FORMATION_POSITIONS = [
   { id: 'gk', x: 7, y: 50, label: 'GK' },
-  { id: 'fb-left', x: 20, y: 18, label: 'CB' },
-  { id: 'fb-center', x: 20, y: 50, label: 'FB' },
-  { id: 'fb-right', x: 20, y: 82, label: 'CB' },
+  { id: 'fb-left', x: 14, y: 18, label: 'CB' },
+  { id: 'fb-center', x: 14, y: 50, label: 'FB' },
+  { id: 'fb-right', x: 14, y: 82, label: 'CB' },
   { id: 'hb-left', x: 35, y: 18, label: 'HB' },
   { id: 'hb-center', x: 35, y: 50, label: 'CHB' },
   { id: 'hb-right', x: 35, y: 82, label: 'HB' },
@@ -54,9 +54,9 @@ const FORMATION_POSITIONS = [
   { id: 'hf-left', x: 65, y: 18, label: 'HF' },
   { id: 'hf-center', x: 65, y: 50, label: 'CHF' },
   { id: 'hf-right', x: 65, y: 82, label: 'HF' },
-  { id: 'ff-left', x: 80, y: 18, label: 'CF' },
-  { id: 'ff-center', x: 80, y: 50, label: 'FF' },
-  { id: 'ff-right', x: 80, y: 82, label: 'CF' },
+  { id: 'ff-left', x: 88, y: 18, label: 'CF' },
+  { id: 'ff-center', x: 88, y: 50, label: 'FF' },
+  { id: 'ff-right', x: 88, y: 82, label: 'CF' },
 ]
 
 const EVENT_LABELS: Record<string, { title: string; color: string }> = {
