@@ -83,7 +83,7 @@ const SCORING_ACTIONS: ActionButton[] = [
   { id: 'wide', label: 'Wide', eventType: 'WIDE', needsPlayer: true, needsPitch: true, playerModalTitle: 'Who Took?', playerModalEventType: 'wide', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'short', label: 'Short', eventType: 'SHORT', needsPlayer: true, needsPitch: true, playerModalTitle: 'Who Shot?', playerModalEventType: 'saved', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },
   { id: 'saved', label: 'Saved', eventType: 'SAVED', needsPlayer: false, needsPitch: false, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts' },
-  { id: 'block', label: 'Block', eventType: 'BLOCK_SHOT', needsPlayer: false, needsPitch: false },
+  { id: 'block', label: 'Block', eventType: 'BLOCK_SHOT', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Blocked?', playerModalEventType: 'block' },
   { id: 'hit_post', label: 'Hit Post', eventType: 'HIT_POST', needsPlayer: true, needsPitch: true, playerModalTitle: 'Who Shot?', playerModalEventType: 'wide', autoFlipTo: 'us', autoSwitchTab: 'our_kickouts' },
   { id: 'forty_five', label: '45m Free', eventType: 'FORTY_FIVE_MARKER', needsPlayer: false, needsPitch: false },
   { id: 'pen_goal', label: 'Pen Goal', eventType: 'PENALTY_GOAL_MARKER', needsPlayer: true, needsPitch: false, playerModalTitle: 'Who Took?', playerModalEventType: 'goal', autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts' },

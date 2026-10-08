@@ -1532,9 +1532,8 @@ export default function VideoTagging() {
       createEvent.mutate({ sessionId, data })
     }
 
-    // Block → who recovered it? (own blocks only — matches live recording,
-    // which only asks this after WE make the block)
-    if (data.event_type === 'BLOCK_SHOT' && data.team === 'team_a') {
+    // Block → who recovered it? Always asked, exactly as live recording does
+    if (data.event_type === 'BLOCK_SHOT') {
       setPendingBlockRecovery(true)
     }
     // Open-play sideline ball → who's in possession now?
