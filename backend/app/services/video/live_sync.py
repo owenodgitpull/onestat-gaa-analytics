@@ -41,6 +41,7 @@ def _match_event_fields(ve: VideoEvent) -> Optional[dict]:
         scoring_context=ve.scoring_context,
         pitch_zone=ve.pitch_zone,
         team=ve.team,
+        description=ve.description,
     )
     if not event_type:
         return None

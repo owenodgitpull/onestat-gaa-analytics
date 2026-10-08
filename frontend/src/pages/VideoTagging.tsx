@@ -53,6 +53,12 @@ import MatchKickoutZones from '../components/charts/MatchKickoutZones'
 import MatchKickoutOutcomes from '../components/charts/MatchKickoutOutcomes'
 import ScoringZoneMap from '../components/charts/ScoringZoneMap'
 import TurnoverMap from '../components/charts/TurnoverMap'
+import PathsTakenChart from '../components/charts/PathsTakenChart'
+import ExpectedPointsCard from '../components/charts/ExpectedPointsCard'
+import ScoreOrigins from '../components/charts/ScoreOrigins'
+import ScoreableFreesAnalysis from '../components/charts/ScoreableFreesAnalysis'
+import AttackEfficiencyCard from '../components/charts/AttackEfficiencyCard'
+import SeasonBenchmarkCard from '../components/charts/SeasonBenchmarkCard'
 import ShootingEfficiencyHeatmap from '../components/charts/ShootingEfficiencyHeatmap'
 import KickoutSequence from '../components/charts/KickoutSequence'
 import { videoEventsToChartEvents, computeShotLocations } from '../utils/videoEventChartAdapter'
@@ -1464,6 +1470,16 @@ export default function VideoTagging() {
   }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
 
   const [highlight45LineX, setHighlight45LineX] = useState<number | null>(null)
+
+  // Result-page analytics, now that events are saved to the match as they're tagged. Refreshed once a minute —
+  // not on every event — to keep requests down.
+  const analyticsMatchId = session?.match_id
+  const analyticsEnabled = !!analyticsMatchId && mode === 'tracking' && events.length > 0
+  const analyticsOpts = { enabled: analyticsEnabled, refetchInterval: 60000, staleTime: 30000 } as const
+  const { data: scoreOriginsData } = useQuery({ queryKey: ['score-origins', analyticsMatchId], queryFn: () => api.matchAnalytics.getScoreOrigins(analyticsMatchId!), ...analyticsOpts })
+  const { data: scoreableFreesData } = useQuery({ queryKey: ['scoreable-frees', analyticsMatchId], queryFn: () => api.matchAnalytics.getScoreableFrees(analyticsMatchId!), ...analyticsOpts })
+  const { data: attackEfficiencyData } = useQuery({ queryKey: ['attack-efficiency', analyticsMatchId], queryFn: () => api.matchAnalytics.getAttackEfficiency(analyticsMatchId!), ...analyticsOpts })
+  const { data: seasonBenchmarkData } = useQuery({ queryKey: ['season-benchmark', analyticsMatchId], queryFn: () => api.matchAnalytics.getSeasonBenchmark(analyticsMatchId!), ...analyticsOpts })
 
   // ── Prompts survive a refresh ──────────────────────────────────────────
   // Any open prompt (free outcome, 45, block recovery, player picker, turnover reason…) is saved while it's
@@ -4554,10 +4570,33 @@ export default function VideoTagging() {
             <KickoutSequence events={chartEvents} teamName={clubName} opponentName={opponentName} halfDurationMins={matchHalfMins} />
           </ChartZoomModal>
         </div>
-        <p className="text-xs text-white/30 text-center px-4">
-          Paths Taken, Score Origins, Scoreable Frees, Attack Efficiency and Season Benchmark need this match's
-          events saved to the match first — they're not shown here yet.
-        </p>
+        {/* Same charts as the result page — events are saved to the match as you tag them */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
+          <ChartZoomModal title="Paths Taken">
+            <PathsTakenChart key={`paths-${Math.floor(events.length / 5)}`} matchId={session.match_id} />
+          </ChartZoomModal>
+          <ChartZoomModal title="Scoreable Frees">
+            {scoreableFreesData && <ScoreableFreesAnalysis data={scoreableFreesData} teamName={clubName} />}
+          </ChartZoomModal>
+        </div>
+        <div className="[&>div]:h-full [&_.glass-card]:h-full">
+          <ChartZoomModal title="Expected Points">
+            <ExpectedPointsCard matchId={session.match_id} teamName={clubName} opponentName={opponentName} />
+          </ChartZoomModal>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:h-[380px] sm:overflow-hidden sm:[&>div]:h-full sm:[&_.glass-card]:h-full sm:[&_.glass-card]:overflow-hidden">
+          <ChartZoomModal title="Score Origins">
+            {scoreOriginsData && <ScoreOrigins data={scoreOriginsData} teamName={clubName} opponentName={opponentName} />}
+          </ChartZoomModal>
+          <ChartZoomModal title="Attack Efficiency">
+            {attackEfficiencyData && <AttackEfficiencyCard data={attackEfficiencyData} teamName={clubName} opponentName={opponentName} />}
+          </ChartZoomModal>
+        </div>
+        <div className="[&>div]:h-full [&_.glass-card]:h-full">
+          <ChartZoomModal title="vs Season Average">
+            {seasonBenchmarkData && <SeasonBenchmarkCard data={seasonBenchmarkData} teamName={clubName} />}
+          </ChartZoomModal>
+        </div>
       </div>
 
       {/* ── Event Map — exact same filterable map as live recording ─────── */}
