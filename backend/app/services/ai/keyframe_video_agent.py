@@ -24,7 +24,7 @@ from app.services.ai._shared import client
 logger = logging.getLogger(__name__)
 
 HAIKU_MODEL = "claude-haiku-4-5"
-SONNET_MODEL = "claude-sonnet-4-6"
+SONNET_MODEL = "claude-sonnet-5-5"
 
 
 SYSTEM_PROMPT = """You are a GAA (Gaelic Athletic Association) football match analyst.

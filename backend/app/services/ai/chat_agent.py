@@ -186,7 +186,7 @@ INSTRUCTIONS:
     turn_start = time.monotonic()
 
     response = await _create_with_timeout(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5-5",
         max_tokens=2048,
         system=system_prompt,
         tools=TOOLS,
@@ -248,7 +248,7 @@ INSTRUCTIONS:
             try:
                 response = await _create_with_timeout(
                     timeout_seconds=WRAPUP_CALL_TIMEOUT_SECONDS,
-                    model="claude-sonnet-4-6",
+                    model="claude-sonnet-5-5",
                     max_tokens=2048,
                     system=system_prompt,
                     messages=messages,
@@ -259,7 +259,7 @@ INSTRUCTIONS:
             break
 
         response = await _create_with_timeout(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5-5",
             max_tokens=2048,
             system=system_prompt,
             tools=TOOLS,
@@ -465,7 +465,7 @@ async def chat_with_analyst_stream(
         # Non-streaming tool loop phase
         response = await _create_with_timeout(
             timeout_seconds=timeout_seconds,
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5-5",
             max_tokens=2048,
             system=system_prompt,
             tools=cached_tools,
@@ -565,7 +565,7 @@ async def chat_with_analyst_stream(
                 try:
                     response = await _create_with_timeout(
                         timeout_seconds=WRAPUP_CALL_TIMEOUT_SECONDS,
-                        model="claude-sonnet-4-6",
+                        model="claude-sonnet-5-5",
                         max_tokens=2048,
                         system=system_prompt,
                         messages=messages,
@@ -579,7 +579,7 @@ async def chat_with_analyst_stream(
 
             response = await _create_with_timeout(
                 timeout_seconds=timeout_seconds,
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5-5",
                 max_tokens=2048,
                 system=system_prompt,
                 tools=cached_tools,

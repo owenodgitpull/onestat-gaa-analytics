@@ -133,7 +133,7 @@ a variable called `chart_output` with the final JSON dict.
     # tonight in season_agent.py/chat_agent.py/match_agent.py but missed here.
     response = await asyncio.to_thread(
         client.messages.create,
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5-5",
         max_tokens=2000,
         system=system_prompt,
         messages=[{

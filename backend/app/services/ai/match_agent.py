@@ -321,7 +321,7 @@ INSTRUCTIONS:
         logger.info(f"Calling Claude with match_id={match_id}, user_message={user_message[:100]}...")
         response = await asyncio.to_thread(
             client.messages.create,
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5-5",
             max_tokens=8192,
             system=cached_system,
             tools=cached_tools,
@@ -358,7 +358,7 @@ INSTRUCTIONS:
 
             response = await asyncio.to_thread(
                 client.messages.create,
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5-5",
                 max_tokens=8192,
                 system=cached_system,
                 tools=cached_tools,
@@ -381,7 +381,7 @@ INSTRUCTIONS:
             })
             response = await asyncio.to_thread(
                 client.messages.create,
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5-5",
                 max_tokens=8192,
                 system=cached_system,
                 tools=cached_tools,
@@ -952,7 +952,7 @@ Return ONLY the JSON object, no other text."""
         try:
             response = await asyncio.to_thread(
                 client.messages.create,
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5-5",
                 max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -1027,7 +1027,7 @@ Respond in this exact JSON format (no markdown):
 
             response = await asyncio.to_thread(
                 client.messages.create,
-                model="claude-sonnet-4-6",
+                model="claude-sonnet-5-5",
                 max_tokens=500,
                 messages=[{"role": "user", "content": prompt}],
             )
