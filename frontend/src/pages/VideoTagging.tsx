@@ -344,6 +344,8 @@ export default function VideoTagging() {
   const reviewingRef = useRef(false)
   // "Review last 10 seconds": returns to tracking by itself once playback reaches this time
   const autoReturnAtRef = useRef<number | null>(null)
+  // After Undo to Point: until the seek lands, the player still reports its OLD position; ignore those so they can't push the tracking mark forward again
+  const undoSeekGuardRef = useRef<{ target: number; until: number } | null>(null)
   // Ignore stale time updates for a moment after returning (the seek hasn't landed yet)
   const reviewExitedAtRef = useRef(0)
   // Review last 10s only auto-returns after playback has actually started from the earlier point
@@ -893,6 +895,7 @@ export default function VideoTagging() {
       highWaterMarkRef.current = timestampMs
 
       // Seek video to this point
+      undoSeekGuardRef.current = { target: timestampMs, until: Date.now() + 4000 }
       playerRef.current?.seekTo(timestampMs)
 
       // Modal will close automatically via onConfirm
@@ -1204,6 +1207,11 @@ export default function VideoTagging() {
     if (prev != null && possLiveRef.current) {
       const delta = ms - prev
       if (delta > 0 && delta < 2000) possAccumMsRef.current[possessionRef.current] += delta
+    }
+    const guard = undoSeekGuardRef.current
+    if (guard) {
+      if (Date.now() > guard.until || Math.abs(ms - guard.target) < 2000) undoSeekGuardRef.current = null
+      else return // stale position from before the undo seek
     }
     setCurrentTimeMs(ms)
     if (mode === 'tracking') {
