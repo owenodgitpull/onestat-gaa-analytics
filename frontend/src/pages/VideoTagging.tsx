@@ -288,6 +288,8 @@ export default function VideoTagging() {
   // 45m free pending state — mirrors MatchRecording's pending45 for the
   // CategorizedActionButtons' built-in 45 Scored/Missed panel.
   const [pending45, setPending45] = useState(false)
+  // Foul whose free-outcome prompt the user has chosen to dismiss (so the recovery button stops showing for it)
+  const [dismissedFreeFoulId, setDismissedFreeFoulId] = useState<string | null>(null)
 
   // Ball tracking (TaggingPitch panel)
   const [ballPosition, setBallPosition] = useState<{ x: number; y: number } | null>({ x: 50, y: 50 })
@@ -3104,6 +3106,18 @@ export default function VideoTagging() {
    *  before throw-in). Live while playing, held steady while paused. */
   const trackingClock = mode === 'tracking' ? calcMatchTime(highWaterMarkMs) : null
 
+  // Recovery: the latest event is a foul and no free outcome was ever logged (the prompt was lost — e.g. a reload
+  // before prompts were saved, or it was dismissed). Offer to bring the free outcome prompt back.
+  // (A card given for the foul doesn't count as the free's outcome, so cards are skipped when finding the last event.)
+  const lastTaggedEvent = events.reduce<(typeof events)[number] | null>((best, e) => (
+    e.video_timestamp_ms != null && !['YELLOW_CARD', 'BLACK_CARD', 'RED_CARD'].includes(e.event_type) &&
+    (!best || e.video_timestamp_ms >= (best.video_timestamp_ms ?? -1)) ? e : best
+  ), null)
+  const orphanFoul =
+    lastTaggedEvent && lastTaggedEvent.event_type === 'FOUL_COMMITTED' && lastTaggedEvent.id !== dismissedFreeFoulId &&
+    !String(lastTaggedEvent.id).startsWith('temp-') && !pendingFreeKick && overlayState === 'none' && !pendingFoulSubtype
+      ? lastTaggedEvent : null
+
   /** "35 (+2:00)" once a half runs past its normal duration — matches live
    *  recording's injury-time clock format. */
   const formatTrackingClock = (clock: { minute: number; second: number; half: number }): string => {
@@ -3572,6 +3586,29 @@ export default function VideoTagging() {
               </>
             )}
           </div>
+          {!reviewing && orphanFoul && (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  playerRef.current?.pause()
+                  const weTakeIt = orphanFoul.team === 'team_b' // they fouled -> we take the free
+                  setPendingFreeKick(weTakeIt ? 'our_free' : 'opp_free')
+                  setPossession(weTakeIt ? 'team_a' : 'team_b')
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border bg-cyan-500/20 border-cyan-400/50 text-cyan-100 hover:bg-cyan-500/30 backdrop-blur-md transition-colors"
+                title="The last event was a foul with no free outcome logged — bring the free outcome back"
+              >
+                <AlertTriangle size={13} /> Free outcome missing — add it
+              </button>
+              <button
+                onClick={() => setDismissedFreeFoulId(orphanFoul.id)}
+                className="px-2 py-2 rounded-xl text-xs text-white/50 hover:text-white bg-black/50 border border-white/15 backdrop-blur-md"
+                title="No free outcome needed for this foul"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          )}
           {!reviewing && !isPlaying && !deadBall && currentTimeMs >= highWaterMarkMs && (
             <button
               onClick={() => playerRef.current?.play()}
