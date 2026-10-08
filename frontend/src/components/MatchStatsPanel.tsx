@@ -162,8 +162,11 @@ function computeStatsFromEvents(
   const oppPossessionPct = totalPossSecs > 0 || possEventCount > 0 ? 100 - teamPossessionPct : 0
 
   // Poss → Shots %
-  const teamPossToShotsPct = ownPossessionCount > 0 ? (ownShots / ownPossessionCount) * 100 : 0
-  const oppPossToShotsPct = oppPossessionCount > 0 ? (oppShots / oppPossessionCount) * 100 : 0
+  // A share of possessions can't pass 100%: every shot came from a possession, so count at least one per shot
+  const teamPossDenom = Math.max(ownPossessionCount, ownShots)
+  const oppPossDenom = Math.max(oppPossessionCount, oppShots)
+  const teamPossToShotsPct = teamPossDenom > 0 ? (ownShots / teamPossDenom) * 100 : 0
+  const oppPossToShotsPct = oppPossDenom > 0 ? (oppShots / oppPossDenom) * 100 : 0
 
   return {
     match_id: '', // Not needed for display

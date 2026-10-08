@@ -592,6 +592,9 @@ class MatchService:
         for team_prefix in ["team", "opponent"]:
             poss_count = stats[f"{team_prefix}_possession_count"]
             shots = stats[f"{team_prefix}_total_shots"]
+            # A share of possessions can't pass 100%: every shot came from a possession, so when fewer
+            # possessions were logged than shots (sparse tracking), count at least one per shot.
+            poss_count = max(poss_count, shots)
             if poss_count > 0:
                 stats[f"{team_prefix}_poss_converted_to_shots_pct"] = round((shots / poss_count) * 100, 1)
 
