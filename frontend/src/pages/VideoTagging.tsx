@@ -887,11 +887,13 @@ export default function VideoTagging() {
       if (possResult?.team_at_point === 'own') setPossession('team_a')
       else if (possResult?.team_at_point === 'opponent') setPossession('team_b')
       // Put the ball back where it was, and the carrier back on it
-      // (From the page's own ball history — same frame as the pitch. If there's none, leave the ball alone rather than guess.)
+      // (From the page's own ball history first, else the last recorded possession spot. If neither exists, leave the ball alone.)
       const hist = ballHistoryRef.current
       let spot: { x: number; y: number } | null = null
       for (let i = hist.length - 1; i >= 0; i--) { if (hist[i].ms <= timestampMs) { spot = hist[i]; break } }
       ballHistoryRef.current = hist.filter(h => h.ms <= timestampMs)
+      // No in-page history (e.g. the page was reloaded since): use the last recorded possession spot from the server
+      if (!spot && possResult?.ball_x != null && possResult?.ball_y != null) spot = { x: possResult.ball_x, y: possResult.ball_y }
       if (spot) { setBallPosition({ x: spot.x, y: spot.y }); setBallTrail([{ x: spot.x, y: spot.y }]) }
       carrierPathBufferRef.current = []
       activeSegmentRef.current = null
