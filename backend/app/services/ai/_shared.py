@@ -117,6 +117,15 @@ GAA_ESSENTIALS = """
 Events have x (0-100) and y (0-100) coordinates mapped to a real GAA pitch.
 - x=0 is the OWN team's goal line, x=100 is the OPPONENT's goal line
 - y=0 is the left sideline, y=100 is the right sideline
+- IMPORTANT — direction is already handled for you. The database stores raw screen positions, but teams swap ends
+  at half-time and the opposition attacks the other way. Every tool you call returns coordinates, zones and
+  location wording ALREADY re-expressed in OUR ATTACKING FRAME: OUR team always attacks towards x=100, our own goal is
+  x=0, and y<33 is OUR left / y>67 OUR right (for both halves and both teams' events — an opposition event at x=10 is
+  inside OUR defensive 20m). NEVER flip, mirror or re-interpret x/y yourself, and never reason about "which end"
+  a team attacked. The one exception: pitch-path `points` are raw screen positions kept only so the chart can
+  be drawn — describe paths using their `start_location` / `end_location` text instead.
+- If a match has no recorded attack direction, tools assume the team attacked left-to-right in the first half;
+  say so briefly if a spatial claim depends on it rather than presenting it as certain.
 
 ### Key pitch lines (x coordinate, from own goal):
 - 0-9%: inside own 13m line (goalkeeper area)
@@ -1665,11 +1674,15 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
     match_ids_in_events = list(set(str(e.match_id) for e in all_events))
     match_info = {}
     match_attacking_right = {}
+    match_dir = {}   # match id -> (attacking_right_first_half or None, half_duration_mins)
     if match_ids_in_events:
         mr = await db.execute(select(Match).where(Match.id.in_(match_ids_in_events)))
         for m in mr.scalars().all():
             match_info[str(m.id)] = m.opponent
-            match_attacking_right[str(m.id)] = bool(getattr(m, 'attacking_right_first_half', True))
+            _atk = getattr(m, 'attacking_right_first_half', None)
+            match_dir[str(m.id)] = (_atk, getattr(m, 'half_duration_mins', None) or 30)
+            # None = not recorded: every other part of the app assumes "attacked right in the 1st half"
+            match_attacking_right[str(m.id)] = True if _atk is None else bool(_atk)
 
     # Group events by match
     events_by_match: dict[str, list] = {}
@@ -1705,6 +1718,15 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             possession_by_match[mid] = all_poss[::5]
         except Exception:
             possession_by_match[mid] = []
+
+    from app.utils.attack_direction import own_attacks_right as _own_right_p, to_attack_frame as _to_frame_p
+
+    def _path_loc(pt, minute, mid):
+        if not pt:
+            return ""
+        atk_first, hdm = match_dir.get(mid, (None, 30))
+        fx, fy = _to_frame_p(float(pt["x"]), float(pt["y"]), _own_right_p(atk_first, None, minute, hdm))
+        return _pitch_location(fx, fy)
 
     paths = []
     for mid, events in events_by_match.items():
@@ -1840,6 +1862,9 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 "points": points,
                 "carriers": carriers_in_order,
                 "attacking_right_first_half": match_attacking_right.get(mid, True),
+                # Plain-English start / end in OUR attacking frame (the raw `points` above are screen positions)
+                "start_location": _path_loc(points[0] if points else None, oe.minute, mid),
+                "end_location": _path_loc(points[-1] if points else None, oe.minute, mid),
             })
 
     # Sort by match then minute
@@ -1870,7 +1895,14 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         "config": {"xKey": None, "dataKeys": [], "colors": [], "stacked": False, "showLegend": False},
     }
 
-    return safe_json({"success": True, "chart": chart})
+    return safe_json({
+        "success": True,
+        "chart": chart,
+        "coordinate_note": (
+            "Each path's `points` are RAW screen positions kept only for drawing the chart. For analysis use "
+            "`start_location` / `end_location` (already in OUR attacking frame: we attack towards x=100)."
+        ),
+    })
 
 
 def _normalize_agentic_chart(raw_chart: dict) -> dict:
