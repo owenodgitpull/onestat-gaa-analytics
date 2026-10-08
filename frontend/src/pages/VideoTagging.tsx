@@ -207,7 +207,8 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
 
 // Scoring event types that trigger the opposition-scorer name prompt when
 // team_b (the opponent) is credited with them.
-const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'WIDE', 'SHORT', 'FREE_KICK']
+// Actual scores only — a wide or short has no scorer to ask about (matches live recording)
+const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'FREE_KICK']
 
 // Shot attempts (make + miss) eligible for the post-hoc "Under pressure?"
 // prompt — own team only, mirrors live recording's PRESSURE_ELIGIBLE_TYPES
@@ -3585,11 +3586,12 @@ export default function VideoTagging() {
           (!(overlayState === 'pitch' || isAdjustingFree || !!repositioning) && (!isPlaying || overlayState !== 'none'))
         }
         highlight45LineX={highlight45LineX}
+        pulseBall={overlayState === 'pitch' || !!pendingLongKick}
         svgOverlay={pitchStatusOverlay}
         ballAnchoredOverlay={
           (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
             <>
-              {possession === 'team_a' && jerseyStripPlayers.length > 0 && (
+              {possession === 'team_a' && jerseyStripPlayers.length > 0 && overlayState !== 'pitch' && !pendingLongKick && (
                 <BallCarrierPicker
                   players={jerseyStripPlayers}
                   activeCarrierId={activeCarrierId}
@@ -3648,7 +3650,7 @@ export default function VideoTagging() {
           )
         }
         pitchOverlay={
-          possession === 'team_a' && jerseyStripPlayers.length > 0
+          possession === 'team_a' && jerseyStripPlayers.length > 0 && overlayState !== 'pitch' && !pendingLongKick
             ? (ballPctX, ballPctY) => (
               <VideoPitchReceiverDots
                 players={jerseyStripPlayers}
