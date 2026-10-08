@@ -4,10 +4,13 @@
  */
 import { useState, useMemo } from 'react'
 import { Crosshair } from 'lucide-react'
+import { isFirstHalf, pointInSideFrame, directionUnknown } from '../../utils/attackDirection'
 
 interface Props {
   events: any[]
   attackingRightFirstHalf?: boolean | null
+  /** Length of a half in minutes (30 clubs / 35 inter-county) — only used when an event has no `half` */
+  halfDurationMins?: number | null
   teamName?: string
   opponentName?: string
 }
@@ -60,6 +63,8 @@ interface ParsedKickout {
   won: boolean
   pitch_x: number | null
   pitch_y: number | null
+  half: number | null
+  minute: number | null
 }
 
 function parseKickoutEvents(events: any[]): ParsedKickout[] {
@@ -69,29 +74,27 @@ function parseKickoutEvents(events: any[]): ParsedKickout[] {
     const team = e.team || (e.is_home_team ? 'own' : 'opponent')
     const x = e.pitch_x ?? null
     const y = e.pitch_y ?? null
+    const half = e.half ?? null
+    const minute = e.minute ?? null
 
-    if (OWN_WON.has(t)) results.push({ isOwn: true, won: true, pitch_x: x, pitch_y: y })
-    else if (OWN_LOST.has(t)) results.push({ isOwn: true, won: false, pitch_x: x, pitch_y: y })
-    else if (OPP_WON.has(t)) results.push({ isOwn: false, won: true, pitch_x: x, pitch_y: y })
-    else if (OPP_LOST.has(t)) results.push({ isOwn: false, won: false, pitch_x: x, pitch_y: y })
-    else if (LEGACY_WON.has(t)) results.push({ isOwn: team === 'own', won: true, pitch_x: x, pitch_y: y })
-    else if (LEGACY_LOST.has(t)) results.push({ isOwn: team === 'own', won: false, pitch_x: x, pitch_y: y })
+    if (OWN_WON.has(t)) results.push({ isOwn: true, won: true, pitch_x: x, pitch_y: y, half, minute })
+    else if (OWN_LOST.has(t)) results.push({ isOwn: true, won: false, pitch_x: x, pitch_y: y, half, minute })
+    else if (OPP_WON.has(t)) results.push({ isOwn: false, won: true, pitch_x: x, pitch_y: y, half, minute })
+    else if (OPP_LOST.has(t)) results.push({ isOwn: false, won: false, pitch_x: x, pitch_y: y, half, minute })
+    else if (LEGACY_WON.has(t)) results.push({ isOwn: team === 'own', won: true, pitch_x: x, pitch_y: y, half, minute })
+    else if (LEGACY_LOST.has(t)) results.push({ isOwn: team === 'own', won: false, pitch_x: x, pitch_y: y, half, minute })
   }
   return results
 }
 
-function getHalf(e: any): number {
-  return e.half ?? (e.minute != null ? (e.minute <= 40 ? 1 : 2) : 1)
-}
-
-export default function MatchKickoutZones({ events, attackingRightFirstHalf, teamName = 'Our', opponentName = 'Opp' }: Props) {
+export default function MatchKickoutZones({ events, attackingRightFirstHalf, halfDurationMins, teamName = 'Our', opponentName = 'Opp' }: Props) {
   const [mode, setMode] = useState<KickoutMode>('own')
   const [halfFilter, setHalfFilter] = useState<'all' | 1 | 2>('all')
 
   const visibleEvents = useMemo(() => {
     if (halfFilter === 'all') return events
-    return events.filter(e => getHalf(e) === halfFilter)
-  }, [events, halfFilter])
+    return events.filter(e => (isFirstHalf(e.half, e.minute, halfDurationMins) ? 1 : 2) === halfFilter)
+  }, [events, halfFilter, halfDurationMins])
 
   const allKickouts = useMemo(() => parseKickoutEvents(visibleEvents), [visibleEvents])
   const filtered = useMemo(() => allKickouts.filter(k => mode === 'own' ? k.isOwn : !k.isOwn), [allKickouts, mode])
@@ -104,23 +107,23 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
       // Only place in a zone if we have pitch coordinates
       if (k.pitch_x == null || k.pitch_y == null) continue
 
-      // For own kickouts: measure distance from OWN goal
-      // For opp kickouts: measure distance from OPPONENT goal
-      // attackingRightFirstHalf=true means own goal at x=0, opp goal at x=100
-      // attackingRightFirstHalf=false means own goal at x=100, opp goal at x=0
-      const ownGoalX = attackingRightFirstHalf === false ? 100 : 0
-      const oppGoalX = attackingRightFirstHalf === false ? 0 : 100
-      const goalX = k.isOwn ? ownGoalX : oppGoalX
+      // Put the kickout in the KICKING team's frame: its own goal at x = 0, its left/right as it
+      // would see them. Direction depends on the match's recorded direction AND the half (teams
+      // swap ends), and the opposition kicks the other way — see utils/attackDirection.ts.
+      const p = pointInSideFrame(
+        k.pitch_x, k.pitch_y, k.isOwn ? 'own' : 'opponent',
+        attackingRightFirstHalf, k.half, k.minute, halfDurationMins,
+      )
       // Distance from the kicking team's goal (0-100 scale)
-      const distFromGoal = Math.abs(k.pitch_x - goalX)
+      const distFromGoal = p.x
 
       let xZone: string
       if (distFromGoal < 31) xZone = 'Short'       // our 20m–45m corridor
       else if (distFromGoal < 69) xZone = 'Mid'    // midfield (our 45m to opp 45m)
       else xZone = 'Long'                           // beyond opp 45m arc
       let yZone: string
-      if (k.pitch_y < 33) yZone = 'Left'
-      else if (k.pitch_y < 67) yZone = 'Centre'
+      if (p.y < 33) yZone = 'Left'
+      else if (p.y < 67) yZone = 'Centre'
       else yZone = 'Right'
       const key = `${xZone}_${yZone}`
       if (stats[key]) {
@@ -133,7 +136,9 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
       s.win_pct = s.total > 0 ? Math.round(s.won / s.total * 100) : 0
     }
     return stats
-  }, [filtered])
+    // attackingRightFirstHalf / halfDurationMins MUST be dependencies: the match record often loads
+    // after the events, and a stale "no direction yet" result used to stick (wrong short/long, wrong sides).
+  }, [filtered, attackingRightFirstHalf, halfDurationMins])
 
   const maxCount = useMemo(() => Math.max(1, ...Object.values(zoneStats).map(z => z.total)), [zoneStats])
   const totalKickouts = filtered.length  // includes sidelines / events without coords
@@ -184,6 +189,12 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, tea
         </div>
       </div>
 
+      <p className="text-[11px] text-white/40 mb-2">
+        Shown from {mode === 'own' ? teamName : opponentName}'s own goal (left) — every kickout is placed relative to the side kicking it, in both halves.
+        {directionUnknown(attackingRightFirstHalf) && (
+          <span className="text-amber-300/80"> Attack direction not recorded for this match — assuming it attacked left to right in the first half.</span>
+        )}
+      </p>
       <div className="relative rounded-xl overflow-hidden">
         <svg viewBox={`-100 -100 ${PITCH.svgW + 200} ${PITCH.svgH + 380}`} className="w-full" preserveAspectRatio="xMidYMid meet">
           <rect x={-100} y={-100} width={PITCH.svgW + 200} height={PITCH.svgH + 380} fill="#1a1a2e" />

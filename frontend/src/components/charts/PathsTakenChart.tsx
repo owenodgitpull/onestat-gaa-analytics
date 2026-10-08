@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Eye } from 'lucide-react'
 import { matchesAPI } from '@/services/api'
 import type { PitchPath } from '@/services/api'
+import { ownAttacksRight, toAttackFrame } from '@/utils/attackDirection'
 
 interface PathsTakenChartProps {
   matchId: string
@@ -76,11 +77,15 @@ const zoneDisplayName = (zoneId: string, y: number): string => {
   return (names[zoneId] || zoneId) + lateral
 }
 
-const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boolean): number => {
-  const isFirstHalf = minute < 40
-  const attackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
-  return attackingRight ? rawX : 100 - rawX
-}
+// Re-express a raw point in OUR attacking frame (we attack towards x=100, y<33 = our left): rotate x AND
+// y, using the real half length (this used a hard-coded 40-minute half and only mirrored x).
+const normalizePoint = (
+  p: { x: number; y: number },
+  minute: number,
+  attackingRightFirstHalf: boolean,
+  halfMins: number,
+): { x: number; y: number } =>
+  toAttackFrame(p.x, p.y, ownAttacksRight(attackingRightFirstHalf, null, minute, halfMins))
 
 const prettyAction = (raw: string): string => {
   const map: Record<string, string> = {
@@ -132,22 +137,20 @@ const describePath = (
   points: { x: number; y: number }[],
   minute: number,
   attackingRightFirstHalf: boolean,
+  halfMins: number,
   startedWith?: string | null,
   outcome?: string | null,
   carriers?: string[],
 ): string => {
   if (points.length === 0) return ''
 
-  const zones = points.map(p => {
-    const nx = normalizeX(p.x, minute, attackingRightFirstHalf)
-    return getZoneId(nx)
-  })
+  const framed = points.map(p => normalizePoint(p, minute, attackingRightFirstHalf, halfMins))
+  const zones = framed.map(p => getZoneId(p.x))
   const uniqueZones = zones.filter((z, i) => i === 0 || z !== zones[i - 1])
-  const lastPoint = points[points.length - 1]
-  const lastY = lastPoint.y
+  const lastY = framed[framed.length - 1].y
 
   const startAction = startedWith ? prettyAction(startedWith) : null
-  const startZone = zoneDisplayName(uniqueZones[0], points[0].y)
+  const startZone = zoneDisplayName(uniqueZones[0], framed[0].y)
   const endZone = zoneDisplayName(uniqueZones[uniqueZones.length - 1], lastY)
 
   const outcomeVerb = outcome === 'goal' ? 'goaled' :
@@ -211,8 +214,9 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
     refetchInterval: pollInterval || false,
   })
 
-  const allPaths = pathsData?.paths || []
+  const allPaths = useMemo(() => pathsData?.paths || [], [pathsData])
   const attackingRightFirstHalf = pathsData?.attacking_right_first_half ?? true
+  const halfMins: number = (pathsData as any)?.half_duration_mins ?? 30
 
   const { scores, wides } = useMemo(() => {
     const scores: PitchPath[] = []
@@ -254,6 +258,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
       displayPoints,
       activeDetail.minute,
       attackingRightFirstHalf,
+      halfMins,
       activeDetail.started_with,
       activeDetail.outcome,
       carriers,

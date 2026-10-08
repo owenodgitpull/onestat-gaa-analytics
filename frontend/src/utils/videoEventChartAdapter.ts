@@ -29,6 +29,7 @@
  */
 
 import type { VideoEvent } from '../services/videoApi'
+import { pointInSideFrame } from './attackDirection'
 import type { ShotLocation } from '../services/api'
 
 export type ChartTeam = 'own' | 'opponent'
@@ -208,20 +209,19 @@ export function computeShotLocations(
   const halfDuration = halfDurationMins || 30
   const attackingRightFirstHalf = attackingRightFirstHalfInput ?? true
 
-  const normalizeX = (rawX: number, isOwn: boolean, minute: number | undefined) => {
-    const isFirstHalf = (minute ?? 0) <= halfDuration
-    const teamAttackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
-    const attackingRight = isOwn ? teamAttackingRight : !teamAttackingRight
-    return attackingRight ? rawX : 100 - rawX
-  }
-
+  // Rotate the pitch (x AND y) into the SHOOTING team's attack frame (it attacks towards x=100) — the
+  // old version only mirrored x, which swaps left and right for a team attacking right-to-left.
   return chartEvents
     .filter(e => SHOT_TYPES.has(e.event_type) && e.pitch_x != null)
     .map(e => {
       const isOwn = e.team === 'own'
+      const p = pointInSideFrame(
+        e.pitch_x as number, e.pitch_y ?? 50, isOwn ? 'own' : 'opponent',
+        attackingRightFirstHalf, e.half, e.minute, halfDuration,
+      )
       return {
-        x: normalizeX(e.pitch_x as number, isOwn, e.minute),
-        y: e.pitch_y ?? 50,
+        x: p.x,
+        y: p.y,
         event_type: e.event_type,
         is_score: SCORE_TYPES.has(e.event_type),
         team: e.team,

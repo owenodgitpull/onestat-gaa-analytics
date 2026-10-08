@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "check:direction": "node scripts/check-direction.mjs",
+    "check:charts": "eslint --no-eslintrc --parser @typescript-eslint/parser --plugin react-hooks --rule \"react-hooks/exhaustive-deps: error\" --ext .tsx src/components/charts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

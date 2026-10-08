@@ -1988,23 +1988,40 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         for p in player_result.scalars().all():
             players[str(p.id)] = p.name
 
+    # pitch_x / pitch_y are stored raw (as drawn on screen). Which goal we attack depends on the match's
+    # recorded direction AND the half, and the opposition attacks the other way. Everything below is
+    # written for "our goal at x=0, their goal at x=100", so re-express EVERY event in OUR attacking frame
+    # first (we always attack towards x=100) — otherwise any match where we attacked right-to-left, and
+    # every second half, would get wrong zones and wrong location wording.
+    from app.utils.attack_direction import own_attacks_right, to_attack_frame
+    _atk_first = match_row.attacking_right_first_half if match_row else None
+
+    def _own_frame(ev):
+        if ev.pitch_x is None or ev.pitch_y is None:
+            return None, None
+        fx, fy = to_attack_frame(float(ev.pitch_x), float(ev.pitch_y),
+                                 own_attacks_right(_atk_first, getattr(ev, 'half', None), ev.minute, hdm))
+        return fx, fy
+
+    _frame = {ev.id: _own_frame(ev) for ev in events}
+
     events_data = []
     for e in events:
         event_dict = {
             "minute": e.minute,
-            "half": 1 if e.minute <= hdm else 2,
+            "half": getattr(e, "half", None) or (1 if e.minute <= hdm else 2),
             "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
             "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
             "player": players.get(str(e.player_id), "Unknown") if e.player_id else None,
-            "x": e.pitch_x,
-            "y": e.pitch_y,
+            "x": None if _frame[e.id][0] is None else round(_frame[e.id][0], 1),
+            "y": None if _frame[e.id][1] is None else round(_frame[e.id][1], 1),
             "notes": e.notes,
         }
         if e.assist_player_id:
             event_dict["assist"] = players.get(str(e.assist_player_id), "Unknown")
         if e.sub_type:
             event_dict["sub_type"] = e.sub_type
-        loc = _pitch_location(e.pitch_x, e.pitch_y)
+        loc = _pitch_location(*_frame[e.id])
         if loc:
             event_dict["location"] = loc
         events_data.append(event_dict)
@@ -2037,7 +2054,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         if not (is_score or is_miss): continue
         tm = e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None
         if tm != "own": continue
-        x, y = e.pitch_x, e.pitch_y
+        x, y = _frame[e.id]
         if x is None or y is None or x < 50: continue
         depth = "inside_45" if x >= 69 else "outside_45"
         channel = _y_channel(y)
@@ -2061,7 +2078,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         if not (is_score or is_miss): continue
         tm = e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None
         if tm != "opponent": continue
-        x, y = e.pitch_x, e.pitch_y
+        x, y = _frame[e.id]
         if x is None or y is None or x > 50: continue
         depth = "inside_45" if x <= 31 else "outside_45"
         channel = _y_channel(y)
@@ -2083,7 +2100,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         if not (is_won or is_lost): continue
         tm = e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None
         if tm != "own": continue
-        x, y = e.pitch_x, e.pitch_y
+        x, y = _frame[e.id]
         if x is None or y is None: continue
         third   = _x_third(x)
         channel = _y_channel(y)
@@ -2106,6 +2123,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     if zone_summary:
         result_payload["zone_summary"] = zone_summary
         result_payload["zone_summary_guide"] = (
+            "ALL x/y values and locations are in OUR attacking frame: we always attack towards x=100 (their goal), our own goal is x=0, y<33 is OUR left and y>67 OUR right — already corrected for which end we attacked in each half. "
             "zone_summary keys: own_scoring_zones/opp_scoring_zones use format "
             "'inside_45_left' / 'outside_45_center' etc. "
             "turnover_zones use 'defensive_left', 'midfield_center', 'attacking_right' etc. "
@@ -2612,6 +2630,18 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             except ValueError:
                 pass
 
+    # Location wording ("inside the 13m line"...) is written from OUR attacking frame, so re-express each
+    # event's raw x/y for the half it was in and the direction we attacked.
+    from app.utils.attack_direction import own_attacks_right as _own_right, to_attack_frame as _to_frame
+    _hdm_sum = match.half_duration_mins or 30
+
+    def _loc_own_frame(ev):
+        if ev.pitch_x is None or ev.pitch_y is None:
+            return ""
+        fx, fy = _to_frame(float(ev.pitch_x), float(ev.pitch_y),
+                           _own_right(match.attacking_right_first_half, getattr(ev, 'half', None), ev.minute, _hdm_sum))
+        return _pitch_location(fx, fy)
+
     return safe_json({
         "match": {
             "opponent": match.opponent,
@@ -2668,7 +2698,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
                 "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
                 "player": players.get(str(e.player_id)) if e.player_id else None,
                 "sub_type": e.sub_type if e.sub_type else None,
-                "location": _pitch_location(e.pitch_x, e.pitch_y),
+                "location": _loc_own_frame(e),
             }
             for e in sorted(events, key=lambda ev: ev.minute or 0, reverse=True)[:10]
         ],
@@ -3343,6 +3373,12 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=N
     result = await db.execute(query)
     events = result.scalars().all()
 
+    # Raw x/y depend on which end we attacked in each half — measure every shot in OUR attacking frame
+    # (we attack towards x=100), or a match where we attacked right-to-left, and every second half,
+    # would have its real shots thrown out below as "own-half carrier positions".
+    from app.services.attack_frame import load_direction_map, own_frame
+    _dmap = await load_direction_map(db, {e.match_id for e in events})
+
     # Shots can only originate from the opponent's half (x > 50).
     # Events with x <= 50 logged as scores/wides are carrier/transition positions,
     # not actual shot locations — quarantine them rather than call them "shots."
@@ -3353,19 +3389,20 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=N
     suspicious_positions = []   # scoring events with x <= 50 — likely carrier coords, not shot coords
 
     for e in events:
-        if e.pitch_x is None:
+        fx, fy = own_frame(e, _dmap)
+        if fx is None:
             continue
 
-        if e.pitch_x <= 50:
+        if fx <= 50:
             # Cannot be a shot from own half — record separately
             suspicious_positions.append({
                 "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
-                "x": e.pitch_x, "y": e.pitch_y,
+                "x": round(fx, 1), "y": round(fy, 1),
                 "note": "Logged in own half — likely carrier position recorded, not a shot location"
             })
             continue
 
-        zone = "inside_45m" if e.pitch_x >= 69 else "outside_45m"
+        zone = "inside_45m" if fx >= 69 else "outside_45m"
 
         if e.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]:
             zones[zone]["scored"] += 1
@@ -3411,6 +3448,11 @@ async def get_turnover_analysis(db: AsyncSession, match_id: str = None, club_id=
     result = await db.execute(query)
     events = result.scalars().all()
 
+    # Thirds are measured in OUR attacking frame (defensive third = near OUR goal), whichever end we
+    # defended in each half.
+    from app.services.attack_frame import load_direction_map, own_frame
+    _dmap = await load_direction_map(db, {e.match_id for e in events})
+
     # By zone
     zones = {
         "defensive_third": {"won": 0, "lost": 0},
@@ -3419,12 +3461,13 @@ async def get_turnover_analysis(db: AsyncSession, match_id: str = None, club_id=
     }
 
     for e in events:
-        if e.pitch_x is None:
+        fx, _fy = own_frame(e, _dmap)
+        if fx is None:
             continue
 
-        if e.pitch_x < 33:
+        if fx < 33:
             zone = "defensive_third"
-        elif e.pitch_x < 66:
+        elif fx < 66:
             zone = "middle_third"
         else:
             zone = "attacking_third"
@@ -3763,6 +3806,24 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
 
     if not segments:
         return safe_json({"message": "No ball carrier data available for this match", "segments": [], "chains": []})
+
+    # Segment x/y are raw (as drawn on screen). "Forward", "territory gained" and zones all assume we
+    # attack towards x=100 — true for only one half of a match where we attacked left-to-right. Re-express
+    # each segment in OUR attacking frame first (read-only wrapper: never mutate ORM objects, the session
+    # would flush the change to the database).
+    from app.services.attack_frame import load_direction_map, own_frame
+    _dmap = await load_direction_map(db, {match_uuid})
+
+    class _FramedSeg:
+        def __init__(self, seg):
+            self._seg = seg
+            self.start_x, self.start_y = own_frame(seg, _dmap, "start_x", "start_y")
+            self.end_x, self.end_y = own_frame(seg, _dmap, "end_x", "end_y")
+
+        def __getattr__(self, name):
+            return getattr(self._seg, name)
+
+    segments = [_FramedSeg(sg) for sg in segments]
 
     # Fetch match events for consequence analysis (did a turnover lead to an opposition score?)
     from app.models.match_event import MatchEvent as _ME
@@ -5391,9 +5452,14 @@ async def get_tactical_tags(db: AsyncSession, match_id: str, club_id=None) -> st
     )
     events = events_result.scalars().all()
 
+    # Tag locations are described from OUR attacking frame (direction + half aware)
+    from app.services.attack_frame import load_direction_map, own_frame as _own_frame_xy
+    _tag_dmap = await load_direction_map(db, {match_uuid})
+
     tag_data = []
     for tag in tags:
         tag_minute = tag.minute or 0
+        _tfx, _tfy = _own_frame_xy(tag, _tag_dmap)
 
         # Find events in 5 minutes before and after this tag
         events_before = [e for e in events if e.minute and tag_minute - 5 <= e.minute < tag_minute]
@@ -5411,7 +5477,7 @@ async def get_tactical_tags(db: AsyncSession, match_id: str, club_id=None) -> st
             "label": tag.label,
             "half": tag.half,
             "minute": tag_minute,
-            "location": _pitch_location(tag.pitch_x, tag.pitch_y) if tag.pitch_x else None,
+            "location": _pitch_location(_tfx, _tfy) if _tfx is not None else None,
             "context": {
                 "5min_before": {"own_scores": own_scores_before, "opp_scores": opp_scores_before},
                 "5min_after": {"own_scores": own_scores_after, "opp_scores": opp_scores_after},

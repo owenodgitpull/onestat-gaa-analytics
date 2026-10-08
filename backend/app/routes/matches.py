@@ -527,6 +527,7 @@ async def get_match_pitch_paths(
         "insight": chart.get("insight", ""),
         "title": chart.get("title", ""),
         "attacking_right_first_half": match.attacking_right_first_half if match.attacking_right_first_half is not None else True,
+        "half_duration_mins": match.half_duration_mins or 30,
     }
 
 

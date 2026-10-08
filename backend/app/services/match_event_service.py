@@ -52,6 +52,7 @@ class MatchEventService:
             minute=event_data.minute,
             pitch_x=event_data.pitch_x,
             pitch_y=event_data.pitch_y,
+            half=getattr(event_data, 'half', None),
             end_x=getattr(event_data, 'end_x', None),
             end_y=getattr(event_data, 'end_y', None),
             notes=event_data.notes,

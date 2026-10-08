@@ -187,7 +187,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v2"  # bumped: added attacking_thirds field
+    SEASON_DASHBOARD_CACHE_VERSION = "v3"  # bumped: spatial charts/KPIs now direction-aware (was raw x assuming our goal at 0)
 
     @staticmethod
     async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
@@ -562,18 +562,28 @@ class SeasonDashboardService:
         # Own team 45m line ≈ 45/145 * 100 ≈ 31 for Opponent attacking.
         TEAM_ATTACK_THRESHOLD = 69.0  # inside opponent's 45
         OPP_ATTACK_THRESHOLD = 31.0   # inside own team's 45
+        # The thresholds above assume OUR goal is at x=0. pitch_x is raw (as drawn on screen), so first
+        # re-express every point in OUR attacking frame (direction + half aware) — otherwise any match
+        # where we attacked right-to-left, and every second half, counted entries into the WRONG end.
+        from app.services.attack_frame import load_direction_map, own_frame
+        _fdm = await load_direction_map(db, match_ids)
+
+        def _fx(pe):
+            fx, _ = own_frame(pe, _fdm)
+            return fx
+
         team_attacks = {}
         opp_attacks = {}
         for mid, phases in team_phases_by_match.items():
             count = 0
             for phase_events in phases:
-                if any(pe.pitch_x >= TEAM_ATTACK_THRESHOLD for pe in phase_events):
+                if any((_fx(pe) is not None and _fx(pe) >= TEAM_ATTACK_THRESHOLD) for pe in phase_events):
                     count += 1
             team_attacks[mid] = count
         for mid, phases in opp_phases_by_match.items():
             count = 0
             for phase_events in phases:
-                if any(pe.pitch_x <= OPP_ATTACK_THRESHOLD for pe in phase_events):
+                if any((_fx(pe) is not None and _fx(pe) <= OPP_ATTACK_THRESHOLD) for pe in phase_events):
                     count += 1
             opp_attacks[mid] = count
 
@@ -1239,6 +1249,11 @@ class SeasonDashboardService:
         zones = {z: {"interceptions": 0, "blocks": 0, "turnovers_won": 0, "total": 0} for z in zone_names}
         totals = {"interceptions": 0, "blocks": 0, "turnovers_won": 0}
 
+        # Zones/dots are drawn with OUR goal on the left, so put every action in OUR attacking frame
+        # (direction + half aware) — the raw x only means "defensive" for one end in one half.
+        from app.services.attack_frame import load_direction_map, own_frame
+        _dmap = await load_direction_map(db, {e.match_id for e in events})
+
         raw_events = []
         for e in events:
             action_type = e.event_type.value
@@ -1249,8 +1264,7 @@ class SeasonDashboardService:
             elif e.event_type == EventType.TURNOVER_WON:
                 totals["turnovers_won"] += 1
 
-            x = float(e.pitch_x) if e.pitch_x is not None else None
-            y = float(e.pitch_y) if e.pitch_y is not None else None
+            x, y = own_frame(e, _dmap)
 
             raw_events.append({
                 "match_id": str(e.match_id),
@@ -1333,6 +1347,11 @@ class SeasonDashboardService:
                 zone_labels.append(f"{x_label}_{y_label}")
         zones = {z: {"total": 0, "won": 0, "lost": 0, "win_pct": 0} for z in zone_labels}
 
+        # Each kickout is placed in the KICKING team's frame (its own goal at x=0, its own left/right),
+        # whichever end it kicked from in that half — raw x/y only make sense for one team in one half.
+        from app.services.attack_frame import load_direction_map, side_frame
+        _dmap = await load_direction_map(db, {e.match_id for e in events})
+
         raw_events = []
         own_events = []
         opp_events = []
@@ -1350,8 +1369,7 @@ class SeasonDashboardService:
                 is_lost = e.team == Team.OWN
                 is_won = not is_lost
 
-            x = float(e.pitch_x) if e.pitch_x is not None else None
-            y = float(e.pitch_y) if e.pitch_y is not None else None
+            x, y = side_frame(e, _dmap, is_own_kickout)
 
             event_data = {
                 "match_id": str(e.match_id),
@@ -2355,15 +2373,19 @@ class SeasonDashboardService:
         pts_conceded_from_play = round(opp_from_play_pts / n, 1)
 
         # --- Frees conceded in scoring range per game ---
+        # x measured in OUR attacking frame (our goal at 0) — raw x is only that for one half of one end
+        from app.services.attack_frame import own_frame_x_sql
+        _fxs = own_frame_x_sql(MatchEvent, Match)
         frees_scoring_range_result = await db.execute(
             select(func.count(MatchEvent.id))
+            .join(Match, Match.id == MatchEvent.match_id)
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.team == Team.OWN,
                     MatchEvent.event_type == EventType.FOUL_COMMITTED,
                     MatchEvent.pitch_x.isnot(None),
-                    MatchEvent.pitch_x < 45,
+                    _fxs < 45,
                 )
             )
         )
@@ -2380,13 +2402,14 @@ class SeasonDashboardService:
         # --- Opponent inside-45 entries (proxy: opponent events in our defensive third) ---
         opp_45_result = await db.execute(
             select(func.count(MatchEvent.id))
+            .join(Match, Match.id == MatchEvent.match_id)
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.team == Team.OPPONENT,
                     MatchEvent.event_type.in_(SHOT_EVENTS + [EventType.TURNOVER_LOST, EventType.FOUL_WON]),
                     MatchEvent.pitch_x.isnot(None),
-                    MatchEvent.pitch_x < 45,
+                    _fxs < 45,
                 )
             )
         )
@@ -2395,13 +2418,14 @@ class SeasonDashboardService:
         # --- Own inside-45 entries (proxy: own events in opponent's third) ---
         own_45_result = await db.execute(
             select(func.count(MatchEvent.id))
+            .join(Match, Match.id == MatchEvent.match_id)
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.team == Team.OWN,
                     MatchEvent.event_type.in_(SHOT_EVENTS + [EventType.TURNOVER_WON, EventType.FOUL_WON]),
                     MatchEvent.pitch_x.isnot(None),
-                    MatchEvent.pitch_x > 55,
+                    _fxs > 55,
                 )
             )
         )
@@ -3349,6 +3373,9 @@ async def _compute_data_fingerprint(db: AsyncSession, club_id) -> str:
     from app.models.video_session import VideoSession
 
     parts = []
+    # Bump when spatial logic changes: cached AI insights were written from raw (direction-blind)
+    # coordinates and must be regenerated, even though the underlying data hasn't changed.
+    parts.append("spatial-logic:attack-frame-v1")
 
     # Count of completed matches
     match_count_q = select(func.count(Match.id)).where(

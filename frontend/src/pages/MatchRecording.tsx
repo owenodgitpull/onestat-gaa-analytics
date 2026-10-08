@@ -5,6 +5,7 @@ import GAAPitch from '@/components/GAAPitch'
 import BallCarrierPicker from '@/components/BallCarrierPicker'
 import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
 import { BroughtForwardChips, HighBallChips, type BroughtForwardReason } from '@/components/video/VideoPitchPrompts'
+import { ownAttacksRight } from '@/utils/attackDirection'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
@@ -1485,7 +1486,7 @@ export default function MatchRecording() {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
         <ChartZoomModal title="Kickout Zones">
-          <MatchKickoutZones events={matchEventsData.events} attackingRightFirstHalf={match?.attacking_right_first_half} teamName={clubName} opponentName={matchDisplay.opponent} />
+          <MatchKickoutZones events={matchEventsData.events} attackingRightFirstHalf={match?.attacking_right_first_half} halfDurationMins={match?.half_duration_mins} teamName={clubName} opponentName={matchDisplay.opponent} />
         </ChartZoomModal>
         <ChartZoomModal title="Kickout Outcomes">
           <MatchKickoutOutcomes events={matchEventsData.events} teamName={clubName} opponentName={matchDisplay.opponent} />
@@ -1496,7 +1497,7 @@ export default function MatchRecording() {
           <ScoringZoneMap events={matchEventsData.events} teamName={clubName || 'Us'} opponent={matchDisplay.opponent} />
         </ChartZoomModal>
         <ChartZoomModal title="Possession Battle Map">
-          <TurnoverMap events={matchEventsData.events} teamName={clubName || 'Us'} />
+          <TurnoverMap events={matchEventsData.events} teamName={clubName || 'Us'} attackingRightFirstHalf={match?.attacking_right_first_half} halfDurationMins={match?.half_duration_mins} />
         </ChartZoomModal>
       </div>
 
@@ -1632,13 +1633,18 @@ export default function MatchRecording() {
   // Helper function to get pitch area description from coordinates
   // Now contextual based on attack direction and which team the event is for
   // GAA pitch is ~145m long, with key zones at 13m, 20m, 40m arc, 45m from each end
+  const teamAttackingRightNow = teamAttackingRight
   const getPitchArea = (
     x: number | null,
     y: number | null,
     eventTeamIsOwn: boolean = true,
-    opponentName: string = 'Opposition'
+    opponentName: string = 'Opposition',
+    /** Did OUR team attack towards x=100 in the half THIS event happened in? Defaults to the current half. */
+    ownAttackingRightForEvent?: boolean,
   ): string => {
     if (x === null || y === null) return 'the field'
+    // Describe each event with the direction of ITS half, not whatever half is being played now
+    const teamAttackingRight = ownAttackingRightForEvent ?? teamAttackingRightNow
 
     // Special case: Exact center (kickout position)
     if (x === 50 && y === 50) return 'midfield'
@@ -1937,7 +1943,10 @@ export default function MatchRecording() {
     const teamName = match?.opponent || 'Opposition'
     const isOwn = eventIsOwn(event)
     // Get contextual area description based on which team the event is for
-    const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, teamName)
+    const area = getPitchArea(
+      event.pitch_x, event.pitch_y, isOwn, teamName,
+      ownAttacksRight(match?.attacking_right_first_half, (event as any).half, event.minute, match?.half_duration_mins),
+    )
     // For own team events, use player name; for opponent events, use team name
     const playerName = isOwn ? (player?.name || 'our player') : teamName
 

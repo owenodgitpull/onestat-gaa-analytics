@@ -535,15 +535,25 @@ async def get_my_shots(
     )
     events = result.scalars().all()
 
+    # The portal's shot map draws every shot at the RIGHT-hand goal, so re-express each shot in this
+    # player's attack frame (their team shoots towards x=100) — raw x/y flip every half.
+    from app.utils.attack_direction import own_attacks_right, to_attack_frame
+
     shots = []
     for e in events:
         m = matches_map.get(str(e.match_id))
+        _sx, _sy = e.pitch_x, e.pitch_y
+        if _sx is not None and _sy is not None:
+            _sx, _sy = to_attack_frame(
+                float(_sx), float(_sy),
+                own_attacks_right(getattr(m, 'attacking_right_first_half', None), getattr(e, 'half', None), e.minute, getattr(m, 'half_duration_mins', None)),
+            )
         shots.append({
             "match_id": str(e.match_id),
             "opponent": m.opponent if m else "",
             "event_type": e.event_type.value,
-            "pitch_x": e.pitch_x,
-            "pitch_y": e.pitch_y,
+            "pitch_x": _sx,
+            "pitch_y": _sy,
             "minute": e.minute,
         })
 

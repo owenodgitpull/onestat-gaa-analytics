@@ -4340,7 +4340,7 @@ export default function VideoTagging() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
           <ChartZoomModal title="Kickout Zones">
-            <MatchKickoutZones events={chartEvents} attackingRightFirstHalf={matchData?.attacking_right_first_half} teamName={clubName} opponentName={opponentName} />
+            <MatchKickoutZones events={chartEvents} attackingRightFirstHalf={matchData?.attacking_right_first_half} halfDurationMins={matchData?.half_duration_mins} teamName={clubName} opponentName={opponentName} />
           </ChartZoomModal>
           <ChartZoomModal title="Kickout Outcomes">
             <MatchKickoutOutcomes events={chartEvents} teamName={clubName} opponentName={opponentName} />

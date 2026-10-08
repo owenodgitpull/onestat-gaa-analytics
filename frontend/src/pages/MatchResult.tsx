@@ -41,6 +41,7 @@ import ScoringTimeline from '../components/charts/ScoringTimeline'
 import ShotOutcomeChart from '../components/charts/ShotOutcomeChart'
 import PathsTakenChart from '../components/charts/PathsTakenChart'
 import MatchKickoutZones from '../components/charts/MatchKickoutZones'
+import { pointInSideFrame } from '../utils/attackDirection'
 import MatchKickoutOutcomes from '../components/charts/MatchKickoutOutcomes'
 import KickoutSequence from '../components/charts/KickoutSequence'
 import ScoringZoneMap from '../components/charts/ScoringZoneMap'
@@ -373,19 +374,17 @@ export default function MatchResult() {
     // first half. Same normalizeX convention as getPitchArea/PathsTakenChart.
     const halfDuration = match?.half_duration_mins || 30
     const attackingRightFirstHalf = match?.attacking_right_first_half ?? true
-    const normalizeX = (rawX: number, isOwn: boolean, minute: number | null | undefined): number => {
-      const isFirstHalf = (minute ?? 0) <= halfDuration
-      const teamAttackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
-      const attackingRight = isOwn ? teamAttackingRight : !teamAttackingRight
-      return attackingRight ? rawX : 100 - rawX
-    }
+    // Rotate (x AND y) into the shooting team's attack frame — mirroring x alone swaps left and right
+    const frameShot = (rawX: number, rawY: number, isOwn: boolean, minute: number | null | undefined, half: number | null | undefined) =>
+      pointInSideFrame(rawX, rawY, isOwn ? 'own' : 'opponent', attackingRightFirstHalf, half, minute, halfDuration)
     return (eventsData?.events || [])
       .filter((e: any) => shotTypes.has(e.event_type) && e.pitch_x != null)
       .map((e: any) => {
         const isOwn = e.team === 'own' || e.is_home_team
+        const fp = frameShot(e.pitch_x as number, e.pitch_y ?? 50, isOwn, e.minute, e.half)
         return {
-          x: normalizeX(e.pitch_x as number, isOwn, e.minute),
-          y: e.pitch_y ?? 50,
+          x: fp.x,
+          y: fp.y,
           event_type: e.event_type,
           is_score: scoreTypes.has(e.event_type),
           team: e.team || (e.is_home_team ? 'own' : 'opponent'),
@@ -1195,7 +1194,7 @@ export default function MatchResult() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 [&>div]:h-full [&_.glass-card]:h-full">
             <ChartZoomModal title="Kickout Zones">
-              <MatchKickoutZones events={eventsData?.events || []} attackingRightFirstHalf={match?.attacking_right_first_half} teamName={clubName} opponentName={match.opponent} />
+              <MatchKickoutZones events={eventsData?.events || []} attackingRightFirstHalf={match?.attacking_right_first_half} halfDurationMins={match?.half_duration_mins} teamName={clubName} opponentName={match.opponent} />
             </ChartZoomModal>
             <ChartZoomModal title="Kickout Outcomes">
               <MatchKickoutOutcomes events={eventsData?.events || []} teamName={clubName} opponentName={match.opponent} />
@@ -1207,7 +1206,7 @@ export default function MatchResult() {
               <ScoringZoneMap events={eventsData?.events || []} teamName={clubName || 'Us'} opponent={match.opponent} />
             </ChartZoomModal>
             <ChartZoomModal title="Possession Battle Map">
-              <TurnoverMap events={eventsData?.events || []} teamName={clubName || 'Us'} />
+              <TurnoverMap events={eventsData?.events || []} teamName={clubName || 'Us'} attackingRightFirstHalf={match?.attacking_right_first_half} halfDurationMins={match?.half_duration_mins} />
             </ChartZoomModal>
           </div>
 

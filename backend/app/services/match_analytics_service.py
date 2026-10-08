@@ -122,13 +122,25 @@ async def get_score_origins(db: AsyncSession, match_id: UUID, club_id: UUID) -> 
     return {'own': own, 'opp': opp}
 
 
+async def _match_direction(db: AsyncSession, match_id: UUID):
+    """(attacking_right_first_half, half_duration_mins) for this match."""
+    row = (await db.execute(
+        select(Match.attacking_right_first_half, Match.half_duration_mins).where(Match.id == match_id)
+    )).first()
+    return (row[0], row[1]) if row else (None, None)
+
+
 async def get_scoreable_frees(db: AsyncSession, match_id: UUID, club_id: UUID) -> dict:
     result = await db.execute(
-        select(MatchEvent.event_type, MatchEvent.team, MatchEvent.minute, MatchEvent.pitch_x, MatchEvent.pitch_y)
+        select(MatchEvent.event_type, MatchEvent.team, MatchEvent.minute, MatchEvent.pitch_x, MatchEvent.pitch_y, MatchEvent.half)
         .where(MatchEvent.match_id == match_id)
         .order_by(func.coalesce(MatchEvent.minute, 0).asc(), MatchEvent.created_at.asc())
     )
     events = result.all()
+
+    # Fouls are placed in OUR attacking frame (our goal at x=0) — raw x only means that for one end/half
+    from app.utils.attack_direction import own_attacks_right, to_attack_frame
+    _atk_first, _hdm = await _match_direction(db, match_id)
 
     fouls_total = 0
     fouls_in_range = 0
@@ -142,6 +154,10 @@ async def get_scoreable_frees(db: AsyncSession, match_id: UUID, club_id: UUID) -
         minute = row[2]
         pitch_x = row[3]
         pitch_y = row[4]
+        if pitch_x is not None and pitch_y is not None:
+            pitch_x, pitch_y = to_attack_frame(
+                float(pitch_x), float(pitch_y), own_attacks_right(_atk_first, row[5], minute, _hdm),
+            )
 
         if et == 'foul_committed' and team == 'own':
             fouls_total += 1
@@ -189,7 +205,17 @@ async def get_attack_efficiency(db: AsyncSession, match_id: UUID, club_id: UUID)
         .where(PossessionEvent.match_id == match_id)
         .order_by(func.coalesce(PossessionEvent.minute, 0).asc(), PossessionEvent.created_at.asc())
     )
-    poss_events = poss_result.all()
+    # Possession points are placed in OUR attacking frame (we attack towards x=100) before checking
+    # who reached which 45 — raw x is only that for one end of one half.
+    from app.utils.attack_direction import own_attacks_right, to_attack_frame
+    _atk_first, _hdm = await _match_direction(db, match_id)
+    _framed = []
+    for _r in poss_result.all():
+        _px = _r[2]
+        if _px is not None:
+            _px = to_attack_frame(float(_px), 50.0, own_attacks_right(_atk_first, None, _r[1], _hdm))[0]
+        _framed.append((_r[0], _r[1], _px))
+    poss_events = _framed
 
     shots_result = await db.execute(
         select(MatchEvent.event_type, MatchEvent.team)

@@ -102,7 +102,7 @@ export default function PossessionTerritoryChart({
         attacking: oppTotal > 0 ? Math.round((zones.opponent.attacking / oppTotal) * 100) : 0
       }
     }
-  }, [possessionEvents, events, selectedHalf])
+  }, [possessionEvents, events, selectedHalf, attackingRightFirstHalf, halfDurationMins, usePossession])
 
   const ownPosPct = Math.round(stats?.team_possession_percentage ?? 0)
   const possession = { own: ownPosPct, opponent: 100 - ownPosPct }

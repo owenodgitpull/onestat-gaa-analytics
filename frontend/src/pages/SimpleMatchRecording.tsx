@@ -950,7 +950,7 @@ export default function SimpleMatchRecording() {
             <ShotOutcomeChart events={matchEventsData?.events || []} opponent={match?.opponent || 'Opponent'} />
           </ChartZoomModal>
           <ChartZoomModal title="Kickout Zones">
-            <MatchKickoutZones events={matchEventsData?.events || []} attackingRightFirstHalf={match?.attacking_right_first_half} teamName={clubName} opponentName={match?.opponent || 'Opponent'} />
+            <MatchKickoutZones events={matchEventsData?.events || []} attackingRightFirstHalf={match?.attacking_right_first_half} halfDurationMins={match?.half_duration_mins} teamName={clubName} opponentName={match?.opponent || 'Opponent'} />
           </ChartZoomModal>
           <ChartZoomModal title="Kickout Outcomes">
             <MatchKickoutOutcomes events={matchEventsData?.events || []} teamName={clubName} opponentName={match?.opponent || 'Opponent'} />

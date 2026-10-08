@@ -825,6 +825,12 @@ async def _get_dashboard_data_fresh(db: AsyncSession, club_id) -> DashboardData:
         EventType.FORTY_FIVE, EventType.FORTY_FIVE_MISSED,
     ]
 
+    # Raw x/y are as drawn on screen; which goal a team shoots at flips every half and for the other
+    # side. Put every shot in its SHOOTING team's attack frame (it attacks towards x=100) so the heat
+    # map means the same thing in every match — and every zone below in OUR frame.
+    from app.services.attack_frame import load_direction_map, own_frame, side_frame
+    _dmap = await load_direction_map(db, {e.match_id for e in all_events})
+
     shot_locations = []
     for event in all_events:
         if event.event_type in shot_events and event.pitch_x is not None:
@@ -832,9 +838,10 @@ async def _get_dashboard_data_fresh(db: AsyncSession, club_id) -> DashboardData:
                 EventType.GOAL, EventType.POINT, EventType.TWO_POINT,
                 EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE
             ]
+            _sx, _sy = side_frame(event, _dmap, event.team == Team.OWN)
             shot_locations.append(ShotLocation(
-                x=float(event.pitch_x),
-                y=float(event.pitch_y) if event.pitch_y else 50,
+                x=float(_sx),
+                y=float(_sy) if event.pitch_y else 50,
                 event_type=event.event_type.value,
                 is_score=is_score,
                 team=event.team.value,
@@ -846,7 +853,8 @@ async def _get_dashboard_data_fresh(db: AsyncSession, club_id) -> DashboardData:
 
     for event in all_events:
         if event.pitch_x is not None and event.team == Team.OWN:
-            zone = get_pitch_zone(float(event.pitch_x), float(event.pitch_y) if event.pitch_y else 50)
+            _zx, _zy = own_frame(event, _dmap)
+            zone = get_pitch_zone(float(_zx), float(_zy) if event.pitch_y else 50)
             if zone not in zone_stats:
                 zone_stats[zone] = {'lost': 0, 'won': 0, 'errors': 0}
 
@@ -1235,19 +1243,21 @@ async def get_player_shot_events(
             # already found and fixed in MatchResult.tsx's shot chart earlier
             # this session, just unnormalized at the source here instead.
             pitch_x = float(event.pitch_x) if event.pitch_x is not None else None
-            if pitch_x is not None:
-                attacking_right_first_half = (
-                    match.attacking_right_first_half
-                    if match.attacking_right_first_half is not None else True
+            pitch_y = float(event.pitch_y) if event.pitch_y is not None else None
+            if pitch_x is not None and pitch_y is not None:
+                # Rotate the pitch (x AND y) so this player's team always shoots towards x=100 —
+                # mirroring x alone swaps left and right on the map.
+                from app.utils.attack_direction import own_attacks_right, to_attack_frame
+                pitch_x, pitch_y = to_attack_frame(
+                    pitch_x, pitch_y,
+                    own_attacks_right(match.attacking_right_first_half, half, event.minute, match.half_duration_mins),
                 )
-                attacking_right = attacking_right_first_half if half == 1 else not attacking_right_first_half
-                pitch_x = pitch_x if attacking_right else (100 - pitch_x)
             result.append(PlayerShotEvent(
                 match_id=str(event.match_id),
                 opponent=match.opponent,
                 event_type=event.event_type.value,
                 pitch_x=pitch_x,
-                pitch_y=float(event.pitch_y) if event.pitch_y is not None else None,
+                pitch_y=pitch_y,
                 minute=event.minute,
                 half=half,
             ))

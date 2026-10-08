@@ -53,6 +53,7 @@ Your task is to generate PYTHON CODE that transforms match data into Recharts-co
 The `data` dict contains pre-fetched data with these fields:
 - data["matches"]: id, opponent, match_date, venue, status
 - data["events"]: match_id, event_type, team, minute, player (name string or None), pitch_x, pitch_y
+  pitch_x / pitch_y are ALREADY in OUR attacking frame (direction + half corrected): OUR team always attacks towards pitch_x=100, our own goal is x=0, the opposition attacks towards x=0, and pitch_y<33 is OUR left, >67 our right. So pitch_x>=69 is "inside the 45m line we are attacking" for OUR events, and pitch_x<=31 is "inside our own 45". Never re-flip these.
 - data["players"]: id, name, jersey_number, position
 
 CRITICAL: All event_type and team values are LOWERCASE strings. Use lowercase in all comparisons:
@@ -283,6 +284,17 @@ async def _get_raw_data_for_charts(db: AsyncSession, club_id=None) -> dict:
     players = players_result.scalars().all()
     player_map = {str(p.id): {"name": p.name, "position": p.position, "jersey": p.jersey_number} for p in players}
 
+    from app.utils.attack_direction import own_attacks_right as _own_right, to_attack_frame as _to_frame
+    _dirs = {str(m.id): (getattr(m, 'attacking_right_first_half', None), getattr(m, 'half_duration_mins', None)) for m in matches}
+
+    def _frame_xy(ev):
+        if ev.pitch_x is None or ev.pitch_y is None:
+            return None, None
+        atk_first, hdm = _dirs.get(str(ev.match_id), (None, None))
+        fx, fy = _to_frame(float(ev.pitch_x), float(ev.pitch_y),
+                           _own_right(atk_first, getattr(ev, 'half', None), ev.minute, hdm))
+        return round(fx, 1), round(fy, 1)
+
     return {
         "matches": [
             {
@@ -301,8 +313,10 @@ async def _get_raw_data_for_charts(db: AsyncSession, club_id=None) -> dict:
                 "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
                 "minute": e.minute,
                 "player": player_map.get(str(e.player_id), {}).get("name") if e.player_id else None,
-                "pitch_x": e.pitch_x,
-                "pitch_y": e.pitch_y,
+                # x/y in OUR attacking frame (we attack towards x=100, our goal at 0, y<33 = OUR left) —
+                # raw coordinates would make every spatial chart wrong for half the data
+                "pitch_x": _frame_xy(e)[0],
+                "pitch_y": _frame_xy(e)[1],
             }
             for e in events
         ],

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { pointInSideFrame } from '../../utils/attackDirection'
 
 const toSvgX = (pct: number) => (pct / 100) * 1960 + 183
 const toSvgY = (pct: number) => (pct / 100) * 1167 + 123
@@ -54,9 +55,15 @@ const CAUSES: Record<CauseKey, { label: string; color: string; match: (e: any) =
   },
 }
 
-interface Props { events: any[]; teamName: string }
+interface Props {
+  events: any[]
+  teamName: string
+  /** The match's recorded direction + half length — needed to put every event in OUR attacking frame */
+  attackingRightFirstHalf?: boolean | null
+  halfDurationMins?: number | null
+}
 
-export default function TurnoverMap({ events, teamName }: Props) {
+export default function TurnoverMap({ events, teamName, attackingRightFirstHalf, halfDurationMins }: Props) {
   // Which turnover cause is highlighted — null shows the default won/lost view.
   const [selectedCause, setSelectedCause] = useState<CauseKey | null>(null)
 
@@ -65,14 +72,21 @@ export default function TurnoverMap({ events, teamName }: Props) {
     // cause's events. Blocked events are tagged to the opposition (they made
     // the block against us), so this has to run against the full events list
     // rather than the own-team-only list the default view uses.
+    // Zones are drawn from OUR defensive end (left) to OUR attacking end (right), so every event —
+    // ours or the opposition's — is put in OUR attacking frame first (direction + half aware).
+    const frame = (e: any): { x: number; y: number } | null => {
+      if (e.pitch_x == null || e.pitch_y == null) return null
+      return pointInSideFrame(e.pitch_x, e.pitch_y, 'own', attackingRightFirstHalf, e.half, e.minute, halfDurationMins)
+    }
+
     if (selectedCause) {
       const matcher = CAUSES[selectedCause].match
       const matched = events.filter(matcher)
       return ZONES.map(zone => {
         const inZone = matched.filter(e => {
-          const x = e.pitch_x, y = e.pitch_y
-          if (x == null || y == null) return false
-          return x >= zone.xMin && x < zone.xMax && y >= zone.yMin && y < zone.yMax
+          const p = frame(e)
+          if (!p) return false
+          return p.x >= zone.xMin && p.x < zone.xMax && p.y >= zone.yMin && p.y < zone.yMax
         })
         return { ...zone, won: 0, lost: inZone.length, total: inZone.length }
       })
@@ -80,25 +94,19 @@ export default function TurnoverMap({ events, teamName }: Props) {
 
     const ownEvents = events.filter(isOwn)
 
-    // Mirror own-team events that appear in wrong half due to second-half
-    // recording where the team attacked toward x=0 instead of x=100.
-    // Won turnovers in own "defensive" zone (x<33) that were recorded at x>67
-    // after mirroring would show correctly. We mirror if x>50 for won events
-    // and if x<50 for lost events — but since turnovers span the full pitch
-    // we can't infer direction from coordinates alone. Instead, apply no mirroring
-    // here (turnovers are full-pitch; zone accuracy is best-effort).
-
+    // (Direction is handled by `frame` above — the old "can't infer direction, no mirroring" guess
+    // put every second-half event, and every match attacked right-to-left, in the wrong zone.)
     return ZONES.map(zone => {
       const inZone = ownEvents.filter(e => {
-        const x = e.pitch_x, y = e.pitch_y
-        if (x == null || y == null) return false
-        return x >= zone.xMin && x < zone.xMax && y >= zone.yMin && y < zone.yMax
+        const p = frame(e)
+        if (!p) return false
+        return p.x >= zone.xMin && p.x < zone.xMax && p.y >= zone.yMin && p.y < zone.yMax
       })
       const won  = inZone.filter(e => WON_TYPES.has(e.event_type)).length
       const lost = inZone.filter(e => LOST_TYPES.has(e.event_type)).length
       return { ...zone, won, lost, total: won + lost }
     })
-  }, [events, selectedCause])
+  }, [events, selectedCause, attackingRightFirstHalf, halfDurationMins])
 
   const maxTotal = Math.max(...data.map(d => d.total), 1)
   const getR = (n: number) => n === 0 ? 0 : 55 + (n / maxTotal) * 110
