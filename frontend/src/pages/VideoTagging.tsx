@@ -289,6 +289,8 @@ export default function VideoTagging() {
   // 45m free pending state — mirrors MatchRecording's pending45 for the
   // CategorizedActionButtons' built-in 45 Scored/Missed panel.
   const [pending45, setPending45] = useState(false)
+  // Half time: first half is finished, the ball is dead and nothing can be tagged until "Start 2nd Half"
+  const [halfTimeBreak, setHalfTimeBreak] = useState(false)
   // Foul whose free-outcome prompt the user has chosen to dismiss (so the recovery button stops showing for it)
   const [dismissedFreeFoulId, setDismissedFreeFoulId] = useState<string | null>(null)
 
@@ -868,10 +870,17 @@ export default function VideoTagging() {
     setTimeout(() => playerRef.current?.play(), 150)
   }, [sessionId, session, startTracking, matchLineup])
 
+  const endFirstHalfRef = useRef<() => void>(() => {})
+  const startSecondHalfRef = useRef<() => void>(() => {})
   const handleRequestEndTracking = useCallback(() => {
+    // End of the first half of a two-half video: go to half time (like live recording) instead of finishing
+    if (session?.second_half_start_ms != null && calcMatchTimeRef.current(highWaterMarkRef.current).half === 1) {
+      endFirstHalfRef.current()
+      return
+    }
     playerRef.current?.pause()
     setShowFullTimeConfirm(true)
-  }, [])
+  }, [session?.second_half_start_ms])
 
   const handleConfirmFinishTracking = useCallback(async () => {
     if (!sessionId) return
@@ -1483,6 +1492,19 @@ export default function VideoTagging() {
   const { data: scoreableFreesData } = useQuery({ queryKey: ['scoreable-frees', analyticsMatchId], queryFn: () => api.matchAnalytics.getScoreableFrees(analyticsMatchId!), ...analyticsOpts })
   const { data: attackEfficiencyData } = useQuery({ queryKey: ['attack-efficiency', analyticsMatchId], queryFn: () => api.matchAnalytics.getAttackEfficiency(analyticsMatchId!), ...analyticsOpts })
   const { data: seasonBenchmarkData } = useQuery({ queryKey: ['season-benchmark', analyticsMatchId], queryFn: () => api.matchAnalytics.getSeasonBenchmark(analyticsMatchId!), ...analyticsOpts })
+
+  // Half time survives a refresh too
+  useEffect(() => {
+    if (!sessionId) return
+    try { if (localStorage.getItem(`vt-halftime-${sessionId}`) === '1') setHalfTimeBreak(true) } catch { /* storage unavailable */ }
+  }, [sessionId])
+  useEffect(() => {
+    if (!sessionId) return
+    try {
+      if (halfTimeBreak) localStorage.setItem(`vt-halftime-${sessionId}`, '1')
+      else localStorage.removeItem(`vt-halftime-${sessionId}`)
+    } catch { /* storage unavailable */ }
+  }, [halfTimeBreak, sessionId])
 
   // ── Prompts survive a refresh ──────────────────────────────────────────
   // Any open prompt (free outcome, 45, block recovery, player picker, turnover reason…) is saved while it's
@@ -2865,6 +2887,38 @@ export default function VideoTagging() {
 
   carrierSelectRef.current = handleCarrierSelect
 
+  endFirstHalfRef.current = () => {
+    playerRef.current?.pause()
+    flushPossession(false, undefined, true)
+    if (activeCarrierIdRef.current || activeSegmentRef.current) endCarrierQueued(ballPosition?.x ?? null, ballPosition?.y ?? null, 'manual')
+    // Clear anything left open from the last play of the half
+    setPendingFreeKick(null); setPending45(false); setPendingBlockRecovery(false); setPendingSidelineDecision(false)
+    setAwaitingKickout(false); setPendingFoulSubtype(null); setPendingTurnoverReason(null); setPendingErrorSubtype(null)
+    setPendingLongKick(null); setIsAdjustingFree(false); setHighlight45LineX(null)
+    setOverlayState('none'); setPendingOverlay(null)
+    setHalfTimeBreak(true)
+  }
+  startSecondHalfRef.current = () => {
+    const start = session?.second_half_start_ms ?? null
+    setHalfTimeBreak(false)
+    possAccumMsRef.current = { team_a: 0, team_b: 0 }
+    lastPossTickMsRef.current = null
+    setBallPosition({ x: 50, y: 50 })
+    setBallTrail([])
+    setActiveCarrierId(null)
+    if (start != null) {
+      setHighWaterMarkMs(start)
+      highWaterMarkRef.current = start
+      // Let the raised tracking ceiling take effect before seeking (otherwise the seek is clamped), then play
+      setTimeout(() => {
+        playerRef.current?.seekTo(start)
+        setTimeout(() => playerRef.current?.play(), 200)
+      }, 150)
+    } else {
+      setTimeout(() => playerRef.current?.play(), 150)
+    }
+  }
+
   // Append path points to the carrier's segment (throttled 200ms batching).
   // Points are buffered even while the new segment is still being created
   // (no segment id yet) and sent as soon as it exists.
@@ -3167,6 +3221,14 @@ export default function VideoTagging() {
           {formatTrackingClock(trackingClock)}
         </span>
       </div>
+      {halfTimeBreak ? (
+        <button
+          onClick={() => startSecondHalfRef.current()}
+          className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-200 border border-emerald-400/50 font-bold transition-colors whitespace-nowrap`}
+        >
+          Start 2nd Half
+        </button>
+      ) : (
       <button
         onClick={handleRequestEndTracking}
         className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md ${
@@ -3178,6 +3240,7 @@ export default function VideoTagging() {
       >
         {getEndButtonText()}
       </button>
+      )}
       {(events && events.length > 0) && (
         <button
           onClick={() => setShowUndoModal(true)}
@@ -3398,7 +3461,7 @@ export default function VideoTagging() {
         fillHeight={isFullscreen}
         // Setup steps that mark a moment in the video (throw-in, half-time, 2nd half,
         // full-time) MUST be scrubbable; only the pure-choice steps lock the player.
-        disabled={mode === 'setup' && !['first_half', 'half_time', 'second_half', 'full_time'].includes(setupStep)}
+        disabled={halfTimeBreak || (mode === 'setup' && !['first_half', 'half_time', 'second_half', 'full_time'].includes(setupStep))}
       />
 
       {mode === 'setup' && (
@@ -3486,8 +3549,42 @@ export default function VideoTagging() {
         </div>
       )}
 
+      {/* HALF TIME banner — first half done, ball is dead; nothing can be tagged until the 2nd half starts */}
+      {mode === 'tracking' && halfTimeBreak && (
+        <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
+          <div
+            className="rounded-2xl px-4 py-2.5 pointer-events-auto"
+            style={{
+              background: 'linear-gradient(135deg, rgba(8,30,22,0.9), rgba(6,22,18,0.78))',
+              border: '1px solid rgba(52,211,153,0.5)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.5), 0 0 18px rgba(52,211,153,0.2), inset 0 1px 0 rgba(255,255,255,0.12)',
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-emerald-200 text-sm font-bold tracking-wide">HALF TIME</div>
+                <div className="text-[11px] text-emerald-100/70 mt-0.5">
+                  The ball is dead, nothing is being recorded.
+                  {session.second_half_start_ms != null && <> Starting the 2nd half jumps the video to the throw-in you marked ({formatTrackingClock(calcMatchTime(session.second_half_start_ms))}).</>}
+                </div>
+              </div>
+              <button
+                onClick={() => startSecondHalfRef.current()}
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+              >
+                <Play size={15} fill="#0a1a10" />
+                Start 2nd Half
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ROLLED BACK banner — after Undo to Point: says exactly where tracking will pick up */}
-      {mode === 'tracking' && !reviewing && rolledBackToMs != null && (
+      {mode === 'tracking' && !reviewing && !halfTimeBreak && rolledBackToMs != null && (
         <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
           <div
             className="rounded-2xl px-4 py-2.5 pointer-events-auto"
@@ -3561,7 +3658,7 @@ export default function VideoTagging() {
 
       {/* Tracking state + the way into Review. Top-right, clear of the play button / timeline; drops below
           a banner when one is showing. Hidden while reviewing — the REVIEW banner already says it all. */}
-      {mode === 'tracking' && !reviewing && (
+      {mode === 'tracking' && !reviewing && !halfTimeBreak && (
         <div className={`absolute right-3 z-30 flex flex-col items-end gap-2 ${topBannerShown ? 'top-[4.5rem]' : 'top-3'}`}>
           <div className="flex items-center gap-1.5">
             <div
@@ -3701,6 +3798,7 @@ export default function VideoTagging() {
         // steps (kickout landing, 45 line) and free-position adjust happen
         // while it's paused, so they must be tappable then.
         disabled={
+          halfTimeBreak ||
           (mode !== 'tracking' && !repositioning) ||
           (reviewing && !repositioning) ||
           (!(overlayState === 'pitch' || isAdjustingFree || !!repositioning) && (!isPlaying || overlayState !== 'none'))
@@ -3802,7 +3900,7 @@ export default function VideoTagging() {
       {/* Pitch toolbar — Snap (formation snapshot) + Tag (tactical moment) on
           the pitch's own sideline, same place live recording keeps them. */}
       <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
-        {mode === 'tracking' && !reviewing && (
+        {mode === 'tracking' && !reviewing && !halfTimeBreak && (
           <button
             onClick={() => { setPossession(possession === 'team_a' ? 'team_b' : 'team_a'); onCarrierPossessionSwap() }}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border backdrop-blur-md transition-colors ${
@@ -3975,7 +4073,7 @@ export default function VideoTagging() {
   const controlsBar = (
     <div
       data-tour="video-quick-actions"
-      className={`max-w-4xl mx-auto w-full transition-opacity ${reviewing ? 'opacity-40 pointer-events-none select-none' : ''}`}
+      className={`max-w-4xl mx-auto w-full transition-opacity ${(reviewing || halfTimeBreak) ? 'opacity-40 pointer-events-none select-none' : ''}`}
     >
       <CategorizedActionButtons
         onActionSelect={handleQuickAction}
