@@ -1937,7 +1937,12 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 nodes.append(nd)
 
             paths.append({
-                **_move_metrics(points, oe.minute, mid),
+                # Measured along the tagged actions (and kick landings) — the drawn `points` can pick up unrelated
+                # carry/possession samples when events were tagged from video, which would inflate the distance
+                **_move_metrics(
+                    [pt for nd in nodes for pt in ([{"x": nd["x"], "y": nd["y"]}] + ([{"x": nd["end_x"], "y": nd["end_y"]}] if "end_x" in nd else []))] or points,
+                    oe.minute, mid,
+                ),
                 "origin": _origin_label(started_with),
                 "touches": len(chain),
                 "nodes": nodes,
