@@ -1465,6 +1465,64 @@ export default function VideoTagging() {
 
   const [highlight45LineX, setHighlight45LineX] = useState<number | null>(null)
 
+  // ── Prompts survive a refresh ──────────────────────────────────────────
+  // Any open prompt (free outcome, 45, block recovery, player picker, turnover reason…) is saved while it's
+  // open and put back after a reload, with the ball, possession and the original tap time (the event data
+  // was captured at the tap). Cleared the moment nothing is pending. Local to this browser only.
+  const pendingRestoredRef = useRef(false)
+  useEffect(() => {
+    if (pendingRestoredRef.current || !sessionId || !session) return
+    pendingRestoredRef.current = true
+    if (session.tracking_progress_ms == null) return
+    try {
+      const raw = localStorage.getItem(`vt-pending-${sessionId}`)
+      if (!raw) return
+      const snap = JSON.parse(raw)
+      if (!snap || Date.now() - (snap.at || 0) > 6 * 3600 * 1000) return
+      const isTemp = (id: unknown) => typeof id !== 'string' || id.startsWith('temp-')
+      if (snap.possession) setPossession(snap.possession)
+      if (snap.ballPosition) setBallPosition(snap.ballPosition)
+      if (snap.pendingFreeKick) setPendingFreeKick(snap.pendingFreeKick)
+      if (snap.pending45) setPending45(true)
+      if (snap.pendingBlockRecovery) setPendingBlockRecovery(true)
+      if (snap.pendingSidelineDecision) setPendingSidelineDecision(true)
+      if (snap.awaitingKickout) setAwaitingKickout(true)
+      if (snap.pendingFoulSubtype) setPendingFoulSubtype(snap.pendingFoulSubtype)
+      if (snap.pendingTurnoverReason) setPendingTurnoverReason(snap.pendingTurnoverReason)
+      if (snap.pendingErrorSubtype) setPendingErrorSubtype(snap.pendingErrorSubtype)
+      if (snap.pendingOppScorer && !isTemp(snap.pendingOppScorer.eventId)) setPendingOppScorer(snap.pendingOppScorer)
+      if (snap.pendingPressure && !isTemp(snap.pendingPressure.eventId)) setPendingPressure(snap.pendingPressure)
+      if (snap.assistPromptEventId && !isTemp(snap.assistPromptEventId)) setAssistPromptEventId(snap.assistPromptEventId)
+      if (snap.pendingLongKick) setPendingLongKick(snap.pendingLongKick)
+      if (snap.tacticalFoul) setTacticalFoul(true)
+      if (snap.highlight45LineX != null) setHighlight45LineX(snap.highlight45LineX)
+      if (snap.pendingOverlay && snap.overlayState && snap.overlayState !== 'none') {
+        setPendingOverlay(snap.pendingOverlay)
+        setOverlayState(snap.overlayState)
+      }
+    } catch { /* storage unavailable or corrupt — start clean */ }
+  }, [sessionId, session])
+
+  useEffect(() => {
+    if (!pendingRestoredRef.current || !sessionId) return
+    const anyPending =
+      !!pendingFreeKick || pending45 || pendingBlockRecovery || pendingSidelineDecision || awaitingKickout ||
+      !!pendingFoulSubtype || !!pendingTurnoverReason || !!pendingErrorSubtype || !!pendingOppScorer ||
+      !!pendingPressure || !!assistPromptEventId || !!pendingLongKick || overlayState !== 'none'
+    try {
+      const key = `vt-pending-${sessionId}`
+      if (!anyPending) { localStorage.removeItem(key); return }
+      localStorage.setItem(key, JSON.stringify({
+        at: Date.now(), possession, ballPosition, pendingFreeKick, pending45, pendingBlockRecovery, pendingSidelineDecision,
+        awaitingKickout, pendingFoulSubtype, pendingTurnoverReason, pendingErrorSubtype, pendingOppScorer, pendingPressure,
+        assistPromptEventId, pendingLongKick, tacticalFoul, highlight45LineX,
+        overlayState, pendingOverlay: overlayState !== 'none' ? pendingOverlay : null,
+      }))
+    } catch { /* storage unavailable — prompts just won't survive a refresh */ }
+  }, [sessionId, possession, ballPosition, pendingFreeKick, pending45, pendingBlockRecovery, pendingSidelineDecision, awaitingKickout,
+    pendingFoulSubtype, pendingTurnoverReason, pendingErrorSubtype, pendingOppScorer, pendingPressure, assistPromptEventId,
+    pendingLongKick, tacticalFoul, highlight45LineX, overlayState, pendingOverlay])
+
   // Refs for carrier lifecycle callbacks — defined later but needed by
   // handleFoulSubtypeSelect / handleDirectCreate which are declared first.
   const carrierTerminalRef = useRef<(eventType: string) => void>(() => {})
