@@ -344,6 +344,8 @@ export default function VideoTagging() {
   const reviewingRef = useRef(false)
   // "Review last 10 seconds": returns to tracking by itself once playback reaches this time
   const autoReturnAtRef = useRef<number | null>(null)
+  // Set after Undo to Point: the video is parked on the rollback point and the banner says so until tracking carries on
+  const [rolledBackToMs, setRolledBackToMs] = useState<number | null>(null)
   // After Undo to Point: until the seek lands, the player still reports its OLD position; ignore those so they can't push the tracking mark forward again
   const undoSeekGuardRef = useRef<{ target: number; until: number } | null>(null)
   // Ignore stale time updates for a moment after returning (the seek hasn't landed yet)
@@ -897,6 +899,8 @@ export default function VideoTagging() {
       // Seek video to this point
       undoSeekGuardRef.current = { target: timestampMs, until: Date.now() + 4000 }
       playerRef.current?.seekTo(timestampMs)
+      playerRef.current?.pause()
+      setRolledBackToMs(timestampMs)
 
       // Modal will close automatically via onConfirm
     } catch (error) {
@@ -1234,6 +1238,10 @@ export default function VideoTagging() {
       }
     }
   }, [mode])
+  // Rolled-back notice goes away once playback has moved on from the rollback point (tracking has resumed)
+  useEffect(() => {
+    if (rolledBackToMs != null && currentTimeMs > rolledBackToMs + 1500) setRolledBackToMs(null)
+  }, [currentTimeMs, rolledBackToMs])
   const handleDurationChange = useCallback((ms: number) => setVideoDurationMs(ms), [])
   enterReviewRef.current = (opts) => {
     if (reviewingRef.current || mode !== 'tracking') return
@@ -3311,6 +3319,42 @@ export default function VideoTagging() {
                 animation: '_vtStream 1.6s linear infinite',
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* ROLLED BACK banner — after Undo to Point: says exactly where tracking will pick up */}
+      {mode === 'tracking' && !reviewing && rolledBackToMs != null && (
+        <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
+          <div
+            className="rounded-2xl px-4 py-2.5 pointer-events-auto"
+            style={{
+              background: 'linear-gradient(135deg, rgba(40,28,8,0.88), rgba(28,20,6,0.76))',
+              border: '1px solid rgba(251,191,36,0.5)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.5), 0 0 18px rgba(251,191,36,0.18), inset 0 1px 0 rgba(255,255,255,0.12)',
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-amber-200 text-sm font-bold">
+                  <Undo2 size={16} className="flex-shrink-0" />
+                  ROLLED BACK to {formatTrackingClock(calcMatchTime(rolledBackToMs))} (match clock)
+                </div>
+                <div className="text-[11px] text-amber-100/70 mt-0.5">
+                  Everything after this point was removed. Press Resume Tracking and you carry on recording from here.
+                </div>
+              </div>
+              <button
+                onClick={() => { setRolledBackToMs(null); playerRef.current?.play() }}
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+              >
+                <Play size={15} fill="#0a1a10" />
+                Resume Tracking from {formatTrackingClock(calcMatchTime(rolledBackToMs))}
+              </button>
+            </div>
           </div>
         </div>
       )}
