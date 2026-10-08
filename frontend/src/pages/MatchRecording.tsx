@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
 import BallCarrierPicker from '@/components/BallCarrierPicker'
 import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
-import { BroughtForwardChips, HighBallChips, type BroughtForwardReason } from '@/components/video/VideoPitchPrompts'
+import { BroughtForwardOptIn, HighBallChips, type BroughtForwardReason } from '@/components/video/VideoPitchPrompts'
 import { ownAttacksRight } from '@/utils/attackDirection'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
@@ -4887,7 +4887,7 @@ export default function MatchRecording() {
                       </button>
                     </div>
                     <div className="mt-1.5">
-                      <BroughtForwardChips reason={broughtForwardReason} onChange={setBroughtForwardReason} />
+                      <BroughtForwardOptIn reason={broughtForwardReason} onChange={setBroughtForwardReason} />
                     </div>
                   </div>
                 )}

@@ -8,7 +8,7 @@ import TacticalTagButton from '@/components/TacticalTagButton'
 import FormationSnapshotButton from '@/components/FormationSnapshotButton'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
 import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw, Zap } from 'lucide-react'
-import { BroughtForwardChips, HighBallChips, type BroughtForwardReason } from './video/VideoPitchPrompts'
+import { BroughtForwardOptIn, HighBallChips, type BroughtForwardReason } from './video/VideoPitchPrompts'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import PitchActionOverlay from '@/components/PitchActionOverlay'
 import JerseyNumberStrip, { getPositionLine, type JerseyPlayer } from '@/components/JerseyNumberStrip'
@@ -911,7 +911,7 @@ export default function FullscreenPitchMode({
             </div>
             {onBroughtForwardReason && (
               <div className="mt-1.5">
-                <BroughtForwardChips reason={broughtForwardReason} onChange={onBroughtForwardReason} />
+                <BroughtForwardOptIn reason={broughtForwardReason} onChange={onBroughtForwardReason} />
               </div>
             )}
           </div>

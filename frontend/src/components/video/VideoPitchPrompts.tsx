@@ -10,7 +10,7 @@
  * drift apart.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MapPin } from 'lucide-react'
 import {
   UNFORCED_ERROR_SUBTYPES, FOUL_SUBTYPES, DISPOSSESSION_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES,
@@ -322,6 +322,28 @@ export function BroughtForwardChips({
   )
 }
 
+/** The brought-forward question is opt-in: moving a free is usually just placing it where the taker put it. */
+export function BroughtForwardOptIn({
+  reason,
+  onChange,
+}: {
+  reason: BroughtForwardReason | null
+  onChange: (r: BroughtForwardReason | null) => void
+}) {
+  const [open, setOpen] = useState(!!reason)
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/15 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+      >
+        Ref brought it forward
+      </button>
+    )
+  }
+  return <BroughtForwardChips reason={reason} onChange={onChange} />
+}
+
 export function AdjustFreeBanner({
   onDone,
   reason,
@@ -331,6 +353,9 @@ export function AdjustFreeBanner({
   reason?: BroughtForwardReason | null
   onReason?: (r: BroughtForwardReason | null) => void
 }) {
+  // Moving the ball is usually just placing it where the taker put it. The "why did the referee bring
+  // it forward?" question only appears if the user says the ref did.
+  const [refBroughtForward, setRefBroughtForward] = useState(!!reason)
   return (
     <div className="absolute inset-x-3 top-3 z-20 space-y-1.5">
       <div
@@ -347,14 +372,24 @@ export function AdjustFreeBanner({
           <MapPin size={14} className="flex-shrink-0" />
           Drag the ball to the free's real spot
         </span>
-        <button
-          onClick={onDone}
-          className="text-xs font-bold px-3 py-1.5 rounded-lg bg-cyan-500/25 border border-cyan-400/50 text-cyan-200 hover:bg-cyan-500/35 transition-colors flex-shrink-0"
-        >
-          Done
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {onReason && !refBroughtForward && (
+            <button
+              onClick={() => setRefBroughtForward(true)}
+              className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/15 text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+            >
+              Ref brought it forward
+            </button>
+          )}
+          <button
+            onClick={onDone}
+            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-cyan-500/25 border border-cyan-400/50 text-cyan-200 hover:bg-cyan-500/35 transition-colors"
+          >
+            Done
+          </button>
+        </div>
       </div>
-      {onReason && <BroughtForwardChips reason={reason ?? null} onChange={onReason} />}
+      {onReason && refBroughtForward && <BroughtForwardChips reason={reason ?? null} onChange={onReason} />}
     </div>
   )
 }
