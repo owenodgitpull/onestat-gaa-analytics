@@ -492,6 +492,7 @@ class LiveInsightsService:
                 db, match_id, recent_events, trigger=trigger.value,
                 previous_insights=previous_insights,
                 already_flagged_note=already_flagged_note,
+                minute=minute,
             )
 
             flagged_concerns = LiveInsightsService._mark_flagged_concerns(insight_text, concern_snapshot)

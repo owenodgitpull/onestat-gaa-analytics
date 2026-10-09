@@ -18,6 +18,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.services.ai.live_brief import build_live_brief
 from app.services.ai._shared import (
     client, GAA_ESSENTIALS, TOOLS, execute_tool,
     get_match_summary, get_tools_subset, get_club_context,
@@ -54,6 +55,7 @@ class MatchAgent:
         trigger: str = "interval",
         previous_insights: list = None,
         already_flagged_note: str = "",
+        minute: int = None,
     ) -> str:
         """
         Agentic live match insight.
@@ -82,6 +84,10 @@ class MatchAgent:
             logger.warning(f"RAG context retrieval failed: {e}")
             kb_context = ""
 
+        # Spatial + pattern + last-five-minutes brief (deterministic, computed from the tagged data)
+        live_brief = await build_live_brief(db, match_uuid, minute, club_id)
+        brief_section = f"\n## LIVE TACTICAL BRIEF (computed from the tagged data — quote it, do not contradict it)\n{live_brief}\n" if live_brief else ""
+
         # Build tactical notes section
         tactical_section = ""
         if tactical_notes:
@@ -105,7 +111,10 @@ Never repeat the exact same observation worded as a fresh discovery.
 """
 
         system_prompt = f"""You are a GAA sideline analyst providing LIVE match insights for {club_name}.
-CRITICAL OUTPUT RULE: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 words total). Be punchy and actionable — this displays in a small sidebar widget. No bullet points, no headers, no lists.
+OUTPUT FORMAT — this shows in a sideline widget: paragraph 1 is visible, paragraph 2 appears on "Read more".
+Paragraph 1 — the HEADLINE, wrapped in ** **: the single most important tactical point right now. 22 words maximum.
+Paragraph 2 — two or three short sentences, 70 words maximum: (a) the EVIDENCE, quoting the numbers AND where on the pitch they happen (from the brief); (b) what CHANGED in the last five minutes (or say plainly that nothing changed); (c) ONE specific instruction for the next five minutes.
+Separate the two paragraphs with a blank line. No bullet points, no headers, no emojis.
 
 {GAA_ESSENTIALS}
 {club_context}
@@ -115,29 +124,36 @@ CRITICAL OUTPUT RULE: Keep responses to 2-3 SHORT sentences MAXIMUM (under 80 wo
 {tactical_section}
 {previous_insights_section}
 {already_flagged_note}
+{brief_section}
 ## Current Match ID
 {match_id}
 
 ## Recent Events (last 5 logged)
 {json.dumps(recent_events, indent=2)}
 
-## HOW TO GIVE SPECIFIC, DATA-DRIVEN INSIGHTS
+## GROUNDING — non-negotiable
+Every number, place and player you mention must come from the LIVE TACTICAL BRIEF or a tool result. We do NOT track where our
+defenders or half-backs stand, so never claim a line is "too deep", a shape is wrong, or a player is out of position unless a
+tool result says so. If you infer a cause, say "looks like" and name the evidence. If there is little data in the window, say so
+in a few words instead of padding. Name a player only when the snapshot supports it.
 
-STEP 1 — ALWAYS call get_live_match_stats(match_id) first. It returns:
-- Current score + minute
-- Per-player table (who has errors/turnovers/wides/fouls/cards/score) sorted by concerns
-- Kickout battle (our retention % + their kickout win % by us)
-- Scoring run / drought detection
-- Discipline watch (4+ fouls — a lot for one match, worth flagging, but NOT an automatic card: GAA has no rule tying foul count to a booking or dismissal, that's entirely referee discretion)
+## HOW TO THINK LIKE A COACH (in this order)
+1. SITUATION — score, time left in the half, momentum (the last-five-minutes block of the brief).
+2. PATTERN — WHERE is it happening? Use the brief's spatial lines: where we lose the ball, where they score from, where our kickouts
+   go and whether they are kept, where our misses come from. A pattern in a place beats a total.
+3. CAUSE — what in the data explains it (kickout length/channel, turnovers lost in our defensive third turning into shots against,
+   build-up vs direct scores, transition speed, frees conceded in our defensive third, shot distance).
+4. PEOPLE — name specific players from the per-player snapshot only where it adds something.
+5. INSTRUCTION — one concrete thing to change in the next five minutes.
 
-STEP 2 — Use that data to NAME SPECIFIC PLAYERS in your insight. Examples of good output:
-- "Gallagher has 2 unforced errors (stray_pass) — give him a word at the next water break."
-- "O'Donnell leads with 3 turnovers won — keep him at the breakdown."
-- "Two wides from Breslin — he's rushing shots; tell him to steady before pulling."
-- "We're 0/4 on their kickouts — push up on the short kickout, they're targeting #6."
-- "McCarthy's picked up 4 fouls — worth a quiet word, referee's clearly watching him now."
+What matters tactically in Gaelic football (use it when the data supports it): turnovers lost in our own defensive third are the most
+expensive (they become shots against); a kickout strategy that is being picked off in one channel should change channel or length;
+two-pointers change shot selection and defensive distance; frees conceded close to our goal give away scores; a fast, direct transition
+after winning the ball is how most scores are created; a drop in kickout retention after a score against often means pressing has changed.
 
-STEP 3 — Only call get_match_events if you need event-level detail the snapshot doesn't cover (e.g. exact kickout zone targeting, the minute sequence of a scoring run, or to check ball-carrier patterns).
+STEP 1 — Call get_live_match_stats(match_id) for the per-player breakdown, kickout battle and scoring run.
+STEP 2 — Read the LIVE TACTICAL BRIEF above (spatial patterns, last five minutes, ball movement) — it is the main source for the WHERE.
+STEP 3 — Only call get_match_events / get_ball_carrier_data if you need a detail the brief and snapshot do not give.
 
 TRIGGERS TO WATCH — check the snapshot for these:
 - 3+ consecutive own scores → name who scored, note the momentum
@@ -153,21 +169,18 @@ Reference knowledge base context when relevant to a specific trigger.
         # Use trigger-specific user prompt
         if trigger == "half_time":
             user_prompt = (
-                f"Half-time. Call get_live_match_stats('{match_id}') first, then give a concise half-time read: "
-                "the score, who has been our biggest concern (name them + their error/turnover count), "
-                "one standout positive (name them), and one key adjustment for the second half. "
-                "Under 80 words, no lists."
+                f"Half-time. Call get_live_match_stats('{match_id}') first, then use the LIVE TACTICAL BRIEF. Give the half-time read in the "
+                "required format: a bold headline (the one pattern that decided the half), then a short paragraph with the score, "
+                "the biggest problem WITH WHERE it happens, one standout positive, and the single key adjustment for the second half."
             )
-            max_tokens = 400
+            max_tokens = 600
         else:
             user_prompt = (
-                f"Call get_live_match_stats('{match_id}') first. Then, from the snapshot data, "
-                "give ONE specific, data-driven sideline observation. "
-                "Name the relevant player(s) and cite the exact stat from the snapshot "
-                "(e.g. '2 unforced errors [stray_pass]', 'kickout retention 40%', '3 turnovers lost'). "
-                "Then give one actionable adjustment. 2-3 sentences max, under 80 words."
+                f"Call get_live_match_stats('{match_id}') first. Then use the LIVE TACTICAL BRIEF and the snapshot to give ONE specific, "
+                "data-driven sideline read in the required format: a bold headline, then the evidence (numbers and WHERE on the pitch), "
+                "what changed in the last five minutes, and one instruction for the next five. Cite exact figures from the data only."
             )
-            max_tokens = 400
+            max_tokens = 600
 
         raw_live_tools = get_tools_subset(LIVE_TOOLS)
         # Enable Anthropic prompt caching on system prompt + tools

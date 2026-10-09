@@ -40,6 +40,7 @@ from app.models.match_lineup import MatchLineup  # noqa: E402
 from app.models.possession_event import PossessionEvent  # noqa: E402
 from app.services.ai import match_agent as ma  # noqa: E402
 from app.services.ai._shared import execute_tool  # noqa: E402
+from app.services.ai.live_brief import build_live_brief  # noqa: E402
 from app.services.live_insights_service import LiveInsightsService  # noqa: E402
 from app.services.match_event_service import MatchEventService  # noqa: E402
 
@@ -126,9 +127,10 @@ async def main():
             # what the agent's first tool call returns at this moment (kept for the record)
             stats_text = await execute_tool('get_live_match_stats', {'match_id': str(sid)}, db, club_id=club_id)
 
+            brief_text = await build_live_brief(db, sid, minute, club_id)
             started = time.time()
             insight_text = await ma.MatchAgent.live_insight(
-                db, sid, recent, trigger=trigger, previous_insights=previous, already_flagged_note=note,
+                db, sid, recent, trigger=trigger, previous_insights=previous, already_flagged_note=note, minute=minute,
             )
             took = time.time() - started
 
@@ -141,7 +143,7 @@ async def main():
             results.append({
                 'minute': minute, 'trigger': trigger, 'score': score_line, 'insight': insight_text.strip(),
                 'seconds': round(took, 1), 'events_visible': len(inserted_ev), 'recent_events': recent,
-                'snapshot': stats_text, 'already_flagged_note': note,
+                'snapshot': stats_text, 'tactical_brief': brief_text, 'already_flagged_note': note,
             })
 
         model = ma.LIVE_MODEL
