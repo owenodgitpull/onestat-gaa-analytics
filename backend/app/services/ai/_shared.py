@@ -145,16 +145,13 @@ Events have x (0-100) and y (0-100) coordinates mapped to a real GAA pitch.
 - If a match has no recorded attack direction, tools assume the team attacked left-to-right in the first half;
   say so briefly if a spatial claim depends on it rather than presenting it as certain.
 
-### Key pitch lines (x coordinate, from own goal):
-- 0-9%: inside own 13m line (goalkeeper area)
-- 9-14%: inside own 20m line (full-back area)
-- 14-31%: inside own 45m line (half-back area)
-- 31-50%: own side of midfield
-- 50-69%: opponent's side of midfield
-- 69-72%: inside opponent's 45m line
-- 72-86%: inside the 40m arc (2-POINTER SCORING ZONE — points from here worth 2)
-- 86-91%: inside opponent's 20m line (close range)
-- 91-100%: inside opponent's 13m line (goal-mouth area)
+### Key pitch lines — positions are calibrated to the DRAWN lines
+People place the ball against the marked lines they see, so positions are mapped to REAL distances through those lines: a position on the
+drawn 40m arc reads 40m, on the drawn 45m line reads 45m, and so on, with smooth interpolation between. Roughly, in stored x from a goal line:
+13m line ≈ 10%, 20m line ≈ 13.6%, 40m arc apex ≈ 30.5%, 45m line ≈ 35%, 65m line ≈ 45%, halfway 50%. The 40m arc is a CURVE (a 40m circle
+round the goal), so inside/outside it depends on distance from the goal, not x alone — never judge it from x. Use the `location` wording and the
+metre figures the tools give you; do not recompute metres from percentages.
+- Two-point scores/attempts are from OUTSIDE the 40m arc; inside the arc = one point.
 
 ### Side of pitch (y coordinate):
 - y < 33%: left side | y 33-67%: centre | y > 67%: right side
@@ -163,8 +160,9 @@ Events include a "location" field with human-readable zone descriptions. Use the
 
 ## Pitch Calibration & Precision — know how accurate the positions are
 - Every position is mapped to a REGULATION pitch: 145m long × 90m wide by default (a club can record its own ground's
-  real length/width on the match, and tools use that when it exists). x% × length and y% × width give real metres, so
-  distances you are given in metres (carry distance, territory gained, avg_gain_x_metres) are real-world figures.
+  real length/width on the match, and tools use that when it exists). positions are converted to real metres through the marked-line calibration, so
+  distances you are given in metres are real-world figures calibrated to the pitch's marked lines (see "Key pitch lines"); never
+  convert percentages to metres yourself.
 - Positions are accurate to roughly 1–3 metres. So: boundaries (13m, 20m, 45m, the 40m arc, the sideline) are only
   reliable to about 3m — do NOT make claims that hinge on a difference smaller than ~3m (never "2m outside the arc"),
   don't quote distances to a false precision (say "about 35m", not "34.6m"), and when a conclusion depends on events sitting
@@ -322,25 +320,9 @@ def _pitch_location(x, y) -> str:
     else:
         side = ""
 
-    # Zone (from own goal x=0 to opponent goal x=100)
-    if x >= 91:
-        zone = "inside the 13m line"
-    elif x >= 86:
-        zone = "inside the 20m line"
-    elif x >= 72:
-        zone = "inside the 40m arc"
-    elif x >= 69:
-        zone = "inside the 45m line"
-    elif x >= 50:
-        zone = "past midfield"
-    elif x >= 31:
-        zone = "own half"
-    elif x >= 14:
-        zone = "inside own 45m line"
-    elif x >= 9:
-        zone = "inside own 20m line"
-    else:
-        zone = "inside own 13m line"
+    # Zone by REAL distance, calibrated to the drawn marked lines (see app/utils/pitch_calibration.py)
+    from app.utils.pitch_calibration import zone_phrase
+    zone = zone_phrase(float(x), float(y))
 
     return f"{zone}{side}"
 

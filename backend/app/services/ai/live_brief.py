@@ -20,6 +20,9 @@ from app.models.player import Player
 from app.models.match_event import MatchEvent, Team
 from app.models.possession_event import PossessionEvent
 from app.utils.attack_direction import own_attacks_right, to_attack_frame
+from app.utils.pitch_calibration import (
+    along_m, lateral_m, distance_to_goal_m, arc_phrase, DEFAULT_LENGTH_M, DEFAULT_WIDTH_M,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,18 +72,21 @@ LABELS = {
 }
 
 
-def _exact(fx: float, fy: float, goal: str, shot: bool = True) -> str:
-    """Exact position in metres. goal = 'their' (the goal WE attack) or 'our' (the goal we defend).
-    Pitch 145m x 90m; positions are accurate to about 1-3m. 'left/right' are as WE face the opposition goal."""
-    d = ((100.0 - fx) if goal == "their" else fx) * PITCH_LEN_M / 100.0
-    lat = (fy - 50.0) * 90.0 / 100.0
-    side = "our left" if lat < 0 else "our right"
-    straight = (d * d + lat * lat) ** 0.5
-    arc = "outside the 40m arc (two-point range)" if straight >= 40 else "inside the 40m arc"
-    centre = "on the centre line" if abs(lat) < 2 else f"{abs(round(lat))}m {side} of centre"
-    if not shot:  # turnovers / kickouts: just where on the pitch, measured from the goal line we are talking about
-        return f"{round(d)}m from {'their' if goal == 'their' else 'our'} goal line, {centre}"
-    return f"{round(d)}m from {'their' if goal == 'their' else 'our'} goal line, {centre} (~{round(straight)}m from goal, {arc})"
+def _exact(fx: float, fy: float, goal: str, shot: bool = True,
+           length_m: float = DEFAULT_LENGTH_M, width_m: float = DEFAULT_WIDTH_M) -> str:
+    """Exact position in REAL metres (calibrated to the drawn marked lines — see utils/pitch_calibration.py).
+    goal = 'their' (the goal WE attack) or 'our' (the goal we defend). Accurate to about 1-3m.
+    'left/right' are as WE face the opposition goal."""
+    toward_their = goal == "their"
+    d = along_m((100.0 - fx) if toward_their else fx, length_m)
+    lat = lateral_m(fy, width_m)
+    side = "our left" if fy < 50.0 else "our right"
+    centre = "on the centre line" if lat < 2.0 else f"{round(lat)}m {side} of centre"
+    where = f"{round(d)}m from {'their' if toward_their else 'our'} goal line, {centre}"
+    if not shot:  # turnovers / kickouts: just where on the pitch
+        return where
+    straight = distance_to_goal_m(fx, fy, toward_their, length_m, width_m)
+    return f"{where} (about {round(straight)}m from goal, {arc_phrase(straight)})"
 
 
 async def build_live_brief(db, match_id, minute: Optional[int] = None, club_id=None, window: int = 5) -> str:
@@ -98,6 +104,8 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         return ""
     atk_first = getattr(match, "attacking_right_first_half", None)
     hdm = getattr(match, "half_duration_mins", None) or 30
+    LEN = getattr(match, "pitch_length_m", None) or DEFAULT_LENGTH_M
+    WID = getattr(match, "pitch_width_m", None) or DEFAULT_WIDTH_M
 
     events = (await db.execute(
         select(MatchEvent).where(MatchEvent.match_id == match_id).order_by(MatchEvent.minute, MatchEvent.created_at)
@@ -221,10 +229,10 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         free = sum(1 for e in opp_sc if _t(e).endswith("_free") or _t(e) == "forty_five")
         L.append(f"\nTHEIR SCORING ({len(opp_sc)} scores: {goals} goals, {two} two-pointers, {free} from frees/45s; {len(opp_shots) - len(opp_sc)} misses):")
         if loc:
-            def _band(fx):
-                d = fx * PITCH_LEN_M / 100
+            def _band(f):
+                d = distance_to_goal_m(f[0], f[1], False, LEN, WID)
                 return "inside 20m" if d < 20 else ("20-40m out" if d < 40 else "40m+ out")
-            L.append("  shot position (distance from our goal): " + _tally(loc, lambda ef: f"{_band(ef[1][0])} on {_channel(ef[1][1])}"))
+            L.append("  shot position (distance from our goal): " + _tally(loc, lambda ef: f"{_band(ef[1])} on {_channel(ef[1][1])}"))
 
     # ── evidence-backed cause links (so the agent never has to guess a cause) ──
     if opp_sc:
@@ -252,7 +260,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         for e in own_shots:
             f = framed(e)
             if f:
-                dists.append(((100 - f[0]) * PITCH_LEN_M / 100, f, e))
+                dists.append((distance_to_goal_m(f[0], f[1], True, LEN, WID), f, e))
         two_att = sum(1 for e in own_shots if _t(e) in ("two_point", "two_point_free"))
         L.append(f"\nOUR SHOOTING ({len(own_shots)} shots: {len(sc)} scores, {len(own_shots) - len(sc)} misses; {two_att} two-pointers scored):")
         if dists:
@@ -325,7 +333,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         if not f:
             return None
         nm = who(e)
-        return f"  {e.minute}' {'we' if _is_own(e) else 'they'} — {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], goal)}"
+        return f"  {e.minute}' {'we' if _is_own(e) else 'they'} — {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], goal, True, LEN, WID)}"
 
     shots_detail = [e for e in visible if _t(e) in SHOT_TYPES][-14:]
     rows = [row(e, "their" if _is_own(e) else "our") for e in shots_detail]
@@ -339,7 +347,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         f = framed(e)
         if f:
             nm = who(e)
-            rows.append(f"  {e.minute}' {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], 'our', shot=False)}")
+            rows.append(f"  {e.minute}' {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], 'our', False, LEN, WID)}")
     if rows:
         L.append("EXACT POSITIONS — OUR TURNOVERS/ERRORS IN THE LAST 10 MINUTES (distance is from OUR goal line):")
         L.extend(rows)
@@ -348,7 +356,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     for e in ko_detail:
         f = framed(e)
         if f:
-            rows.append(f"  {e.minute}' our kickout {'kept' if _t(e) in OWN_KO_RETAINED else 'lost'}: landed {_exact(f[0], f[1], 'our', shot=False)}")
+            rows.append(f"  {e.minute}' our kickout {'kept' if _t(e) in OWN_KO_RETAINED else 'lost'}: landed {_exact(f[0], f[1], 'our', False, LEN, WID)}")
     if rows:
         L.append("EXACT POSITIONS — OUR KICKOUTS IN THE LAST 10 MINUTES:")
         L.extend(rows)
