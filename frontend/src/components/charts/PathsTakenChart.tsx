@@ -192,6 +192,8 @@ const describePath = (
     outcome === 'wide' || outcome === 'wide_free' ? 'went wide' :
     outcome === 'short' ? 'dropped short' :
     outcome === 'saved' ? 'was saved' :
+    outcome === 'turnover_lost' ? 'lost the ball' :
+    outcome === 'unforced_error' ? 'lost it with an unforced error' :
     'pointed'
 
   if (points.length === 1) {
@@ -236,6 +238,45 @@ const describePath = (
     ? ` through ${dedupedJourney.join(', ')}`
     : ''
   return `${start}${carrierText}${journey}. ${outcomeVerb.charAt(0).toUpperCase() + outcomeVerb.slice(1)} from ${endZone}`
+}
+
+/** Plain-English read of a move, built from its tagged actions (not from the noisy drawn trace). */
+const describeFromNodes = (
+  path: PitchPath,
+  attackingRightFirstHalf: boolean,
+  halfMins: number,
+): string | null => {
+  const nodes = path.nodes || []
+  if (nodes.length === 0) return null
+  const where = (n: { x: number; y: number }) => {
+    const f = normalizePoint({ x: n.x, y: n.y }, path.minute, attackingRightFirstHalf, halfMins)
+    return zoneDisplayName(getZoneId(f.x), f.y)
+  }
+  const who = (n: { player: string | null }) => (n.player ? ` (${surname(n.player)})` : '')
+  const first = nodes[0]
+  const last = nodes[nodes.length - 1]
+  const verb = (t: string) => eventLabel(t).toLowerCase()
+
+  let start: string
+  if (nodes.length === 1) {
+    start = ''
+  } else {
+    start = `Started with ${verb(first.type)}${who(first)} ${where(first)}`
+    const middle = nodes.slice(1, -1)
+    if (middle.length > 0) {
+      start += `, then ${middle.map(n => `${verb(n.type)}${who(n)}`).join(', then ')}`
+    }
+  }
+  const outcome = path.outcome
+  const endZone = where(last)
+  let end: string
+  if (SCORING_TYPES.has(outcome)) end = `${(OUTCOME_LABELS[outcome] || outcome).toLowerCase()}${who(last)} from ${endZone}`
+  else if (WIDE_TYPES.has(outcome)) end = `went wide${who(last)} from ${endZone}`
+  else if (outcome === 'turnover_lost') end = `lost the ball${who(last)} in ${endZone}`
+  else if (outcome === 'unforced_error') end = `unforced error${who(last)} in ${endZone}`
+  else end = `${verb(outcome)}${who(last)} at ${endZone}`
+  const sentence = start ? `${start}. Ended: ${end}.` : `${end.charAt(0).toUpperCase()}${end.slice(1)}.`
+  return sentence
 }
 
 export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTakenChartProps) {
@@ -292,6 +333,8 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
   // Cap carriers at 6 names — full chain can have 30+ which becomes unreadable.
   const MAX_CARRIERS = 6
   const activeDescription = activeDetail ? (() => {
+    const fromNodes = describeFromNodes(activeDetail, attackingRightFirstHalf, halfMins)
+    if (fromNodes) return fromNodes
     const displayPoints = (activeDetail.points || []).slice(-MAX_DISPLAY_POINTS)
     const allCarriers: string[] = (activeDetail as any).carriers || []
     const carriers = allCarriers.length > MAX_CARRIERS
