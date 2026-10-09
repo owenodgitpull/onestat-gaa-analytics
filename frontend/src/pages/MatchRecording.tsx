@@ -3766,19 +3766,7 @@ export default function MatchRecording() {
       return
     }
 
-    // "T/O Won" — optionally ask which opposition player we forced it from
-    // before recording, same delayed-record convention as T/O Lost's reason
-    // picker above. Skipped entirely if there's no opposition roster to
-    // pick from (Match Prep's key-player list is empty).
-    if (event.eventType === EventType.TURNOVER_WON && (match?.opposition_roster || []).length > 0) {
-      setPendingTurnoverForcedFrom({
-        player,
-        capturedMinute,
-        capturedHalf,
-        position: event.position,
-      })
-      return
-    }
+    // (The old "who lost it?" follow-up after T/O Won was removed: the full opposition lineup will tell us who had the ball.)
 
     // Check if this is a free kick result (own team taking free — player selected)
     const eventTypeStr = String(event.eventType).toUpperCase()

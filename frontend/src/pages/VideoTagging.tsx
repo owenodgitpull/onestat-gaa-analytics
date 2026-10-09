@@ -1743,12 +1743,6 @@ export default function VideoTagging() {
           if (created?.id) setPendingOppScorer({ eventId: created.id, mode: 'score', scoringContext: created.scoring_context || {} })
         },
       })
-    } else if (data.team === 'team_a' && data.event_type === 'TURNOVER_WON' && (matchData?.opposition_roster || []).length > 0) {
-      // Optional follow-up: which opposition player we forced it from.
-      // Same banner, 'turnover_forced' mode (no footedness step).
-      createEvent.mutate({ sessionId, data }, {
-        onSuccess: (created: any) => { if (created?.id) setPendingOppScorer({ eventId: created.id, mode: 'turnover_forced' }) },
-      })
     } else if (data.team === 'team_a' && PRESSURE_ELIGIBLE_TYPES.includes(data.event_type) && !isDeadBallShot(data)) {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
