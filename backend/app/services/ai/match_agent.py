@@ -35,13 +35,15 @@ logger = logging.getLogger(__name__)
 LIVE_TOOLS = ["get_live_match_stats", "get_match_events", "get_ball_carrier_data", "get_formation_snapshots", "get_tactical_tags"]
 
 MAX_LIVE_TURNS = 2
+# Live 5-minute insight model. Runs in the background every 5 minutes, so quality matters more than speed.
+LIVE_MODEL = "claude-sonnet-5-5"
 
 
 class MatchAgent:
     """Agentic Match Intelligence — live insights and deep post-match analysis."""
 
     # -------------------------------------------------------------------------
-    # LIVE MODE — Haiku, 2-turn agentic
+    # LIVE MODE — Sonnet 5.5, 2-turn agentic
     # -------------------------------------------------------------------------
 
     @staticmethod
@@ -55,7 +57,7 @@ class MatchAgent:
     ) -> str:
         """
         Agentic live match insight.
-        Model: Haiku | Max turns: 2 | Tools: LIVE_TOOLS
+        Model: LIVE_MODEL (Sonnet 5.5) | Max turns: 2 | Tools: LIVE_TOOLS
         get_live_match_stats is always the first tool call — it provides per-player breakdown,
         kickout stats, scoring run detection, and sin-bin risk in human-readable format.
         """
@@ -156,7 +158,7 @@ Reference knowledge base context when relevant to a specific trigger.
                 "one standout positive (name them), and one key adjustment for the second half. "
                 "Under 80 words, no lists."
             )
-            max_tokens = 200
+            max_tokens = 400
         else:
             user_prompt = (
                 f"Call get_live_match_stats('{match_id}') first. Then, from the snapshot data, "
@@ -165,7 +167,7 @@ Reference knowledge base context when relevant to a specific trigger.
                 "(e.g. '2 unforced errors [stray_pass]', 'kickout retention 40%', '3 turnovers lost'). "
                 "Then give one actionable adjustment. 2-3 sentences max, under 80 words."
             )
-            max_tokens = 200
+            max_tokens = 400
 
         raw_live_tools = get_tools_subset(LIVE_TOOLS)
         # Enable Anthropic prompt caching on system prompt + tools
@@ -178,7 +180,7 @@ Reference knowledge base context when relevant to a specific trigger.
 
         def _call_api(msgs):
             return client.messages.create(
-                model="claude-haiku-4-5",
+                model=LIVE_MODEL,
                 max_tokens=max_tokens,
                 system=cached_system,
                 tools=cached_live_tools,
