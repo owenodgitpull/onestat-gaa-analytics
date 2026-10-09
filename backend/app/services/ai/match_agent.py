@@ -174,14 +174,14 @@ Reference knowledge base context when relevant to a specific trigger.
                 "required format: a bold headline (the one pattern that decided the half), then a short paragraph with the score, "
                 "the biggest problem WITH WHERE it happens, one standout positive, and the single key adjustment for the second half."
             )
-            max_tokens = 600
+            max_tokens = 4000
         else:
             user_prompt = (
                 f"Call get_live_match_stats('{match_id}') first. Then use the LIVE TACTICAL BRIEF and the snapshot to give ONE specific, "
                 "data-driven sideline read in the required format: a bold headline, then the evidence (numbers and WHERE on the pitch), "
                 "what changed in the last five minutes, and one instruction for the next five. Cite exact figures from the data only."
             )
-            max_tokens = 600
+            max_tokens = 4000
 
         raw_live_tools = get_tools_subset(LIVE_TOOLS)
         # Enable Anthropic prompt caching on system prompt + tools
@@ -195,6 +195,9 @@ Reference knowledge base context when relevant to a specific trigger.
         def _call_api(msgs, no_more_tools=False):
             kwargs = dict(
                 model=LIVE_MODEL,
+                # The live insight is worth thinking about (it runs in the background every 5 minutes), so it opts in
+                # to thinking and gets a max_tokens that leaves room for the thinking AND the ~110-word answer.
+                allow_thinking=True,
                 max_tokens=max_tokens,
                 system=cached_system,
                 tools=cached_live_tools,

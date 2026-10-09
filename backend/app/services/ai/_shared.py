@@ -44,6 +44,24 @@ def safe_json(data) -> str:
 # Initialize Anthropic client
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+
+# Claude Sonnet 5.x "thinks" before it answers by default, and that thinking counts against max_tokens — with the
+# modest max_tokens these agents were written for, an answer can be cut off or come back EMPTY. Keep the behaviour the
+# agents were built around (no thinking before the answer; short updates between tool calls) unless a caller opts in
+# with allow_thinking=True and sets a max_tokens that leaves room for it.
+_create_unwrapped = client.messages.create
+
+
+def _create_with_defaults(*args, **kwargs):
+    allow_thinking = kwargs.pop("allow_thinking", False)
+    model = str(kwargs.get("model", ""))
+    if not allow_thinking and "thinking" not in kwargs and model.startswith(("claude-sonnet-5", "claude-opus-5", "claude-fable-5")):
+        kwargs["thinking"] = {"type": "between_tools"}
+    return _create_unwrapped(*args, **kwargs)
+
+
+client.messages.create = _create_with_defaults
+
 # =============================================================================
 # GAA ESSENTIALS (Slim reference — always present in every agent prompt)
 # Domain knowledge (tactics, KPIs, patterns) comes from RAG, not here.
