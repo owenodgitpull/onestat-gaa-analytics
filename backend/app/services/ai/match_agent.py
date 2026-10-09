@@ -40,6 +40,53 @@ MAX_LIVE_TURNS = 3
 LIVE_MODEL = "claude-sonnet-5-5"
 
 
+# Details of the most recent fact check (the replay tool reads this to show what was caught)
+LAST_FACT_CHECK: dict = {}
+
+FACT_CHECK_SYSTEM = """You are a strict fact-checker for a live GAA sideline insight. You are given EVIDENCE (the only source of truth) and an INSIGHT.
+
+For every FACTUAL claim in the insight — scores, counts, percentages, minutes, distances and positions, which player did what, which team, and any claimed
+CAUSE ("because", "led to", "feeding") — decide whether the evidence directly supports it. Simple arithmetic from the evidence is supported
+(e.g. 0-04 v 1-15 means 14 behind). Treat as UNSUPPORTED: numbers not in the evidence, positions or shape of our defenders/half-backs (we do not track them),
+invented players or events, causal claims the evidence does not show, and "nothing changed / trend" claims that the evidence contradicts.
+Do NOT flag advice or instructions themselves, or generic framing words. When a claim is borderline, treat it as supported.
+
+If everything is supported, reply with exactly: {"ok": true, "unsupported": [], "corrected_insight": null}
+
+If anything is unsupported, reply with JSON: {"ok": false, "unsupported": ["the exact claim", ...], "corrected_insight": "..."}
+where corrected_insight is the insight rewritten with the unsupported claims removed or replaced by supported facts from the evidence,
+keeping the SAME format: a bold headline paragraph (** **, 22 words max), a blank line, then a detail paragraph (70 words max) ending with one instruction.
+Reply with JSON only, no other text."""
+
+
+async def _fact_check_live_insight(insight_text: str, evidence: str):
+    """Returns (text_to_use, report). Never raises; on any problem the original insight is used."""
+    report = {"ran": False}
+    try:
+        user = f"EVIDENCE:\n{evidence[:24000]}\n\nINSIGHT:\n{insight_text}"
+
+        def _call():
+            return client.messages.create(
+                model=LIVE_MODEL, max_tokens=1500, system=FACT_CHECK_SYSTEM,
+                messages=[{"role": "user", "content": user}],
+            )
+
+        resp = await asyncio.to_thread(_call)
+        raw = "".join(getattr(b, "text", "") for b in resp.content).strip()
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        data = json.loads(m.group(0)) if m else {}
+        report = {"ran": True, "ok": bool(data.get("ok")), "unsupported": data.get("unsupported") or []}
+        fixed = (data.get("corrected_insight") or "").strip()
+        if not data.get("ok") and fixed:
+            report["original"] = insight_text
+            return fixed, report
+        return insight_text, report
+    except Exception as exc:  # the insight must still go out
+        logger.warning("live insight fact check failed: %s: %s", type(exc).__name__, exc)
+        report["error"] = f"{type(exc).__name__}: {exc}"
+        return insight_text, report
+
+
 class MatchAgent:
     """Agentic Match Intelligence — live insights and deep post-match analysis."""
 
@@ -212,6 +259,7 @@ Reference knowledge base context when relevant to a specific trigger.
             return client.messages.create(**kwargs)
 
         response = await asyncio.to_thread(_call_api, messages)
+        evidence_texts: list = []
 
         # Agentic tool loop — max 2 turns
         turns = 0
@@ -231,6 +279,7 @@ Reference knowledge base context when relevant to a specific trigger.
                         "input": block.input,
                     })
                     tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
+                    evidence_texts.append(f"[tool {block.name}]\n{tool_result}")
                     logger.info(f"Live tool {block.name} returned {len(tool_result)} chars")
                     tool_results.append({
                         "type": "tool_result",
@@ -254,6 +303,7 @@ Reference knowledge base context when relevant to a specific trigger.
                 elif block.type == "tool_use":
                     assistant_content.append({"type": "tool_use", "id": block.id, "name": block.name, "input": block.input})
                     tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
+                    evidence_texts.append(f"[tool {block.name}]\n{tool_result}")
                     tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": tool_result})
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results + [
@@ -266,6 +316,19 @@ Reference knowledge base context when relevant to a specific trigger.
         for block in response.content:
             if hasattr(block, "text"):
                 final_text += block.text
+
+        # Fact-check pass: every number, place, name and claimed cause must be supported by the data the agent was given
+        global LAST_FACT_CHECK
+        if final_text.strip():
+            evidence = "\n\n".join(filter(None, [
+                f"[tactical brief]\n{live_brief}" if live_brief else "",
+                f"[pre-match notes]\n{tactical_notes}" if tactical_notes else "",
+                f"[recent events]\n{json.dumps(recent_events)}",
+                "\n\n".join(evidence_texts),
+            ]))
+            final_text, LAST_FACT_CHECK = await _fact_check_live_insight(final_text, evidence)
+        else:
+            LAST_FACT_CHECK = {"ran": False}
 
         return final_text
 

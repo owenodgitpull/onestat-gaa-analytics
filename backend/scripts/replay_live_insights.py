@@ -143,7 +143,7 @@ async def main():
             results.append({
                 'minute': minute, 'trigger': trigger, 'score': score_line, 'insight': insight_text.strip(),
                 'seconds': round(took, 1), 'events_visible': len(inserted_ev), 'recent_events': recent,
-                'snapshot': stats_text, 'tactical_brief': brief_text, 'already_flagged_note': note,
+                'fact_check': dict(ma.LAST_FACT_CHECK), 'snapshot': stats_text, 'tactical_brief': brief_text, 'already_flagged_note': note,
             })
 
         model = ma.LIVE_MODEL
@@ -173,7 +173,11 @@ async def main():
     for r in results:
         title = "HALF TIME" if r['trigger'] == 'half_time' else f"{r['minute']}'"
         kind = 'half-time read' if r['trigger'] == 'half_time' else 'interval insight'
-        lines += [f"## {title} — {kind}", f"_{r['score']}_  ·  {r['events_visible']} events recorded so far  ·  {r['seconds']}s", '', r['insight'], '', '---', '']
+        fc = r.get('fact_check') or {}
+        fc_line = ''
+        if fc.get('ran'):
+            fc_line = ('_Fact check: all claims supported._' if fc.get('ok') else '_Fact check corrected unsupported claim(s): ' + '; '.join(fc.get('unsupported') or []) + '_')
+        lines += [f"## {title} — {kind}", f"_{r['score']}_  ·  {r['events_visible']} events recorded so far  ·  {r['seconds']}s", '', r['insight'], '', fc_line, '', '---', '']
     emit(f'insights-replay-{LABEL}.md', '\n'.join(lines))
     emit(f'insights-replay-{LABEL}.json', json.dumps({'model': model, 'fingerprint': fingerprint, 'label': LABEL, 'match_id': MATCH_ID,
                                                        'opponent': opponent, 'results': results}, indent=2, default=str))
