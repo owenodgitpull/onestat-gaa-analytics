@@ -328,8 +328,11 @@ async def _process_document_background(
 
 
 def _extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract text from PDF using pymupdf."""
-    import pymupdf
+    """Extract text from PDF using PyMuPDF (the module is `fitz` in the pinned 1.24.0 release, `pymupdf` in newer ones)."""
+    try:
+        import pymupdf
+    except ImportError:
+        import fitz as pymupdf
     import io
 
     text_parts = []
