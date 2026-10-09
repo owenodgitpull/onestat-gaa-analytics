@@ -791,7 +791,8 @@ export default function VideoTagging() {
   const handleSecondHalfThrowIn = useCallback((winner: 'team_a' | 'team_b') => {
     setPossession(winner)
     setSecondHalfThrowInPending(false)
-    setTimeout(() => playerRef.current?.play(), 150)
+    // Leaves free-look: jumps back to the throw-in (the tracking mark) and starts playing + tracking from there
+    exitReviewRef.current()
   }, [])
 
   // Handle lineup selection confirmation
@@ -3016,7 +3017,8 @@ export default function VideoTagging() {
       // Let the raised tracking ceiling take effect before seeking (otherwise the seek is clamped); stay paused on the throw-in
       setTimeout(() => {
         playerRef.current?.seekTo(start)
-        playerRef.current?.pause()
+        // Free-look until they've seen who won it: scrub/play freely, nothing is recorded
+        enterReviewRef.current({ pause: true })
       }, 150)
     }
   }
@@ -3652,32 +3654,39 @@ export default function VideoTagging() {
         </div>
       )}
 
-      {/* 2ND-HALF THROW-IN — who won it? (same question Live Recording asks when the second half starts) */}
+      {/* 2ND-HALF THROW-IN — guided: watch it first, then say who won; choosing starts tracking from the throw-in */}
       {mode === 'tracking' && secondHalfThrowInPending && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
           <div
-            className="w-full max-w-sm rounded-2xl p-5"
+            className="rounded-2xl px-4 py-3 pointer-events-auto"
             style={{
-              background: 'linear-gradient(135deg, rgba(10,26,32,0.92), rgba(8,20,26,0.85))',
-              border: '1px solid rgba(0,230,118,0.38)',
+              background: 'linear-gradient(135deg, rgba(10,26,32,0.9), rgba(8,20,26,0.8))',
+              border: '1px solid rgba(0,230,118,0.4)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
               boxShadow: '0 8px 28px rgba(0,0,0,0.5), 0 0 18px rgba(0,230,118,0.18), inset 0 1px 0 rgba(255,255,255,0.12)',
             }}
           >
-            <h3 className="text-sm font-bold text-white mb-1">Who won the 2nd-half throw-in?</h3>
-            <p className="text-xs text-white/60 mb-3">Whoever wins it starts with possession. You can correct it any time with the "Ball" button.</p>
-            <div className="flex gap-2">
+            <div className="text-sm font-bold text-white">2nd half — who won the throw-in?</div>
+            <div className="text-[11px] text-white/65 mt-0.5">
+              Press play (or scrub) to watch the throw-in and see who wins it. Nothing is recorded yet.
+            </div>
+            <div className="flex gap-2 mt-2.5">
               <button
                 onClick={() => handleSecondHalfThrowIn('team_a')}
-                className="flex-1 px-3 py-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs font-semibold transition-all truncate"
+                className="flex-1 px-3 py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-100 text-xs font-bold transition-all truncate"
               >
-                {clubName}
+                {clubName} won it
               </button>
               <button
                 onClick={() => handleSecondHalfThrowIn('team_b')}
-                className="flex-1 px-3 py-3 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-200 text-xs font-semibold transition-all truncate"
+                className="flex-1 px-3 py-2.5 rounded-xl bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-orange-100 text-xs font-bold transition-all truncate"
               >
-                {opponentName}
+                {opponentName} won it
               </button>
+            </div>
+            <div className="text-[10px] text-white/45 mt-2">
+              When you choose, the video jumps back to the throw-in and tracking starts straight away.
             </div>
           </div>
         </div>
@@ -3763,7 +3772,7 @@ export default function VideoTagging() {
       )}
 
       {/* REVIEW banner — free roam, nothing recorded. Prominent Return button. */}
-      {mode === 'tracking' && reviewing && (
+      {mode === 'tracking' && reviewing && !secondHalfThrowInPending && (
         <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
           <div
             className="rounded-2xl px-4 py-2.5 pointer-events-auto"
