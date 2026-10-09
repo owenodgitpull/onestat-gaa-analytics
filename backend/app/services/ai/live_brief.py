@@ -69,7 +69,7 @@ LABELS = {
 }
 
 
-def _exact(fx: float, fy: float, goal: str) -> str:
+def _exact(fx: float, fy: float, goal: str, shot: bool = True) -> str:
     """Exact position in metres. goal = 'their' (the goal WE attack) or 'our' (the goal we defend).
     Pitch 145m x 90m; positions are accurate to about 1-3m. 'left/right' are as WE face the opposition goal."""
     d = ((100.0 - fx) if goal == "their" else fx) * PITCH_LEN_M / 100.0
@@ -78,6 +78,8 @@ def _exact(fx: float, fy: float, goal: str) -> str:
     straight = (d * d + lat * lat) ** 0.5
     arc = "outside the 40m arc (two-point range)" if straight >= 40 else "inside the 40m arc"
     centre = "on the centre line" if abs(lat) < 2 else f"{abs(round(lat))}m {side} of centre"
+    if not shot:  # turnovers / kickouts: just where on the pitch, measured from the goal line we are talking about
+        return f"{round(d)}m from {'their' if goal == 'their' else 'our'} goal line, {centre}"
     return f"{round(d)}m from {'their' if goal == 'their' else 'our'} goal line, {centre} (~{round(straight)}m from goal, {arc})"
 
 
@@ -337,7 +339,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         f = framed(e)
         if f:
             nm = who(e)
-            rows.append(f"  {e.minute}' {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], 'our')}")
+            rows.append(f"  {e.minute}' {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], 'our', shot=False)}")
     if rows:
         L.append("EXACT POSITIONS — OUR TURNOVERS/ERRORS IN THE LAST 10 MINUTES (distance is from OUR goal line):")
         L.extend(rows)
@@ -346,7 +348,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     for e in ko_detail:
         f = framed(e)
         if f:
-            rows.append(f"  {e.minute}' our kickout {'kept' if _t(e) in OWN_KO_RETAINED else 'lost'}: landed {_exact(f[0], f[1], 'our').split(' (~')[0]}")
+            rows.append(f"  {e.minute}' our kickout {'kept' if _t(e) in OWN_KO_RETAINED else 'lost'}: landed {_exact(f[0], f[1], 'our', shot=False)}")
     if rows:
         L.append("EXACT POSITIONS — OUR KICKOUTS IN THE LAST 10 MINUTES:")
         L.extend(rows)
