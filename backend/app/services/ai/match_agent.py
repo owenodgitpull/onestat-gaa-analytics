@@ -51,12 +51,18 @@ CAUSE ("because", "led to", "feeding") — decide whether the evidence directly 
 invented players or events, causal claims the evidence does not show, and "nothing changed / trend" claims that the evidence contradicts.
 Do NOT flag advice or instructions themselves, or generic framing words. When a claim is borderline, treat it as supported.
 
-If everything is supported, reply with exactly: {"ok": true, "unsupported": [], "corrected_insight": null}
+If everything is supported, reply with exactly: VERDICT: OK
 
-If anything is unsupported, reply with JSON: {"ok": false, "unsupported": ["the exact claim", ...], "corrected_insight": "..."}
-where corrected_insight is the insight rewritten with the unsupported claims removed or replaced by supported facts from the evidence,
-keeping the SAME format: a bold headline paragraph (** **, 22 words max), a blank line, then a detail paragraph (70 words max) ending with one instruction.
-Reply with JSON only, no other text."""
+If anything is unsupported, reply in this exact layout:
+VERDICT: FIX
+UNSUPPORTED:
+- the exact claim
+- another exact claim
+<corrected>
+the insight rewritten with the unsupported claims removed or replaced by supported facts from the evidence, keeping the SAME format:
+a bold headline paragraph (** **, 22 words max), a blank line, then a detail paragraph (70 words max) ending with one instruction
+</corrected>
+"""
 
 
 async def _fact_check_live_insight(insight_text: str, evidence: str):
@@ -73,13 +79,19 @@ async def _fact_check_live_insight(insight_text: str, evidence: str):
 
         resp = await asyncio.to_thread(_call)
         raw = "".join(getattr(b, "text", "") for b in resp.content).strip()
-        m = re.search(r"\{.*\}", raw, re.DOTALL)
-        data = json.loads(m.group(0)) if m else {}
-        report = {"ran": True, "ok": bool(data.get("ok")), "unsupported": data.get("unsupported") or []}
-        fixed = (data.get("corrected_insight") or "").strip()
-        if not data.get("ok") and fixed:
+        ok = "VERDICT: OK" in raw.upper() and "VERDICT: FIX" not in raw.upper()
+        unsupported = []
+        um = re.search(r"UNSUPPORTED:\s*(.*?)(?:<corrected>|$)", raw, re.DOTALL | re.IGNORECASE)
+        if um:
+            unsupported = [ln.strip().lstrip("-• ").strip() for ln in um.group(1).splitlines() if ln.strip().startswith(("-", "•"))]
+        report = {"ran": True, "ok": ok, "unsupported": unsupported}
+        cm = re.search(r"<corrected>\s*(.*?)\s*</corrected>", raw, re.DOTALL | re.IGNORECASE)
+        fixed = cm.group(1).strip() if cm else ""
+        if not ok and fixed:
             report["original"] = insight_text
             return fixed, report
+        if not ok:
+            report["error"] = "verifier flagged claims but gave no corrected text; original kept"
         return insight_text, report
     except Exception as exc:  # the insight must still go out
         logger.warning("live insight fact check failed: %s: %s", type(exc).__name__, exc)
