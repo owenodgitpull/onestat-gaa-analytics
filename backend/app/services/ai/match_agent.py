@@ -50,6 +50,7 @@ CAUSE ("because", "led to", "feeding") — decide whether the evidence directly 
 (e.g. 0-04 v 1-15 means 14 behind). Treat as UNSUPPORTED: numbers not in the evidence, positions or shape of our defenders/half-backs (we do not track them),
 invented players or events, causal claims the evidence does not show, and "nothing changed / trend" claims that the evidence contradicts.
 Do NOT flag advice or instructions themselves, or generic framing words. When a claim is borderline, treat it as supported.
+Each UNSUPPORTED bullet must be ONLY the exact claim, with no commentary or explanation, and a claim you judged supported must never appear in the list. If after checking nothing is truly unsupported, answer VERDICT: OK.
 
 If everything is supported, reply with exactly: VERDICT: OK
 
