@@ -89,6 +89,8 @@ export default function PitchReceiverDots({
                 }
               : { style: { pointerEvents: 'none' as const, transition: 'opacity 0.25s ease' } })}
           >
+            {/* Forgiving hit area: a tap just beside a dot selects that player instead of teleporting the ball */}
+            <circle cx={cx} cy={cy} r={radius + 34} fill="rgba(0,0,0,0.001)" />
             <circle
               cx={cx} cy={cy} r={radius}
               fill={isLikely ? teamPrimaryColor : 'rgba(6,14,10,0.55)'}

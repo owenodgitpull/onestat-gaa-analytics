@@ -71,6 +71,7 @@ import {
   Maximize,
   Target,
   ArrowLeftRight,
+  Undo2,
   Pause,
   RotateCcw,
   Users,
@@ -2205,6 +2206,54 @@ export default function MatchRecording() {
     }
   }
 
+  // ── Undo a big ball jump (a mis-tap beside a receiver dot teleports the ball) ─────────────────────────
+  // A tap that moves the ball >= JUMP_UNDO_M gets a ghost of where it was + an Undo chip for a few seconds. Its possession
+  // write is held back until the window ends or the user does anything else, so undo simply cancels it.
+  const JUMP_UNDO_M = 30
+  const JUMP_UNDO_MS = 8000
+  const [lastJump, setLastJump] = useState<{ id: number; from: { x: number; y: number }; to: { x: number; y: number }; distM: number } | null>(null)
+  const jumpPendingRef = useRef<{ trail: Array<{ x: number; y: number }>; from: BallPosition; write: () => Promise<void> } | null>(null)
+  const jumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const jumpIdRef = useRef(0)
+  const lastDragAtRef = useRef(0)
+
+  const expireJump = () => {
+    if (jumpTimerRef.current) { clearTimeout(jumpTimerRef.current); jumpTimerRef.current = null }
+    const pending = jumpPendingRef.current
+    jumpPendingRef.current = null
+    setLastJump(null)
+    if (pending) void pending.write()
+  }
+  const expireJumpRef = useRef(expireJump)
+  expireJumpRef.current = expireJump
+
+  const undoJump = () => {
+    const pending = jumpPendingRef.current
+    if (!pending) return
+    if (jumpTimerRef.current) { clearTimeout(jumpTimerRef.current); jumpTimerRef.current = null }
+    jumpPendingRef.current = null
+    setLastJump(null)
+    setBallPosition(pending.from)
+    setBallTrail(pending.trail)
+  }
+  const undoJumpRef = useRef(undoJump)
+  undoJumpRef.current = undoJump
+
+  // Anything else the user does makes the jump permanent
+  useEffect(() => { expireJumpRef.current() }, [allEvents.length, activeCarrierId, pendingFreeKick, pendingKickoutEvent, pending45, pendingFortyFivePosition, matchPhase, isStopped])
+  useEffect(() => () => { if (jumpTimerRef.current) clearTimeout(jumpTimerRef.current) }, [])
+  // Z / Ctrl+Z undoes the jump while the chip is showing
+  useEffect(() => {
+    if (!lastJump) return
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undoJumpRef.current() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lastJump])
+
   const handleBallMove = async (newPosition: BallPosition) => {
     // Check if there's a pending 45 waiting for its line position
     if (pendingFortyFivePosition) {
@@ -2286,6 +2335,8 @@ export default function MatchRecording() {
     }
 
     // Update local ball position
+    const ballBefore = ballPosition
+    const trailBefore = ballTrail
     setBallPosition(newPosition)
     setBallTrail(prev => [...prev.slice(-49), { x: newPosition.x, y: newPosition.y }])
 
@@ -2293,25 +2344,44 @@ export default function MatchRecording() {
     if (awaitingKickout) return
 
     // Record possession event to backend
-    try {
-      await recordPossession.mutateAsync({
-        match_id: matchId,
-        x_coord: newPosition.x,
-        y_coord: newPosition.y,
-        team: newPosition.team === PossessionTeam.OWN ? 'home' : 'away',
-        timestamp: new Date(),
-        minute: minute,
-        half: currentHalf
-      })
-      console.log('Possession recorded:', newPosition)
-    } catch (error) {
-      console.error('Failed to record possession:', error)
-      // Don't show alert for possession tracking errors (too disruptive)
+    const writePossession = async () => {
+      try {
+        await recordPossession.mutateAsync({
+          match_id: matchId,
+          x_coord: newPosition.x,
+          y_coord: newPosition.y,
+          team: newPosition.team === PossessionTeam.OWN ? 'home' : 'away',
+          timestamp: new Date(),
+          minute: minute,
+          half: currentHalf
+        })
+        console.log('Possession recorded:', newPosition)
+      } catch (error) {
+        console.error('Failed to record possession:', error)
+        // Don't show alert for possession tracking errors (too disruptive)
+      }
     }
+
+    // A new move makes any earlier jump permanent; a TAP (not the end of a drag) that moves the ball a long way
+    // is held back for a few seconds so it can be undone
+    expireJumpRef.current()
+    const isDragEnd = Date.now() - lastDragAtRef.current < 250
+    if (ballBefore && !isDragEnd) {
+      const distM = Math.hypot((newPosition.x - ballBefore.x) * 1.45, (newPosition.y - ballBefore.y) * 0.9)
+      if (distM >= JUMP_UNDO_M) {
+        jumpPendingRef.current = { trail: trailBefore, from: ballBefore, write: writePossession }
+        jumpIdRef.current += 1
+        setLastJump({ id: jumpIdRef.current, from: { x: ballBefore.x, y: ballBefore.y }, to: { x: newPosition.x, y: newPosition.y }, distM: Math.round(distM) })
+        jumpTimerRef.current = setTimeout(() => expireJumpRef.current(), JUMP_UNDO_MS)
+        return
+      }
+    }
+    await writePossession()
   }
 
   // Batch-record drag waypoints as possession events (single bulk request on drag-end)
   const handleDragPath = (waypoints: Array<{ x: number; y: number }>) => {
+    lastDragAtRef.current = Date.now()
     if (!matchId || matchPhase === 'not_started' || matchPhase === 'finished' || isStopped || isDeadBall) return
     // Dead-ball restarts in progress — a free kick being repositioned, a
     // kickout whose landing spot hasn't been tapped yet, or a 45 whose line
@@ -4690,6 +4760,8 @@ export default function MatchRecording() {
                   highlightSidelines={sidelineTapPending}
                   highlight45LineX={fortyFiveLineX}
                   pulseBall={landingTapActive}
+                  jumpGhost={lastJump ? { from: lastJump.from, to: lastJump.to, label: `${lastJump.distM}m` } : null}
+                  onJumpGhostTap={undoJump}
                   ballAnchoredOverlay={
                     (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
                       <>
@@ -5100,6 +5172,21 @@ export default function MatchRecording() {
                       <Zap size={14} />
                       <span>{pressTriggerActive ? 'Press Active' : 'Press Trigger'}</span>
                     </button>
+                    {lastJump && (
+                      <button
+                        key={lastJump.id}
+                        onClick={undoJump}
+                        className="flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/25 border-2 border-amber-400/50 text-amber-100 hover:bg-amber-500/35 text-[11px] font-bold transition-all"
+                        title="Undo this ball move (Z). The ball goes back; nothing was recorded for the jump."
+                      >
+                        <style>{`@keyframes _jumpRing { from { stroke-dashoffset: 0 } to { stroke-dashoffset: 31.4 } }`}</style>
+                        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                          <circle cx="7" cy="7" r="5" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="2" />
+                          <circle cx="7" cy="7" r="5" fill="none" stroke="#fde68a" strokeWidth="2" strokeDasharray="31.4" style={{ animation: `_jumpRing ${JUMP_UNDO_MS}ms linear forwards`, transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }} />
+                        </svg>
+                        <Undo2 size={13} /> Undo move · {lastJump.distM}m
+                      </button>
+                    )}
                     <FormationSnapshotButton
                       onClick={() => setIsSnapshotMode(true)}
                       shouldPulse={shouldPulseSnapshot}
