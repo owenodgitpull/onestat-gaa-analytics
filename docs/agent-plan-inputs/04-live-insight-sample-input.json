@@ -1,0 +1,1174 @@
+{
+  "recent_events_passed_to_prompt": [
+    {
+      "minute": 34,
+      "type": "two_point",
+      "team": "opponent"
+    },
+    {
+      "minute": 33,
+      "type": "own_kickout_won_break",
+      "team": "own"
+    },
+    {
+      "minute": 33,
+      "type": "short",
+      "team": "own"
+    },
+    {
+      "minute": 32,
+      "type": "point",
+      "team": "opponent"
+    },
+    {
+      "minute": 32,
+      "type": "long_kick_pass",
+      "team": "opponent"
+    },
+    {
+      "minute": 31,
+      "type": "long_kick_pass",
+      "team": "own"
+    },
+    {
+      "minute": 31,
+      "type": "long_kick_pass",
+      "team": "opponent"
+    },
+    {
+      "minute": 31,
+      "type": "short",
+      "team": "own"
+    },
+    {
+      "minute": 30,
+      "type": "two_point",
+      "team": "opponent"
+    },
+    {
+      "minute": 30,
+      "type": "own_kickout_won",
+      "team": "own"
+    }
+  ],
+  "concern_snapshot_per_player": {
+    "f879369d-e0d4-4665-b68e-1f4a62ec5329": {
+      "player_id": "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+      "player_name": "Mark Curran",
+      "turnovers_lost": 1,
+      "unforced_errors": 0,
+      "fouls": 2
+    },
+    "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1": {
+      "player_id": "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1",
+      "player_name": "Daire Gallagher",
+      "turnovers_lost": 1,
+      "unforced_errors": 0,
+      "fouls": 1
+    },
+    "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387": {
+      "player_id": "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387",
+      "player_name": "Barry Curran",
+      "turnovers_lost": 0,
+      "unforced_errors": 1,
+      "fouls": 0
+    },
+    "a6ed8889-bce7-4c50-867e-ccc2a01f2d1a": {
+      "player_id": "a6ed8889-bce7-4c50-867e-ccc2a01f2d1a",
+      "player_name": "Aaron Ward",
+      "turnovers_lost": 0,
+      "unforced_errors": 1,
+      "fouls": 0
+    },
+    "335d5e62-ac65-4a2a-a922-96306e3d5d75": {
+      "player_id": "335d5e62-ac65-4a2a-a922-96306e3d5d75",
+      "player_name": "Ryan Connors",
+      "turnovers_lost": 0,
+      "unforced_errors": 0,
+      "fouls": 1
+    },
+    "d006db8f-9b2a-40dc-b79b-7c1bf0e52d63": {
+      "player_id": "d006db8f-9b2a-40dc-b79b-7c1bf0e52d63",
+      "player_name": "Darren Curran",
+      "turnovers_lost": 0,
+      "unforced_errors": 0,
+      "fouls": 2
+    },
+    "b13c58bc-2505-41bc-a44a-c311e7c280a3": {
+      "player_id": "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+      "player_name": "Luke Clerkin",
+      "turnovers_lost": 0,
+      "unforced_errors": 0,
+      "fouls": 1
+    }
+  },
+  "already_flagged_note": "",
+  "get_live_match_stats_output": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 3 | Turnovers LOST: 6 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 9/14 retained (64%)\n  Their kickouts: 2/6 won by us (33%)\n\nSCORING RUN: Opponents have scored 3 in a row \u2014 under pressure.\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Mark Curran: 1 TO lost, 2 fouls\n  Darren Curran: 2 fouls, 1 TO won\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Daire Gallagher: 1 TO lost, 1 foul, YELLOW\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul, 1 TO won\n  Luke Clerkin: scored 0-1, 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Aaron Neely: scored 0-1, 1 TO won\n  Oisin Bonner: scored 0-1",
+  "get_tactical_tags_output": {
+    "tags": [],
+    "total": 0,
+    "message": "No tactical tags recorded for this match"
+  },
+  "get_ball_carrier_data_output": {
+    "data_confidence": "high",
+    "analysis_guidance": "GOOD SAMPLE: 122 ball carries were logged, giving reasonable coverage of the match. Pass network, chain effectiveness, tempo, and territory stats are meaningful. Still frame as 'from logged possessions' rather than definitive totals, but you can present averages, percentages, and patterns with confidence.",
+    "total_segments": 122,
+    "total_logged_passes": 115,
+    "carrier_stats": [
+      {
+        "name": "Karl Magee",
+        "jersey": 7,
+        "carries": 14,
+        "total_points": 123,
+        "avg_gain_x": 0.5,
+        "avg_start_x": 48.9,
+        "avg_end_x": 49.4,
+        "avg_gain_x_metres": 0.7,
+        "primary_carry_zones": [
+          "past midfield, left side",
+          "own half, left side",
+          "own half, right side"
+        ]
+      },
+      {
+        "name": "Aaron Neely",
+        "jersey": 5,
+        "carries": 13,
+        "total_points": 146,
+        "avg_gain_x": 12.3,
+        "avg_start_x": 44.5,
+        "avg_end_x": 56.8,
+        "avg_gain_x_metres": 17.8,
+        "primary_carry_zones": [
+          "own half",
+          "past midfield, left side",
+          "own half, right side"
+        ]
+      },
+      {
+        "name": "Luke Clerkin",
+        "jersey": 12,
+        "carries": 13,
+        "total_points": 115,
+        "avg_gain_x": 7.0,
+        "avg_start_x": 47.8,
+        "avg_end_x": 54.8,
+        "avg_gain_x_metres": 10.2,
+        "primary_carry_zones": [
+          "own half",
+          "own half, left side",
+          "past midfield, left side"
+        ]
+      },
+      {
+        "name": "Mark Curran",
+        "jersey": 2,
+        "carries": 10,
+        "total_points": 95,
+        "avg_gain_x": 8.0,
+        "avg_start_x": 40.6,
+        "avg_end_x": 48.6,
+        "avg_gain_x_metres": 11.6,
+        "primary_carry_zones": [
+          "inside own 45m line",
+          "inside own 45m line, left side",
+          "own half, right side"
+        ]
+      },
+      {
+        "name": "Barry Curran",
+        "jersey": 19,
+        "carries": 10,
+        "total_points": 69,
+        "avg_gain_x": 0.2,
+        "avg_start_x": 68.4,
+        "avg_end_x": 68.6,
+        "avg_gain_x_metres": 0.3,
+        "primary_carry_zones": [
+          "past midfield, right side",
+          "inside the 40m arc, left side",
+          "past midfield"
+        ]
+      },
+      {
+        "name": "Conor O\u2019Donnell",
+        "jersey": 6,
+        "carries": 9,
+        "total_points": 59,
+        "avg_gain_x": -4.6,
+        "avg_start_x": 48.5,
+        "avg_end_x": 43.9,
+        "avg_gain_x_metres": -6.7,
+        "primary_carry_zones": [
+          "inside own 45m line, left side",
+          "own half",
+          "inside the 20m line, left side"
+        ]
+      },
+      {
+        "name": "Matthew Ward",
+        "jersey": 9,
+        "carries": 8,
+        "total_points": 84,
+        "avg_gain_x": 7.8,
+        "avg_start_x": 55.8,
+        "avg_end_x": 63.6,
+        "avg_gain_x_metres": 11.3,
+        "primary_carry_zones": [
+          "past midfield",
+          "own half",
+          "inside the 45m line, right side"
+        ]
+      },
+      {
+        "name": "Oisin Bonner",
+        "jersey": 14,
+        "carries": 8,
+        "total_points": 40,
+        "avg_gain_x": 3.3,
+        "avg_start_x": 69.8,
+        "avg_end_x": 73.1,
+        "avg_gain_x_metres": 4.8,
+        "primary_carry_zones": [
+          "past midfield, right side",
+          "inside the 45m line, left side",
+          "inside the 40m arc, right side"
+        ]
+      },
+      {
+        "name": "Jason McBride",
+        "jersey": 4,
+        "carries": 7,
+        "total_points": 50,
+        "avg_gain_x": 3.6,
+        "avg_start_x": 28.0,
+        "avg_end_x": 31.6,
+        "avg_gain_x_metres": 5.2,
+        "primary_carry_zones": [
+          "inside own 45m line",
+          "inside own 45m line, left side",
+          "own half, left side"
+        ]
+      },
+      {
+        "name": "Dylan Sweeney",
+        "jersey": 10,
+        "carries": 7,
+        "total_points": 36,
+        "avg_gain_x": 2.7,
+        "avg_start_x": 63.9,
+        "avg_end_x": 66.6,
+        "avg_gain_x_metres": 3.9,
+        "primary_carry_zones": [
+          "past midfield",
+          "past midfield, right side",
+          "inside the 45m line, right side"
+        ]
+      },
+      {
+        "name": "Daire Gallagher",
+        "jersey": 17,
+        "carries": 7,
+        "total_points": 44,
+        "avg_gain_x": 10.3,
+        "avg_start_x": 52.1,
+        "avg_end_x": 62.4,
+        "avg_gain_x_metres": 14.9,
+        "primary_carry_zones": [
+          "own half",
+          "past midfield, right side",
+          "past midfield"
+        ]
+      },
+      {
+        "name": "Ryan Connors",
+        "jersey": 11,
+        "carries": 6,
+        "total_points": 32,
+        "avg_gain_x": 1.4,
+        "avg_start_x": 52.1,
+        "avg_end_x": 53.5,
+        "avg_gain_x_metres": 2.0,
+        "primary_carry_zones": [
+          "inside the 40m arc, left side",
+          "own half, right side",
+          "inside the 40m arc"
+        ]
+      },
+      {
+        "name": "Aaron Ward",
+        "jersey": 3,
+        "carries": 5,
+        "total_points": 37,
+        "avg_gain_x": -6.1,
+        "avg_start_x": 46.0,
+        "avg_end_x": 39.9,
+        "avg_gain_x_metres": -8.8,
+        "primary_carry_zones": [
+          "inside own 45m line",
+          "inside the 45m line, left side",
+          "inside the 40m arc, left side"
+        ]
+      },
+      {
+        "name": "Darren Curran",
+        "jersey": 8,
+        "carries": 4,
+        "total_points": 34,
+        "avg_gain_x": -1.5,
+        "avg_start_x": 52.7,
+        "avg_end_x": 51.2,
+        "avg_gain_x_metres": -2.2,
+        "primary_carry_zones": [
+          "past midfield",
+          "past midfield, left side",
+          "own half, right side"
+        ]
+      },
+      {
+        "name": "Aaron Mc Cafferty",
+        "jersey": 1,
+        "carries": 1,
+        "total_points": 1,
+        "avg_gain_x": null,
+        "avg_start_x": null,
+        "avg_end_x": null,
+        "avg_gain_x_metres": null,
+        "primary_carry_zones": [
+          "inside the 45m line, right side"
+        ]
+      }
+    ],
+    "player_consequences": [
+      {
+        "name": "Luke Clerkin",
+        "jersey": 12,
+        "turnovers_lost": 2,
+        "led_to_opp_score": 2,
+        "turnover_zones": [
+          "own half",
+          "past midfield, left side"
+        ]
+      },
+      {
+        "name": "Aaron Neely",
+        "jersey": 5,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "own half"
+        ]
+      },
+      {
+        "name": "Karl Magee",
+        "jersey": 7,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "inside the 40m arc"
+        ]
+      },
+      {
+        "name": "Barry Curran",
+        "jersey": 19,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "inside the 45m line, right side"
+        ]
+      },
+      {
+        "name": "Dylan Sweeney",
+        "jersey": 10,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "own half, right side"
+        ]
+      },
+      {
+        "name": "Matthew Ward",
+        "jersey": 9,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "inside the 13m line"
+        ]
+      },
+      {
+        "name": "Mark Curran",
+        "jersey": 2,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "inside the 40m arc"
+        ]
+      },
+      {
+        "name": "Conor O\u2019Donnell",
+        "jersey": 6,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "past midfield, left side"
+        ]
+      },
+      {
+        "name": "Daire Gallagher",
+        "jersey": 17,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "inside the 40m arc"
+        ]
+      },
+      {
+        "name": "Ryan Connors",
+        "jersey": 11,
+        "turnovers_lost": 1,
+        "led_to_opp_score": 1,
+        "turnover_zones": [
+          "inside own 45m line, left side"
+        ]
+      }
+    ],
+    "pass_network": [
+      {
+        "from_name": "Karl Magee",
+        "from_jersey": 7,
+        "to_name": "Aaron Neely",
+        "to_jersey": 5,
+        "count": 5
+      },
+      {
+        "from_name": "Jason McBride",
+        "from_jersey": 4,
+        "to_name": "Aaron Neely",
+        "to_jersey": 5,
+        "count": 4
+      },
+      {
+        "from_name": "Aaron Neely",
+        "from_jersey": 5,
+        "to_name": "Luke Clerkin",
+        "to_jersey": 12,
+        "count": 4
+      },
+      {
+        "from_name": "Luke Clerkin",
+        "from_jersey": 12,
+        "to_name": "Karl Magee",
+        "to_jersey": 7,
+        "count": 4
+      },
+      {
+        "from_name": "Matthew Ward",
+        "from_jersey": 9,
+        "to_name": "Mark Curran",
+        "to_jersey": 2,
+        "count": 3
+      },
+      {
+        "from_name": "Aaron Neely",
+        "from_jersey": 5,
+        "to_name": "Barry Curran",
+        "to_jersey": 19,
+        "count": 3
+      },
+      {
+        "from_name": "Karl Magee",
+        "from_jersey": 7,
+        "to_name": "Matthew Ward",
+        "to_jersey": 9,
+        "count": 3
+      },
+      {
+        "from_name": "Karl Magee",
+        "from_jersey": 7,
+        "to_name": "Daire Gallagher",
+        "to_jersey": 17,
+        "count": 3
+      },
+      {
+        "from_name": "Mark Curran",
+        "from_jersey": 2,
+        "to_name": "Aaron Neely",
+        "to_jersey": 5,
+        "count": 2
+      },
+      {
+        "from_name": "Mark Curran",
+        "from_jersey": 2,
+        "to_name": "Jason McBride",
+        "to_jersey": 4,
+        "count": 2
+      },
+      {
+        "from_name": "Matthew Ward",
+        "from_jersey": 9,
+        "to_name": "Dylan Sweeney",
+        "to_jersey": 10,
+        "count": 2
+      },
+      {
+        "from_name": "Dylan Sweeney",
+        "from_jersey": 10,
+        "to_name": "Barry Curran",
+        "to_jersey": 19,
+        "count": 2
+      },
+      {
+        "from_name": "Barry Curran",
+        "from_jersey": 19,
+        "to_name": "Conor O\u2019Donnell",
+        "to_jersey": 6,
+        "count": 2
+      },
+      {
+        "from_name": "Conor O\u2019Donnell",
+        "from_jersey": 6,
+        "to_name": "Jason McBride",
+        "to_jersey": 4,
+        "count": 2
+      },
+      {
+        "from_name": "Barry Curran",
+        "from_jersey": 19,
+        "to_name": "Aaron Ward",
+        "to_jersey": 3,
+        "count": 2
+      }
+    ],
+    "pass_leaders": [
+      {
+        "name": "Karl Magee",
+        "jersey": 7,
+        "passes_made": 14,
+        "passes_received": 14
+      },
+      {
+        "name": "Aaron Neely",
+        "jersey": 5,
+        "passes_made": 13,
+        "passes_received": 13
+      },
+      {
+        "name": "Luke Clerkin",
+        "jersey": 12,
+        "passes_made": 13,
+        "passes_received": 13
+      },
+      {
+        "name": "Mark Curran",
+        "jersey": 2,
+        "passes_made": 10,
+        "passes_received": 10
+      },
+      {
+        "name": "Barry Curran",
+        "jersey": 19,
+        "passes_made": 10,
+        "passes_received": 10
+      },
+      {
+        "name": "Matthew Ward",
+        "jersey": 9,
+        "passes_made": 8,
+        "passes_received": 8
+      },
+      {
+        "name": "Oisin Bonner",
+        "jersey": 14,
+        "passes_made": 7,
+        "passes_received": 8
+      },
+      {
+        "name": "Daire Gallagher",
+        "jersey": 17,
+        "passes_made": 7,
+        "passes_received": 7
+      },
+      {
+        "name": "Jason McBride",
+        "jersey": 4,
+        "passes_made": 6,
+        "passes_received": 6
+      },
+      {
+        "name": "Conor O\u2019Donnell",
+        "jersey": 6,
+        "passes_made": 6,
+        "passes_received": 6
+      }
+    ],
+    "chains": [
+      {
+        "team": "own",
+        "player_sequence": [
+          "da29d4fd-c231-4486-9bfd-88d29fc17c3d"
+        ],
+        "jersey_sequence": [
+          1
+        ],
+        "chain_length": 1,
+        "outcome": "unknown",
+        "start_zone": "inside the 45m line, right side",
+        "end_zone": "inside the 45m line, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "4e59a116-8d90-48ec-95bf-23f14f36c526"
+        ],
+        "jersey_sequence": [
+          4
+        ],
+        "chain_length": 1,
+        "outcome": "unknown",
+        "start_zone": "inside own 45m line",
+        "end_zone": "inside own 45m line"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "4e59a116-8d90-48ec-95bf-23f14f36c526",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d"
+        ],
+        "jersey_sequence": [
+          4,
+          5
+        ],
+        "chain_length": 2,
+        "outcome": "turnover",
+        "start_zone": "inside own 45m line",
+        "end_zone": "own half"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270",
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "2e7c0bc6-3166-4345-8a6d-9be956e7f229"
+        ],
+        "jersey_sequence": [
+          6,
+          2,
+          5,
+          9
+        ],
+        "chain_length": 4,
+        "outcome": "unknown",
+        "start_zone": "inside own 45m line, left side",
+        "end_zone": "inside the 40m arc, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "4e59a116-8d90-48ec-95bf-23f14f36c526",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "2e7c0bc6-3166-4345-8a6d-9be956e7f229",
+          "ffe4a2e9-9324-4027-b853-24bc11d728ca",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387"
+        ],
+        "jersey_sequence": [
+          2,
+          4,
+          5,
+          12,
+          7,
+          5,
+          19,
+          7,
+          9,
+          10,
+          19
+        ],
+        "chain_length": 11,
+        "outcome": "wide",
+        "start_zone": "inside own 45m line, left side",
+        "end_zone": "inside the 40m arc, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270",
+          "4e59a116-8d90-48ec-95bf-23f14f36c526",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387",
+          "a6ed8889-bce7-4c50-867e-ccc2a01f2d1a",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "2e7c0bc6-3166-4345-8a6d-9be956e7f229",
+          "d006db8f-9b2a-40dc-b79b-7c1bf0e52d63",
+          "ffe4a2e9-9324-4027-b853-24bc11d728ca",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387"
+        ],
+        "jersey_sequence": [
+          6,
+          4,
+          5,
+          12,
+          7,
+          5,
+          19,
+          3,
+          7,
+          9,
+          8,
+          10,
+          19
+        ],
+        "chain_length": 13,
+        "outcome": "wide",
+        "start_zone": "inside own 45m line, left side",
+        "end_zone": "inside the 40m arc, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270",
+          "4e59a116-8d90-48ec-95bf-23f14f36c526",
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "4e59a116-8d90-48ec-95bf-23f14f36c526",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387",
+          "a6ed8889-bce7-4c50-867e-ccc2a01f2d1a",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "2e7c0bc6-3166-4345-8a6d-9be956e7f229",
+          "ffe4a2e9-9324-4027-b853-24bc11d728ca",
+          "2e7c0bc6-3166-4345-8a6d-9be956e7f229",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387"
+        ],
+        "jersey_sequence": [
+          6,
+          4,
+          2,
+          4,
+          5,
+          12,
+          7,
+          5,
+          19,
+          3,
+          7,
+          9,
+          10,
+          9,
+          19
+        ],
+        "chain_length": 15,
+        "outcome": "wide",
+        "start_zone": "inside own 45m line, left side",
+        "end_zone": "inside the 40m arc, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "a4e56c0c-3c45-4026-8d7e-884a83d224e5",
+          "335d5e62-ac65-4a2a-a922-96306e3d5d75",
+          "335d5e62-ac65-4a2a-a922-96306e3d5d75",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "a4e56c0c-3c45-4026-8d7e-884a83d224e5",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609"
+        ],
+        "jersey_sequence": [
+          14,
+          11,
+          11,
+          5,
+          14,
+          7
+        ],
+        "chain_length": 6,
+        "outcome": "score",
+        "start_zone": "inside the 45m line, left side",
+        "end_zone": "inside the 40m arc"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3"
+        ],
+        "jersey_sequence": [
+          5,
+          12
+        ],
+        "chain_length": 2,
+        "outcome": "turnover",
+        "start_zone": "own half, right side",
+        "end_zone": "own half"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "d006db8f-9b2a-40dc-b79b-7c1bf0e52d63",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "a6ed8889-bce7-4c50-867e-ccc2a01f2d1a",
+          "4e59a116-8d90-48ec-95bf-23f14f36c526",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "d006db8f-9b2a-40dc-b79b-7c1bf0e52d63",
+          "2e7c0bc6-3166-4345-8a6d-9be956e7f229",
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387"
+        ],
+        "jersey_sequence": [
+          7,
+          5,
+          8,
+          7,
+          12,
+          3,
+          4,
+          7,
+          12,
+          8,
+          9,
+          2,
+          17,
+          12,
+          19
+        ],
+        "chain_length": 15,
+        "outcome": "turnover",
+        "start_zone": "inside own 45m line",
+        "end_zone": "inside the 45m line, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "a4e56c0c-3c45-4026-8d7e-884a83d224e5",
+          "ffe4a2e9-9324-4027-b853-24bc11d728ca"
+        ],
+        "jersey_sequence": [
+          14,
+          10
+        ],
+        "chain_length": 2,
+        "outcome": "wide",
+        "start_zone": "past midfield, right side",
+        "end_zone": "inside the 45m line"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "ffe4a2e9-9324-4027-b853-24bc11d728ca"
+        ],
+        "jersey_sequence": [
+          10
+        ],
+        "chain_length": 1,
+        "outcome": "turnover",
+        "start_zone": "own half, right side",
+        "end_zone": "own half, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "d006db8f-9b2a-40dc-b79b-7c1bf0e52d63",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1",
+          "335d5e62-ac65-4a2a-a922-96306e3d5d75",
+          "2e7c0bc6-3166-4345-8a6d-9be956e7f229"
+        ],
+        "jersey_sequence": [
+          8,
+          7,
+          2,
+          17,
+          11,
+          9
+        ],
+        "chain_length": 6,
+        "outcome": "turnover",
+        "start_zone": "own half",
+        "end_zone": "inside the 13m line"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "335d5e62-ac65-4a2a-a922-96306e3d5d75",
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329"
+        ],
+        "jersey_sequence": [
+          2,
+          11,
+          2
+        ],
+        "chain_length": 3,
+        "outcome": "turnover",
+        "start_zone": "own half, right side",
+        "end_zone": "inside the 40m arc"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "a4e56c0c-3c45-4026-8d7e-884a83d224e5",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1",
+          "ffe4a2e9-9324-4027-b853-24bc11d728ca"
+        ],
+        "jersey_sequence": [
+          null,
+          14,
+          7,
+          17,
+          10
+        ],
+        "chain_length": 5,
+        "outcome": "score",
+        "start_zone": "past midfield, left side",
+        "end_zone": "inside the 40m arc"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "a4e56c0c-3c45-4026-8d7e-884a83d224e5"
+        ],
+        "jersey_sequence": [
+          14
+        ],
+        "chain_length": 1,
+        "outcome": "score",
+        "start_zone": "inside the 40m arc",
+        "end_zone": "inside the 40m arc, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "2e7c0bc6-3166-4345-8a6d-9be956e7f229",
+          "a6ed8889-bce7-4c50-867e-ccc2a01f2d1a",
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d",
+          "335d5e62-ac65-4a2a-a922-96306e3d5d75",
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270"
+        ],
+        "jersey_sequence": [
+          null,
+          3,
+          2,
+          5,
+          11,
+          6
+        ],
+        "chain_length": 6,
+        "outcome": "score",
+        "start_zone": "own half, left side",
+        "end_zone": "past midfield, left side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270"
+        ],
+        "jersey_sequence": [
+          6
+        ],
+        "chain_length": 1,
+        "outcome": "unknown",
+        "start_zone": "inside the 20m line, left side",
+        "end_zone": "inside the 20m line, left side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270"
+        ],
+        "jersey_sequence": [
+          6
+        ],
+        "chain_length": 1,
+        "outcome": "turnover",
+        "start_zone": "inside the 20m line, left side",
+        "end_zone": "past midfield, left side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270",
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1"
+        ],
+        "jersey_sequence": [
+          null,
+          7,
+          17
+        ],
+        "chain_length": 3,
+        "outcome": "turnover",
+        "start_zone": "past midfield, left side",
+        "end_zone": "inside the 40m arc"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387",
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "a4e56c0c-3c45-4026-8d7e-884a83d224e5",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3"
+        ],
+        "jersey_sequence": [
+          19,
+          2,
+          14,
+          12
+        ],
+        "chain_length": 4,
+        "outcome": "wide",
+        "start_zone": "past midfield",
+        "end_zone": "inside the 40m arc, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "a6ed8889-bce7-4c50-867e-ccc2a01f2d1a",
+          "f879369d-e0d4-4665-b68e-1f4a62ec5329",
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270",
+          "335d5e62-ac65-4a2a-a922-96306e3d5d75"
+        ],
+        "jersey_sequence": [
+          3,
+          2,
+          6,
+          11
+        ],
+        "chain_length": 4,
+        "outcome": "turnover",
+        "start_zone": "inside own 45m line",
+        "end_zone": "inside own 45m line, left side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3"
+        ],
+        "jersey_sequence": [
+          12,
+          17,
+          12
+        ],
+        "chain_length": 3,
+        "outcome": "turnover",
+        "start_zone": "own half, left side",
+        "end_zone": "past midfield, left side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1",
+          "018c9849-9c0f-4c3e-a5fe-0e8729c14270",
+          "a4e56c0c-3c45-4026-8d7e-884a83d224e5",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387"
+        ],
+        "jersey_sequence": [
+          null,
+          6,
+          14,
+          19
+        ],
+        "chain_length": 4,
+        "outcome": "wide",
+        "start_zone": "own half",
+        "end_zone": "inside the 45m line, left side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "d0ab1c79-2b28-444c-ba1d-2fdeb018934d"
+        ],
+        "jersey_sequence": [
+          12,
+          5
+        ],
+        "chain_length": 2,
+        "outcome": "wide",
+        "start_zone": "inside the 45m line, left side",
+        "end_zone": "inside the 40m arc"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "02096f6c-5c4b-44bb-adf8-df09cbf23609",
+          "8dbda9e1-a05f-43de-b3d5-0d63e493dbf1",
+          "3c8eb4d2-7b25-4af5-9a2b-3dc0f3794387",
+          "b13c58bc-2505-41bc-a44a-c311e7c280a3",
+          "ffe4a2e9-9324-4027-b853-24bc11d728ca"
+        ],
+        "jersey_sequence": [
+          null,
+          17,
+          19,
+          12,
+          10
+        ],
+        "chain_length": 5,
+        "outcome": "wide",
+        "start_zone": "inside own 45m line, left side",
+        "end_zone": "past midfield, right side"
+      },
+      {
+        "team": "own",
+        "player_sequence": [
+          "a4e56c0c-3c45-4026-8d7e-884a83d224e5"
+        ],
+        "jersey_sequence": [
+          14
+        ],
+        "chain_length": 1,
+        "outcome": "wide",
+        "start_zone": "past midfield, right side",
+        "end_zone": "inside the 20m line, right side"
+      }
+    ],
+    "pass_territory_progression": {
+      "forward": 1,
+      "lateral": 100,
+      "backward": 13,
+      "note": "Counts PASS TRANSITIONS between two different players' carries where the ball moved >=10% of pitch length \u2014 NOT a count of forward carries, and NOT the total number of forward-moving carries in the match (most carries don't chain into a different-player segment with both endpoints logged, so this is always a small subset). Never report these numbers as '<n> forward carries'. Use each player's avg_gain_x in carrier_stats to describe individual forward-carrying tendency instead."
+    },
+    "chain_effectiveness": {
+      "total_chains": 27,
+      "scoring_chains": 4,
+      "turnover_chains": 10,
+      "wide_chains": 9,
+      "avg_chain_length_all": 4.5,
+      "avg_chain_length_scores": 4.5,
+      "avg_chain_length_turnovers": 4.0,
+      "direct_scores": 1,
+      "buildup_scores": 3
+    },
+    "tempo": {
+      "avg_transition_seconds": 1.6,
+      "fastest_transition_seconds": 0.2,
+      "total_transitions_timed": 100
+    }
+  },
+  "get_formation_snapshots_output": {
+    "message": "No formation snapshots available for this match",
+    "snapshots": []
+  }
+}

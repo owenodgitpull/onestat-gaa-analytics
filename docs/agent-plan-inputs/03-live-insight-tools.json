@@ -1,0 +1,105 @@
+[
+  {
+    "name": "get_match_events",
+    "description": "Retrieve all events from a specific match including scores, turnovers, fouls. Use this to analyze what happened in a match.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "match_id": {
+          "type": "string",
+          "description": "The UUID of the match"
+        },
+        "event_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional filter for specific event types (GOAL, POINT, WIDE, TURNOVER_WON, etc.)"
+        },
+        "team": {
+          "type": "string",
+          "enum": [
+            "own",
+            "opponent"
+          ],
+          "description": "Optional filter for team"
+        },
+        "half": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ],
+          "description": "Optional filter for half"
+        }
+      },
+      "required": [
+        "match_id"
+      ]
+    }
+  },
+  {
+    "name": "get_ball_carrier_data",
+    "description": "Get ball carrier tracking + PASSING NETWORK data for a match. When the analyst switches carrier from Player A to Player B (same team), that is a confirmed pass A\u2192B. Returns: carrier_stats (carries per player), pass_network (who passed to whom with frequency), pass_leaders (top distributors), chain_effectiveness (scoring chains vs turnovers, avg chain length), tempo_analysis (avg seconds between carrier transitions), territory_progression (passes that advance ball forward vs lateral/backward), and raw possession chains. IMPORTANT: This data is manually logged \u2014 it represents LOGGED carries/passes, not all of them. Frame insights as 'the data shows' or 'from logged possessions' rather than definitive totals. If no carrier data exists, returns empty \u2014 gracefully skip.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "match_id": {
+          "type": "string",
+          "description": "The UUID of the match"
+        }
+      },
+      "required": [
+        "match_id"
+      ]
+    }
+  },
+  {
+    "name": "get_formation_snapshots",
+    "description": "Get formation snapshots for a match: point-in-time player positions captured at key moments (after scores, before kickouts, stoppages). Each snapshot has a label (Defensive Shape, Kickout Setup, Attacking Press) and player positions. IMPORTANT: These are selective snapshots taken at notable moments \u2014 they show the team shape at specific instants, not continuous tracking. The number of snapshots varies by match. If no snapshots exist, returns empty \u2014 gracefully skip formation analysis.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "match_id": {
+          "type": "string",
+          "description": "The UUID of the match"
+        }
+      },
+      "required": [
+        "match_id"
+      ]
+    }
+  },
+  {
+    "name": "get_tactical_tags",
+    "description": "Get tactical moment markers tagged during a match \u2014 high press, blanket defence, formation changes, custom notes. Each tag has a timestamp (minute/half) and optional pitch position. Use to correlate tactical shifts with scoring patterns, possession changes, and performance. E.g. 'after switching to high press at 15 min, opponent scored 0 points in next 10 minutes'.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "match_id": {
+          "type": "string",
+          "description": "The UUID of the match"
+        }
+      },
+      "required": [
+        "match_id"
+      ]
+    }
+  },
+  {
+    "name": "get_live_match_stats",
+    "description": "Get a concise, pre-formatted live match snapshot optimised for sideline analysis. Returns: current score + minute, per-player performance table (errors, turnovers, wides, fouls, cards, score \u2014 sorted by concerns first), kickout battle summary (own and opp kickout win/loss counts), recent scoring run or drought detection, and foul/card risk flags. Use this as your FIRST call during live_insight \u2014 it gives you everything needed to name specific players in your analysis.",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "match_id": {
+          "type": "string",
+          "description": "The UUID of the live match"
+        }
+      },
+      "required": [
+        "match_id"
+      ]
+    }
+  }
+]
