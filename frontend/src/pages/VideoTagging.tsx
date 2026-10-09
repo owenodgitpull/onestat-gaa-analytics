@@ -1504,6 +1504,19 @@ export default function VideoTagging() {
   const { data: attackEfficiencyData } = useQuery({ queryKey: ['attack-efficiency', analyticsMatchId], queryFn: () => api.matchAnalytics.getAttackEfficiency(analyticsMatchId!), ...analyticsOpts })
   const { data: seasonBenchmarkData } = useQuery({ queryKey: ['season-benchmark', analyticsMatchId], queryFn: () => api.matchAnalytics.getSeasonBenchmark(analyticsMatchId!), ...analyticsOpts })
 
+  // Half time is also worked out from the saved progress: if tracking was left parked inside the half-time gap (after the
+  // half-time mark, before the marked 2nd-half throw-in), reopening the page lands in half time. Once, on first load.
+  const halfTimeDerivedRef = useRef(false)
+  useEffect(() => {
+    if (halfTimeDerivedRef.current || !session) return
+    halfTimeDerivedRef.current = true
+    const prog = session.tracking_progress_ms
+    if (prog != null && session.halftime_timestamp_ms != null && session.second_half_start_ms != null &&
+        prog >= session.halftime_timestamp_ms && prog < session.second_half_start_ms) {
+      setHalfTimeBreak(true)
+    }
+  }, [session])
+
   // Half time survives a refresh too
   useEffect(() => {
     if (!sessionId) return
