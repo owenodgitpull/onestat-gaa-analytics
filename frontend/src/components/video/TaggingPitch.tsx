@@ -70,6 +70,9 @@ interface TaggingPitchProps {
   pitchOverlay?: (ballPctX: number, ballPctY: number) => React.ReactNode
   /** Draws attention to the ball with a pulsing ring — used while the user must tap a landing spot */
   pulseBall?: boolean
+  /** A big ball jump that can still be undone: a ghost of where the ball was, an arrow and the distance. Tapping the ghost undoes it. */
+  jumpGhost?: { from: { x: number; y: number }; to: { x: number; y: number }; label: string } | null
+  onJumpGhostTap?: () => void
   /** Show gradient border around the pitch edge inside the SVG */
   gradientBorder?: boolean
   /** Active ball carrier jersey number — renders badge on ball icon */
@@ -101,6 +104,8 @@ export default function TaggingPitch({
   orientation,
   onBallMove,
   pulseBall,
+  jumpGhost,
+  onJumpGhostTap,
   ballPosition,
   containerClassName,
   trail,
@@ -392,6 +397,38 @@ export default function TaggingPitch({
               when they overlap. Not suppressed during drag, unlike
               ballAnchoredOverlay — it needs to live-update as the ball moves. */}
           {pitchOverlay && displayPosition && pitchOverlay(displayPosition.x, displayPosition.y)}
+
+          {/* Undo-able big jump: faded ghost where the ball was + arrow + distance. Tap the ghost to put the ball back. */}
+          {jumpGhost && (() => {
+            const a = { x: toSvgX(jumpGhost.from.x), y: toSvgY(jumpGhost.from.y) }
+            const b = { x: toSvgX(jumpGhost.to.x), y: toSvgY(jumpGhost.to.y) }
+            const dx = b.x - a.x
+            const dy = b.y - a.y
+            const len = Math.hypot(dx, dy) || 1
+            const ux = dx / len
+            const uy = dy / len
+            // arrow head just short of the new ball position
+            const tip = { x: b.x - ux * 46, y: b.y - uy * 46 }
+            const head = `${tip.x},${tip.y} ${tip.x - ux * 34 - uy * 20},${tip.y - uy * 34 + ux * 20} ${tip.x - ux * 34 + uy * 20},${tip.y - uy * 34 - ux * 20}`
+            const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+            const stop = (e: React.SyntheticEvent) => e.stopPropagation()
+            return (
+              <g>
+                <line x1={a.x} y1={a.y} x2={tip.x} y2={tip.y} stroke="#fbbf24" strokeWidth={8} strokeDasharray="22 14" strokeLinecap="round" opacity={0.85} style={{ pointerEvents: 'none' }} />
+                <polygon points={head} fill="#fbbf24" stroke="#78350f" strokeWidth={3} strokeLinejoin="round" opacity={0.95} style={{ pointerEvents: 'none' }} />
+                <text x={mid.x} y={mid.y - 16} textAnchor="middle" fill="#fde68a" fontSize={36} fontWeight="bold" stroke="#0f172a" strokeWidth={7} paintOrder="stroke" style={{ pointerEvents: 'none' }}>{jumpGhost.label}</text>
+                <g
+                  onPointerDown={stop}
+                  onPointerUp={(e) => { stop(e); onJumpGhostTap?.() }}
+                  style={{ cursor: 'pointer', touchAction: 'none' }}
+                >
+                  <circle cx={a.x} cy={a.y} r={62} fill="rgba(0,0,0,0.001)" />
+                  <circle cx={a.x} cy={a.y} r={36} fill="rgba(255,255,255,0.22)" stroke="#fde68a" strokeWidth={5} strokeDasharray="10 8" />
+                  <text x={a.x} y={a.y + 9} textAnchor="middle" fill="#fde68a" fontSize={26} fontWeight="bold" style={{ pointerEvents: 'none' }}>BACK</text>
+                </g>
+              </g>
+            )
+          })()}
 
           {/* Ball position */}
           {displayPosition && (

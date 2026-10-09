@@ -1094,10 +1094,12 @@ export default function VideoTagging() {
   // isFlushingRef guard); a failed batch is put back and retried.
   type PossPoint = { team: 'own' | 'opponent'; pitch_x: number; pitch_y: number; minute: number; duration_seconds: number; video_ms: number }
   const possBufferRef = useRef<PossPoint[]>([])
+  const possHoldRef = useRef(false)
   const isPossSendingRef = useRef(false)
 
   const sendPossessionBuffer = useCallback(async () => {
     const matchId = session?.match_id
+    if (possHoldRef.current) return   // a big ball jump can still be undone: don't send its possession yet
     if (!matchId || isPossSendingRef.current || possBufferRef.current.length === 0) return
     isPossSendingRef.current = true
     const batch = possBufferRef.current.splice(0, 500)
@@ -1339,6 +1341,61 @@ export default function VideoTagging() {
   // onBallMove (tap or drag-end commit) and onDragUpdate (live during drag)
   // both just update the display state the sidebar and the 5s/30s
   // position-sample pipeline read from `ballPosition`/`ballTrail`.
+  // ── Undo a big ball jump (a mis-tap beside a receiver dot teleports the ball) ──────────────────────────
+  // A tap that moves the ball >= JUMP_UNDO_M gets a ghost of where it was + an Undo chip for a few seconds. Its possession
+  // points are held back (not sent) until the window ends or the user does anything else, so undo just cancels them.
+  const JUMP_UNDO_M = 30
+  const JUMP_UNDO_MS = 8000
+  type JumpUndo = { id: number; from: { x: number; y: number }; to: { x: number; y: number }; distM: number }
+  const [lastJump, setLastJump] = useState<JumpUndo | null>(null)
+  const jumpSnapRef = useRef<{ trail: Array<{ x: number; y: number }>; historyLen: number; bufferLen: number; from: { x: number; y: number } } | null>(null)
+  const jumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const jumpIdRef = useRef(0)
+  const lastDragAtRef = useRef(0)
+
+  const expireJump = useCallback(() => {
+    if (jumpTimerRef.current) { clearTimeout(jumpTimerRef.current); jumpTimerRef.current = null }
+    jumpSnapRef.current = null
+    setLastJump(null)
+    if (possHoldRef.current) {
+      possHoldRef.current = false
+      void sendPossessionBuffer()
+    }
+  }, [sendPossessionBuffer])
+  const expireJumpRef = useRef(expireJump)
+  expireJumpRef.current = expireJump
+
+  const undoJump = useCallback(() => {
+    const snap = jumpSnapRef.current
+    if (!snap || !lastJump) return
+    // The jump's possession points: drop the zero-length ones, and put the ones carrying real time back where the ball was
+    const added = possBufferRef.current.slice(snap.bufferLen)
+    possBufferRef.current = possBufferRef.current.slice(0, snap.bufferLen).concat(
+      added.filter(p => (p.duration_seconds ?? 0) >= 1).map(p => ({ ...p, pitch_x: snap.from.x, pitch_y: snap.from.y })),
+    )
+    ballHistoryRef.current.length = Math.min(ballHistoryRef.current.length, snap.historyLen)
+    setBallTrail(snap.trail)
+    setBallPosition({ x: snap.from.x, y: snap.from.y })
+    expireJump()
+  }, [lastJump, expireJump])
+  const undoJumpRef = useRef(undoJump)
+  undoJumpRef.current = undoJump
+
+  // Anything else the user does makes the jump permanent
+  useEffect(() => { expireJumpRef.current() }, [events.length, activeCarrierId, possession, overlayState, reviewing, halfTimeBreak])
+  useEffect(() => () => { if (jumpTimerRef.current) clearTimeout(jumpTimerRef.current) }, [])
+  // Z / Ctrl+Z undoes the jump while the chip is showing
+  useEffect(() => {
+    if (!lastJump) return
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undoJumpRef.current() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lastJump])
+
   const handleTaggingBallMove = useCallback((position: BallPosition) => {
     // Remember where the ball was at each video moment so Undo to Point can put it back exactly
     // (same on-screen frame as the pitch, unlike server rows which are stamped at flush time)
@@ -1373,6 +1430,18 @@ export default function VideoTagging() {
       repositionApplyRef.current({ x: position.x, y: position.y })
       setBallPosition(prev => (prev ? { ...prev } : prev)) // snap the pitch ball back
       return
+    }
+    // A new move makes any earlier jump permanent
+    expireJumpRef.current()
+    // Candidate big jump: a TAP (not the end of a drag) while playing that moves the ball a long way
+    const prevBall = ballPosRef.current
+    const isDragEnd = Date.now() - lastDragAtRef.current < 250
+    let jumpCandidate: { distM: number; from: { x: number; y: number }; trail: Array<{ x: number; y: number }>; historyLen: number; bufferLen: number } | null = null
+    if (prevBall && !isDragEnd && isPlaying && mode === 'tracking' && !reviewing) {
+      const distM = Math.hypot((position.x - prevBall.x) * 1.45, (position.y - prevBall.y) * 0.9)
+      if (distM >= JUMP_UNDO_M) {
+        jumpCandidate = { distM, from: { x: prevBall.x, y: prevBall.y }, trail: ballTrail, historyLen: ballHistoryRef.current.length, bufferLen: possBufferRef.current.length }
+      }
     }
     handleTaggingBallMove(position)
 
@@ -1474,13 +1543,21 @@ export default function VideoTagging() {
     // measured in video time, not wall-clock — see flushPossession.
     if (!isPlaying) return // paused: repositioning isn't possession time
     flushPossession(true, { x: position.x, y: position.y })
+    if (jumpCandidate) {
+      possHoldRef.current = true
+      jumpSnapRef.current = { trail: jumpCandidate.trail, historyLen: jumpCandidate.historyLen, bufferLen: jumpCandidate.bufferLen, from: jumpCandidate.from }
+      jumpIdRef.current += 1
+      setLastJump({ id: jumpIdRef.current, from: jumpCandidate.from, to: { x: position.x, y: position.y }, distM: Math.round(jumpCandidate.distM) })
+      if (jumpTimerRef.current) clearTimeout(jumpTimerRef.current)
+      jumpTimerRef.current = setTimeout(() => expireJumpRef.current(), JUMP_UNDO_MS)
+    }
     // endCarrierSegment deliberately omitted — it's declared further down
     // the component (useCallback with a stable `[]` dep array, so its
     // identity never changes) and including it here would be a genuine
     // TDZ error, not just a lint nit: this callback is created before that
     // declaration is reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleTaggingBallMove, flushPossession, compute45LineX, players, sessionId, createEvent, overlayState, pendingOverlay, pendingFreeKick, kickoutAimedForId, isPlaying])
+  }, [handleTaggingBallMove, flushPossession, compute45LineX, players, sessionId, createEvent, overlayState, pendingOverlay, pendingFreeKick, kickoutAimedForId, isPlaying, mode, reviewing, ballTrail])
 
 
   // Persistent attack-direction indicator — null until direction is known
@@ -3007,6 +3084,7 @@ export default function VideoTagging() {
   // matching MatchRecording's own established onBallMove/onDragPath split —
   // a carrier's path comes from continuous drags, not discrete placements.
   const handleTaggingDragPath = useCallback((waypoints: Array<{ x: number; y: number }>) => {
+    lastDragAtRef.current = Date.now()
     for (const wp of waypoints) {
       appendCarrierPathPoint(wp.x, wp.y)
     }
@@ -3870,6 +3948,8 @@ export default function VideoTagging() {
         }
         highlight45LineX={highlight45LineX}
         pulseBall={overlayState === 'pitch' || !!pendingLongKick}
+        jumpGhost={lastJump ? { from: lastJump.from, to: lastJump.to, label: `${lastJump.distM}m` } : null}
+        onJumpGhostTap={undoJump}
         svgOverlay={pitchStatusOverlay}
         ballAnchoredOverlay={
           (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
@@ -3965,6 +4045,21 @@ export default function VideoTagging() {
       {/* Pitch toolbar — Snap (formation snapshot) + Tag (tactical moment) on
           the pitch's own sideline, same place live recording keeps them. */}
       <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+        {lastJump && (
+          <button
+            key={lastJump.id}
+            onClick={undoJump}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border bg-amber-500/25 border-amber-400/50 text-amber-100 hover:bg-amber-500/35 backdrop-blur-md transition-colors"
+            title="Undo this ball move (Z). The ball goes back, nothing was recorded for the jump."
+          >
+            <style>{`@keyframes _jumpRing { from { stroke-dashoffset: 0 } to { stroke-dashoffset: 31.4 } }`}</style>
+            <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+              <circle cx="7" cy="7" r="5" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="2" />
+              <circle cx="7" cy="7" r="5" fill="none" stroke="#fde68a" strokeWidth="2" strokeDasharray="31.4" style={{ animation: `_jumpRing ${JUMP_UNDO_MS}ms linear forwards`, transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }} />
+            </svg>
+            <Undo2 size={13} /> Undo move · {lastJump.distM}m
+          </button>
+        )}
         {mode === 'tracking' && !reviewing && !halfTimeBreak && (
           <button
             onClick={() => { setPossession(possession === 'team_a' ? 'team_b' : 'team_a'); onCarrierPossessionSwap() }}

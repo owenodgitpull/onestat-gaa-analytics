@@ -92,6 +92,8 @@ export default function VideoPitchReceiverDots({
             {/* Lit (likely receiver): solid team colour, bigger. Dim (everyone
                 else): dark disc with a team-colour ring + bold white number —
                 clearly tappable but visibly less prominent than a lit one. */}
+            {/* Forgiving hit area: a tap just beside a dot selects that player instead of teleporting the ball */}
+            <circle cx={cx} cy={cy} r={radius + 34} fill="rgba(0,0,0,0.001)" />
             <circle
               cx={cx} cy={cy} r={radius}
               fill={isLikely ? teamPrimaryColor : 'rgba(14,22,24,0.78)'}
