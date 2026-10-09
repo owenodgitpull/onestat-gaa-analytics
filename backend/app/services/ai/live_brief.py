@@ -15,6 +15,7 @@ from typing import Optional
 from sqlalchemy import select, func
 
 from app.models.match import Match
+from app.models.man_marking_assignment import ManMarkingAssignment
 from app.models.match_event import MatchEvent, Team
 from app.models.possession_event import PossessionEvent
 from app.utils.attack_direction import own_attacks_right, to_attack_frame
@@ -133,6 +134,30 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     L.append(f"=== LIVE TACTICAL BRIEF — {now}' (half {half_now}, {clock}; a half is {hdm} min) ===")
     L.append("All locations below are in OUR attacking frame: we attack towards the far goal; 'our defensive third' is nearest our own goal; "
              "'our left/right' is as we face the opposition goal.")
+
+    # ── the pre-match plan: manager's tactical notes + man-marking set up in Match Prep ──
+    notes = (getattr(match, "tactical_notes", None) or "").strip()
+    try:
+        marks = (await db.execute(select(ManMarkingAssignment).where(ManMarkingAssignment.match_id == match_id))).scalars().all()
+    except Exception:
+        marks = []
+    if notes or marks:
+        L.append("\nPRE-MATCH PLAN (set up in Match Prep — judge whether it is working):")
+        if notes:
+            L.append("  Manager's notes: " + notes[:600].replace("\n", " "))
+        for m_ in marks:
+            who = getattr(getattr(m_, "player", None), "name", None) or "our player"
+            opp_name = (m_.opponent_player_name or "").strip()
+            key = opp_name.lower()
+            theirs = [e for e in visible if not _is_own(e) and _t(e) in SHOT_TYPES
+                      and key and key in (getattr(e, "opponent_player_name", None) or "").lower()]
+            sc = [e for e in theirs if _t(e) in SCORE_TYPES]
+            line = f"  {who} is marking {opp_name}" + (f" ({m_.notes.strip()})" if (m_.notes or "").strip() else "")
+            if theirs:
+                line += f" — {opp_name} has {len(sc)} score(s) ({pts(sc)} pts) from {len(theirs)} shot(s) so far"
+            else:
+                line += f" — no shots logged by {opp_name} yet (their scorers are only named when the name was entered)"
+            L.append(line)
 
     # ── the last five minutes ─────────────────────────────────────────────
     L.append(f"\nLAST {window} MINUTES ({now - window + 1}'–{now}'):")
