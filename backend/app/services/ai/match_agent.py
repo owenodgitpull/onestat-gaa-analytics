@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # get_tactical_tags: if tactical tags were logged (high press, formation switch, etc.)
 LIVE_TOOLS = ["get_live_match_stats", "get_match_events", "get_ball_carrier_data", "get_formation_snapshots", "get_tactical_tags"]
 
-MAX_LIVE_TURNS = 2
+MAX_LIVE_TURNS = 3
 # Live 5-minute insight model. Runs in the background every 5 minutes, so quality matters more than speed.
 LIVE_MODEL = "claude-sonnet-5-5"
 
@@ -136,6 +136,7 @@ Every number, place and player you mention must come from the LIVE TACTICAL BRIE
 defenders or half-backs stand, so never claim a line is "too deep", a shape is wrong, or a player is out of position unless a
 tool result says so. If you infer a cause, say "looks like" and name the evidence. If there is little data in the window, say so
 in a few words instead of padding. Name a player only when the snapshot supports it.
+Only say one thing CAUSES another if the brief's LINKS line shows it (e.g. a score within 2 minutes of our turnover or lost kickout); otherwise describe the two facts side by side and do not claim a cause.
 
 ## HOW TO THINK LIKE A COACH (in this order)
 1. SITUATION — score, time left in the half, momentum (the last-five-minutes block of the brief).
@@ -191,14 +192,17 @@ Reference knowledge base context when relevant to a specific trigger.
 
         messages = [{"role": "user", "content": user_prompt}]
 
-        def _call_api(msgs):
-            return client.messages.create(
+        def _call_api(msgs, no_more_tools=False):
+            kwargs = dict(
                 model=LIVE_MODEL,
                 max_tokens=max_tokens,
                 system=cached_system,
                 tools=cached_live_tools,
                 messages=msgs,
             )
+            if no_more_tools:
+                kwargs["tool_choice"] = {"type": "none"}
+            return client.messages.create(**kwargs)
 
         response = await asyncio.to_thread(_call_api, messages)
 
@@ -231,6 +235,24 @@ Reference knowledge base context when relevant to a specific trigger.
             messages.append({"role": "user", "content": tool_results})
 
             response = await asyncio.to_thread(_call_api, messages)
+
+        # The model may still want another tool call when the turn limit is reached — answer those and force it to
+        # write the insight now, instead of returning an empty string.
+        if response.stop_reason == "tool_use":
+            tool_results = []
+            assistant_content = []
+            for block in response.content:
+                if block.type == "text":
+                    assistant_content.append({"type": "text", "text": block.text})
+                elif block.type == "tool_use":
+                    assistant_content.append({"type": "tool_use", "id": block.id, "name": block.name, "input": block.input})
+                    tool_result = await execute_tool(block.name, block.input, db, club_id=club_id)
+                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": tool_result})
+            messages.append({"role": "assistant", "content": assistant_content})
+            messages.append({"role": "user", "content": tool_results + [
+                {"type": "text", "text": "You have what you need. Write the insight now in the required format (bold headline paragraph, then the detail paragraph). Do not call any more tools."}
+            ]})
+            response = await asyncio.to_thread(_call_api, messages, True)
 
         # Extract final text
         final_text = ""

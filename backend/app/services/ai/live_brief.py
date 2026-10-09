@@ -120,9 +120,14 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     w = counts(last)
     a = counts(visible)
 
-    half_now = 1 if now <= hdm else 2
+    # The half comes from the logged events (stoppage time still belongs to the half it was played in)
+    logged_halves = [e.half for e in visible if getattr(e, "half", None)]
+    half_now = max(logged_halves) if logged_halves else (1 if now <= hdm else 2)
     to_go = (hdm - now) if half_now == 1 else (2 * hdm - now)
-    clock = (f"{to_go} min to half time" if half_now == 1 else f"{to_go} min to full time") if to_go >= 0 else f"{-to_go} min of added time"
+    if to_go >= 0:
+        clock = f"{to_go} min to {'half time' if half_now == 1 else 'full time'}"
+    else:
+        clock = f"{-to_go} min of added time at the end of the {'first' if half_now == 1 else 'second'} half"
 
     L = []
     L.append(f"=== LIVE TACTICAL BRIEF — {now}' (half {half_now}, {clock}; a half is {hdm} min) ===")
@@ -172,6 +177,24 @@ async def _build(db, match_id, minute, club_id, window) -> str:
                 d = fx * PITCH_LEN_M / 100
                 return "inside 20m" if d < 20 else ("20-40m out" if d < 40 else "40m+ out")
             L.append("  shot position (distance from our goal): " + _tally(loc, lambda ef: f"{_band(ef[1][0])} on {_channel(ef[1][1])}"))
+
+    # ── evidence-backed cause links (so the agent never has to guess a cause) ──
+    if opp_sc:
+        after_to = []
+        after_ko = 0
+        from_free = 0
+        for sc_ev in opp_sc:
+            if _t(sc_ev).endswith("_free") or _t(sc_ev) == "forty_five":
+                from_free += 1
+            prior_to = [t for t in a["to_lost"] if sc_ev.minute - 2 <= t.minute <= sc_ev.minute]
+            if prior_to:
+                f = framed(prior_to[-1])
+                after_to.append(f"{_third(f[0])} ({_channel(f[1])})" if f else "location not logged")
+            if any(k.minute >= sc_ev.minute - 2 and k.minute <= sc_ev.minute for k in a["ko_lost"]):
+                after_ko += 1
+        L.append(f"\nLINKS BEHIND THEIR {len(opp_sc)} SCORES: {len(after_to)} came within 2 min of one of our turnovers/errors"
+                 + (f" (lost {', '.join(after_to)})" if after_to else "")
+                 + f"; {after_ko} within 2 min of a kickout we lost; {from_free} were frees/45s")
 
     # ── our shooting ──────────────────────────────────────────────────────
     own_shots = [e for e in visible if _is_own(e) and _t(e) in SHOT_TYPES]
