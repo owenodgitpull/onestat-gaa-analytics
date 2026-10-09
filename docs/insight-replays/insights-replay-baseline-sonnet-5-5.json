@@ -1,0 +1,505 @@
+{
+  "model": "claude-sonnet-5-5",
+  "fingerprint": "85ea6034b3",
+  "label": "baseline-sonnet-5-5",
+  "match_id": "b109b5c1-d121-489f-9098-1ddfa12ed3a7",
+  "opponent": "St Eunans",
+  "results": [
+    {
+      "minute": 5,
+      "trigger": "interval",
+      "score": "SCORE: Us 0-01 (1pts) vs Them 0-01 (1pts) \u2014 level",
+      "insight": "Level at 0-1 each, but we've already put two wides on the board, Barry Curran and Damien McGowan one each, against only Ryan Connors' point. Our kickouts are 1/1, and we haven't won any of theirs yet (0/1). Tell the shooters to take a breath and pick the shot before pulling. Push a half-forward up on their restart to contest it.",
+      "seconds": 14.0,
+      "events_visible": 10,
+      "recent_events": [
+        {
+          "minute": 5,
+          "type": "foul_won",
+          "team": "own"
+        },
+        {
+          "minute": 5,
+          "type": "point_free",
+          "team": "own"
+        },
+        {
+          "minute": 4,
+          "type": "wide_free",
+          "team": "own"
+        },
+        {
+          "minute": 4,
+          "type": "opp_kickout_opposition_won",
+          "team": "opponent"
+        },
+        {
+          "minute": 4,
+          "type": "foul_won",
+          "team": "own"
+        },
+        {
+          "minute": 3,
+          "type": "long_kick_pass",
+          "team": "own"
+        },
+        {
+          "minute": 3,
+          "type": "wide",
+          "team": "own"
+        },
+        {
+          "minute": 2,
+          "type": "point_free",
+          "team": "opponent"
+        },
+        {
+          "minute": 2,
+          "type": "own_kickout_won",
+          "team": "own"
+        },
+        {
+          "minute": 2,
+          "type": "foul_committed",
+          "team": "own"
+        }
+      ],
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-01 (1pts) vs Them 0-01 (1pts) \u2014 level\n\nPOSSESSION BATTLE:\n  Turnovers WON: 0 | Turnovers LOST: 0 (inc. 0 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 1/1 retained (100%)\n  Their kickouts: 0/1 won by us (0%)\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Darren Curran: 1 foul\n  Barry Curran: 1 wide\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1",
+      "already_flagged_note": ""
+    },
+    {
+      "minute": 10,
+      "trigger": "interval",
+      "score": "SCORE: Us 0-02 (2pts) vs Them 0-04 (4pts) \u2014 behind by 2 pts",
+      "insight": "Their kickouts are the issue. We've won 0 of 3 and are behind by 2 points, 0-02 to 0-04. Our own restarts are only 2/4 (50%). Push a half-forward and a midfielder up on their short kickout to contest it. Also keep our kickouts away from the contested zone until we're retaining more.",
+      "seconds": 6.0,
+      "events_visible": 27,
+      "recent_events": [
+        {
+          "minute": 10,
+          "type": "foul_committed",
+          "team": "own"
+        },
+        {
+          "minute": 10,
+          "type": "opp_kickout_opposition_won",
+          "team": "opponent"
+        },
+        {
+          "minute": 10,
+          "type": "free_short_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 10,
+          "type": "point_free",
+          "team": "own"
+        },
+        {
+          "minute": 9,
+          "type": "own_kickout_won",
+          "team": "own"
+        },
+        {
+          "minute": 9,
+          "type": "block",
+          "team": "opponent"
+        },
+        {
+          "minute": 9,
+          "type": "foul_won",
+          "team": "own"
+        },
+        {
+          "minute": 9,
+          "type": "long_kick_pass",
+          "team": "own"
+        },
+        {
+          "minute": 9,
+          "type": "turnover_lost",
+          "team": "own"
+        },
+        {
+          "minute": 9,
+          "type": "long_kick_pass",
+          "team": "own"
+        }
+      ],
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-02 (2pts) vs Them 0-04 (4pts) \u2014 behind by 2 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 0 | Turnovers LOST: 1 (inc. 0 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 2/4 retained (50%)\n  Their kickouts: 0/3 won by us (0%)\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Darren Curran: 2 fouls\n  Barry Curran: 1 wide\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul\n  Luke Clerkin: scored 0-1",
+      "already_flagged_note": ""
+    },
+    {
+      "minute": 15,
+      "trigger": "interval",
+      "score": "SCORE: Us 0-02 (2pts) vs Them 0-05 (5pts) \u2014 behind by 3 pts",
+      "insight": "Turnovers are the issue. We've won 0 and lost 3, and two of those were unforced errors, both dropped balls (Barry Curran and Aaron Ward). That has us 3 points down, 0-02 to 0-05. Our kickouts are fine at 4/6 (67%). Tell both to secure the catch before they look to offload. Get the nearest half-back to sit underneath them as a safety option.",
+      "seconds": 5.6,
+      "events_visible": 35,
+      "recent_events": [
+        {
+          "minute": 15,
+          "type": "point",
+          "team": "opponent"
+        },
+        {
+          "minute": 15,
+          "type": "own_kickout_won_break",
+          "team": "own"
+        },
+        {
+          "minute": 15,
+          "type": "unforced_error",
+          "team": "own"
+        },
+        {
+          "minute": 14,
+          "type": "unforced_error",
+          "team": "own"
+        },
+        {
+          "minute": 14,
+          "type": "foul_committed",
+          "team": "own"
+        },
+        {
+          "minute": 14,
+          "type": "free_short_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 12,
+          "type": "own_kickout_won",
+          "team": "own"
+        },
+        {
+          "minute": 11,
+          "type": "wide",
+          "team": "opponent"
+        },
+        {
+          "minute": 10,
+          "type": "foul_committed",
+          "team": "own"
+        },
+        {
+          "minute": 10,
+          "type": "opp_kickout_opposition_won",
+          "team": "opponent"
+        }
+      ],
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-02 (2pts) vs Them 0-05 (5pts) \u2014 behind by 3 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 0 | Turnovers LOST: 3 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 4/6 retained (67%)\n  Their kickouts: 0/3 won by us (0%)\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Darren Curran: 2 fouls\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul\n  Mark Curran: 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Luke Clerkin: scored 0-1",
+      "already_flagged_note": ""
+    },
+    {
+      "minute": 20,
+      "trigger": "interval",
+      "score": "SCORE: Us 0-02 (2pts) vs Them 1-05 (8pts) \u2014 behind by 6 pts",
+      "insight": "Daire Gallagher is on a yellow with 1 foul, and we're 6 points down at 0-02 to 1-05. A second booking would leave us a man short. Tell him to stay on his feet and show the jersey rather than going in. Also have Mark Curran, who has 2 fouls, mark tighter and not tackle late.",
+      "seconds": 6.6,
+      "events_visible": 50,
+      "recent_events": [
+        {
+          "minute": 20,
+          "type": "foul_committed",
+          "team": "own"
+        },
+        {
+          "minute": 20,
+          "type": "yellow_card",
+          "team": "own"
+        },
+        {
+          "minute": 19,
+          "type": "free_short_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 19,
+          "type": "foul_committed",
+          "team": "own"
+        },
+        {
+          "minute": 19,
+          "type": "wide",
+          "team": "opponent"
+        },
+        {
+          "minute": 19,
+          "type": "own_kickout_sideline",
+          "team": "own"
+        },
+        {
+          "minute": 18,
+          "type": "wide",
+          "team": "opponent"
+        },
+        {
+          "minute": 18,
+          "type": "own_kickout_opposition_won",
+          "team": "opponent"
+        },
+        {
+          "minute": 17,
+          "type": "turnover_lost",
+          "team": "own"
+        },
+        {
+          "minute": 17,
+          "type": "interception",
+          "team": "own"
+        }
+      ],
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-02 (2pts) vs Them 1-05 (8pts) \u2014 behind by 6 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 1 | Turnovers LOST: 4 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 5/9 retained (56%)\n  Their kickouts: 0/3 won by us (0%)\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Darren Curran: 2 fouls\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Mark Curran: 2 fouls\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Daire Gallagher: 1 foul, YELLOW\n  Luke Clerkin: scored 0-1\n  Aaron Neely: 1 TO won",
+      "already_flagged_note": "\n## ALREADY FLAGGED \u2014 DO NOT MENTION AGAIN UNLESS THE COUNT HAS RISEN\nDarren Curran (fouls, still 2).\nThese were already raised to the sideline and nothing has changed since \u2014 repeating them as if new wastes the manager's attention. If the snapshot has nothing else notable, say so briefly rather than repeating one of the above.\n"
+    },
+    {
+      "minute": 25,
+      "trigger": "interval",
+      "score": "SCORE: Us 0-03 (3pts) vs Them 1-09 (12pts) \u2014 behind by 9 pts",
+      "insight": "We're 9 points down, 0-03 to 1-09, and our kickout retention has slipped from 67% to 55% (6/11). We've also won just 1 of their 5 restarts (20%). Push a midfielder and the nearest half-forward up onto their kickout, and shorten our own restarts to the nearest free man rather than going long.",
+      "seconds": 5.9,
+      "events_visible": 63,
+      "recent_events": [
+        {
+          "minute": 25,
+          "type": "opp_kickout_won_break",
+          "team": "own"
+        },
+        {
+          "minute": 25,
+          "type": "point",
+          "team": "own"
+        },
+        {
+          "minute": 25,
+          "type": "opp_kickout_opposition_won",
+          "team": "opponent"
+        },
+        {
+          "minute": 23,
+          "type": "other",
+          "team": "opponent"
+        },
+        {
+          "minute": 23,
+          "type": "point",
+          "team": "opponent"
+        },
+        {
+          "minute": 23,
+          "type": "other",
+          "team": "opponent"
+        },
+        {
+          "minute": 23,
+          "type": "long_kick_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 23,
+          "type": "long_kick_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 22,
+          "type": "turnover_lost",
+          "team": "own"
+        },
+        {
+          "minute": 22,
+          "type": "point",
+          "team": "opponent"
+        }
+      ],
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-03 (3pts) vs Them 1-09 (12pts) \u2014 behind by 9 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 1 | Turnovers LOST: 5 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 6/11 retained (55%)\n  Their kickouts: 1/5 won by us (20%)\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Mark Curran: 1 TO lost, 2 fouls\n  Darren Curran: 2 fouls\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Daire Gallagher: 1 foul, YELLOW\n  Luke Clerkin: scored 0-1\n  Aaron Neely: 1 TO won\n  Oisin Bonner: scored 0-1",
+      "already_flagged_note": "\n## ALREADY FLAGGED \u2014 DO NOT MENTION AGAIN UNLESS THE COUNT HAS RISEN\nDarren Curran (fouls, still 2); Mark Curran (fouls, still 2).\nThese were already raised to the sideline and nothing has changed since \u2014 repeating them as if new wastes the manager's attention. If the snapshot has nothing else notable, say so briefly rather than repeating one of the above.\n"
+    },
+    {
+      "minute": 30,
+      "trigger": "interval",
+      "score": "SCORE: Us 0-04 (4pts) vs Them 1-12 (15pts) \u2014 behind by 11 pts",
+      "insight": "We're 11 points down, 0-04 to 1-12, and have lost 6 turnovers against 3 won. Two of those were unforced errors, both dropped balls, from Barry Curran and Aaron Ward. Tell them to take the safe hand-pass under pressure instead of going for the ball, and keep possession simple until we stop the leak.",
+      "seconds": 5.2,
+      "events_visible": 77,
+      "recent_events": [
+        {
+          "minute": 30,
+          "type": "two_point",
+          "team": "opponent"
+        },
+        {
+          "minute": 30,
+          "type": "own_kickout_won",
+          "team": "own"
+        },
+        {
+          "minute": 29,
+          "type": "foul_committed",
+          "team": "own"
+        },
+        {
+          "minute": 29,
+          "type": "foul_won",
+          "team": "own"
+        },
+        {
+          "minute": 29,
+          "type": "free_short_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 29,
+          "type": "free_short_pass",
+          "team": "own"
+        },
+        {
+          "minute": 28,
+          "type": "tackle_won",
+          "team": "own"
+        },
+        {
+          "minute": 28,
+          "type": "short",
+          "team": "own"
+        },
+        {
+          "minute": 27,
+          "type": "point",
+          "team": "own"
+        },
+        {
+          "minute": 27,
+          "type": "opp_kickout_won",
+          "team": "own"
+        }
+      ],
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-04 (4pts) vs Them 1-12 (15pts) \u2014 behind by 11 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 3 | Turnovers LOST: 6 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 8/13 retained (62%)\n  Their kickouts: 2/6 won by us (33%)\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Mark Curran: 1 TO lost, 2 fouls\n  Darren Curran: 2 fouls, 1 TO won\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Daire Gallagher: 1 TO lost, 1 foul, YELLOW\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul, 1 TO won\n  Luke Clerkin: scored 0-1, 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Aaron Neely: scored 0-1, 1 TO won\n  Oisin Bonner: scored 0-1",
+      "already_flagged_note": "\n## ALREADY FLAGGED \u2014 DO NOT MENTION AGAIN UNLESS THE COUNT HAS RISEN\nDarren Curran (fouls, still 2); Mark Curran (fouls, still 2).\nThese were already raised to the sideline and nothing has changed since \u2014 repeating them as if new wastes the manager's attention. If the snapshot has nothing else notable, say so briefly rather than repeating one of the above.\n"
+    },
+    {
+      "minute": 35,
+      "trigger": "interval",
+      "score": "SCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts",
+      "insight": "We're 14 points down, 0-04 to 1-15, and they've scored three in a row, including two-pointers at minutes 30 and 34. Our half-backs are dropping too deep and giving them free shots outside the arc. Push the line out to close shooters, and tell Daire Gallagher (yellow, 1 TO lost) to tackle with caution.",
+      "seconds": 7.2,
+      "events_visible": 85,
+      "recent_events": [
+        {
+          "minute": 34,
+          "type": "two_point",
+          "team": "opponent"
+        },
+        {
+          "minute": 33,
+          "type": "own_kickout_won_break",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "short",
+          "team": "own"
+        },
+        {
+          "minute": 32,
+          "type": "point",
+          "team": "opponent"
+        },
+        {
+          "minute": 32,
+          "type": "long_kick_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 31,
+          "type": "long_kick_pass",
+          "team": "own"
+        },
+        {
+          "minute": 31,
+          "type": "long_kick_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 31,
+          "type": "short",
+          "team": "own"
+        },
+        {
+          "minute": 30,
+          "type": "two_point",
+          "team": "opponent"
+        },
+        {
+          "minute": 30,
+          "type": "own_kickout_won",
+          "team": "own"
+        }
+      ],
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 3 | Turnovers LOST: 6 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 9/14 retained (64%)\n  Their kickouts: 2/6 won by us (33%)\n\nSCORING RUN: Opponents have scored 3 in a row \u2014 under pressure.\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Mark Curran: 1 TO lost, 2 fouls\n  Darren Curran: 2 fouls, 1 TO won\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Daire Gallagher: 1 TO lost, 1 foul, YELLOW\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul, 1 TO won\n  Luke Clerkin: scored 0-1, 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Aaron Neely: scored 0-1, 1 TO won\n  Oisin Bonner: scored 0-1",
+      "already_flagged_note": "\n## ALREADY FLAGGED \u2014 DO NOT MENTION AGAIN UNLESS THE COUNT HAS RISEN\nDarren Curran (fouls, still 2); Mark Curran (fouls, still 2).\nThese were already raised to the sideline and nothing has changed since \u2014 repeating them as if new wastes the manager's attention. If the snapshot has nothing else notable, say so briefly rather than repeating one of the above.\n"
+    },
+    {
+      "minute": 35,
+      "trigger": "half_time",
+      "score": "SCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts",
+      "insight": "Half-time: we trail by 14 points, 0-04 to 1-15, and we've lost 6 turnovers against 3 won. Barry Curran is the biggest concern, with a dropped ball and a wide. Aaron Ward also dropped a ball. The positive is our kickouts, 64% retained (9 of 14), so we're not losing the restart battle. For the second half, push the half-backs up to close down the long-range shooters and stop the free two-pointers.",
+      "seconds": 5.5,
+      "events_visible": 85,
+      "recent_events": [
+        {
+          "minute": 34,
+          "type": "two_point",
+          "team": "opponent"
+        },
+        {
+          "minute": 33,
+          "type": "own_kickout_won_break",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "short",
+          "team": "own"
+        },
+        {
+          "minute": 32,
+          "type": "point",
+          "team": "opponent"
+        },
+        {
+          "minute": 32,
+          "type": "long_kick_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 31,
+          "type": "long_kick_pass",
+          "team": "own"
+        },
+        {
+          "minute": 31,
+          "type": "long_kick_pass",
+          "team": "opponent"
+        },
+        {
+          "minute": 31,
+          "type": "short",
+          "team": "own"
+        },
+        {
+          "minute": 30,
+          "type": "two_point",
+          "team": "opponent"
+        },
+        {
+          "minute": 30,
+          "type": "own_kickout_won",
+          "team": "own"
+        }
+      ],
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 3 | Turnovers LOST: 6 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 9/14 retained (64%)\n  Their kickouts: 2/6 won by us (33%)\n\nSCORING RUN: Opponents have scored 3 in a row \u2014 under pressure.\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Mark Curran: 1 TO lost, 2 fouls\n  Darren Curran: 2 fouls, 1 TO won\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Daire Gallagher: 1 TO lost, 1 foul, YELLOW\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul, 1 TO won\n  Luke Clerkin: scored 0-1, 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Aaron Neely: scored 0-1, 1 TO won\n  Oisin Bonner: scored 0-1",
+      "already_flagged_note": "\n## ALREADY FLAGGED \u2014 DO NOT MENTION AGAIN UNLESS THE COUNT HAS RISEN\nDarren Curran (fouls, still 2); Mark Curran (fouls, still 2).\nThese were already raised to the sideline and nothing has changed since \u2014 repeating them as if new wastes the manager's attention. If the snapshot has nothing else notable, say so briefly rather than repeating one of the above.\n"
+    }
+  ]
+}
