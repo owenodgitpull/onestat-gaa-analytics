@@ -403,8 +403,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
               {typeof gained === 'number' && (activeDetail.metres_total ?? 0) > 0 && <Chip tone={gained > 0 ? 'good' : gained < 0 ? 'bad' : 'neutral'}>{gained > 0 ? '+' : ''}{gained}m towards goal</Chip>}
               {typeof activeDetail.metres_total === 'number' && activeDetail.metres_total > 0 && <Chip>{activeDetail.metres_total}m of ball movement</Chip>}
               {typeof activeDetail.directness_pct === 'number' && <Chip>{activeDetail.directness_pct}% direct</Chip>}
-              {typeof activeDetail.touches === 'number' && <Chip>{activeDetail.touches} tagged action{activeDetail.touches === 1 ? '' : 's'}</Chip>}
-              {activeDetail.start_third && activeDetail.end_third && <Chip>{activeDetail.start_third} → {activeDetail.end_third}</Chip>}
+              {activeDetail.start_third && activeDetail.end_third && (activeDetail.metres_total ?? 0) > 0 && <Chip>Started in our {activeDetail.start_third.replace(' third', '')} third · ended in the {activeDetail.end_third.replace(' third', '')} third</Chip>}
             </div>
             {(activeDetail.nodes?.length ?? 0) > 1 && (
               <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-2.5 text-[11px] text-white/60">
@@ -454,7 +453,15 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
 
             const points = thinPoints(displayPoints, focused ? 3 : 6)
             const realIdx = focused ? selectedIdx! : currentPaths.indexOf(path)
-            const svgPoints = points.map(p => toSvg(p.x, p.y))
+            const rawSvgPoints = points.map(p => toSvg(p.x, p.y))
+            const nodeSeq = (focused ? (path.nodes || []) : []).flatMap(n => [
+              { x: n.x, y: n.y },
+              ...(n.end_x != null && n.end_y != null ? [{ x: n.end_x, y: n.end_y }] : []),
+            ])
+            const useNodeLine = nodeSeq.length >= 2
+            // The solid line follows the tagged actions (and kick landings); the raw ball trace sits faintly behind it
+            const svgPoints = useNodeLine ? nodeSeq.map(p => toSvg(p.x, p.y)) : rawSvgPoints
+            const rawPathD = rawSvgPoints.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(' ')
             const color = OUTCOME_COLORS[path.outcome] || '#10b981'
             const num = realIdx + 1
             const isHighlighted = !focused || vIdx === 0
@@ -487,6 +494,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
 
             return (
               <g key={vIdx} opacity={isHighlighted ? 0.95 : 0.2}>
+                {useNodeLine && <path d={rawPathD} fill="none" stroke={color} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" opacity={0.22} />}
                 <path d={pathD} fill="none" stroke={color} strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" opacity={0.2} />
                 <path d={pathD} fill="none" stroke={color} strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" />
                 {arrows.map((pts, ai) => (
