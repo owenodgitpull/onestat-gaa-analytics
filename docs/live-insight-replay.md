@@ -29,6 +29,6 @@ Default match = Dungloe v St Eunans (`b109b5c1-d121-489f-9098-1ddfa12ed3a7`), fi
 
 ## Result files kept
 - `insights-replay-baseline-sonnet-5-5.*` — before the revamp (Sonnet 5.5, counts-only snapshot)
-- `insights-replay-revamp-v3.*` — after the revamp: computed tactical brief (`backend/app/services/ai/live_brief.py`), last-5-minute
+- `insights-replay-revamp-v5.*` — after the revamp: computed tactical brief (`backend/app/services/ai/live_brief.py`), last-5-minute
   window, headline + detail format, grounding rules. The `.json` includes `tactical_brief` — exactly what the agent was shown at each time.
 (The first two revamp runs were discarded: four of their blocks were empty because Sonnet 5.5's thinking used up max_tokens — fixed.)
