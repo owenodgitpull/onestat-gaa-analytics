@@ -239,6 +239,14 @@ class VideoEventMapper:
         return video_type, scoring_context
 
     @classmethod
+    def align_foul(cls, video_event_type: str, video_team: str, match_event_type, match_team):
+        """Record an opposition foul the way Live Recording does: a FOUL_WON for OUR team (not a foul by them),
+        so every reader (frees won, season dashboard, AI tools, stats) sees one representation for both modes."""
+        if video_event_type == "FOUL_COMMITTED" and video_team == "team_b":
+            return EventType.FOUL_WON, Team.OWN
+        return match_event_type, match_team
+
+    @classmethod
     def video_team_to_match_team(cls, video_team: str) -> Team:
         """Map video team string to MatchEvent Team enum. team_a = our own
         team by convention (see VideoEvent model comments) — a plain 1:1

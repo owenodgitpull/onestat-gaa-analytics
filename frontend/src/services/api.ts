@@ -637,6 +637,11 @@ export const possessionAPI = {
    * Possession totals for a match, computed server-side (~6 numbers). Use this
    * for stats panels instead of downloading every row.
    */
+  /** Live Recording: the ball went idle — close the open possession so idle time isn't counted. */
+  freeze: async (matchId: string): Promise<void> => {
+    await fetchAPI<void>(`/possession-events/freeze/${matchId}`, { method: 'POST' });
+  },
+
   summary: async (matchId: string): Promise<PossessionSummary> => {
     return fetchAPI<PossessionSummary>(`/possession-events/summary?match_id=${matchId}`);
   },

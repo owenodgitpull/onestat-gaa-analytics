@@ -45,10 +45,13 @@ def _match_event_fields(ve: VideoEvent) -> Optional[dict]:
     )
     if not event_type:
         return None
+    event_type, match_team = VideoEventMapper.align_foul(
+        ve.event_type, ve.team, event_type, VideoEventMapper.video_team_to_match_team(ve.team)
+    )
     return dict(
         event_type=event_type,
         sub_type=ve.sub_type,
-        team=VideoEventMapper.video_team_to_match_team(ve.team),
+        team=match_team,
         minute=ve.match_minute,
         half=ve.half,
         pitch_x=ve.pitch_x,

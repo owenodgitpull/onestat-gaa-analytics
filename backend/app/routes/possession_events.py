@@ -283,6 +283,20 @@ async def list_possession_events(
     return responses
 
 
+@router.post("/freeze/{match_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def freeze_match_possession(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Live Recording: the ball just went idle (kickout/free outcome pending, clock stopped, half time).
+    Close the open possession now with its true duration so the idle time is never added to it.
+    """
+    await assert_match_in_club(db, match_id, user.club_id)
+    await PossessionService.close_open_events(db, match_id)
+
+
 @router.post("/finalize/{match_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def finalize_match_possession(
     match_id: UUID,

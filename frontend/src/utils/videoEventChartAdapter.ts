@@ -173,9 +173,11 @@ export function videoEventsToChartEvents(events: VideoEvent[]): ChartEvent[] {
     const eventType = mapVideoEventType(ve)
     if (!eventType) continue
     const { x: zoneX, y: zoneY } = zoneToXY(ve.pitch_zone)
+    // An opposition foul is a "foul won" for us — same representation Live Recording stores
+    const oppFoul = ve.event_type === 'FOUL_COMMITTED' && ve.team === 'team_b'
     out.push({
-      event_type: eventType,
-      team: mapVideoTeam(ve.team),
+      event_type: oppFoul ? 'foul_won' : eventType,
+      team: oppFoul ? 'own' : mapVideoTeam(ve.team),
       minute: ve.match_minute,
       half: ve.half,
       pitch_x: ve.pitch_x ?? zoneX,

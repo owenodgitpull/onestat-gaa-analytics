@@ -407,6 +407,7 @@ def _compute_sync_plan(
             continue
 
         team = VideoEventMapper.video_team_to_match_team(ve.team)
+        match_event_type, team = VideoEventMapper.align_foul(ve.event_type, ve.team, match_event_type, team)
 
         # Search for exact or near match
         best_match = None
@@ -733,6 +734,7 @@ async def sync_events_to_match(
 
             # Map team: team_a = own team by convention
             team = VideoEventMapper.video_team_to_match_team(ve.team)
+            match_event_type, team = VideoEventMapper.align_foul(ve.event_type, ve.team, match_event_type, team)
 
             match_event = MatchEvent(
                 match_id=ve.match_id,

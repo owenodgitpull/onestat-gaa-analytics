@@ -1196,6 +1196,25 @@ export default function MatchRecording() {
     }
   }, [awaitingKickout, pendingKickoutEvent])
 
+  // The ball is idle (an outcome is waiting to be picked, the clock is stopped, or it's half time): close the open
+  // possession NOW so the idle time is never added to whoever had the ball last.
+  const possessionIdle =
+    isStopped || matchPhase === 'half_time' || matchPhase === 'not_started' || matchPhase === 'finished' ||
+    awaitingKickout || !!pendingKickoutEvent || !!pendingFreeKick || !!pending45 || !!pendingFortyFivePosition ||
+    !!pendingBlockRecovery || !!pendingSidelineDecision
+  const possessionFrozenRef = useRef(false)
+  useEffect(() => {
+    if (!matchId) return
+    if (possessionIdle) {
+      if (!possessionFrozenRef.current) {
+        possessionFrozenRef.current = true
+        api.possession.freeze(matchId).catch(() => { /* best effort — the cap still bounds an unfrozen gap */ })
+      }
+    } else {
+      possessionFrozenRef.current = false
+    }
+  }, [possessionIdle, matchId])
+
   // Calculate real-time stats from backend - now using MatchStats directly
   // Backend calculates scores as (goals*3 + points), so we need to reverse-engineer for display
   const teamGoals = match?.team_goals || 0

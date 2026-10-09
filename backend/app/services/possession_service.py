@@ -79,7 +79,10 @@ class PossessionService:
         # paused/restarted overnight and should not count as possession time
         # Skipped for explicit-duration (video) events: wall-clock gaps are
         # meaningless there and would overwrite a correct video-time value.
-        if previous_event and explicit_duration is None:
+        # Only an OPEN possession (duration not yet set) takes the gap: if the ball went idle in between
+        # (kickout/free outcome pending, clock stopped, half time) it was frozen with its true duration and the
+        # idle time must not be added to it afterwards.
+        if previous_event and explicit_duration is None and previous_event.duration_seconds is None:
             duration = (new_event.created_at - previous_event.created_at).total_seconds()
             previous_event.duration_seconds = int(min(duration, MAX_POSSESSION_SECONDS))
 
@@ -143,7 +146,7 @@ class PossessionService:
             last_event = new_event
             count += 1
 
-        if batch_anchor and last_event:
+        if batch_anchor and last_event and batch_anchor.duration_seconds is None:
             duration = (last_event.created_at - batch_anchor.created_at).total_seconds()
             batch_anchor.duration_seconds = int(min(duration, MAX_POSSESSION_SECONDS))
 
