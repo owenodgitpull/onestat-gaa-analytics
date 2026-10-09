@@ -1,7 +1,7 @@
 {
   "model": "claude-sonnet-5-5",
-  "fingerprint": "c2ede145e9",
-  "label": "revamp-v2",
+  "fingerprint": "0594d0b07e",
+  "label": "revamp-v3",
   "match_id": "b109b5c1-d121-489f-9098-1ddfa12ed3a7",
   "opponent": "St Eunans",
   "results": [
@@ -9,8 +9,8 @@
       "minute": 5,
       "trigger": "interval",
       "score": "SCORE: Us 0-01 (1pts) vs Them 0-01 (1pts) \u2014 level",
-      "insight": "**Level at 0-1 each, and we hold 70% of the ball but are wasting shots, with two wides from our right.**\n\nEvidence: we have 3 shots for 1 score. Both misses came from our right, about 36m and 40m out. Barry Curran and Damien McGowan have one wide each. Ryan Connors has our only score, a point from a free. They also scored from a free, from 20-40m out in the centre, after Darren Curran's foul in the middle third. Nothing has changed because the window covers the whole game so far. Instruction: for the next five minutes, work the ball closer from the right, not shooting from 36-40m, and keep fouls out of the middle third.",
-      "seconds": 8.0,
+      "insight": "**We lead possession 70% to 30% but only have 0-01 to show for it, so wasteful shooting is keeping the game level.**\n\nThree of our shots have produced one score and two wides. Both wides came from our right, about 36m and 40m out. Barry Curran and Damien McGowan have one wide each, and Ryan Connors has our point. They have one point, a free from 20-40m out in the centre, after Darren Curran's foul in the middle third. Nothing has changed because the game is only five minutes old and it's level at 0-01 each. For the next five minutes, work the ball closer from the right before shooting, so we aren't taking 36-40m efforts. Keep winning frees, as we have in the last few minutes.",
+      "seconds": 9.6,
       "events_visible": 10,
       "recent_events": [
         {
@@ -72,8 +72,8 @@
       "minute": 10,
       "trigger": "interval",
       "score": "SCORE: Us 0-02 (2pts) vs Them 0-04 (4pts) \u2014 behind by 2 pts",
-      "insight": "**We trail by 2 points, 0-2 to 0-4. They have scored 3 times in five minutes, and we have won none of their three kickouts.**\n\nTheir four scores all came from 20-40m: two out on our left, one in the centre and one on our right. Three of the four came within 2 minutes of a kickout we lost, and two were frees. Our kickouts are 2 from 4 kept (50%), and our long kickout was lost. In the last five minutes we scored 1 point to their 3, and we committed 2 fouls in the middle third. Darren Curran has 2 fouls. Next five minutes: go short or medium on our kickouts, and stop fouling in the middle third.",
-      "seconds": 11.0,
+      "insight": "**We trail by 2 points. They scored 3 in the last five minutes, and three of their four scores followed a kickout we lost.**\n\nOur kickouts are 2/4 retained. Medium ones are 1/2, long ones past midfield 0/1, and the one to our right was lost. We've won 0/3 of their restarts, 0/2 of those landing in our attacking third. All four of their scores came from 20-40m out. In the last five minutes they scored 3 to our 1, and we conceded two frees. For the next five, go short or medium to our left or centre, where we've kept the ball, and compete harder on their restarts.",
+      "seconds": 16.0,
       "events_visible": 27,
       "recent_events": [
         {
@@ -135,8 +135,8 @@
       "minute": 15,
       "trigger": "interval",
       "score": "SCORE: Us 0-02 (2pts) vs Them 0-05 (5pts) \u2014 behind by 3 pts",
-      "insight": "",
-      "seconds": 11.5,
+      "insight": "**We trail by 3, with 0 turnovers won to 3 lost; two were dropped balls by Barry Curran and Aaron Ward.**\n\nOur turnovers were lost in the attacking third (one in the centre, one on our right) and in our defensive third on our right. One of their five scores came within 2 minutes of that defensive-third loss. In the last five minutes they scored 1 point to our 0, and we lost two turnovers. Our kickouts held up, 2/2 retained. For the next five, take the simple pass on our right and secure the ball before moving it.",
+      "seconds": 16.1,
       "events_visible": 35,
       "recent_events": [
         {
@@ -192,14 +192,14 @@
       ],
       "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-02 (2pts) vs Them 0-05 (5pts) \u2014 behind by 3 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 0 | Turnovers LOST: 3 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 4/6 retained (67%)\n  Their kickouts: 0/3 won by us (0%)\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Darren Curran: 2 fouls\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul\n  Mark Curran: 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Luke Clerkin: scored 0-1",
       "tactical_brief": "=== LIVE TACTICAL BRIEF \u2014 15' (half 1, 15 min to half time; a half is 30 min) ===\nAll locations below are in OUR attacking frame: we attack towards the far goal; 'our defensive third' is nearest our own goal; 'our left/right' is as we face the opposition goal.\n\nLAST 5 MINUTES (11'\u201315'):\n  Scores: us 0 pts (0 scores), them 1 pts (1 scores)\n  Turnovers: won 0, lost 2; wides/misses by us 0; our fouls 1\n  Our kickouts retained 2/2; their kickouts won by us 0/0\n\nWHERE WE LOSE THE BALL (3 turnovers/unforced errors, 3 located): 1 in the attacking third (the centre), 1 in the attacking third (our right), 1 in our defensive third (our right)\n  last 10 min: 1 in the attacking third (the centre), 1 in the attacking third (our right), 1 in our defensive third (our right)\n\nTHEIR SCORING (5 scores: 0 goals, 0 two-pointers, 2 from frees/45s; 1 misses):\n  shot position (distance from our goal): 2 20-40m out on the centre, 2 20-40m out on our left, 1 20-40m out on our right\n\nLINKS BEHIND THEIR 5 SCORES: 1 came within 2 min of one of our turnovers/errors (lost our defensive third (our right)); 3 within 2 min of a kickout we lost; 2 were frees/45s\n\nOUR SHOOTING (4 shots: 2 scores, 2 misses; 0 two-pointers scored):\n  average shot ~28m from goal; 1 inside 20m, 1 from 40m+\n  misses came from: 1 our right ~36m out, 1 our right ~40m out\n\nOUR KICKOUTS (6): short (our defensive third): 3/3 kept; medium (to midfield): 1/2 kept; long (past midfield): 0/1 kept\n  by channel: our left: 1/2 kept; our right: 2/3 kept; the centre: 1/1 kept\nTHEIR KICKOUTS (3): landing the attacking third: we won 0/2; the middle third: we won 0/1\n\nOUR FOULS (4): 2 in the middle third, 1 in our defensive third, 1 in the attacking third \u2014 frees conceded in our defensive third are shots at our goal\n\nPOSSESSION (timed): us 53% / them 47%\nBALL MOVEMENT (carry tracking, high confidence): 10 possession chains \u2014 1 ended in a score, 3 in a turnover, 3 in a wide; average 6.0 actions before a score vs 6.3 before a turnover; 0 direct scores vs 1 build-up scores\n  transition speed: 1.5s average to move the ball on (fastest 0.2s)",
-      "already_flagged_note": "\n## ALREADY FLAGGED \u2014 DO NOT MENTION AGAIN UNLESS THE COUNT HAS RISEN\nDarren Curran (fouls, still 2).\nThese were already raised to the sideline and nothing has changed since \u2014 repeating them as if new wastes the manager's attention. If the snapshot has nothing else notable, say so briefly rather than repeating one of the above.\n"
+      "already_flagged_note": ""
     },
     {
       "minute": 20,
       "trigger": "interval",
       "score": "SCORE: Us 0-02 (2pts) vs Them 1-05 (8pts) \u2014 behind by 6 pts",
-      "insight": "",
-      "seconds": 14.2,
+      "insight": "**We trail by 6 after conceding a goal in the last five minutes, and we kept only 1 of our last 3 kickouts.**\n\nThree of their six scores came within 2 minutes of a kickout we lost. Our short kickouts in our defensive third are 3/3 kept. Medium ones to midfield are 1/3 and long ones past midfield are 1/3. In the last five minutes we scored 0 to their 3 points, and we conceded two frees. Daire Gallagher picked up a yellow card. For the next five, go short on every kickout and keep the ball.",
+      "seconds": 12.1,
       "events_visible": 50,
       "recent_events": [
         {
@@ -261,8 +261,8 @@
       "minute": 25,
       "trigger": "interval",
       "score": "SCORE: Us 0-03 (3pts) vs Them 1-09 (12pts) \u2014 behind by 9 pts",
-      "insight": "",
-      "seconds": 11.9,
+      "insight": "**We trail by 9, and 6 of their 9 scores came within 2 minutes of a kickout we lost.**\n\nShort kickouts in our defensive third are 3/3 kept. Medium kickouts to midfield are 2/5 and long ones past midfield are 1/3. Our left channel is the weakest at 1/4. In the last five minutes they scored 4 points to our 1, and we kept 1 of 2 kickouts. This is the same kickout issue as before, and it has got worse. For the next five, go short or to the centre, and stay off the left.",
+      "seconds": 12.8,
       "events_visible": 63,
       "recent_events": [
         {
@@ -324,8 +324,8 @@
       "minute": 30,
       "trigger": "interval",
       "score": "SCORE: Us 0-04 (4pts) vs Them 1-12 (15pts) \u2014 behind by 11 pts",
-      "insight": "**Behind by 11 at half time, and 6 of their 11 scores came within two minutes of a kickout we lost.**\n\nOur medium kickouts to midfield are kept 4 of 7, long ones 1 of 3, and our left channel 2 of 5. Short kickouts and the centre are 3 of 3. In the last five minutes they scored 3 points, including a two-pointer on 30', to our 1. Next five: go short or through the centre, and keep the left-channel kickouts out of midfield.",
-      "seconds": 11.7,
+      "insight": "**We trail by 11, and 4 of our 6 turnovers lost came in the attacking third, through the centre.**\n\nAll 4 of our misses were 34 to 40m out, three of them from our right, and we have scored 0 two-pointers from 8 shots. They have taken 4 shots from 20 to 40m out on the centre. In the last five minutes they scored 3 points to our 1, though we kept 2/2 kickouts. For the next five, carry the ball inside 30m before shooting, and don't give it away through the centre.",
+      "seconds": 15.0,
       "events_visible": 77,
       "recent_events": [
         {
@@ -387,8 +387,8 @@
       "minute": 35,
       "trigger": "interval",
       "score": "SCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts",
-      "insight": "",
-      "seconds": 13.0,
+      "insight": "**We trail by 14 after conceding three in a row, and 9 of their 13 scores came from 20 to 40m out.**\n\nOf those 9, four were on the centre, four on our left and one on our right. Three of their scores were two-pointers. In the last five minutes they scored 3 points to our 0, and we had 2 wides and no turnovers either way. Our kickouts are not the problem now, with 1/1 kept. For the next five, close down the ball carrier before he reaches 40m, centre and left first. At the other end, carry the ball inside 30m before shooting.",
+      "seconds": 15.2,
       "events_visible": 85,
       "recent_events": [
         {
@@ -450,8 +450,8 @@
       "minute": 35,
       "trigger": "half_time",
       "score": "SCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts",
-      "insight": "",
-      "seconds": 12.2,
+      "insight": "**We trail by 14 at half-time, and they scored 9 of their 13 scores from 20 to 40m out.**\n\nScore is 0-4 to 1-15 (18 points to our 4). Their 9 came from the centre (4), our left (4) and our right (1), and 3 of their scores were two-pointers. Our 10 shots gave 4 scores and 0 two-pointers, and all 4 two-point-range misses were 34 to 40m out. Positive: our kickouts kept 9/14 (64%), with the centre 3/3. Second half: press the ball carrier before 40m, and carry the ball inside 30m before shooting.",
+      "seconds": 9.8,
       "events_visible": 85,
       "recent_events": [
         {
