@@ -291,6 +291,8 @@ export default function VideoTagging() {
   const [pending45, setPending45] = useState(false)
   // Half time: first half is finished, the ball is dead and nothing can be tagged until "Start 2nd Half"
   const [halfTimeBreak, setHalfTimeBreak] = useState(false)
+  const halfTimeBreakRef = useRef(false)
+  halfTimeBreakRef.current = halfTimeBreak
   // Foul whose free-outcome prompt the user has chosen to dismiss (so the recovery button stops showing for it)
   const [dismissedFreeFoulId, setDismissedFreeFoulId] = useState<string | null>(null)
 
@@ -1297,7 +1299,7 @@ export default function VideoTagging() {
     // Back to exactly where tracking stopped (unless we're already there, as after Review last 10s)
     if (opts?.seek !== false) playerRef.current?.seekTo(highWaterMarkRef.current)
     // A parked prompt is still open — leave the video paused so it can be finished; otherwise carry on
-    if (opts?.seek !== false && !inputPendingRef.current) playerRef.current?.play()
+    if (opts?.seek !== false && !inputPendingRef.current && !halfTimeBreakRef.current) playerRef.current?.play()
   }
   replayLast10Ref.current = () => {
     if (mode !== 'tracking') return
@@ -2900,6 +2902,8 @@ export default function VideoTagging() {
   }
   startSecondHalfRef.current = () => {
     const start = session?.second_half_start_ms ?? null
+    // Leave Review (if the 1st half was being looked back over) before the 2nd half begins
+    if (reviewingRef.current) { reviewingRef.current = false; autoReturnAtRef.current = null; reviewExitedAtRef.current = Date.now(); setReviewing(false) }
     setHalfTimeBreak(false)
     possAccumMsRef.current = { team_a: 0, team_b: 0 }
     lastPossTickMsRef.current = null
@@ -3461,7 +3465,7 @@ export default function VideoTagging() {
         fillHeight={isFullscreen}
         // Setup steps that mark a moment in the video (throw-in, half-time, 2nd half,
         // full-time) MUST be scrubbable; only the pure-choice steps lock the player.
-        disabled={halfTimeBreak || (mode === 'setup' && !['first_half', 'half_time', 'second_half', 'full_time'].includes(setupStep))}
+        disabled={(halfTimeBreak && !reviewing) || (mode === 'setup' && !['first_half', 'half_time', 'second_half', 'full_time'].includes(setupStep))}
       />
 
       {mode === 'setup' && (
@@ -3550,7 +3554,7 @@ export default function VideoTagging() {
       )}
 
       {/* HALF TIME banner — first half done, ball is dead; nothing can be tagged until the 2nd half starts */}
-      {mode === 'tracking' && halfTimeBreak && (
+      {mode === 'tracking' && halfTimeBreak && !reviewing && (
         <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
           <div
             className="rounded-2xl px-4 py-2.5 pointer-events-auto"
@@ -3570,14 +3574,23 @@ export default function VideoTagging() {
                   {session.second_half_start_ms != null && <> Starting the 2nd half jumps the video to the throw-in you marked ({formatTrackingClock(calcMatchTime(session.second_half_start_ms))}).</>}
                 </div>
               </div>
-              <button
-                onClick={() => startSecondHalfRef.current()}
-                className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
-                style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
-              >
-                <Play size={15} fill="#0a1a10" />
-                Start 2nd Half
-              </button>
+              <div className="flex-shrink-0 flex items-center gap-2">
+                <button
+                  onClick={() => enterReviewRef.current({ pause: true })}
+                  className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold border bg-black/55 border-white/20 text-white/85 hover:bg-black/75 hover:text-white backdrop-blur-md transition-colors"
+                  title="Rewind, fast-forward and play the first half freely. Nothing is recorded."
+                >
+                  <Eye size={13} /> Review 1st half
+                </button>
+                <button
+                  onClick={() => startSecondHalfRef.current()}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
+                  style={{ background: 'var(--gradient-primary)', color: '#0a1a10', border: '1px solid rgba(0,230,118,0.3)', boxShadow: '0 4px 15px -3px rgba(0,230,118,0.3), inset 0 1px 0 rgba(255,255,255,0.1)' }}
+                >
+                  <Play size={15} fill="#0a1a10" />
+                  Start 2nd Half
+                </button>
+              </div>
             </div>
           </div>
         </div>
