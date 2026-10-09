@@ -40,7 +40,13 @@ MAX_LIVE_TURNS = 3
 LIVE_MODEL = "claude-sonnet-5-5"
 
 
-# Details of the most recent fact check (the replay tool reads this to show what was caught)
+# Fact-check mode for the live insight:
+#   "off"   (production)  — the agent's own words go straight to the user, untouched
+#   "audit" (QA / replay) — a second pass reports which claims the data does not support, WITHOUT changing the insight;
+#                           used to measure how often the agent drifts from the data while tuning the prompt
+LIVE_FACT_CHECK_MODE = "off"
+
+# Details of the most recent audit (the replay tool reads this)
 LAST_FACT_CHECK: dict = {}
 
 FACT_CHECK_SYSTEM = """You are a strict fact-checker for a live GAA sideline insight. You are given EVIDENCE (the only source of truth) and an INSIGHT.
@@ -88,11 +94,7 @@ async def _fact_check_live_insight(insight_text: str, evidence: str):
         report = {"ran": True, "ok": ok, "unsupported": unsupported}
         cm = re.search(r"<corrected>\s*(.*?)\s*</corrected>", raw, re.DOTALL | re.IGNORECASE)
         fixed = cm.group(1).strip() if cm else ""
-        if not ok and fixed:
-            report["original"] = insight_text
-            return fixed, report
-        if not ok:
-            report["error"] = "verifier flagged claims but gave no corrected text; original kept"
+        # Audit only: report what was flagged, never replace the agent's own text
         return insight_text, report
     except Exception as exc:  # the insight must still go out
         logger.warning("live insight fact check failed: %s: %s", type(exc).__name__, exc)
@@ -191,12 +193,19 @@ Separate the two paragraphs with a blank line. No bullet points, no headers, no 
 ## Recent Events (last 5 logged)
 {json.dumps(recent_events, indent=2)}
 
-## GROUNDING — non-negotiable
-Every number, place and player you mention must come from the LIVE TACTICAL BRIEF or a tool result. We do NOT track where our
-defenders or half-backs stand, so never claim a line is "too deep", a shape is wrong, or a player is out of position unless a
-tool result says so. If you infer a cause, say "looks like" and name the evidence. If there is little data in the window, say so
-in a few words instead of padding. Name a player only when the snapshot supports it.
-Only say one thing CAUSES another if the brief's LINKS line shows it (e.g. a score within 2 minutes of our turnover or lost kickout); otherwise describe the two facts side by side and do not claim a cause.
+## GROUNDING — non-negotiable. You report the data; you do not invent.
+- Every number, minute, distance, position, player and result you state must be written in the LIVE TACTICAL BRIEF, the per-player snapshot or a tool
+  result. If you cannot point to the line it came from, do not write it. A shorter insight that is entirely true beats a fuller one with one false line.
+- Before you write, silently list each claim you intend to make and the exact line it comes from; delete any claim without a source.
+- We do NOT track where our defenders or half-backs stand, so never claim a line is "too deep", a shape is wrong, or a player is out of position.
+- Do not claim a trend ("improved", "got worse", "nothing has changed") unless the brief shows both periods. Compare the last-five-minutes block with the
+  match-to-date numbers, or quote an earlier insight you were given. If there is nothing to compare, say nothing about change.
+- Do not claim one thing CAUSES another unless the brief's LINKS line shows it (e.g. a score within 2 minutes of our turnover or lost kickout).
+  Otherwise state the two facts side by side.
+- Check your own arithmetic and the arc: a distance is only "outside the arc" if the brief says it is. Use the exact figures given.
+- Name a player only when the snapshot or brief attributes the event to them. Never guess a name.
+- Advice must follow from the facts you stated; do not give advice that assumes something you did not observe.
+- If there is little data in the window, say that in a few words instead of padding.
 
 ## HOW TO THINK LIKE A COACH (in this order)
 1. SITUATION — score, time left in the half, momentum (the last-five-minutes block of the brief).
@@ -330,16 +339,16 @@ Reference knowledge base context when relevant to a specific trigger.
             if hasattr(block, "text"):
                 final_text += block.text
 
-        # Fact-check pass: every number, place, name and claimed cause must be supported by the data the agent was given
+        # Audit pass (QA only): which claims, if any, the data does not support — the insight itself is never changed
         global LAST_FACT_CHECK
-        if final_text.strip():
+        if final_text.strip() and LIVE_FACT_CHECK_MODE == "audit":
             evidence = "\n\n".join(filter(None, [
                 f"[tactical brief]\n{live_brief}" if live_brief else "",
                 f"[pre-match notes]\n{tactical_notes}" if tactical_notes else "",
                 f"[recent events]\n{json.dumps(recent_events)}",
                 "\n\n".join(evidence_texts),
             ]))
-            final_text, LAST_FACT_CHECK = await _fact_check_live_insight(final_text, evidence)
+            _unchanged, LAST_FACT_CHECK = await _fact_check_live_insight(final_text, evidence)
         else:
             LAST_FACT_CHECK = {"ran": False}
 

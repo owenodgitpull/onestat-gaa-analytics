@@ -292,6 +292,8 @@ export default function VideoTagging() {
   // Half time: first half is finished, the ball is dead and nothing can be tagged until "Start 2nd Half"
   const [halfTimeBreak, setHalfTimeBreak] = useState(false)
   const halfTimeBreakRef = useRef(false)
+  // After 'Start 2nd Half': the video is parked on the throw-in until the user says who won it (like Live Recording)
+  const [secondHalfThrowInPending, setSecondHalfThrowInPending] = useState(false)
   halfTimeBreakRef.current = halfTimeBreak
   // Foul whose free-outcome prompt the user has chosen to dismiss (so the recovery button stops showing for it)
   const [dismissedFreeFoulId, setDismissedFreeFoulId] = useState<string | null>(null)
@@ -783,6 +785,13 @@ export default function VideoTagging() {
   const handleSelectThrowInWinner = useCallback((winner: 'team_a' | 'team_b') => {
     setPossession(winner)
     setThrowInWinnerChosen(true)
+  }, [])
+
+  /** 2nd-half throw-in: whoever won it has the ball, then play starts */
+  const handleSecondHalfThrowIn = useCallback((winner: 'team_a' | 'team_b') => {
+    setPossession(winner)
+    setSecondHalfThrowInPending(false)
+    setTimeout(() => playerRef.current?.play(), 150)
   }, [])
 
   // Handle lineup selection confirmation
@@ -2910,16 +2919,15 @@ export default function VideoTagging() {
     setBallPosition({ x: 50, y: 50 })
     setBallTrail([])
     setActiveCarrierId(null)
+    setSecondHalfThrowInPending(true)   // ask who won the throw-in before any play
     if (start != null) {
       setHighWaterMarkMs(start)
       highWaterMarkRef.current = start
-      // Let the raised tracking ceiling take effect before seeking (otherwise the seek is clamped), then play
+      // Let the raised tracking ceiling take effect before seeking (otherwise the seek is clamped); stay paused on the throw-in
       setTimeout(() => {
         playerRef.current?.seekTo(start)
-        setTimeout(() => playerRef.current?.play(), 200)
+        playerRef.current?.pause()
       }, 150)
-    } else {
-      setTimeout(() => playerRef.current?.play(), 150)
     }
   }
 
@@ -3549,6 +3557,37 @@ export default function VideoTagging() {
                 animation: '_vtStream 1.6s linear infinite',
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* 2ND-HALF THROW-IN — who won it? (same question Live Recording asks when the second half starts) */}
+      {mode === 'tracking' && secondHalfThrowInPending && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div
+            className="w-full max-w-sm rounded-2xl p-5"
+            style={{
+              background: 'linear-gradient(135deg, rgba(10,26,32,0.92), rgba(8,20,26,0.85))',
+              border: '1px solid rgba(0,230,118,0.38)',
+              boxShadow: '0 8px 28px rgba(0,0,0,0.5), 0 0 18px rgba(0,230,118,0.18), inset 0 1px 0 rgba(255,255,255,0.12)',
+            }}
+          >
+            <h3 className="text-sm font-bold text-white mb-1">Who won the 2nd-half throw-in?</h3>
+            <p className="text-xs text-white/60 mb-3">Whoever wins it starts with possession. You can correct it any time with the "Ball" button.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleSecondHalfThrowIn('team_a')}
+                className="flex-1 px-3 py-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs font-semibold transition-all truncate"
+              >
+                {clubName}
+              </button>
+              <button
+                onClick={() => handleSecondHalfThrowIn('team_b')}
+                className="flex-1 px-3 py-3 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-200 text-xs font-semibold transition-all truncate"
+              >
+                {opponentName}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -60,6 +60,7 @@ def clone_values(row, skip=('id', 'client_event_id')):
 
 
 async def main():
+    ma.LIVE_FACT_CHECK_MODE = 'audit'   # report-only; the insight text is never altered
     async with async_session_maker() as db:
         src = (await db.execute(select(Match).where(Match.id == MATCH_ID))).scalar_one()
         events = (await db.execute(
@@ -176,7 +177,7 @@ async def main():
         fc = r.get('fact_check') or {}
         fc_line = ''
         if fc.get('ran'):
-            fc_line = ('_Fact check: all claims supported._' if fc.get('ok') else '_Fact check corrected unsupported claim(s): ' + '; '.join(fc.get('unsupported') or []) + '_')
+            fc_line = ('_Audit: every claim is supported by the data._' if fc.get('ok') else '_Audit — claim(s) the data does not support: ' + '; '.join(fc.get('unsupported') or []) + '_')
         lines += [f"## {title} — {kind}", f"_{r['score']}_  ·  {r['events_visible']} events recorded so far  ·  {r['seconds']}s", '', r['insight'], '', fc_line, '', '---', '']
     emit(f'insights-replay-{LABEL}.md', '\n'.join(lines))
     emit(f'insights-replay-{LABEL}.json', json.dumps({'model': model, 'fingerprint': fingerprint, 'label': LABEL, 'match_id': MATCH_ID,
