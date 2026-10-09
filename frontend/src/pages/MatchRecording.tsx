@@ -5802,6 +5802,9 @@ export default function MatchRecording() {
 
       {/* Fullscreen Pitch Mode */}
       <FullscreenPitchMode
+        undoableJump={lastJump}
+        onUndoJump={undoJump}
+        undoJumpWindowMs={JUMP_UNDO_MS}
         isOpen={isFullscreenPitch}
         onClose={() => setIsFullscreenPitch(false)}
         ballPosition={ballPosition}

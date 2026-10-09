@@ -7,7 +7,7 @@ import CategorizedActionButtons from '@/components/CategorizedActionButtons'
 import TacticalTagButton from '@/components/TacticalTagButton'
 import FormationSnapshotButton from '@/components/FormationSnapshotButton'
 import { BallPosition, PossessionTeam, EventType } from '@/types'
-import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw, Zap } from 'lucide-react'
+import { Clock, Minimize2, ArrowLeftRight, Pause, Play, CircleSlash, Plus, Minus, RotateCw, Zap, Undo2 } from 'lucide-react'
 import { BroughtForwardOptIn, HighBallChips, type BroughtForwardReason } from './video/VideoPitchPrompts'
 import BlackCardTimer, { type BlackCardEntry } from '@/components/BlackCardTimer'
 import PitchActionOverlay from '@/components/PitchActionOverlay'
@@ -147,6 +147,10 @@ interface FullscreenPitchModeProps {
   onTogglePressTrigger?: () => void
   tacticalTagCount?: number
   onTacticalTag?: (tagType: string, label?: string) => void
+  /** A big ball jump that can still be undone (ghost + arrow on the pitch, Undo chip in the bar) */
+  undoableJump?: { id: number; from: { x: number; y: number }; to: { x: number; y: number }; distM: number } | null
+  onUndoJump?: () => void
+  undoJumpWindowMs?: number
   onOpenSnapshot?: () => void
   shouldPulseSnapshot?: boolean
   snapshotCount?: number
@@ -249,6 +253,9 @@ export default function FullscreenPitchMode({
   onTogglePressTrigger,
   tacticalTagCount = 0,
   onTacticalTag,
+  undoableJump = null,
+  onUndoJump,
+  undoJumpWindowMs = 8000,
   onOpenSnapshot,
   shouldPulseSnapshot = false,
   snapshotCount = 0,
@@ -471,6 +478,21 @@ export default function FullscreenPitchMode({
               >
                 <Zap size={16} />
                 <span>{pressTriggerActive ? 'Press Active' : 'Press Trigger'}</span>
+              </button>
+            )}
+            {undoableJump && onUndoJump && (
+              <button
+                key={undoableJump.id}
+                onClick={onUndoJump}
+                className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-bold border bg-amber-500/25 border-amber-400/50 text-amber-100 hover:bg-amber-500/35 transition-all"
+                title="Undo this ball move (Z). The ball goes back; nothing was recorded for the jump."
+              >
+                <style>{`@keyframes _jumpRing { from { stroke-dashoffset: 0 } to { stroke-dashoffset: 31.4 } }`}</style>
+                <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                  <circle cx="7" cy="7" r="5" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="2" />
+                  <circle cx="7" cy="7" r="5" fill="none" stroke="#fde68a" strokeWidth="2" strokeDasharray="31.4" style={{ animation: `_jumpRing ${undoJumpWindowMs}ms linear forwards`, transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }} />
+                </svg>
+                <Undo2 size={14} /> Undo move · {undoableJump.distM}m
               </button>
             )}
             {onTacticalTag && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
@@ -726,6 +748,8 @@ export default function FullscreenPitchMode({
           highlightSidelines={highlightSidelines}
           highlight45LineX={highlight45LineX}
           pulseBall={landingTapActive}
+          jumpGhost={undoableJump ? { from: undoableJump.from, to: undoableJump.to, label: `${undoableJump.distM}m` } : null}
+          onJumpGhostTap={onUndoJump}
           ballAnchoredOverlay={
             (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
               <>
