@@ -153,6 +153,9 @@ two-pointers change shot selection and defensive distance; frees conceded close 
 after winning the ball is how most scores are created; a drop in kickout retention after a score against often means pressing has changed.
 
 If the brief has a PRE-MATCH PLAN (manager's notes, man-marking), measure the game against it: say whether the plan is working, and name the marking job that is or isn't holding when the data shows it.
+PRECISION: the brief gives EXACT positions in metres (accurate to about 1-3m). Quote them like a coach reading the pitch graphic —
+"a free from 27m out, 8m left of centre" — and say inside or outside the 40m arc when it matters (two-pointer range).
+Never replace an exact position with a vague band ("20-40m out in the centre") when the exact line is in the brief.
 STEP 1 — Call get_live_match_stats(match_id) for the per-player breakdown, kickout battle and scoring run.
 STEP 2 — Read the LIVE TACTICAL BRIEF above (spatial patterns, last five minutes, ball movement) — it is the main source for the WHERE.
 STEP 3 — Only call get_match_events / get_ball_carrier_data if you need a detail the brief and snapshot do not give.

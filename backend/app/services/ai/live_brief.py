@@ -16,6 +16,7 @@ from sqlalchemy import select, func
 
 from app.models.match import Match
 from app.models.man_marking_assignment import ManMarkingAssignment
+from app.models.player import Player
 from app.models.match_event import MatchEvent, Team
 from app.models.possession_event import PossessionEvent
 from app.utils.attack_direction import own_attacks_right, to_attack_frame
@@ -58,6 +59,26 @@ def _tally(items: list, key) -> str:
         k = key(it)
         out[k] = out.get(k, 0) + 1
     return ", ".join(f"{n} {k}" for k, n in sorted(out.items(), key=lambda kv: -kv[1]))
+
+
+LABELS = {
+    "goal": "goal", "point": "point", "two_point": "two-pointer", "point_free": "free (point)", "two_point_free": "free (two-pointer)",
+    "forty_five": "45 (scored)", "penalty_goal": "penalty goal", "wide": "wide", "wide_free": "free (wide)", "short": "short",
+    "saved": "saved", "hit_post": "hit the post", "forty_five_missed": "45 (missed)", "penalty_miss": "penalty (missed)",
+    "turnover_lost": "turnover lost", "unforced_error": "unforced error",
+}
+
+
+def _exact(fx: float, fy: float, goal: str) -> str:
+    """Exact position in metres. goal = 'their' (the goal WE attack) or 'our' (the goal we defend).
+    Pitch 145m x 90m; positions are accurate to about 1-3m. 'left/right' are as WE face the opposition goal."""
+    d = ((100.0 - fx) if goal == "their" else fx) * PITCH_LEN_M / 100.0
+    lat = (fy - 50.0) * 90.0 / 100.0
+    side = "our left" if lat < 0 else "our right"
+    straight = (d * d + lat * lat) ** 0.5
+    arc = "outside the 40m arc (two-point range)" if straight >= 40 else "inside the 40m arc"
+    centre = "on the centre line" if abs(lat) < 2 else f"{abs(round(lat))}m {side} of centre"
+    return f"{round(d)}m from {'their' if goal == 'their' else 'our'} goal line, {centre} (~{round(straight)}m from goal, {arc})"
 
 
 async def build_live_brief(db, match_id, minute: Optional[int] = None, club_id=None, window: int = 5) -> str:
@@ -284,6 +305,51 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     if fouls:
         L.append(f"\nOUR FOULS ({len(a['fouls'])}): " + _tally(fouls, lambda ef: f"in {_third(ef[1][0])}")
                  + (" — frees conceded in our defensive third are shots at our goal" if any(f[0] <= 31 for _, f in fouls) else ""))
+
+    # ── exact positions of the key events (the numbers behind the patterns above) ──
+    ids = {e.player_id for e in visible if getattr(e, "player_id", None)}
+    names = {}
+    if ids:
+        for pid, pname in (await db.execute(select(Player.id, Player.name).where(Player.id.in_(list(ids))))).all():
+            names[pid] = (pname or "").strip().split(" ")[-1]
+
+    def who(e):
+        if getattr(e, "player_id", None) and names.get(e.player_id):
+            return names[e.player_id]
+        return (getattr(e, "opponent_player_name", None) or "").strip()
+
+    def row(e, goal):
+        f = framed(e)
+        if not f:
+            return None
+        nm = who(e)
+        return f"  {e.minute}' {'we' if _is_own(e) else 'they'} — {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], goal)}"
+
+    shots_detail = [e for e in visible if _t(e) in SHOT_TYPES][-14:]
+    rows = [row(e, "their" if _is_own(e) else "our") for e in shots_detail]
+    rows = [x for x in rows if x]
+    if rows:
+        L.append("\nEXACT POSITIONS — SHOTS AND SCORES (most recent 14; metres, accurate to ~1-3m):")
+        L.extend(rows)
+    lost_detail = [e for e in a["to_lost"] if e.minute > now - 10]
+    rows = []
+    for e in lost_detail:
+        f = framed(e)
+        if f:
+            nm = who(e)
+            rows.append(f"  {e.minute}' {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], 'our')}")
+    if rows:
+        L.append("EXACT POSITIONS — OUR TURNOVERS/ERRORS IN THE LAST 10 MINUTES (distance is from OUR goal line):")
+        L.extend(rows)
+    ko_detail = [e for e in own_ko if e.minute > now - 10] if own_ko else []
+    rows = []
+    for e in ko_detail:
+        f = framed(e)
+        if f:
+            rows.append(f"  {e.minute}' our kickout {'kept' if _t(e) in OWN_KO_RETAINED else 'lost'}: landed {_exact(f[0], f[1], 'our').split(' (~')[0]}")
+    if rows:
+        L.append("EXACT POSITIONS — OUR KICKOUTS IN THE LAST 10 MINUTES:")
+        L.extend(rows)
 
     # ── possession & ball movement ───────────────────────────────────────
     try:
