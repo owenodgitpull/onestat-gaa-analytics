@@ -242,6 +242,10 @@ export default function MatchRecording() {
   // logging it — normal ball movement/possession recording continues right
   // after.
   // `kind`: HB = contestable high ball, LK = direct long kick pass. `from` = where it was kicked.
+  // A shot that dropped short / was saved / hit the post: the NEXT pitch tap is where it ended up. Stored on that
+  // event as end_x/end_y and becomes the opposition's possession spot - it is NOT a carry.
+  const [pendingDropLanding, setPendingDropLanding] = useState<{ team: PossessionTeam; label: string } | null>(null)
+  const dropEventIdRef = useRef<Promise<string | null> | null>(null)
   const [pendingLongKick, setPendingLongKick] = useState<{
     isHomeTeam: boolean
     playerId?: string | null
@@ -2295,6 +2299,35 @@ export default function MatchRecording() {
       return
     }
 
+    // Shot dropped short / saved / hit post: this tap is where it ended up (not a carry, no possession waypoint
+    // for us). Possession is the defending team's, at that spot.
+    if (pendingDropLanding) {
+      const drop = pendingDropLanding
+      setPendingDropLanding(null)
+      const landed = { x: newPosition.x, y: newPosition.y, team: drop.team }
+      setBallPosition(landed)
+      setBallTrail(prev => [...prev.slice(-49), { x: landed.x, y: landed.y }])
+      const idPromise = dropEventIdRef.current
+      dropEventIdRef.current = null
+      idPromise?.then(id => {
+        if (id) api.matchEvents.update(id, { end_x: landed.x, end_y: landed.y })
+          .then(() => invalidateStats())
+          .catch(err => console.error('Failed to store where the shot dropped:', err))
+      })
+      if (matchId) {
+        recordPossession.mutateAsync({
+          match_id: matchId,
+          x_coord: landed.x,
+          y_coord: landed.y,
+          team: drop.team === PossessionTeam.OWN ? 'home' : 'away',
+          timestamp: new Date(),
+          minute,
+          half: currentHalf,
+        }).catch(err => console.error('Failed to record possession at the drop spot:', err))
+      }
+      return
+    }
+
     // Check if there's a pending High Ball waiting for its landing spot —
     // deliberately does NOT return: a long kick isn't a dead-ball restart,
     // so the ball's normal movement/possession recording below should still
@@ -3145,6 +3178,7 @@ export default function MatchRecording() {
   }
 
   const handleQuickAction = (eventType: EventType) => {
+    if (pendingDropLanding) { setPendingDropLanding(null); dropEventIdRef.current = null }
     console.log('[QuickAction] event:', eventType, 'ballPos:', JSON.stringify(ballPosition), 'possession:', ballPosition.team)
 
     // Check if this is a free kick result or 45 result
@@ -3545,6 +3579,10 @@ export default function MatchRecording() {
 
           const newBallPosition = { x: newX, y: newY, team: newTeam }
           setBallPosition(newBallPosition)
+          if (turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED')) {
+            dropEventIdRef.current = Promise.resolve(result?.id ? String(result.id) : null)
+            setPendingDropLanding({ team: newTeam, label: turnoverEventStr.includes('SAVED') ? 'Where did the save end up?' : 'Tap where it dropped' })
+          }
 
           // Record the possession change to backend
           try {
@@ -3921,6 +3959,18 @@ export default function MatchRecording() {
       setBallPosition(possessionPayload)
     }
 
+    // Shots that don't score: ask where the ball ended up (stored on the event, never a carry)
+    const isDropShot = turnoverEventStr.includes('SHORT') || turnoverEventStr.includes('SAVED') || turnoverEventStr === 'HIT_POST'
+    let resolveDropId: (id: string | null) => void = () => {}
+    if (isDropShot && possessionPayload) {
+      dropEventIdRef.current = new Promise<string | null>(res => { resolveDropId = res })
+      setPendingDropLanding({
+        team: possessionPayload.team,
+        label: turnoverEventStr.includes('SAVED') ? 'Where did the save end up?'
+          : turnoverEventStr === 'HIT_POST' ? 'Where did it come off the post?' : 'Tap where it dropped',
+      })
+    }
+
     // Fire backend calls in background (non-blocking for instant feel)
     const backendEventType = mapEventTypeToBackend(event.eventType)
 
@@ -3946,6 +3996,7 @@ export default function MatchRecording() {
       invalidateStats()
       setLastEventType(String(event.eventType).toLowerCase())
       console.log('Event recorded successfully!')
+      resolveDropId(result?.id ? String(result.id) : null)
 
       if (assistEligible && result?.id) {
         if (pendingAssistTimeoutRef.current) clearTimeout(pendingAssistTimeoutRef.current)
@@ -3958,6 +4009,7 @@ export default function MatchRecording() {
         pendingPressureTimeoutRef.current = setTimeout(() => setPendingPressure(null), PENDING_PRESSURE_TIMEOUT_MS)
       }
     }).catch((error) => {
+      resolveDropId(null)
       console.error('Failed to record event:', error)
     })
 
@@ -4339,7 +4391,7 @@ export default function MatchRecording() {
   // the tappable strip isn't hidden/guessed at, unlike a normal kickout
   // landing spot which can be anywhere on the pitch.
   // The user must tap a landing spot (kickout / 45 line / long kick or high ball): hide the player circles and pulse the ball
-  const landingTapActive = !!pendingKickoutEvent || !!pendingFortyFivePosition || !!pendingLongKick
+  const landingTapActive = !!pendingKickoutEvent || !!pendingFortyFivePosition || !!pendingLongKick || !!pendingDropLanding
   const sidelineTapPending = !!pendingKickoutEvent &&
     String(pendingKickoutEvent.eventType).toLowerCase().includes('kickout_sideline')
 
@@ -4385,6 +4437,16 @@ export default function MatchRecording() {
   return (
     <div className="min-h-screen pb-8">
       {/* Instant tap confirmation — fixed so it's visible over both normal and fullscreen pitch */}
+      {pendingDropLanding && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold text-white"
+          style={{ background: 'rgba(217,119,6,0.92)', boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
+          {pendingDropLanding.label}
+          <button
+            className="px-2 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-xs"
+            onClick={() => { setPendingDropLanding(null); dropEventIdRef.current = null }}
+          >Skip</button>
+        </div>
+      )}
       {actionToast && (
         <div
           className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-4 py-2 rounded-full text-sm font-bold text-white shadow-lg animate-fade-in pointer-events-none"
@@ -4893,7 +4955,7 @@ export default function MatchRecording() {
                                 arming High Ball doesn't interrupt the pitch
                                 view at all, just repurposes the status text
                                 that's always there anyway. */}
-                            {pendingLongKick ? 'High Ball — tap pitch for landing spot' : statusLabel.text}
+                            {pendingDropLanding ? pendingDropLanding.label : pendingLongKick ? 'High Ball — tap pitch for landing spot' : statusLabel.text}
                           </span>
                         </div>
                       </div>
@@ -5909,7 +5971,7 @@ export default function MatchRecording() {
         onMinimizeKickout={() => setKickoutBannerMinimised(true)}
         onRestoreKickout={() => setKickoutBannerMinimised(false)}
         teamAttackingRight={teamAttackingRight}
-        statusText={pendingLongKick ? 'High Ball — tap pitch for landing spot' : statusLabel.text}
+        statusText={pendingDropLanding ? pendingDropLanding.label : pendingLongKick ? 'High Ball — tap pitch for landing spot' : statusLabel.text}
         statusAccent={statusLabel.accent}
         onSwapPossession={() => {
           // See the matching handler above — guard + synchronous label flip

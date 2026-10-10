@@ -444,6 +444,14 @@ export default function VideoTagging() {
   // the landing spot in handleTaggingBallCommit. Mirrors the equivalent
   // pendingLongKick added to live recording's MatchRecording.tsx.
   // `kind` = HB (contestable high ball) vs LK (direct long kick pass); `from` = where it was kicked.
+  // Shot that dropped short / was saved / hit the post: the NEXT pitch tap is where the ball ended up. It is stored on
+  // that event as end_x/end_y and becomes the defending team's possession spot - it is NOT a carry.
+  const [pendingDrop, setPendingDrop] = useState<{
+    team: 'team_a' | 'team_b'   // who has the ball now
+    videoMs: number
+    eventType: string
+    label: string
+  } | null>(null)
   const [pendingLongKick, setPendingLongKick] = useState<{
     team: 'team_a' | 'team_b'
     playerId?: string | null
@@ -614,6 +622,8 @@ export default function VideoTagging() {
   }
   const { data: eventsData, refetch: refetchEvents } = useVideoEvents(sessionId || null)
   const events = eventsData?.events || []
+  const eventsRef = useRef(events)
+  eventsRef.current = events
 
   // Track players on yellow cards (for second yellow → automatic red)
   const yellowCardPlayerIds = useMemo(() => {
@@ -1439,7 +1449,7 @@ export default function VideoTagging() {
     const prevBall = ballPosRef.current
     const isDragEnd = Date.now() - lastDragAtRef.current < 250
     let jumpCandidate: { distM: number; from: { x: number; y: number }; trail: Array<{ x: number; y: number }>; historyLen: number; bufferLen: number } | null = null
-    if (prevBall && !isDragEnd && isPlaying && mode === 'tracking' && !reviewing) {
+    if (prevBall && !isDragEnd && isPlaying && mode === 'tracking' && !reviewing && !pendingDrop) {
       const distM = Math.hypot((position.x - prevBall.x) * 1.45, (position.y - prevBall.y) * 0.9)
       if (distM >= JUMP_UNDO_M) {
         jumpCandidate = { distM, from: { x: prevBall.x, y: prevBall.y }, trail: ballTrail, historyLen: ballHistoryRef.current.length, bufferLen: possBufferRef.current.length }
@@ -1486,6 +1496,24 @@ export default function VideoTagging() {
       setPendingOverlay(null)
       setTimeout(() => finalizeEventRef.current(pending, data), 0)
       return // Don't record possession point - the event will do that
+    }
+
+    // Shot dropped short / saved / hit post: this commit is where it ended up. Stored on the shot event
+    // (never a carry); the possession point written below is the defending team's, at that spot.
+    if (pendingDrop && sessionId) {
+      const drop = pendingDrop
+      setPendingDrop(null)
+      const spot = { end_x: position.x, end_y: position.y }
+      let tries = 0
+      const apply = () => {
+        const ev = eventsRef.current.find((e: any) => e.event_type === drop.eventType && e.video_timestamp_ms === drop.videoMs)
+        if (ev && !String(ev.id).startsWith('temp')) {
+          updateEvent.mutate({ eventId: ev.id, sessionId, data: spot })
+        } else if (tries++ < 10) {
+          setTimeout(apply, 400)   // the shot is still being saved
+        }
+      }
+      apply()
     }
 
     // If High Ball is armed, this commit IS the landing spot — log it, then
@@ -1559,7 +1587,7 @@ export default function VideoTagging() {
     // TDZ error, not just a lint nit: this callback is created before that
     // declaration is reached.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [handleTaggingBallMove, flushPossession, compute45LineX, players, sessionId, createEvent, overlayState, pendingOverlay, pendingFreeKick, kickoutAimedForId, isPlaying, mode, reviewing, ballTrail])
+  }, [handleTaggingBallMove, flushPossession, compute45LineX, players, sessionId, createEvent, updateEvent, overlayState, pendingOverlay, pendingFreeKick, kickoutAimedForId, isPlaying, mode, reviewing, ballTrail, pendingDrop])
 
 
   // Persistent attack-direction indicator — null until direction is known
@@ -1638,6 +1666,7 @@ export default function VideoTagging() {
       if (snap.pendingPressure && !isTemp(snap.pendingPressure.eventId)) setPendingPressure(snap.pendingPressure)
       if (snap.assistPromptEventId && !isTemp(snap.assistPromptEventId)) setAssistPromptEventId(snap.assistPromptEventId)
       if (snap.pendingLongKick) setPendingLongKick(snap.pendingLongKick)
+      if (snap.pendingDrop) setPendingDrop(snap.pendingDrop)
       if (snap.tacticalFoul) setTacticalFoul(true)
       if (snap.highlight45LineX != null) setHighlight45LineX(snap.highlight45LineX)
       if (snap.pendingOverlay && snap.overlayState && snap.overlayState !== 'none') {
@@ -1652,20 +1681,20 @@ export default function VideoTagging() {
     const anyPending =
       !!pendingFreeKick || pending45 || pendingBlockRecovery || pendingSidelineDecision || awaitingKickout ||
       !!pendingFoulSubtype || !!pendingTurnoverReason || !!pendingErrorSubtype || !!pendingOppScorer ||
-      !!pendingPressure || !!assistPromptEventId || !!pendingLongKick || overlayState !== 'none'
+      !!pendingPressure || !!assistPromptEventId || !!pendingLongKick || !!pendingDrop || overlayState !== 'none'
     try {
       const key = `vt-pending-${sessionId}`
       if (!anyPending) { localStorage.removeItem(key); return }
       localStorage.setItem(key, JSON.stringify({
         at: Date.now(), possession, ballPosition, pendingFreeKick, pending45, pendingBlockRecovery, pendingSidelineDecision,
         awaitingKickout, pendingFoulSubtype, pendingTurnoverReason, pendingErrorSubtype, pendingOppScorer, pendingPressure,
-        assistPromptEventId, pendingLongKick, tacticalFoul, highlight45LineX,
+        assistPromptEventId, pendingLongKick, pendingDrop, tacticalFoul, highlight45LineX,
         overlayState, pendingOverlay: overlayState !== 'none' ? pendingOverlay : null,
       }))
     } catch { /* storage unavailable — prompts just won't survive a refresh */ }
   }, [sessionId, possession, ballPosition, pendingFreeKick, pending45, pendingBlockRecovery, pendingSidelineDecision, awaitingKickout,
     pendingFoulSubtype, pendingTurnoverReason, pendingErrorSubtype, pendingOppScorer, pendingPressure, assistPromptEventId,
-    pendingLongKick, tacticalFoul, highlight45LineX, overlayState, pendingOverlay])
+    pendingLongKick, pendingDrop, tacticalFoul, highlight45LineX, overlayState, pendingOverlay])
 
   // Refs for carrier lifecycle callbacks — defined later but needed by
   // handleFoulSubtypeSelect / handleDirectCreate which are declared first.
@@ -1787,6 +1816,15 @@ export default function VideoTagging() {
     if (flipTo) {
       setPossession(flipTo)
       onCarrierPossessionSwap()
+    }
+    if (isShotTurnover && data.video_timestamp_ms != null) {
+      setPendingDrop({
+        team: otherTeam,
+        videoMs: data.video_timestamp_ms,
+        eventType: data.event_type,
+        label: data.event_type === 'SAVED' ? 'Where did the save end up? — tap the pitch'
+          : data.event_type === 'HIT_POST' ? 'Where did it come off the post? — tap the pitch' : 'Where did it drop? — tap the pitch',
+      })
     }
 
     if (isRestart) {
@@ -3951,7 +3989,7 @@ export default function VideoTagging() {
           fontSize: 30, fontWeight: 700, whiteSpace: 'nowrap',
           color: pendingLongKick ? '#fbbf24' : (possession === 'team_a' ? '#6ee7b7' : '#fdba74'),
         }}>
-          {pendingLongKick ? `${pendingLongKick.kind === 'high_ball' ? 'High Ball' : 'Long Kick Pass'} — tap pitch for landing spot` : statusText}
+          {pendingDrop ? pendingDrop.label : pendingLongKick ? `${pendingLongKick.kind === 'high_ball' ? 'High Ball' : 'Long Kick Pass'} — tap pitch for landing spot` : statusText}
         </span>
       </div>
     </div>
@@ -3980,14 +4018,14 @@ export default function VideoTagging() {
           (!(overlayState === 'pitch' || isAdjustingFree || !!repositioning) && (!isPlaying || overlayState !== 'none'))
         }
         highlight45LineX={highlight45LineX}
-        pulseBall={overlayState === 'pitch' || !!pendingLongKick}
+        pulseBall={overlayState === 'pitch' || !!pendingLongKick || !!pendingDrop}
         jumpGhost={lastJump ? { from: lastJump.from, to: lastJump.to, label: `${lastJump.distM}m` } : null}
         onJumpGhostTap={undoJump}
         svgOverlay={pitchStatusOverlay}
         ballAnchoredOverlay={
           (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
             <>
-              {possession === 'team_a' && jerseyStripPlayers.length > 0 && overlayState !== 'pitch' && !pendingLongKick && (
+              {possession === 'team_a' && jerseyStripPlayers.length > 0 && overlayState !== 'pitch' && !pendingLongKick && !pendingDrop && (
                 <BallCarrierPicker
                   players={jerseyStripPlayers}
                   activeCarrierId={activeCarrierId}
@@ -4046,7 +4084,7 @@ export default function VideoTagging() {
           )
         }
         pitchOverlay={
-          possession === 'team_a' && jerseyStripPlayers.length > 0 && overlayState !== 'pitch' && !pendingLongKick
+          possession === 'team_a' && jerseyStripPlayers.length > 0 && overlayState !== 'pitch' && !pendingLongKick && !pendingDrop
             ? (ballPctX, ballPctY) => (
               <VideoPitchReceiverDots
                 players={jerseyStripPlayers}

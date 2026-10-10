@@ -528,6 +528,9 @@ export const matchEventsAPI = {
     brought_forward_reason: string | null;
     advanced_position_x: number | null;
     advanced_position_y: number | null;
+    // Where a shot that dropped short / was saved / hit the post ended up
+    end_x: number | null;
+    end_y: number | null;
     // Long kick pass / high ball outcome + who came away with it
     sub_type: string | null;
     kickout_target_player_id: string | null;
