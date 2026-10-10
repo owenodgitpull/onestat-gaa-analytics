@@ -20,6 +20,9 @@ export interface ManualEventSubmitPayload {
   team: 'team_a' | 'team_b'
   playerId: string | null
   subInPlayerId?: string | null
+  /** Inter-county opposition substitution: lineup ids of who came off / on */
+  oppositionPlayerId?: string | null
+  oppositionSubInPlayerId?: string | null
   scoringContext?: Record<string, unknown>
 }
 
@@ -34,7 +37,14 @@ interface VideoManualEventModalProps {
   clubName: string
   currentMinute: number
   currentHalf: 1 | 2
+  /** Opposition lineup split for substitutions (inter-county) */
+  oppositionOnField?: RosterOption[]
+  oppositionBench?: RosterOption[]
+  /** Minutes per half for this match (30 club / 35 inter-county) */
+  halfMins?: number
 }
+
+interface RosterOption { id: string; name: string; jerseyNumber: number | null }
 
 interface EventOption {
   group: string
@@ -113,11 +123,16 @@ export default function VideoManualEventModal({
   clubName,
   currentMinute,
   currentHalf,
+  oppositionOnField = [],
+  oppositionBench = [],
+  halfMins = 30,
 }: VideoManualEventModalProps) {
   const [selectedKey, setSelectedKey] = useState(optionKey(EVENT_OPTIONS[1]))
   const [team, setTeam] = useState<'team_a' | 'team_b'>('team_a')
   const [playerId, setPlayerId] = useState('')
   const [playerComingOn, setPlayerComingOn] = useState('')
+  const [oppOff, setOppOff] = useState('')
+  const [oppOn, setOppOn] = useState('')
 
   useEffect(() => {
     if (isOpen) {
@@ -125,6 +140,8 @@ export default function VideoManualEventModal({
       setTeam('team_a')
       setPlayerId('')
       setPlayerComingOn('')
+      setOppOff('')
+      setOppOn('')
     }
   }, [isOpen])
 
@@ -133,6 +150,9 @@ export default function VideoManualEventModal({
   const selected = EVENT_OPTIONS.find(o => optionKey(o) === selectedKey) ?? EVENT_OPTIONS[1]
   const isSub = selected.eventType === 'SUB_ON'
   const kickout = isKickoutType(selected.eventType)
+  // an opposition substitution is picked from the opposition lineup (inter-county)
+  const hasOppLineup = oppositionOnField.length > 0
+  const oppSub = isSub && hasOppLineup && team === 'team_b'
 
   const rosterOptions = players.map(p => {
     const lineupEntry = matchLineup.find(l => l.player_id === p.id)
@@ -151,15 +171,17 @@ export default function VideoManualEventModal({
   const handleSubmit = () => {
     onSubmit({
       eventType: selected.eventType,
-      team: isSub ? 'team_a' : team,
-      playerId: isSub ? (playerId || null) : (playerId || null),
-      subInPlayerId: isSub ? (playerComingOn || null) : undefined,
+      team: isSub ? (oppSub ? 'team_b' : 'team_a') : team,
+      playerId: oppSub ? null : (playerId || null),
+      subInPlayerId: isSub && !oppSub ? (playerComingOn || null) : undefined,
+      oppositionPlayerId: oppSub ? (oppOff || null) : undefined,
+      oppositionSubInPlayerId: oppSub ? (oppOn || null) : undefined,
       scoringContext: selected.scoringContext,
     })
     onClose()
   }
 
-  const canSubmit = isSub ? !!playerId && !!playerComingOn : true
+  const canSubmit = oppSub ? !!oppOff && !!oppOn : isSub ? !!playerId && !!playerComingOn : true
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-fade-in">
@@ -173,7 +195,7 @@ export default function VideoManualEventModal({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white">Manual Event</h2>
-              <p className="text-white/40 text-xs">{currentHalf === 2 ? currentMinute + 30 : currentMinute}' (Half {currentHalf})</p>
+              <p className="text-white/40 text-xs">{currentHalf === 2 ? currentMinute + halfMins : currentMinute}' (Half {currentHalf})</p>
             </div>
           </div>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
@@ -182,7 +204,7 @@ export default function VideoManualEventModal({
         </div>
 
         <div className="space-y-5">
-          {!isSub && !kickout && (
+          {(!isSub || hasOppLineup) && !kickout && (
             <div>
               <label className="block text-white/80 text-sm font-semibold mb-2">Team</label>
               <div className="grid grid-cols-2 gap-3">
@@ -229,7 +251,18 @@ export default function VideoManualEventModal({
             </select>
           </div>
 
-          {isSub ? (
+          {oppSub ? (
+            <>
+              <div>
+                <label className="block text-white/80 text-sm font-semibold mb-2">{opponentName} — Coming Off</label>
+                <SearchablePlayerSelect value={oppOff} onChange={setOppOff} players={oppositionOnField} placeholder="Select player coming off..." />
+              </div>
+              <div>
+                <label className="block text-white/80 text-sm font-semibold mb-2">{opponentName} — Coming On</label>
+                <SearchablePlayerSelect value={oppOn} onChange={setOppOn} disabled={!oppOff} players={oppositionBench} placeholder="Select player coming on..." />
+              </div>
+            </>
+          ) : isSub ? (
             <>
               <div>
                 <label className="block text-white/80 text-sm font-semibold mb-2">Coming Off</label>

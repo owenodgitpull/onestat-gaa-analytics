@@ -182,6 +182,9 @@ export const offlineMatchEvents = {
     notes?: string
     opponent_player_name?: string
     sub_type?: string
+    /** Inter-county opposition substitution: who came OFF / ON (the lineup swaps server-side) */
+    opposition_player_id?: string
+    opposition_sub_in_player_id?: string
   }): Promise<MatchEvent> => {
     // end_x / end_y (long kick pass / high ball landing) ride along inside `rest`
     const { is_home_team, x_coord, y_coord, minute, opponent_player_name, sub_type, ...rest } = data

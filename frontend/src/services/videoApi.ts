@@ -136,6 +136,9 @@ export interface VideoEventCreateData {
   source?: string;
   /** Idempotency key — a retried / queued save returns the existing event instead of writing twice. */
   client_event_id?: string;
+  /** Inter-county: opposition-lineup player (SUB_ON: who came off) and, for SUB_ON, who came on */
+  opposition_player_id?: string;
+  opposition_sub_in_player_id?: string;
 }
 
 export interface VideoEventUpdateData {

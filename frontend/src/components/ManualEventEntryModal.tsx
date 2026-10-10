@@ -31,6 +31,9 @@ interface ManualEventEntryModalProps {
     team: PossessionTeam
     pitchX?: number
     pitchY?: number
+    /** Inter-county opposition substitution: lineup ids of who comes off / on */
+    oppositionOffId?: string | null
+    oppositionOnId?: string | null
   }) => void
   players: Player[]
   opponentName: string
@@ -38,6 +41,11 @@ interface ManualEventEntryModalProps {
   currentMinute?: number
   currentHalf?: 1 | 2
   defaultEventType?: EventType
+  /** Opposition lineup split for substitutions (inter-county; empty = free-text-free, old behaviour) */
+  oppositionOnField?: Array<{ id: string; name: string; jerseyNumber: number | null }>
+  oppositionBench?: Array<{ id: string; name: string; jerseyNumber: number | null }>
+  /** Minutes per half for this match (30 club / 35 inter-county) */
+  halfMins?: number
 }
 
 export default function ManualEventEntryModal({
@@ -50,11 +58,16 @@ export default function ManualEventEntryModal({
   currentMinute = 1,
   currentHalf = 1,
   defaultEventType,
+  oppositionOnField = [],
+  oppositionBench = [],
+  halfMins = 30,
 }: ManualEventEntryModalProps) {
   const clubName = useClubName()
   const [eventType, setEventType] = useState<EventType>(EventType.POINT)
   const [playerId, setPlayerId] = useState<string>('')
   const [playerComingOn, setPlayerComingOn] = useState<string>('')
+  const [oppOff, setOppOff] = useState<string>('')
+  const [oppOn, setOppOn] = useState<string>('')
   const [minute, setMinute] = useState<number>(currentMinute)
   const [half, setHalf] = useState<number>(currentHalf)
   const [team, setTeam] = useState<PossessionTeam>(PossessionTeam.OWN)
@@ -63,12 +76,12 @@ export default function ManualEventEntryModal({
   useEffect(() => {
     if (isOpen) {
       // Convert absolute minute to per-half minute for display
-      const perHalfMinute = currentHalf === 2 ? Math.max(1, currentMinute - 30) : Math.max(1, currentMinute)
+      const perHalfMinute = currentHalf === 2 ? Math.max(1, currentMinute - halfMins) : Math.max(1, currentMinute)
       setMinute(perHalfMinute)
       setHalf(currentHalf)
       if (defaultEventType) setEventType(defaultEventType)
     }
-  }, [isOpen, currentMinute, currentHalf, defaultEventType])
+  }, [isOpen, currentMinute, currentHalf, defaultEventType, halfMins])
 
   if (!isOpen) return null
 
@@ -86,13 +99,18 @@ export default function ManualEventEntryModal({
     return players.filter(p => p.active && onBenchIds.includes(p.id))
   }
 
+  // an opposition substitution picked from the opposition lineup (inter-county)
+  const oppSub = eventType === EventType.SUBSTITUTION && team === PossessionTeam.OPPONENT && oppositionOnField.length > 0
+
   const handleSubmit = () => {
     // Compute absolute minute: user enters per-half minute, backend expects absolute (0-60+)
-    const absoluteMinute = half === 2 ? minute + 30 : minute
+    const absoluteMinute = half === 2 ? minute + halfMins : minute
     onSubmit({
       eventType,
       playerId: playerId || null,
       playerComingOn: eventType === EventType.SUBSTITUTION ? (playerComingOn || null) : null,
+      oppositionOffId: oppSub ? (oppOff || null) : null,
+      oppositionOnId: oppSub ? (oppOn || null) : null,
       minute: absoluteMinute,
       half,
       team,
@@ -222,7 +240,18 @@ export default function ManualEventEntryModal({
           </div>
 
           {/* Player Selection (conditional) */}
-          {eventType === EventType.SUBSTITUTION && team === PossessionTeam.OWN ? (
+          {oppSub ? (
+            <>
+              <div>
+                <label className="block text-white/80 font-semibold mb-2">{opponentName} Player Coming Off (On Field)</label>
+                <SearchablePlayerSelect value={oppOff} onChange={setOppOff} players={oppositionOnField} />
+              </div>
+              <div>
+                <label className="block text-white/80 font-semibold mb-2">{opponentName} Player Coming On (Bench)</label>
+                <SearchablePlayerSelect value={oppOn} onChange={setOppOn} disabled={!oppOff} players={oppositionBench} />
+              </div>
+            </>
+          ) : eventType === EventType.SUBSTITUTION && team === PossessionTeam.OWN ? (
             <>
               {/* Player Coming Off */}
               <div>
@@ -283,13 +312,13 @@ export default function ManualEventEntryModal({
               <input
                 type="number"
                 min="1"
-                max="35"
+                max={halfMins + 10}
                 value={minute}
                 onChange={(e) => setMinute(parseInt(e.target.value) || 1)}
                 className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
               <p className="text-xs text-white/40 mt-1">
-                Match minute: {half === 2 ? minute + 30 : minute}'
+                Match minute: {half === 2 ? minute + halfMins : minute}'
               </p>
             </div>
             <div>

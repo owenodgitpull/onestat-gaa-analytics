@@ -13,7 +13,7 @@ Read first: `docs/handover-live-insights-and-rag.md`, `docs/handover-video-taggi
 
 ## Staged delivery — mostly gap-filling, in two stages
 **Stage A (small schema change: match clock seconds; otherwise uses what exists).** The brief already computes lost/won ball positions, kickouts, timed possession, carry chains and "their scores within 2 min of our turnovers/lost kickouts". Stage A generalises that into the seven phases:
-0. **Match clock seconds FIRST (cannot be backfilled for live matches):** add `match_clock_s` (client-captured game-clock seconds at the tap) to `match_events`, `possession_events`, `tactical_tags`, `ball_carrier_segments`; carry `VideoEvent.match_second` through the mirror into `match_events`; keep `minute`. Test on a real live match.
+0. **DONE (migration `b067`, 2026-10-10) — match clock seconds (could not be backfilled for live matches):** add `match_clock_s` (client-captured game-clock seconds at the tap) to `match_events`, `possession_events`, `tactical_tags`, `ball_carrier_segments`; carry `VideoEvent.match_second` through the mirror into `match_events`; keep `minute`. Already in the code: all four tables + writers (`match_event_service`, `possession_service`, `player_movement_service`, `video/live_sync.py`) + Live Recording and Video Tagging send `minute*60+seconds`. Older rows are NULL. Remaining: confirm on a real live match that seconds arrive (and that offline-queued events carry the tap-time clock, not sync time).
 1. `backend/app/services/ai/phase_facts.py`: pure functions over the visible events + possession + chains. Outcome-based and sequence-based: "the possession that began from this event ended in <shot/score/turnover/foul/restart>", ordered by event order, using `match_clock_s` for timings where present (matches without it fall back to event order). Facts per phase, both directions, last-5-min and match-to-date, each with n:
    own kick-out kept -> what followed; opposition kick-out won/retained -> what followed; turnover won -> shot/score for us; turnover lost (forced vs unforced) -> shot/score conceded; possession/attack chains -> shot / died where; contest (`_break`, breaking_ball, tackle) win %.
 2. Call it from `build_live_brief` as a `PHASES` block; add PHASE_FRAMEWORK text to `GAA_ESSENTIALS`; phase-first guidance in the live prompt (keep existing grounding rules and the headline/detail format). The prompt allows "within N seconds" claims only where the brief gives seconds.
@@ -36,11 +36,11 @@ Read first: `docs/handover-live-insights-and-rag.md`, `docs/handover-video-taggi
 
 ## 1. What the repo already gives us (and what is missing)
 
-a. **Time resolution (blocker).** Live `MatchEvent` has only integer `minute` plus `created_at` (write time; offline sync via `client_event_id` means it may be sync time, not tap time — CONFIRM). `VideoEvent` has `match_second` but the mirror into `match_events` loses it. `PossessionEvent` chains duration from `created_at`. So "10s/20s" rules, `get_turnover_to_shot_time` and `get_ball_recovery_time` (which reports minutes) are coarse or noisy. **Fix (Stage A step 0): add `match_clock_s` (game-clock seconds, client-captured at tap) to `match_events`, `possession_events`, `tactical_tags`, `ball_carrier_segments`; carry `match_second` through the video mirror.** Matches without it: order by `(half, minute, created_at)` and treat sub-minute timing as approximate.
+a. **Time resolution (blocker).** Live `MatchEvent` has only integer `minute` plus `created_at` (write time; offline sync via `client_event_id` means it may be sync time, not tap time — CONFIRM). `VideoEvent` has `match_second` but the mirror into `match_events` loses it. `PossessionEvent` chains duration from `created_at`. So "10s/20s" rules, `get_turnover_to_shot_time` and `get_ball_recovery_time` (which reports minutes) are coarse or noisy. **Fix (Stage A step 0 — implemented in `b067`): add `match_clock_s` (game-clock seconds, client-captured at tap) to `match_events`, `possession_events`, `tactical_tags`, `ball_carrier_segments`; carry `match_second` through the video mirror.** Matches without it: order by `(half, minute, created_at)` and treat sub-minute timing as approximate.
 
 b. **Kickouts are already fully tagged**: `own_kickout_{won,opposition_won}{,_break}`, `opp_kickout_{won,opposition_won}{,_break}`, sideline variants, `kickout_target_player_id`. Own KO and Opposition KO phases need no new tagging. Trigger (score conceded / wide / other) is derivable from the preceding event; short vs long from start->end coords; contested = `_break`.
 
-c. **Possession spine exists**: `PossessionEvent` (team own/opponent/**contested** + duration + position) is the possession-owner stream, and `contested` is literally the Contest phase. `BallCarrierSegment` (team, player, path, `ended_by`) + `PossessionChain` give chains. **The opposition ball-carrier change (being added the night of 2026-10-09 — verify it shipped)** makes chains two-sided — good; make sure opposition segments set `team='opponent'`, keep jersey/name optional, and use the same `ended_by` vocabulary.
+c. **Possession spine exists**: `PossessionEvent` (team own/opponent/**contested** + duration + position) is the possession-owner stream, and `contested` is literally the Contest phase. `BallCarrierSegment` (team, player, path, `ended_by`) + `PossessionChain` give chains. **The opposition ball-carrier foundations have shipped (commit `0624f68`: opposition carriers + event FK, plus opposition lineup)** and make chains two-sided — good; make sure opposition segments set `team='opponent'`, keep jersey/name optional, and use the same `ended_by` vocabulary.
 
 d. **Gap in chain derivation.** `_build_chain` sets `end_event` and `outcome` (only score/wide/turnover, else None -> "unknown") but never sets `start_event`, `start_zone`, `end_zone`. **Chain ORIGIN is the single most valuable missing field** ("what happened immediately before"). Populate `start_event` / new `origin_type` by joining each chain to the nearest preceding `match_events` row (kickout won/retained, turnover_won, tackle_won, interception, breaking_ball_won, block, free_won, sideline, forty_five...). Fix `outcome` so frees/kickouts/fouls/end-of-half are explicit values, not None.
 
@@ -115,8 +115,8 @@ Run modes: (1) incremental on every new event (live), (2) full recompute for a m
 ## 4. Tagging / capture changes (priority order; P0-1 is Stage A step 0, the rest is Stage B)
 
 P0
-1. `match_clock_s` on events, possession samples, tags, carrier segments (see 1a). Carry video `match_second` through the mirror.
-2. Opposition ball carrier (in progress 2026-10-09): `team='opponent'`, optional jersey/name, same `ended_by` vocabulary.
+1. `match_clock_s` — DONE (`b067`).
+2. Opposition ball carrier (foundations shipped, commit `0624f68` — verify end-to-end): `team='opponent'`, optional jersey/name, same `ended_by` vocabulary.
 3. Chain origin/outcome population (1d).
 P1
 4. Press windows and defensive-system windows as structured start/stop records with type (1e). UI: reuse the Press Trigger toggle; add a type chip (high / mid / low block) and a "defence set" tap.
@@ -206,7 +206,7 @@ Framework + routing: phase questions go to the phase tools, never compute conver
 ## 8. Build order and acceptance
 
 Stage A
-1. `match_clock_s` (events, possession, tags, carrier segments, video mirror) + `half` on `possession_events` + 30-minute-half fix.
+1. (`match_clock_s` done in `b067`.) Remaining: `half` on `possession_events` + 30-minute-half fix.
 2. `phase_facts.py` + unit tests (outcome-based, both directions, n on every figure).
 3. `PHASES` block in `build_live_brief`; PHASE_FRAMEWORK in `GAA_ESSENTIALS`; phase-first live prompt. Deploy, replay, compare with v10 (phase-specific insights up, unsupported claims not up).
 4. Phase tools + post-match Phase Analysis section; chat routing.

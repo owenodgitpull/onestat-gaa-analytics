@@ -7,7 +7,7 @@ import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
 import { BroughtForwardOptIn, HighBallChips, type BroughtForwardReason } from '@/components/video/VideoPitchPrompts'
 import { ownAttacksRight } from '@/utils/attackDirection'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
-import { useOppositionSquad } from '@/hooks/useOppositionSquad'
+import { useOppositionSquad, swapOppositionLineup, oppositionPickerOptions } from '@/hooks/useOppositionSquad'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
 import PossessionSelectionModal from '@/components/PossessionSelectionModal'
@@ -3044,6 +3044,8 @@ export default function MatchRecording() {
     team: PossessionTeam
     pitchX?: number
     pitchY?: number
+    oppositionOffId?: string | null
+    oppositionOnId?: string | null
   }) => {
     if (!matchId) return
 
@@ -3070,6 +3072,28 @@ export default function MatchRecording() {
           playerId: data.playerId || undefined,
         })
         setAwaitingKickout(false)
+        return
+      }
+
+      // Opposition substitution (inter-county): the event carries who came off / on; the server swaps their lineup
+      // slots when it is written (so it also works offline). The circles update instantly from the local swap.
+      if (data.eventType === EventType.SUBSTITUTION && data.team === PossessionTeam.OPPONENT && data.oppositionOffId && data.oppositionOnId) {
+        const off = oppSquad.players.find(p => p.playerId === data.oppositionOffId)
+        const on = oppSquad.players.find(p => p.playerId === data.oppositionOnId)
+        await recordEvent.mutateAsync({
+          match_id: matchId,
+          event_type: data.eventType,
+          minute: data.minute,
+          half: data.half,
+          x_coord: data.pitchX || ballPosition.x,
+          y_coord: data.pitchY || ballPosition.y,
+          is_home_team: false,
+          opposition_player_id: data.oppositionOffId,
+          opposition_sub_in_player_id: data.oppositionOnId,
+          notes: `${off?.playerName || 'Player'} off, ${on?.playerName || 'Player'} on`,
+        })
+        queryClient.setQueryData(matchKeys.detail(matchId), (old: any) =>
+          old ? { ...old, opposition_lineup: swapOppositionLineup(old.opposition_lineup, data.oppositionOffId!, data.oppositionOnId!) } : old)
         return
       }
 
@@ -5765,6 +5789,9 @@ export default function MatchRecording() {
         currentMinute={minute}
         currentHalf={currentHalf}
         defaultEventType={manualEntryDefaultType}
+        oppositionOnField={oppositionPickerOptions(oppSquad).onField}
+        oppositionBench={oppositionPickerOptions(oppSquad).bench}
+        halfMins={matchHalfMins}
       />
 
       {/* Substitution Modal */}

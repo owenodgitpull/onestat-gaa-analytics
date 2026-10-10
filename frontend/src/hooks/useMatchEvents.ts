@@ -114,6 +114,8 @@ export function useRecordEvent() {
       notes?: string;
       opponent_player_name?: string;
       sub_type?: string;
+      opposition_player_id?: string;
+      opposition_sub_in_player_id?: string;
     }) => offlineMatchEvents.create(data),
     onSuccess: (result, variables) => {
       // Optimistically add the event to the cache (no refetch needed)

@@ -22,6 +22,30 @@ export interface OppositionSquad {
   secondary: string
 }
 
+type LineupRow = NonNullable<Match['opposition_lineup']>[number]
+
+export interface PickerOption { id: string; name: string; jerseyNumber: number | null }
+
+/** Optimistic lineup after an opposition substitution: the player coming on takes the outgoing player's slot (mirrors
+ *  the server swap in opposition_service, so the circles update instantly and the next refetch agrees). */
+export function swapOppositionLineup(rows: LineupRow[] | null | undefined, offId: string, onId: string) {
+  if (!rows) return rows
+  const off = rows.find(r => r.opposition_player_id === offId)
+  const on = rows.find(r => r.opposition_player_id === onId)
+  if (!off || !on) return rows
+  const place = (r: LineupRow, position_id: string): LineupRow => {
+    const bench = position_id.startsWith('sub')
+    return { ...r, position_id, is_substitute: bench, is_on_field: !bench }
+  }
+  return rows.map(r => (r === off ? place(r, on.position_id) : r === on ? place(r, off.position_id) : r))
+}
+
+/** The substitution pickers' options: who is on the pitch (can come off) and who is on the bench (can come on). */
+export function oppositionPickerOptions(squad: OppositionSquad): { onField: PickerOption[]; bench: PickerOption[] } {
+  const opt = (p: JerseyPlayer): PickerOption => ({ id: p.playerId, name: p.playerName, jerseyNumber: p.jerseyNumber })
+  return { onField: squad.players.filter(p => p.isOnField).map(opt), bench: squad.players.filter(p => !p.isOnField).map(opt) }
+}
+
 const NONE: OppositionSquad = { enabled: false, players: [], primary: OPPOSITION_DEFAULT_PRIMARY, secondary: OPPOSITION_DEFAULT_SECONDARY }
 
 export function useOppositionSquad(match: Match | null | undefined, club: Club | null | undefined): OppositionSquad {

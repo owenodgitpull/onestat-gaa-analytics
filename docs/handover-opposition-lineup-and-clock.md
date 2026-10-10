@@ -30,11 +30,28 @@ the frontend reads `club.features.opposition_lineup`; clubs see no change). "Don
   NB: older matches had a few of OUR players stored on `opponent`-team segments; they no longer count in "our" carry stats
   (e.g. 138 → 129 carries on one match).
 
-## Not done yet
-- Opposition substitutions (Us/Them toggle in the substitution modal; lineup `is_on_field` + clock).
-- Prefill "who scored / lost it" from the active opposition carrier (and write `opposition_player_id` on the event).
-- "THEIR score" tint on the scoring buttons when they have the ball; opposition carrier name in the Video status label.
-- Season agent: scout report per opposition team across fixtures (`opposition_teams`/`opposition_players` are ready for it).
+## Opposition substitutions — shipped 2026-10-10 (later the same day)
+Us/Them toggle in the manual-event / substitution modals (Live Recording + Video Tagging; the team toggle was previously hidden for
+subs). Picking Them shows their on-field players (to come off) and bench (to come on) from the lineup. The event carries
+`opposition_player_id` (off) and `opposition_sub_in_player_id` (on) (b070); the SERVER swaps the two lineup slots when the event is
+written (`opposition_service.apply_substitution_event`, called from `MatchEventService.create_event` and the video `live_sync`
+mirror), and swaps back when the event is deleted or undone — so it also works offline and with Undo to Point. The incoming player takes
+the outgoing player's slot, so their circle appears where he left. The client applies the same swap to the cached match immediately.
+Also fixed in the two modals: half length was hard-coded to 30 (`+ 30`); it now uses the match's half length.
+
+## Not done yet (agreed to-do)
+- **Prefill "who scored / who lost it" from the opposition carrier.** Today the opposition scorer prompt (`OppositionScorerStrip`) asks
+  for a surname after each of their scores/forced turnovers. With their circles, if their carrier is already selected (#12 has the
+  ball) the answer is known: attribute it automatically (one-tap confirm / change chip instead of a pop-up), write
+  `opposition_player_id` on the event (the column exists) so scorers are real player ids, not free text. Saves a tap at the busiest
+  moment. Keep the footedness step.
+- **Season-agent scout report per opposition team.** `opposition_teams` / `opposition_players` persist across fixtures, so the season
+  agent can answer "what do Tyrone do?": every fixture against them, their scores by zone/type, kickout and ball-movement profile
+  (`opposition_ball_path`, `opposition` carry section), their threats (top scorers/links by player), and how the last meeting went
+  against our approach — as a tool (`get_opposition_scout_report`) the season agent / pre-match brief calls. Needs the scorer prefill
+  above (player ids on events) to be sharp.
+- Their-score tint on the scoring buttons: judged NOT needed (the possession indicator already shows who has the ball and the user
+  asked for no UX change beyond opposition circles). Revisit only if mis-taps show up in testing.
 - The seven phases (Stage A: `phase_facts.py`, PHASES block in `live_brief.py`, tools, prompts) — plan in
   `docs/agent-plan-inputs/05-phase-plan-amended.md`; the clock seconds it needs are now being captured.
 - Replay the live insights (`backend/scripts/run_replay.py --label v11-opposition-movement`) and compare with v10.

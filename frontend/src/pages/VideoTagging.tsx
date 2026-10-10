@@ -69,7 +69,7 @@ import { FORMATION_XY } from '@/utils/likelyReceivers'
 import { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
-import { useOppositionSquad } from '../hooks/useOppositionSquad'
+import { useOppositionSquad, swapOppositionLineup, oppositionPickerOptions } from '../hooks/useOppositionSquad'
 import BallQuickActionIcon from '../components/video/BallQuickActionIcon'
 import GAAPitch from '../components/GAAPitch'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
@@ -2347,6 +2347,8 @@ export default function VideoTagging() {
     team: 'team_a' | 'team_b'
     playerId: string | null
     subInPlayerId?: string | null
+    oppositionPlayerId?: string | null
+    oppositionSubInPlayerId?: string | null
     scoringContext?: Record<string, unknown>
   }) => {
     if (!sessionId) return
@@ -2360,6 +2362,8 @@ export default function VideoTagging() {
       video_timestamp_ms: currentTimeMs,
       player_id: payload.playerId ?? undefined,
       sub_in_player_id: payload.subInPlayerId ?? undefined,
+      opposition_player_id: payload.oppositionPlayerId ?? undefined,
+      opposition_sub_in_player_id: payload.oppositionSubInPlayerId ?? undefined,
       scoring_context: payload.scoringContext as any,
       source: 'human_tag',
     }
@@ -2382,6 +2386,15 @@ export default function VideoTagging() {
     })
     onCarrierTerminalEvent(payload.eventType)
     setAiDismissed(true)
+
+    // Opposition substitution (inter-county): the server swaps their lineup slots when the event is written; the
+    // circles update instantly from the same swap applied to the cached match.
+    if (payload.eventType === 'SUB_ON' && payload.team === 'team_b' && payload.oppositionPlayerId && payload.oppositionSubInPlayerId) {
+      const offId = payload.oppositionPlayerId
+      const onId = payload.oppositionSubInPlayerId
+      queryClient.setQueryData(['match', session?.match_id], (old: any) =>
+        old ? { ...old, opposition_lineup: swapOppositionLineup(old.opposition_lineup, offId, onId) } : old)
+    }
 
     if (payload.eventType === 'SUB_ON' && payload.playerId && payload.subInPlayerId) {
       const offId = payload.playerId
@@ -4512,6 +4525,9 @@ export default function VideoTagging() {
           clubName={clubName}
           currentMinute={calcMatchTime(currentTimeMs).minute}
           currentHalf={calcMatchTime(currentTimeMs).half as 1 | 2}
+          oppositionOnField={oppositionPickerOptions(oppSquad).onField}
+          oppositionBench={oppositionPickerOptions(oppSquad).bench}
+          halfMins={matchHalfMins}
         />
       )}
       {assistPromptEventId && matchLineup && matchLineup.length > 0 && (
