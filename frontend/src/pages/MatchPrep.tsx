@@ -21,6 +21,7 @@ import { api } from '@/services/api'
 import type { PlayerWorkload, SetPieceRoutine, ManMarkingAssignment, SleepFlag } from '@/services/api'
 import type { Match, Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
+import OppositionLineupEditor from '@/components/OppositionLineupEditor'
 import { useAuth } from '@/contexts/AuthContext'
 import OppositionBriefing from '@/components/OppositionBriefing'
 import ManMarkingPanel from '@/components/ManMarkingPanel'
@@ -1155,6 +1156,9 @@ export default function MatchPrep() {
         </button>
         {expandedSections.opposition && (
           <div className="px-4 pb-4 space-y-3">
+            {club?.features?.opposition_lineup && matchId ? (
+              <OppositionLineupEditor matchId={matchId} opponent={match?.opponent || "the opposition"} />
+            ) : (<>
             <p className="text-xs text-white/40">
               Only opposition <strong className="text-white/60">scores</strong> are tracked during match recording. Enter key players likely to score — you can quickly attribute their goals and points during the match.
             </p>
@@ -1195,6 +1199,7 @@ export default function MatchPrep() {
                 {rosterSaving ? 'Saving...' : rosterSaved ? 'Saved' : 'Save Roster'}
               </button>
             </div>
+            </>)}
           </div>
         )}
       </div>

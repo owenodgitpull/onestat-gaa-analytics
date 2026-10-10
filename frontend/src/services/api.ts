@@ -3157,6 +3157,27 @@ export interface SetPieceRoutine {
   updated_at: string;
 }
 
+/** One opposition player in a match lineup (starter by position slot, or bench 'sub-N'). */
+export interface OppositionLineupEntry {
+  position_id: string;
+  jersey_number: number | null;
+  surname: string;
+}
+
+export interface OppositionLineupRow extends OppositionLineupEntry {
+  opposition_player_id: string;
+  is_substitute: boolean;
+  is_on_field: boolean;
+}
+
+export interface OppositionLineupResponse {
+  team_id: string;
+  team_name: string;
+  lineup: OppositionLineupRow[];
+  /** true = the rows are last time's lineup vs this team, not yet saved for this match */
+  prefill: boolean;
+}
+
 export interface ManMarkingAssignment {
   id: string;
   match_id: string;
@@ -3229,6 +3250,16 @@ const matchPrepAPI = {
     fetchAPI(`/match-prep/matches/${matchId}/opposition-roster`, {
       method: 'PUT',
       body: JSON.stringify({ players }),
+    }),
+
+  // Opposition lineup (inter-county only): starters by position slot + bench, with last-time prefill
+  getOppositionLineup: (matchId: string): Promise<OppositionLineupResponse> =>
+    fetchAPI(`/match-prep/matches/${matchId}/opposition-lineup`),
+
+  saveOppositionLineup: (matchId: string, lineup: OppositionLineupEntry[]): Promise<OppositionLineupResponse> =>
+    fetchAPI(`/match-prep/matches/${matchId}/opposition-lineup`, {
+      method: 'PUT',
+      body: JSON.stringify({ lineup }),
     }),
 
   // Sleep flags for lineup page

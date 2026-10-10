@@ -33,6 +33,10 @@ export interface Club {
   is_active: boolean;
   onboarding_completed: boolean;
   default_half_duration?: number;
+  /** 'club' | 'inter_county' */
+  team_level?: string;
+  /** Feature flags derived from team_level (e.g. opposition_lineup) */
+  features?: Record<string, boolean>;
   created_at: string;
 }
 

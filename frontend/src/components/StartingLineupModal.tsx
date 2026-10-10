@@ -4,7 +4,7 @@ import { Player } from '@/types'
 import { useClub } from '@/contexts/ClubContext'
 import { api } from '@/services/api'
 
-interface LineupPosition {
+export interface LineupPosition {
   id: string
   x: number // Percentage (0-100)
   y: number // Percentage (0-100)
@@ -21,7 +21,7 @@ function displaySurname(name: string) {
   return isCaptain ? `${surname} ©` : surname
 }
 
-const FORMATION_POSITIONS: LineupPosition[] = [
+export const FORMATION_POSITIONS: LineupPosition[] = [
   // Goalkeeper
   { id: 'gk', x: 7, y: 50, label: 'GK' },
   // Full backs (3) - Corner Backs on wings, Full Back in center
@@ -46,7 +46,7 @@ const FORMATION_POSITIONS: LineupPosition[] = [
 ]
 
 // Default GAA jersey numbers by position (standard Irish football numbering)
-const POSITION_DEFAULT_JERSEY: Record<string, number> = {
+export const POSITION_DEFAULT_JERSEY: Record<string, number> = {
   'gk':        1,
   'fb-left':   4,  // Left Corner Back
   'fb-center': 3,  // Full Back
@@ -65,7 +65,7 @@ const POSITION_DEFAULT_JERSEY: Record<string, number> = {
 }
 
 // Substitute positions (shown below the pitch)
-const SUBSTITUTE_POSITIONS: LineupPosition[] = [
+export const SUBSTITUTE_POSITIONS: LineupPosition[] = [
   { id: 'sub-1', x: 0, y: 0, label: 'SUB' },
   { id: 'sub-2', x: 0, y: 0, label: 'SUB' },
   { id: 'sub-3', x: 0, y: 0, label: 'SUB' },
