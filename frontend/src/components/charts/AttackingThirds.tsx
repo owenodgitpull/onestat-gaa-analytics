@@ -138,7 +138,7 @@ export default function AttackingThirds({ data, matchesInView = 0 }: AttackingTh
       <ExcludedMatchesNote excludedCount={data.excluded_match_count ?? 0} totalInView={matchesInView} />
 
       <div className="relative rounded-lg overflow-hidden">
-        <svg viewBox="0 0 2332 1446" className="w-full h-auto" style={{ maxHeight: 300 }}>
+        <svg viewBox="60 60 2212 1293" className="w-full h-auto">
           <image href="/pitch-svg.svg" width="2332" height="1446" />
 
           {/* Dim everything outside the attacking third so the eye goes straight to the channels */}

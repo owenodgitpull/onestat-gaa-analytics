@@ -97,6 +97,8 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, hal
   }, [events, halfFilter, halfDurationMins])
 
   const allKickouts = useMemo(() => parseKickoutEvents(visibleEvents), [visibleEvents])
+  const hasAnyKickouts = useMemo(() => halfFilter === 'all' ? allKickouts.length > 0 : parseKickoutEvents(events).length > 0,
+    [events, halfFilter, allKickouts])
   const filtered = useMemo(() => allKickouts.filter(k => mode === 'own' ? k.isOwn : !k.isOwn), [allKickouts, mode])
 
   const zoneStats = useMemo(() => {
@@ -145,7 +147,7 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, hal
   const totalKickoutsWon = filtered.filter(k => k.won).length
   const retentionPct = totalKickouts > 0 ? Math.round(totalKickoutsWon / totalKickouts * 100) : 0
 
-  if (allKickouts.length === 0) {
+  if (!hasAnyKickouts) {
     return (
       <div className="glass-card p-6 h-full flex items-center justify-center text-white/40 text-sm">
         No kickout data with pitch coordinates
@@ -189,6 +191,9 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, hal
         </div>
       </div>
 
+      {allKickouts.length === 0 && (
+        <p className="text-xs text-amber-300/80 mb-2">No kickouts recorded in this half yet — pick another half above.</p>
+      )}
       <p className="text-[11px] text-white/40 mb-2">
         Shown from {mode === 'own' ? teamName : opponentName}'s own goal (left) — every kickout is placed relative to the side kicking it, in both halves.
         {directionUnknown(attackingRightFirstHalf) && (

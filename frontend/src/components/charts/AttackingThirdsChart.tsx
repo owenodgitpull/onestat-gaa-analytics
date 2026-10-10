@@ -258,7 +258,7 @@ export default function AttackingThirdsChart({
       ) : (
         <>
           <div className="relative rounded-lg overflow-hidden">
-            <svg viewBox="0 0 2332 1446" className="w-full h-auto" style={{ maxHeight: 300 }}>
+            <svg viewBox="60 60 2212 1293" className="w-full h-auto">
               <image href="/pitch-svg.svg" width="2332" height="1446" />
               <rect x={PITCH.left} y={PITCH.top} width={thirdWidth * 2} height={PITCH.playH} fill="#000000" fillOpacity={0.45} />
 

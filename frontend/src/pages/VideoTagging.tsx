@@ -1772,7 +1772,16 @@ export default function VideoTagging() {
     // Opposition scorer prompt — the opponent roster generally isn't in the
     // system, so unlike our own scores this only captures a free-text name
     // (mirrors live recording's OppositionScorerStrip + opposition_roster).
-    if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type)) {
+    if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type) && oppSquad.enabled) {
+      // Inter-county: no "who scored?" pop-up — their scorer is the opposition carrier, derived exactly like ours.
+      const carrierId = activeOppCarrierIdRef.current
+      const c = carrierId ? oppSquad.players.find(p => p.playerId === carrierId) : null
+      if (c) {
+        data.opposition_player_id = c.playerId
+        data.opponent_player_name = c.playerName
+      }
+      createEvent.mutate({ sessionId, data })
+    } else if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type)) {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
           if (created?.id) setPendingOppScorer({ eventId: created.id, mode: 'score', scoringContext: created.scoring_context || {} })

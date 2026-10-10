@@ -678,6 +678,13 @@ export default function MatchRecording() {
     })
   }
 
+  // Inter-county: their scorer / shooter is whoever is carrying for them — derived from the carrier exactly like ours,
+  // so there is no "who scored?" pop-up. null when nobody is selected (the event is then recorded unattributed).
+  const activeOppCarrier = () => {
+    const p = activeOppCarrierId ? oppSquad.players.find(x => x.playerId === activeOppCarrierId) : null
+    return p ? { id: p.playerId, name: p.playerName } : null
+  }
+
   // The squad whose circles are on the pitch right now
   const squad = oppActive
     ? {
@@ -3360,7 +3367,10 @@ export default function MatchRecording() {
       } else {
         // Opponent taking the free — if it's a score and we have their roster, let user pick scorer
         const oppScoringFrees = [EventType.POINT_FREE, EventType.TWO_POINT_FREE]
-        if (oppScoringFrees.includes(eventType as EventType) && oppositionRoster.length > 0) {
+        if (oppScoringFrees.includes(eventType as EventType) && oppSquad.enabled) {
+          const c = activeOppCarrier()   // inter-county: no pop-up, the carrier is the scorer
+          recordFreeKickResult(eventType, actionPosition, false, undefined, c?.name, undefined, c?.id)
+        } else if (oppScoringFrees.includes(eventType as EventType) && oppositionRoster.length > 0) {
           setPendingOpponentScore({ eventType: eventType as EventType, position: actionPosition, isFreeKick: true })
         } else {
           recordFreeKickResult(eventType, actionPosition, false)
@@ -3376,12 +3386,13 @@ export default function MatchRecording() {
       // handleBallMove resolves that tap and does the actual recording.
       setBallPosition(prev => ({ ...prev, x: compute45LineX(isHomeTeam) }))
       setPendingFortyFivePosition({ eventType: eventType as EventType, isHomeTeam })
-    } else if (isOpponentActualScore && oppositionRoster.length > 0) {
+    } else if (isOpponentActualScore && oppositionRoster.length > 0 && !oppSquad.enabled) {
       // Opponent scored and we have a roster — show opposition scorer strip
       setPendingOpponentScore({ eventType, position: actionPosition })
     } else if (noPlayerNeeded.includes(eventType as EventType) || isOpponentScoring || isOpponentDefence) {
-      // Record immediately without player selection
-      recordEventWithoutPlayer(eventType, isHomeTeam, actionPosition)
+      // Record immediately without player selection. Inter-county: their shooter/scorer is the opposition carrier.
+      const c = isOpponentScoring && oppSquad.enabled ? activeOppCarrier() : null
+      recordEventWithoutPlayer(eventType, isHomeTeam, actionPosition, c?.name, undefined, c?.id)
     } else {
       // Open player selection modal for own team players
       // This includes ALL "We Won" events and own team scoring
@@ -3395,7 +3406,7 @@ export default function MatchRecording() {
   }
 
   // Record free kick result - works for both own team and opponent frees
-  const recordFreeKickResult = async (eventType: EventType, position: BallPosition, isTeamTakingFree: boolean, player?: Player, scorerName?: string, scorerFoot?: 'L' | 'R') => {
+  const recordFreeKickResult = async (eventType: EventType, position: BallPosition, isTeamTakingFree: boolean, player?: Player, scorerName?: string, scorerFoot?: 'L' | 'R', oppositionPlayerId?: string) => {
     if (!matchId) return
 
     try {
@@ -3418,7 +3429,9 @@ export default function MatchRecording() {
         x_coord: position.x,
         y_coord: position.y,
         is_home_team: isTeamTakingFree, // true if own team takes the free, false if opponent takes
-        notes: scorerName ? `Scored by ${scorerName}` : undefined
+        notes: scorerName ? `Scored by ${scorerName}` : undefined,
+        opponent_player_name: oppositionPlayerId ? scorerName : undefined,
+        opposition_player_id: oppositionPlayerId,
       })
 
       if (scorerFoot && result?.id) {
@@ -3467,7 +3480,7 @@ export default function MatchRecording() {
     }
   }
 
-  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean, position: BallPosition = ballPosition, opponentPlayerName?: string, opponentFoot?: 'L' | 'R') => {
+  const recordEventWithoutPlayer = async (eventType: EventType, isHomeTeam: boolean, position: BallPosition = ballPosition, opponentPlayerName?: string, opponentFoot?: 'L' | 'R', oppositionPlayerId?: string) => {
     if (!matchId) return
 
     // Check if this is a kickout event - these need position selection first
@@ -3513,6 +3526,7 @@ export default function MatchRecording() {
         is_home_team: isHomeTeam,
         notes: undefined,
         opponent_player_name: opponentPlayerName,
+        opposition_player_id: oppositionPlayerId,
       })
 
       // Footedness isn't in useRecordEvent's create-time payload (matches
