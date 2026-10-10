@@ -188,6 +188,8 @@ class Match(Base):
 
     # Opposition roster (list of player names for opponent scoring attribution)
     opposition_roster = Column(JSON, nullable=True)
+    # Inter-county only: the scouted opposition team this fixture is against (private to the club)
+    opposition_team_id = Column(UUID(as_uuid=True), ForeignKey("opposition_teams.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # AI-fetched opponent form (from web search + Haiku parse). Stored as
     # {"results": [...], "fetched_at": "ISO", "dismissed": bool}

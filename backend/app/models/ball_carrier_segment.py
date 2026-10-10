@@ -8,7 +8,7 @@ Each segment represents one player's possession of the ball.
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, DateTime, Float, ForeignKey, Integer, BigInteger
+from sqlalchemy import Column, String, DateTime, Float, ForeignKey, Integer, BigInteger, CheckConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSON
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -16,10 +16,15 @@ from app.database import Base
 
 class BallCarrierSegment(Base):
     __tablename__ = "ball_carrier_segments"
+    __table_args__ = (
+        CheckConstraint("(player_id IS NOT NULL) <> (opposition_player_id IS NOT NULL)", name="ck_carrier_one_player"),
+    )
 
     id: Column[uuid.UUID] = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     match_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("matches.id", ondelete="CASCADE"), nullable=False, index=True)
-    player_id: Column[uuid.UUID] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Exactly one of player_id (ours) / opposition_player_id (theirs) is set — enforced by ck_carrier_one_player
+    player_id: Column[Optional[uuid.UUID]] = Column(UUID(as_uuid=True), ForeignKey("players.id", ondelete="CASCADE"), nullable=True, index=True)
+    opposition_player_id = Column(UUID(as_uuid=True), ForeignKey("opposition_players.id", ondelete="CASCADE"), nullable=True, index=True)
 
     # Jersey number snapshot (historical accuracy — player may change numbers)
     jersey_number: Column[Optional[int]] = Column(Integer, nullable=True)

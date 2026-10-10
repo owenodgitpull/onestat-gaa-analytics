@@ -203,6 +203,9 @@ async def get_match(
     response.has_gps = match.id in flags["gps"]
     response.has_video = match.id in flags["video"]
     response.has_events = match.id in flags["events"]
+    if match.opposition_team_id:  # only ever set for inter-county clubs, so clubs pay nothing extra
+        from app.services.opposition_service import lineup_for_match
+        response.opposition_lineup = await lineup_for_match(db, match.id)
 
     return response
 

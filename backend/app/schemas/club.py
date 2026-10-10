@@ -48,6 +48,8 @@ class ClubResponse(BaseModel):
     is_active: bool
     onboarding_completed: bool
     default_half_duration: int = 30
+    team_level: str = "club"
+    features: dict = {}
     created_at: datetime
 
     class Config:

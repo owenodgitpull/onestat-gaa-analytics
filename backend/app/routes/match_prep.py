@@ -26,6 +26,7 @@ from app.models.match import Match
 from app.models.player import Player
 from app.models.set_piece_routine import SetPieceRoutine
 from app.models.man_marking_assignment import ManMarkingAssignment
+from app.utils.names import surname_only
 from app.schemas.set_piece_routine import (
     SetPieceRoutineCreate, SetPieceRoutineUpdate, SetPieceRoutineResponse, VALID_CATEGORIES,
 )
@@ -523,31 +524,6 @@ async def get_opposition_roster(
     return {"players": match.opposition_roster or []}
 
 
-_NAME_SUFFIXES = {"jr", "sr", "jnr", "snr", "ii", "iii", "iv", "v"}
-
-
-def _last_name_only(name: str) -> str:
-    """Data-minimization pass for opposition player names — these are
-    people who have never used OneStat and never consented to anything, so
-    we only ever keep the minimum needed for pitchside scorer/turnover
-    tagging (surname only, not a full name). Enforced here server-side
-    (not just a frontend hint) so it holds regardless of what any client
-    sends. Last whitespace-separated token — "Conor Cox" -> "Cox"; already
-    single-word names pass through unchanged.
-
-    Generational suffixes (Jr/Sr/II/...) are kept attached to the surname
-    rather than treated as the surname themselves — "C O'Donnell Jr" ->
-    "O'Donnell Jr", not "Jr". Without this, a Jr/Sr pair (the exact case
-    someone would type a suffix to disambiguate) would each lose their
-    actual surname and collide down to just the suffix."""
-    parts = name.strip().split()
-    if not parts:
-        return name.strip()
-    if len(parts) >= 2 and parts[-1].lower().rstrip(".") in _NAME_SUFFIXES:
-        return f"{parts[-2]} {parts[-1]}"
-    return parts[-1]
-
-
 @router.put("/matches/{match_id}/opposition-roster")
 async def save_opposition_roster(
     match_id: UUID,
@@ -556,7 +532,7 @@ async def save_opposition_roster(
     db: AsyncSession = Depends(get_db),
 ):
     """Save opposition roster (list of player surnames only — see
-    _last_name_only)."""
+    surname_only)."""
     from app.models.match import Match
     result = await db.execute(select(Match).where(Match.id == match_id, Match.club_id == user.club_id))
     match = result.scalar_one_or_none()
@@ -569,7 +545,7 @@ async def save_opposition_roster(
 
     # Clean: strip whitespace, remove empty strings, reduce to surname only
     match.opposition_roster = [
-        _last_name_only(p) for p in players if isinstance(p, str) and p.strip()
+        surname_only(p) for p in players if isinstance(p, str) and p.strip()
     ]
     await db.commit()
 
@@ -639,3 +615,46 @@ async def get_sleep_flags(
             })
 
     return {"flags": flags}
+
+
+# ── Opposition lineup (inter-county only) ─────────────────────────────────
+
+async def _lineup_match(db: AsyncSession, match_id: UUID, club_id: UUID) -> Match:
+    """The club's own match, only if its team level has the opposition-lineup feature."""
+    from app.services.opposition_service import club_has_opposition_lineup
+    match = (await db.execute(select(Match).where(Match.id == match_id, Match.club_id == club_id))).scalar_one_or_none()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    if not await club_has_opposition_lineup(db, club_id):
+        raise HTTPException(status_code=403, detail="Opposition lineup is an inter-county feature")
+    return match
+
+
+@router.get("/matches/{match_id}/opposition-lineup")
+async def get_opposition_lineup(
+    match_id: UUID,
+    user: AuthenticatedUser = Depends(require_admin_or_viewer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Saved lineup, or the previous lineup vs this team as an unsaved prefill (`prefill: true`)."""
+    from app.services.opposition_service import get_lineup
+    match = await _lineup_match(db, match_id, user.club_id)
+    result = await get_lineup(db, match)
+    await db.commit()  # resolve_team may have created the team row
+    return result
+
+
+@router.put("/matches/{match_id}/opposition-lineup")
+async def save_opposition_lineup(
+    match_id: UUID,
+    body: dict,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace the lineup. Body: {lineup: [{position_id, jersey_number, surname}]}."""
+    from app.services.opposition_service import save_lineup
+    match = await _lineup_match(db, match_id, user.club_id)
+    entries = body.get("lineup", [])
+    if not isinstance(entries, list):
+        raise HTTPException(status_code=400, detail="lineup must be a list")
+    return await save_lineup(db, match, [e for e in entries if isinstance(e, dict)])

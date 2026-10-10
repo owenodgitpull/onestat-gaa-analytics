@@ -151,6 +151,8 @@ class MatchResponse(MatchBase):
     pitch_length_m: Optional[float] = Field(None, description="Actual pitch length in metres, if known")
     pitch_width_m: Optional[float] = Field(None, description="Actual pitch width in metres, if known")
     opposition_roster: Optional[list] = Field(None, description="List of opposition player names")
+    opposition_team_id: Optional[UUID] = Field(None, description="Scouted opposition team (inter-county only)")
+    opposition_lineup: Optional[list] = Field(None, description="Opposition lineup incl. subs (inter-county only; set by GET /matches/{id})")
 
     # AI analysis (generated when match completes)
     ai_analysis: Optional[str] = Field(None, description="AI-generated post-match analysis")

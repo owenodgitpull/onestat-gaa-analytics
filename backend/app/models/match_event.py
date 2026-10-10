@@ -156,6 +156,8 @@ class MatchEvent(Base):
 
     # Opposition player name (for opponent scoring events)
     opponent_player_name: Column[Optional[str]] = Column(String(200), nullable=True)
+    # Inter-county: the lineup player behind opponent_player_name (the text stays as the fallback / older rows)
+    opposition_player_id = Column(UUID(as_uuid=True), ForeignKey("opposition_players.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Was the shot taken under defensive pressure — optional, human-tagged
     # (live recording's post-hoc "Under pressure?" pill, video tagging's

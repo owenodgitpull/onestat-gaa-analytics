@@ -47,11 +47,19 @@ class Club(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     onboarding_completed = Column(Boolean, default=False, nullable=False)
     default_half_duration = Column(Integer, default=30, nullable=False)
+    # What kind of team this is: 'club' (default) or 'inter_county'. A domain fact set by platform admin; features are
+    # derived from it in app/utils/features.py so no code branches on the raw value.
+    team_level = Column(String(20), default="club", server_default="club", nullable=False)
     # Billing: NULL trial_ends_at = grandfathered (no restrictions). Set on new club creation.
     trial_ends_at = Column(DateTime, nullable=True)
     # 'club', 'pro', 'elite' = paid plan. NULL = on trial.
     subscription_tier = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    @property
+    def features(self) -> dict:
+        from app.utils.features import features_for_level
+        return features_for_level(self.team_level)
 
     def __repr__(self) -> str:
         return f"<Club(name='{self.name}', county='{self.county}')>"
