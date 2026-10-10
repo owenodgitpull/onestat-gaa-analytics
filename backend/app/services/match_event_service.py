@@ -61,6 +61,8 @@ class MatchEventService:
             under_pressure=getattr(event_data, 'under_pressure', None),
             opposition_foot=getattr(event_data, 'opposition_foot', None),
             client_event_id=event_data.client_event_id,
+            opposition_player_id=getattr(event_data, 'opposition_player_id', None),
+            opposition_sub_in_player_id=getattr(event_data, 'opposition_sub_in_player_id', None),
         )
         
         db.add(event)
@@ -73,6 +75,10 @@ class MatchEventService:
         if event.player_id:
             await MatchEventService._update_player_stats(db, event, is_delete=False)
         
+        # An opposition substitution swaps the two players' lineup slots (inter-county)
+        from app.services import opposition_service
+        await opposition_service.apply_substitution_event(db, event)
+
         await db.commit()
         await db.refresh(event)
         
@@ -200,6 +206,9 @@ class MatchEventService:
         # separate PlayerMatchStats row directly, not affected by event order.
         if event.player_id:
             await MatchEventService._update_player_stats(db, event, is_delete=True)
+
+        from app.services import opposition_service
+        await opposition_service.undo_substitution_event(db, event)
 
         # Delete BEFORE recalculating. _recalculate_match_scores runs its own
         # fresh SELECT over match_events — if that query runs first, it still

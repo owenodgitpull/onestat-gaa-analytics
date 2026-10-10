@@ -151,6 +151,10 @@ class VideoEvent(Base):
     # writing the event twice (same pattern as match_events.client_event_id)
     client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
 
+    # Inter-county: the opposition-lineup player behind this event (and, for an opposition SUB_ON, who came on)
+    opposition_player_id = Column(UUID(as_uuid=True), ForeignKey("opposition_players.id", ondelete="SET NULL"), nullable=True, index=True)
+    opposition_sub_in_player_id = Column(UUID(as_uuid=True), ForeignKey("opposition_players.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # AI batch tracking (for selective Improve Analysis re-runs)
     batch_index: Column[Optional[int]] = Column(Integer, nullable=True)
 

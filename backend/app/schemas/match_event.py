@@ -36,6 +36,8 @@ class MatchEventBase(BaseModel):
     half: Optional[int] = Field(None, ge=1, le=2, description="Which half (1 or 2)")
     under_pressure: Optional[bool] = Field(None, description="Was the shot taken under defensive pressure — None means not recorded, treated as neutral by the xP formula")
     opposition_foot: Optional[str] = Field(None, max_length=1, description="Which foot an opposition player's shot/key pass was taken with ('L'/'R')")
+    opposition_player_id: Optional[UUID] = Field(None, description="Opposition-lineup player behind this event (inter-county); for a substitution, who came OFF")
+    opposition_sub_in_player_id: Optional[UUID] = Field(None, description="Opposition substitution: who came ON")
 
     @field_validator('event_type', mode='before')
     @classmethod

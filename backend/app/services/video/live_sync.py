@@ -19,6 +19,7 @@ from app.models.match import Match
 from app.models.match_event import MatchEvent
 from app.models.video_event import VideoEvent
 from app.models.video_session import VideoSession
+from app.services import opposition_service
 from app.services.match_event_service import MatchEventService
 from app.services.video.event_mapper import VideoEventMapper
 
@@ -70,6 +71,8 @@ def _match_event_fields(ve: VideoEvent) -> Optional[dict]:
         under_pressure=(ve.scoring_context or {}).get("under_pressure"),
         opposition_foot=_normalize_foot(ve.scoring_context),
         opponent_player_name=ve.opponent_player_name,
+        opposition_player_id=ve.opposition_player_id,
+        opposition_sub_in_player_id=ve.opposition_sub_in_player_id,
         notes=f"[video] {ve.description or ''}".strip(),
     )
 
@@ -100,6 +103,7 @@ async def write_through(db: AsyncSession, ve: VideoEvent) -> None:
         await MatchEventService._update_match_scores(db, me)
         if me.player_id:
             await MatchEventService._update_player_stats(db, me, is_delete=False)
+        await opposition_service.apply_substitution_event(db, me)
         return
 
     # Edit: back out the old contribution, apply new values, re-add.
@@ -130,6 +134,7 @@ async def remove(db: AsyncSession, ve: VideoEvent, recalc: bool = True) -> None:
         return
     match_id = me.match_id
     await _remove_stats(db, me)
+    await opposition_service.undo_substitution_event(db, me)
     await db.delete(me)
     await db.flush()
     if recalc:

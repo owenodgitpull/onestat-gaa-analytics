@@ -116,3 +116,52 @@ async def save_lineup(db: AsyncSession, match: Match, entries: list[dict]) -> di
 async def club_has_opposition_lineup(db: AsyncSession, club_id) -> bool:
     club = (await db.execute(select(Club).where(Club.id == club_id))).scalar_one_or_none()
     return bool(club and has_feature(club, "opposition_lineup"))
+
+
+# ── opposition substitutions ──────────────────────────────────────────────────
+
+async def _swap(db: AsyncSession, match_id, off_id, on_id) -> bool:
+    """Swap two lineup rows' slots: the player coming ON takes the slot (and so the pitch position) of the player
+    coming OFF, who moves to the bench slot. Returns False (and changes nothing) unless both are in this match's lineup."""
+    if not off_id or not on_id or off_id == on_id:
+        return False
+    rows = (await db.execute(
+        select(OppositionLineup).where(
+            OppositionLineup.match_id == match_id, OppositionLineup.opposition_player_id.in_([off_id, on_id])
+        )
+    )).scalars().all()
+    by_player = {r.opposition_player_id: r for r in rows}
+    off, on = by_player.get(off_id), by_player.get(on_id)
+    if off is None or on is None:
+        return False
+    # jersey numbers stay with the players; only the slots (pitch positions) swap
+    off.position_id, on.position_id = on.position_id, off.position_id
+    for r in (off, on):
+        bench = r.position_id.startswith("sub")
+        r.is_substitute = bench
+        r.is_on_field = not bench
+    return True
+
+
+def _is_opposition_sub(event) -> bool:
+    et = getattr(event.event_type, "value", event.event_type)
+    tm = getattr(event.team, "value", event.team)
+    return str(et) == "substitution" and str(tm) == "opponent" and bool(
+        getattr(event, "opposition_player_id", None) and getattr(event, "opposition_sub_in_player_id", None)
+    )
+
+
+async def apply_substitution_event(db: AsyncSession, event) -> None:
+    """Called when a substitution event is written. Ids that are not in this match's lineup are dropped from the
+    event so a client can never attach another club's player."""
+    if not _is_opposition_sub(event):
+        return
+    if not await _swap(db, event.match_id, event.opposition_player_id, event.opposition_sub_in_player_id):
+        event.opposition_player_id = None
+        event.opposition_sub_in_player_id = None
+
+
+async def undo_substitution_event(db: AsyncSession, event) -> None:
+    """Called when a substitution event is removed: put the two players back where they were."""
+    if _is_opposition_sub(event):
+        await _swap(db, event.match_id, event.opposition_sub_in_player_id, event.opposition_player_id)

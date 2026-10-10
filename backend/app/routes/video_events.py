@@ -169,6 +169,8 @@ async def create_video_event(
         possession_team=body.possession_team,
         description=body.description,
         opponent_player_name=body.opponent_player_name,
+        opposition_player_id=body.opposition_player_id,
+        opposition_sub_in_player_id=body.opposition_sub_in_player_id,
         source=body.source,
         is_verified=body.source == "human_tag",
     )

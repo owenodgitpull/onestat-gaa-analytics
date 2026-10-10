@@ -177,6 +177,8 @@ class VideoEventCreateRequest(BaseModel):
     opponent_player_name: Optional[str] = Field(None, max_length=200)
     source: str = Field(default="human_tag", max_length=20)
     client_event_id: Optional[str] = Field(None, max_length=64)  # idempotency key for retried / queued saves
+    opposition_player_id: Optional[UUID] = None        # inter-county: opposition-lineup player (SUB_ON: who came off)
+    opposition_sub_in_player_id: Optional[UUID] = None  # inter-county: opposition SUB_ON — who came on
 
     @validator("event_type")
     def validate_event_type(cls, v):
