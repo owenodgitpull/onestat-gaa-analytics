@@ -1237,15 +1237,24 @@ async def compute_playing_minutes(db: AsyncSession, match_id) -> dict:
     lineup_rows = lineup_result.all()
 
     sub_result = await db.execute(
-        select(MatchEvent.player_id, MatchEvent.sub_in_player_id, MatchEvent.minute)
+        select(MatchEvent.player_id, MatchEvent.sub_in_player_id, MatchEvent.minute, MatchEvent.half)
         .where(MatchEvent.match_id == match_uuid, MatchEvent.event_type == EventType.SUBSTITUTION)
     )
     off_minute_by_player = {}
     on_minute_by_player = {}
-    for off_id, on_id, minute in sub_result.all():
-        if off_id and minute is not None:
+    for off_id, on_id, minute, sub_half in sub_result.all():
+        if minute is None:
+            continue
+        # Added time does not add playing minutes: a sub made in first-half stoppage time (including at half time,
+        # when the clock still reads e.g. 34') is made at the END of the first half, i.e. half_duration_mins; one in
+        # second-half stoppage is at full length.
+        if sub_half == 1:
+            minute = min(minute, half_duration_mins)
+        else:
+            minute = min(minute, full_length)
+        if off_id:
             off_minute_by_player[off_id] = minute
-        if on_id and minute is not None:
+        if on_id:
             on_minute_by_player[on_id] = minute
 
     minutes_by_player = {}
