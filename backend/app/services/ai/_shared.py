@@ -3974,8 +3974,14 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     )
     segments = list(seg_result.scalars().all())
 
+    from app.services.ai.opposition_movement import opposition_ball_path
+    _opp_path = await opposition_ball_path(db, match_uuid, length_m=match_pitch_length_m or 145.0)
+
     if not segments:
-        return safe_json({"message": "No ball carrier data available for this match", "segments": [], "chains": []})
+        _empty = {"message": "No ball carrier data available for this match", "segments": [], "chains": []}
+        if _opp_path:
+            _empty["opposition_ball_path"] = _opp_path
+        return safe_json(_empty)
 
     # Segment x/y are raw (as drawn on screen). "Forward", "territory gained" and zones all assume we
     # attack towards x=100 — true for only one half of a match where we attacked left-to-right. Re-express
@@ -4369,6 +4375,8 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
             "Opposition movement. avg_gain_x is positive when they gained ground towards OUR goal. Zone names are "
             "from our perspective (their attack runs into 'our defensive third')."
         )
+    if _opp_path:
+        result["opposition_ball_path"] = _opp_path   # how they moved the ball, from the ball-path log (every match)
     return safe_json(result)
 
 

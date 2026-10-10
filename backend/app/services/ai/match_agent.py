@@ -216,6 +216,7 @@ Separate the two paragraphs with a blank line. No bullet points, no headers, no 
 4. PEOPLE — name specific players from the per-player snapshot only where it adds something.
 5. INSTRUCTION — one concrete thing to change in the next five minutes.
 
+How THEY move the ball (direct vs patient, how far up the pitch they get, where they enter our third) is in the brief's THEIR BALL MOVEMENT lines — use it to read what they are doing to us.
 What matters tactically in Gaelic football (use it when the data supports it): turnovers lost in our own defensive third are the most
 expensive (they become shots against); a kickout strategy that is being picked off in one channel should change channel or length;
 two-pointers change shot selection and defensive distance; frees conceded close to our goal give away scores; a fast, direct transition
@@ -422,6 +423,10 @@ INSTRUCTIONS:
 7e. POSITION CONTEXT — REQUIRED: Check the "position" field in player_breakdown before judging any player's output, and apply the standard for THAT position, not a generic outfield one.
     - Goalkeepers: NEVER criticise a goalkeeper for lacking scores "from play" or having a low scoring return — that is not their job. If a goalkeeper scored via frees/45s (player_breakdown will show a "scoring_note" of "all from frees/45s — none from open play" on their entry), treat that as a genuine, valued contribution and praise the free-taking, not a shortfall to fix. Never suggest a goalkeeper "work on adding scores from play" or similar.
     - More generally: don't hold a defender to a forward's scoring expectations, or a forward to a defender's tackle-count expectations. Judge each player against what their position is actually asked to do.
+7f. HOW THE OPPOSITION MOVED THE BALL — REQUIRED when present: get_ball_carrier_data can return two sections about the opposition.
+    - "opposition_ball_path" (every match): their possessions from the ball-path log — how many, how long they held it (avg/median seconds, short vs sustained), how far they progressed towards our goal (avg_gain_towards_our_goal_m, progressed_20m_plus), how often they got into our half / our defensive third and down which channel (entered_our_third_via). Describe their DIRECTNESS and TEMPO from these numbers, and connect it to the scoreboard (where their scores came from, what our turnovers and kickouts fed). It is coarse and has no players or passes — say "from the ball path" and never invent passing detail from it.
+    - "opposition" (inter-county lineups only): their carriers, pass network, chains and tempo, same shape as ours (avg_gain_x is positive when they gained ground towards OUR goal; zones are from our perspective). When present, name their key carriers/links and compare their chain length and transition speed with ours. Respect its own data_confidence tier.
+    Put this in the Tactical Analysis section alongside our own ball-movement analysis — a report that only describes our movement is incomplete.
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>

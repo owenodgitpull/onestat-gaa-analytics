@@ -378,6 +378,28 @@ async def _build(db, match_id, minute, club_id, window) -> str:
             L.append(f"\nPOSSESSION (timed): us {round(100 * (secs.get('own', 0) or 0) / tot)}% / them {round(100 * (secs.get('opponent', 0) or 0) / tot)}%")
     except Exception:
         pass
+    # ── how THEY move the ball (ball-path derived, every match) ──
+    try:
+        from app.services.ai.opposition_movement import opposition_ball_path
+        whole = await opposition_ball_path(db, match_id, length_m=LEN, up_to_minute=now)
+        if whole:
+            def _ob_line(tag: str, d: dict) -> str:
+                via = d.get("entered_our_third_via") or {}
+                s = (f"  {tag}: {d['possessions']} possessions, avg {d['avg_seconds']}s (median {d['median_seconds']}s; "
+                     f"{d['short_10s_or_less']} of 10s or less, {d['sustained_over_30s']} over 30s); "
+                     f"reached our half {d['reached_our_half']}, our defensive third {d['reached_our_defensive_third']}")
+                if via:
+                    s += " (via " + ", ".join(f"{k} {v}" for k, v in via.items()) + ")"
+                if d.get("avg_gain_towards_our_goal_m") is not None:
+                    s += f"; gained {d['avg_gain_towards_our_goal_m']}m per possession on average, {d['progressed_20m_plus']} of {d['possessions_with_movement']} progressed 20m+"
+                return s
+            L.append("\nTHEIR BALL MOVEMENT (from the ball path — no players or passes tracked):")
+            L.append(_ob_line("match to date", whole))
+            recent = await opposition_ball_path(db, match_id, length_m=LEN, up_to_minute=now, since_minute=now - window)
+            if recent:
+                L.append(_ob_line(f"last {window} min", recent))
+    except Exception:
+        pass
     try:
         from app.services.ai._shared import get_ball_carrier_data
         raw = await get_ball_carrier_data(db, match_id=str(match_id), club_id=club_id)
@@ -391,6 +413,15 @@ async def _build(db, match_id, minute, club_id, window) -> str:
                      f"{ce.get('direct_scores', 0)} direct scores vs {ce.get('buildup_scores', 0)} build-up scores")
         if tempo.get("avg_transition_seconds") is not None:
             L.append(f"  transition speed: {tempo.get('avg_transition_seconds')}s average to move the ball on (fastest {tempo.get('fastest_transition_seconds')}s)")
+        opp = bc.get("opposition") or {}
+        oce = opp.get("chain_effectiveness") or {}
+        if oce.get("total_chains"):
+            L.append(f"THEIR BALL MOVEMENT (carry tracking, {opp.get('data_confidence', '?')} confidence): {oce.get('total_chains')} possession chains — "
+                     f"{oce.get('scoring_chains', 0)} ended in a score, {oce.get('turnover_chains', 0)} in a turnover, {oce.get('wide_chains', 0)} in a wide; "
+                     f"average {oce.get('avg_chain_length_all', '?')} carries per chain; {oce.get('direct_scores', 0)} direct scores vs {oce.get('buildup_scores', 0)} build-up scores")
+            otempo = opp.get("tempo") or {}
+            if otempo.get("avg_transition_seconds") is not None:
+                L.append(f"  their transition speed: {otempo.get('avg_transition_seconds')}s average to move the ball on")
     except Exception:
         pass
 
