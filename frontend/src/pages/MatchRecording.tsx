@@ -8,6 +8,7 @@ import { BroughtForwardOptIn, HighBallChips, type BroughtForwardReason } from '@
 import { ownAttacksRight } from '@/utils/attackDirection'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
 import { useOppositionSquad, swapOppositionLineup, oppositionPickerOptions } from '@/hooks/useOppositionSquad'
+import { useAutoShootingTab } from '@/hooks/useAutoShootingTab'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
 import PossessionSelectionModal from '@/components/PossessionSelectionModal'
@@ -697,6 +698,14 @@ export default function MatchRecording() {
         recentIds: recentCarrierIds, primary: club?.primary_colour || '#10B981', secondary: club?.secondary_colour || '#FFFFFF',
         attackingRight: teamAttackingRight,
       }
+
+  // Open the Shooting tab as soon as the team in possession works the ball into shooting range (once per entry)
+  useAutoShootingTab({
+    ballX: ballPosition.x,
+    possessionAttacksRight: ballPosition.team === PossessionTeam.OWN ? teamAttackingRight : !teamAttackingRight,
+    enabled: (matchPhase === 'first_half' || matchPhase === 'second_half') && !isStopped && !isDeadBall && !awaitingKickout && !pendingFreeKick,
+    onShootingZone: () => setActiveKickoutTab('scoring'),
+  })
 
   // Arm/disarm High Ball — freezes which team it's for at the moment of
   // tapping (whoever currently has the ball), so a possession flip between

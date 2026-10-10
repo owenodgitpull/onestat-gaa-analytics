@@ -70,6 +70,7 @@ import { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
 import { useOppositionSquad, swapOppositionLineup, oppositionPickerOptions } from '../hooks/useOppositionSquad'
+import { useAutoShootingTab } from '../hooks/useAutoShootingTab'
 import BallQuickActionIcon from '../components/video/BallQuickActionIcon'
 import GAAPitch from '../components/GAAPitch'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
@@ -3101,6 +3102,14 @@ export default function VideoTagging() {
     setRecentOppCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'opponent'))
   }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, handleQuickPass])
+
+  // Open the Shooting tab as soon as the team in possession works the ball into shooting range (once per entry)
+  useAutoShootingTab({
+    ballX: ballPosition?.x,
+    possessionAttacksRight: possession === 'team_a' ? (teamAttackingRightThisHalf ?? true) : !(teamAttackingRightThisHalf ?? true),
+    enabled: mode === 'tracking' && !reviewing && !halfTimeBreak,
+    onShootingZone: () => setActiveTab('scoring'),
+  })
 
   // The squad whose circles are on the pitch right now
   const squad = oppActive
