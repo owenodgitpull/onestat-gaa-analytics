@@ -398,24 +398,6 @@ async def _build(db, match_id, minute, club_id, window) -> str:
                 return "inside 20m" if d < 20 else ("20-40m out" if d < 40 else "40m+ out")
             L.append("  shot position (distance from our goal): " + _tally(loc, lambda ef: f"{_band(ef[1])} on {_channel(ef[1][1])}"))
 
-    # ── evidence-backed cause links (so the agent never has to guess a cause) ──
-    if opp_sc:
-        after_to = []
-        after_ko = 0
-        from_free = 0
-        for sc_ev in opp_sc:
-            if _t(sc_ev).endswith("_free") or _t(sc_ev) == "forty_five":
-                from_free += 1
-            prior_to = [t for t in a["to_lost"] if sc_ev.minute - 2 <= t.minute <= sc_ev.minute]
-            if prior_to:
-                f = framed(prior_to[-1])
-                after_to.append(f"{_third(f[0])} ({_channel(f[1])})" if f else "location not logged")
-            if any(k.minute >= sc_ev.minute - 2 and k.minute <= sc_ev.minute for k in a["ko_lost"]):
-                after_ko += 1
-        L.append(f"\nLINKS BEHIND THEIR {len(opp_sc)} SCORES: {len(after_to)} came within 2 min of one of our turnovers/errors"
-                 + (f" (lost {', '.join(after_to)})" if after_to else "")
-                 + f"; {after_ko} within 2 min of a kickout we lost; {from_free} were frees/45s")
-
     # ── our shooting ──────────────────────────────────────────────────────
     own_shots = [e for e in visible if _is_own(e) and _t(e) in SHOT_TYPES]
     if own_shots:

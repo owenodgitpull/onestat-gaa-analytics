@@ -65,6 +65,8 @@ SEASON_TOOLS = [
     "get_kickout_targets",
     "get_match_expected_points",
     "create_video_compilation",
+    "get_phase_summary",
+    "get_season_phase_profile",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)

@@ -604,6 +604,24 @@ TOOLS = [
         }
     },
     {
+        "name": "get_phase_summary",
+        "description": "Phase analysis for ONE match, computed from event order: what each way of getting the ball turned into (our kept kickouts, kickouts we lost = their possession, their kickouts, turnovers won/lost, breaking balls, all possessions) for the whole match and each half — possessions, how many became a shot, scored, points, ended without a shot, median seconds to the shot where the clock was logged — plus margin by ten-minute block and ranked findings. Rates on fewer than 3 finished possessions are flagged: describe, never conclude. Use this for the Phase Analysis section.",
+        "input_schema": {"type": "object", "properties": {"match_id": {"type": "string", "description": "The UUID of the match"}}, "required": ["match_id"]}
+    },
+    {
+        "name": "get_phase_sequences",
+        "description": "The actual possessions behind the phase rates for ONE match: every possession that ended in a shot, with minute, who had it, how it began (kickout kept/lost, turnover, breaking ball), the shot type, points, who took it and seconds where logged. Optionally filter by phase group: own_ko_kept, own_ko_lost, opp_ko_won, opp_ko_kept, turnovers_won, turnovers_lost, contests_won, contests_lost, all_ours, all_theirs. Use it to quote the specific sequences that made a phase point.",
+        "input_schema": {"type": "object", "properties": {
+            "match_id": {"type": "string", "description": "The UUID of the match"},
+            "phase": {"type": "string", "description": "Optional phase group to filter by"},
+            "limit": {"type": "integer", "description": "Max sequences (default 12, max 30)"}}, "required": ["match_id"]}
+    },
+    {
+        "name": "get_season_phase_profile",
+        "description": "Phase rates pooled across the club's most recent matches (default 10): what kept/lost kickouts, turnovers won/lost and all possessions turn into. Use it as the season baseline when judging whether a match or a spell was typical or unusual for this team.",
+        "input_schema": {"type": "object", "properties": {"last_n": {"type": "integer", "description": "How many recent matches to pool (default 10, max 30)"}}}
+    },
+    {
         "name": "get_turnover_analysis",
         "description": "Analyze turnover patterns - where ball is lost/won, by player",
         "input_schema": {
@@ -1147,6 +1165,16 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_stats_by_half(db, tool_input.get("match_id"), tool_input.get("half"), club_id=club_id)
     elif tool_name == "get_scoring_patterns":
         return await get_scoring_patterns(db, tool_input.get("match_id"), club_id=club_id)
+    elif tool_name == "get_phase_summary":
+        from app.services.ai.phase_report import get_phase_summary
+        return await get_phase_summary(db, tool_input.get("match_id"), club_id=club_id)
+    elif tool_name == "get_phase_sequences":
+        from app.services.ai.phase_report import get_phase_sequences
+        return await get_phase_sequences(db, tool_input.get("match_id"), club_id=club_id,
+                                         phase=tool_input.get("phase"), limit=tool_input.get("limit", 12))
+    elif tool_name == "get_season_phase_profile":
+        from app.services.ai.phase_report import get_season_phase_profile
+        return await get_season_phase_profile(db, club_id, last_n=tool_input.get("last_n", 10))
     elif tool_name == "get_turnover_analysis":
         return await get_turnover_analysis(db, tool_input.get("match_id"), club_id=club_id)
     elif tool_name == "get_player_gps_stats":
