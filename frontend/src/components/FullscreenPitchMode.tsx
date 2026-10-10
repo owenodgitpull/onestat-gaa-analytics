@@ -122,6 +122,11 @@ interface FullscreenPitchModeProps {
   onSubstitution?: () => void
   teamPrimaryColor?: string
   teamSecondaryColor?: string
+  /** Inter-county: the carrier circles are the opposition's (they have the ball) — their colours and direction */
+  squadIsOpposition?: boolean
+  squadPrimaryColor?: string
+  squadSecondaryColor?: string
+  squadAttackingRight?: boolean
   // Opposition scorer
   pendingOpponentScore?: { eventType: EventType; position: BallPosition } | null
   oppositionRoster?: string[]
@@ -237,6 +242,10 @@ export default function FullscreenPitchMode({
   onToggleDeadBall,
   teamPrimaryColor = '#10B981',
   teamSecondaryColor = '#FFFFFF',
+  squadIsOpposition = false,
+  squadPrimaryColor,
+  squadSecondaryColor,
+  squadAttackingRight,
   pendingOpponentScore,
   oppositionRoster = [],
   onOpponentScorerSelect,
@@ -407,6 +416,11 @@ export default function FullscreenPitchMode({
 
   // The user must tap a landing spot (kickout / 45 line / long kick or high ball): hide the player circles and pulse the ball
   const landingTapActive = pendingKickoutPosition || pendingFortyFivePosition || pendingLongKickArmed || pendingLongKickPassArmed
+  // carrier circles: ours when we have the ball, the opposition's (their colours/direction) when they do and a lineup exists
+  const carrierPrimary = squadPrimaryColor ?? teamPrimaryColor
+  const carrierSecondary = squadSecondaryColor ?? teamSecondaryColor
+  const carrierAttackingRight = squadAttackingRight ?? teamAttackingRight
+  const carrierPickerOn = currentPossession === PossessionTeam.OWN || squadIsOpposition
   return (
     <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: 'linear-gradient(160deg, #070c18 0%, #0a1024 35%, #0b1420 65%, #080c16 100%)' }}>
       {/* Top bar — hidden in phone landscape (overlaid on pitch instead) */}
@@ -686,8 +700,8 @@ export default function FullscreenPitchMode({
               activeCarrierId={activeCarrierId}
               onCarrierSelect={onCarrierSelect}
               disabled={actionsDisabled}
-              teamPrimaryColor={teamPrimaryColor}
-              teamSecondaryColor={teamSecondaryColor}
+              teamPrimaryColor={carrierPrimary}
+              teamSecondaryColor={carrierSecondary}
             />
           </div>
         )}
@@ -753,14 +767,14 @@ export default function FullscreenPitchMode({
           ballAnchoredOverlay={
             (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
               <>
-                {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN && (
+                {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && jerseyStripPlayers && onCarrierSelect && carrierPickerOn && (
                   <BallCarrierPicker
                     players={jerseyStripPlayers}
                     activeCarrierId={activeCarrierId ?? null}
                     onSelect={onCarrierSelect}
-                    attackingRight={teamAttackingRight}
-                    teamPrimaryColor={teamPrimaryColor}
-                    teamSecondaryColor={teamSecondaryColor}
+                    attackingRight={carrierAttackingRight}
+                    teamPrimaryColor={carrierPrimary}
+                    teamSecondaryColor={carrierSecondary}
                     ballSvgX={ballSvgX}
                     ballSvgY={ballSvgY}
                     ballPctX={ballPctX}
@@ -769,7 +783,7 @@ export default function FullscreenPitchMode({
                     onOpenChange={setIsCarrierRadialOpen}
                   />
                 )}
-                {(matchPhase === 'first_half' || matchPhase === 'second_half') && currentPossession !== PossessionTeam.OWN && onLogOppositionPass && (
+                {(matchPhase === 'first_half' || matchPhase === 'second_half') && currentPossession !== PossessionTeam.OWN && !squadIsOpposition && onLogOppositionPass && (
                   <BallQuickActionIcon
                     ballSvgX={ballSvgX}
                     ballSvgY={ballSvgY}
@@ -824,15 +838,15 @@ export default function FullscreenPitchMode({
             )
           }
           pitchOverlay={
-            (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && jerseyStripPlayers && onCarrierSelect && currentPossession === PossessionTeam.OWN
+            (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && jerseyStripPlayers && onCarrierSelect && carrierPickerOn
               ? (ballPctX, ballPctY) => (
                 <PitchReceiverDots
                   players={jerseyStripPlayers}
                   activeCarrierId={activeCarrierId ?? null}
                   onSelect={onCarrierSelect}
-                  attackingRight={teamAttackingRight}
-                  teamPrimaryColor={teamPrimaryColor}
-                  teamSecondaryColor={teamSecondaryColor}
+                  attackingRight={carrierAttackingRight}
+                  teamPrimaryColor={carrierPrimary}
+                  teamSecondaryColor={carrierSecondary}
                   disabled={isCarrierRadialOpen}
                   ballPctX={ballPctX}
                   ballPctY={ballPctY}
@@ -1068,11 +1082,11 @@ export default function FullscreenPitchMode({
             <JerseyNumberStrip
               players={jerseyStripPlayers}
               activeCarrierId={activeCarrierId ?? null}
-              currentPossession={currentPossession}
+              currentPossession={squadIsOpposition ? PossessionTeam.OWN : currentPossession}
               onCarrierSelect={onCarrierSelect}
-              teamPrimaryColor={teamPrimaryColor}
-              teamSecondaryColor={teamSecondaryColor}
-              attackingRight={teamAttackingRight}
+              teamPrimaryColor={carrierPrimary}
+              teamSecondaryColor={carrierSecondary}
+              attackingRight={carrierAttackingRight}
             />
           </div>
         )}
@@ -1086,8 +1100,8 @@ export default function FullscreenPitchMode({
               activeCarrierId={activeCarrierId}
               onCarrierSelect={onCarrierSelect}
               disabled={actionsDisabled}
-              teamPrimaryColor={teamPrimaryColor}
-              teamSecondaryColor={teamSecondaryColor}
+              teamPrimaryColor={carrierPrimary}
+              teamSecondaryColor={carrierSecondary}
             />
           </div>
         )}

@@ -35,6 +35,7 @@ export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMove
     jerseyNumber: number | null,
     startX: number | null,
     startY: number | null,
+    side: 'own' | 'opponent' = 'own',
   ) => {
     if (!matchId) return null
 
@@ -46,9 +47,10 @@ export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMove
     try {
       const segment = await offlinePlayerMovement.startCarrierSegment({
         match_id: matchId,
-        player_id: playerId,
+        // an opposition carrier is an opposition-lineup id, never one of our players
+        ...(side === 'opponent' ? { opposition_player_id: playerId } : { player_id: playerId }),
         jersey_number: jerseyNumber,
-        team,
+        team: side === 'opponent' ? 'opponent' : team,
         half,
         minute,
         start_x: startX,
@@ -129,6 +131,7 @@ export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMove
     jerseyNumber: number | null,
     ballX: number | null,
     ballY: number | null,
+    side: 'own' | 'opponent' = 'own',
   ) => {
     // If tapping same carrier, deselect (end segment)
     if (activeCarrierRef.current?.playerId === playerId) {
@@ -136,7 +139,7 @@ export function usePlayerMovement({ matchId, half, minute, team }: UsePlayerMove
       return null
     }
 
-    return startSegment(playerId, jerseyNumber, ballX, ballY)
+    return startSegment(playerId, jerseyNumber, ballX, ballY, side)
   }, [startSegment, endSegment])
 
   // Auto-end on terminal events

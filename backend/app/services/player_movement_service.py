@@ -27,7 +27,7 @@ class PlayerMovementService:
     async def start_carrier_segment(
         db: AsyncSession,
         match_id: UUID,
-        player_id: UUID,
+        player_id: Optional[UUID],
         jersey_number: Optional[int],
         team: str,
         half: int,
@@ -38,6 +38,7 @@ class PlayerMovementService:
         client_event_id: Optional[str] = None,
         video_timestamp_ms: Optional[int] = None,
         match_clock_s: Optional[int] = None,
+        opposition_player_id: Optional[UUID] = None,
     ) -> BallCarrierSegment:
         # Get next sequence number
         result = await db.execute(
@@ -49,6 +50,7 @@ class PlayerMovementService:
         segment = BallCarrierSegment(
             match_id=match_id,
             player_id=player_id,
+            opposition_player_id=opposition_player_id,
             jersey_number=jersey_number,
             team=team,
             half=half,

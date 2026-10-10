@@ -69,6 +69,7 @@ import { FORMATION_XY } from '@/utils/likelyReceivers'
 import { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
+import { useOppositionSquad } from '../hooks/useOppositionSquad'
 import BallQuickActionIcon from '../components/video/BallQuickActionIcon'
 import GAAPitch from '../components/GAAPitch'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
@@ -272,6 +273,9 @@ export default function VideoTagging() {
   // Ball carrier tracking state
   const [activeCarrierId, setActiveCarrierId] = useState<string | null>(null)
   const [recentCarrierIds, setRecentCarrierIds] = useState<string[]>([])
+  // Inter-county: the opposition carrier — kept apart from ours so none of the own-team logic can see it
+  const [activeOppCarrierId, setActiveOppCarrierId] = useState<string | null>(null)
+  const [recentOppCarrierIds, setRecentOppCarrierIds] = useState<string[]>([])
   const [isCarrierRadialOpen, setIsCarrierRadialOpen] = useState(false)
   const activeSegmentRef = useRef<BallCarrierSegment | null>(null)
   const carrierPathBufferRef = useRef<Array<{ x: number; y: number }>>([])
@@ -2924,6 +2928,8 @@ export default function VideoTagging() {
   // serialized queue, so rapid taps stay correctly ordered on the server.
   const activeCarrierIdRef = useRef<string | null>(null)
   activeCarrierIdRef.current = activeCarrierId
+  const activeOppCarrierIdRef = useRef<string | null>(null)
+  activeOppCarrierIdRef.current = activeOppCarrierId
   const carrierQueueRef = useRef<Promise<unknown>>(Promise.resolve())
   const enqueueCarrierOp = useCallback((op: () => Promise<unknown>) => {
     carrierQueueRef.current = carrierQueueRef.current
@@ -2974,7 +2980,7 @@ export default function VideoTagging() {
       clearTimeout(carrierFlushTimerRef.current)
       carrierFlushTimerRef.current = null
     }
-    if (!keepState) setActiveCarrierId(null)
+    if (!keepState) { setActiveCarrierId(null); setActiveOppCarrierId(null) }
     enqueueCarrierOp(() => endCarrierSegment(endX, endY, endedBy, points))
   }, [enqueueCarrierOp, endCarrierSegment])
 
@@ -2985,13 +2991,15 @@ export default function VideoTagging() {
     jerseyNumber: number | null,
     startX: number | null,
     startY: number | null,
+    side: 'own' | 'opponent' = 'own',
   ) => {
     if (!session?.match_id) return null
     const matchTime = calcMatchTime(currentTimeMs)
     try {
       const segment = await api.playerMovement.startCarrierSegment({
         match_id: session.match_id,
-        player_id: playerId,
+        // an opposition carrier is an opposition-lineup id, never one of our players
+        ...(side === 'opponent' ? { opposition_player_id: playerId } : { player_id: playerId }),
         jersey_number: jerseyNumber,
         team: possession === 'team_a' ? 'own' : 'opponent',
         half: matchTime.half,
@@ -3051,10 +3059,44 @@ export default function VideoTagging() {
 
   carrierSelectRef.current = handleCarrierSelect
 
+  // ── Inter-county: opposition circles ──────────────────────────────────────
+  const oppSquad = useOppositionSquad(matchData as any, club)
+  const oppActive = oppSquad.enabled && possession === 'team_b'
+
+  const handleOppCarrierSelect = useCallback((playerId: string, jerseyNumber: number | null) => {
+    const bx = ballPosition?.x ?? null
+    const by = ballPosition?.y ?? null
+    const current = activeOppCarrierIdRef.current
+    if (current === playerId) {
+      endCarrierQueued(bx, by, 'manual')
+      return
+    }
+    if (current) {
+      endCarrierQueued(bx, by, 'pass', true)
+      handleQuickPass()   // a different opposition player picking it up is a pass (keeps the PPDA pass count)
+    }
+    setActiveOppCarrierId(playerId)
+    setRecentOppCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
+    enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'opponent'))
+  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, handleQuickPass])
+
+  // The squad whose circles are on the pitch right now
+  const squad = oppActive
+    ? {
+        players: oppSquad.players, carrierId: activeOppCarrierId, onSelect: handleOppCarrierSelect,
+        recentIds: recentOppCarrierIds, primary: oppSquad.primary, secondary: oppSquad.secondary,
+        attackingRight: !(teamAttackingRightThisHalf ?? true),
+      }
+    : {
+        players: jerseyStripPlayers, carrierId: activeCarrierId, onSelect: handleCarrierSelect,
+        recentIds: recentCarrierIds, primary: club?.primary_colour || '#10B981', secondary: club?.secondary_colour || '#FFFFFF',
+        attackingRight: teamAttackingRightThisHalf ?? true,
+      }
+
   endFirstHalfRef.current = () => {
     playerRef.current?.pause()
     flushPossession(false, undefined, true)
-    if (activeCarrierIdRef.current || activeSegmentRef.current) endCarrierQueued(ballPosition?.x ?? null, ballPosition?.y ?? null, 'manual')
+    if (activeCarrierIdRef.current || activeOppCarrierIdRef.current || activeSegmentRef.current) endCarrierQueued(ballPosition?.x ?? null, ballPosition?.y ?? null, 'manual')
     // Clear anything left open from the last play of the half
     setPendingFreeKick(null); setPending45(false); setPendingBlockRecovery(false); setPendingSidelineDecision(false)
     setAwaitingKickout(false); setPendingFoulSubtype(null); setPendingTurnoverReason(null); setPendingErrorSubtype(null)
@@ -3072,6 +3114,7 @@ export default function VideoTagging() {
     setBallPosition({ x: 50, y: 50 })
     setBallTrail([])
     setActiveCarrierId(null)
+    setActiveOppCarrierId(null)
     setSecondHalfThrowInPending(true)   // ask who won the throw-in before any play
     if (start != null) {
       setHighWaterMarkMs(start)
@@ -3089,7 +3132,7 @@ export default function VideoTagging() {
   // Points are buffered even while the new segment is still being created
   // (no segment id yet) and sent as soon as it exists.
   const appendCarrierPathPoint = useCallback((x: number, y: number) => {
-    if (!activeCarrierIdRef.current) return
+    if (!activeCarrierIdRef.current && !activeOppCarrierIdRef.current) return
     carrierPathBufferRef.current.push({ x, y })
 
     if (!carrierFlushTimerRef.current) {
@@ -3109,7 +3152,7 @@ export default function VideoTagging() {
 
   // Auto-end carrier on terminal events (scores, turnovers, wides)
   const onCarrierTerminalEvent = useCallback((eventType: string) => {
-    if (!activeCarrierIdRef.current && !activeSegmentRef.current) return
+    if (!activeCarrierIdRef.current && !activeOppCarrierIdRef.current && !activeSegmentRef.current) return
 
     const terminalMap: Record<string, string> = {
       GOAL_SCORED: 'score',
@@ -3134,7 +3177,7 @@ export default function VideoTagging() {
 
   // Auto-end carrier on possession swap
   const onCarrierPossessionSwap = useCallback(() => {
-    if (!activeCarrierIdRef.current && !activeSegmentRef.current) return
+    if (!activeCarrierIdRef.current && !activeOppCarrierIdRef.current && !activeSegmentRef.current) return
     endCarrierQueued(ballPosition?.x ?? null, ballPosition?.y ?? null, 'turnover')
   }, [endCarrierQueued, ballPosition])
   carrierTerminalRef.current = onCarrierTerminalEvent
@@ -4008,7 +4051,7 @@ export default function VideoTagging() {
         onDragUpdate={handleTaggingBallMove}
         onDragPath={handleTaggingDragPath}
         trail={ballTrail}
-        carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
+        carrierJerseyNumber={squad.carrierId ? squad.players.find(p => p.playerId === squad.carrierId)?.jerseyNumber ?? null : null}
         // Ball moves/taps normally need the video playing; the on-pitch tap
         // steps (kickout landing, 45 line) and free-position adjust happen
         // while it's paused, so they must be tappable then.
@@ -4026,24 +4069,24 @@ export default function VideoTagging() {
         ballAnchoredOverlay={
           (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
             <>
-              {possession === 'team_a' && jerseyStripPlayers.length > 0 && overlayState !== 'pitch' && !pendingLongKick && !pendingDrop && (
+              {(possession === 'team_a' || oppActive) && squad.players.length > 0 && overlayState !== 'pitch' && !pendingLongKick && !pendingDrop && (
                 <BallCarrierPicker
-                  players={jerseyStripPlayers}
-                  activeCarrierId={activeCarrierId}
-                  onSelect={handleCarrierSelect}
-                  attackingRight={teamAttackingRightThisHalf ?? true}
-                  teamPrimaryColor={club?.primary_colour || '#10B981'}
-                  teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                  players={squad.players}
+                  activeCarrierId={squad.carrierId}
+                  onSelect={squad.onSelect}
+                  attackingRight={squad.attackingRight}
+                  teamPrimaryColor={squad.primary}
+                  teamSecondaryColor={squad.secondary}
                   ballSvgX={ballSvgX}
                   ballSvgY={ballSvgY}
                   ballPctX={ballPctX}
                   ballPctY={ballPctY}
-                  recentCarrierIds={recentCarrierIds}
+                  recentCarrierIds={squad.recentIds}
                   onOpenChange={setIsCarrierRadialOpen}
                   orientation={taggingPitchOrientation}
                 />
               )}
-              {possession === 'team_b' && (
+              {possession === 'team_b' && !oppActive && (
                 <BallQuickActionIcon
                   ballSvgX={ballSvgX}
                   ballSvgY={ballSvgY}
@@ -4085,19 +4128,19 @@ export default function VideoTagging() {
           )
         }
         pitchOverlay={
-          possession === 'team_a' && jerseyStripPlayers.length > 0 && overlayState !== 'pitch' && !pendingLongKick && !pendingDrop
+          (possession === 'team_a' || oppActive) && squad.players.length > 0 && overlayState !== 'pitch' && !pendingLongKick && !pendingDrop
             ? (ballPctX, ballPctY) => (
               <VideoPitchReceiverDots
-                players={jerseyStripPlayers}
-                activeCarrierId={activeCarrierId}
-                onSelect={handleCarrierSelect}
-                attackingRight={teamAttackingRightThisHalf ?? true}
-                teamPrimaryColor={club?.primary_colour || '#10B981'}
-                teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                players={squad.players}
+                activeCarrierId={squad.carrierId}
+                onSelect={squad.onSelect}
+                attackingRight={squad.attackingRight}
+                teamPrimaryColor={squad.primary}
+                teamSecondaryColor={squad.secondary}
                 ballPctX={ballPctX}
                 ballPctY={ballPctY}
                 disabled={isCarrierRadialOpen}
-                recentCarrierIds={recentCarrierIds}
+                recentCarrierIds={squad.recentIds}
                 orientation={taggingPitchOrientation}
               />
             )

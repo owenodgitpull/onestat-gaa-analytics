@@ -1,6 +1,6 @@
 """Schemas for ball carrier segment endpoints."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
 from uuid import UUID
 from typing import Optional, List
@@ -13,7 +13,9 @@ class PathPoint(BaseModel):
 
 class BallCarrierSegmentCreate(BaseModel):
     match_id: UUID
-    player_id: UUID
+    # Exactly one of: our player, or an opposition player from the match's opposition lineup (inter-county)
+    player_id: Optional[UUID] = None
+    opposition_player_id: Optional[UUID] = None
     jersey_number: Optional[int] = None
     team: str = Field(..., max_length=20)
     half: int = Field(..., ge=1, le=2)
@@ -25,6 +27,12 @@ class BallCarrierSegmentCreate(BaseModel):
     client_event_id: Optional[str] = Field(None, max_length=64)
     # Video Tagging: video time (ms) the carry started at — lets Undo to Point cut carries exactly
     video_timestamp_ms: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _exactly_one_player(self):
+        if (self.player_id is None) == (self.opposition_player_id is None):
+            raise ValueError("exactly one of player_id / opposition_player_id is required")
+        return self
 
 
 class BallCarrierSegmentUpdate(BaseModel):
@@ -42,7 +50,8 @@ class AppendPathPointsRequest(BaseModel):
 class BallCarrierSegmentResponse(BaseModel):
     id: UUID
     match_id: UUID
-    player_id: UUID
+    player_id: Optional[UUID] = None
+    opposition_player_id: Optional[UUID] = None
     jersey_number: Optional[int] = None
     team: str
     half: int

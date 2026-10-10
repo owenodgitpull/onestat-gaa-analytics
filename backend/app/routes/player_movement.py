@@ -3,6 +3,7 @@ Routes for player movement tracking — carrier segments, formation snapshots,
 tactical tags, kickout plays, movement arrows, and auto-derived possession chains.
 """
 
+from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -50,12 +51,32 @@ router = APIRouter()
 # ── Ball Carrier Segments ──────────────────────────────────────────────
 
 
+def _carrier_name(segment: BallCarrierSegment) -> Optional[str]:
+    """Our player's name, or the opposition player's surname."""
+    if segment.player:
+        return segment.player.name
+    if segment.opposition_player:
+        return segment.opposition_player.surname
+    return None
+
+
 @router.post("/carrier-segments", response_model=BallCarrierSegmentResponse, status_code=status.HTTP_201_CREATED)
 async def start_carrier_segment(
     body: BallCarrierSegmentCreate,
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await assert_match_in_club(db, body.match_id, user.club_id)
+    if body.opposition_player_id:  # an opposition carrier must belong to this club's own opposition directory
+        from app.models.opposition import OppositionPlayer
+        owned = (await db.execute(
+            select(OppositionPlayer.id).where(
+                OppositionPlayer.id == body.opposition_player_id, OppositionPlayer.club_id == user.club_id
+            ).limit(1)
+        )).first()
+        if owned is None:
+            raise HTTPException(status_code=404, detail="Not found")
+
     # Idempotent deduplication
     if body.client_event_id:
         result = await db.execute(
@@ -64,8 +85,7 @@ async def start_carrier_segment(
         existing = result.scalar_one_or_none()
         if existing:
             resp = BallCarrierSegmentResponse.model_validate(existing)
-            if existing.player:
-                resp.player_name = existing.player.name
+            resp.player_name = _carrier_name(existing)
             return resp
 
     segment = await PlayerMovementService.start_carrier_segment(
@@ -82,10 +102,10 @@ async def start_carrier_segment(
         client_event_id=body.client_event_id,
         video_timestamp_ms=body.video_timestamp_ms,
         match_clock_s=body.match_clock_s,
+        opposition_player_id=body.opposition_player_id,
     )
     resp = BallCarrierSegmentResponse.model_validate(segment)
-    if segment.player:
-        resp.player_name = segment.player.name
+    resp.player_name = _carrier_name(segment)
     return resp
 
 

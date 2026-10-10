@@ -68,6 +68,7 @@ class BallCarrierSegment(Base):
     # Relationships
     match = relationship("Match", lazy="selectin")
     player = relationship("Player", lazy="selectin")
+    opposition_player = relationship("OppositionPlayer", lazy="selectin")
 
     def __repr__(self):
         return f"<BallCarrierSegment(id={self.id}, player={self.player_id}, jersey={self.jersey_number})>"

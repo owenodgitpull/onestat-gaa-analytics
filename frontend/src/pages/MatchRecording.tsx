@@ -7,6 +7,7 @@ import BallQuickActionIcon from '@/components/video/BallQuickActionIcon'
 import { BroughtForwardOptIn, HighBallChips, type BroughtForwardReason } from '@/components/video/VideoPitchPrompts'
 import { ownAttacksRight } from '@/utils/attackDirection'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
+import { useOppositionSquad } from '@/hooks/useOppositionSquad'
 import PlayerSelectionModal from '@/components/PlayerSelectionModal'
 import PitchPlayerSelector from '@/components/PitchPlayerSelector'
 import PossessionSelectionModal from '@/components/PossessionSelectionModal'
@@ -333,6 +334,7 @@ export default function MatchRecording() {
     if (ballPosition.team !== prevTeamRef.current) {
       setBallTrail([])
       setActiveCarrierId(null)
+      setActiveOppCarrierId(null)
       prevTeamRef.current = ballPosition.team
     }
   }, [ballPosition.team])
@@ -470,6 +472,8 @@ export default function MatchRecording() {
 
   // Player movement tracking (ball carrier)
   const [activeCarrierId, setActiveCarrierId] = useState<string | null>(null)
+  // Inter-county: the opposition carrier. Kept apart from ours so none of the own-team logic can ever see it.
+  const [activeOppCarrierId, setActiveOppCarrierId] = useState<string | null>(null)
   const playerMovement = usePlayerMovement({
     matchId: matchId,
     half: currentHalf,
@@ -652,6 +656,40 @@ export default function MatchRecording() {
       console.error('Failed to update carrier segment:', err)
     })
   }
+
+  // ── Inter-county: opposition circles ──────────────────────────────────────
+  // When the opposition has the ball the carrier radial, pitch receiver dots and fullscreen strip show THEIR lineup
+  // (same components, their strip colours, their attacking direction). Off for clubs / matches with no lineup.
+  const oppSquad = useOppositionSquad(match, club)
+  const oppActive = oppSquad.enabled && ballPosition.team === PossessionTeam.OPPONENT
+  const [recentOppCarrierIds, setRecentOppCarrierIds] = useState<string[]>([])
+
+  const handleOppCarrierSelect = (playerId: string, jerseyNumber: number | null) => {
+    if (activeOppCarrierId === playerId) {
+      setActiveOppCarrierId(null)
+    } else {
+      // a different opposition player picking it up is a pass (keeps the PPDA pass count without a manual tap)
+      if (activeOppCarrierId) handleLogOppositionPass()
+      setActiveOppCarrierId(playerId)
+      setRecentOppCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
+    }
+    playerMovement.selectCarrier(playerId, jerseyNumber, ballPosition.x, ballPosition.y, 'opponent').catch(err => {
+      console.error('Failed to update opposition carrier segment:', err)
+    })
+  }
+
+  // The squad whose circles are on the pitch right now
+  const squad = oppActive
+    ? {
+        players: oppSquad.players, carrierId: activeOppCarrierId, onSelect: handleOppCarrierSelect,
+        recentIds: recentOppCarrierIds, primary: oppSquad.primary, secondary: oppSquad.secondary,
+        attackingRight: !teamAttackingRight,
+      }
+    : {
+        players: jerseyStripPlayers, carrierId: activeCarrierId, onSelect: handleCarrierSelect,
+        recentIds: recentCarrierIds, primary: club?.primary_colour || '#10B981', secondary: club?.secondary_colour || '#FFFFFF',
+        attackingRight: teamAttackingRight,
+      }
 
   // Arm/disarm High Ball — freezes which team it's for at the moment of
   // tapping (whoever currently has the ball), so a possession flip between
@@ -3482,9 +3520,10 @@ export default function MatchRecording() {
       }
 
       // Auto-end carrier segment on terminal events
-      if (activeCarrierId) {
+      if (activeCarrierId || activeOppCarrierId) {
         playerMovement.onTerminalEvent(String(eventType).toLowerCase(), position.x, position.y)
         setActiveCarrierId(null)
+        setActiveOppCarrierId(null)
       }
 
       // Check if this was a scoring event - reset ball and auto-select kickout tab
@@ -4828,19 +4867,19 @@ export default function MatchRecording() {
                   ballAnchoredOverlay={
                     (ballSvgX, ballSvgY, ballPctX, ballPctY) => (
                       <>
-                        {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && ballPosition.team === PossessionTeam.OWN && (
+                        {(matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && (ballPosition.team === PossessionTeam.OWN || oppActive) && (
                           <BallCarrierPicker
-                            players={jerseyStripPlayers}
-                            activeCarrierId={activeCarrierId}
-                            onSelect={handleCarrierSelect}
-                            attackingRight={teamAttackingRight}
-                            teamPrimaryColor={club?.primary_colour || '#10B981'}
-                            teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                            players={squad.players}
+                            activeCarrierId={squad.carrierId}
+                            onSelect={squad.onSelect}
+                            attackingRight={squad.attackingRight}
+                            teamPrimaryColor={squad.primary}
+                            teamSecondaryColor={squad.secondary}
                             ballSvgX={ballSvgX}
                             ballSvgY={ballSvgY}
                             ballPctX={ballPctX}
                             ballPctY={ballPctY}
-                            recentCarrierIds={recentCarrierIds}
+                            recentCarrierIds={squad.recentIds}
                             onOpenChange={setIsCarrierRadialOpen}
                           />
                         )}
@@ -4850,7 +4889,7 @@ export default function MatchRecording() {
                             opener icon occupies for our own team, exactly
                             like Video Tagging's identical icon, so exactly
                             one icon ever sits there. */}
-                        {(matchPhase === 'first_half' || matchPhase === 'second_half') && ballPosition.team !== PossessionTeam.OWN && (
+                        {(matchPhase === 'first_half' || matchPhase === 'second_half') && ballPosition.team !== PossessionTeam.OWN && !oppActive && (
                           <BallQuickActionIcon
                             ballSvgX={ballSvgX}
                             ballSvgY={ballSvgY}
@@ -4913,19 +4952,19 @@ export default function MatchRecording() {
                     )
                   }
                   pitchOverlay={
-                    (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && ballPosition.team === PossessionTeam.OWN
+                    (matchPhase === 'first_half' || matchPhase === 'second_half') && !awaitingKickout && !pendingFreeKick && !landingTapActive && (ballPosition.team === PossessionTeam.OWN || oppActive)
                       ? (ballPctX, ballPctY) => (
                         <PitchReceiverDots
-                          players={jerseyStripPlayers}
-                          activeCarrierId={activeCarrierId}
-                          onSelect={handleCarrierSelect}
-                          attackingRight={teamAttackingRight}
-                          teamPrimaryColor={club?.primary_colour || '#10B981'}
-                          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
+                          players={squad.players}
+                          activeCarrierId={squad.carrierId}
+                          onSelect={squad.onSelect}
+                          attackingRight={squad.attackingRight}
+                          teamPrimaryColor={squad.primary}
+                          teamSecondaryColor={squad.secondary}
                           ballPctX={ballPctX}
                           ballPctY={ballPctY}
                           disabled={isCarrierRadialOpen}
-                          recentCarrierIds={recentCarrierIds}
+                          recentCarrierIds={squad.recentIds}
                         />
                       )
                       : undefined
@@ -5174,11 +5213,12 @@ export default function MatchRecording() {
                         if (!shouldProceedWithQuickAction('possession-swap')) return
                         const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
                         setBallPosition(prev => ({ ...prev, team: newTeam }))
-                        if (activeCarrierId) {
+                        if (activeCarrierId || activeOppCarrierId) {
                           playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y).catch(err =>
                             console.error('Failed to close carrier segment on possession swap:', err)
                           )
                           setActiveCarrierId(null)
+                          setActiveOppCarrierId(null)
                         }
                       }}
                       className="flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg bg-white/10 border-2 border-white/20 text-white/70 hover:text-white hover:bg-white/20 text-[11px] font-semibold transition-all"
@@ -5979,19 +6019,24 @@ export default function MatchRecording() {
           if (!shouldProceedWithQuickAction('possession-swap')) return
           const newTeam = ballPosition.team === PossessionTeam.OWN ? PossessionTeam.OPPONENT : PossessionTeam.OWN
           setBallPosition(prev => ({ ...prev, team: newTeam }))
-          if (activeCarrierId) {
+          if (activeCarrierId || activeOppCarrierId) {
             playerMovement.onPossessionSwap(ballPosition.x, ballPosition.y).catch(err =>
               console.error('Failed to close carrier segment on possession swap:', err)
             )
             setActiveCarrierId(null)
+            setActiveOppCarrierId(null)
           }
         }}
         onManualEntry={() => setIsManualEntryOpen(true)}
-        jerseyStripPlayers={jerseyStripPlayers}
-        activeCarrierId={activeCarrierId}
-        onCarrierSelect={handleCarrierSelect}
-        recentCarrierIds={recentCarrierIds}
-        carrierJerseyNumber={activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.jerseyNumber ?? null : null}
+        jerseyStripPlayers={squad.players}
+        activeCarrierId={squad.carrierId}
+        onCarrierSelect={squad.onSelect}
+        recentCarrierIds={squad.recentIds}
+        carrierJerseyNumber={squad.carrierId ? squad.players.find(p => p.playerId === squad.carrierId)?.jerseyNumber ?? null : null}
+        squadIsOpposition={oppActive}
+        squadPrimaryColor={squad.primary}
+        squadSecondaryColor={squad.secondary}
+        squadAttackingRight={squad.attackingRight}
         selectingFoulPlayer={selectingFoulPlayer}
         onStartSecondHalf={matchPhase === 'half_time' ? startHalf : undefined}
         onEndFirstHalf={endFirstHalf}

@@ -469,7 +469,9 @@ export const offlinePossession = {
 export const offlinePlayerMovement = {
   startCarrierSegment: async (data: {
     match_id: string
-    player_id: string
+    /** Our player — or leave out and pass opposition_player_id for an opposition carrier */
+    player_id?: string
+    opposition_player_id?: string
     jersey_number?: number | null
     team: string
     half: number
@@ -506,7 +508,7 @@ export const offlinePlayerMovement = {
     return {
       id: tempSegmentId,
       match_id: data.match_id,
-      player_id: data.player_id,
+      player_id: data.player_id ?? null,
       jersey_number: data.jersey_number ?? null,
       team: data.team,
       half: data.half,

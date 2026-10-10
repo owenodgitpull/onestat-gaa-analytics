@@ -4016,165 +4016,26 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     def _xy_zone(x, y) -> str:
         return _pitch_location(x, y if y is not None else 50) or "unknown"
 
-    # ── Build carrier stats + PASSING NETWORK from transitions ──
-    carrier_stats: dict = {}
-    pass_connections: dict = {}  # "pidA->pidB" -> {from_name, from_jersey, to_name, to_jersey, count}
-    pass_count_by_player: dict = {}  # pid -> {name, jersey, passes_made, passes_received}
-    transition_times_ms: list = []  # time gaps between consecutive segments
-    # Per-player turnover consequences: pid -> {turnovers_lost, led_to_opp_score, turnover_zones}
-    player_consequences: dict = {}
-
-    # NOTE: this counts PASS TRANSITIONS between two different players' carrier
-    # segments where the ball progressed >=10% of pitch length — it is NOT a count
-    # of forward carries. Most carries never chain into a different-player segment
-    # with both endpoints logged, so this number is always much smaller than the
-    # total number of forward-moving carries in the match. Keep the key name
-    # explicit so nothing downstream (including the AI report) mislabels it.
-    territory_passes = {"forward": 0, "lateral": 0, "backward": 0}
-
-    prev_seg = None
-    for seg in segments:
-        player_name = seg.player.name if seg.player else "Unknown"
-        path_len = len(seg.path_points) if seg.path_points else 0
-        pid = str(seg.player_id)
-
-        # Carrier stats + per-player zone breakdown
-        if pid not in carrier_stats:
-            carrier_stats[pid] = {
-                "name": player_name, "jersey": seg.jersey_number,
-                "carries": 0, "total_points": 0,
-                "carry_zones": [],           # zones where they carried (start position)
-                "avg_gain_x": None,          # set after loop
-                "start_xs": [], "end_xs": [], # for avg territory gain calc
-            }
-        carrier_stats[pid]["carries"] += 1
-        carrier_stats[pid]["total_points"] += path_len
-        if seg.start_x is not None:
-            carrier_stats[pid]["carry_zones"].append(_xy_zone(seg.start_x, seg.start_y))
-            carrier_stats[pid]["start_xs"].append(seg.start_x)
-        if seg.end_x is not None:
-            carrier_stats[pid]["end_xs"].append(seg.end_x)
-
-        # Turnover consequence analysis — track own-team turnovers + whether opp scored
-        if seg.ended_by == "turnover" and seg.team == "own":
-            if pid not in player_consequences:
-                player_consequences[pid] = {
-                    "name": player_name, "jersey": seg.jersey_number,
-                    "turnovers_lost": 0, "led_to_opp_score": 0, "turnover_zones": [],
-                }
-            player_consequences[pid]["turnovers_lost"] += 1
-            if seg.end_x is not None:
-                player_consequences[pid]["turnover_zones"].append(
-                    _xy_zone(seg.end_x, seg.end_y)
-                )
-            # Check if opponent scored within 3 minutes of this turnover
-            m = seg.minute
-            if m is not None:
-                for ev in _all_events:
-                    ev_min = ev.minute
-                    if ev_min is None:
-                        continue
-                    if ev_min < m - 1:
-                        continue
-                    if ev_min > m + 3:
-                        break
-                    if _ev_team(ev) == "opponent" and _ev_type(ev) in _SCORING_STR:
-                        player_consequences[pid]["led_to_opp_score"] += 1
-                        break  # at most one score per turnover
-
-        # Pass detection: consecutive segments on same team, different player = pass
-        if prev_seg and seg.team == prev_seg.team and str(seg.player_id) != str(prev_seg.player_id):
-            from_pid = str(prev_seg.player_id)
-            to_pid = pid
-            from_name = prev_seg.player.name if prev_seg.player else "Unknown"
-            conn_key = f"{from_pid}->{to_pid}"
-
-            if conn_key not in pass_connections:
-                pass_connections[conn_key] = {
-                    "from_name": from_name,
-                    "from_jersey": prev_seg.jersey_number,
-                    "to_name": player_name,
-                    "to_jersey": seg.jersey_number,
-                    "count": 0,
-                }
-            pass_connections[conn_key]["count"] += 1
-
-            # Per-player pass counts
-            for p, name, jersey in [(from_pid, from_name, prev_seg.jersey_number), (to_pid, player_name, seg.jersey_number)]:
-                if p not in pass_count_by_player:
-                    pass_count_by_player[p] = {"name": name, "jersey": jersey, "passes_made": 0, "passes_received": 0}
-            pass_count_by_player[from_pid]["passes_made"] += 1
-            pass_count_by_player[to_pid]["passes_received"] += 1
-
-            # Territory progression (based on end position of passer → start position of receiver)
-            if prev_seg.end_x is not None and seg.start_x is not None:
-                dx = seg.start_x - prev_seg.end_x
-                if dx > 10:
-                    territory_passes["forward"] += 1
-                elif dx < -10:
-                    territory_passes["backward"] += 1
-                else:
-                    territory_passes["lateral"] += 1
-
-            # Transition tempo
-            if prev_seg.end_time_ms and seg.start_time_ms:
-                gap = seg.start_time_ms - prev_seg.end_time_ms
-                if 0 <= gap <= 30000:  # Ignore gaps > 30s (dead ball)
-                    transition_times_ms.append(gap)
-
-        prev_seg = seg
-
-    # GAA pitch length used to convert avg_gain_x from a 0-100 pitch-length
-    # percentage into real metres — kept in sync with PITCH_LENGTH_M in
-    # expected_points_service.py so "how far is a carry" means the same
-    # distance everywhere in the app. Uses this match's real recorded pitch
-    # length when the club has set one for this ground.
+    # ── Carry analysis, once per team ──
+    # Segments carry team + EITHER our player (player_id) OR an opposition-lineup player (opposition_player_id,
+    # inter-county). Each side is analysed on its own: a pass link is only ever between two carries by the same team,
+    # and "forward" is each team's own attacking direction (segments are already in OUR attacking frame, so the
+    # opposition's forward is towards x = 0).
+    # GAA pitch length used to convert avg_gain_x from a 0-100 pitch-% into real metres — kept in sync with
+    # PITCH_LENGTH_M in expected_points_service.py. Uses this match's real recorded length when set.
     _PITCH_LENGTH_M = match_pitch_length_m or 145.0
-
-    # Post-loop: compute avg territory gain per player and clean up internal lists
-    for stats in carrier_stats.values():
-        sx = stats.pop("start_xs", [])
-        ex = stats.pop("end_xs", [])
-        if sx and ex:
-            stats["avg_start_x"] = round(sum(sx) / len(sx), 1)
-            stats["avg_end_x"] = round(sum(ex) / len(ex), 1)
-            gain_pct = stats["avg_end_x"] - stats["avg_start_x"]
-            # avg_gain_x is kept on the original 0-100 pitch-% scale for any
-            # existing internal comparisons; avg_gain_x_metres is the real-world
-            # distance and is what the report-writing prompt must use — a raw
-            # percentage point was previously being read out loud as "X metres",
-            # understating actual carry distance by roughly 30%.
-            stats["avg_gain_x"] = round(gain_pct, 1)
-            stats["avg_gain_x_metres"] = round(gain_pct / 100 * _PITCH_LENGTH_M, 1)
-        else:
-            stats["avg_start_x"] = None
-            stats["avg_end_x"] = None
-            stats["avg_gain_x"] = None
-            stats["avg_gain_x_metres"] = None
-        # Summarise carry zones as top-3 most common
-        if stats["carry_zones"]:
-            from collections import Counter
-            top_zones = [z for z, _ in Counter(stats["carry_zones"]).most_common(3)]
-            stats["primary_carry_zones"] = top_zones
-        del stats["carry_zones"]
-
-    total_passes = sum(c["count"] for c in pass_connections.values())
-
-    # ── Possession Chain Analysis ──
-    # Derived directly from the carrier segments already fetched above,
-    # rather than read from the separate possession_chains table — that
-    # table has never actually been populated by anything (checked
-    # 2026-09-08: zero rows across every match on the platform, this club
-    # or any other), even though this function has always queried it as if
-    # it were, which is why "chain effectiveness" always came back empty. A
-    # chain is a run of consecutive same-team segments joined end-to-end by
-    # ended_by=='pass' — the moment a segment ends any other way (score,
-    # wide, turnover, foul, manual) or the team changes, that chain closes
-    # and the next segment starts a new one. Filtered to team=='own' since
-    # this analysis is specifically about the coached team's own attacking
-    # structure — the sparse handful of opponent segments some matches
-    # carry would otherwise pollute "our" scoring-chain averages.
+    from collections import Counter
     from types import SimpleNamespace
+
+    def _carrier_key(sg) -> str:
+        return str(sg.player_id or sg.opposition_player_id)
+
+    def _carrier_name(sg) -> str:
+        if sg.player:
+            return sg.player.name
+        if sg.opposition_player:
+            return sg.opposition_player.surname
+        return "Unknown"
 
     # ended_by can only ever say 'pass' or 'turnover' with any reliability —
     # the backfill that populates it (see project-refresh-duplicate-event-bug
@@ -4259,139 +4120,255 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
             return "unknown"
         return eb
 
-    chains = []
-    for chain_segs in _raw_chains:
-        if chain_segs[0].team != "own":
-            continue
-        first, last = chain_segs[0], chain_segs[-1]
-        end_x = last.end_x if last.end_x is not None else last.start_x
-        end_y = last.end_y if last.end_y is not None else last.start_y
-        chains.append(SimpleNamespace(
-            team=first.team,
-            player_sequence=[str(s.player_id) for s in chain_segs],
-            jersey_sequence=[s.jersey_number for s in chain_segs],
-            chain_length=len(chain_segs),
-            outcome=_chain_outcome(last),
-            start_zone=_xy_zone(first.start_x, first.start_y),
-            end_zone=_xy_zone(end_x, end_y),
-        ))
+    def _belongs(sg, team: str) -> bool:
+        # Opposition carries only count when they came from the opposition lineup. Older matches hold a few of OUR
+        # players stored on 'opponent'-team segments (a possession-flag glitch) — never present those as theirs.
+        return sg.team == "own" if team == "own" else (sg.team == "opponent" and sg.opposition_player_id is not None)
 
-    # Chain effectiveness breakdown
-    scoring_chains = [c for c in chains if c.outcome == "score"]
-    turnover_chains = [c for c in chains if c.outcome == "turnover"]
-    wide_chains = [c for c in chains if c.outcome == "wide"]
+    def _analyse_side(team: str) -> dict:
+        sgn = 1.0 if team == "own" else -1.0     # their forward is towards x = 0 in our frame
+        score_key = "led_to_opp_score" if team == "own" else "led_to_our_score"
+        other_team = "opponent" if team == "own" else "own"
 
-    chain_effectiveness = {
-        "total_chains": len(chains),
-        "scoring_chains": len(scoring_chains),
-        "turnover_chains": len(turnover_chains),
-        "wide_chains": len(wide_chains),
-        "avg_chain_length_all": round(sum(c.chain_length or 0 for c in chains) / max(len(chains), 1), 1),
-        "avg_chain_length_scores": round(sum(c.chain_length or 0 for c in scoring_chains) / max(len(scoring_chains), 1), 1),
-        "avg_chain_length_turnovers": round(sum(c.chain_length or 0 for c in turnover_chains) / max(len(turnover_chains), 1), 1),
-        "direct_scores": len([c for c in scoring_chains if (c.chain_length or 0) <= 3]),
-        "buildup_scores": len([c for c in scoring_chains if (c.chain_length or 0) > 3]),
-    }
+        carrier_stats: dict = {}
+        pass_connections: dict = {}   # "pidA->pidB" -> {from_name, from_jersey, to_name, to_jersey, count}
+        pass_count_by_player: dict = {}
+        transition_times_ms: list = []
+        player_consequences: dict = {}
+        # Counts PASS TRANSITIONS between two different players' carries where the ball progressed >=10% of pitch
+        # length — NOT a count of forward carries (most carries never chain into a different-player segment).
+        territory_passes = {"forward": 0, "lateral": 0, "backward": 0}
 
-    # Chain detail for AI
-    chain_data = []
-    for c in chains:
-        chain_data.append({
-            "team": c.team,
-            "player_sequence": c.player_sequence,
-            "jersey_sequence": c.jersey_sequence,
-            "chain_length": c.chain_length,
-            "outcome": c.outcome,
-            "start_zone": c.start_zone,
-            "end_zone": c.end_zone,
-        })
+        prev_seg = None
+        for seg in segments:
+            if not _belongs(seg, team):
+                prev_seg = seg   # an intervening carry by the other team breaks any pass link
+                continue
+            player_name = _carrier_name(seg)
+            path_len = len(seg.path_points) if seg.path_points else 0
+            pid = _carrier_key(seg)
 
-    # Tempo analysis
-    tempo = {}
-    if transition_times_ms:
-        avg_ms = sum(transition_times_ms) / len(transition_times_ms)
-        tempo = {
-            "avg_transition_seconds": round(avg_ms / 1000, 1),
-            "fastest_transition_seconds": round(min(transition_times_ms) / 1000, 1),
-            "total_transitions_timed": len(transition_times_ms),
+            if pid not in carrier_stats:
+                carrier_stats[pid] = {
+                    "name": player_name, "jersey": seg.jersey_number,
+                    "carries": 0, "total_points": 0,
+                    "carry_zones": [],
+                    "avg_gain_x": None,
+                    "start_xs": [], "end_xs": [],
+                }
+            carrier_stats[pid]["carries"] += 1
+            carrier_stats[pid]["total_points"] += path_len
+            if seg.start_x is not None:
+                carrier_stats[pid]["carry_zones"].append(_xy_zone(seg.start_x, seg.start_y))
+                carrier_stats[pid]["start_xs"].append(seg.start_x)
+            if seg.end_x is not None:
+                carrier_stats[pid]["end_xs"].append(seg.end_x)
+
+            # Turnover consequence: did the other team score within 3 minutes of this team losing the ball?
+            if seg.ended_by == "turnover":
+                if pid not in player_consequences:
+                    player_consequences[pid] = {
+                        "name": player_name, "jersey": seg.jersey_number,
+                        "turnovers_lost": 0, score_key: 0, "turnover_zones": [],
+                    }
+                player_consequences[pid]["turnovers_lost"] += 1
+                if seg.end_x is not None:
+                    player_consequences[pid]["turnover_zones"].append(_xy_zone(seg.end_x, seg.end_y))
+                m = seg.minute
+                if m is not None:
+                    for ev in _all_events:
+                        ev_min = ev.minute
+                        if ev_min is None:
+                            continue
+                        if ev_min < m - 1:
+                            continue
+                        if ev_min > m + 3:
+                            break
+                        if _ev_team(ev) == other_team and _ev_type(ev) in _SCORING_STR:
+                            player_consequences[pid][score_key] += 1
+                            break  # at most one score per turnover
+
+            # Pass detection: consecutive carries by this team, different player = pass
+            if prev_seg and _belongs(prev_seg, team) and _carrier_key(seg) != _carrier_key(prev_seg):
+                from_pid = _carrier_key(prev_seg)
+                to_pid = pid
+                from_name = _carrier_name(prev_seg)
+                conn_key = f"{from_pid}->{to_pid}"
+                if conn_key not in pass_connections:
+                    pass_connections[conn_key] = {
+                        "from_name": from_name, "from_jersey": prev_seg.jersey_number,
+                        "to_name": player_name, "to_jersey": seg.jersey_number, "count": 0,
+                    }
+                pass_connections[conn_key]["count"] += 1
+                for p, name, jersey in [(from_pid, from_name, prev_seg.jersey_number), (to_pid, player_name, seg.jersey_number)]:
+                    if p not in pass_count_by_player:
+                        pass_count_by_player[p] = {"name": name, "jersey": jersey, "passes_made": 0, "passes_received": 0}
+                pass_count_by_player[from_pid]["passes_made"] += 1
+                pass_count_by_player[to_pid]["passes_received"] += 1
+
+                if prev_seg.end_x is not None and seg.start_x is not None:
+                    dx = (seg.start_x - prev_seg.end_x) * sgn
+                    if dx > 10:
+                        territory_passes["forward"] += 1
+                    elif dx < -10:
+                        territory_passes["backward"] += 1
+                    else:
+                        territory_passes["lateral"] += 1
+
+                if prev_seg.end_time_ms and seg.start_time_ms:
+                    gap = seg.start_time_ms - prev_seg.end_time_ms
+                    if 0 <= gap <= 30000:  # ignore gaps > 30s (dead ball)
+                        transition_times_ms.append(gap)
+
+            prev_seg = seg
+
+        for stats in carrier_stats.values():
+            sx = stats.pop("start_xs", [])
+            ex = stats.pop("end_xs", [])
+            if sx and ex:
+                stats["avg_start_x"] = round(sum(sx) / len(sx), 1)
+                stats["avg_end_x"] = round(sum(ex) / len(ex), 1)
+                # positive = gained ground towards the goal THIS team attacks
+                gain_pct = (stats["avg_end_x"] - stats["avg_start_x"]) * sgn
+                stats["avg_gain_x"] = round(gain_pct, 1)
+                stats["avg_gain_x_metres"] = round(gain_pct / 100 * _PITCH_LENGTH_M, 1)
+            else:
+                stats["avg_start_x"] = None
+                stats["avg_end_x"] = None
+                stats["avg_gain_x"] = None
+                stats["avg_gain_x_metres"] = None
+            if stats["carry_zones"]:
+                stats["primary_carry_zones"] = [z for z, _ in Counter(stats["carry_zones"]).most_common(3)]
+            del stats["carry_zones"]
+
+        chains = []
+        for chain_segs in _raw_chains:
+            if not _belongs(chain_segs[0], team):
+                continue
+            first, last = chain_segs[0], chain_segs[-1]
+            end_x = last.end_x if last.end_x is not None else last.start_x
+            end_y = last.end_y if last.end_y is not None else last.start_y
+            chains.append(SimpleNamespace(
+                team=first.team,
+                player_sequence=[_carrier_key(sg) for sg in chain_segs],
+                jersey_sequence=[sg.jersey_number for sg in chain_segs],
+                chain_length=len(chain_segs),
+                outcome=_chain_outcome(last),
+                start_zone=_xy_zone(first.start_x, first.start_y),
+                end_zone=_xy_zone(end_x, end_y),
+            ))
+
+        scoring_chains = [c for c in chains if c.outcome == "score"]
+        turnover_chains = [c for c in chains if c.outcome == "turnover"]
+        wide_chains = [c for c in chains if c.outcome == "wide"]
+        chain_effectiveness = {
+            "total_chains": len(chains),
+            "scoring_chains": len(scoring_chains),
+            "turnover_chains": len(turnover_chains),
+            "wide_chains": len(wide_chains),
+            "avg_chain_length_all": round(sum(c.chain_length or 0 for c in chains) / max(len(chains), 1), 1),
+            "avg_chain_length_scores": round(sum(c.chain_length or 0 for c in scoring_chains) / max(len(scoring_chains), 1), 1),
+            "avg_chain_length_turnovers": round(sum(c.chain_length or 0 for c in turnover_chains) / max(len(turnover_chains), 1), 1),
+            "direct_scores": len([c for c in scoring_chains if (c.chain_length or 0) <= 3]),
+            "buildup_scores": len([c for c in scoring_chains if (c.chain_length or 0) > 3]),
+        }
+        chain_data = [{
+            "team": c.team, "player_sequence": c.player_sequence, "jersey_sequence": c.jersey_sequence,
+            "chain_length": c.chain_length, "outcome": c.outcome, "start_zone": c.start_zone, "end_zone": c.end_zone,
+        } for c in chains]
+
+        tempo = {}
+        if transition_times_ms:
+            avg_ms = sum(transition_times_ms) / len(transition_times_ms)
+            tempo = {
+                "avg_transition_seconds": round(avg_ms / 1000, 1),
+                "fastest_transition_seconds": round(min(transition_times_ms) / 1000, 1),
+                "total_transitions_timed": len(transition_times_ms),
+            }
+
+        return {
+            "n": sum(1 for sg in segments if _belongs(sg, team)),
+            "carrier_stats": carrier_stats, "player_consequences": player_consequences,
+            "total_passes": sum(c["count"] for c in pass_connections.values()),
+            "top_connections": sorted(pass_connections.values(), key=lambda x: x["count"], reverse=True)[:15],
+            "pass_leaders": sorted(pass_count_by_player.values(), key=lambda x: x["passes_made"], reverse=True),
+            "territory_passes": territory_passes, "chain_effectiveness": chain_effectiveness,
+            "chain_data": chain_data, "tempo": tempo,
         }
 
-    # Top pass connections (sorted by frequency)
-    top_connections = sorted(pass_connections.values(), key=lambda x: x["count"], reverse=True)[:15]
-
-    # Pass leaders
-    pass_leaders = sorted(pass_count_by_player.values(), key=lambda x: x["passes_made"], reverse=True)
-
-    # ── Data confidence tier ──
-    # A typical GAA match has ~80-120 possession changes. Tier determines
-    # what the AI agent should and should NOT present.
-    n = len(segments)
-    if n < 10:
-        confidence = "low"
-        guidance = (
-            "VERY LOW SAMPLE: Only {n} ball carries were logged in this match. "
-            "DO NOT present pass networks, chain effectiveness averages, tempo stats, "
-            "or territory progression percentages — they would be misleading. "
-            "ONLY mention individual observations: e.g. 'Player X was seen carrying "
-            "into dangerous positions in the 2nd half'. Do NOT quote averages or "
-            "percentages from this data."
-        ).format(n=n)
-    elif n < 30:
-        confidence = "medium"
-        guidance = (
-            "PARTIAL SAMPLE: {n} ball carries were logged (estimated ~20-30% of match "
-            "possessions). You may mention recurring patterns with qualifiers like "
-            "'from the possessions logged' or 'a notable pattern in the recorded data'. "
-            "Do NOT present chain averages or tempo stats as definitive. Pass connections "
-            "with 2+ occurrences are meaningful; single connections may be coincidental."
-        ).format(n=n)
-    else:
-        confidence = "high"
-        guidance = (
-            "GOOD SAMPLE: {n} ball carries were logged, giving reasonable coverage of "
-            "the match. Pass network, chain effectiveness, tempo, and territory stats "
-            "are meaningful. Still frame as 'from logged possessions' rather than "
-            "definitive totals, but you can present averages, percentages, and patterns "
-            "with confidence."
-        ).format(n=n)
-
-    # Build response — always include basic carrier stats, gate advanced stats by tier
-    result = {
-        "data_confidence": confidence,
-        "analysis_guidance": guidance,
-        "total_segments": n,
-        "total_logged_passes": total_passes,
-        "carrier_stats": sorted(carrier_stats.values(), key=lambda x: x["carries"], reverse=True),
-        # Consequence analysis: turnovers per player and how many led to opposition scores.
-        # avg_gain_x: positive = net territory gain per carry (forward-carrying), negative = backward.
-        # primary_carry_zones: top pitch zones where each player received/started carries.
-        "player_consequences": sorted(
-            player_consequences.values(), key=lambda x: x["turnovers_lost"], reverse=True
-        ) if player_consequences else [],
-    }
-
-    # Medium+ tier: include pass network and leaders
-    if confidence in ("medium", "high"):
-        result["pass_network"] = top_connections
-        result["pass_leaders"] = pass_leaders[:10]
-        result["chains"] = chain_data[:30]
-
-    # High tier only: include aggregated stats (averages, percentages, tempo)
-    if confidence == "high":
-        result["pass_territory_progression"] = {
-            **territory_passes,
-            "note": (
-                "Counts PASS TRANSITIONS between two different players' carries where the ball "
-                "moved >=10% of pitch length — NOT a count of forward carries, and NOT the total "
-                "number of forward-moving carries in the match (most carries don't chain into a "
-                "different-player segment with both endpoints logged, so this is always a small "
-                "subset). Never report these numbers as '<n> forward carries'. Use each player's "
-                "avg_gain_x in carrier_stats to describe individual forward-carrying tendency instead."
-            ),
+    def _assemble(side: dict, who: str) -> dict:
+        n = side["n"]
+        # A typical GAA match has ~80-120 possession changes. The tier says what the agent may and may not present.
+        carries = "ball carries" if who == "of our" else "opposition ball carries"
+        if n < 10:
+            confidence = "low"
+            guidance = (
+                f"VERY LOW SAMPLE: Only {n} {carries} were logged in this match. "
+                "DO NOT present pass networks, chain effectiveness averages, tempo stats, "
+                "or territory progression percentages — they would be misleading. "
+                "ONLY mention individual observations: e.g. 'Player X was seen carrying "
+                "into dangerous positions in the 2nd half'. Do NOT quote averages or "
+                "percentages from this data."
+            )
+        elif n < 30:
+            confidence = "medium"
+            guidance = (
+                f"PARTIAL SAMPLE: {n} {carries} were logged (estimated ~20-30% of match "
+                "possessions). You may mention recurring patterns with qualifiers like "
+                "'from the possessions logged' or 'a notable pattern in the recorded data'. "
+                "Do NOT present chain averages or tempo stats as definitive. Pass connections "
+                "with 2+ occurrences are meaningful; single connections may be coincidental."
+            )
+        else:
+            confidence = "high"
+            guidance = (
+                f"GOOD SAMPLE: {n} {carries} were logged, giving reasonable coverage of "
+                "the match. Pass network, chain effectiveness, tempo, and territory stats "
+                "are meaningful. Still frame as 'from logged possessions' rather than "
+                "definitive totals, but you can present averages, percentages, and patterns "
+                "with confidence."
+            )
+        out = {
+            "data_confidence": confidence,
+            "analysis_guidance": guidance,
+            "total_segments": n,
+            "total_logged_passes": side["total_passes"],
+            "carrier_stats": sorted(side["carrier_stats"].values(), key=lambda x: x["carries"], reverse=True),
+            "player_consequences": sorted(
+                side["player_consequences"].values(), key=lambda x: x["turnovers_lost"], reverse=True
+            ) if side["player_consequences"] else [],
         }
-        result["chain_effectiveness"] = chain_effectiveness
-        result["tempo"] = tempo
+        if confidence in ("medium", "high"):
+            out["pass_network"] = side["top_connections"]
+            out["pass_leaders"] = side["pass_leaders"][:10]
+            out["chains"] = side["chain_data"][:30]
+        if confidence == "high":
+            out["pass_territory_progression"] = {
+                **side["territory_passes"],
+                "note": (
+                    "Counts PASS TRANSITIONS between two different players' carries where the ball "
+                    "moved >=10% of pitch length — NOT a count of forward carries, and NOT the total "
+                    "number of forward-moving carries in the match (most carries don't chain into a "
+                    "different-player segment with both endpoints logged, so this is always a small "
+                    "subset). Never report these numbers as '<n> forward carries'. Use each player's "
+                    "avg_gain_x in carrier_stats to describe individual forward-carrying tendency instead."
+                ),
+            }
+            out["chain_effectiveness"] = side["chain_effectiveness"]
+            out["tempo"] = side["tempo"]
+        return out
 
+    result = _assemble(_analyse_side("own"), "of our")
+    opp_side = _analyse_side("opponent")
+    if opp_side["n"]:
+        # How the OPPOSITION moves the ball (their carries, tracked from their lineup — inter-county). Same shape as
+        # ours. Their "forward" is towards our goal: avg_gain_x is positive when they gained ground. Zones are
+        # worded in OUR frame ("our defensive third" = where they are attacking us).
+        result["opposition"] = _assemble(opp_side, "opposition")
+        result["opposition"]["frame_note"] = (
+            "Opposition movement. avg_gain_x is positive when they gained ground towards OUR goal. Zone names are "
+            "from our perspective (their attack runs into 'our defensive third')."
+        )
     return safe_json(result)
 
 

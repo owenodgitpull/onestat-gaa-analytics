@@ -3034,7 +3034,9 @@ const playerMovementAPI = {
   // Carrier segments
   startCarrierSegment: (data: {
     match_id: string;
-    player_id: string;
+    /** Our player — or leave out and pass opposition_player_id for an opposition carrier (inter-county) */
+    player_id?: string;
+    opposition_player_id?: string;
     jersey_number?: number | null;
     team: string;
     half: number;

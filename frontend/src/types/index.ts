@@ -99,6 +99,15 @@ export interface Match {
   pitch_length_m?: number | null;
   pitch_width_m?: number | null;
   opposition_roster?: string[] | null;
+  /** Inter-county only: opposition lineup incl. bench (set on GET /matches/{id}) */
+  opposition_lineup?: Array<{
+    opposition_player_id: string;
+    surname: string;
+    jersey_number: number | null;
+    position_id: string;
+    is_substitute: boolean;
+    is_on_field: boolean;
+  }> | null;
   team_strip_colour?: string | null;
   team_strip_secondary_colour?: string | null;
   opponent_strip_colour?: string | null;
