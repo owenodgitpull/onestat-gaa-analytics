@@ -38,6 +38,20 @@ CONCERN_EVENT_TYPES = {
 }
 
 
+def minutes_since_last_insight(minute: int, half: int, last_minute: int, last_half: int, half_duration_mins: Optional[int]) -> int:
+    """Match minutes of play since the previous insight.
+
+    Minutes are cumulative across the match (the second half starts at the half length), so inside a half this is a
+    plain difference. Across half time the first half's ADDED time (e.g. an insight at 34' of a 30-minute half) must
+    count as zero minutes remaining — not negative — otherwise the first second-half insight is delayed by the amount
+    of added time. The half length is the match's own setting (club 30 / inter-county 35), never a constant.
+    """
+    if half > last_half:
+        hdm = half_duration_mins or 30
+        return max(0, minute - hdm) + max(0, hdm - last_minute)
+    return minute - last_minute
+
+
 class LiveInsightsService:
     """Service for managing live match insights."""
 
@@ -197,11 +211,10 @@ class LiveInsightsService:
         if not last_insight:
             should_generate = minute >= 5
         else:
-            minutes_since_last = minute - last_insight.minute
-            # Account for half change
-            if half > last_insight.half:
-                minutes_since_last = minute - 30 + (30 - last_insight.minute)
-            should_generate = minutes_since_last >= 5
+            hdm = None
+            if half > last_insight.half:   # only needed across the half-time boundary
+                hdm = (await db.execute(select(Match.half_duration_mins).where(Match.id == match_id))).scalar_one_or_none()
+            should_generate = minutes_since_last_insight(minute, half, last_insight.minute, last_insight.half, hdm) >= 5
 
         if should_generate:
             return await LiveInsightsService._generate_and_store_insight(
