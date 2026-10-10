@@ -1,0 +1,150 @@
+{
+  "model": "claude-sonnet-5-5",
+  "fingerprint": "a3bd703283",
+  "label": "v13b-halffix",
+  "match_id": "b109b5c1-d121-489f-9098-1ddfa12ed3a7",
+  "opponent": "St Eunans",
+  "results": [
+    {
+      "minute": 35,
+      "trigger": "interval",
+      "score": "SCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts",
+      "insight": "**Five of our kickouts lost have all ended in a shot for them, four of them scores, while we trail by 14 points.**\n\nOur lost kickouts: 5 logged, and all 5 became a shot for them. 4 ended in a score (5 pts) and 1 in a miss. We have kept 9 of our 14 kickouts (64%). Medium kickouts to midfield have been kept 4 of 7, and long ones 1 of 3. Short kickouts have been kept 4 of 4. The last five minutes had no lost kickouts. Our only logged kickout in that window was kept, at 33'.\n\nOur kickouts lost have fed their scoring, so the medium and long ones are the risk. Next five minutes: go short from the kickout, as the 4 of 4 kept suggests, and only go long when a runner is clearly free. Don't give them another possession off our restart.",
+      "seconds": 15.6,
+      "events_visible": 96,
+      "recent_events": [
+        {
+          "minute": 34,
+          "type": "substitution",
+          "team": "own"
+        },
+        {
+          "minute": 34,
+          "type": "substitution",
+          "team": "own"
+        },
+        {
+          "minute": 34,
+          "type": "two_point",
+          "team": "opponent"
+        },
+        {
+          "minute": 33,
+          "type": "long_kick_pass",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "short",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "other",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "own_kickout_won_break",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "foul_won",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "short",
+          "team": "opponent"
+        },
+        {
+          "minute": 32,
+          "type": "point",
+          "team": "opponent"
+        }
+      ],
+      "fact_check": {
+        "ran": true,
+        "ok": true,
+        "unsupported": []
+      },
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 4 | Turnovers LOST: 6 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 9/14 retained (64%)\n  Their kickouts: 2/6 won by us (33%)\n\nSCORING RUN: Opponents have scored 3 in a row \u2014 under pressure.\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Mark Curran: 1 TO lost, 2 fouls\n  Darren Curran: 2 fouls, 2 TO won\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Daire Gallagher: 1 TO lost, 1 foul, YELLOW\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul, 1 TO won\n  Luke Clerkin: scored 0-1, 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Aaron Neely: scored 0-1, 1 TO won\n  Oisin Bonner: scored 0-1",
+      "tactical_brief": "=== LIVE TACTICAL BRIEF \u2014 35' (half 2, 25 min to full time; a half is 30 min) ===\nAll locations below are in OUR attacking frame: we attack towards the far goal; 'our defensive third' is nearest our own goal; 'our left/right' is as we face the opposition goal.\n\nSCORE NOW: us 0-04 (4 pts) v them 1-15 (18 pts) \u2014 14 points down. (A goal is 3 points; \"scores\" counts goals and points, \"pts\" is the points total.)\nTOP SIGNALS (computed and ranked \u2014 lead with the first; quote these numbers exactly; do not repeat a theme the manager has just been told unless it has moved):\n  1. [Own Kick-Out \u00b7 against] Kickouts we lost: 5 logged; 5 of them have a finished possession for them \u2014 4 ended in a score (5 pts), 1 in a miss, 0 ended without a shot.\n  2. [Transition to Defence \u00b7 against] Turnovers/errors we lost: 6 logged; 4 of them have a finished possession for them \u2014 3 became a shot (3 a score, 5 pts), 1 ended without one.\nPHASES (what each way of getting the ball became \u2014 counted from event ORDER, so no 'within N seconds' claims unless a median-seconds figure is shown; possessions still open are excluded from the rates):\n  Own Kick-Out \u2014 kickouts we kept: 9 to date (1 in the last 5 min): 5 became a shot (1 a score, 1 pts), 4 ended without one\n  Own Kick-Out \u2014 kickouts we lost (THEIR possession): 5 to date: 5 became a shot (4 a score, 5 pts), 0 ended without one\n  Opposition Kick-Out \u2014 we won it: 2 to date \u2014 only 2 finished: describe, do not conclude\n  Opposition Kick-Out \u2014 they kept it (THEIR possession): 4 to date: 3 became a shot (2 a score, 2 pts), 1 ended without one\n  Transition to Attack \u2014 turnovers we won: 4 to date: 2 became a shot (0 a score, 0 pts), 2 ended without one\n  Transition to Defence \u2014 turnovers we lost (THEIR possession): 6 to date: 4 became a shot (3 a score, 5 pts), 2 ended without one\n  Possession/Attack \u2014 all our tracked possessions: 17 to date (1 in the last 5 min): 10 became a shot (4 a score, 4 pts), 7 ended without one\n  Defensive Phase \u2014 all their tracked possessions: 15 to date: 12 became a shot (9 a score, 12 pts), 3 ended without one\n\nLAST 5 MINUTES (31'\u201335'):\n  Scores: us 0 pts (0 scores), them 0 pts (0 scores)\n  Turnovers: won 0, lost 0; wides/misses by us 0; our fouls 0\n  Our kickouts retained 0/0; their kickouts won by us 0/0\n\nWHERE WE LOSE THE BALL (6 turnovers/unforced errors, 6 located): 4 in the attacking third (the centre), 1 in the attacking third (our right), 1 in our defensive third (our right)\n  last 10 min: 1 in the attacking third (the centre)\nWHERE WE WIN IT BACK (4 turnovers won, 4 located): 1 in the middle third (our right), 1 in the middle third (our left), 1 in our defensive third (our right), 1 in the middle third (the centre)\n\nTHEIR SCORING (13 scores: 1 goals, 3 two-pointers, 3 from frees/45s; 4 misses):\n  shot position (distance from our goal): 4 20-40m out on the centre, 3 20-40m out on our left, 2 inside 20m on the centre, 2 40m+ out on our left, 1 20-40m out on our right, 1 40m+ out on the centre\n\nLINKS BEHIND THEIR 13 SCORES: 4 came within 2 min of one of our turnovers/errors (lost our defensive third (our right), our defensive third (our right), the attacking third (the centre), the attacking third (the centre)); 6 within 2 min of a kickout we lost; 3 were frees/45s\n\nOUR SHOOTING (11 shots: 4 scores, 7 misses; 0 two-pointers scored):\n  average shot ~31m from goal; 1 inside 20m, 3 from 40m+\n  misses came from: 1 our right ~42m out, 1 our right ~49m out, 1 our left ~35m out, 1 our right ~35m out, 1 our left ~44m out, 1 the centre ~29m out, 1 our right ~22m out\n\nOUR KICKOUTS (14): short (our defensive third): 4/4 kept; medium (to midfield): 4/7 kept; long (past midfield): 1/3 kept\n  by channel: our left: 3/6 kept; our right: 3/5 kept; the centre: 3/3 kept\nTHEIR KICKOUTS (6): landing the attacking third: we won 0/2; the middle third: we won 2/4\n\nOUR FOULS (7): 4 in the middle third, 2 in our defensive third, 1 in the attacking third \u2014 frees conceded in our defensive third are shots at our goal\n\nOUR SCORERS (match to date, goals-points and total points): Connors 0-01 (1), Clerkin 0-01 (1), Bonner 0-01 (1), Neely 0-01 (1)\n\nTHEIR SCORERS (match to date, goals-points and total points): unnamed 0-06 (6), O'Donnell 0-04 (4), O'Donnell Jnr 1-01 (4), O'Donnell Sr 0-02 (2), McGeehin 0-01 (1), Dowling 0-01 (1)\n\nEXACT POSITIONS \u2014 SHOTS AND SCORES (most recent 14; metres, accurate to ~1-3m):\n  21' they \u2014 free (two-pointer): 43m from our goal line, 27m our left of centre (about 51m from goal, 11m outside the 40m arc (two-point range))\n  22' they \u2014 point by McGeehin: 13m from our goal line, 5m our right of centre (about 14m from goal, 26m inside the 40m arc)\n  23' they \u2014 point by O'Donnell: 26m from our goal line, 8m our left of centre (about 27m from goal, 13m inside the 40m arc)\n  25' we \u2014 point by Bonner: 25m from their goal line, 14m our right of centre (about 29m from goal, 11m inside the 40m arc)\n  26' they \u2014 point by O'Donnell Jnr: 26m from our goal line, 2m our right of centre (about 26m from goal, 14m inside the 40m arc)\n  27' we \u2014 point by Neely: 16m from their goal line, 16m our left of centre (about 23m from goal, 17m inside the 40m arc)\n  28' we \u2014 short by Clerkin: 32m from their goal line, 17m our right of centre (about 36m from goal, 4m inside the 40m arc)\n  30' they \u2014 two-pointer: 42m from our goal line, 9m our right of centre (about 43m from goal, 3m outside the 40m arc (two-point range))\n  30' we \u2014 short by McGee: 41m from their goal line, 18m our left of centre (about 45m from goal, 5m outside the 40m arc (two-point range))\n  31' we \u2014 short by Neely: 28m from their goal line, 9m our left of centre (about 29m from goal, 11m inside the 40m arc)\n  32' they \u2014 point by Dowling: 22m from our goal line, 20m our left of centre (about 30m from goal, 10m inside the 40m arc)\n  33' we \u2014 short by Bonner: 15m from their goal line, 16m our right of centre (about 22m from goal, 18m inside the 40m arc)\n  33' they \u2014 short: 29m from our goal line, on the centre line (about 29m from goal, 11m inside the 40m arc)\n  34' they \u2014 two-pointer by O'Donnell Sr: 33m from our goal line, 30m our left of centre (about 44m from goal, 4m outside the 40m arc (two-point range))\nEXACT POSITIONS \u2014 OUR TURNOVERS/ERRORS IN THE LAST 10 MINUTES (distance is from OUR goal line):\n  27' turnover lost by Gallagher: 112m from our goal line, 6m our left of centre\nEXACT POSITIONS \u2014 OUR KICKOUTS IN THE LAST 10 MINUTES:\n  26' our kickout kept: landed 55m from our goal line, 33m our left of centre\n  30' our kickout kept: landed 59m from our goal line, 10m our left of centre\n  33' our kickout kept: landed 32m from our goal line, 33m our left of centre\n\nPOSSESSION (timed): us 44% / them 56%\n\nTHEIR BALL MOVEMENT (from the ball path \u2014 no players or passes tracked):\n  match to date: 28 possessions, avg 29.2s (median 7.5s; 15 of 10s or less, 10 over 30s); won/started in their own end (our attacking third) 15, our defensive third 5, the middle third 8; worked it into our defensive third 9x (via our left 2, the centre 2, our right 5)\n  last 5 min: 3 possessions, avg 89.7s (median 84s; 0 of 10s or less, 3 over 30s); won/started in our defensive third 2, their own end (our attacking third) 1; worked it into our defensive third 1x (via our right 1)\nBALL MOVEMENT (carry tracking, high confidence): 30 possession chains \u2014 4 ended in a score, 12 in a turnover, 10 in a wide; average 4.5 actions before a score; 3.7 before a turnover; 1 direct scores vs 3 build-up scores; 4 open or unclassified\n  transition speed: 1.5s average to move the ball on (fastest 0.2s)",
+      "already_flagged_note": ""
+    },
+    {
+      "minute": 35,
+      "trigger": "half_time",
+      "score": "SCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts",
+      "insight": "**We trail by 14 points, 0-04 to 1-15, and 9 of their 15 tracked possessions have ended in a score.**\n\nThe brief is timed at 35' in half 2, not half-time. The score is 0-04 v 1-15, and 12 of their 15 possessions became a shot. We have lost 6 turnovers, 4 of them in the attacking third through the centre. Our 11 shots gave 4 scores and 7 misses, and we have no two-pointers scored. Their 3 two-pointers are in the brief.\n\nPositive: our short kickouts are 4 of 4 kept, and four different players have scored. Lost kickouts were covered last time. The new point is possession lost in the attacking third. Next five minutes: keep the ball through the centre there and take the safe pass. Don't force it, and keep restarts short.",
+      "seconds": 20.7,
+      "events_visible": 96,
+      "recent_events": [
+        {
+          "minute": 34,
+          "type": "substitution",
+          "team": "own"
+        },
+        {
+          "minute": 34,
+          "type": "substitution",
+          "team": "own"
+        },
+        {
+          "minute": 34,
+          "type": "two_point",
+          "team": "opponent"
+        },
+        {
+          "minute": 33,
+          "type": "long_kick_pass",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "short",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "other",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "own_kickout_won_break",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "foul_won",
+          "team": "own"
+        },
+        {
+          "minute": 33,
+          "type": "short",
+          "team": "opponent"
+        },
+        {
+          "minute": 32,
+          "type": "point",
+          "team": "opponent"
+        }
+      ],
+      "fact_check": {
+        "ran": true,
+        "ok": false,
+        "unsupported": [
+          "The brief is timed at 35' in half 2, not half-time.",
+          "Lost kickouts were covered last time.",
+          "Next five minutes: keep the ball through the centre there and take the safe pass.",
+          "four different players have scored"
+        ]
+      },
+      "snapshot": "=== LIVE MATCH SNAPSHOT \u2014 ? ===\nSCORE: Us 0-04 (4pts) vs Them 1-15 (18pts) \u2014 behind by 14 pts\n\nPOSSESSION BATTLE:\n  Turnovers WON: 4 | Turnovers LOST: 6 (inc. 2 unforced errors)\n\nKICKOUT BATTLE:\n  Our kickouts: 9/14 retained (64%)\n  Their kickouts: 2/6 won by us (33%)\n\nSCORING RUN: Opponents have scored 3 in a row \u2014 under pressure.\n\nPLAYER BREAKDOWN (own team \u2014 sorted by concerns):\n  Mark Curran: 1 TO lost, 2 fouls\n  Darren Curran: 2 fouls, 2 TO won\n  Barry Curran: 1 unforced error [dropped_ball], 1 wide\n  Daire Gallagher: 1 TO lost, 1 foul, YELLOW\n  Damien McGowan: 1 wide\n  Ryan Connors: scored 0-1, 1 foul, 1 TO won\n  Luke Clerkin: scored 0-1, 1 foul\n  Aaron Ward: 1 unforced error [dropped_ball]\n  Aaron Neely: scored 0-1, 1 TO won\n  Oisin Bonner: scored 0-1",
+      "tactical_brief": "=== LIVE TACTICAL BRIEF \u2014 35' (half 2, 25 min to full time; a half is 30 min) ===\nAll locations below are in OUR attacking frame: we attack towards the far goal; 'our defensive third' is nearest our own goal; 'our left/right' is as we face the opposition goal.\n\nSCORE NOW: us 0-04 (4 pts) v them 1-15 (18 pts) \u2014 14 points down. (A goal is 3 points; \"scores\" counts goals and points, \"pts\" is the points total.)\nTOP SIGNALS (computed and ranked \u2014 lead with the first; quote these numbers exactly; do not repeat a theme the manager has just been told unless it has moved):\n  1. [Own Kick-Out \u00b7 against] Kickouts we lost: 5 logged; 5 of them have a finished possession for them \u2014 4 ended in a score (5 pts), 1 in a miss, 0 ended without a shot.\n  2. [Transition to Defence \u00b7 against] Turnovers/errors we lost: 6 logged; 4 of them have a finished possession for them \u2014 3 became a shot (3 a score, 5 pts), 1 ended without one.\nPHASES (what each way of getting the ball became \u2014 counted from event ORDER, so no 'within N seconds' claims unless a median-seconds figure is shown; possessions still open are excluded from the rates):\n  Own Kick-Out \u2014 kickouts we kept: 9 to date (1 in the last 5 min): 5 became a shot (1 a score, 1 pts), 4 ended without one\n  Own Kick-Out \u2014 kickouts we lost (THEIR possession): 5 to date: 5 became a shot (4 a score, 5 pts), 0 ended without one\n  Opposition Kick-Out \u2014 we won it: 2 to date \u2014 only 2 finished: describe, do not conclude\n  Opposition Kick-Out \u2014 they kept it (THEIR possession): 4 to date: 3 became a shot (2 a score, 2 pts), 1 ended without one\n  Transition to Attack \u2014 turnovers we won: 4 to date: 2 became a shot (0 a score, 0 pts), 2 ended without one\n  Transition to Defence \u2014 turnovers we lost (THEIR possession): 6 to date: 4 became a shot (3 a score, 5 pts), 2 ended without one\n  Possession/Attack \u2014 all our tracked possessions: 17 to date (1 in the last 5 min): 10 became a shot (4 a score, 4 pts), 7 ended without one\n  Defensive Phase \u2014 all their tracked possessions: 15 to date: 12 became a shot (9 a score, 12 pts), 3 ended without one\n\nLAST 5 MINUTES (31'\u201335'):\n  Scores: us 0 pts (0 scores), them 0 pts (0 scores)\n  Turnovers: won 0, lost 0; wides/misses by us 0; our fouls 0\n  Our kickouts retained 0/0; their kickouts won by us 0/0\n\nWHERE WE LOSE THE BALL (6 turnovers/unforced errors, 6 located): 4 in the attacking third (the centre), 1 in the attacking third (our right), 1 in our defensive third (our right)\n  last 10 min: 1 in the attacking third (the centre)\nWHERE WE WIN IT BACK (4 turnovers won, 4 located): 1 in the middle third (our right), 1 in the middle third (our left), 1 in our defensive third (our right), 1 in the middle third (the centre)\n\nTHEIR SCORING (13 scores: 1 goals, 3 two-pointers, 3 from frees/45s; 4 misses):\n  shot position (distance from our goal): 4 20-40m out on the centre, 3 20-40m out on our left, 2 inside 20m on the centre, 2 40m+ out on our left, 1 20-40m out on our right, 1 40m+ out on the centre\n\nLINKS BEHIND THEIR 13 SCORES: 4 came within 2 min of one of our turnovers/errors (lost our defensive third (our right), our defensive third (our right), the attacking third (the centre), the attacking third (the centre)); 6 within 2 min of a kickout we lost; 3 were frees/45s\n\nOUR SHOOTING (11 shots: 4 scores, 7 misses; 0 two-pointers scored):\n  average shot ~31m from goal; 1 inside 20m, 3 from 40m+\n  misses came from: 1 our right ~42m out, 1 our right ~49m out, 1 our left ~35m out, 1 our right ~35m out, 1 our left ~44m out, 1 the centre ~29m out, 1 our right ~22m out\n\nOUR KICKOUTS (14): short (our defensive third): 4/4 kept; medium (to midfield): 4/7 kept; long (past midfield): 1/3 kept\n  by channel: our left: 3/6 kept; our right: 3/5 kept; the centre: 3/3 kept\nTHEIR KICKOUTS (6): landing the attacking third: we won 0/2; the middle third: we won 2/4\n\nOUR FOULS (7): 4 in the middle third, 2 in our defensive third, 1 in the attacking third \u2014 frees conceded in our defensive third are shots at our goal\n\nOUR SCORERS (match to date, goals-points and total points): Connors 0-01 (1), Clerkin 0-01 (1), Bonner 0-01 (1), Neely 0-01 (1)\n\nTHEIR SCORERS (match to date, goals-points and total points): unnamed 0-06 (6), O'Donnell 0-04 (4), O'Donnell Jnr 1-01 (4), O'Donnell Sr 0-02 (2), McGeehin 0-01 (1), Dowling 0-01 (1)\n\nEXACT POSITIONS \u2014 SHOTS AND SCORES (most recent 14; metres, accurate to ~1-3m):\n  21' they \u2014 free (two-pointer): 43m from our goal line, 27m our left of centre (about 51m from goal, 11m outside the 40m arc (two-point range))\n  22' they \u2014 point by McGeehin: 13m from our goal line, 5m our right of centre (about 14m from goal, 26m inside the 40m arc)\n  23' they \u2014 point by O'Donnell: 26m from our goal line, 8m our left of centre (about 27m from goal, 13m inside the 40m arc)\n  25' we \u2014 point by Bonner: 25m from their goal line, 14m our right of centre (about 29m from goal, 11m inside the 40m arc)\n  26' they \u2014 point by O'Donnell Jnr: 26m from our goal line, 2m our right of centre (about 26m from goal, 14m inside the 40m arc)\n  27' we \u2014 point by Neely: 16m from their goal line, 16m our left of centre (about 23m from goal, 17m inside the 40m arc)\n  28' we \u2014 short by Clerkin: 32m from their goal line, 17m our right of centre (about 36m from goal, 4m inside the 40m arc)\n  30' they \u2014 two-pointer: 42m from our goal line, 9m our right of centre (about 43m from goal, 3m outside the 40m arc (two-point range))\n  30' we \u2014 short by McGee: 41m from their goal line, 18m our left of centre (about 45m from goal, 5m outside the 40m arc (two-point range))\n  31' we \u2014 short by Neely: 28m from their goal line, 9m our left of centre (about 29m from goal, 11m inside the 40m arc)\n  32' they \u2014 point by Dowling: 22m from our goal line, 20m our left of centre (about 30m from goal, 10m inside the 40m arc)\n  33' we \u2014 short by Bonner: 15m from their goal line, 16m our right of centre (about 22m from goal, 18m inside the 40m arc)\n  33' they \u2014 short: 29m from our goal line, on the centre line (about 29m from goal, 11m inside the 40m arc)\n  34' they \u2014 two-pointer by O'Donnell Sr: 33m from our goal line, 30m our left of centre (about 44m from goal, 4m outside the 40m arc (two-point range))\nEXACT POSITIONS \u2014 OUR TURNOVERS/ERRORS IN THE LAST 10 MINUTES (distance is from OUR goal line):\n  27' turnover lost by Gallagher: 112m from our goal line, 6m our left of centre\nEXACT POSITIONS \u2014 OUR KICKOUTS IN THE LAST 10 MINUTES:\n  26' our kickout kept: landed 55m from our goal line, 33m our left of centre\n  30' our kickout kept: landed 59m from our goal line, 10m our left of centre\n  33' our kickout kept: landed 32m from our goal line, 33m our left of centre\n\nPOSSESSION (timed): us 44% / them 56%\n\nTHEIR BALL MOVEMENT (from the ball path \u2014 no players or passes tracked):\n  match to date: 28 possessions, avg 29.2s (median 7.5s; 15 of 10s or less, 10 over 30s); won/started in their own end (our attacking third) 15, our defensive third 5, the middle third 8; worked it into our defensive third 9x (via our left 2, the centre 2, our right 5)\n  last 5 min: 3 possessions, avg 89.7s (median 84s; 0 of 10s or less, 3 over 30s); won/started in our defensive third 2, their own end (our attacking third) 1; worked it into our defensive third 1x (via our right 1)\nBALL MOVEMENT (carry tracking, high confidence): 30 possession chains \u2014 4 ended in a score, 12 in a turnover, 10 in a wide; average 4.5 actions before a score; 3.7 before a turnover; 1 direct scores vs 3 build-up scores; 4 open or unclassified\n  transition speed: 1.5s average to move the ball on (fastest 0.2s)",
+      "already_flagged_note": ""
+    }
+  ]
+}

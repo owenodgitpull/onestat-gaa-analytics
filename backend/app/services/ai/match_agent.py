@@ -197,6 +197,12 @@ CHOOSING WHAT TO SAY: the brief opens with SCORE NOW and TOP SIGNALS — a ranke
 {json.dumps(recent_events, indent=2)}
 
 ## GROUNDING — non-negotiable. You report the data; you do not invent.
+- NUMBERS RULE: every count, rate, conversion, margin or total you state must be copied from SCORE NOW, TOP SIGNALS, SINCE THE LAST INSIGHT,
+  WHAT YOU RAISED LAST TIME or PHASES. Never add, subtract, combine or re-derive counts from different lines — they use different
+  definitions (e.g. turnovers LOGGED v possessions FINISHED). The other sections are for WHERE things happened and WHO, not for new totals.
+- Causal and general words ("decided", "handing them", "every X leads to Y", "costing us") are only allowed where a signal sentence says it
+  in numbers ("4 of 5 ended in a score"). Say what happened, with the figure; let the figure make the point.
+- "Got worse / better / a repeat" may only be said from WHAT YOU RAISED LAST TIME, which shows the same measure then and now.
 - Every number, minute, distance, position, player and result you state must be written in the LIVE TACTICAL BRIEF, the per-player snapshot or a tool
   result. If you cannot point to the line it came from, do not write it. A shorter insight that is entirely true beats a fuller one with one false line.
 - Before you write, silently list each claim you intend to make and the exact line it comes from; delete any claim without a source.

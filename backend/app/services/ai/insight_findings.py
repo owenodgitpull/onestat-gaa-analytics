@@ -109,6 +109,7 @@ class Finding:
     score: float             # materiality 0..1 (higher = say it)
     direction: str = "neutral"   # against | for | neutral
     evidence: list[str] = field(default_factory=list)
+    poss: list = field(default_factory=list)   # the possessions behind the finding (the brief prints their rows)
 
 
 def _clip(x: float) -> float:
@@ -187,34 +188,39 @@ def build_findings(events: list[Ev], now: int, window: int = 5, recent_keys: Opt
     # 4. what the ball we LOST became for them (transition to defence) ----------------
     lost_ps = [p for p in ps if (not p.owner_is_own) and p.origin in ("turnover_lost", "turnover_lost_unforced")]
     st = group_stats(lost_ps)
+    lost_logged = sum(1 for e in vis if e.own and e.type in ("turnover_lost", "unforced_error"))
     if st["finished"] >= MIN_N:
-        txt = (f"Turnovers we lost: {st['finished']} finished possessions for them — {st['shots']} became a shot "
-               f"({st['scores']} a score, {st['points']} pts), {st['died']} ended without one.")
+        txt = (f"Turnovers/errors we lost: {lost_logged} logged; {st['finished']} of them have a finished possession for them — "
+               f"{st['shots']} became a shot ({st['scores']} a score, {st['points']} pts), {st['died']} ended without one.")
         share = st["scores"] / st["finished"]
         out.append(Finding("turnover_lost_conceded", "turnovers", "trans_def", txt, n=st["finished"],
-                           score=_clip(share * 1.4 * min(1, st["finished"] / 6)), direction="against", evidence=[txt]))
+                           score=_clip(share * 1.4 * min(1, st["finished"] / 6)), direction="against", evidence=[txt],
+                           poss=[p for p in lost_ps if p.finished]))
 
     # 5. what the ball we WON became for us (transition to attack) --------------------
     won_ps = [p for p in ps if p.owner_is_own and p.origin in ("turnover_won", "turnover_won_forced")]
     st = group_stats(won_ps)
     if st["finished"] >= MIN_N:
         sec = f"; median {st['median_seconds_to_shot']}s to the shot" if st["median_seconds_to_shot"] is not None else ""
-        txt = (f"Turnovers we won: {st['finished']} finished possessions — {st['shots']} became a shot "
-               f"({st['scores']} a score, {st['points']} pts){sec}.")
+        txt = (f"Turnovers we won: {st['finished']} finished possessions for us — {st['shots']} became a shot "
+               f"({st['scores']} a score, {st['points']} pts), {st['died']} ended without one{sec}.")
         stall = 1 - (st["shots"] / st["finished"])
         out.append(Finding("turnover_won_converted", "turnovers", "trans_att", txt, n=st["finished"],
                            score=_clip(stall * 1.1 * min(1, st["finished"] / 6)) if st["shots"] == 0 else _clip((st["scores"] / st["finished"]) * 0.9),
-                           direction="against" if st["shots"] == 0 else "for", evidence=[txt]))
+                           direction="against" if st["shots"] == 0 else "for", evidence=[txt],
+                           poss=[p for p in won_ps if p.finished]))
 
     # 6. restarts we lost: did they punish them ----------------------------------------
     lko = [p for p in ps if p.origin == "own_ko_lost"]
     st = group_stats(lko)
+    lko_logged = sum(1 for e in vis if e.type in ("own_kickout_opposition_won", "own_kickout_opposition_won_break", "own_kickout_sideline"))
     if st["finished"] >= MIN_N:
-        txt = (f"Kickouts we lost: {st['finished']} finished possessions for them — {st['scores']} ended in a score "
-               f"({st['points']} pts), {st['shots'] - st['scores']} in a miss.")
+        txt = (f"Kickouts we lost: {lko_logged} logged; {st['finished']} of them have a finished possession for them — "
+               f"{st['scores']} ended in a score ({st['points']} pts), {st['shots'] - st['scores']} in a miss, "
+               f"{st['died']} ended without a shot.")
         out.append(Finding("lost_ko_punished", "kickouts", "own_ko", txt, n=st["finished"],
                            score=_clip((st["scores"] / st["finished"]) * 1.4 * min(1, st["finished"] / 6)),
-                           direction="against", evidence=[txt]))
+                           direction="against", evidence=[txt], poss=[p for p in lko if p.finished]))
 
     # 6b. restarts we KEPT: are they turning into anything (a kept kickout that never becomes a shot is a finding)
     kko = [p for p in ps if p.origin == "own_ko_kept"]
@@ -225,7 +231,7 @@ def build_findings(events: list[Ev], now: int, window: int = 5, recent_keys: Opt
                f"({st['points']} pts), {st['died']} ended without a shot.")
         out.append(Finding("kept_ko_unproductive", "kickouts", "own_ko", txt, n=st["finished"],
                            score=_clip((1 - st["scores"] / st["finished"]) * 0.55 * min(1, st["finished"] / 8)),
-                           direction="against", evidence=[txt]))
+                           direction="against", evidence=[txt], poss=[p for p in kko if p.finished]))
 
     # 7. our shooting: window against before ---------------------------------------------
     def _shoot(evs: list[Ev]):
@@ -254,6 +260,21 @@ def build_findings(events: list[Ev], now: int, window: int = 5, recent_keys: Opt
             f.evidence.append("(raised recently — repeat only if it has moved)")
     out.sort(key=lambda f: f.score, reverse=True)
     return out
+
+
+def update_on_previous(prev_top: list[Finding], now_findings: list[Finding], prev_minute: int) -> list[str]:
+    """For each theme the manager was last told about: the same measure then and now (so a repeat is quoted as a change)."""
+    now_by_key = {f.key: f for f in now_findings}
+    lines = []
+    for p in prev_top:
+        cur = now_by_key.get(p.key)
+        if cur is None:
+            lines.append(f"Raised at {prev_minute}': {p.text}  → now: no longer on enough observations.")
+        elif cur.text == p.text:
+            lines.append(f"Raised at {prev_minute}': {p.text}  → now: unchanged.")
+        else:
+            lines.append(f"Raised at {prev_minute}': {p.text}  → now: {cur.text}")
+    return lines
 
 
 def top_findings(findings: list[Finding], limit: int = 3, floor: float = 0.12) -> list[Finding]:

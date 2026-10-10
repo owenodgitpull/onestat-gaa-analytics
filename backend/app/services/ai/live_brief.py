@@ -21,7 +21,7 @@ from app.models.match_event import MatchEvent, Team
 from app.models.possession_event import PossessionEvent
 from app.utils.attack_direction import own_attacks_right, to_attack_frame
 from app.services.ai.insight_findings import (
-    Finding, PHASES, build_findings, early_read_note, margin, margin_phrase, tally, top_findings,
+    Finding, PHASES, build_findings, early_read_note, margin, margin_phrase, tally, top_findings, update_on_previous,
 )
 from app.services.ai.phase_facts import normalise, order_key, possessions, summarise
 from app.utils.pitch_calibration import (
@@ -73,6 +73,15 @@ LABELS = {
     "forty_five": "45 (scored)", "penalty_goal": "penalty goal", "wide": "wide", "wide_free": "free (wide)", "short": "short",
     "saved": "saved", "hit_post": "hit the post", "forty_five_missed": "45 (missed)", "penalty_miss": "penalty (missed)",
     "turnover_lost": "turnover lost", "unforced_error": "unforced error",
+    # evidence rows: say what happened in words, never the raw event name
+    "own_kickout_won": "our kickout kept", "own_kickout_won_break": "our kickout — we won the break",
+    "own_kickout_opposition_won": "our kickout lost (they won it)", "own_kickout_opposition_won_break": "our kickout lost (they won the break)",
+    "own_kickout_sideline": "our kickout went over the sideline",
+    "opp_kickout_won": "their kickout — we won it", "opp_kickout_won_break": "their kickout — we won the break",
+    "opp_kickout_opposition_won": "their kickout — they kept it", "opp_kickout_opposition_won_break": "their kickout — they won the break",
+    "turnover_won": "we won the ball", "tackle_won": "we won it with a tackle", "interception": "we intercepted",
+    "block": "we blocked it", "breaking_ball_won": "we won the break", "breaking_ball_lost": "they won the break",
+    "foul_committed": "foul against us", "free_conceded": "free conceded", "foul_won": "foul won",
 }
 
 
@@ -188,10 +197,19 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         return to_attack_frame(float(x), float(y), own_attacks_right(atk_first, getattr(e, "half", None), e.minute, hdm))
 
     # Half-aware: first-half added time (e.g. 34' of a 30-minute half) must not leak into a second-half window
-    def ev_half(e) -> int:
-        return getattr(e, "half", None) or (1 if e.minute <= hdm else 2)
+    any_stored_half = any(getattr(e, "half", None) for e in events)
 
-    half_now = max([ev_half(e) for e in events if e.minute <= now] or [1])
+    def ev_half(e) -> int:
+        h = getattr(e, "half", None)
+        if h:
+            return h
+        # an unstored half inside the half currently being played belongs to it; otherwise guess from the minute
+        return (1 if e.minute <= hdm else 2) if not any_stored_half else (1 if e.minute <= hdm + 8 else 2)
+
+    # Rows that carry a stored half are the truth: first-half ADDED time (e.g. 34' of a 30-minute half) would look like
+    # second half if every half were guessed from the minute, so only fall back to that when nothing has a stored half.
+    stored = [e.half for e in events if getattr(e, "half", None) and e.minute <= now]
+    half_now = max(stored) if stored else max([ev_half(e) for e in events if e.minute <= now] or [1])
     visible = [e for e in events if ev_half(e) < half_now or (ev_half(e) == half_now and e.minute <= now)]
     last = [e for e in visible if ev_half(e) == half_now and e.minute > now - window]
 
@@ -233,14 +251,28 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     L.append("All locations below are in OUR attacking frame: we attack towards the far goal; 'our defensive third' is nearest our own goal; "
              "'our left/right' is as we face the opposition goal.")
 
+    # player names for the evidence rows (loaded once; reused by the position tables further down)
+    _pids = {e.player_id for e in visible if getattr(e, "player_id", None)}
+    _names: dict = {}
+    if _pids:
+        for pid, pname in (await db.execute(select(Player.id, Player.name).where(Player.id.in_(list(_pids))))).all():
+            _names[pid] = (pname or "").strip().split(" ")[-1]
+
+    def who_name(e) -> str:
+        if getattr(e, "player_id", None) and _names.get(e.player_id):
+            return _names[e.player_id]
+        return (getattr(e, "opponent_player_name", None) or "").strip()
+
     # ── computed findings: the few things that matter right now, ranked, with exact arithmetic ──
     try:
         ordered = normalise(sorted(visible, key=lambda e: order_key(e, hdm)), hdm)
         prev_minute = await _previous_insight_minute(db, match_id, now)
         recent_keys: set[str] = set()
+        prev_top: list[Finding] = []
         if prev_minute is not None:   # what the manager was last told = the top of the ranking one insight ago
             before_prev = [x for x in ordered if x.minute <= prev_minute]
-            recent_keys = {f.key for f in top_findings(build_findings(before_prev, prev_minute, window))[:2]}
+            prev_top = top_findings(build_findings(before_prev, prev_minute, window))[:2]
+            recent_keys = {f.key for f in prev_top}
         poss = possessions(ordered)
         findings = build_findings(ordered, now, window, recent_keys, poss)
         top = top_findings(findings)
@@ -254,8 +286,33 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         if top:
             L.append("TOP SIGNALS (computed and ranked — lead with the first; quote these numbers exactly; do not repeat a theme "
                      "the manager has just been told unless it has moved):")
+            src_rows = sorted(visible, key=lambda e: order_key(e, hdm))   # same order as `ordered`, so Ev.idx maps back
+
+            def _end_phrase(p) -> str:
+                if p.end_idx < 0:
+                    return "still open"
+                e2 = src_rows[p.end_idx]
+                t2 = _t(e2)
+                f2 = framed(e2)
+                where = f" ({_exact(f2[0], f2[1], 'their' if _is_own(e2) else 'our', True, LEN, WID)})" if (f2 and t2 in SHOT_TYPES) else ""
+                nm2 = (who_name(e2) or "").strip()
+                who2 = f" by {nm2}" if nm2 else ""
+                if t2 in SHOT_TYPES:
+                    return f"{'we' if _is_own(e2) else 'they'}: {LABELS.get(t2, t2)}{who2} at {e2.minute}'{where}"
+                return f"{LABELS.get(t2, t2.replace('_', ' '))}{who2} at {e2.minute}'"
+
+            def _origin_phrase(p) -> str:
+                e1 = src_rows[p.origin_idx]
+                f1 = framed(e1)
+                nm1 = (who_name(e1) or "").strip()
+                where = (f" ({_third(f1[0])}, {_channel(f1[1])}; {_exact(f1[0], f1[1], 'our', False, LEN, WID)})") if f1 else ""
+                label = LABELS.get(_t(e1), _t(e1).replace("_", " "))
+                return f"{e1.minute}' {label}{' — ' + nm1 if nm1 else ''}{where}"
+
             for i, f in enumerate(top, 1):
                 L.append(f"  {i}. [{PHASES.get(f.phase, f.phase)} · {f.direction}] {f.text}")
+                for p in f.poss[-4:]:   # most recent four, newest last
+                    L.append(f"       · {_origin_phrase(p)} → {_end_phrase(p)}")
         else:
             L.append("TOP SIGNALS: nothing stands out yet on enough observations — say what is happening in plain terms, no conclusions.")
         if prev_minute is not None and prev_minute < now:
@@ -264,6 +321,11 @@ async def _build(db, match_id, minute, club_id, window) -> str:
             before_m = margin([x for x in ordered if x.minute <= prev_minute])
             L.append(f"SINCE THE LAST INSIGHT ({prev_minute}'): us {s_us.line()}, them {s_them.line()}; margin moved from "
                      f"{margin_phrase(before_m)} to {margin_phrase(margin(ordered))}.")
+        if prev_top:
+            L.append("WHAT YOU RAISED LAST TIME — the same measure then and now (this is how to say whether it has got worse; "
+                     "do not judge that from memory):")
+            for ln in update_on_previous(prev_top, findings, prev_minute):
+                L.append("  " + ln)
         L.append(_phase_lines(summarise(poss, now, window), window))
     except Exception as exc:   # the brief must never fail because the engine did
         logger.warning("findings engine failed for %s: %s: %s", match_id, type(exc).__name__, exc)

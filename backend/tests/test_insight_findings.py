@@ -85,3 +85,22 @@ def test_kept_kickouts_that_never_score_are_a_finding():
         evs += [e("own_kickout_won", minute=m), e("turnover_lost", minute=m)]
     keys = {x.key for x in build_findings(evs, now=8, window=5)}
     assert "kept_ko_unproductive" in keys
+
+
+def test_update_on_previous_quotes_then_and_now():
+    from app.services.ai.insight_findings import update_on_previous
+    evs = [e("own_kickout_won", minute=1)] + [e("own_kickout_opposition_won", minute=m) for m in (2, 3, 4, 5)]
+    prev = top_findings(build_findings(evs, now=6, window=5))
+    evs2 = evs + [e("own_kickout_opposition_won", minute=7)]
+    now_f = build_findings(evs2, now=8, window=5)
+    lines = update_on_previous(prev, now_f, 6)
+    assert lines and all("Raised at 6'" in ln for ln in lines)
+    assert any("now:" in ln for ln in lines)
+
+
+def test_conversion_sentences_state_logged_and_finished_counts():
+    evs = []
+    for m in (1, 2, 3):
+        evs += [e("turnover_lost", minute=m), e("point", own=False, minute=m)]
+    f = {x.key: x for x in build_findings(evs, now=5, window=5)}
+    assert "3 logged; 3 of them have a finished possession" in f["turnover_lost_conceded"].text

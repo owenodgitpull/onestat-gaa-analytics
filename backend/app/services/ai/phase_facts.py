@@ -49,6 +49,7 @@ class Ev:
     minute: int
     half: Optional[int] = None
     clock_s: Optional[int] = None
+    idx: int = -1            # position in the list this was normalised from (to find the source row again)
 
 
 @dataclass
@@ -64,6 +65,8 @@ class Possession:
     seconds: Optional[int] = None
     contested: bool = False
     clock_s: Optional[int] = None
+    origin_idx: int = -1     # Ev.idx of the event that started it
+    end_idx: int = -1        # Ev.idx of the event that ended it (-1 while open)
 
     @property
     def shot(self) -> bool:
@@ -88,7 +91,7 @@ def normalise(events: Iterable, half_duration_mins: Optional[int] = None) -> lis
         tm = getattr(e, "team", None)
         tm = tm.value if hasattr(tm, "value") else str(tm)
         half = getattr(e, "half", None) or (1 if int(mn) <= hdm else 2)
-        out.append(Ev(et, tm.lower() == "own", int(mn), half, getattr(e, "match_clock_s", None)))
+        out.append(Ev(et, tm.lower() == "own", int(mn), half, getattr(e, "match_clock_s", None), len(out)))
     return out
 
 
@@ -147,6 +150,7 @@ def possessions(events: Iterable) -> list[Possession]:
             return
         open_p.outcome = outcome
         if end_ev is not None:
+            open_p.end_idx = end_ev.idx
             open_p.end_type = end_ev.type
             if end_ev.type in SCORE_TYPES:
                 open_p.points = points_for(end_ev.type)
@@ -169,7 +173,7 @@ def possessions(events: Iterable) -> list[Possession]:
             if kickout or owner is None or new_owner != owner:
                 if open_p is not None:
                     close("lost" if owner != new_owner else "unknown", ev)
-                p = Possession(origin, new_owner, ev.minute, ev.half, "open", None, 0, None, contested, ev.clock_s)
+                p = Possession(origin, new_owner, ev.minute, ev.half, "open", None, 0, None, contested, ev.clock_s, ev.idx)
                 out.append(p)
                 open_p = p
                 owner = new_owner
@@ -188,7 +192,7 @@ def possessions(events: Iterable) -> list[Possession]:
             owner = None
         elif ev.type in ("foul_won", "free_won") and ev.own and owner is False:
             close("foul", ev)   # they fouled, we were awarded the free: their possession ends, ours begins
-            p = Possession("free_won", True, ev.minute, ev.half, "open", None, 0, None, False, ev.clock_s)
+            p = Possession("free_won", True, ev.minute, ev.half, "open", None, 0, None, False, ev.clock_s, ev.idx)
             out.append(p)
             open_p = p
             owner = True

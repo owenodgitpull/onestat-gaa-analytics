@@ -72,6 +72,17 @@ async def main():
         club_id = src.club_id
         opponent = src.opponent
 
+        # A "first half" replay must be the first half only. Minutes alone cannot tell the halves apart (the second half
+        # starts back at the half length, so 30'-34' exist in both), so keep only half-1 events, and drop possession /
+        # carries that were recorded after the first second-half event was tagged.
+        if os.environ.get('HALF', '1') == '1':
+            h2 = [e for e in events if getattr(e, 'half', None) == 2]
+            cutoff = min((e.created_at for e in h2), default=None)
+            events = [e for e in events if getattr(e, 'half', None) in (None, 1)]
+            if cutoff is not None:
+                poss = [p for p in poss if p.created_at is not None and p.created_at < cutoff]
+                segs = [g for g in segs if getattr(g, 'half', None) in (None, 1)]
+
         # Scratch copy of the match — never committed
         vals = clone_values(src)
         vals['opponent'] = '[REPLAY] ' + (opponent or '')
