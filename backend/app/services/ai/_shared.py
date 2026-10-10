@@ -231,6 +231,11 @@ properly.
   a team-mate, as opposed to a contestable High Ball. player_id is the kicker; pitch_x/y is where it was
   kicked from and end_x/y where it landed. sub_type is the outcome: completed (kickout_target_player_id is
   the receiver) or intercepted. An intercepted one is also a turnover with origin "Kick Pass".
+- Short / Saved / Hit Post shots: besides `x`/`y` (where the shot was TAKEN from) an event may carry
+  `ball_ended_at` / `ball_ended_location` / `ball_ended_m_from_goal` — where the ball actually ended up
+  (dropped short into the square, fell to the keeper, rebounded off the post), in OUR attacking frame like
+  every other position. Use it for "how far short did it drop", "were we dropping balls into the keeper's
+  hands", and rebound/second-ball chances. If it is absent the spot simply wasn't tapped — say nothing about it.
 - Opposition Pass (notes="Pass", team=OPPONENT): a count-only tap logged every time the opposition
   completes a pass while they have possession — it exists purely to measure pressing intensity (how many
   passes we allowed before winning it back), not a tactical event in its own right. There is NO full PPDA
@@ -2173,6 +2178,22 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         loc = _pitch_location(*_frame[e.id])
         if loc:
             event_dict["location"] = loc
+        # Shots that did not score (short / saved / hit post) carry WHERE THE BALL ENDED UP in end_x/end_y
+        _et = event_dict["event_type"].lower()
+        if _et in ("short", "saved", "hit_post") and getattr(e, "end_x", None) is not None and getattr(e, "end_y", None) is not None:
+            try:
+                from app.utils.pitch_calibration import distance_to_goal_m
+                _dx, _dy = to_attack_frame(float(e.end_x), float(e.end_y),
+                                           own_attacks_right(_atk_first, getattr(e, 'half', None), e.minute, hdm))
+                event_dict["ball_ended_at"] = {"x": round(_dx, 1), "y": round(_dy, 1)}
+                _dloc = _pitch_location(_dx, _dy)
+                if _dloc:
+                    event_dict["ball_ended_location"] = _dloc
+                # metres from the goal it was shot at (opposition shots go at OUR goal, x=0)
+                _own_shot = event_dict["team"] == "own"
+                event_dict["ball_ended_m_from_goal"] = round(distance_to_goal_m(_dx, _dy, _own_shot), 1)
+            except Exception:
+                pass
         events_data.append(event_dict)
 
     # ── Spatial zone summary ────────────────────────────────────────────────

@@ -333,7 +333,12 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         if not f:
             return None
         nm = who(e)
-        return f"  {e.minute}' {'we' if _is_own(e) else 'they'} — {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], goal, True, LEN, WID)}"
+        end = ""
+        if _t(e) in ("short", "saved", "hit_post") and getattr(e, "end_x", None) is not None and getattr(e, "end_y", None) is not None:
+            g = framed(e, e.end_x, e.end_y)
+            if g:
+                end = f" — ball ended up {_exact(g[0], g[1], goal, False, LEN, WID)}"
+        return f"  {e.minute}' {'we' if _is_own(e) else 'they'} — {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], goal, True, LEN, WID)}{end}"
 
     shots_detail = [e for e in visible if _t(e) in SHOT_TYPES][-14:]
     rows = [row(e, "their" if _is_own(e) else "our") for e in shots_detail]
