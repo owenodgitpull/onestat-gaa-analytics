@@ -1208,10 +1208,11 @@ async def compute_playing_minutes(db: AsyncSession, match_id) -> dict:
     as a fallback).
 
     Rule (as specified): a starter never subbed off played the full match
-    (half_duration_mins * 2); a starter subbed off at minute X played X
-    minutes; a substitute who came on at minute Y and was never subbed off
-    again played (full_length - Y) minutes. An unused substitute (never
-    came on) played 0.
+    (half_duration_mins * 2, PLUS any added time actually played); a starter
+    subbed off at minute X played X minutes of real elapsed time; a substitute
+    who came on at minute Y and was never subbed off again played the rest of
+    the match. An unused substitute (never came on) played 0. Added time counts:
+    a player taken off at half time after a 30+4 first half played 34.
 
     Requires sub_in_player_id on the SUBSTITUTION event (added alongside
     this function) to compute a substitute's entry minute — matches
@@ -1236,6 +1237,28 @@ async def compute_playing_minutes(db: AsyncSession, match_id) -> dict:
     )
     lineup_rows = lineup_result.all()
 
+    # Real elapsed playing time INCLUDES added time. The match clock restarts at half_duration_mins for the second half,
+    # so: first half = max(half length, last first-half clock minute logged); second half = clock minutes beyond half length.
+    ev_result = await db.execute(
+        select(MatchEvent.minute, MatchEvent.half).where(MatchEvent.match_id == match_uuid, MatchEvent.minute.isnot(None))
+    )
+    first_half_end = float(half_duration_mins)
+    second_half_end = float(full_length)
+    for ev_minute, ev_half in ev_result.all():
+        in_first = (ev_half == 1) or (ev_half is None and ev_minute <= half_duration_mins)
+        if in_first:
+            first_half_end = max(first_half_end, float(ev_minute))
+        else:
+            second_half_end = max(second_half_end, float(ev_minute))
+    total_minutes = first_half_end + (second_half_end - half_duration_mins)
+
+    def elapsed(minute, half):
+        """Real minutes played by the match's clock reading `minute` in `half`."""
+        in_first = (half == 1) or (half is None and minute <= half_duration_mins)
+        if in_first:
+            return min(float(minute), first_half_end)
+        return first_half_end + (min(float(minute), second_half_end) - half_duration_mins)
+
     sub_result = await db.execute(
         select(MatchEvent.player_id, MatchEvent.sub_in_player_id, MatchEvent.minute, MatchEvent.half)
         .where(MatchEvent.match_id == match_uuid, MatchEvent.event_type == EventType.SUBSTITUTION)
@@ -1245,17 +1268,11 @@ async def compute_playing_minutes(db: AsyncSession, match_id) -> dict:
     for off_id, on_id, minute, sub_half in sub_result.all():
         if minute is None:
             continue
-        # Added time does not add playing minutes: a sub made in first-half stoppage time (including at half time,
-        # when the clock still reads e.g. 34') is made at the END of the first half, i.e. half_duration_mins; one in
-        # second-half stoppage is at full length.
-        if sub_half == 1:
-            minute = min(minute, half_duration_mins)
-        else:
-            minute = min(minute, full_length)
+        t = elapsed(minute, sub_half)
         if off_id:
-            off_minute_by_player[off_id] = minute
+            off_minute_by_player[off_id] = t
         if on_id:
-            on_minute_by_player[on_id] = minute
+            on_minute_by_player[on_id] = t
 
     minutes_by_player = {}
     for player_id, is_substitute, is_on_field in lineup_rows:
@@ -1263,18 +1280,15 @@ async def compute_playing_minutes(db: AsyncSession, match_id) -> dict:
             continue
         pid = str(player_id)
         if not is_substitute:
-            # Starter — full match unless subbed off at a known minute.
-            minutes_by_player[pid] = off_minute_by_player.get(player_id, full_length)
+            # Starter — the whole match (added time included) unless subbed off at a known time.
+            minutes_by_player[pid] = round(off_minute_by_player.get(player_id, total_minutes))
         elif is_on_field:
-            # Came on as a sub — full_length minus their entry minute, if
-            # known (requires sub_in_player_id, see docstring). Then still
-            # subtract if they were ALSO subbed off again later.
-            entry_minute = on_minute_by_player.get(player_id)
-            if entry_minute is None:
+            entry = on_minute_by_player.get(player_id)
+            if entry is None:
                 minutes_by_player[pid] = None
             else:
-                exit_minute = off_minute_by_player.get(player_id, full_length)
-                minutes_by_player[pid] = max(0, exit_minute - entry_minute)
+                exit_t = off_minute_by_player.get(player_id, total_minutes)
+                minutes_by_player[pid] = max(0, round(exit_t - entry))
         else:
             # Unused substitute — never came on.
             minutes_by_player[pid] = 0
