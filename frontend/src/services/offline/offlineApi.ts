@@ -33,6 +33,27 @@ function now(): string {
 }
 
 /**
+ * Game-clock seconds at the moment of a tap (minute*60 + seconds as shown on the match clock).
+ * The recording screen registers a getter once; every event / possession / carry written through
+ * this file is stamped with it at call time — so the tap time survives offline queueing and no
+ * call site has to pass it. Reads a ref: no extra render, no request, nothing awaited.
+ */
+let matchClockProvider: (() => number | null) | null = null
+
+export function setMatchClockProvider(fn: (() => number | null) | null): void {
+  matchClockProvider = fn
+}
+
+function clockNow(): { match_clock_s?: number } {
+  try {
+    const s = matchClockProvider ? matchClockProvider() : null
+    return s != null && Number.isFinite(s) && s >= 0 ? { match_clock_s: Math.min(Math.round(s), 7500) } : {}
+  } catch {
+    return {}
+  }
+}
+
+/**
  * Direct "try server first" fetches previously had no timeout — a hung
  * request (dead socket, cold-starting backend) would leave the await
  * pending forever, so the offline-queue fallback below it never ran and
@@ -170,6 +191,7 @@ export const offlineMatchEvents = {
       ...rest,
       team,
       minute: Math.min(minute, 120),
+      ...clockNow(),
       pitch_x: x_coord,
       pitch_y: y_coord,
       client_event_id: clientEventId,
@@ -238,6 +260,7 @@ export const offlineMatchEvents = {
     minute: number
     half: number
   }): Promise<MatchEvent> => {
+    const stamped = { ...data, ...clockNow() }
     if (isOnline()) {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
@@ -245,7 +268,7 @@ export const offlineMatchEvents = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify(data),
+          body: JSON.stringify(stamped),
         })
         if (response.ok) {
           const serverEvent = await response.json()
@@ -269,7 +292,7 @@ export const offlineMatchEvents = {
       data.match_id,
       '/match-events/quick-score',
       'POST',
-      data,
+      stamped,
       'event',
     )
 
@@ -356,6 +379,7 @@ export const offlinePossession = {
       pitch_x: data.x_coord,
       pitch_y: data.y_coord,
       minute: Math.min(data.minute, 120),
+      ...clockNow(),
     }
 
     // Try server first when online
@@ -408,8 +432,10 @@ export const offlinePossession = {
     match_id: string
     team: 'own' | 'opponent'
     minute: number
+    match_clock_s?: number
     waypoints: Array<{ x: number; y: number }>
   }): Promise<{ created: number }> => {
+    data = { ...clockNow(), ...data }
     // Try server first
     if (isOnline()) {
       try {
@@ -473,7 +499,7 @@ export const offlinePlayerMovement = {
       data.match_id,
       '/player-movement/carrier-segments',
       'POST',
-      { ...data, client_event_id: tempSegmentId, client_segment_id: tempSegmentId },
+      { ...data, ...clockNow(), client_event_id: tempSegmentId, client_segment_id: tempSegmentId },
       'carrier',
     )
 

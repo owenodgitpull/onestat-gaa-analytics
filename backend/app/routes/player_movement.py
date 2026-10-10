@@ -81,6 +81,7 @@ async def start_carrier_segment(
         source=body.source,
         client_event_id=body.client_event_id,
         video_timestamp_ms=body.video_timestamp_ms,
+        match_clock_s=body.match_clock_s,
     )
     resp = BallCarrierSegmentResponse.model_validate(segment)
     if segment.player:
@@ -256,6 +257,7 @@ async def create_tactical_tag(
         pitch_x=body.pitch_x,
         pitch_y=body.pitch_y,
         source=body.source,
+        match_clock_s=body.match_clock_s,
     )
     return TacticalTagResponse.model_validate(tag)
 

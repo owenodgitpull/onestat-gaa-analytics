@@ -18,6 +18,7 @@ class BallCarrierSegmentCreate(BaseModel):
     team: str = Field(..., max_length=20)
     half: int = Field(..., ge=1, le=2)
     minute: Optional[int] = None
+    match_clock_s: Optional[int] = None
     start_x: Optional[float] = None
     start_y: Optional[float] = None
     source: str = Field(default="live", max_length=20)
@@ -46,6 +47,7 @@ class BallCarrierSegmentResponse(BaseModel):
     team: str
     half: int
     minute: Optional[int] = None
+    match_clock_s: Optional[int] = None
     path_points: Optional[List[dict]] = None
     start_x: Optional[float] = None
     start_y: Optional[float] = None

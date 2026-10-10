@@ -20,6 +20,7 @@ class PossessionEventBase(BaseModel):
     pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
     minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match")
+    match_clock_s: Optional[int] = Field(None, ge=0, le=7500, description="Game-clock seconds at the tap (minute*60 + seconds)")
 
 
 class PossessionEventCreate(PossessionEventBase):
@@ -40,6 +41,7 @@ class PossessionEventBulkCreate(BaseModel):
     match_id: UUID = Field(..., description="Match these possessions belong to")
     team: PossessionTeam = Field(..., description="Which team has possession")
     minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match")
+    match_clock_s: Optional[int] = Field(None, ge=0, le=7500, description="Game-clock seconds at the tap (minute*60 + seconds)")
     waypoints: List[dict] = Field(..., description="List of {x, y} coordinates", min_length=1, max_length=50)
 
 
@@ -49,6 +51,7 @@ class PossessionVideoPoint(BaseModel):
     pitch_x: Optional[float] = Field(None, ge=0, le=100)
     pitch_y: Optional[float] = Field(None, ge=0, le=100)
     minute: Optional[int] = Field(None, ge=0, le=120)
+    match_clock_s: Optional[int] = Field(None, ge=0, le=7500, description="Game-clock seconds at the tap (minute*60 + seconds)")
     # Seconds of VIDEO time this point represents (0 for pure path/location points)
     duration_seconds: int = Field(0, ge=0, le=3600)
     # Video time (ms) the point was recorded at (enables Undo to Point)

@@ -50,6 +50,7 @@ class MatchEventService:
             event_type=event_type,
             team=event_data.team,
             minute=event_data.minute,
+            match_clock_s=getattr(event_data, 'match_clock_s', None),
             pitch_x=event_data.pitch_x,
             pitch_y=event_data.pitch_y,
             half=getattr(event_data, 'half', None),

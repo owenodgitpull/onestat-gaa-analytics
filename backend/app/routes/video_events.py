@@ -742,6 +742,7 @@ async def sync_events_to_match(
                 sub_type=ve.sub_type,
                 team=team,
                 minute=ve.match_minute,
+                match_clock_s=(ve.match_minute or 0) * 60 + (ve.match_second or 0),
                 pitch_x=ve.pitch_x,
                 pitch_y=ve.pitch_y,
                 player_id=ve.player_id,

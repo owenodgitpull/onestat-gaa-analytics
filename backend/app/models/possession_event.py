@@ -65,6 +65,10 @@ class PossessionEvent(Base):
     # remove the possession tracked after a chosen moment. NULL for Live Recording / older rows.
     video_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
 
+    # Game-clock seconds at the moment of the tap (minute*60 + seconds as shown on the match clock). Lets the
+    # phase/transition analysis time things to the second. NULL on rows recorded before 2026-10-10.
+    match_clock_s: Column[Optional[int]] = Column(Integer, nullable=True)
+
     # Offline sync — client-generated UUID for idempotent deduplication
     client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
 

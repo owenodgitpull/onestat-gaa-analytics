@@ -26,6 +26,9 @@ class TacticalTag(Base):
     # Timing
     half: Column[int] = Column(Integer, nullable=False)
     minute: Column[Optional[int]] = Column(Integer, nullable=True)
+    # Game-clock seconds at the moment of the tap (minute*60 + seconds as shown on the match clock). Lets the
+    # phase/transition analysis time things to the second. NULL on rows recorded before 2026-10-10.
+    match_clock_s: Column[Optional[int]] = Column(Integer, nullable=True)
     timestamp_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
 
     # Position on pitch (optional)

@@ -62,7 +62,7 @@ import {
 } from '@/constants/turnoverSubtypes'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import { useMatchStateRestore } from '@/hooks/useMatchStateRestore'
-import { startActiveMonitoring, stopActiveMonitoring, offlineMatchEvents } from '@/services/offline'
+import { startActiveMonitoring, stopActiveMonitoring, offlineMatchEvents, setMatchClockProvider } from '@/services/offline'
 import {
   Clock,
   Play,
@@ -139,6 +139,14 @@ export default function MatchRecording() {
   const [matchPhase, setMatchPhase] = useState<MatchPhase>('not_started')
   const [minute, setMinute] = useState(0)
   const [seconds, setSeconds] = useState(0)
+  // Game-clock seconds at the tap, stamped on every event / possession / carry by offlineApi. A ref read at tap
+  // time: no re-render, no request, and the same value in the normal and fullscreen pitch views.
+  const matchClockRef = useRef(0)
+  matchClockRef.current = minute * 60 + seconds
+  useEffect(() => {
+    setMatchClockProvider(() => matchClockRef.current)
+    return () => setMatchClockProvider(null)
+  }, [])
   const [currentHalf, setCurrentHalf] = useState<1 | 2>(1)
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false)
   const [isPossessionModalOpen, setIsPossessionModalOpen] = useState(false)
@@ -792,6 +800,7 @@ export default function MatchRecording() {
         label,
         half: currentHalf,
         minute,
+        match_clock_s: minute * 60 + seconds,
         pitch_x: ballPosition.x,
         pitch_y: ballPosition.y,
       })
@@ -1112,7 +1121,7 @@ export default function MatchRecording() {
   const possTickMinuteRef = useRef(minute)
   possTickBallRef.current = ballPosition
   possTickMinuteRef.current = minute
-  const possTickBufferRef = useRef<Array<{ x: number; y: number; team: 'own' | 'opponent'; minute: number }>>([])
+  const possTickBufferRef = useRef<Array<{ x: number; y: number; team: 'own' | 'opponent'; minute: number; clock: number }>>([])
   // Guards against overlapping flush() calls — a backgrounded/throttled tab
   // can queue up several setInterval fires and then dispatch them back-to-
   // back once foregrounded. Without this, concurrent bulk-create requests
@@ -1139,6 +1148,7 @@ export default function MatchRecording() {
         y: bp.y,
         team: bp.team === PossessionTeam.OWN ? 'own' : 'opponent',
         minute: Math.min(m, 120),
+        clock: matchClockRef.current,
       })
     }, 8000)
 
@@ -1164,6 +1174,7 @@ export default function MatchRecording() {
               match_id: matchId,
               team,
               minute: pts[pts.length - 1].minute,
+              match_clock_s: Math.round(pts[pts.length - 1].clock),
               waypoints: pts.map(w => ({ x: w.x, y: w.y })),
             }),
           })
@@ -2397,6 +2408,7 @@ export default function MatchRecording() {
       match_id: matchId,
       team: team as 'own' | 'opponent',
       minute,
+      match_clock_s: minute * 60 + seconds,
       waypoints,
     }).then(res => {
       console.log(`Drag path: ${res.created} waypoints recorded`)
@@ -3604,6 +3616,7 @@ export default function MatchRecording() {
             event_type: 'turnover_lost',
             team: 'own',
             minute: Math.min(minute, 120),
+            match_clock_s: minute * 60 + seconds,
             pitch_x: pos.x,
             pitch_y: pos.y,
             notes: 'block_recovery',

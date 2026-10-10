@@ -182,6 +182,7 @@ async def bulk_create_possession_events(
         team=data.team.value if hasattr(data.team, 'value') else data.team,
         minute=data.minute,
         waypoints=data.waypoints,
+        match_clock_s=data.match_clock_s,
     )
     return {"created": count}
 

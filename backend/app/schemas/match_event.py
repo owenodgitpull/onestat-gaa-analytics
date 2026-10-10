@@ -20,6 +20,7 @@ class MatchEventBase(BaseModel):
     kickout_target_player_id: Optional[UUID] = Field(None, description="Player a kickout was aimed at (own_kickout_* events only)")
     sub_in_player_id: Optional[UUID] = Field(None, description="Player who came ON (SUBSTITUTION events only — player_id on the same event is who came OFF)")
     minute: Optional[int] = Field(None, ge=0, le=120, description="Minute of match (0-120)")
+    match_clock_s: Optional[int] = Field(None, ge=0, le=7500, description="Game-clock seconds at the tap (minute*60 + seconds)")
     pitch_x: Optional[float] = Field(None, ge=0, le=100, description="X coordinate (0=own goal, 100=opponent goal)")
     pitch_y: Optional[float] = Field(None, ge=0, le=100, description="Y coordinate (0=left, 100=right)")
     end_x: Optional[float] = Field(None, ge=0, le=100, description="Where a long kick pass / high ball landed (X)")
@@ -176,6 +177,7 @@ class QuickScoreRequest(BaseModel):
     pitch_x: float = Field(..., ge=0, le=100, description="Current ball X position")
     pitch_y: float = Field(..., ge=0, le=100, description="Current ball Y position")
     minute: Optional[int] = Field(None, ge=0, le=120)
+    match_clock_s: Optional[int] = Field(None, ge=0, le=7500)
     
     @validator('event_type')
     def validate_score_type(cls, v):
@@ -198,4 +200,5 @@ class QuickEventRequest(BaseModel):
     pitch_x: Optional[float] = Field(None, ge=0, le=100)
     pitch_y: Optional[float] = Field(None, ge=0, le=100)
     minute: Optional[int] = Field(None, ge=0, le=120)
+    match_clock_s: Optional[int] = Field(None, ge=0, le=7500)
 

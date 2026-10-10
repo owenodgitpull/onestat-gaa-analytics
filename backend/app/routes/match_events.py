@@ -104,6 +104,7 @@ async def quick_score(
         pitch_x=score_data.pitch_x,
         pitch_y=score_data.pitch_y,
         minute=score_data.minute,
+        match_clock_s=score_data.match_clock_s,
     )
 
     event = await MatchEventService.create_event(db, event_data)
@@ -140,6 +141,7 @@ async def quick_event(
         pitch_x=event_data.pitch_x,
         pitch_y=event_data.pitch_y,
         minute=event_data.minute,
+        match_clock_s=event_data.match_clock_s,
     )
     
     event = await MatchEventService.create_event(db, full_event_data)

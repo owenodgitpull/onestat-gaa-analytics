@@ -37,6 +37,7 @@ class PlayerMovementService:
         source: str = "live",
         client_event_id: Optional[str] = None,
         video_timestamp_ms: Optional[int] = None,
+        match_clock_s: Optional[int] = None,
     ) -> BallCarrierSegment:
         # Get next sequence number
         result = await db.execute(
@@ -52,6 +53,7 @@ class PlayerMovementService:
             team=team,
             half=half,
             minute=minute,
+            match_clock_s=match_clock_s,
             start_x=start_x,
             start_y=start_y,
             path_points=[{"x": start_x, "y": start_y}] if start_x is not None else [],
@@ -225,6 +227,7 @@ class PlayerMovementService:
         pitch_x: Optional[float] = None,
         pitch_y: Optional[float] = None,
         source: str = "live",
+        match_clock_s: Optional[int] = None,
     ) -> TacticalTag:
         tag = TacticalTag(
             match_id=match_id,
@@ -232,6 +235,7 @@ class PlayerMovementService:
             label=label,
             half=half,
             minute=minute,
+            match_clock_s=match_clock_s,
             pitch_x=pitch_x,
             pitch_y=pitch_y,
             timestamp_ms=int(time.time() * 1000),

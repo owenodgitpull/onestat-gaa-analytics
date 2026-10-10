@@ -1093,7 +1093,7 @@ export default function VideoTagging() {
   // /possession-events/video-batch every 15s, on pause, when 100 points are
   // queued, and on leave. One in-flight request at a time (like live's
   // isFlushingRef guard); a failed batch is put back and retried.
-  type PossPoint = { team: 'own' | 'opponent'; pitch_x: number; pitch_y: number; minute: number; duration_seconds: number; video_ms: number }
+  type PossPoint = { team: 'own' | 'opponent'; pitch_x: number; pitch_y: number; minute: number; match_clock_s: number; duration_seconds: number; video_ms: number }
   const possBufferRef = useRef<PossPoint[]>([])
   const possHoldRef = useRef(false)
   const isPossSendingRef = useRef(false)
@@ -1134,6 +1134,7 @@ export default function VideoTagging() {
           team: team === 'team_a' ? 'own' : 'opponent',
           pitch_x: pos.x, pitch_y: pos.y,
           minute: Math.min(mt.minute, 120),
+          match_clock_s: mt.minute * 60 + mt.second,
           duration_seconds: secs,
           video_ms: Math.round(currentTimeMsRef.current),
         })
@@ -2403,6 +2404,7 @@ export default function VideoTagging() {
         label,
         half: matchTime.half,
         minute: matchTime.minute,
+        match_clock_s: matchTime.minute * 60 + matchTime.second,
         pitch_x: ballPosition?.x,
         pitch_y: ballPosition?.y,
       })
@@ -2929,6 +2931,7 @@ export default function VideoTagging() {
         team: possession === 'team_a' ? 'own' : 'opponent',
         half: matchTime.half,
         minute: matchTime.minute,
+        match_clock_s: matchTime.minute * 60 + matchTime.second,
         start_x: startX,
         start_y: startY,
         source: 'video',
@@ -2955,7 +2958,7 @@ export default function VideoTagging() {
       try {
         activeSegmentRef.current = await api.playerMovement.startCarrierSegment({
           match_id: matchId, player_id: playerId, jersey_number: jersey, team: 'own',
-          half: t.half, minute: t.minute, start_x: x, start_y: y, source: 'video', video_timestamp_ms: Math.round(atMs),
+          half: t.half, minute: t.minute, match_clock_s: t.minute * 60 + t.second, start_x: x, start_y: y, source: 'video', video_timestamp_ms: Math.round(atMs),
         })
       } catch (err) { console.error('Failed to restart carrier after undo:', err) }
     })
@@ -3107,7 +3110,8 @@ export default function VideoTagging() {
         lastMs = at
         possBufferRef.current.push({
           team, pitch_x: wp.x, pitch_y: wp.y,
-          minute: Math.min(calcMatchTime(at).minute, 120), duration_seconds: 0, video_ms: at,
+          minute: Math.min(calcMatchTime(at).minute, 120), match_clock_s: (() => { const t = calcMatchTime(at); return t.minute * 60 + t.second })(),
+          duration_seconds: 0, video_ms: at,
         })
       }
       if (possBufferRef.current.length >= 100) void sendPossessionBuffer()

@@ -53,6 +53,7 @@ def _match_event_fields(ve: VideoEvent) -> Optional[dict]:
         sub_type=ve.sub_type,
         team=match_team,
         minute=ve.match_minute,
+        match_clock_s=(ve.match_minute or 0) * 60 + (ve.match_second or 0),
         half=ve.half,
         pitch_x=ve.pitch_x,
         pitch_y=ve.pitch_y,

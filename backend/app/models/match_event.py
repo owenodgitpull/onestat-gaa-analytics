@@ -141,6 +141,9 @@ class MatchEvent(Base):
     
     # Timing (minutes and seconds into match)
     minute: Column[Optional[int]] = Column(Integer, nullable=True)  # e.g., 23 for 23rd minute
+    # Game-clock seconds at the moment of the tap (minute*60 + seconds as shown on the match clock). Lets the
+    # phase/transition analysis time things to the second. NULL on rows recorded before 2026-10-10.
+    match_clock_s: Column[Optional[int]] = Column(Integer, nullable=True)
     
     # Pitch coordinates (0-100 scale for percentage positioning)
     # x: 0 = Dungloe goal line, 100 = Opponent goal line
