@@ -31,6 +31,7 @@ PHASES = {
     "trans_att": "Transition to Attack",
     "trans_def": "Transition to Defence",
     "contest": "Turnover/Contest",
+    "scoreboard": "Scoreboard",
 }
 
 
@@ -53,7 +54,7 @@ class Score:
         return self.goals + self.point_scores
 
     def line(self) -> str:
-        return f"{self.goals}-{self.points:02d} ({self.total} pts)"
+        return f"{self.goals}-{self.points:02d} ({self.total} pt{'s' if self.total != 1 else ''})"
 
 
 def tally(events: Iterable[Ev], own: bool) -> Score:
@@ -87,9 +88,12 @@ def margin_phrase(m: int) -> str:
 
 def split_windows(events: list[Ev], now: int, window: int):
     """(before_window, last_window, previous_window) — minutes are cumulative across the match."""
-    last = [e for e in events if e.minute > now - window]
-    prev = [e for e in events if now - 2 * window < e.minute <= now - window]
-    before = [e for e in events if e.minute <= now - window]
+    cur = max(((e.half or 1) for e in events), default=1)
+    in_cur = [e for e in events if (e.half or 1) == cur]
+    last = [e for e in in_cur if e.minute > now - window]
+    prev = [e for e in in_cur if now - 2 * window < e.minute <= now - window]
+    last_ids = {id(e) for e in last}
+    before = [e for e in events if id(e) not in last_ids]   # everything earlier, including the previous half
     return before, last, prev
 
 
@@ -136,7 +140,7 @@ def build_findings(events: list[Ev], now: int, window: int = 5, recent_keys: Opt
         m_now, m_then = margin(vis), margin(before)
         shift = m_now - m_then
         run = f"In the last {window} minutes: us {w_us.line()}, them {w_them.line()}; the margin moved from {margin_phrase(m_then)} to {margin_phrase(m_now)}."
-        out.append(Finding("scoring_window", "scoring", "attack" if shift >= 0 else "defence", run,
+        out.append(Finding("scoring_window", "scoring", "scoreboard", run,
                            n=w_us.scores + w_them.scores, score=_clip(abs(shift) / 6.0),
                            direction="for" if shift > 0 else ("against" if shift < 0 else "neutral"),
                            evidence=[run]))
@@ -210,6 +214,17 @@ def build_findings(events: list[Ev], now: int, window: int = 5, recent_keys: Opt
                f"({st['points']} pts), {st['shots'] - st['scores']} in a miss.")
         out.append(Finding("lost_ko_punished", "kickouts", "own_ko", txt, n=st["finished"],
                            score=_clip((st["scores"] / st["finished"]) * 1.4 * min(1, st["finished"] / 6)),
+                           direction="against", evidence=[txt]))
+
+    # 6b. restarts we KEPT: are they turning into anything (a kept kickout that never becomes a shot is a finding)
+    kko = [p for p in ps if p.origin == "own_ko_kept"]
+    st = group_stats(kko)
+    if st["finished"] >= 4 and st["scores"] / st["finished"] <= 0.25:
+        shots = f"{st['shots']} became a shot" if st["shots"] else "none became a shot"
+        txt = (f"Kickouts we kept: {st['finished']} finished possessions — {shots}, {st['scores']} ended in a score "
+               f"({st['points']} pts), {st['died']} ended without a shot.")
+        out.append(Finding("kept_ko_unproductive", "kickouts", "own_ko", txt, n=st["finished"],
+                           score=_clip((1 - st["scores"] / st["finished"]) * 0.55 * min(1, st["finished"] / 8)),
                            direction="against", evidence=[txt]))
 
     # 7. our shooting: window against before ---------------------------------------------

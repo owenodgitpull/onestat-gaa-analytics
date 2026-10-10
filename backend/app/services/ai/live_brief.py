@@ -20,6 +20,10 @@ from app.models.player import Player
 from app.models.match_event import MatchEvent, Team
 from app.models.possession_event import PossessionEvent
 from app.utils.attack_direction import own_attacks_right, to_attack_frame
+from app.services.ai.insight_findings import (
+    Finding, PHASES, build_findings, early_read_note, margin, margin_phrase, tally, top_findings,
+)
+from app.services.ai.phase_facts import normalise, order_key, possessions, summarise
 from app.utils.pitch_calibration import (
     along_m, lateral_m, distance_to_goal_m, arc_phrase, DEFAULT_LENGTH_M, DEFAULT_WIDTH_M,
 )
@@ -89,6 +93,67 @@ def _exact(fx: float, fy: float, goal: str, shot: bool = True,
     return f"{where} (about {round(straight)}m from goal, {arc_phrase(straight)})"
 
 
+async def _previous_insight_minute(db, match_id, now: int) -> Optional[int]:
+    """Minute of the most recent insight BEFORE this one (None for the first)."""
+    try:
+        from app.models.live_insight import LiveInsight
+        row = (await db.execute(
+            select(LiveInsight.minute).where(LiveInsight.match_id == match_id, LiveInsight.minute < now)
+            .order_by(LiveInsight.minute.desc()).limit(1)
+        )).first()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _avg_actions(ce: dict) -> str:
+    """'average 4.5 actions before a score vs 3.7 before a turnover' — but never a '0.0' from zero cases."""
+    sc, tu = ce.get("scoring_chains", 0), ce.get("turnover_chains", 0)
+    a = f"average {ce.get('avg_chain_length_scores')} actions before a score" if sc else "no scoring chains yet (not enough data for an average)"
+    b = f"{ce.get('avg_chain_length_turnovers')} before a turnover" if tu else "no turnover chains yet"
+    return f"{a}; {b}"
+
+
+def _phase_lines(s: dict, window: int) -> str:
+    """The seven phases as quotable facts: what each way of getting the ball turned into (event ORDER, n everywhere)."""
+    def one(g: str) -> Optional[str]:
+        d = s[g]["to_date"]
+        if not d["n"]:
+            return None
+        w = s[g]["window"]
+        txt = f"{d['n']} to date"
+        if w["n"]:
+            txt += f" ({w['n']} in the last {window} min)"
+        if d["finished"] < 3:
+            return txt + f" — only {d['finished']} finished: describe, do not conclude"
+        txt += f": {d['shots']} became a shot ({d['scores']} a score, {d['points']} pts), {d['died']} ended without one"
+        if d["open"]:
+            txt += f"; {d['open']} still open"
+        if d["median_seconds_to_shot"] is not None:
+            txt += f"; median {d['median_seconds_to_shot']}s to the shot"
+        return txt
+
+    rows = [
+        ("Own Kick-Out — kickouts we kept", "own_ko_kept"),
+        ("Own Kick-Out — kickouts we lost (THEIR possession)", "own_ko_lost"),
+        ("Opposition Kick-Out — we won it", "opp_ko_won"),
+        ("Opposition Kick-Out — they kept it (THEIR possession)", "opp_ko_kept"),
+        ("Transition to Attack — turnovers we won", "turnovers_won"),
+        ("Transition to Defence — turnovers we lost (THEIR possession)", "turnovers_lost"),
+        ("Possession/Attack — all our tracked possessions", "all_ours"),
+        ("Defensive Phase — all their tracked possessions", "all_theirs"),
+    ]
+    lines = []
+    for label, g in rows:
+        t = one(g)
+        if t:
+            lines.append(f"  {label}: {t}")
+    if not lines:
+        return ""
+    return ("PHASES (what each way of getting the ball became — counted from event ORDER, so no 'within N seconds' claims "
+            "unless a median-seconds figure is shown; possessions still open are excluded from the rates):\n" + "\n".join(lines))
+
+
 async def build_live_brief(db, match_id, minute: Optional[int] = None, club_id=None, window: int = 5) -> str:
     """Return the brief as plain text. Never raises — a failure just yields an empty brief."""
     try:
@@ -122,8 +187,13 @@ async def _build(db, match_id, minute, club_id, window) -> str:
             return None
         return to_attack_frame(float(x), float(y), own_attacks_right(atk_first, getattr(e, "half", None), e.minute, hdm))
 
-    visible = [e for e in events if e.minute <= now]
-    last = [e for e in visible if e.minute > now - window]
+    # Half-aware: first-half added time (e.g. 34' of a 30-minute half) must not leak into a second-half window
+    def ev_half(e) -> int:
+        return getattr(e, "half", None) or (1 if e.minute <= hdm else 2)
+
+    half_now = max([ev_half(e) for e in events if e.minute <= now] or [1])
+    visible = [e for e in events if ev_half(e) < half_now or (ev_half(e) == half_now and e.minute <= now)]
+    last = [e for e in visible if ev_half(e) == half_now and e.minute > now - window]
 
     def counts(evs):
         own = [e for e in evs if _is_own(e)]
@@ -152,9 +222,6 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     w = counts(last)
     a = counts(visible)
 
-    # The half comes from the logged events (stoppage time still belongs to the half it was played in)
-    logged_halves = [e.half for e in visible if getattr(e, "half", None)]
-    half_now = max(logged_halves) if logged_halves else (1 if now <= hdm else 2)
     to_go = (hdm - now) if half_now == 1 else (2 * hdm - now)
     if to_go >= 0:
         clock = f"{to_go} min to {'half time' if half_now == 1 else 'full time'}"
@@ -165,6 +232,41 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     L.append(f"=== LIVE TACTICAL BRIEF — {now}' (half {half_now}, {clock}; a half is {hdm} min) ===")
     L.append("All locations below are in OUR attacking frame: we attack towards the far goal; 'our defensive third' is nearest our own goal; "
              "'our left/right' is as we face the opposition goal.")
+
+    # ── computed findings: the few things that matter right now, ranked, with exact arithmetic ──
+    try:
+        ordered = normalise(sorted(visible, key=lambda e: order_key(e, hdm)), hdm)
+        prev_minute = await _previous_insight_minute(db, match_id, now)
+        recent_keys: set[str] = set()
+        if prev_minute is not None:   # what the manager was last told = the top of the ranking one insight ago
+            before_prev = [x for x in ordered if x.minute <= prev_minute]
+            recent_keys = {f.key for f in top_findings(build_findings(before_prev, prev_minute, window))[:2]}
+        poss = possessions(ordered)
+        findings = build_findings(ordered, now, window, recent_keys, poss)
+        top = top_findings(findings)
+
+        us, them = tally(ordered, True), tally(ordered, False)
+        L.append(f"\nSCORE NOW: us {us.line()} v them {them.line()} — {margin_phrase(margin(ordered))}. "
+                 f"(A goal is 3 points; \"scores\" counts goals and points, \"pts\" is the points total.)")
+        note = early_read_note(len(ordered), now)
+        if note:
+            L.append(note)
+        if top:
+            L.append("TOP SIGNALS (computed and ranked — lead with the first; quote these numbers exactly; do not repeat a theme "
+                     "the manager has just been told unless it has moved):")
+            for i, f in enumerate(top, 1):
+                L.append(f"  {i}. [{PHASES.get(f.phase, f.phase)} · {f.direction}] {f.text}")
+        else:
+            L.append("TOP SIGNALS: nothing stands out yet on enough observations — say what is happening in plain terms, no conclusions.")
+        if prev_minute is not None and prev_minute < now:
+            since = [x for x in ordered if x.minute > prev_minute]
+            s_us, s_them = tally(since, True), tally(since, False)
+            before_m = margin([x for x in ordered if x.minute <= prev_minute])
+            L.append(f"SINCE THE LAST INSIGHT ({prev_minute}'): us {s_us.line()}, them {s_them.line()}; margin moved from "
+                     f"{margin_phrase(before_m)} to {margin_phrase(margin(ordered))}.")
+        L.append(_phase_lines(summarise(poss, now, window), window))
+    except Exception as exc:   # the brief must never fail because the engine did
+        logger.warning("findings engine failed for %s: %s: %s", match_id, type(exc).__name__, exc)
 
     # ── the pre-match plan: manager's tactical notes + man-marking set up in Match Prep ──
     notes = (getattr(match, "tactical_notes", None) or "").strip()
@@ -340,6 +442,30 @@ async def _build(db, match_id, minute, club_id, window) -> str:
                 end = f" — ball ended up {_exact(g[0], g[1], goal, False, LEN, WID)}"
         return f"  {e.minute}' {'we' if _is_own(e) else 'they'} — {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], goal, True, LEN, WID)}{end}"
 
+    # ── who has scored (match to date) — names come from the data, so the agent never has to guess one ──
+    def _scorer_line(own_side: bool) -> Optional[str]:
+        tallies: dict[str, list[int]] = {}
+        for e in visible:
+            if _is_own(e) != own_side or _t(e) not in SCORE_TYPES:
+                continue
+            nm = who(e) or "unnamed"
+            g, p = tallies.setdefault(nm, [0, 0])
+            if _t(e) in ("goal", "penalty_goal"):
+                tallies[nm][0] += 1
+            else:
+                tallies[nm][1] += 2 if _t(e) in ("two_point", "two_point_free") else 1
+        if not tallies:
+            return None
+        parts = []
+        for nm, (g, p) in sorted(tallies.items(), key=lambda kv: -(kv[1][0] * 3 + kv[1][1])):
+            parts.append(f"{nm} {g}-{p:02d} ({g * 3 + p})")
+        return ", ".join(parts)
+
+    for side, lbl in ((True, "OUR SCORERS"), (False, "THEIR SCORERS")):
+        ln = _scorer_line(side)
+        if ln:
+            L.append(f"\n{lbl} (match to date, goals-points and total points): {ln}")
+
     shots_detail = [e for e in visible if _t(e) in SHOT_TYPES][-14:]
     rows = [row(e, "their" if _is_own(e) else "our") for e in shots_detail]
     rows = [x for x in rows if x]
@@ -410,8 +536,10 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         if ce.get("total_chains"):
             L.append(f"BALL MOVEMENT (carry tracking, {bc.get('data_confidence', '?')} confidence): {ce.get('total_chains')} possession chains — "
                      f"{ce.get('scoring_chains', 0)} ended in a score, {ce.get('turnover_chains', 0)} in a turnover, {ce.get('wide_chains', 0)} in a wide; "
-                     f"average {ce.get('avg_chain_length_scores', '?')} actions before a score vs {ce.get('avg_chain_length_turnovers', '?')} before a turnover; "
-                     f"{ce.get('direct_scores', 0)} direct scores vs {ce.get('buildup_scores', 0)} build-up scores")
+                     f"{_avg_actions(ce)}; "
+                     f"{ce.get('direct_scores', 0)} direct scores vs {ce.get('buildup_scores', 0)} build-up scores; "
+                     f"{max(0, ce.get('total_chains', 0) - ce.get('scoring_chains', 0) - ce.get('turnover_chains', 0) - ce.get('wide_chains', 0))} "
+                     f"open or unclassified")
         if tempo.get("avg_transition_seconds") is not None:
             L.append(f"  transition speed: {tempo.get('avg_transition_seconds')}s average to move the ball on (fastest {tempo.get('fastest_transition_seconds')}s)")
         opp = bc.get("opposition") or {}

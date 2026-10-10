@@ -69,3 +69,19 @@ def test_recent_theme_is_down_weighted_and_one_per_theme():
 def test_early_read_note():
     assert early_read_note(8, 4) is not None
     assert early_read_note(60, 30) is None
+
+
+def test_one_point_is_singular_and_scoreboard_phase_is_not_a_game_phase():
+    s = tally([e("point")], True)
+    assert s.line() == "0-01 (1 pt)"
+    f = build_findings([e("point", minute=3)], now=5, window=5)
+    sw = [x for x in f if x.key == "scoring_window"][0]
+    assert sw.phase == "scoreboard"
+
+
+def test_kept_kickouts_that_never_score_are_a_finding():
+    evs = []
+    for m in range(1, 6):   # five kept kickouts, each possession then lost with no shot
+        evs += [e("own_kickout_won", minute=m), e("turnover_lost", minute=m)]
+    keys = {x.key for x in build_findings(evs, now=8, window=5)}
+    assert "kept_ko_unproductive" in keys

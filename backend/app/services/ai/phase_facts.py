@@ -74,8 +74,10 @@ class Possession:
         return self.outcome not in ("open", "unknown")
 
 
-def normalise(events: Iterable) -> list[Ev]:
-    """DB rows (or anything with event_type/team/minute[/half/match_clock_s]) -> Ev, in the order given."""
+def normalise(events: Iterable, half_duration_mins: Optional[int] = None) -> list[Ev]:
+    """DB rows (or anything with event_type/team/minute[/half/match_clock_s]) -> Ev, in the order given.
+    A row with no stored half gets one from its minute and the match's half length."""
+    hdm = half_duration_mins or 30
     out: list[Ev] = []
     for e in events:
         mn = getattr(e, "minute", None)
@@ -85,7 +87,8 @@ def normalise(events: Iterable) -> list[Ev]:
         et = et.value if hasattr(et, "value") else str(et)
         tm = getattr(e, "team", None)
         tm = tm.value if hasattr(tm, "value") else str(tm)
-        out.append(Ev(et, tm.lower() == "own", int(mn), getattr(e, "half", None), getattr(e, "match_clock_s", None)))
+        half = getattr(e, "half", None) or (1 if int(mn) <= hdm else 2)
+        out.append(Ev(et, tm.lower() == "own", int(mn), half, getattr(e, "match_clock_s", None)))
     return out
 
 
