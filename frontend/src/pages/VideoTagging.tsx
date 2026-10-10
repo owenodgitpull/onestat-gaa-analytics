@@ -4800,7 +4800,7 @@ export default function VideoTagging() {
   // ── Normal mode ──────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-[1600px] mx-auto space-y-3">
+    <div className="max-w-[2400px] mx-auto px-3 space-y-3">
       {/* ── Header ───────────────────────────────────────────────────────
           Title/event-count and the scoreboard were dropped from here to
           keep the video area in focus on laptop-height screens — the
