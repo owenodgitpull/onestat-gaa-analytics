@@ -176,6 +176,7 @@ class VideoEventCreateRequest(BaseModel):
     description: Optional[str] = None
     opponent_player_name: Optional[str] = Field(None, max_length=200)
     source: str = Field(default="human_tag", max_length=20)
+    client_event_id: Optional[str] = Field(None, max_length=64)  # idempotency key for retried / queued saves
 
     @validator("event_type")
     def validate_event_type(cls, v):

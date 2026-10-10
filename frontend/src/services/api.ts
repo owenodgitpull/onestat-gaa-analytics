@@ -84,8 +84,10 @@ export async function fetchAPI<T>(
       }
 
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.detail || errorData.error || `API Error: ${response.status} ${response.statusText}`
+      // `status` lets callers tell a transient server failure (5xx) from a rejected request (4xx)
+      throw Object.assign(
+        new Error(errorData.detail || errorData.error || `API Error: ${response.status} ${response.statusText}`),
+        { status: response.status },
       );
     }
 

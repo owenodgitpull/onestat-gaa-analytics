@@ -134,6 +134,8 @@ export interface VideoEventCreateData {
   description?: string;
   opponent_player_name?: string;
   source?: string;
+  /** Idempotency key — a retried / queued save returns the existing event instead of writing twice. */
+  client_event_id?: string;
 }
 
 export interface VideoEventUpdateData {

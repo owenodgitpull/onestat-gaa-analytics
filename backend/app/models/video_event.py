@@ -147,6 +147,10 @@ class VideoEvent(Base):
     # roster, just the key players a manager enters in Match Prep).
     opponent_player_name: Column[Optional[str]] = Column(String(200), nullable=True)
 
+    # Client-generated id for idempotent creates — a retried/queued save returns the existing row instead of
+    # writing the event twice (same pattern as match_events.client_event_id)
+    client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
+
     # AI batch tracking (for selective Improve Analysis re-runs)
     batch_index: Column[Optional[int]] = Column(Integer, nullable=True)
 

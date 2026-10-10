@@ -108,6 +108,7 @@ import {
   useDeleteVideoEventsAfter,
   useDeleteCarrierSegmentsAfter,
 } from '../hooks/useVideoEvents'
+import PendingWritesPill from '../components/video/PendingWritesPill'
 import { videoSessionsAPI, videoEventsAPI } from '../services/videoApi'
 import type { VideoEvent, VideoEventCreateData, VideoEventUpdateData, VideoSyncPreview, VideoSyncStatus, BallPositionSampleData, ScoringContext } from '../services/videoApi'
 import { api, type BallCarrierSegment } from '../services/api'
@@ -4700,6 +4701,7 @@ export default function VideoTagging() {
 
         {newEventPlayerPicker}
 
+        <PendingWritesPill sessionId={sessionId || null} />
         <ConfirmationModal
           isOpen={!!alertModal}
           onClose={() => {
@@ -5185,6 +5187,7 @@ export default function VideoTagging() {
         </div>
       )}
 
+      <PendingWritesPill sessionId={sessionId || null} />
       {/* Alert/error modal */}
       <ConfirmationModal
         isOpen={!!alertModal}

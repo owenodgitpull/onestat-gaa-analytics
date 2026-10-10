@@ -2,6 +2,7 @@
  * React Query hooks for Video Event CRUD
  */
 
+import { useEffect, useSyncExternalStore } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   videoEventsAPI,
@@ -10,6 +11,7 @@ import {
   type VideoEventUpdateData,
 } from '../services/videoApi';
 import api from '../services/api';
+import { writeQueue } from '../services/videoWriteQueue';
 
 export const videoEventKeys = {
   all: ['videoEvents'] as const,
@@ -21,13 +23,68 @@ type EventList = { events: VideoEvent[]; total: number };
 /** Mutation key shared by every event write — lets us tell when others are still in flight. */
 const WRITE_KEY = ['videoEventWrite'] as const;
 
-/** Gateway hiccups (server briefly unreachable / restarting): the request never
- *  reached the app, so retrying is safe and invisible to the user. */
-function isTransient(error: unknown): boolean {
-  return /API Error: (502|503|504)\b/.test(String((error as Error)?.message ?? error));
+/** A failure that is not the event's fault: no response at all (network / timeout), a gateway or server error (5xx),
+ *  request-timeout or rate-limit. Re-sending later is safe (saves are idempotent). A 4xx rejection is not retryable. */
+function isRetryable(error: unknown): boolean {
+  const status = (error as { status?: number } | null)?.status;
+  return status === undefined || status >= 500 || status === 408 || status === 429;
 }
-const retryTransient = (failureCount: number, error: unknown) => failureCount < 4 && isTransient(error);
+const retryQuick = (failureCount: number, error: unknown) => failureCount < 2 && isRetryable(error);
+/** Update / delete: unchanged behaviour — only gateway hiccups are retried, then the change is rolled back. */
+const retryTransient = (failureCount: number, error: unknown) =>
+  failureCount < 4 && /API Error: (502|503|504)/.test(String((error as Error)?.message ?? error));
 const retryDelay = (attempt: number) => Math.min(1000 * 2 ** attempt, 6000);
+/** Idempotency key per create call (keyed by the mutation's args object, which is stable across its retries). */
+const clientIds = new WeakMap<object, string>();
+
+/** Called when a QUEUED event is finally rejected by the server (so the user is told, once). */
+let rejectHandler: ((error: Error, data: VideoEventCreateData) => void) | undefined;
+
+// ── Background drain of the durable queue (events that could not be saved yet) ──
+let drainTimer: ReturnType<typeof setTimeout> | null = null;
+let draining = false;
+let drainDelay = 3000;
+
+function scheduleDrain(queryClient: ReturnType<typeof useQueryClient>, delay = drainDelay) {
+  if (drainTimer || writeQueue.all().length === 0) return;
+  drainTimer = setTimeout(() => {
+    drainTimer = null;
+    void drainQueue(queryClient);
+  }, delay);
+}
+
+async function drainQueue(queryClient: ReturnType<typeof useQueryClient>) {
+  if (draining) return;
+  draining = true;
+  const touched = new Set<string>();
+  try {
+    for (const item of writeQueue.all()) {   // oldest first
+      try {
+        await videoEventsAPI.create(item.sessionId, { ...item.data, client_event_id: item.clientEventId });
+        writeQueue.remove(item.clientEventId);
+        touched.add(item.sessionId);
+        drainDelay = 3000;
+      } catch (err) {
+        if (isRetryable(err)) {
+          drainDelay = Math.min(drainDelay * 2, 30000);
+          return;                               // server still unwell — keep everything, try again later
+        }
+        writeQueue.remove(item.clientEventId);  // the server rejected this one: it will never save
+        touched.add(item.sessionId);
+        rejectHandler?.(err as Error, item.data);
+      }
+    }
+  } finally {
+    draining = false;
+    touched.forEach(id => queryClient.invalidateQueries({ queryKey: videoEventKeys.bySession(id) }));
+    scheduleDrain(queryClient);
+  }
+}
+
+/** Number of this session's events saved locally but not yet on the server (drives the "saving…" pill). */
+export function usePendingVideoWrites(sessionId: string | null): number {
+  return useSyncExternalStore(writeQueue.subscribe, () => (sessionId ? writeQueue.count(sessionId) : 0));
+}
 
 /** Apply a change to the cached event list immediately (optimistic UI). */
 function patchCache(
@@ -54,32 +111,22 @@ function settle(queryClient: ReturnType<typeof useQueryClient>, sessionId: strin
 export function useVideoEvents(sessionId: string | null) {
   return useQuery({
     queryKey: videoEventKeys.bySession(sessionId!),
-    queryFn: () => videoEventsAPI.list(sessionId!),
+    queryFn: async () => {
+      const list = await videoEventsAPI.list(sessionId!);
+      // Events still waiting to be saved stay on screen (and in the scoreline) across refetches and reloads
+      const waiting = writeQueue.forSession(sessionId!);
+      if (!waiting.length) return list;
+      const events = [...list.events, ...waiting.map(w => buildOptimistic(sessionId!, w.data, w.tempId))];
+      return { events, total: events.length };
+    },
     enabled: !!sessionId,
   });
 }
 
-/** Create a single video event. The event appears (and the scoreline moves)
- *  instantly; it's saved in the background with retries, and only removed again
- *  if the save finally fails. */
-export function useCreateVideoEvent(opts?: {
-  /** Called when the server rejects/fails an event — without it a rejected
-   *  event (e.g. a 422 on an unknown type) just silently never appears. */
-  onError?: (error: Error, data: VideoEventCreateData) => void;
-}) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationKey: WRITE_KEY,
-    mutationFn: (args: { sessionId: string; data: VideoEventCreateData }) =>
-      videoEventsAPI.create(args.sessionId, args.data),
-    retry: retryTransient,
-    retryDelay,
-    onMutate: async ({ sessionId, data }) => {
-      await queryClient.cancelQueries({ queryKey: videoEventKeys.bySession(sessionId) });
-      const now = new Date().toISOString();
-      const tempId = `temp-${crypto.randomUUID()}`;
-      const optimistic = {
+/** The on-screen stand-in for an event that is saved (or waiting to be saved) in the background. */
+function buildOptimistic(sessionId: string, data: VideoEventCreateData, tempId: string): VideoEvent {
+  const now = new Date().toISOString();
+  return {
         id: tempId,
         video_session_id: sessionId,
         match_id: '',
@@ -112,13 +159,54 @@ export function useCreateVideoEvent(opts?: {
         is_verified: (data.source ?? 'human_tag') === 'human_tag',
         created_at: now,
         updated_at: now,
-      } as VideoEvent;
-      patchCache(queryClient, sessionId, events => [...events, optimistic]);
+  } as VideoEvent;
+}
+
+/** Create a single video event. The event appears (and the scoreline moves)
+ *  instantly; it's saved in the background with retries, and only removed again
+ *  if the save finally fails. */
+export function useCreateVideoEvent(opts?: {
+  /** Called when the server rejects/fails an event — without it a rejected
+   *  event (e.g. a 422 on an unknown type) just silently never appears. */
+  onError?: (error: Error, data: VideoEventCreateData) => void;
+}) {
+  const queryClient = useQueryClient();
+  rejectHandler = opts?.onError;
+
+  // Resume anything left in the queue (e.g. after a refresh) and re-try as soon as the connection is back
+  useEffect(() => {
+    const kick = () => scheduleDrain(queryClient, 0);
+    kick();
+    window.addEventListener('online', kick);
+    return () => window.removeEventListener('online', kick);
+  }, [queryClient]);
+
+  return useMutation({
+    mutationKey: WRITE_KEY,
+    // One idempotency key per tap, stable across this mutation's retries (the args object is the same each time)
+    mutationFn: (args: { sessionId: string; data: VideoEventCreateData }) => {
+      let id = clientIds.get(args);
+      if (!id) { id = crypto.randomUUID(); clientIds.set(args, id); }
+      return videoEventsAPI.create(args.sessionId, { ...args.data, client_event_id: id });
+    },
+    retry: retryQuick,
+    retryDelay,
+    onMutate: async ({ sessionId, data }) => {
+      await queryClient.cancelQueries({ queryKey: videoEventKeys.bySession(sessionId) });
+      const tempId = `temp-${crypto.randomUUID()}`;
+      patchCache(queryClient, sessionId, events => [...events, buildOptimistic(sessionId, data, tempId)]);
       return { tempId };
     },
     onError: (error, variables, context) => {
       console.error('Failed to create video event:', error, variables.data);
-      // Save finally failed — take the optimistic event back out
+      const clientId = clientIds.get(variables);
+      if (isRetryable(error) && clientId && context?.tempId) {
+        // Not the event's fault (server/network): keep it on screen and keep trying until it saves
+        writeQueue.add({ clientEventId: clientId, sessionId: variables.sessionId, data: variables.data, tempId: context.tempId, queuedAt: Date.now() });
+        scheduleDrain(queryClient);
+        return;
+      }
+      // The server rejected this event — take it back off the screen and tell the user
       if (context?.tempId) {
         patchCache(queryClient, variables.sessionId, events => events.filter(e => e.id !== context.tempId));
       }

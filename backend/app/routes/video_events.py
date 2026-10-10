@@ -128,11 +128,22 @@ async def create_video_event(
     """Create a new video event (human tag)."""
     session = await _get_session_for_club(session_id, user.club_id, db)
 
+    # Idempotent create: a save that is retried (or queued after a failed attempt) must not write the event twice
+    if body.client_event_id:
+        existing = (await db.execute(
+            select(VideoEvent).where(
+                VideoEvent.video_session_id == session.id, VideoEvent.client_event_id == body.client_event_id
+            ).limit(1)
+        )).scalar_one_or_none()
+        if existing is not None:
+            return _event_to_response(existing)
+
     # Auto-detect two-pointer from zone
     scoring_ctx = body.scoring_context.dict(exclude_unset=True) if body.scoring_context else None
     scoring_ctx = _auto_set_two_pointer(body.event_type, body.pitch_zone, scoring_ctx)
 
     event = VideoEvent(
+        client_event_id=body.client_event_id,
         video_session_id=session.id,
         match_id=session.match_id,
         event_type=body.event_type,
