@@ -385,13 +385,14 @@ async def _build(db, match_id, minute, club_id, window) -> str:
         if whole:
             def _ob_line(tag: str, d: dict) -> str:
                 via = d.get("entered_our_third_via") or {}
+                started = d.get("started_in") or {}
                 s = (f"  {tag}: {d['possessions']} possessions, avg {d['avg_seconds']}s (median {d['median_seconds']}s; "
-                     f"{d['short_10s_or_less']} of 10s or less, {d['sustained_over_30s']} over 30s); "
-                     f"reached our half {d['reached_our_half']}, our defensive third {d['reached_our_defensive_third']}")
+                     f"{d['short_10s_or_less']} of 10s or less, {d['sustained_over_30s']} over 30s)")
+                if started:
+                    s += "; won/started in " + ", ".join(f"{k} {v}" for k, v in started.items())
+                s += f"; worked it into our defensive third {d['built_into_our_defensive_third']}x"
                 if via:
                     s += " (via " + ", ".join(f"{k} {v}" for k, v in via.items()) + ")"
-                if d.get("avg_gain_towards_our_goal_m") is not None:
-                    s += f"; gained {d['avg_gain_towards_our_goal_m']}m per possession on average, {d['progressed_20m_plus']} of {d['possessions_with_movement']} progressed 20m+"
                 return s
             L.append("\nTHEIR BALL MOVEMENT (from the ball path — no players or passes tracked):")
             L.append(_ob_line("match to date", whole))

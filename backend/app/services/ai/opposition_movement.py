@@ -59,35 +59,38 @@ async def _runs(db, match_id) -> list[dict]:
     return runs
 
 
+def _zone(x: float) -> str:
+    return "our defensive third" if x <= THIRD_LINE else ("the middle third" if x <= 69.0 else "their own end (our attacking third)")
+
+
 def _summarise(runs: list[dict], length_m: float) -> Optional[dict]:
+    """Origins and entries, not distance gained: the ball marker is moved by tapping/dragging, so first-to-last distance
+    is inflated by relocations (a kickout landing, a free spot) and was removed rather than quoted."""
     if not runs:
         return None
     secs = [r["seconds"] for r in runs]
-    moved = [r for r in runs if len(r["pts"]) >= 2]
-    gains = [(r["pts"][0][0] - r["pts"][-1][0]) / 100.0 * length_m for r in moved]   # + = towards OUR goal
-    into_third = [r for r in runs if r["pts"] and min(p[0] for p in r["pts"]) <= THIRD_LINE]
-    past_half = [r for r in runs if r["pts"] and min(p[0] for p in r["pts"]) <= 50.0]
+    located = [r for r in runs if r["pts"]]
+    origins: dict[str, int] = {}
+    for r in located:
+        z = _zone(r["pts"][0][0])
+        origins[z] = origins.get(z, 0) + 1
+    # a genuine entry: it did NOT start in our defensive third but got into it
+    entries = [r for r in located if r["pts"][0][0] > THIRD_LINE and min(p[0] for p in r["pts"]) <= THIRD_LINE]
     channels: dict[str, int] = {}
-    for r in into_third:
-        entry = next((p for p in r["pts"] if p[0] <= THIRD_LINE), None)
-        if entry:
-            ch = _channel(entry[1])
-            channels[ch] = channels.get(ch, 0) + 1
-    out = {
+    for r in entries:
+        entry = next(p for p in r["pts"] if p[0] <= THIRD_LINE)
+        ch = _channel(entry[1])
+        channels[ch] = channels.get(ch, 0) + 1
+    return {
         "possessions": len(runs),
         "avg_seconds": round(sum(secs) / len(secs), 1),
         "median_seconds": round(median(secs), 1),
         "short_10s_or_less": sum(1 for s in secs if s <= 10),
         "sustained_over_30s": sum(1 for s in secs if s > 30),
-        "reached_our_half": len(past_half),
-        "reached_our_defensive_third": len(into_third),
+        "started_in": origins,
+        "built_into_our_defensive_third": len(entries),
         "entered_our_third_via": channels,
     }
-    if gains:
-        out["possessions_with_movement"] = len(gains)
-        out["avg_gain_towards_our_goal_m"] = round(sum(gains) / len(gains), 1)
-        out["progressed_20m_plus"] = sum(1 for g in gains if g >= 20)
-    return out
 
 
 async def opposition_ball_path(db, match_id, *, length_m: float = 145.0,
