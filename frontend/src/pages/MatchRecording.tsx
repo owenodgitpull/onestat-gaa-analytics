@@ -145,11 +145,13 @@ export default function MatchRecording() {
   // time: no re-render, no request, and the same value in the normal and fullscreen pitch views.
   const matchClockRef = useRef(0)
   matchClockRef.current = minute * 60 + seconds
+  const [currentHalf, setCurrentHalf] = useState<1 | 2>(1)
+  const currentHalfRef = useRef<1 | 2>(1)
+  currentHalfRef.current = currentHalf
   useEffect(() => {
-    setMatchClockProvider(() => matchClockRef.current)
+    setMatchClockProvider(() => ({ clockS: matchClockRef.current, half: currentHalfRef.current }))
     return () => setMatchClockProvider(null)
   }, [])
-  const [currentHalf, setCurrentHalf] = useState<1 | 2>(1)
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false)
   const [isPossessionModalOpen, setIsPossessionModalOpen] = useState(false)
   const [pendingEvent, setPendingEvent] = useState<PendingEvent | null>(null)
@@ -1233,6 +1235,7 @@ export default function MatchRecording() {
               team,
               minute: pts[pts.length - 1].minute,
               match_clock_s: Math.round(pts[pts.length - 1].clock),
+              half: currentHalfRef.current,
               waypoints: pts.map(w => ({ x: w.x, y: w.y })),
             }),
           })
@@ -2496,6 +2499,7 @@ export default function MatchRecording() {
       team: team as 'own' | 'opponent',
       minute,
       match_clock_s: minute * 60 + seconds,
+      half: currentHalf,
       waypoints,
     }).then(res => {
       console.log(`Drag path: ${res.created} waypoints recorded`)

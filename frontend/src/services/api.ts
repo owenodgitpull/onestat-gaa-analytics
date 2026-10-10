@@ -602,6 +602,8 @@ export const possessionAPI = {
     minute: number;
     /** Game-clock seconds at the tap (minute*60 + seconds) */
     match_clock_s?: number;
+    /** Half the tap was recorded in */
+    half?: number;
     waypoints: Array<{ x: number; y: number }>;
   }): Promise<{ created: number }> => {
     return fetchAPI<{ created: number }>('/possession-events/bulk', {
@@ -622,6 +624,7 @@ export const possessionAPI = {
       pitch_y?: number | null;
       minute?: number | null;
       match_clock_s?: number | null;
+      half?: number | null;
       duration_seconds: number;
       /** Video time (ms) the point was recorded at — lets Undo to Point cut possession exactly */
       video_ms?: number | null;

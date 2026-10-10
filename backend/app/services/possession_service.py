@@ -64,6 +64,7 @@ class PossessionService:
             team=team_value,
             minute=event_data.minute,
             match_clock_s=getattr(event_data, 'match_clock_s', None),
+            half=getattr(event_data, 'half', None),
             pitch_x=event_data.pitch_x,
             pitch_y=event_data.pitch_y,
             # Explicit (video-time) duration is final; otherwise it's set when
@@ -100,6 +101,7 @@ class PossessionService:
         minute: int | None,
         waypoints: list[dict],
         match_clock_s: int | None = None,
+        half: int | None = None,
     ) -> int:
         """
         Bulk-insert possession waypoints (from a drag path, or from the
@@ -140,6 +142,7 @@ class PossessionService:
                 team=team,
                 minute=minute,
                 match_clock_s=match_clock_s,
+                half=half,
                 pitch_x=wp["x"],
                 pitch_y=wp["y"],
                 duration_seconds=None if is_last else 0,
@@ -173,6 +176,7 @@ class PossessionService:
                 team=p.team.value if hasattr(p.team, 'value') else p.team,
                 minute=p.minute,
                 match_clock_s=getattr(p, 'match_clock_s', None),
+                half=getattr(p, 'half', None),
                 pitch_x=p.pitch_x,
                 pitch_y=p.pitch_y,
                 duration_seconds=p.duration_seconds,

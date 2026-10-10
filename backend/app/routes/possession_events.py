@@ -183,6 +183,7 @@ async def bulk_create_possession_events(
         minute=data.minute,
         waypoints=data.waypoints,
         match_clock_s=data.match_clock_s,
+        half=data.half,
     )
     return {"created": count}
 

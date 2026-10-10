@@ -38,16 +38,18 @@ function now(): string {
  * this file is stamped with it at call time — so the tap time survives offline queueing and no
  * call site has to pass it. Reads a ref: no extra render, no request, nothing awaited.
  */
-let matchClockProvider: (() => number | null) | null = null
+let matchClockProvider: (() => { clockS: number; half: 1 | 2 } | null) | null = null
 
-export function setMatchClockProvider(fn: (() => number | null) | null): void {
+export function setMatchClockProvider(fn: (() => { clockS: number; half: 1 | 2 } | null) | null): void {
   matchClockProvider = fn
 }
 
-function clockNow(): { match_clock_s?: number } {
+/** `withHalf` adds the half the tap was in — possession rows only (events and tags already carry their own `half`). */
+function clockNow(withHalf = false): { match_clock_s?: number; half?: number } {
   try {
-    const s = matchClockProvider ? matchClockProvider() : null
-    return s != null && Number.isFinite(s) && s >= 0 ? { match_clock_s: Math.min(Math.round(s), 7500) } : {}
+    const c = matchClockProvider ? matchClockProvider() : null
+    if (c == null || !Number.isFinite(c.clockS) || c.clockS < 0) return {}
+    return { match_clock_s: Math.min(Math.round(c.clockS), 7500), ...(withHalf ? { half: c.half } : {}) }
   } catch {
     return {}
   }
@@ -382,7 +384,7 @@ export const offlinePossession = {
       pitch_x: data.x_coord,
       pitch_y: data.y_coord,
       minute: Math.min(data.minute, 120),
-      ...clockNow(),
+      ...clockNow(true),
     }
 
     // Try server first when online
@@ -436,9 +438,10 @@ export const offlinePossession = {
     team: 'own' | 'opponent'
     minute: number
     match_clock_s?: number
+    half?: number
     waypoints: Array<{ x: number; y: number }>
   }): Promise<{ created: number }> => {
-    data = { ...clockNow(), ...data }
+    data = { ...clockNow(true), ...data }
     // Try server first
     if (isOnline()) {
       try {

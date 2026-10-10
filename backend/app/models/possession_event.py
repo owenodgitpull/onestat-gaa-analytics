@@ -8,7 +8,7 @@ Used to generate heat maps, possession stats, and flow diagrams.
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, DateTime, Float, Integer, String, ForeignKey, BigInteger
+from sqlalchemy import Column, DateTime, Float, Integer, SmallInteger, String, ForeignKey, BigInteger
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -68,6 +68,10 @@ class PossessionEvent(Base):
     # Game-clock seconds at the moment of the tap (minute*60 + seconds as shown on the match clock). Lets the
     # phase/transition analysis time things to the second. NULL on rows recorded before 2026-10-10.
     match_clock_s: Column[Optional[int]] = Column(Integer, nullable=True)
+
+    # Which half this was recorded in (1/2). Stored, because a half cannot be derived from the minute once a half has
+    # added time. NULL on rows recorded before 2026-10-11.
+    half: Column[Optional[int]] = Column(SmallInteger, nullable=True)
 
     # Offline sync — client-generated UUID for idempotent deduplication
     client_event_id: Column[Optional[str]] = Column(String(64), nullable=True, index=True)
