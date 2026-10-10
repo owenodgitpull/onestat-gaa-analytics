@@ -2341,9 +2341,35 @@ export default function VideoTagging() {
     setAiDismissed(true)
 
     if (payload.eventType === 'SUB_ON' && payload.playerId && payload.subInPlayerId) {
-      setSubOverrides(prev => ({ ...prev, [payload.playerId!]: false, [payload.subInPlayerId!]: true }))
+      const offId = payload.playerId
+      const onId = payload.subInPlayerId
+      setSubOverrides(prev => ({ ...prev, [offId]: false, [onId]: true }))
+
+      // The lineup changes IMMEDIATELY everywhere (jersey strip, receiver dots, player pickers, the agents' view):
+      // update the cached lineup first, then persist behind it. The incoming player takes the outgoing player's position.
+      const matchId = session?.match_id
+      if (matchId) {
+        const key = ['matchLineup', matchId]
+        const current = (queryClient.getQueryData(key) as any[] | undefined) || []
+        const outgoing = current.find((l: any) => l.player_id === offId)
+        const incoming = current.find((l: any) => l.player_id === onId)
+        const offWasOn = outgoing ? (outgoing.is_on_field ?? true) : false
+        const onWasOff = incoming ? !(incoming.is_on_field ?? false) : false
+        queryClient.setQueryData(key, current.map((l: any) => {
+          if (l.player_id === offId) return { ...l, is_on_field: false }
+          if (l.player_id === onId) return { ...l, is_on_field: true, position_id: outgoing?.position_id ?? l.position_id }
+          return l
+        }))
+        // The server call toggles on/off, so only send it for a player whose state really changes
+        const calls: Promise<unknown>[] = []
+        if (offWasOn) calls.push(api.matchLineups.updateFieldStatus(matchId, offId))
+        if (onWasOff) calls.push(api.matchLineups.updateFieldStatus(matchId, onId, outgoing?.position_id))
+        Promise.all(calls)
+          .catch(err => console.error('Failed to sync substitution to the lineup:', err))
+          .finally(() => queryClient.invalidateQueries({ queryKey: key }))
+      }
     }
-  }, [sessionId, createEvent, calcMatchTime, currentTimeMs, ballPosition])
+  }, [sessionId, createEvent, calcMatchTime, currentTimeMs, ballPosition, session?.match_id, queryClient])
 
   /** Opposition-only quick "Pass" log — a lightweight stand-in for the own-
    *  team carrier radial, which can't show for the opposition since we

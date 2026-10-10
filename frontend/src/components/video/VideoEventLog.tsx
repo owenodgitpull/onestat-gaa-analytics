@@ -45,7 +45,7 @@ const EVENT_LABELS: Record<string, string> = {
   PENALTY: 'Penalty', KICKOUT_SHORT: 'KO Short', KICKOUT_LONG: 'KO Long',
   THROW_IN: 'Throw In',
   YELLOW_CARD: 'Yellow Card', RED_CARD: 'Red Card', BLACK_CARD: 'Black Card',
-  SUB_ON: 'Sub On', SUB_OFF: 'Sub Off',
+  SUB_ON: 'Substitution', SUB_OFF: 'Sub Off',
   HALF_TIME: 'Half Time', FULL_TIME: 'Full Time',
   INJURY_STOPPAGE: 'Injury Stop', WATER_BREAK: 'Water Break',
 }
@@ -252,7 +252,9 @@ export default function VideoEventLog({
 
                   {/* Player name */}
                   <span className="text-xs text-white/50 truncate flex-1 min-w-0">
-                    {event.player_name || (event.jersey_number ? `#${event.jersey_number}` : '')}
+                    {event.event_type === 'SUB_ON'
+                      ? `${event.player_name ?? 'Player'} off · ${event.sub_in_player_name ?? 'Player'} on`
+                      : (event.player_name || (event.jersey_number ? `#${event.jersey_number}` : ''))}
                   </span>
 
                   {/* Score change indicator */}

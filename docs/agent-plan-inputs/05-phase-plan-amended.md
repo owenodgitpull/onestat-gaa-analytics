@@ -1,22 +1,46 @@
-# Amended 7-phase plan (supersedes the first coding-agent plan)
+# Seven-phases plan — tactical analysis in the agents + real-time insights
 
-Written 2026-10-09 against `00`–`04` in this folder and a read of `player_movement_service.py`, `live_insights_service.py`, `possession_service.py`, `ai/_shared.py`, `ai/match_agent.py`. Framework source: `7_Phases_of_Gaelic_Football_ONEStat_1.docx` (Jim McGuinness meeting).
+Status: final plan for the implementing agent (revised 2026-10-10 after the 2026-10-09 handover). It replaces the first coding-agent plan.
+Framework source: `7_Phases_of_Gaelic_Football_ONEStat_1.docx` (Jim McGuinness meeting). Inputs: `00`-`04` in this folder; code read: `player_movement_service.py`, `live_insights_service.py`, `possession_service.py`, `ai/live_brief.py`, `ai/_shared.py`, `ai/match_agent.py`.
+Read first: `docs/handover-live-insights-and-rag.md`, `docs/handover-video-tagging-and-session-state.md`, `docs/TODO-tomorrow.md`, `docs/live-insight-replay.md`.
 
-## 0. Why the first plan was replaced
+## Decisions and constraints (from Owen / the handover)
+- Live model is Sonnet 5.5 (`LIVE_MODEL`, 3 tool turns, thinking allowed, max_tokens 4000). Output = bold headline (<=22 words) + detail (<=70 words).
+- Do NOT trim any prompt sections (Starting XV, ACWR, squad comparison all stay) — more context helps the analysis.
+- Phase signals are COMPUTED FACTS added to `live_brief.py`; the model quotes them and never infers phases. No second-pass or deterministic rewriting of insights; grounding is by prompt. The fact-checker stays `audit` (report-only).
+- Acceptance harness: `backend/scripts/run_replay.py` (+ audit). Baseline to beat: `insights-replay-v10-calibrated`. Replays cost ~16-32 model calls each; deploy before replaying a prompt change; keep API credits topped up.
+- Standing rules: commit + push, deploy after every change, half length from `half_duration_mins` (club 30 / inter-county 35), attack-frame helpers for all spatial wording.
+
+## Staged delivery — mostly gap-filling, in two stages
+**Stage A (small schema change: match clock seconds; otherwise uses what exists).** The brief already computes lost/won ball positions, kickouts, timed possession, carry chains and "their scores within 2 min of our turnovers/lost kickouts". Stage A generalises that into the seven phases:
+0. **Match clock seconds FIRST (cannot be backfilled for live matches):** add `match_clock_s` (client-captured game-clock seconds at the tap) to `match_events`, `possession_events`, `tactical_tags`, `ball_carrier_segments`; carry `VideoEvent.match_second` through the mirror into `match_events`; keep `minute`. Test on a real live match.
+1. `backend/app/services/ai/phase_facts.py`: pure functions over the visible events + possession + chains. Outcome-based and sequence-based: "the possession that began from this event ended in <shot/score/turnover/foul/restart>", ordered by event order, using `match_clock_s` for timings where present (matches without it fall back to event order). Facts per phase, both directions, last-5-min and match-to-date, each with n:
+   own kick-out kept -> what followed; opposition kick-out won/retained -> what followed; turnover won -> shot/score for us; turnover lost (forced vs unforced) -> shot/score conceded; possession/attack chains -> shot / died where; contest (`_break`, breaking_ball, tackle) win %.
+2. Call it from `build_live_brief` as a `PHASES` block; add PHASE_FRAMEWORK text to `GAA_ESSENTIALS`; phase-first guidance in the live prompt (keep existing grounding rules and the headline/detail format). The prompt allows "within N seconds" claims only where the brief gives seconds.
+3. Post-match: `get_phase_summary` / `get_phase_sequences` tools (read `phase_facts`) + a required Phase Analysis section.
+4. Season: `get_season_phase_profile` aggregating `phase_facts` per match.
+5. Run replays before/after; success = more phase-specific insights AND no rise in unsupported claims (v10 had many arithmetic/derived-claim failures — pre-computed deltas like "they scored X in the last 5 min" should reduce them).
+6. Small fixes: 30-minute half bug in `_check_interval_trigger`; add `half` to `possession_events` (needs migration + writers).
+**Stage B (new capability — only where Stage A's limits bite).** Chain origin/outcome in `_build_chain`, the `phase_segments` table + causal detector, structured press / defensive-system windows, Donegal GPS time series. Real feature work, not gap-filling; sections 2, 3, 5 and parts of 4 and 6 below describe it. When Stage B lands, the Stage A tools keep their signatures and are re-pointed at the segment tables.
+**RAG overhaul tie-in:** tag distilled knowledge-base content by phase so retrieval can be situation-triggered ("opposition kick-out we are losing" -> kick-out press material).
+
+---
+
+## 0. Why the first coding-agent plan was replaced
 
 1. **Circular definitions.** "TURNOVER_WON + shot within 20s -> Transition to Attack" only labels transitions that end in a shot, so transition conversion is ~100% by construction. Phase membership must be decided structurally/by time; outcomes are attached afterwards.
 2. **Phase is per team and per interval, not per event.** One `phase` string on `match_events` cannot say "Own KO for us / Opp KO for them", and events are points while phases are intervals. Drop `phase`, `phase_sequence_id`, `previous_event_id` on `match_events` (and migration `b060`).
 3. **Zone != phase.** "Defensive third events -> Defensive Phase" mislabels our own build-up. Defensive Phase = opposition has established possession and we are organised.
 4. **Forward-looking rules cannot run live.** The detector must be a causal state machine; outcomes are attached when a segment closes.
-5. **Seconds-based windows are not computable today** (see 1a).
+5. **Seconds-based windows were not computable** (live events only had whole minutes) — hence Stage A step 0.
 
 ## 1. What the repo already gives us (and what is missing)
 
-a. **Time resolution (blocker).** Live `MatchEvent` has only integer `minute` plus `created_at` (write time; offline sync via `client_event_id` means it may be sync time, not tap time — CONFIRM). `VideoEvent` has `match_second` but the mirror into `match_events` loses it. `PossessionEvent` chains duration from `created_at`. So "10s/20s" rules, `get_turnover_to_shot_time` and `get_ball_recovery_time` (which reports minutes) are coarse or noisy. **Fix: add `match_clock_s` (game-clock seconds, client-captured at tap) to `match_events`, `possession_events`, `tactical_tags`, `ball_carrier_segments`; carry `match_second` through the video mirror.** Until then, order by `(half, minute, created_at)` and treat sub-minute timing as approximate.
+a. **Time resolution (blocker).** Live `MatchEvent` has only integer `minute` plus `created_at` (write time; offline sync via `client_event_id` means it may be sync time, not tap time — CONFIRM). `VideoEvent` has `match_second` but the mirror into `match_events` loses it. `PossessionEvent` chains duration from `created_at`. So "10s/20s" rules, `get_turnover_to_shot_time` and `get_ball_recovery_time` (which reports minutes) are coarse or noisy. **Fix (Stage A step 0): add `match_clock_s` (game-clock seconds, client-captured at tap) to `match_events`, `possession_events`, `tactical_tags`, `ball_carrier_segments`; carry `match_second` through the video mirror.** Matches without it: order by `(half, minute, created_at)` and treat sub-minute timing as approximate.
 
 b. **Kickouts are already fully tagged**: `own_kickout_{won,opposition_won}{,_break}`, `opp_kickout_{won,opposition_won}{,_break}`, sideline variants, `kickout_target_player_id`. Own KO and Opposition KO phases need no new tagging. Trigger (score conceded / wide / other) is derivable from the preceding event; short vs long from start->end coords; contested = `_break`.
 
-c. **Possession spine exists**: `PossessionEvent` (team own/opponent/**contested** + duration + position) is the possession-owner stream, and `contested` is literally the Contest phase. `BallCarrierSegment` (team, player, path, `ended_by`) + `PossessionChain` give chains. **Tonight's opposition ball-carrier change** makes chains two-sided — good; make sure opposition segments set `team='opponent'`, keep jersey/name optional, and use the same `ended_by` vocabulary.
+c. **Possession spine exists**: `PossessionEvent` (team own/opponent/**contested** + duration + position) is the possession-owner stream, and `contested` is literally the Contest phase. `BallCarrierSegment` (team, player, path, `ended_by`) + `PossessionChain` give chains. **The opposition ball-carrier change (being added the night of 2026-10-09 — verify it shipped)** makes chains two-sided — good; make sure opposition segments set `team='opponent'`, keep jersey/name optional, and use the same `ended_by` vocabulary.
 
 d. **Gap in chain derivation.** `_build_chain` sets `end_event` and `outcome` (only score/wide/turnover, else None -> "unknown") but never sets `start_event`, `start_zone`, `end_zone`. **Chain ORIGIN is the single most valuable missing field** ("what happened immediately before"). Populate `start_event` / new `origin_type` by joining each chain to the nearest preceding `match_events` row (kickout won/retained, turnover_won, tackle_won, interception, breaking_ball_won, block, free_won, sideline, forty_five...). Fix `outcome` so frees/kickouts/fouls/end-of-half are explicit values, not None.
 
@@ -26,13 +50,13 @@ f. **Existing tools to extend, not duplicate**: `get_turnover_analysis`, `get_tu
 
 g. **GPS today = per-player match TOTALS only** (STATSports PDF/CSV, own team). Time series for the 5 Donegal matches is a new ingestion (see section 5). The phase detector must NOT depend on GPS; GPS is enrichment, post-match only (no live feed is promised).
 
-h. **Live insight constraints**: Haiku 4.5, 200 max tokens, 2 tool turns, <80 words; the assembled prompt is ~23KB, much of it irrelevant live (starting XV, comparing players, ACWR, brought-forward fouls) and its STEP 2 pushes the model toward naming players, not reading phases. Phase reasoning must be pre-computed server-side and injected as a compact digest.
+h. **Live insight (updated per 2026-10-09 handover)**: runs on Sonnet 5.5 (`LIVE_MODEL`), `MAX_LIVE_TURNS = 3`, max_tokens 4000 with thinking allowed, headline (<=22 words) + detail (<=70 words) output, and a computed `LIVE TACTICAL BRIEF` from `live_brief.py`. Phase facts go INTO that brief as computed, quotable facts. No second-pass rewriting of insights (Owen's rule); grounding is by prompt.
 
 i. **Bug to fix in the same change**: `_check_interval_trigger` hard-codes a 30-minute half (`minute - 30 + (30 - last.minute)`); use `match.half_duration_mins` (Donegal inter-county = 35).
 
 j. **Unchecked**: contents of `VideoEvent.kickout_context` / `scoring_context` JSON and `possession_team`; whether they already hold origin/outcome info worth reusing.
 
-## 2. Data model
+## 2. Data model (Stage B)
 
 New tables (all derived, recomputable, versioned):
 
@@ -58,7 +82,9 @@ Keep `match_events` unchanged except `match_clock_s`. Events link to segments by
 
 Invariants (unit-test these): each team has exactly one segment at any clock instant; valid mirror pairs only: (possession_attack, defensive), (transition_attack, transition_defence), (own_kickout, opp_kickout), (turnover_contest, turnover_contest), (dead_ball, dead_ball). Violations flag low confidence.
 
-## 3. Causal detector (`backend/app/services/phase_detector.py`)
+## 3. Causal detector (Stage B; `backend/app/services/phase_detector.py`)
+
+Stage A's `phase_facts.py` applies the same event-to-effect mapping below in a simpler, outcome-based form; reuse this table for both.
 
 Possession owner source priority: (1) possession-changing events, (2) `PossessionEvent` team stream incl. `contested`, (3) `BallCarrierSegment.team`.
 
@@ -86,11 +112,11 @@ Possession/Attack `sub_state`: `final_third` once ball is inside the opposition 
 
 Run modes: (1) incremental on every new event (live), (2) full recompute for a match (post-match, backfill). Backfill is a re-runnable CLI/job, NOT inside the alembic migration. Store `detector_version`; analyst overrides survive recompute.
 
-## 4. Tagging / capture changes (priority order)
+## 4. Tagging / capture changes (priority order; P0-1 is Stage A step 0, the rest is Stage B)
 
 P0
 1. `match_clock_s` on events, possession samples, tags, carrier segments (see 1a). Carry video `match_second` through the mirror.
-2. Opposition ball carrier (tonight): `team='opponent'`, optional jersey/name, same `ended_by` vocabulary.
+2. Opposition ball carrier (in progress 2026-10-09): `team='opponent'`, optional jersey/name, same `ended_by` vocabulary.
 3. Chain origin/outcome population (1d).
 P1
 4. Press windows and defensive-system windows as structured start/stop records with type (1e). UI: reuse the Press Trigger toggle; add a type chip (high / mid / low block) and a "defence set" tap.
@@ -99,7 +125,7 @@ P2 (Donegal GPS)
 6. GPS time-series ingestion (section 5) + kick-off sync offset.
 Do NOT tag phases manually; derive them. Analyst correction UI = override on a segment.
 
-## 5. GPS time series (5 Donegal matches)
+## 5. GPS time series (Stage B; 5 Donegal matches)
 
 New `match_gps_samples(match_id, player_id, ts_utc, clock_s, lat, lon, x, y, speed_ms, hr, load)`; `match_gps_sync(match_id, half, kickoff_utc_offset_s)` set from a known event (throw-in/first whistle). If the file has lat/lon, map to attack-frame pitch coordinates with the same helpers (pitch 145x90m). Derived per-segment metrics for OUR phases only: total/HSR/sprint distance and sprint count per phase, recovery run speed and **numbers behind the ball** at +5/+10/+15s into each Transition to Defence (a measurable "defence set"), support runners ahead of the carrier at regain in Transition to Attack, press height/compactness during press windows, kick-out set-up shape. Post-match + season only; the live 5-minute insight stays event/carrier-based. Opposition shape stays tag/formation-snapshot based.
 
@@ -107,9 +133,9 @@ New `match_gps_samples(match_id, player_id, ts_utc, clock_s, lat, lon, x, y, spe
 
 - `get_phase_summary(match_id, from_clock?, to_clock?, team?)` -> per phase: segments, total time, outcome counts, conversions, each with `n`, plus first-half/second-half and 10-min blocks.
 - `get_phase_sequences(match_id, window?, outcome?)` -> origin -> phases -> outcome chains with clock times, e.g. `Opp KO won (break) @ x=62 -> TA, 4 passes -> forward entry (+9s) -> point (+22s)`; also the mirror for chains we conceded.
-- `get_phase_digest(match_id)` (server-side, not an LLM tool): compact text for the live prompt (section 7).
+- The live prompt gets its phase facts from the `PHASES` block built in `live_brief.py` (section 7.2) — no separate digest and no extra tool call.
 - `get_season_phase_profile(...)` for the season agent (section 7).
-- Rework `get_turnover_to_shot_time`, `get_ball_recovery_time`, `get_turnover_analysis`, `get_kickout_targets` to read the segment/chain tables.
+- Stage A: tools above read `phase_facts`. Stage B: rework `get_turnover_to_shot_time`, `get_ball_recovery_time`, `get_turnover_analysis`, `get_kickout_targets` to read the segment/chain tables too.
 Conversion definitions: "led to score" = the possession/chain that originated from the event ended in a score (no fixed window); also report shots and, where available, xP. Report medians for times, never only means. Both directions: ball won AND ball lost (scores conceded after turnovers lost = defensive transition concession). Always return `n` and season baseline.
 
 ## 7. Agent changes
@@ -123,7 +149,7 @@ Draft text (tighten as needed):
 At any moment each team is in exactly one phase, and the two teams mirror each other:
 Possession/Attack <-> Defensive; Transition to Attack <-> Transition to Defence;
 Own Kick-Out <-> Opposition Kick-Out; Turnover/Contest <-> Turnover/Contest.
-Phases come PRE-COMPUTED from the phase tools. Never assign phases yourself from raw events, and do not
+Phases come PRE-COMPUTED (the PHASES block in the brief / the phase tools). Never assign phases yourself from raw events, and do not
 invent a phase label for an event. If a segment is open (in progress) or confidence is low, say so.
 
 1 Own Kick-Out: our keeper restarts (after a score conceded or a wide). Read: retention %, contested/break %, target zone & player, short vs long, what the retained possession produced. Ask: are we retaining, where, and does it lead to a shot?
@@ -136,7 +162,7 @@ invent a phase label for an event. If a segment is open (in progress) or confide
 
 How to read the game (do this every time):
 1. Start from the OUTCOME (score, wide, turnover) and walk back through the sequence: which phase did it start in, how was it won/lost, what happened in the transition?
-2. The unit of insight is a phase CONVERSION, not an isolated count. Good: "Won 4 turnovers, 3 became shots inside 20s (2 points)". Bad: "Won 4 turnovers".
+2. The unit of insight is a phase CONVERSION, not an isolated count. Good: "Won 4 turnovers, 3 became shots (2 points)". Bad: "Won 4 turnovers".
 3. Always give `n`. Five minutes holds only a few kick-outs and turnovers: with n<3 describe, don't conclude. Compare with this team's match-to-date and season baseline and with the opposition, not an invented norm.
 4. Separate process from outcome (a good press that conceded a lucky score, a poor shot that went over).
 5. Weigh game state: scoreline, time left, cards/numbers, wind/weather, who is chasing. A leading team dropping off changes what "good" looks like.
@@ -147,23 +173,23 @@ Terminology varies between teams: use these seven names consistently.
 
 ### 7.2 Live insight (`match_agent.live_match_insight`, `live_insights_service`)
 
-- Server builds a **PHASE DIGEST** and inserts it into the prompt (no extra tool turn). Format:
+- Server computes a **PHASES block inside `build_live_brief`** (not a separate digest or tool call). Format:
 ```
-PHASE DIGEST  [last 5 min | match to date | season avg]
+PHASES  [last 5 min | match to date | season avg]   (seconds shown only for matches that have match_clock_s)
 Own KO: 2/3 kept | 9/14 (64%) | 61%    after kept: 1 shot (to date 4/9 -> shot)
 Opp KO: 0/2 won, 1 press window (broken, 3 passes) | 2/6 (33%) | 38%
 Transition to Attack: 1 won -> 0 shots | 3 won -> 1 shot, median 18s | median 14s
-Transition to Defence: 2 lost (1 unforced) -> 2 scores conceded <=20s | 6 lost -> 3 conceded | 1.8/match
+Transition to Defence: 2 lost (1 unforced) -> 2 scores conceded | 6 lost -> 3 conceded | 1.8/match
 Possession/Attack: 4 possessions, 1 shot, 2 died in own half | chains 27: 4 score, 9 wide, 10 turnover
 Open: currently <phase> since <clock>
 Flags (pre-computed): ...
 ```
-- Rewrite the HOW-TO block: phase-first (find the single most decision-relevant phase delta), players only as supporting evidence. Keep the 2-3 sentence / <80 word cap and the repeat-suppression rule.
+- Rewrite the HOW-TO block: phase-first (find the single most decision-relevant phase delta), players only as supporting evidence. Keep the headline (<=22 words) + detail (<=70 words) format, the grounding rules and the repeat-suppression rule.
 - Extend `flagged_concerns` and `already_flagged_note` to phase concerns (`opp_kickout_press`, `own_kickout_retention`, `transition_defence_concession`, `transition_attack_stall`) so the same phase issue isn't re-announced.
 - New phase triggers beside the existing scoring-run/drought/turnover-crisis ones: own KO retention <50% (n>=4), opp KO win <35% (n>=4), 2 scores conceded within one Transition-to-Defence window in 10 min, transition-to-attack stall (3 turnovers won, 0 shots).
-- **Trim the live prompt**: drop sections not used live (Starting XV, Comparing Many Players, ACWR, brought-forward fouls detail) to cut ~40% and leave attention for the digest.
-- Model: A/B Haiku 4.5 vs Sonnet 5.5 on replay (below); with a precomputed digest Haiku may be enough.
+- **Do NOT trim the live prompt** (Owen: keep Starting XV, ACWR and squad-comparison rules — more context helps the analysis).
 - Fix the 30-minute half bug (1i).
+- Replay after every prompt/brief change (`run_replay.py`) and compare with v10.
 
 ### 7.3 Post-match report (`match_agent.py` system prompt, ~line 262)
 
@@ -179,15 +205,18 @@ Framework + routing: phase questions go to the phase tools, never compute conver
 
 ## 8. Build order and acceptance
 
-1. `match_clock_s` + opposition carriers + chain origin/outcome (P0).
-2. `phase_segments` + detector + invariants + backfill job.
-3. Gold set: hand-label Dungloe v St Eunans (video-tagged) — ideally checked by an analyst/Jim — and report detector agreement per phase; derive `TRANSITION_CAP_S` from data.
-4. Tools (`get_phase_summary`, `get_phase_sequences`, season profile) + rework old turnover/recovery tools.
-5. Press/defensive-system windows (structured) + UI chip.
-6. Prompts: PHASE_FRAMEWORK, live digest + trimmed live prompt, post-match section, season, chat.
-7. **Replay harness**: replay a finished match minute-by-minute through the 5-minute triggers, store digest + insight, eyeball against the match; compare Haiku vs Sonnet.
-8. GPS time series + per-phase GPS metrics (Donegal).
-Acceptance: mirror invariant holds on every gold match; no segment overlaps/gaps per team; conversion denominators independent of outcome; every number in an insight traceable to a digest/tool field; live insight never states a conversion with n<3 as a trend.
+Stage A
+1. `match_clock_s` (events, possession, tags, carrier segments, video mirror) + `half` on `possession_events` + 30-minute-half fix.
+2. `phase_facts.py` + unit tests (outcome-based, both directions, n on every figure).
+3. `PHASES` block in `build_live_brief`; PHASE_FRAMEWORK in `GAA_ESSENTIALS`; phase-first live prompt. Deploy, replay, compare with v10 (phase-specific insights up, unsupported claims not up).
+4. Phase tools + post-match Phase Analysis section; chat routing.
+5. Season phase profile.
+Stage B (only where Stage A's limits bite)
+6. Opposition carriers verified; chain origin/outcome populated in `_build_chain`.
+7. `phase_segments` + causal detector + invariants + backfill job; gold set (hand-label Dungloe v St Eunans, ideally checked by an analyst/Jim); derive `TRANSITION_CAP_S` from data.
+8. Press / defensive-system windows (structured) + UI chip; phase triggers for live insights.
+9. Donegal GPS time series + per-phase GPS metrics.
+Acceptance: every number in an insight is traceable to a brief/tool field; no conversion with n<3 stated as a trend; mirror invariant holds on gold matches (Stage B); conversion denominators independent of outcome; replay shows no rise in unsupported claims.
 
 ## 9. Questions for Owen
 - Is `match_events.created_at` the tap time or the sync time for offline-queued events? (decides how bad sub-minute ordering is today)
