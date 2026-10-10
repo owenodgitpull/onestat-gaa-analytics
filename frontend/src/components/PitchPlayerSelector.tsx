@@ -42,7 +42,7 @@ const pitchTopPct = (y: number) => ((123 + (y / 100) * 1167) / 1446) * 100
 
 // Standard GAA formation: 1-3-3-2-3-3 (15 players)
 const FORMATION_POSITIONS = [
-  { id: 'gk', x: 7, y: 50, label: 'GK' },
+  { id: 'gk', x: 3.5, y: 50, label: 'GK' },
   { id: 'fb-left', x: 14, y: 18, label: 'CB' },
   { id: 'fb-center', x: 14, y: 50, label: 'FB' },
   { id: 'fb-right', x: 14, y: 82, label: 'CB' },
