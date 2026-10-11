@@ -653,8 +653,8 @@ export const possessionAPI = {
     await fetchAPI<void>(`/possession-events/freeze/${matchId}`, { method: 'POST' });
   },
 
-  summary: async (matchId: string): Promise<PossessionSummary> => {
-    return fetchAPI<PossessionSummary>(`/possession-events/summary?match_id=${matchId}`);
+  summary: async (matchId: string, half?: 1 | 2): Promise<PossessionSummary> => {
+    return fetchAPI<PossessionSummary>(`/possession-events/summary?match_id=${matchId}${half ? `&half=${half}` : ''}`);
   },
 
   /**

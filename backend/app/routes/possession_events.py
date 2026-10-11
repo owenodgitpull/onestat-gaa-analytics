@@ -30,6 +30,7 @@ router = APIRouter()
 @router.get("/summary")
 async def possession_summary(
     match_id: UUID = Query(..., description="Match ID"),
+    half: Optional[int] = Query(None, ge=1, le=2, description="Only this half (1 or 2); omit for the whole match"),
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
@@ -44,10 +45,12 @@ async def possession_summary(
     as the opposition; a "spell" is a run of consecutive events by the same side.
     """
     owner = await db.execute(
-        select(Match.id).where(Match.id == match_id, Match.club_id == user.club_id)
+        select(Match.id, Match.half_duration_mins).where(Match.id == match_id, Match.club_id == user.club_id)
     )
-    if owner.scalar_one_or_none() is None:
+    owner_row = owner.first()
+    if owner_row is None:
         raise HTTPException(status_code=404, detail="Match not found")
+    hdm = owner_row[1] or 30
 
     is_own = case((PossessionEvent.team == "own", True), else_=False)
     prev_own = func.lag(is_own).over(order_by=(PossessionEvent.created_at, PossessionEvent.id))
@@ -58,8 +61,13 @@ async def possession_summary(
             prev_own.label("prev_own"),
         )
         .where(PossessionEvent.match_id == match_id)
-        .subquery()
     )
+    if half is not None:
+        # the stored half is the truth (first-half added time shares its minutes with the second half); the minute is
+        # only the fallback for rows recorded before the half was stored
+        by_minute = (func.coalesce(PossessionEvent.minute, 0) <= hdm) if half == 1 else (func.coalesce(PossessionEvent.minute, 0) > hdm)
+        rows = rows.where(or_(PossessionEvent.half == half, and_(PossessionEvent.half.is_(None), by_minute)))
+    rows = rows.subquery()
     # IS DISTINCT FROM so the very first row (prev NULL) starts a spell
     own_spell = (rows.c.own.is_(True)) & (rows.c.prev_own.is_distinct_from(True))
     opp_spell = (rows.c.own.is_(False)) & (rows.c.prev_own.is_distinct_from(False))

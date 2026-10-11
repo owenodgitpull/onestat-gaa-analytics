@@ -12,7 +12,9 @@
  * Renders via the existing StatsTable component.
  */
 
+import { useMemo, useState } from 'react'
 import { Activity } from 'lucide-react'
+import { isFirstHalf } from '../utils/attackDirection'
 import { usePossessionSummary } from '../hooks/useMatchEvents'
 import StatsTable from './charts/StatsTable'
 import type { MatchStats, PossessionSummary } from '../types'
@@ -31,6 +33,8 @@ interface MatchStatsPanelProps {
   opponentName: string
   hasEvents: boolean
   onOpenExtraStats?: () => void
+  /** Minutes per half - only the fallback for events recorded without a stored half */
+  halfDurationMins?: number
 }
 
 // Event sets — copied from the backend's match_service so the panel counts
@@ -221,16 +225,27 @@ export default function MatchStatsPanel({
   opponentName,
   hasEvents,
   onOpenExtraStats,
+  halfDurationMins,
 }: MatchStatsPanelProps) {
+  // 1st / 2nd half filter - when the stats are computed from events here (Video Tagging). Where backend stats are
+  // passed in, the page owns its own half filter (Match Result), so nothing is shown.
+  const [half, setHalf] = useState<1 | 2 | undefined>(undefined)
+  const computingHere = !!events && !matchStats
+
   // Possession totals when computing from events (one cheap aggregate, shared
   // with every other panel on the page — not every possession row on a timer)
-  const { data: possessionSummary } = usePossessionSummary(matchId, !!events && !matchStats)
+  const { data: possessionSummary } = usePossessionSummary(matchId, computingHere, half)
+
+  const halfEvents = useMemo(() => {
+    if (!events || half === undefined) return events
+    return events.filter(e => (isFirstHalf(e.half, e.minute, halfDurationMins) ? 1 : 2) === half)
+  }, [events, half, halfDurationMins])
 
   // Use provided matchStats OR compute from events
   const stats: MatchStats | undefined = matchStats
     ? matchStats
-    : events
-      ? computeStatsFromEvents(events, possessionSummary)
+    : halfEvents
+      ? computeStatsFromEvents(halfEvents, possessionSummary)
       : undefined
 
   if (!stats) {
@@ -263,6 +278,22 @@ export default function MatchStatsPanel({
           </button>
         )}
       </div>
+
+      {computingHere && (
+        <div className="flex gap-1.5 mb-3">
+          {([undefined, 1, 2] as const).map(h => (
+            <button
+              key={h ?? 'all'}
+              onClick={() => setHalf(h)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                half === h ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/50 hover:bg-white/15'
+              }`}
+            >
+              {h === undefined ? 'Full Match' : h === 1 ? '1st Half' : '2nd Half'}
+            </button>
+          ))}
+        </div>
+      )}
 
       <StatsTable stats={stats} opponent={opponentName} teamName={clubName} />
     </div>

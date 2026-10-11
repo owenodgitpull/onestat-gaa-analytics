@@ -67,6 +67,14 @@ export default function SyncPreviewModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {/* Opening: the preview is still loading */}
+          {!preview && !syncStatus && (
+            <div className="flex flex-col items-center py-8 space-y-3">
+              <Loader2 size={30} className="animate-spin text-emerald-400" />
+              <p className="text-sm text-white/60">Checking your tagged events...</p>
+            </div>
+          )}
+
           {/* Phase 1: Preview */}
           {preview && !syncStatus && (
             <>

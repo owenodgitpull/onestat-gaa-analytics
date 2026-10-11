@@ -2840,12 +2840,17 @@ export default function VideoTagging() {
 
   const handleSyncClick = async () => {
     if (!sessionId) return
+    // Open the dialog at once (with a loading state) instead of after the preview request returns - the button used to
+    // look dead for a few seconds, so it got tapped again and again.
+    if (syncPreview.isPending) return
+    setSyncPreviewData(null)
+    setSyncStatusData(null)
+    setShowSyncModal(true)
     try {
       const preview = await syncPreview.mutateAsync(sessionId)
       setSyncPreviewData(preview)
-      setSyncStatusData(null)
-      setShowSyncModal(true)
     } catch (err: any) {
+      setShowSyncModal(false)
       setAlertModal({ title: 'Sync Preview Failed', message: err.message || 'Could not load sync preview.', variant: 'danger' })
     }
   }
@@ -4822,6 +4827,15 @@ export default function VideoTagging() {
               </button>
             ))}
           </div>
+          {session.tracking_completed_at != null && !taggingFinished && events.length > 0 && (
+            <button
+              onClick={() => handleSyncClick()}
+              disabled={syncPreview.isPending}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors disabled:opacity-60 whitespace-nowrap"
+            >
+              {syncPreview.isPending ? 'Opening...' : 'Finish'}
+            </button>
+          )}
           {moreMenu}
         </div>
 
@@ -4919,6 +4933,24 @@ export default function VideoTagging() {
           {moreMenu}
         </div>
       </div>
+      {/* Tracking is done but the match has not been finished: say what to do next, plainly */}
+      {session.tracking_completed_at != null && !taggingFinished && events.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-emerald-100">Full time - tracking is finished</p>
+            <p className="text-xs text-white/60 mt-0.5">
+              Scrub back and fix anything that looks wrong, then finish to add the match to your season stats and generate the report.
+            </p>
+          </div>
+          <button
+            onClick={() => handleSyncClick()}
+            disabled={syncPreview.isPending}
+            className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-colors disabled:opacity-60 whitespace-nowrap"
+          >
+            {syncPreview.isPending ? 'Opening...' : 'Finish & generate report'}
+          </button>
+        </div>
+      )}
       {/* Auto-analyze processing banner */}
       {isAutoAnalyzing && (
         <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg px-4 py-3 space-y-2">
@@ -5121,6 +5153,7 @@ export default function VideoTagging() {
           opponentName={opponentName}
           hasEvents={events.length > 0}
           onOpenExtraStats={() => setShowExtraStats(true)}
+          halfDurationMins={matchHalfMins}
         />
       </div>
 

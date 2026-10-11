@@ -22,7 +22,8 @@ export const matchEventKeys = {
 export const possessionKeys = {
   all: ['possession'] as const,
   byMatch: (matchId: string) => ['possession', 'match', matchId] as const,
-  summary: (matchId: string) => ['possession-summary', matchId] as const,
+  summary: (matchId: string, half?: 1 | 2) =>
+    (half ? ['possession-summary', matchId, half] : ['possession-summary', matchId]) as readonly unknown[],
 };
 
 /**
@@ -31,10 +32,10 @@ export const possessionKeys = {
  * page reuses a single request. Live Recording refreshes on a slow timer;
  * Video Tagging also invalidates this key whenever it saves a possession batch.
  */
-export function usePossessionSummary(matchId: string | null | undefined, enabled = true) {
+export function usePossessionSummary(matchId: string | null | undefined, enabled = true, half?: 1 | 2) {
   return useQuery({
-    queryKey: possessionKeys.summary(matchId!),
-    queryFn: () => api.possession.summary(matchId!),
+    queryKey: possessionKeys.summary(matchId!, half),
+    queryFn: () => api.possession.summary(matchId!, half),
     enabled: !!matchId && enabled,
     staleTime: 10_000,
     refetchInterval: 30_000,
