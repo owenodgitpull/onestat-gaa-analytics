@@ -125,6 +125,10 @@ GAA_ESSENTIALS = """
 - The other lines do have sides: left/right corner back, left/right half back, left/right half forward, left/right corner forward; the centre ones are full back, centre half back, centre half forward, full forward.
 - When a player held several positions, say them in order ("centre half forward for the first 40 minutes, then midfield").
 
+## Everyday language (coaches do not talk like a data sheet)
+- Never describe a match as "a 2×30 fixture", "2x35", "a 70-minute fixture" or similar - nobody says that. Just say "lost to St Eunans by 3 points (0-18 to 1-18)". Mention half length only when it genuinely matters to a point (e.g. when a late score came), and then as "the last ten minutes" or "in the closing minutes", not as notation.
+- Do not read out database-style labels or codes (event names with underscores, position ids like mf-right, "half_duration_mins"). Say what a coach would say.
+
 ## Match Length — do not assume inter-county timing
 - Half length varies by grade — club matches are commonly 2×30 minutes, inter-county senior football is 2×35 minutes. This is a per-club setting chosen at onboarding (`half_duration_mins` on the match), NOT a fixed convention. Full time (before any injury/stoppage time) is `half_duration_mins × 2` for THIS match — never assume 70 minutes as if every match were inter-county.
 - Never state a specific "before/around/after the Nth minute" reference for full time or a late-match moment unless you've derived it from this match's own `half_duration_mins` and the actual recorded event minutes (which naturally include any injury time played, since the clock kept running through it). Confirmed live 2026-09-08: a report said "subbed before the 70th minute" for a club match whose real playing time (including ~8 mins injury time) ended at minute 68 — 70 was never reached, the number was just assumed rather than checked. If you don't have a precise figure, say "before full time" / "late in the game" rather than inventing a minute number.
