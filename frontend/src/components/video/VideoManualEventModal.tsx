@@ -42,6 +42,8 @@ interface VideoManualEventModalProps {
   oppositionBench?: RosterOption[]
   /** Minutes per half for this match (30 club / 35 inter-county) */
   halfMins?: number
+  /** Open straight to this event type (e.g. 'SUB_ON' from the Sub button) instead of the default */
+  initialEventType?: string
 }
 
 interface RosterOption { id: string; name: string; jerseyNumber: number | null }
@@ -126,8 +128,11 @@ export default function VideoManualEventModal({
   oppositionOnField = [],
   oppositionBench = [],
   halfMins = 30,
+  initialEventType,
 }: VideoManualEventModalProps) {
-  const [selectedKey, setSelectedKey] = useState(optionKey(EVENT_OPTIONS[1]))
+  const [selectedKey, setSelectedKey] = useState(
+    optionKey((initialEventType && EVENT_OPTIONS.find(o => o.eventType === initialEventType)) || EVENT_OPTIONS[1]),
+  )
   const [team, setTeam] = useState<'team_a' | 'team_b'>('team_a')
   const [playerId, setPlayerId] = useState('')
   const [playerComingOn, setPlayerComingOn] = useState('')

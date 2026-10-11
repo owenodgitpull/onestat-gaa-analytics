@@ -24,7 +24,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight } from 'lucide-react'
+import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight, UserPlus } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -411,6 +411,8 @@ export default function VideoTagging() {
   // from matchLineup and updated in-memory as subs are logged this session.
   const [showManualEvent, setShowManualEvent] = useState(false)
   const [showPositionSwap, setShowPositionSwap] = useState(false)
+  /** Which event the manual-event dialog opens on (the Sub button opens it on the substitution step) */
+  const [manualInitialType, setManualInitialType] = useState<string | undefined>(undefined)
   const [subOverrides, setSubOverrides] = useState<Record<string, boolean>>({})
 
   // Tactical tag button — mirrors live recording's TacticalTagButton,
@@ -3539,8 +3541,9 @@ export default function VideoTagging() {
         onClick: () => { if (!matchLineup || matchLineup.length === 0) setIsLineupModalOpen(true); else setShowViewLineup(true) },
       },
       { key: 'weather', icon: <CloudSun size={15} />, label: 'Weather', onClick: () => setShowWeatherPicker(true) },
+      { key: 'sub', icon: <UserPlus size={15} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
       { key: 'swap', icon: <ArrowLeftRight size={15} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
-      { key: 'event', icon: <Plus size={15} />, label: 'Event', onClick: () => setShowManualEvent(true) },
+      { key: 'event', icon: <Plus size={15} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
     ]
     return (
       <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1.5 py-1">
@@ -4584,8 +4587,9 @@ export default function VideoTagging() {
       {showManualEvent && (
         <VideoManualEventModal
           isOpen={showManualEvent}
-          onClose={() => setShowManualEvent(false)}
+          onClose={() => { setShowManualEvent(false); setManualInitialType(undefined) }}
           onSubmit={handleManualEventSubmit}
+          initialEventType={manualInitialType}
           players={playerList}
           matchLineup={matchLineup || []}
           onFieldPlayerIds={onFieldPlayerIds}
@@ -4806,6 +4810,18 @@ export default function VideoTagging() {
 
           {scoreboard(true)}
           {clockControls(true)}
+          <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1 py-0.5">
+            {[
+              { key: 'sub', icon: <UserPlus size={14} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
+              { key: 'swap', icon: <ArrowLeftRight size={14} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
+              { key: 'event', icon: <Plus size={14} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
+            ].map(t => (
+              <button key={t.key} onClick={t.onClick} title={t.label}
+                className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-[11px] font-medium transition-colors whitespace-nowrap">
+                {t.icon}<span className="hidden xl:inline">{t.label}</span>
+              </button>
+            ))}
+          </div>
           {moreMenu}
         </div>
 
