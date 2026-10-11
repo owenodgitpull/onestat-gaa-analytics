@@ -96,3 +96,14 @@ def test_describe_names_the_players_and_positions():
     assert [x["position"] for x in p["positions"]] == ["centre half forward", "right midfield"]
     assert p["positions"][0]["from_minute"] == 0 and p["positions"][0]["to_minute"] == 40
     assert p["positions"][0]["stats"] == {"wides": 1}
+
+
+def test_personnel_lines_for_the_brief():
+    from app.services.ai.live_brief import _personnel_lines
+    tl = Timeline(spells=build_spells(LINEUP, SUBS, MOVES), subs=SUBS, moves=MOVES,
+                  names={"connors": "Ryan Connors", "ward": "Matthew Ward", "mccready": "Danny McCready"})
+    evs = [{"own": True, "player_id": "connors", "event_type": "point", "half": 2, "minute": 44}]
+    lines = _personnel_lines(describe_personnel(tl, evs))
+    text = "\n".join(lines)
+    assert "Ryan Connors: centre half forward 0'-40' then right midfield 40'-now" in text
+    assert "min before" in text and "min after" in text

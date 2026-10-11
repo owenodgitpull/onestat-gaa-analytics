@@ -163,6 +163,26 @@ def _phase_lines(s: dict, window: int) -> str:
             "unless a median-seconds figure is shown; possessions still open are excluded from the rates):\n" + "\n".join(lines))
 
 
+def _personnel_lines(pers: dict) -> list:
+    """The PERSONNEL block of the brief. A module-level function so its loop variables cannot clobber _build's locals."""
+    out = ["\nPERSONNEL (events are credited to the position held at that minute; judge a move by the before/after, "
+           "and say so when the sample is small):"]
+    for pl in pers.get("players_who_changed_position", []):
+        spans = " then ".join(
+            f"{x['position']} {x['from_minute']}'-" + (f"{x['to_minute']}'" if x["to_minute"] is not None else "now")
+            for x in pl["positions"])
+        out.append(f"  {pl['player']}: {spans}")
+    for row in pers.get("personnel_log", [])[-4:]:
+        pre, post = row["before"], row["after"]
+        line = (f"  {row['minute']}' {row['what']} - scoring {row['minutes_before_compared']} min before: us {pre['our_points']} pts, "
+                f"them {pre['their_points']} pts; {row['minutes_after_compared']} min after: us {post['our_points']} pts, "
+                f"them {post['their_points']} pts")
+        if row.get("caution"):
+            line += f" ({row['caution']})"
+        out.append(line)
+    return out
+
+
 async def build_live_brief(db, match_id, minute: Optional[int] = None, club_id=None, window: int = 5) -> str:
     """Return the brief as plain text. Never raises — a failure just yields an empty brief."""
     try:
@@ -409,20 +429,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
             for e in visible
         ])
         if _pers:
-            L.append("\nPERSONNEL (events are credited to the position held at that minute; judge a move by the before/after, "
-                     "and say so when the sample is small):")
-            for p in _pers.get("players_who_changed_position", []):
-                spans = " then ".join(
-                    f"{x['position']} {x['from_minute']}'-" + (f"{x['to_minute']}'" if x["to_minute"] is not None else "now")
-                    for x in p["positions"])
-                L.append(f"  {p['player']}: {spans}")
-            for r in _pers.get("personnel_log", [])[-4:]:
-                b, a = r["before"], r["after"]
-                line = (f"  {r['minute']}' {r['what']} — scoring {r['minutes_before_compared']} min before: us {b['our_points']} pts, "
-                        f"them {b['their_points']} pts; {r['minutes_after_compared']} min after: us {a['our_points']} pts, them {a['their_points']} pts")
-                if r.get("caution"):
-                    line += f" ({r['caution']})"
-                L.append(line)
+            L.extend(_personnel_lines(_pers))
     except Exception as exc:   # the brief never fails because of this block
         logger.warning("personnel block failed for %s: %s", match_id, exc)
 
