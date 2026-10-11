@@ -107,3 +107,20 @@ def test_personnel_lines_for_the_brief():
     text = "\n".join(lines)
     assert "Ryan Connors: centre half forward 0'-40' then midfield 40'-now" in text
     assert "min before" in text and "min after" in text
+
+
+def test_half_time_change_looks_at_the_second_half_not_the_added_time():
+    # a sub logged at 34' of the first half (the end of the half) - the second half then ran 30' to 52'
+    subs = [Sub("a", "b", 1, 34)]
+    evs = [
+        {"own": False, "event_type": "point", "half": 1, "minute": 30},
+        {"own": True, "event_type": "point", "half": 1, "minute": 34},
+        {"own": True, "event_type": "point", "half": 2, "minute": 33},
+        {"own": False, "event_type": "point", "half": 2, "minute": 36},
+        {"own": True, "event_type": "point", "half": 2, "minute": 41},
+        {"own": True, "event_type": "point", "half": 2, "minute": 52},   # beyond the 10-minute window
+    ]
+    row = personnel_log(subs, [], evs, {"a": "A", "b": "B"})[0]
+    assert "half time" in row["timing"]
+    assert row["after"]["our_scores"] == 2 and row["after"]["their_scores"] == 1   # 33, 36, 41 - not the 34' added-time point
+    assert row["minutes_after_compared"] >= 10 and "caution" not in row

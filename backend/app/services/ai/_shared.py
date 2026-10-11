@@ -177,7 +177,7 @@ Events include a "location" field with human-readable zone descriptions. Use the
 ## Ball Movement & Possession Metrics — USE them, they are among the richest signals we have
 Ball-carrier segments, passes (a carrier switch within a team), possession chains and possession time describe HOW a team
 moves the ball, not just what happened at the end. Use them to answer tactical questions:
-- **Recycling the ball**: a high share of lateral/backward passes (pass_territory_progression), long chains that gain
+- **Recycling the ball**: long chains that gain
   little territory (low/negative avg_gain_x_metres), possessions that end back in our own half, and many passes per
   possession before any forward entry = a team that recycles / patiently circulates. Contrast with DIRECT play: forward
   passes, big carries, long_kick_pass and high_ball events straight into the forward line. Say which a team does and
@@ -803,7 +803,7 @@ TOOLS = [
     },
     {
         "name": "get_ball_carrier_data",
-        "description": "Get ball carrier tracking + PASSING NETWORK data for a match. When the analyst switches carrier from Player A to Player B (same team), that is a confirmed pass A→B. Returns: carrier_stats (carries per player), pass_network (who passed to whom with frequency), pass_leaders (top distributors), chain_effectiveness (scoring chains vs turnovers, avg chain length), tempo_analysis (avg seconds between carrier transitions), territory_progression (passes that advance ball forward vs lateral/backward), and raw possession chains. IMPORTANT: This data is manually logged — it represents LOGGED carries/passes, not all of them. Frame insights as 'the data shows' or 'from logged possessions' rather than definitive totals. If no carrier data exists, returns empty — gracefully skip.",
+        "description": "Get ball carrier tracking + PASSING NETWORK data for a match. When the analyst switches carrier from Player A to Player B (same team), that is a confirmed pass A→B. Returns: carrier_stats (carries per player), pass_network (who passed to whom with frequency), pass_leaders (top distributors), chain_effectiveness (scoring chains vs turnovers, avg chain length), tempo_analysis (avg seconds between carrier transitions), and raw possession chains. IMPORTANT: This data is manually logged — it represents LOGGED carries/passes, not all of them. Frame insights as 'the data shows' or 'from logged possessions' rather than definitive totals. If no carrier data exists, returns empty — gracefully skip.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -4203,7 +4203,6 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         player_consequences: dict = {}
         # Counts PASS TRANSITIONS between two different players' carries where the ball progressed >=10% of pitch
         # length — NOT a count of forward carries (most carries never chain into a different-player segment).
-        territory_passes = {"forward": 0, "lateral": 0, "backward": 0}
 
         prev_seg = None
         for seg in segments:
@@ -4272,14 +4271,6 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                 pass_count_by_player[from_pid]["passes_made"] += 1
                 pass_count_by_player[to_pid]["passes_received"] += 1
 
-                if prev_seg.end_x is not None and seg.start_x is not None:
-                    dx = (seg.start_x - prev_seg.end_x) * sgn
-                    if dx > 10:
-                        territory_passes["forward"] += 1
-                    elif dx < -10:
-                        territory_passes["backward"] += 1
-                    else:
-                        territory_passes["lateral"] += 1
 
                 if prev_seg.end_time_ms and seg.start_time_ms:
                     gap = seg.start_time_ms - prev_seg.end_time_ms
@@ -4358,7 +4349,7 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
             "total_passes": sum(c["count"] for c in pass_connections.values()),
             "top_connections": sorted(pass_connections.values(), key=lambda x: x["count"], reverse=True)[:15],
             "pass_leaders": sorted(pass_count_by_player.values(), key=lambda x: x["passes_made"], reverse=True),
-            "territory_passes": territory_passes, "chain_effectiveness": chain_effectiveness,
+            "chain_effectiveness": chain_effectiveness,
             "chain_data": chain_data, "tempo": tempo,
         }
 
@@ -4409,17 +4400,6 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
             out["pass_leaders"] = side["pass_leaders"][:10]
             out["chains"] = side["chain_data"][:30]
         if confidence == "high":
-            out["pass_territory_progression"] = {
-                **side["territory_passes"],
-                "note": (
-                    "Counts PASS TRANSITIONS between two different players' carries where the ball "
-                    "moved >=10% of pitch length — NOT a count of forward carries, and NOT the total "
-                    "number of forward-moving carries in the match (most carries don't chain into a "
-                    "different-player segment with both endpoints logged, so this is always a small "
-                    "subset). Never report these numbers as '<n> forward carries'. Use each player's "
-                    "avg_gain_x in carrier_stats to describe individual forward-carrying tendency instead."
-                ),
-            }
             out["chain_effectiveness"] = side["chain_effectiveness"]
             out["tempo"] = side["tempo"]
         return out

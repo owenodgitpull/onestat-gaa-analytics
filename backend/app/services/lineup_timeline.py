@@ -210,19 +210,34 @@ def personnel_log(subs: list, moves: list, events: list, names: dict, window: in
 
     out = []
     for i, (t, half, minute, kind, text) in enumerate(items):
-        nxt = next((x for x in items[i + 1:] if x[1] == half and x[2] > minute), None)
-        after_end = min(minute + window, nxt[2]) if nxt else minute + window
         same_half = [e for e in events if (e.get("half") or 1) == half]
+        last_in_half = max((e["minute"] for e in same_half), default=minute)
+        later = [e for e in events if (e.get("half") or 1) > half]
+        # A change logged at the very end of a half (nothing played after it in that half) is a half-time change: its
+        # "after" is the start of the NEXT half, not the added time that happened to follow it.
+        at_break = bool(later) and minute >= last_in_half
         before = [e for e in same_half if minute - window <= e["minute"] < minute]
-        after = [e for e in same_half if minute <= e["minute"] < after_end]
-        last_minute = max((e["minute"] for e in same_half), default=minute)
-        after_len = max(0, min(after_end, last_minute + 1) - minute)
+        if at_break:
+            next_half = min((e.get("half") or 1) for e in later)
+            pool = [e for e in later if (e.get("half") or 1) == next_half]
+            start = min(e["minute"] for e in pool)
+            nxt = next((x for x in items[i + 1:] if x[1] == next_half and x[2] > start), None)
+            after_end = min(start + window, nxt[2]) if nxt else start + window
+            after = [e for e in pool if start <= e["minute"] < after_end]
+            last_minute = max(e["minute"] for e in pool)
+            after_len = max(0, min(after_end, last_minute + 1) - start)
+        else:
+            nxt = next((x for x in items[i + 1:] if x[1] == half and x[2] > minute), None)
+            after_end = min(minute + window, nxt[2]) if nxt else minute + window
+            after = [e for e in same_half if minute <= e["minute"] < after_end]
+            after_len = max(0, min(after_end, last_in_half + 1) - minute)
         bu, bun = _score_line(before, True)
         bt, btn = _score_line(before, False)
         au, aun = _score_line(after, True)
         at_, atn = _score_line(after, False)
         row = {
             "half": half, "minute": minute, "kind": kind, "what": text,
+            **({"timing": "made at half time - 'after' is the start of the second half"} if at_break else {}),
             "minutes_before_compared": window,
             "before": {"our_points": bu, "our_scores": bun, "their_points": bt, "their_scores": btn},
             "minutes_after_compared": after_len,

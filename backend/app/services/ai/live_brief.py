@@ -177,6 +177,8 @@ def _personnel_lines(pers: dict) -> list:
         line = (f"  {row['minute']}' {row['what']} - scoring {row['minutes_before_compared']} min before: us {pre['our_points']} pts, "
                 f"them {pre['their_points']} pts; {row['minutes_after_compared']} min after: us {post['our_points']} pts, "
                 f"them {post['their_points']} pts")
+        if row.get("timing"):
+            line += " (made at half time; the 'after' is the start of the second half)"
         if row.get("caution"):
             line += f" ({row['caution']})"
         out.append(line)
