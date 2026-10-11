@@ -260,3 +260,77 @@ async def record_substitution(
     await db.commit()
 
     return {"message": "Substitution recorded", "is_on_field": lineup_entry.is_on_field}
+
+
+class SwapPositionsRequest(BaseModel):
+    player_a_id: str
+    player_b_id: str
+    half: int
+    minute: int
+    match_clock_s: Optional[int] = None
+    video_ms: Optional[int] = None
+    client_event_id: Optional[str] = None   # makes a retried request a no-op
+
+
+@router.post("/matches/{match_id}/lineup/swap")
+async def swap_positions(
+    match_id: str,
+    body: SwapPositionsRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Two players on the field swap positions (a midfielder to half forward and a half forward back, say).
+
+    The lineup rows are updated (where they play NOW) and a position-change row is written for each, so the agents
+    know who held which position at which minute. Both players must be on the field.
+    """
+    await assert_match_in_club(db, match_id, user.club_id)
+    await assert_player_in_club(db, body.player_a_id, user.club_id)
+    await assert_player_in_club(db, body.player_b_id, user.club_id)
+    try:
+        match_uuid = uuid.UUID(match_id)
+        a_uuid = uuid.UUID(body.player_a_id)
+        b_uuid = uuid.UUID(body.player_b_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+    if a_uuid == b_uuid:
+        raise HTTPException(status_code=400, detail="Pick two different players")
+    if body.half not in (1, 2) or body.minute < 0 or body.minute > 130:
+        raise HTTPException(status_code=400, detail="Invalid half or minute")
+
+    from app.models.match_position_change import MatchPositionChange
+
+    if body.client_event_id:
+        done = (await db.execute(
+            select(MatchPositionChange.id).where(
+                MatchPositionChange.match_id == match_uuid,
+                MatchPositionChange.client_event_id == f"{body.client_event_id}:a",
+            ).limit(1)
+        )).first()
+        if done:
+            return {"message": "Already applied", "swapped": False}
+
+    rows = (await db.execute(
+        select(MatchLineup).where(MatchLineup.match_id == match_uuid, MatchLineup.player_id.in_([a_uuid, b_uuid]))
+    )).scalars().all()
+    by_player = {r.player_id: r for r in rows}
+    if a_uuid not in by_player or b_uuid not in by_player:
+        raise HTTPException(status_code=404, detail="Both players must be in this match's lineup")
+    a, b = by_player[a_uuid], by_player[b_uuid]
+    if not (a.is_on_field and b.is_on_field):
+        raise HTTPException(status_code=400, detail="Both players must be on the field to swap positions")
+
+    pos_a, pos_b = a.position_id, b.position_id
+    a.position_id, b.position_id = pos_b, pos_a
+    for pid, frm, to, suffix in ((a_uuid, pos_a, pos_b, "a"), (b_uuid, pos_b, pos_a, "b")):
+        db.add(MatchPositionChange(
+            match_id=match_uuid, player_id=pid, from_position_id=frm, to_position_id=to,
+            half=body.half, minute=body.minute, match_clock_s=body.match_clock_s, video_ms=body.video_ms,
+            client_event_id=f"{body.client_event_id}:{suffix}" if body.client_event_id else None,
+        ))
+    await db.commit()
+    return {
+        "message": "Positions swapped", "swapped": True,
+        "positions": {body.player_a_id: pos_b, body.player_b_id: pos_a},
+    }

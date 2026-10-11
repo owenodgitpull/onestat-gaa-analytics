@@ -17,6 +17,7 @@ import ConfirmationModal from '@/components/ConfirmationModal'
 import ManualEventEntryModal from '@/components/ManualEventEntryModal'
 import StartingLineupModal, { type LineupEntry } from '@/components/StartingLineupModal'
 import SubstitutionModal from '@/components/SubstitutionModal'
+import PositionSwapModal, { swapLineupPositions } from '@/components/PositionSwapModal'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '@/components/EventFilterToggles'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
@@ -324,6 +325,7 @@ export default function MatchRecording() {
   const [manualEntryDefaultType, setManualEntryDefaultType] = useState<EventType | undefined>(undefined)
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
   const [isSubModalOpen, setIsSubModalOpen] = useState(false)
+  const [isSwapOpen, setIsSwapOpen] = useState(false)
   const [isViewLineupOpen, setIsViewLineupOpen] = useState(false)
   const [startingLineup, setStartingLineup] = useState<Record<string, LineupEntry>>({})
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
@@ -3239,6 +3241,28 @@ export default function MatchRecording() {
     }
   }
 
+  /** Two players on the field swap positions. The pitch circles change instantly; the move is stored with the half and
+   *  minute so the agents know who played where, and when. */
+  const handleSwapConfirm = (playerAId: string, playerBId: string) => {
+    if (!matchId) return
+    setMatchLineup(prev => swapLineupPositions(prev, playerAId, playerBId))
+    api.matchLineups.swapPositions(matchId, {
+      player_a_id: playerAId,
+      player_b_id: playerBId,
+      half: currentHalf,
+      minute,
+      match_clock_s: minute * 60 + seconds,
+      client_event_id: crypto.randomUUID(),
+    })
+      .then(() => api.matchLineups.getLineup(matchId))
+      .then(refreshed => setMatchLineup(refreshed))
+      .catch(err => {
+        console.error('Failed to save position swap:', err)
+        // the server did not take it - show the lineup as it really is
+        api.matchLineups.getLineup(matchId).then(setMatchLineup).catch(() => {})
+      })
+  }
+
   /** Handle discipline card events — opens player modal then records */
   const handleDiscipline = (eventType: EventType) => {
     if (!matchId) return
@@ -4778,6 +4802,14 @@ export default function MatchRecording() {
                         <Users size={14} />
                         <span>Sub</span>
                       </button>
+                      <button
+                        className="glass-card-hover flex items-center space-x-1 !py-1 !px-3 text-sm"
+                        onClick={() => setIsSwapOpen(true)}
+                        title="Two players swap positions"
+                      >
+                        <ArrowLeftRight size={14} />
+                        <span>Swap</span>
+                      </button>
                     </>
                   )}
                   {getPhaseButtonText() && (
@@ -5832,6 +5864,14 @@ export default function MatchRecording() {
         minute={minute}
       />
 
+      <PositionSwapModal
+        isOpen={isSwapOpen}
+        onClose={() => setIsSwapOpen(false)}
+        onConfirm={handleSwapConfirm}
+        matchLineup={matchLineup}
+        timeLabel={`${minute}'`}
+      />
+
       {/* View current on-field lineup — read-only, same formation view used for player selection */}
       <PitchPlayerSelector
         isOpen={isViewLineupOpen}
@@ -6083,6 +6123,7 @@ export default function MatchRecording() {
           }
         }}
         onManualEntry={() => setIsManualEntryOpen(true)}
+        onPositionSwap={() => setIsSwapOpen(true)}
         jerseyStripPlayers={squad.players}
         activeCarrierId={squad.carrierId}
         onCarrierSelect={squad.onSelect}

@@ -2666,6 +2666,21 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             if _p.position and str(_p.id) not in player_positions:
                 player_positions[str(_p.id)] = _p.position
 
+    # Who played WHERE and WHEN: a player can change position mid-match (a swap, or a sub taking a slot), so events are
+    # attributed to the position held at that minute and every personnel move is given a before/after.
+    _personnel: dict = {}
+    try:
+        from app.services.lineup_timeline import load_timeline, describe_personnel
+        _tl = await load_timeline(db, match_id)
+        _personnel = describe_personnel(_tl, [
+            {'own': e.team == Team.OWN, 'player_id': str(e.player_id) if e.player_id else None,
+             'event_type': e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
+             'half': getattr(e, 'half', None), 'minute': e.minute or 0, 'clock_s': getattr(e, 'match_clock_s', None)}
+            for e in events
+        ])
+    except Exception as _exc:   # the summary must never fail because of the personnel view
+        logger.warning("personnel timeline failed for %s: %s", match_id, _exc)
+
     # Build compact breakdown — only non-zero fields included
     player_breakdown = []
     for _pid, _pb in _player_breakdown_raw.items():
@@ -2710,6 +2725,13 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             _entry['black_card'] = True
         if _pb['red_cards']:
             _entry['red_card'] = True
+        _moved = next((p for p in _personnel.get('players_who_changed_position', []) if p['player'] == _entry['name']), None)
+        if _moved:
+            # one position is not the whole story: these numbers span several positions (see personnel_changes)
+            _entry['positions_played'] = [
+                f"{pp['position']} {pp['from_minute']}'-{str(pp['to_minute']) + chr(39) if pp['to_minute'] is not None else 'end'}"
+                for pp in _moved['positions']
+            ]
         player_breakdown.append(_entry)
 
     # Sort: players with most concerns first (errors + turnovers), then by score
@@ -2903,13 +2925,14 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             for e in sorted(events, key=lambda ev: ev.minute or 0, reverse=True)[:10]
         ],
         "player_breakdown": player_breakdown,
+        **({"personnel_changes": _personnel} if _personnel else {}),
         "player_breakdown_note": (
             "player_breakdown: per-player stats for OWN team. Sorted by most errors/turnovers first. "
             "Fields only present when non-zero/set: position (goalkeeper/defender/midfielder/forward — "
             "APPLY DIFFERENT STANDARDS BY POSITION, see rule below), score (G-P), two_pts, scoring_note "
             "(present when every score was a free/45 — do not read this as a weakness), unforced_errors, "
             "error_subtypes, turnovers_lost, turnovers_won, wides, fouls_committed, blocks, frees_won, "
-            "yellow_card, black_card, red_card. USE THESE TO NAME SPECIFIC PLAYERS in your insights."
+            "yellow_card, black_card, red_card, positions_played (present when the player held more than one position - their 'position' field is where they finished; judge each spell by the position held then, using personnel_changes). USE THESE TO NAME SPECIFIC PLAYERS in your insights."
         ),
     })
 

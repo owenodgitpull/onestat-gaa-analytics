@@ -398,6 +398,34 @@ async def _build(db, match_id, minute, club_id, window) -> str:
                 return "inside 20m" if d < 20 else ("20-40m out" if d < 40 else "40m+ out")
             L.append("  shot position (distance from our goal): " + _tally(loc, lambda ef: f"{_band(ef[1])} on {_channel(ef[1][1])}"))
 
+    # ── personnel: who is where, what changed, and what happened either side of it ──
+    try:
+        from app.services.lineup_timeline import load_timeline, describe_personnel
+        _tl = await load_timeline(db, match_id)
+        _pers = describe_personnel(_tl, [
+            {"own": _is_own(e), "player_id": str(e.player_id) if getattr(e, "player_id", None) else None,
+             "event_type": _t(e), "half": getattr(e, "half", None), "minute": e.minute or 0,
+             "clock_s": getattr(e, "match_clock_s", None)}
+            for e in visible
+        ])
+        if _pers:
+            L.append("\nPERSONNEL (events are credited to the position held at that minute; judge a move by the before/after, "
+                     "and say so when the sample is small):")
+            for p in _pers.get("players_who_changed_position", []):
+                spans = " then ".join(
+                    f"{x['position']} {x['from_minute']}'-" + (f"{x['to_minute']}'" if x["to_minute"] is not None else "now")
+                    for x in p["positions"])
+                L.append(f"  {p['player']}: {spans}")
+            for r in _pers.get("personnel_log", [])[-4:]:
+                b, a = r["before"], r["after"]
+                line = (f"  {r['minute']}' {r['what']} — scoring {r['minutes_before_compared']} min before: us {b['our_points']} pts, "
+                        f"them {b['their_points']} pts; {r['minutes_after_compared']} min after: us {a['our_points']} pts, them {a['their_points']} pts")
+                if r.get("caution"):
+                    line += f" ({r['caution']})"
+                L.append(line)
+    except Exception as exc:   # the brief never fails because of this block
+        logger.warning("personnel block failed for %s: %s", match_id, exc)
+
     # ── our shooting ──────────────────────────────────────────────────────
     own_shots = [e for e in visible if _is_own(e) and _t(e) in SHOT_TYPES]
     if own_shots:

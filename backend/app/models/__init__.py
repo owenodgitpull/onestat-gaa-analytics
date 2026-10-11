@@ -13,6 +13,7 @@ from app.models.match_event import MatchEvent, EventType, Team
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.models.player_match_stats import PlayerMatchStats
 from app.models.match_lineup import MatchLineup
+from app.models.match_position_change import MatchPositionChange
 from app.models.attendance import TrainingSession, Attendance, SessionType, AttendanceStatus
 from app.models.training_performance import (
     TrainingGPSData,
@@ -80,6 +81,7 @@ __all__ = [
     "PossessionTeam",
     "PlayerMatchStats",
     "MatchLineup",
+    "MatchPositionChange",
     "TrainingSession",
     "Attendance",
     "SessionType",

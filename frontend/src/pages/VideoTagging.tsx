@@ -29,6 +29,8 @@ import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPl
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
 import CategorizedActionButtons from '../components/CategorizedActionButtons'
+import PositionSwapModal, { swapLineupPositions } from '../components/PositionSwapModal'
+import ScoresList from '../components/video/ScoresList'
 import VideoEventLog from '../components/video/VideoEventLog'
 import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
@@ -407,6 +409,7 @@ export default function VideoTagging() {
   // On-field/bench state for the picker's own purposes lives here, seeded
   // from matchLineup and updated in-memory as subs are logged this session.
   const [showManualEvent, setShowManualEvent] = useState(false)
+  const [showPositionSwap, setShowPositionSwap] = useState(false)
   const [subOverrides, setSubOverrides] = useState<Record<string, boolean>>({})
 
   // Tactical tag button — mirrors live recording's TacticalTagButton,
@@ -2438,6 +2441,30 @@ export default function VideoTagging() {
     }
   }, [sessionId, createEvent, calcMatchTime, currentTimeMs, ballPosition, session?.match_id, queryClient])
 
+  /** Two players swap positions at the current scrub position. The lineup (pitch circles, strip, pickers) changes
+   *  at once; the move is stored with the half and minute so the agents know who played where, and when. */
+  const handlePositionSwap = useCallback((playerAId: string, playerBId: string) => {
+    const matchId = session?.match_id
+    if (!matchId) return
+    const t = calcMatchTime(currentTimeMs)
+    const key = ['matchLineup', matchId]
+    queryClient.setQueryData(key, (old: any) => (old ? swapLineupPositions(old, playerAId, playerBId) : old))
+    api.matchLineups.swapPositions(matchId, {
+      player_a_id: playerAId,
+      player_b_id: playerBId,
+      half: t.half,
+      minute: t.minute,
+      match_clock_s: t.minute * 60 + t.second,
+      video_ms: Math.round(currentTimeMs),
+      client_event_id: crypto.randomUUID(),
+    })
+      .catch(err => {
+        console.error('Failed to save position swap:', err)
+        setAlertModal({ title: 'Swap not saved', message: 'The position swap could not be saved. Please try again.', variant: 'danger' })
+      })
+      .finally(() => queryClient.invalidateQueries({ queryKey: key }))
+  }, [session?.match_id, calcMatchTime, currentTimeMs, queryClient])
+
   /** Opposition-only quick "Pass" log — a lightweight stand-in for the own-
    *  team carrier radial, which can't show for the opposition since we
    *  don't track their player identities. One tap logs a hand-pass event
@@ -3507,6 +3534,7 @@ export default function VideoTagging() {
         onClick: () => { if (!matchLineup || matchLineup.length === 0) setIsLineupModalOpen(true); else setShowViewLineup(true) },
       },
       { key: 'weather', icon: <CloudSun size={15} />, label: 'Weather', onClick: () => setShowWeatherPicker(true) },
+      { key: 'swap', icon: <ArrowLeftRight size={15} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
       { key: 'event', icon: <Plus size={15} />, label: 'Event', onClick: () => setShowManualEvent(true) },
     ]
     return (
@@ -4532,6 +4560,14 @@ export default function VideoTagging() {
           currentNotes={weatherOverride ? weatherOverride.notes : (matchData?.notes ?? null)}
         />
       )}
+      <PositionSwapModal
+        isOpen={showPositionSwap}
+        onClose={() => setShowPositionSwap(false)}
+        onConfirm={handlePositionSwap}
+        matchLineup={(matchLineup as any[]) || []}
+        timeLabel={`${calcMatchTime(currentTimeMs).minute}'`}
+      />
+
       {showManualEvent && (
         <VideoManualEventModal
           isOpen={showManualEvent}
@@ -4767,8 +4803,22 @@ export default function VideoTagging() {
         </div>
 
         {/* CategorizedActionButtons */}
-        <div className="flex-shrink-0 px-2 py-1.5 bg-slate-900/80 border-t border-white/5">
-          {controlsBar}
+        <div className="flex-shrink-0 px-2 py-1.5 bg-slate-900/80 border-t border-white/5 flex items-start gap-3">
+          <ScoresList
+            events={chartEvents}
+            teamName={clubName}
+            opponentName={opponentName}
+            show="own"
+            className="hidden xl:block w-[clamp(9rem,14vw,16rem)] shrink-0 max-h-24 overflow-y-auto"
+          />
+          <div className="flex-1 min-w-0">{controlsBar}</div>
+          <ScoresList
+            events={chartEvents}
+            teamName={clubName}
+            opponentName={opponentName}
+            show="opponent"
+            className="hidden xl:block w-[clamp(9rem,14vw,16rem)] shrink-0 max-h-24 overflow-y-auto"
+          />
         </div>
 
         {blackCardTimers.length > 0 && (
@@ -4919,8 +4969,31 @@ export default function VideoTagging() {
         )}
       </div>
 
-      {/* ── CategorizedActionButtons (centered below 50/50 split) ──── */}
-      {controlsBar}
+      {/* ── CategorizedActionButtons (centered below 50/50 split), scores either side on wide screens ──── */}
+      <div className="flex items-start gap-3">
+        <ScoresList
+          events={chartEvents}
+          teamName={clubName}
+          opponentName={opponentName}
+          show="own"
+          className="hidden xl:block w-[clamp(9rem,14vw,16rem)] shrink-0 pt-1"
+        />
+        <div className="flex-1 min-w-0">{controlsBar}</div>
+        <ScoresList
+          events={chartEvents}
+          teamName={clubName}
+          opponentName={opponentName}
+          show="opponent"
+          className="hidden xl:block w-[clamp(9rem,14vw,16rem)] shrink-0 pt-1"
+        />
+      </div>
+      <ScoresList
+        events={chartEvents}
+        teamName={clubName}
+        opponentName={opponentName}
+        show="both"
+        className="xl:hidden px-1"
+      />
 
       {/* ── Ball Carrier Strip ─────────────────────────────────────────── */}
       {/* ── Event Timeline ──────────────────────────────────────────────── */}

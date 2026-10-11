@@ -101,6 +101,8 @@ interface FullscreenPitchModeProps {
   statusAccent: string
   onSwapPossession?: () => void
   onManualEntry?: () => void
+  /** Two players swap positions (opens the same dialog as the normal-mode Swap button) */
+  onPositionSwap?: () => void
   selectingFoulPlayer?: boolean
   onStartSecondHalf?: () => void
   onEndFirstHalf?: () => void
@@ -225,6 +227,7 @@ export default function FullscreenPitchMode({
   statusText,
   onSwapPossession,
   onManualEntry,
+  onPositionSwap,
   onStartSecondHalf,
   onEndFirstHalf,
   onEndMatch,
@@ -533,6 +536,16 @@ export default function FullscreenPitchMode({
               >
                 <ArrowLeftRight size={16} />
                 <span>Possession</span>
+              </button>
+            )}
+            {onPositionSwap && (matchPhase === 'first_half' || matchPhase === 'second_half') && (
+              <button
+                onClick={onPositionSwap}
+                className="flex-shrink-0 flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/10 border border-white/15 hover:bg-white/20 text-white/70 hover:text-white text-xs font-semibold transition-all"
+                title="Swap positions - two players on the field change positions"
+              >
+                <ArrowLeftRight size={16} />
+                <span>Swap</span>
               </button>
             )}
             {onManualEntry && (matchPhase === 'first_half' || matchPhase === 'second_half') && (

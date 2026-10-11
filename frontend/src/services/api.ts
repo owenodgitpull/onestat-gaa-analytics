@@ -728,6 +728,26 @@ const matchLineupsAPI = {
       } : {}),
     });
   },
+
+  /**
+   * Two on-field players swap positions mid-match. Recorded with the half and minute, so the agents know who
+   * played where and when. `client_event_id` makes a retry a no-op.
+   */
+  swapPositions: async (matchId: string, body: {
+    player_a_id: string;
+    player_b_id: string;
+    half: number;
+    minute: number;
+    match_clock_s?: number;
+    video_ms?: number;
+    client_event_id?: string;
+  }): Promise<{ message: string; swapped: boolean }> => {
+    return fetchAPI<{ message: string; swapped: boolean }>(`/match-lineups/matches/${matchId}/lineup/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  },
 };
 
 // ============================================================================
