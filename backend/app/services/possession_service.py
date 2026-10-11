@@ -7,7 +7,7 @@ Handles time-based possession tracking with automatic duration calculation.
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.possession_event import PossessionEvent, PossessionTeam
 from app.schemas.possession_event import PossessionEventCreate
@@ -19,6 +19,52 @@ MAX_POSSESSION_SECONDS = 300  # 5 minutes
 
 class PossessionService:
     """Service for managing possession events with duration tracking."""
+
+    @staticmethod
+    async def totals(db: AsyncSession, match_id, half: Optional[int] = None, half_duration_mins: int = 30) -> dict:
+        """Possession totals for a match (or one half), computed in the database - one indexed aggregate, no rows loaded.
+
+        Anything that is not "own" counts as the opposition; a "spell" is a run of consecutive events by the same side.
+        The stored half is the truth (first-half added time shares its minutes with the second half); the minute is
+        only the fallback for rows recorded before the half was stored.
+        """
+        is_own = case((PossessionEvent.team == "own", True), else_=False)
+        prev_own = func.lag(is_own).over(order_by=(PossessionEvent.created_at, PossessionEvent.id))
+        rows = (
+            select(
+                is_own.label("own"),
+                func.coalesce(PossessionEvent.duration_seconds, 0).label("secs"),
+                prev_own.label("prev_own"),
+            )
+            .where(PossessionEvent.match_id == match_id)
+        )
+        if half is not None:
+            minute = func.coalesce(PossessionEvent.minute, 0)
+            by_minute = (minute <= half_duration_mins) if half == 1 else (minute > half_duration_mins)
+            rows = rows.where(or_(PossessionEvent.half == half, and_(PossessionEvent.half.is_(None), by_minute)))
+        rows = rows.subquery()
+        # IS DISTINCT FROM so the very first row (prev NULL) starts a spell
+        own_spell = (rows.c.own.is_(True)) & (rows.c.prev_own.is_distinct_from(True))
+        opp_spell = (rows.c.own.is_(False)) & (rows.c.prev_own.is_distinct_from(False))
+        result = await db.execute(
+            select(
+                func.coalesce(func.sum(rows.c.secs).filter(rows.c.own.is_(True)), 0),
+                func.coalesce(func.sum(rows.c.secs).filter(rows.c.own.is_(False)), 0),
+                func.count().filter(rows.c.own.is_(True)),
+                func.count().filter(rows.c.own.is_(False)),
+                func.count().filter(own_spell),
+                func.count().filter(opp_spell),
+            )
+        )
+        own_s, opp_s, own_n, opp_n, own_spells, opp_spells = result.one()
+        return {
+            "own_seconds": int(own_s),
+            "opponent_seconds": int(opp_s),
+            "own_count": int(own_n),
+            "opponent_count": int(opp_n),
+            "own_spells": int(own_spells),
+            "opponent_spells": int(opp_spells),
+        }
 
     @staticmethod
     async def create_possession_event(

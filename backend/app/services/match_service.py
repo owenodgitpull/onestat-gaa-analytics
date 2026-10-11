@@ -375,16 +375,11 @@ class MatchService:
         events_result = await db.execute(events_query)
         events = events_result.scalars().all()
 
-        # Get possession events (filtered by half if requested)
-        possession_query = select(PossessionEvent).where(PossessionEvent.match_id == match_id)
-        if half is not None:
-            possession_query = possession_query.where(or_(
-                PossessionEvent.half == half,
-                and_(PossessionEvent.half.is_(None), PossessionEvent.minute >= min_minute, PossessionEvent.minute <= max_minute),
-            ))
-        possession_result = await db.execute(possession_query)
-        possession_events = possession_result.scalars().all()
-        
+        # Possession totals come from one database aggregate (spells, time split, counts) - loading every possession
+        # row just to add them up made this endpoint take seconds and starve the worker.
+        from app.services.possession_service import PossessionService
+        poss = await PossessionService.totals(db, match_id, half, half_duration)
+
         # Initialize stats
         stats = {
             "match_id": str(match_id),
@@ -435,50 +430,18 @@ class MatchService:
         }
         
         # Calculate possession percentages (time-based, not event-based)
-        if possession_events:
-            def _is_own_team(p) -> bool:
-                """Normalize team comparison — handles both enum objects and raw strings."""
-                t = p.team.value if hasattr(p.team, 'value') else str(p.team)
-                return t == "own"
-
-            # Possession spell count — consecutive runs of the same team
-            # Sort by created_at to get chronological order, then count transitions
-            sorted_events = sorted(possession_events, key=lambda p: p.created_at)
-            team_spells = opp_spells = 0
-            prev_team = None
-            for p in sorted_events:
-                curr = "own" if _is_own_team(p) else "opponent"
-                if curr != prev_team:
-                    if curr == "own":
-                        team_spells += 1
-                    elif curr == "opponent":
-                        opp_spells += 1
-                    prev_team = curr
-            stats["team_possession_count"] = team_spells
-            stats["opponent_possession_count"] = opp_spells
-
-            # Sum up duration_seconds for each team
-            total_duration = sum(p.duration_seconds or 0 for p in possession_events)
-
-            if total_duration > 0:
-                team_duration = sum(
-                    p.duration_seconds or 0
-                    for p in possession_events
-                    if _is_own_team(p)
-                )
-                stats["team_possession_percentage"] = round((team_duration / total_duration) * 100, 1)
-                stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
+        own_s, opp_s = poss["own_seconds"], poss["opponent_seconds"]
+        if poss["own_count"] + poss["opponent_count"] > 0:
+            stats["team_possession_count"] = poss["own_spells"]
+            stats["opponent_possession_count"] = poss["opponent_spells"]
+            if own_s + opp_s > 0:
+                stats["team_possession_percentage"] = round((own_s / (own_s + opp_s)) * 100, 1)
             else:
-                # Fallback: if no durations yet, use event count (initial possession).
-                # `team_count` here used to reference an undefined name — this branch
-                # would raise a NameError any time it was actually reached (all
-                # possession_events durations null/zero, e.g. right after the very
-                # first tap of a match) instead of returning a sane 0/0.
-                total_events = len(possession_events)
-                team_events = sum(1 for p in possession_events if _is_own_team(p))
-                stats["team_possession_percentage"] = round((team_events / total_events) * 100, 1) if total_events > 0 else 0.0
-                stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
-        
+                # No durations yet (e.g. right after the very first tap): fall back to the event count
+                total_events = poss["own_count"] + poss["opponent_count"]
+                stats["team_possession_percentage"] = round((poss["own_count"] / total_events) * 100, 1)
+            stats["opponent_possession_percentage"] = round(100 - stats["team_possession_percentage"], 1)
+
         _GOAL_CHANCE_TYPES = frozenset([
             EventType.GOAL, EventType.PENALTY_GOAL,
             EventType.SAVED, EventType.PENALTY_MISS, EventType.HIT_POST,

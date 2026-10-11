@@ -52,44 +52,7 @@ async def possession_summary(
         raise HTTPException(status_code=404, detail="Match not found")
     hdm = owner_row[1] or 30
 
-    is_own = case((PossessionEvent.team == "own", True), else_=False)
-    prev_own = func.lag(is_own).over(order_by=(PossessionEvent.created_at, PossessionEvent.id))
-    rows = (
-        select(
-            is_own.label("own"),
-            func.coalesce(PossessionEvent.duration_seconds, 0).label("secs"),
-            prev_own.label("prev_own"),
-        )
-        .where(PossessionEvent.match_id == match_id)
-    )
-    if half is not None:
-        # the stored half is the truth (first-half added time shares its minutes with the second half); the minute is
-        # only the fallback for rows recorded before the half was stored
-        by_minute = (func.coalesce(PossessionEvent.minute, 0) <= hdm) if half == 1 else (func.coalesce(PossessionEvent.minute, 0) > hdm)
-        rows = rows.where(or_(PossessionEvent.half == half, and_(PossessionEvent.half.is_(None), by_minute)))
-    rows = rows.subquery()
-    # IS DISTINCT FROM so the very first row (prev NULL) starts a spell
-    own_spell = (rows.c.own.is_(True)) & (rows.c.prev_own.is_distinct_from(True))
-    opp_spell = (rows.c.own.is_(False)) & (rows.c.prev_own.is_distinct_from(False))
-    result = await db.execute(
-        select(
-            func.coalesce(func.sum(rows.c.secs).filter(rows.c.own.is_(True)), 0),
-            func.coalesce(func.sum(rows.c.secs).filter(rows.c.own.is_(False)), 0),
-            func.count().filter(rows.c.own.is_(True)),
-            func.count().filter(rows.c.own.is_(False)),
-            func.count().filter(own_spell),
-            func.count().filter(opp_spell),
-        )
-    )
-    own_s, opp_s, own_n, opp_n, own_spells, opp_spells = result.one()
-    return {
-        "own_seconds": int(own_s),
-        "opponent_seconds": int(opp_s),
-        "own_count": int(own_n),
-        "opponent_count": int(opp_n),
-        "own_spells": int(own_spells),
-        "opponent_spells": int(opp_spells),
-    }
+    return await PossessionService.totals(db, match_id, half, hdm)
 
 
 @router.delete("/match/{match_id}/after-video/{timestamp_ms}")
