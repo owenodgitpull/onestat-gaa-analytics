@@ -24,7 +24,7 @@ POSITION_LABEL = {
     'gk': 'goalkeeper',
     'fb-left': 'left corner back', 'fb-center': 'full back', 'fb-right': 'right corner back',
     'hb-left': 'left half back', 'hb-center': 'centre half back', 'hb-right': 'right half back',
-    'mf-left': 'left midfield', 'mf-right': 'right midfield',
+    'mf-left': 'midfield', 'mf-right': 'midfield',   # GAA has no left/right midfield - just midfield
     'hf-left': 'left half forward', 'hf-center': 'centre half forward', 'hf-right': 'right half forward',
     'ff-left': 'left corner forward', 'ff-center': 'full forward', 'ff-right': 'right corner forward',
 }
@@ -133,7 +133,8 @@ def position_at(spells: list, t: Time) -> Optional[str]:
 
 def moved_players(spells: dict) -> dict:
     """Players who held more than one position (a swap, or a sub who later changed slot)."""
-    return {pid: sp for pid, sp in spells.items() if len({s.position_id for s in sp}) > 1}
+    # compared by name: left and right midfield are both just "midfield", so swapping them is not a move
+    return {pid: sp for pid, sp in spells.items() if len({label(s.position_id) for s in sp}) > 1}
 
 
 # -- stats by position spell ----------------------------------------------------------------------
@@ -201,6 +202,8 @@ def personnel_log(subs: list, moves: list, events: list, names: dict, window: in
     for m in moves:
         by_instant.setdefault((m.half, m.minute, m.t), []).append(m)
     for (half, minute, t), group in by_instant.items():
+        if all(label(m.from_pos) == label(m.to_pos) for m in group):
+            continue                      # e.g. the two midfielders swapping - not a change worth reporting
         parts = [f"{names.get(str(m.player_id), 'a player')}: {label(m.from_pos)} to {label(m.to_pos)}" for m in group]
         items.append((t, half, minute, "position_move", "; ".join(parts)))
     items.sort(key=lambda x: x[0])

@@ -120,6 +120,11 @@ GAA_ESSENTIALS = """
   from play" while also crediting a two-pointer, unless that two-pointer was specifically a
   two_point_free. Treat two_point the same as point/goal when summing "scored from play."
 
+## Naming positions
+- Midfielders are simply "midfield" / "midfielders" - NEVER "left midfield" or "right midfield". The two midfield slots are not left and right.
+- The other lines do have sides: left/right corner back, left/right half back, left/right half forward, left/right corner forward; the centre ones are full back, centre half back, centre half forward, full forward.
+- When a player held several positions, say them in order ("centre half forward for the first 40 minutes, then midfield").
+
 ## Match Length — do not assume inter-county timing
 - Half length varies by grade — club matches are commonly 2×30 minutes, inter-county senior football is 2×35 minutes. This is a per-club setting chosen at onboarding (`half_duration_mins` on the match), NOT a fixed convention. Full time (before any injury/stoppage time) is `half_duration_mins × 2` for THIS match — never assume 70 minutes as if every match were inter-county.
 - Never state a specific "before/around/after the Nth minute" reference for full time or a late-match moment unless you've derived it from this match's own `half_duration_mins` and the actual recorded event minutes (which naturally include any injury time played, since the clock kept running through it). Confirmed live 2026-09-08: a report said "subbed before the 70th minute" for a club match whose real playing time (including ~8 mins injury time) ended at minute 68 — 70 was never reached, the number was just assumed rather than checked. If you don't have a precise figure, say "before full time" / "late in the game" rather than inventing a minute number.

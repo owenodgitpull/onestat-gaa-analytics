@@ -129,8 +129,20 @@ class MatchEventService:
         total = count_result.scalar_one()
         
         # Get events
+        # The route reads the three player NAMES only. Each selectin Player load used to cascade into the player's
+        # fitness tests and season stats (and the match), so a page of events ran dozens of extra queries.
+        from sqlalchemy.orm import lazyload, selectinload
+        from app.models.player import Player
+        _name_only = (lazyload(Player.fitness_tests), lazyload(Player.match_stats))
         result = await db.execute(
             select(MatchEvent)
+            .options(
+                selectinload(MatchEvent.player).options(*_name_only),
+                selectinload(MatchEvent.assist_player).options(*_name_only),
+                selectinload(MatchEvent.kickout_target_player).options(*_name_only),
+                lazyload(MatchEvent.sub_in_player),
+                lazyload(MatchEvent.match),
+            )
             .where(and_(*conditions))
             .order_by(MatchEvent.minute.asc(), MatchEvent.created_at.asc())
             .offset(skip)

@@ -367,7 +367,17 @@ class MatchService:
             min_minute, max_minute = 0, 9999
 
         # Get events for this match (filtered by half if requested)
-        events_query = select(MatchEvent).where(MatchEvent.match_id == match_id)
+        # No player relationships here (the stats only read columns): each selectin player load cascaded into fitness
+        # tests / season stats / ... for every event.
+        events_query = (
+            select(MatchEvent)
+            .options(
+                lazyload(MatchEvent.player), lazyload(MatchEvent.assist_player),
+                lazyload(MatchEvent.kickout_target_player), lazyload(MatchEvent.sub_in_player),
+                lazyload(MatchEvent.match),
+            )
+            .where(MatchEvent.match_id == match_id)
+        )
         if half is not None:
             # stored half first; the minute range is only the fallback for rows recorded without one
             events_query = events_query.where(or_(
