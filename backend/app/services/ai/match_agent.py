@@ -20,7 +20,7 @@ from sqlalchemy import select
 
 from app.services.ai.live_brief import build_live_brief
 from app.services.ai._shared import (
-    client, GAA_ESSENTIALS, TOOLS, execute_tool,
+    client, GAA_ESSENTIALS, PANEL_EXPERT, TOOLS, execute_tool,
     get_match_summary, get_tools_subset, get_club_context,
 )
 from app.services.rag_service import RAGService
@@ -182,6 +182,7 @@ Separate the paragraphs with a blank line. No bullet points, no headers, no emoj
 CHOOSING WHAT TO SAY: the brief opens with SCORE NOW and TOP SIGNALS — a ranked list computed from the data. Lead with signal 1 unless something else in the brief is clearly more important to the next five minutes. Say ONE thing well rather than listing several; never three versions of the same point. If TOP SIGNALS says nothing stands out, say what is happening in plain terms and do not draw a conclusion. Use SINCE THE LAST INSIGHT and the insights you already gave: move on to a different topic unless the earlier one has got worse.
 
 {GAA_ESSENTIALS}
+{PANEL_EXPERT}
 {club_context}
 
 ## Knowledge Base Context (GPS benchmarks, tactical patterns, rules)
@@ -213,7 +214,7 @@ CHOOSING WHAT TO SAY: the brief opens with SCORE NOW and TOP SIGNALS — a ranke
   Otherwise state the two facts side by side.
 - Check your own arithmetic and the arc: a distance is only "outside the arc" if the brief says it is. Use the exact figures given.
 - Name a player only when the snapshot or brief attributes the event to them. Never guess a name.
-- Advice must follow from the facts you stated; do not give advice that assumes something you did not observe.
+- Advice must follow from the facts you stated and must be one of THE LEVERS listed above; do not give advice that assumes something you did not observe. If no lever fits, give the finding and stop.
 - If there is little data in the window, say that in a few words instead of padding.
 
 ## HOW TO THINK LIKE A COACH (in this order)
@@ -398,6 +399,7 @@ Reference knowledge base context when relevant to a specific trigger.
         system_prompt = f"""You are an expert GAA football analyst for {club_name}.
 
 {GAA_ESSENTIALS}
+{PANEL_EXPERT}
 {club_context}
 
 ## Knowledge Base Context (tactics, GPS benchmarks, rules, playbooks)
@@ -407,7 +409,7 @@ INSTRUCTIONS:
 1. You MUST use tools to gather match data BEFORE providing any analysis.
 2. ALWAYS call get_match_summary and get_match_events first with the match ID provided. Then call get_ball_carrier_data with the same match ID to retrieve ball carrying, passing network, and possession chain data — this is REQUIRED, not optional.
 3. Do NOT ask the user for match IDs or clarification — you already have the match ID.
-4. Structure your analysis as: Summary → Key Stats → Top Performers (rated 1-10) → Tactical Analysis → Areas for Improvement → Training Recommendations.
+4. Structure your analysis as: Summary (opening with "What mattered most") → How the Game Was Won / Lost (see 7j) → Key Stats → Top Performers (rated 1-10) → Tactical Analysis → Phase Analysis → Areas for Improvement → Training Recommendations. Every existing section stays; the new one is added near the top.
 5. Reference knowledge base context: compare to tactical documents, GPS benchmarks, and rules when available.
 6. Be specific — cite player names, minutes, and events from the tool results.
 7. Be constructive but honest about weaknesses.
@@ -466,6 +468,14 @@ INSTRUCTIONS:
     - get_phase_summary also returns `halves` (score at the end of each half and how long each half ran), `coverage` (how many shots
       the phase counts cover) and `scores_by_origin` (where each team's scores came from). Use those figures; state coverage when you
       quote a phase count.
+7j. HOW THE GAME WAS WON / LOST — REQUIRED, placed straight after the Summary. Heading by result: "How the Game Was Won", "How the Game Was Lost", or "How the Game Was Shared" for a draw. Short headed paragraphs, NOT bullets, with the figures inside the sentences (a manager wants numbers carried by a sentence, not a list of numbers):
+    - One bold verdict sentence: the result, the margin in GAA language, and when it was decided (from `halves` and margin_by_ten_minutes). Example shape: "Lost by 3 points (0-18 to 1-18), and the match was decided in the first half."
+    - Paragraph 1, "What decided it" (a win: "What won it"): the one or two phases that moved the scoreboard, in order of importance, each with its figures from get_phase_summary and scores_by_origin and how much of the match it covers. This is the ONE story from 7i; the Phase Analysis section carries the detail.
+    - Paragraph 2, "When it turned": the stretch or moment the margin moved (margin_by_ten_minutes, a scoring run, a substitution or position move with its before/after figures). If nothing turned it, say it was steady and what the margin did. Read it in game-state context (who was ahead; a team protecting a lead is not a trend).
+    - Paragraph 3, "What to fix" (a win: "What to protect and what still needs work"): two or three specific things, each tied to a named finding in this report and each one of THE LEVERS. If the data does not support a lever, say what the data shows and stop.
+    - Each paragraph carries only the 3-5 figures that make its argument; everything else stays in the sections below. Every figure is copied from a tool result and every name and minute exactly as given.
+    - Separate fact from read: give the figures, then at most one clearly marked judgement ("my read is...") that says what it rests on. Never state a cause the data does not show.
+    - No pressing or defensive-shape claims, no advice outside THE LEVERS, nothing about players who did not play.
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>
