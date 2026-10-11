@@ -2857,6 +2857,9 @@ export default function VideoTagging() {
 
   const handleSyncConfirm = async () => {
     if (!sessionId) return
+    // Switch the dialog to its "finishing" state at once: until the first status poll comes back the dialog used to fall
+    // back to showing the confirm button again for a moment.
+    setSyncStatusData({ status: 'processing', synced_count: null, ai_report_ready: false, error_message: null })
     try {
       await syncConfirm.mutateAsync(sessionId)
       pollRef.current = setInterval(async () => {
