@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
+import PitchTapCue from '@/components/PitchTapCue'
 import GAAPitch from '@/components/GAAPitch'
 import BallCarrierPicker from '@/components/BallCarrierPicker'
 import PitchReceiverDots from '@/components/PitchReceiverDots'
@@ -760,6 +761,9 @@ export default function FullscreenPitchMode({
             )}
             <NetworkStatusIndicator compact />
           </div>
+        )}
+        {landingTapActive && (
+          <PitchTapCue label={pendingFortyFivePosition ? 'TAP THE 45m LINE' : pendingKickoutPosition ? 'TAP WHERE THE KICKOUT LANDED' : 'TAP WHERE THE BALL LANDED'} />
         )}
         <GAAPitch
           ballPosition={ballPosition}

@@ -31,6 +31,7 @@ import EventTimeline from '../components/video/EventTimeline'
 import CategorizedActionButtons from '../components/CategorizedActionButtons'
 import PositionSwapModal, { swapLineupPositions } from '../components/PositionSwapModal'
 import ScoresList from '../components/video/ScoresList'
+import PitchTapCue from '../components/PitchTapCue'
 import VideoEventLog from '../components/video/VideoEventLog'
 import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
@@ -4211,6 +4212,14 @@ export default function VideoTagging() {
             : undefined
         }
       />
+      {/* A tap on the pitch is needed: the banner over the video is easy to miss, so the pitch says it too */}
+      {(overlayState === 'pitch' || !!pendingLongKick || !!pendingDrop) && !repositioning && (
+        <PitchTapCue
+          label={overlayState === 'pitch'
+            ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? 'TAP THE 45m LINE' : 'TAP WHERE THE KICKOUT LANDED')
+            : 'TAP WHERE THE BALL LANDED'}
+        />
+      )}
       {teamAttackingRightThisHalf != null && overlayState !== 'pitch' && (
         <div className="absolute bottom-2 right-2 z-20">
           <AttackDirectionBadge

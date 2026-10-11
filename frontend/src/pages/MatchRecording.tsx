@@ -18,6 +18,7 @@ import ManualEventEntryModal from '@/components/ManualEventEntryModal'
 import StartingLineupModal, { type LineupEntry } from '@/components/StartingLineupModal'
 import SubstitutionModal from '@/components/SubstitutionModal'
 import PositionSwapModal, { swapLineupPositions } from '@/components/PositionSwapModal'
+import PitchTapCue from '@/components/PitchTapCue'
 import LiveInsightDisplay from '@/components/LiveInsightDisplay'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '@/components/EventFilterToggles'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
@@ -4930,6 +4931,9 @@ export default function MatchRecording() {
 
               {/* Pitch */}
               <div data-tour="pitch-container" className="glass-card p-6 relative mb-4">
+                {(!!pendingKickoutEvent || !!pendingFortyFivePosition || !!pendingLongKick) && (
+                  <PitchTapCue label={pendingFortyFivePosition ? 'TAP THE 45m LINE' : pendingKickoutEvent ? 'TAP WHERE THE KICKOUT LANDED' : 'TAP WHERE THE BALL LANDED'} />
+                )}
                 <GAAPitch
                   ballPosition={ballPosition}
                   onBallMove={handleBallMove}
