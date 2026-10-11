@@ -352,9 +352,11 @@ class MatchService:
         Optionally filter by half (1 or 2).
         """
         from app.models.match import Match as MatchModel
-        match_obj_result = await db.execute(select(MatchModel).where(MatchModel.id == match_id))
-        match_obj = match_obj_result.scalar_one_or_none()
-        half_duration = (match_obj.half_duration_mins if match_obj and match_obj.half_duration_mins else 30)
+        # One column, not the whole Match: loading the object cascades its eager relationships (lineup -> players ->
+        # fitness tests, GPS, video sessions -> events -> chains ...) into ~60 queries for a single number.
+        half_duration = (await db.execute(
+            select(MatchModel.half_duration_mins).where(MatchModel.id == match_id)
+        )).scalar_one_or_none() or 30
 
         # Determine minute range for the requested half
         if half == 1:
