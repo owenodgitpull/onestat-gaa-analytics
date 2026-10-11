@@ -91,6 +91,10 @@ def _exact(fx: float, fy: float, goal: str, shot: bool = True,
     goal = 'their' (the goal WE attack) or 'our' (the goal we defend). Accurate to about 1-3m.
     'left/right' are as WE face the opposition goal."""
     toward_their = goal == "their"
+    if not shot:
+        # turnovers / kickouts / origins: say it from the NEARER goal ("12m from their goal line", not "113m from our goal
+        # line" for something that happened in the attacking third)
+        toward_their = fx > 50.0
     d = along_m((100.0 - fx) if toward_their else fx, length_m)
     lat = lateral_m(fy, width_m)
     side = "our left" if fy < 50.0 else "our right"
@@ -139,7 +143,8 @@ def _phase_lines(s: dict, window: int) -> str:
         if d["open"]:
             txt += f"; {d['open']} still open"
         if d["median_seconds_to_shot"] is not None:
-            txt += f"; median {d['median_seconds_to_shot']}s to the shot"
+            txt += (f"; median {d['median_seconds_to_shot']}s from the start to the shot "
+                    "(the gap between two tagged events - passages the tagging did not capture are included)")
         return txt
 
     rows = [
@@ -323,6 +328,9 @@ async def _build(db, match_id, minute, club_id, window) -> str:
                 who2 = f" by {nm2}" if nm2 else ""
                 if t2 in SHOT_TYPES:
                     return f"{'we' if _is_own(e2) else 'they'}: {LABELS.get(t2, t2)}{who2} at {e2.minute}'{where}"
+                if p.outcome == "lost" and p.owner_is_own and _is_own(e2) and t2 in ("block", "tackle_won", "interception"):
+                    # our own defensive win ended our possession: they had the ball (untagged) and we won it back
+                    return f"the ball was lost (they had it, then {LABELS.get(t2, t2.replace('_', ' '))}{who2} won it back at {e2.minute}')"
                 return f"{LABELS.get(t2, t2.replace('_', ' '))}{who2} at {e2.minute}'"
 
             def _origin_phrase(p) -> str:
@@ -563,7 +571,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
             nm = who(e)
             rows.append(f"  {e.minute}' {LABELS.get(_t(e), _t(e))}{' by ' + nm if nm else ''}: {_exact(f[0], f[1], 'our', False, LEN, WID)}")
     if rows:
-        L.append("EXACT POSITIONS — OUR TURNOVERS/ERRORS IN THE LAST 10 MINUTES (distance is from OUR goal line):")
+        L.append("EXACT POSITIONS — OUR TURNOVERS/ERRORS IN THE LAST 10 MINUTES (distance is from the nearer goal line, named):")
         L.extend(rows)
     ko_detail = [e for e in own_ko if e.minute > now - 10] if own_ko else []
     rows = []
