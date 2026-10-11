@@ -1469,10 +1469,14 @@ export default function VideoTagging() {
 
     // Dead ball — repositioning a free before it's taken. Just moves the
     // ball; never writes possession (matches live recording).
-    if (pendingFreeKick) return
+    // ...but never when a kickout-landing / 45 tap is what's being asked for: that tap must always go through. A stale
+    // "free pending" flag (e.g. restored from the saved pending-prompt snapshot after a reload) used to swallow every
+    // tap here and leave the landing prompt stuck.
+    if (pendingFreeKick && !(overlayState === 'pitch' && pendingOverlay)) return
 
     // If waiting for a pitch tap (kickout landing / 45 line), resolve it
     if (overlayState === 'pitch' && pendingOverlay) {
+      if (pendingFreeKick) { setPendingFreeKick(null); setIsAdjustingFree(false) }
       const isFortyFive = pendingOverlay.action.pitchPrompt === 'forty_five'
       const isKickout = pendingOverlay.action.pitchPrompt === 'kickout' || pendingOverlay.action.pitchPrompt === 'kickout_sideline'
       // A 45 is always taken ON the 45m line — the tap only decides the y
