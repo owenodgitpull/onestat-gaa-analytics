@@ -338,9 +338,9 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
           if (normX <= 97) return `the 13m line${lateral}`
           return `the square`
         }
-        const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boolean): number => {
+        const normalizeX = (rawX: number, minute: number, attackingRightFirstHalf: boolean, half?: number | null): number => {
           const hdm: number = (data?.[0] as any)?.half_duration_mins ?? 30
-          const isFirstHalf = minute <= hdm
+          const isFirstHalf = half != null ? half === 1 : minute <= hdm   // stored half wins over the minute guess
           const attackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
           return attackingRight ? rawX : 100 - rawX
         }
@@ -359,11 +359,11 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
           }
           return map[raw] || raw.replace(/_/g, ' ')
         }
-        const describePathNL = (points: {x:number;y:number}[], startedWith?: string, minute?: number, attackingRight?: boolean): string => {
+        const describePathNL = (points: {x:number;y:number}[], startedWith?: string, minute?: number, attackingRight?: boolean, half?: number | null): string => {
           if (!points || points.length === 0) return ''
           const atkRight = attackingRight ?? true
           const min = minute ?? 15
-          const zones = points.map(p => getZone(normalizeX(p.x, min, atkRight), p.y))
+          const zones = points.map(p => getZone(normalizeX(p.x, min, atkRight, half), p.y))
           const unique = zones.filter((z, i) => i === 0 || z !== zones[i - 1])
           if (points.length === 1) return `Shot taken from ${unique[0]}`
           const action = startedWith ? prettyAction(startedWith) : 'play'
@@ -435,7 +435,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
                 {data.map((item: any, idx: number) => {
                   const color = OUTCOME_COLORS[item.outcome] || colors[idx % colors.length] || '#10b981'
                   const outcomeLabel = OUTCOME_LABELS[item.outcome] || item.outcome?.replace(/_/g, ' ')
-                  const pathDesc = describePathNL(item.points || [], item.started_with, item.minute, item.attacking_right_first_half)
+                  const pathDesc = describePathNL(item.points || [], item.started_with, item.minute, item.attacking_right_first_half, item.half)
                   return (
                     <div key={idx} className="flex items-start gap-3 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10">
                       {/* Number badge */}

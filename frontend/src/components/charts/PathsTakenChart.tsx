@@ -119,8 +119,9 @@ const normalizePoint = (
   minute: number,
   attackingRightFirstHalf: boolean,
   halfMins: number,
+  half?: number | null,   // the stored half wins over the minute guess (first-half added time)
 ): { x: number; y: number } =>
-  toAttackFrame(p.x, p.y, ownAttacksRight(attackingRightFirstHalf, null, minute, halfMins))
+  toAttackFrame(p.x, p.y, ownAttacksRight(attackingRightFirstHalf, half, minute, halfMins))
 
 const prettyAction = (raw: string): string => {
   const map: Record<string, string> = {
@@ -176,10 +177,11 @@ const describePath = (
   startedWith?: string | null,
   outcome?: string | null,
   carriers?: string[],
+  half?: number | null,
 ): string => {
   if (points.length === 0) return ''
 
-  const framed = points.map(p => normalizePoint(p, minute, attackingRightFirstHalf, halfMins))
+  const framed = points.map(p => normalizePoint(p, minute, attackingRightFirstHalf, halfMins, half))
   const zones = framed.map(p => getZoneId(p.x))
   const uniqueZones = zones.filter((z, i) => i === 0 || z !== zones[i - 1])
   const lastY = framed[framed.length - 1].y
@@ -249,7 +251,7 @@ const describeFromNodes = (
   const nodes = path.nodes || []
   if (nodes.length === 0) return null
   const where = (n: { x: number; y: number }) => {
-    const f = normalizePoint({ x: n.x, y: n.y }, path.minute, attackingRightFirstHalf, halfMins)
+    const f = normalizePoint({ x: n.x, y: n.y }, path.minute, attackingRightFirstHalf, halfMins, (path as any).half)
     return zoneDisplayName(getZoneId(f.x), f.y)
   }
   const who = (n: { player: string | null }) => (n.player ? ` (${surname(n.player)})` : '')
@@ -348,6 +350,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
       activeDetail.started_with,
       activeDetail.outcome,
       carriers,
+      (activeDetail as any).half,
     )
   })() : null
 

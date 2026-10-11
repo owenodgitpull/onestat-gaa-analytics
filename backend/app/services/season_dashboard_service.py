@@ -1061,6 +1061,7 @@ class SeasonDashboardService:
 
                 timeline.append({
                     "minute": minute,
+                    "half": getattr(e, "half", None),
                     "team": e.team.value,
                     "event_type": e.event_type.value,
                     "value": value,
@@ -1078,7 +1079,8 @@ class SeasonDashboardService:
             _hdm = getattr(m, 'half_duration_mins', 30) or 30
             ht_diff = 0
             for t in timeline:
-                if t["minute"] <= _hdm:
+                # stored half first (first-half added time is still the first half); minute only as a fallback
+                if (t["half"] == 1) if t.get("half") else (t["minute"] <= _hdm):
                     ht_diff = t["cumulative_diff"]
             ht_leads.append(ht_diff)
 
@@ -1946,7 +1948,7 @@ class SeasonDashboardService:
             # pitch_x is stored as raw screen coordinate (0=left, 100=right of displayed pitch).
             # Flip when the team was attacking toward the left end of the screen.
             match = matches_map.get(mid)
-            is_first_half = (pe.minute or 0) <= (match.half_duration_mins or 30) if match else True
+            is_first_half = ((pe.half == 1) if getattr(pe, 'half', None) else ((pe.minute or 0) <= (match.half_duration_mins or 30))) if match else True
             atk_right_1h = match.attacking_right_first_half if match else None
             own_attacking_right = (atk_right_1h if is_first_half else not atk_right_1h) if atk_right_1h is not None else True
 
@@ -2098,7 +2100,7 @@ class SeasonDashboardService:
             duration = pe.duration_seconds if pe.duration_seconds else 1
 
             match = matches_map.get(mid)
-            is_first_half = (pe.minute or 0) <= (match.half_duration_mins or 30) if match else True
+            is_first_half = ((pe.half == 1) if getattr(pe, 'half', None) else ((pe.minute or 0) <= (match.half_duration_mins or 30))) if match else True
             atk_right_1h = match.attacking_right_first_half if match else None
             own_attacking_right = (atk_right_1h if is_first_half else not atk_right_1h) if atk_right_1h is not None else True
 

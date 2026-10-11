@@ -1418,9 +1418,10 @@ export default function MatchRecording() {
     const scoreTypes = new Set(['goal', 'penalty_goal', 'point', 'two_point', 'point_free', 'two_point_free', 'forty_five'])
     const halfDuration = matchHalfMins
     const attackingRightFirstHalf = match?.attacking_right_first_half ?? true
-    const normalizeX = (rawX: number, isOwn: boolean, minute: number | null | undefined): number => {
-      const isFirstHalf = (minute ?? 0) <= halfDuration
-      const teamAttackingRight = isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
+    const normalizeX = (rawX: number, isOwn: boolean, minute: number | null | undefined, half?: number | null): number => {
+      // the stored half wins: first-half added time (minute > half length) is still the first half
+      const firstHalf = half != null ? half === 1 : (minute ?? 0) <= halfDuration
+      const teamAttackingRight = firstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf
       const attackingRight = isOwn ? teamAttackingRight : !teamAttackingRight
       return attackingRight ? rawX : 100 - rawX
     }
@@ -1429,7 +1430,7 @@ export default function MatchRecording() {
       .map((e: any) => {
         const isOwn = e.team === 'own' || e.is_home_team
         return {
-          x: normalizeX(e.pitch_x as number, isOwn, e.minute),
+          x: normalizeX(e.pitch_x as number, isOwn, e.minute, e.half),
           y: e.pitch_y ?? 50,
           event_type: e.event_type,
           is_score: scoreTypes.has(e.event_type),

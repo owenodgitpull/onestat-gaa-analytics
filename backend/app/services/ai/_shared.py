@@ -1811,22 +1811,22 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
 
     from app.utils.attack_direction import own_attacks_right as _own_right_p, to_attack_frame as _to_frame_p
 
-    def _path_loc(pt, minute, mid):
+    def _path_loc(pt, minute, mid, half=None):
         if not pt:
             return ""
         atk_first, hdm = match_dir.get(mid, (None, 30))
-        fx, fy = _to_frame_p(float(pt["x"]), float(pt["y"]), _own_right_p(atk_first, None, minute, hdm))
+        fx, fy = _to_frame_p(float(pt["x"]), float(pt["y"]), _own_right_p(atk_first, half, minute, hdm))
         return _pitch_location(fx, fy)
 
     import math as _math
 
-    def _move_metrics(points, minute, mid):
+    def _move_metrics(points, minute, mid, half=None):
         """Distance covered, metres gained towards goal, directness and start/end thirds for a move.
         Pitch is 145m x 90m (1% of x = 1.45m, 1% of y = 0.9m); gain is measured in OUR attacking frame."""
         if not points:
             return {}
         atk_first, hdm = match_dir.get(mid, (None, 30))
-        right = _own_right_p(atk_first, None, minute, hdm)
+        right = _own_right_p(atk_first, half, minute, hdm)
         fr = [_to_frame_p(float(pt["x"]), float(pt["y"]), right) for pt in points]
         total = 0.0
         for (x1, y1), (x2, y2) in zip(fr, fr[1:]):
@@ -1997,7 +1997,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 # carry/possession samples when events were tagged from video, which would inflate the distance
                 **_move_metrics(
                     [pt for nd in nodes for pt in ([{"x": nd["x"], "y": nd["y"]}] + ([{"x": nd["end_x"], "y": nd["end_y"]}] if "end_x" in nd else []))] or points,
-                    oe.minute, mid,
+                    oe.minute, mid, getattr(oe, "half", None),
                 ),
                 "origin": _origin_label(started_with),
                 "touches": len(chain),
@@ -2005,6 +2005,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 "label": path_label,
                 "outcome": outcome_str,
                 "minute": oe.minute,
+                "half": getattr(oe, "half", None),
                 "player": player_name,
                 "opponent": opponent,
                 "started_by": started_by,
@@ -2013,8 +2014,8 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 "carriers": carriers_in_order,
                 "attacking_right_first_half": match_attacking_right.get(mid, True),
                 # Plain-English start / end in OUR attacking frame (the raw `points` above are screen positions)
-                "start_location": _path_loc(points[0] if points else None, oe.minute, mid),
-                "end_location": _path_loc(points[-1] if points else None, oe.minute, mid),
+                "start_location": _path_loc(points[0] if points else None, oe.minute, mid, getattr(oe, "half", None)),
+                "end_location": _path_loc(points[-1] if points else None, oe.minute, mid, getattr(oe, "half", None)),
             })
 
     # Sort by match then minute
@@ -2151,10 +2152,11 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     match_row = match_obj.scalar_one_or_none()
     hdm = (match_row.half_duration_mins if match_row else 30) or 30
     if half:
-        if half == 1:
-            query = query.where(MatchEvent.minute <= hdm)
-        elif half == 2:
-            query = query.where(MatchEvent.minute > hdm)
+        # the stored half is the truth (first-half added time shares minutes with the second half); the minute is only
+        # the fallback for rows recorded without one
+        from sqlalchemy import and_ as _and, or_ as _or
+        _by_minute = MatchEvent.minute <= hdm if half == 1 else MatchEvent.minute > hdm
+        query = query.where(_or(MatchEvent.half == half, _and(MatchEvent.half.is_(None), _by_minute)))
 
     query = query.order_by(MatchEvent.minute)
     result = await db.execute(query)
@@ -3487,11 +3489,13 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
     for match in matches:
         m_events = [e for e in events if e.match_id == match.id]
         _hdm = getattr(match, 'half_duration_mins', 30) or 30
+        def _half_of(r, _hdm=_hdm):   # stored half first; the minute only for rows recorded without one
+            return getattr(r, 'half', None) or (1 if (r.minute or 0) <= _hdm else 2)
         halves_to_process = []
         if half is None or half == 1:
-            halves_to_process.append((1, [e for e in m_events if (e.minute or 0) <= _hdm]))
+            halves_to_process.append((1, [e for e in m_events if _half_of(e) == 1]))
         if half is None or half == 2:
-            halves_to_process.append((2, [e for e in m_events if (e.minute or 0) > _hdm]))
+            halves_to_process.append((2, [e for e in m_events if _half_of(e) == 2]))
 
         m_poss = poss_by_match.get(str(match.id), [])
 
@@ -3515,7 +3519,7 @@ async def get_stats_by_half(db: AsyncSession, match_id: str = None, half: int = 
             )
 
             # Duration-based possession from PossessionEvent (same method as get_match_summary)
-            h_poss = [p for p in m_poss if h_num == (1 if (p.minute or 0) <= _hdm else 2)]
+            h_poss = [p for p in m_poss if h_num == _half_of(p)]
             total_dur = sum(p.duration_seconds or 0 for p in h_poss)
             if total_dur > 0:
                 own_dur = sum(p.duration_seconds or 0 for p in h_poss if p.team == PossessionTeam.OWN.value)

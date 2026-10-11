@@ -201,7 +201,7 @@ async def get_scoreable_frees(db: AsyncSession, match_id: UUID, club_id: UUID) -
 
 async def get_attack_efficiency(db: AsyncSession, match_id: UUID, club_id: UUID) -> dict:
     poss_result = await db.execute(
-        select(PossessionEvent.team, PossessionEvent.minute, PossessionEvent.pitch_x)
+        select(PossessionEvent.team, PossessionEvent.minute, PossessionEvent.pitch_x, PossessionEvent.half)
         .where(PossessionEvent.match_id == match_id)
         .order_by(func.coalesce(PossessionEvent.minute, 0).asc(), PossessionEvent.created_at.asc())
     )
@@ -213,7 +213,7 @@ async def get_attack_efficiency(db: AsyncSession, match_id: UUID, club_id: UUID)
     for _r in poss_result.all():
         _px = _r[2]
         if _px is not None:
-            _px = to_attack_frame(float(_px), 50.0, own_attacks_right(_atk_first, None, _r[1], _hdm))[0]
+            _px = to_attack_frame(float(_px), 50.0, own_attacks_right(_atk_first, _r[3], _r[1], _hdm))[0]
         _framed.append((_r[0], _r[1], _px))
     poss_events = _framed
 

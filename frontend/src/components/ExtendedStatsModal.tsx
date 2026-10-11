@@ -4,6 +4,7 @@
  * Works on both MatchResult and MatchRecording pages.
  */
 
+import { isFirstHalf } from '@/utils/attackDirection'
 import { useState, useMemo } from 'react'
 import { X, ChevronRight, Users, Activity } from 'lucide-react'
 
@@ -151,9 +152,9 @@ export default function ExtendedStatsModal({ events, opponent, teamName, onClose
   const filtered = useMemo(() => {
     if (half === 'full') return events
     return events.filter(e => {
-      const m = e.minute ?? 0
-      if (half === '1st') return m <= halfDurationMins
-      return m > halfDurationMins
+      // stored half first: first-half added time shares its minutes with the second half
+      const first = isFirstHalf(e.half, e.minute ?? 0, halfDurationMins)
+      return half === '1st' ? first : !first
     })
   }, [events, half, halfDurationMins])
 

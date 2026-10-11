@@ -1512,9 +1512,9 @@ function getPitchArea(
 function formatEventDescription(event: any, players: any[], opponentName: string, teamName: string, attackingRightFirstHalf?: boolean | null, halfDurationMins?: number): string {
   const player = players?.find(p => p.id === String(event.player_id))
   const isOwn = event.team === 'own' || event.is_home_team
-  // match_events has no `half` column — derive from minute vs half duration
+  // the stored half wins (first-half added time shares its minutes with the second half); minute is the fallback
   const halfDuration = halfDurationMins || 30
-  const derivedHalf = event.minute <= halfDuration ? 1 : 2
+  const derivedHalf = event.half ?? (event.minute <= halfDuration ? 1 : 2)
   const area = getPitchArea(event.pitch_x, event.pitch_y, isOwn, opponentName, teamName, attackingRightFirstHalf, derivedHalf)
   const playerName = isOwn ? (player?.name || event.player_name || 'our player') : opponentName
   const kickoutTargetSuffix = event.kickout_target_player_name ? ` (aimed at ${event.kickout_target_player_name})` : ''

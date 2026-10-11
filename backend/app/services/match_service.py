@@ -367,20 +367,21 @@ class MatchService:
         # Get events for this match (filtered by half if requested)
         events_query = select(MatchEvent).where(MatchEvent.match_id == match_id)
         if half is not None:
-            events_query = events_query.where(
-                MatchEvent.minute >= min_minute,
-                MatchEvent.minute <= max_minute,
-            )
+            # stored half first; the minute range is only the fallback for rows recorded without one
+            events_query = events_query.where(or_(
+                MatchEvent.half == half,
+                and_(MatchEvent.half.is_(None), MatchEvent.minute >= min_minute, MatchEvent.minute <= max_minute),
+            ))
         events_result = await db.execute(events_query)
         events = events_result.scalars().all()
 
         # Get possession events (filtered by half if requested)
         possession_query = select(PossessionEvent).where(PossessionEvent.match_id == match_id)
         if half is not None:
-            possession_query = possession_query.where(
-                PossessionEvent.minute >= min_minute,
-                PossessionEvent.minute <= max_minute,
-            )
+            possession_query = possession_query.where(or_(
+                PossessionEvent.half == half,
+                and_(PossessionEvent.half.is_(None), PossessionEvent.minute >= min_minute, PossessionEvent.minute <= max_minute),
+            ))
         possession_result = await db.execute(possession_query)
         possession_events = possession_result.scalars().all()
         

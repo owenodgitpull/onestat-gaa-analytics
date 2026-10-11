@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight } from 'lucide-react'
 import { possessionAPI } from '@/services/api'
+import { isFirstHalf } from '@/utils/attackDirection'
 import { useClubName } from '@/contexts/ClubContext'
 
 interface AttackingThirdsChartProps {
@@ -93,11 +94,12 @@ export default function AttackingThirdsChart({
       opponent: { left: 0, centre: 0, right: 0 } as Channels,
     }
 
-    const getEffectiveX = (px: number, minute: number, forOwnTeam: boolean): number => {
+    const getEffectiveX = (px: number, minute: number, forOwnTeam: boolean, half?: number | null): number => {
       const hdm = halfDurationMins ?? 30
-      const isFirstHalf = minute <= hdm
+      // the stored half wins: first-half added time shares its minutes with the second half
+      const firstHalf = isFirstHalf(half, minute, hdm)
       const ownAttackingRight = attackingRightFirstHalf != null
-        ? (isFirstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf)
+        ? (firstHalf ? attackingRightFirstHalf : !attackingRightFirstHalf)
         : true
       const teamAttackingRight = forOwnTeam ? ownAttackingRight : !ownAttackingRight
       return teamAttackingRight ? px : 100 - px
@@ -118,13 +120,14 @@ export default function AttackingThirdsChart({
 
       const minute = e.minute || 0
       const hdm = e.half_duration_mins ?? halfDurationMins ?? 30
-      if (selectedHalf === '1st' && minute > hdm) return
-      if (selectedHalf === '2nd' && minute <= hdm) return
+      const inFirstHalf = isFirstHalf(e.half, minute, hdm)
+      if (selectedHalf === '1st' && !inFirstHalf) return
+      if (selectedHalf === '2nd' && inFirstHalf) return
 
       const team = e.team || (e.is_home_team ? 'own' : 'opponent')
       if (team !== 'own' && team !== 'opponent') return
 
-      const effectiveX = getEffectiveX(px, minute, team === 'own')
+      const effectiveX = getEffectiveX(px, minute, team === 'own', e.half)
       if (effectiveX < 65) return // only attacking-third possession counts
 
       const weight = e.duration_seconds || 1

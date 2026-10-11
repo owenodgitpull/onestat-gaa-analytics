@@ -1231,9 +1231,7 @@ async def get_player_shot_events(
     for event in shot_events:
         match = matches_map.get(event.match_id)
         if match:
-            half = 1
-            if event.minute and event.minute > (match.half_duration_mins or 30):
-                half = 2
+            half = event.half or (2 if event.minute and event.minute > (match.half_duration_mins or 30) else 1)
             # pitch_x is stored raw, relative to a fixed physical end of the
             # pitch — but which end this player's team attacks flips every
             # half. The frontend's ShotMap only plots pitch_x >= 50 (the
@@ -1337,7 +1335,9 @@ async def _compute_quarter_profile(db: AsyncSession, club_id, player_uuid) -> "P
             continue
         # Fraction of the whole match (0-1), clamped so stoppage/injury time
         # past the nominal length still lands in Q4 instead of being lost.
-        frac = min(e.minute / full_len, 0.999)
+        # first-half added time stays in the first half (Q2) — minute alone would push it into Q3
+        _m = min(e.minute, half_len - 0.001) if getattr(e, "half", None) == 1 else e.minute
+        frac = min(_m / full_len, 0.999)
         quarter = min(int(frac * 4) + 1, 4)
         matches_with_events.add(e.match_id)
         if e.event_type in WORK_RATE_TYPES:
