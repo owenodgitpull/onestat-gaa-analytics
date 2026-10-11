@@ -96,3 +96,15 @@ def test_order_key_sorts_added_time_before_second_half():
 def test_empty():
     assert possessions([]) == []
     assert normalise([]) == []
+
+
+def test_block_by_the_team_that_already_has_the_ball_ends_its_possession():
+    # kept kickout, then a block by us: they must have had it in between (untagged) - ours ended, a new one starts
+    ps = possessions([ev("own_kickout_won", minute=9), ev("block", minute=10), ev("point", minute=10)])
+    assert [p.origin for p in ps] == ["own_ko_kept", "turnover_won_forced"]
+    assert ps[0].outcome == "lost" and ps[1].outcome == "score"
+
+
+def test_same_regain_tagged_twice_is_not_split():
+    ps = possessions([ev("turnover_won", minute=9), ev("tackle_won", minute=9), ev("point", minute=10)])
+    assert len(ps) == 1 and ps[0].outcome == "score"

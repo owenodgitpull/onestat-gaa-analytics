@@ -169,10 +169,16 @@ def possessions(events: Iterable) -> list[Possession]:
         if g is not None:
             new_owner, origin, contested = g
             kickout = ev.type in KICKOUTS
+            # A block / tackle / interception means the OTHER team had the ball a moment ago. If we are still shown as the
+            # owner, their possession was simply never tagged - so ours ended there and a new one starts (otherwise the
+            # old possession runs on and is credited with an outcome that belongs to the next one). A win logged in the
+            # same minute as the event that gave us the ball is the same regain tagged twice, not a new possession.
+            forced = (ev.type in WIN_FORCED and owner is not None and new_owner == owner and open_p is not None
+                      and not (open_p.origin in ("turnover_won", "turnover_won_forced") and open_p.minute == ev.minute))
             # a kickout is always a fresh possession; an open-play event only is if the ball really changes hands
-            if kickout or owner is None or new_owner != owner:
+            if kickout or forced or owner is None or new_owner != owner:
                 if open_p is not None:
-                    close("lost" if owner != new_owner else "unknown", ev)
+                    close("lost" if (owner != new_owner or forced) else "unknown", ev)
                 p = Possession(origin, new_owner, ev.minute, ev.half, "open", None, 0, None, contested, ev.clock_s, ev.idx)
                 out.append(p)
                 open_p = p

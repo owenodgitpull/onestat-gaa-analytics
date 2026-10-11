@@ -128,7 +128,7 @@ def _phase_lines(s: dict, window: int) -> str:
     def one(g: str) -> Optional[str]:
         d = s[g]["to_date"]
         if not d["n"]:
-            return None
+            return "none yet (n=0)"
         w = s[g]["window"]
         txt = f"{d['n']} to date"
         if w["n"]:
@@ -147,6 +147,8 @@ def _phase_lines(s: dict, window: int) -> str:
         ("Own Kick-Out — kickouts we lost (THEIR possession)", "own_ko_lost"),
         ("Opposition Kick-Out — we won it", "opp_ko_won"),
         ("Opposition Kick-Out — they kept it (THEIR possession)", "opp_ko_kept"),
+        ("Turnover/Contest — breaking balls we won", "contests_won"),
+        ("Turnover/Contest — breaking balls we lost (THEIR possession)", "contests_lost"),
         ("Transition to Attack — turnovers we won", "turnovers_won"),
         ("Transition to Defence — turnovers we lost (THEIR possession)", "turnovers_lost"),
         ("Possession/Attack — all our tracked possessions", "all_ours"),

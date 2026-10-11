@@ -125,6 +125,17 @@ GAA_ESSENTIALS = """
 - The other lines do have sides: left/right corner back, left/right half back, left/right half forward, left/right corner forward; the centre ones are full back, centre half back, centre half forward, full forward.
 - When a player held several positions, say them in order ("centre half forward for the first 40 minutes, then midfield").
 
+## The seven phases (one shared vocabulary for every analysis)
+- Own Kick-Out and Opposition Kick-Out: who won the restart and what that possession became.
+- Transition to Attack (we win the ball) and Transition to Defence (we lose it): what the next possession became, and how fast.
+- Possession/Attack and Defensive Phase: how each team built and finished; where it entered the final third, where scores came from.
+- Turnover/Contest: breaking balls, blocks, tackles - who won the ball in the contest.
+- Rates are "what the possessions that began this way became", with every origin counted. A rate on fewer than 3 observations is
+  described, not concluded from. Say how much of the match a figure covers when it is a subset (e.g. "22 of 28 shots").
+- Everything spatial is in OUR attacking frame (our left/right as we face their goal). A team's score by half and the length
+  of each half come from the tool's own figures - never add scores up or work out minutes yourself.
+- Pressing and defensive shape are not tagged: say "not recorded" rather than inventing them.
+
 ## Everyday language (coaches do not talk like a data sheet)
 - Never describe a match as "a 2×30 fixture", "2x35", "a 70-minute fixture" or similar - nobody says that. Just say "lost to St Eunans by 3 points (0-18 to 1-18)". Mention half length only when it genuinely matters to a point (e.g. when a late score came), and then as "the last ten minutes" or "in the closing minutes", not as notation.
 - Do not read out database-style labels or codes (event names with underscores, position ids like mf-right, "half_duration_mins"). Say what a coach would say.
@@ -627,7 +638,7 @@ TOOLS = [
     },
     {
         "name": "get_season_phase_profile",
-        "description": "Phase rates pooled across the club's most recent matches (default 10): what kept/lost kickouts, turnovers won/lost and all possessions turn into. Use it as the season baseline when judging whether a match or a spell was typical or unusual for this team.",
+        "description": "The club's own average phase rates over its last N matches (default 10): what kept/lost kickouts, turnovers won/lost and all possessions turn into. Use it as the baseline when judging whether a match or a spell was typical for this team, and describe it as 'over our last N matches' (give N).",
         "input_schema": {"type": "object", "properties": {"last_n": {"type": "integer", "description": "How many recent matches to pool (default 10, max 30)"}}}
     },
     {

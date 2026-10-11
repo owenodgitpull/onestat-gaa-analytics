@@ -116,6 +116,33 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         edge = nxt
 
     findings = top_findings(build_findings(evs, now, window=max(now, 5), possession_list=ps), limit=5)
+
+    # Reconciliation, so the report never has to add things up itself: the score at the end of each half and how long
+    # each half ran (first-half added time included), how many shots the phase counts cover, and where scores came from.
+    halves = []
+    for h in (1, 2):
+        he = [e for e in evs if (e.half or 1) == h]
+        if not he:
+            continue
+        up_to = [e for e in evs if (e.half or 1) <= h]
+        halves.append({
+            "half": h,
+            "played_minutes": max(e.minute for e in he) - (min(e.minute for e in he) if h == 2 else 0),
+            "score_at_end": {"us": tally(up_to, True).line(), "them": tally(up_to, False).line(),
+                             "margin": margin_phrase(margin(up_to))},
+            "scored_in_this_half": {"us": tally(he, True).line(), "them": tally(he, False).line()},
+        })
+    all_shots = us.shots + them.shots
+    traced_shots = sum(1 for p in ps if p.shot)
+    origins = {"ours": {}, "theirs": {}}
+    for p in ps:
+        if p.outcome != "score":
+            continue
+        side = origins["ours" if p.owner_is_own else "theirs"]
+        row = side.setdefault(ORIGIN_TEXT.get(p.origin, p.origin), {"scores": 0, "points": 0})
+        row["scores"] += 1
+        row["points"] += p.points
+
     return json.dumps({
         "how_to_read": ("Possessions are followed in event ORDER from the event that gave a team the ball until a score, a missed shot, "
                         "the ball lost, a foul or the half ending. Every origin is in its own denominator, so rates are honest; "
@@ -123,6 +150,18 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
                         "describe those, never conclude from them. 'THEIR possession' groups are what the opposition made of the "
                         "ball we gave them. median_seconds_to_shot only appears where the match clock was recorded."),
         "final_score": {"us": us.line(), "them": them.line(), "margin": margin_phrase(margin(evs))},
+        "halves": halves,
+        "coverage": {
+            "shots_logged": all_shots,
+            "shots_inside_traced_possessions": traced_shots,
+            "note": ("The phase counts only cover shots that sit inside a possession the event order could trace. "
+                     "Quote the match totals from the score line and halves; when you give a phase figure say how much of "
+                     "the match it covers (for example '22 of 28 shots')."),
+        },
+        "scores_by_origin": {
+            **origins,
+            "note": "Scores split by how the possession that produced them began, for both teams (traced possessions only).",
+        },
         "phases": phases,
         "margin_by_ten_minutes": blocks,
         "ranked_findings": [{"theme": f.theme, "phase": PHASES.get(f.phase, f.phase), "text": f.text, "n": f.n,
@@ -206,7 +245,10 @@ async def get_season_phase_profile(db, club_id, last_n: int = 10) -> str:
             phases[g] = {"phase": name, "meaning": meaning, **_stats_row(sel)}
     return json.dumps({
         "matches_used": used,
-        "how_to_read": ("Pooled over the club's most recent matches with enough events logged. Same definitions as get_phase_summary. "
-                        "Compare a single match's phase rates with these to say what was unusual for this team."),
+        "scope": f"the club's last {used} match{'es' if used != 1 else ''} with enough events logged",
+        "how_to_read": ("These rates are the club's own average over its last matches (see scope). Same definitions as "
+                        "get_phase_summary. Compare a single match's phase rates with them to say what was unusual for this team. "
+                        "When you quote them say 'over our last N matches' with the real number - never 'the pool' or "
+                        "'the recent pool'."),
         "phases": phases,
     }, default=str)

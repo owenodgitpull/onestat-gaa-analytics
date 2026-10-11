@@ -441,6 +441,19 @@ INSTRUCTIONS:
     - A player's stats are credited to the position they held at that minute. Never judge a player who changed position against one position's standard for the whole match: say what they did in each spell ("at centre half forward 0'-40' he had 2 wides; at midfield from 40' he won 3 turnovers").
     - For each substitution or position move in personnel_log, say what happened either side of it using the before/after scoring it gives (minutes compared are stated). If it has a caution, say it is too early to judge. State the figures; only say a move "worked" or "did not work" when the numbers clearly moved, and call out how small the sample is.
     - Put this under Tactical Analysis as a "Personnel and position changes" paragraph. Never invent a reason for a move.
+7i. REPORT DISCIPLINE — REQUIRED (a manager spots one wrong figure and stops trusting the rest):
+    - Open with a short "What mattered most" of three points a manager can take in within 20 seconds, naming the phase that decided it.
+    - ONE story of what decided the match - do not say "shooting decided it" in one place and "the first half decided it" in another.
+      Say how the phases combined (e.g. kickouts and turnovers lost early, then wasteful finishing).
+    - Every score, half-time score, margin and half length comes from get_match_summary / get_phase_summary (`halves`). Never compute
+      them yourself, and never write a duration like "the last 65 minutes" - say "the second half" or "the closing stages".
+    - Use each player's name and each event's minute exactly as the tools give them. If two tool figures disagree (for example shots
+      from the summary and shots inside traced possessions), say which is which instead of quoting both as the same thing.
+    - All locations in OUR attacking frame. A half-against-half comparison must be put in game-state context (who was ahead, whether
+      a team protecting a big lead changed how it played) and must not be called a trend on a handful of events.
+    - Training recommendations must each be tied to a named phase finding from this report. No generic drills.
+    - Do not claim anything about pressing or defensive shape: it is not recorded - say so, and use where the ball was won and
+      where their kickouts landed instead.
 7g. PHASE ANALYSIS — REQUIRED: call get_phase_summary(match_id) and add a "Phase Analysis" section after Tactical Analysis (do not drop or shorten any other section).
     - Cover, in this order and only where there are observations: Own Kick-Out, Opposition Kick-Out, Transition to Attack, Transition to Defence, Possession/Attack, Defensive Phase. For each say what the possessions BECAME ("of our 9 kept kickouts, 3 became a shot and 1 a score") — not just how many there were.
     - Quote counts and rates exactly as the tool gives them; never recompute them. A phase marked "describe, do not conclude" (under 3 finished) is mentioned plainly with its small number, never as a trend.
@@ -448,7 +461,11 @@ INSTRUCTIONS:
     - Call get_phase_sequences for the 1–3 phases that matter most and quote the specific sequences (minute, how it began, who finished it) as evidence.
     - median_seconds_to_shot is the only timing you may state; if it is absent, say nothing about how fast.
     - Link phases to the scoreboard using margin_by_ten_minutes and ranked_findings: which phase decided the match, and which one held up.
-    - If get_season_phase_profile is available to you in this run, use it only to say whether a rate was typical for this team.
+    - If get_season_phase_profile is available to you in this run, use it only to say whether a rate was typical for this team, and
+      call it "over our last N matches" with the real N from its `scope` - never "the pool" or "the recent pool".
+    - get_phase_summary also returns `halves` (score at the end of each half and how long each half ran), `coverage` (how many shots
+      the phase counts cover) and `scores_by_origin` (where each team's scores came from). Use those figures; state coverage when you
+      quote a phase count.
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>
