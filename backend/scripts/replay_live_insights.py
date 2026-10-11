@@ -48,6 +48,7 @@ MATCH_ID = os.environ['MATCH_ID']
 THROUGH = int(os.environ.get('THROUGH', '35'))
 STEP = int(os.environ.get('STEP', '5'))
 HALF_TIME = os.environ.get('HALF_TIME', '1') == '1'
+FULL_MATCH = os.environ.get('FULL_MATCH', '0') == '1'   # walk both halves in the order they were played
 LABEL = os.environ.get('LABEL', 'run')
 
 
@@ -75,7 +76,7 @@ async def main():
         # A "first half" replay must be the first half only. Minutes alone cannot tell the halves apart (the second half
         # starts back at the half length, so 30'-34' exist in both), so keep only half-1 events, and drop possession /
         # carries that were recorded after the first second-half event was tagged.
-        if os.environ.get('HALF', '1') == '1':
+        if os.environ.get('HALF', '1') == '1' and not FULL_MATCH:
             h2 = [e for e in events if getattr(e, 'half', None) == 2]
             cutoff = min((e.created_at for e in h2), default=None)
             events = [e for e in events if getattr(e, 'half', None) in (None, 1)]
@@ -100,22 +101,44 @@ async def main():
         inserted_seg = set()
         results = []
         fingerprint = None
-        schedule = [(m, 'interval') for m in range(STEP, THROUGH + 1, STEP)]
-        if HALF_TIME:
-            schedule.append((THROUGH, 'half_time'))
+        hdm = src.half_duration_mins or 30
 
-        for minute, trigger in schedule:
-            # reveal everything recorded up to this minute
+        def _half(r):
+            return getattr(r, 'half', None) or (1 if (r.minute or 0) <= hdm else 2)
+
+        if FULL_MATCH:
+            # Walk the match in the order it was played: (half, minute) - first-half added time (31'-34') sits BEFORE the
+            # second half's 30'-34', which minutes alone cannot express.
+            h1 = [e.minute for e in events if e.minute is not None and _half(e) == 1]
+            h2 = [e.minute for e in events if e.minute is not None and _half(e) == 2]
+            schedule = [(1, m, 'interval') for m in range(STEP, hdm + 1, STEP)]
+            if h1:
+                schedule.append((1, max(h1), 'half_time'))
+            if h2:
+                schedule += [(2, m, 'interval') for m in range(hdm + STEP, max(h2) + 1, STEP)]
+                if max(h2) % STEP:
+                    schedule.append((2, max(h2), 'interval'))
+        else:
+            schedule = [(1, m, 'interval') for m in range(STEP, THROUGH + 1, STEP)]
+            if HALF_TIME:
+                schedule.append((1, THROUGH, 'half_time'))
+
+        def _seen(r, h, m):
+            mn = r.minute if r.minute is not None else 0
+            return ((_half(r), mn) <= (h, m)) if FULL_MATCH else (mn <= m)
+
+        for cut_half, minute, trigger in schedule:
+            # reveal everything recorded up to this point of the match
             for e in events:
-                if e.id not in inserted_ev and e.minute is not None and e.minute <= minute:
+                if e.id not in inserted_ev and e.minute is not None and _seen(e, cut_half, minute):
                     db.add(MatchEvent(**{**clone_values(e), 'match_id': sid}))
                     inserted_ev.add(e.id)
             for p in poss:
-                if p.id not in inserted_poss and p.minute is not None and p.minute <= minute:
+                if p.id not in inserted_poss and p.minute is not None and _seen(p, cut_half, minute):
                     db.add(PossessionEvent(**{**clone_values(p), 'match_id': sid}))
                     inserted_poss.add(p.id)
             for sg in segs:
-                if sg.id not in inserted_seg and (sg.minute or 0) <= minute:
+                if sg.id not in inserted_seg and _seen(sg, cut_half, minute):
                     db.add(BallCarrierSegment(**{**clone_values(sg), 'match_id': sid}))
                     inserted_seg.add(sg.id)
             await db.flush()
@@ -147,13 +170,13 @@ async def main():
             took = time.time() - started
 
             flagged = LiveInsightsService._mark_flagged_concerns(insight_text, snap)
-            db.add(LiveInsight(match_id=sid, minute=minute, half=1, trigger=trigger, insight=insight_text,
+            db.add(LiveInsight(match_id=sid, minute=minute, half=cut_half, trigger=trigger, insight=insight_text,
                                trigger_context=f"{minute}' replay", flagged_concerns=flagged or None))
             await db.flush()
 
             score_line = next((ln.strip() for ln in stats_text.splitlines() if ln.strip().startswith('SCORE:')), '')
             results.append({
-                'minute': minute, 'trigger': trigger, 'score': score_line, 'insight': insight_text.strip(),
+                'minute': minute, 'half': cut_half, 'trigger': trigger, 'score': score_line, 'insight': insight_text.strip(),
                 'seconds': round(took, 1), 'events_visible': len(inserted_ev), 'recent_events': recent,
                 'fact_check': dict(ma.LAST_FACT_CHECK), 'snapshot': stats_text, 'tactical_brief': brief_text, 'already_flagged_note': note,
             })
@@ -175,7 +198,7 @@ async def main():
     lines = [
         f"# Live insight replay — Dungloe v {opponent}",
         '',
-        f"- Replayed: first half, every {STEP} minutes up to {THROUGH}'" + (", plus a half-time read" if HALF_TIME else ''),
+        (f"- Replayed: the full match in playing order, every {STEP} minutes plus the end of each half" if FULL_MATCH else f"- Replayed: first half, every {STEP} minutes up to {THROUGH}'" + (", plus a half-time read" if HALF_TIME else '')),
         f"- Model: `{model}`   |   live-insight code fingerprint: `{fingerprint}`   |   label: `{LABEL}`",
         f"- Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC",
         "- At each time the agent saw only the data recorded up to that minute, plus its own earlier insights in this run.",
@@ -183,7 +206,8 @@ async def main():
         '',
     ]
     for r in results:
-        title = "HALF TIME" if r['trigger'] == 'half_time' else f"{r['minute']}'"
+        title = ("HALF TIME" if r['trigger'] == 'half_time'
+                 else (f"{r['minute']}' (half {r.get('half', 1)})" if FULL_MATCH else f"{r['minute']}'"))
         kind = 'half-time read' if r['trigger'] == 'half_time' else 'interval insight'
         fc = r.get('fact_check') or {}
         fc_line = ''

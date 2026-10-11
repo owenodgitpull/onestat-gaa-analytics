@@ -21,6 +21,8 @@ ap.add_argument('--through', default='35')
 ap.add_argument('--step', default='5')
 ap.add_argument('--label', default='run')
 ap.add_argument('--no-half-time', action='store_true')
+ap.add_argument('--full-match', action='store_true',
+                help='replay both halves in the order they were played (ignores --through)')
 ap.add_argument('--local-code', action='store_true',
                 help='test the UNDEPLOYED prompt/brief/engine from this checkout: upload the changed modules to the '
                      'machine and load them in place of the deployed ones (nothing is deployed or saved)')
@@ -58,7 +60,7 @@ if args.local_code:
         if r.returncode != 0:
             sys.exit(f'Could not upload {mod}: {r.stdout[-300:]} {r.stderr[-300:]}')
     print('Using LOCAL (undeployed) code:', ', '.join(LOCAL_MODULES), flush=True)
-env = f"MATCH_ID={args.match} THROUGH={args.through} STEP={args.step} LABEL={args.label} HALF_TIME={'0' if args.no_half_time else '1'} LOCAL_STAMP={stamp}"
+env = f"MATCH_ID={args.match} THROUGH={args.through} STEP={args.step} LABEL={args.label} HALF_TIME={'0' if args.no_half_time else '1'} FULL_MATCH={'1' if args.full_match else '0'} LOCAL_STAMP={stamp}"
 remote = (f"sh -c 'cd /app && {env} PYTHONPATH=/home/appuser/.local/lib/python3.11/site-packages "
           f"/usr/local/bin/python3.11 -c \"import base64;exec(base64.b64decode(\\\"{b64}\\\"))\"'")
 print('Running the replay on production (this takes a few minutes: one model call per interval)...', flush=True)
