@@ -4254,7 +4254,12 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                             break  # at most one score per turnover
 
             # Pass detection: consecutive carries by this team, different player = pass
-            if prev_seg and _belongs(prev_seg, team) and _carrier_key(seg) != _carrier_key(prev_seg):
+            # A pass is a carry that ENDED BY A PASS (the next player was tapped) followed by another player's carry.
+            # Without the ended_by check every restart counted as a pass: after a wide, a score or a turnover the next
+            # carrier (the kickout, the player who won it back) was credited as receiving a pass from the last carrier
+            # (in club matches we do not tag the opposition's carries, so nothing sits between the two).
+            if (prev_seg and _belongs(prev_seg, team) and _carrier_key(seg) != _carrier_key(prev_seg)
+                    and getattr(prev_seg, "ended_by", None) == "pass"):
                 from_pid = _carrier_key(prev_seg)
                 to_pid = pid
                 from_name = _carrier_name(prev_seg)
