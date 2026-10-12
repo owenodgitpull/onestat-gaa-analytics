@@ -3,6 +3,12 @@
 _NAME_SUFFIXES = {"jr", "sr", "jnr", "snr", "ii", "iii", "iv", "v"}
 
 
+def clean_player_name(name: str, max_len: int = 100) -> str:
+    """Opposition player name as entered: whitespace collapsed, kept in full ("Conor Cox"). Full names are what lets two
+    players who share a surname ("Chris O'Donnell" / "Ryan O'Donnell") stay distinct on the pitch and in the analysis."""
+    return " ".join(str(name or "").split())[:max_len]
+
+
 def surname_only(name: str) -> str:
     """Data-minimisation pass for opposition player names — these are people who have never used OneStat and never
     consented to anything, so we keep only the surname. Enforced server-side so it holds whatever a client sends.

@@ -22,11 +22,6 @@ interface OppositionScorerStripProps {
   mode?: 'score' | 'turnover_forced'
 }
 
-function surname(name: string) {
-  const parts = name.trim().split(' ')
-  return parts.length > 1 ? parts[parts.length - 1] : name
-}
-
 export default function OppositionScorerStrip({ players, onSelect, onSkip, eventType, mode = 'score' }: OppositionScorerStripProps) {
   // Only used in 'score' mode — the name step advances here instead of
   // finalizing immediately, so an optional "which foot?" step can follow.
@@ -73,7 +68,7 @@ export default function OppositionScorerStrip({ players, onSelect, onSkip, event
             <div className="flex items-center gap-2.5">
               <AlertTriangle size={14} className="text-orange-400" />
               <span className="text-sm font-bold text-orange-300">
-                {showFootStep ? `${surname(pickedName!)} — which foot?` : label}
+                {showFootStep ? `${pickedName} — which foot?` : label}
               </span>
             </div>
             <button
@@ -108,7 +103,7 @@ export default function OppositionScorerStrip({ players, onSelect, onSkip, event
                   onClick={() => mode === 'score' ? setPickedName(name) : onSelect(name)}
                   className="py-3.5 rounded-xl border-2 font-semibold text-sm bg-orange-500/20 border-orange-400/40 text-orange-200 hover:bg-orange-500/30 hover:border-orange-400/60 active:scale-[0.96] transition-all"
                 >
-                  {surname(name)}
+                  <span className="block leading-tight break-words px-1">{name}</span>
                 </button>
               ))}
             </div>

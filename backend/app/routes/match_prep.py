@@ -26,7 +26,7 @@ from app.models.match import Match
 from app.models.player import Player
 from app.models.set_piece_routine import SetPieceRoutine
 from app.models.man_marking_assignment import ManMarkingAssignment
-from app.utils.names import surname_only
+from app.utils.names import clean_player_name
 from app.schemas.set_piece_routine import (
     SetPieceRoutineCreate, SetPieceRoutineUpdate, SetPieceRoutineResponse, VALID_CATEGORIES,
 )
@@ -531,8 +531,7 @@ async def save_opposition_roster(
     user: AuthenticatedUser = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Save opposition roster (list of player surnames only — see
-    surname_only)."""
+    """Save opposition roster (list of player names, kept in full — see clean_player_name)."""
     from app.models.match import Match
     result = await db.execute(select(Match).where(Match.id == match_id, Match.club_id == user.club_id))
     match = result.scalar_one_or_none()
@@ -543,9 +542,9 @@ async def save_opposition_roster(
     if not isinstance(players, list):
         raise HTTPException(status_code=400, detail="players must be a list of names")
 
-    # Clean: strip whitespace, remove empty strings, reduce to surname only
+    # Clean: collapse whitespace, remove empty strings; names are kept in full
     match.opposition_roster = [
-        surname_only(p) for p in players if isinstance(p, str) and p.strip()
+        clean_player_name(p) for p in players if isinstance(p, str) and p.strip()
     ]
     await db.commit()
 

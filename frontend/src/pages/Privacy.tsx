@@ -54,9 +54,10 @@ export default function Privacy() {
 
       <H3>Opposition player data</H3>
       <p>
-        Where a coach scouts an upcoming opponent, only the opposition player's surname is recorded — never
-        a full name or any other personal detail. Opposition players are not OneStat users and have not
-        consented to this; we minimise what's recorded to reduce that exposure.
+        Where a coach records an opponent's team sheet, the opposition player's name (as published on the team
+        sheet) and jersey number are recorded so their actions can be tagged — nothing else about them. It is
+        private to the recording club. Opposition players are not OneStat users and have not consented to this;
+        we limit what's recorded to reduce that exposure.
       </p>
 
       <H3>AI-generated content</H3>

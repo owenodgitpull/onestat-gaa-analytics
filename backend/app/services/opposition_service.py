@@ -12,7 +12,7 @@ from app.models.club import Club
 from app.models.match import Match
 from app.models.opposition import OppositionTeam, OppositionPlayer, OppositionLineup
 from app.utils.features import has_feature
-from app.utils.names import surname_only
+from app.utils.names import clean_player_name
 
 MAX_LINEUP = 40
 
@@ -79,7 +79,8 @@ async def save_lineup(db: AsyncSession, match: Match, entries: list[dict]) -> di
     cleaned: dict[str, dict] = {}
     for e in entries[:MAX_LINEUP]:
         pos = str(e.get("position_id") or "").strip()[:20]
-        sn = surname_only(str(e.get("surname") or ""))[:100]
+        # the "surname" field now carries the full name as entered (the column keeps its old name)
+        sn = clean_player_name(e.get("surname") or "")
         if not pos or not sn:
             continue
         j = e.get("jersey_number")

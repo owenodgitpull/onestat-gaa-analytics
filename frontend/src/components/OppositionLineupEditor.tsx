@@ -3,7 +3,7 @@
  *
  * Same slots and default jersey numbers as our own lineup (StartingLineupModal), so their circles on the pitch lay out
  * exactly like ours. Pre-filled from the last lineup against this team; "paste a team sheet" fills it from
- * "1 Gallagher" style lines (deterministic parse, no AI).
+ * a pasted team sheet or list of full names (deterministic parse, no AI).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -23,21 +23,55 @@ function emptyRows(): Rows {
   return rows
 }
 
-/** "1 Gallagher", "12. McBrearty", "16 - Cox": starters by jersey 1-15, bench 16+ in order. */
-function parseTeamSheet(text: string, base: Rows): Rows {
+/**
+ * Turns whatever was pasted into the lineup. Full names are kept as written. Accepts:
+ *   - numbered lines: "1 Conor Cox", "12. Ryan McHugh", "16 - Chris O'Donnell", "3) Name", tab-separated
+ *   - plain names, one per line or comma / semicolon separated (a news article's team list): placed in order,
+ *     1-15 in the starting slots then the bench
+ *   - a number on its own line followed by the name on the next line
+ *   - brackets and trailing notes are dropped: "Conor Cox (Kilcar)", "Cox - captain"
+ * A number puts that player in that jersey's slot; names without a number take the next jersey in order.
+ */
+function parseTeamSheet(text: string, base: Rows): { rows: Rows; count: number } {
   const rows = { ...base }
-  let bench = 0
-  for (const line of text.split('\n')) {
-    const m = line.match(/^\s*(\d{1,2})[\s.\-:)]+(.+?)\s*$/)
-    if (!m) continue
-    const jersey = Number(m[1])
-    const surname = m[2].trim().split(/\s+/).pop() || ''
-    if (!surname) continue
-    const starter = STARTER_BY_JERSEY[jersey]
-    if (starter) rows[starter] = { jersey: String(jersey), surname }
-    else if (bench < SUBSTITUTE_POSITIONS.length) rows[SUBSTITUTE_POSITIONS[bench++].id] = { jersey: String(jersey), surname }
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  // one long line (or two) with commas / semicolons / " | " is a list, not a single name
+  let entries: string[] = lines
+  if (lines.length <= 2 && lines.some(l => /[,;|]/.test(l))) {
+    entries = lines.flatMap(l => l.split(/\s*[,;|]\s*/)).map(e => e.trim()).filter(Boolean)
   }
-  return rows
+  const clean = (raw: string) =>
+    raw
+      .replace(/\([^)]*\)/g, ' ')            // (Kilcar), (c)
+      .replace(/\s[-–—]\s.*$/, '')            // " - captain"
+      .replace(/^[\s"'`•*]+|[\s"'`•*,.]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  let bench = 0
+  let next = 1
+  let pendingJersey: number | null = null
+  let count = 0
+  const place = (jersey: number, name: string) => {
+    const starter = STARTER_BY_JERSEY[jersey]
+    if (starter) rows[starter] = { jersey: String(jersey), surname: name }
+    else if (bench < SUBSTITUTE_POSITIONS.length) rows[SUBSTITUTE_POSITIONS[bench++].id] = { jersey: String(jersey), surname: name }
+    else return
+    count++
+    next = jersey + 1
+  }
+
+  for (const entry of entries) {
+    const numOnly = entry.match(/^(\d{1,2})[.):]?$/)
+    if (numOnly) { pendingJersey = Number(numOnly[1]); continue }
+    const m = entry.match(/^(\d{1,2})[\s.\-–:)	]+(.+)$/)
+    const jersey = pendingJersey ?? (m ? Number(m[1]) : null)
+    const name = clean(pendingJersey != null ? entry : m ? m[2] : entry)
+    pendingJersey = null
+    if (!name || !/[A-Za-z]/.test(name)) continue
+    place(jersey ?? next, name)
+  }
+  return { rows, count }
 }
 
 export default function OppositionLineupEditor({ matchId, opponent }: { matchId: string; opponent: string }) {
@@ -50,6 +84,7 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
   const [rows, setRows] = useState<Rows>(emptyRows)
   const [paste, setPaste] = useState('')
   const [showPaste, setShowPaste] = useState(false)
+  const [pasteMsg, setPasteMsg] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -102,9 +137,9 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
       <input
         value={rows[pos]?.surname ?? ''}
         onChange={e => setField(pos, 'surname', e.target.value)}
-        placeholder="Surname"
+        placeholder="Full name"
         className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-        aria-label={`${label} surname`}
+        aria-label={`${label} full name`}
       />
     </div>
   )
@@ -117,7 +152,7 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
         </p>
       )}
       <p className="text-xs text-white/40">
-        Starters sit in the same position slots as your own lineup, so their circles lay out the same way on the pitch. Surname only.
+        Starters sit in the same position slots as your own lineup, so their circles lay out the same way on the pitch. Enter full names (first name and surname) so players who share a surname are told apart.
       </p>
 
       <button
@@ -127,18 +162,24 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
       >
         <ClipboardPaste size={13} /> Paste a team sheet
       </button>
+      {pasteMsg && !showPaste && <p className="text-xs text-emerald-300/90">{pasteMsg}</p>}
       {showPaste && (
         <div className="space-y-2">
+          {pasteMsg && <p className="text-xs text-amber-300/90">{pasteMsg}</p>}
           <textarea
             value={paste}
             onChange={e => setPaste(e.target.value)}
             rows={6}
-            placeholder={'1 Gallagher\n2 McBrearty\n3 Boyle\n16 Cox'}
+            placeholder={"1 Conor Cox\n2 Ryan McHugh\n3 Chris O'Donnell\n\nor just names, one per line or separated by commas"}
             className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-orange-500/40 resize-none"
           />
           <button
             type="button"
-            onClick={() => { setRows(prev => parseTeamSheet(paste, prev)); setPaste(''); setShowPaste(false); setDirty(true) }}
+            onClick={() => {
+              const { rows: next, count } = parseTeamSheet(paste, rows)
+              if (!count) { setPasteMsg('No names found - paste one name per line, or names separated by commas.'); return }
+              setRows(next); setPaste(''); setShowPaste(false); setPasteMsg(`${count} names filled in - check the order, then save.`); setDirty(true); setSaved(false)
+            }}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-500/15 border border-orange-400/30 text-orange-300"
           >
             Fill from sheet
