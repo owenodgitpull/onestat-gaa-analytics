@@ -21,6 +21,7 @@ from app.models.player import Player
 from app.services.ai.insight_findings import (
     PHASES, build_findings, margin, margin_phrase, tally, top_findings,
 )
+from app.services.ai.report_extras import build_extras
 from app.services.ai.phase_facts import (
     GROUPS, MIN_N, SCORE_TYPES, group_stats, normalise, order_key, possessions,
 )
@@ -143,6 +144,10 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         row["scores"] += 1
         row["points"] += p.points
 
+    hdm = getattr(match, "half_duration_mins", None) or 30
+    extras = build_extras(rows, evs, getattr(match, "attacking_right_first_half", None), hdm,
+                          getattr(match, "pitch_length_m", None), getattr(match, "pitch_width_m", None))
+
     return json.dumps({
         "how_to_read": ("Possessions are followed in event ORDER from the event that gave a team the ball until a score, a missed shot, "
                         "the ball lost, a foul or the half ending. Every origin is in its own denominator, so rates are honest; "
@@ -163,6 +168,7 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
             "note": "Scores split by how the possession that produced them began, for both teams (traced possessions only).",
         },
         "phases": phases,
+        **extras,
         "margin_by_ten_minutes": blocks,
         "ranked_findings": [{"theme": f.theme, "phase": PHASES.get(f.phase, f.phase), "text": f.text, "n": f.n,
                              "direction": f.direction} for f in findings],

@@ -52,6 +52,15 @@ def _is_own(e) -> bool:
     return (e.team.value if hasattr(e.team, "value") else str(e.team)).lower() == "own"
 
 
+def _their_name(name, our_surnames) -> str:
+    """An opposition player's name as entered. When it shares a surname with one of OUR players in this match, say whose
+    it is - the brief names our players by surname, so a bare 'O'Donnell' would be ambiguous."""
+    n = (name or "").strip()
+    if n and n.split()[-1].lower() in {str(s).lower() for s in our_surnames}:
+        return f"{n} (their player)"
+    return n
+
+
 def _third(fx: float) -> str:
     return "our defensive third" if fx <= 31 else ("the middle third" if fx <= 69 else "the attacking third")
 
@@ -290,7 +299,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     def who_name(e) -> str:
         if getattr(e, "player_id", None) and _names.get(e.player_id):
             return _names[e.player_id]
-        return (getattr(e, "opponent_player_name", None) or "").strip()
+        return _their_name(getattr(e, "opponent_player_name", None), _names.values())
 
     # ── computed findings: the few things that matter right now, ranked, with exact arithmetic ──
     try:
@@ -519,7 +528,7 @@ async def _build(db, match_id, minute, club_id, window) -> str:
     def who(e):
         if getattr(e, "player_id", None) and names.get(e.player_id):
             return names[e.player_id]
-        return (getattr(e, "opponent_player_name", None) or "").strip()
+        return _their_name(getattr(e, "opponent_player_name", None), names.values())
 
     def row(e, goal):
         f = framed(e)

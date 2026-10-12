@@ -465,6 +465,11 @@ INSTRUCTIONS:
     - Link phases to the scoreboard using margin_by_ten_minutes and ranked_findings: which phase decided the match, and which one held up.
     - If get_season_phase_profile is available to you in this run, use it only to say whether a rate was typical for this team, and
       call it "over our last N matches" with the real N from its `scope` - never "the pool" or "the recent pool".
+    - get_phase_summary also returns four read-outs to use in Tactical Analysis and in How the Game Was Won/Lost, quoted exactly:
+      `kickouts_by_half` (our kickouts kept by length and channel in each half, and how many of theirs we won),
+      `scores_by_game_state` (scores for and against while we were behind, level or ahead - describe a team chasing or protecting a lead as that, not as a trend),
+      `frees` (frees we conceded, how many were followed by a free shot for them and how many were scored - say the two facts side by side, never "caused"),
+      `our_shots_by_range` (shots, scores and points by distance from goal). Do not mix these with phase counts as if they were the same denominator.
     - get_phase_summary also returns `halves` (score at the end of each half and how long each half ran), `coverage` (how many shots
       the phase counts cover) and `scores_by_origin` (where each team's scores came from). Use those figures; state coverage when you
       quote a phase count.
