@@ -4395,7 +4395,9 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                 pass_count_by_player[to_pid]["passes_received"] += 1
 
 
-                if prev_seg.end_time_ms and seg.start_time_ms:
+                # Video-tagged carriers: these times are the tagger's wall clock (pauses, slow-motion, reaction time), not
+                # the match's tempo - so they are not timed at all rather than reported as a tempo figure.
+                if getattr(seg, "source", None) != "video" and prev_seg.end_time_ms and seg.start_time_ms:
                     gap = seg.start_time_ms - prev_seg.end_time_ms
                     if 0 <= gap <= 30000:  # ignore gaps > 30s (dead ball)
                         transition_times_ms.append(gap)
