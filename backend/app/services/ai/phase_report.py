@@ -65,6 +65,8 @@ def _stats_row(ps: list) -> dict:
         row["note"] = f"only {d['finished']} finished — describe, do not conclude"
     if d["median_seconds_to_shot"] is not None:
         row["median_seconds_to_shot"] = d["median_seconds_to_shot"]
+    if d.get("shots_over_two_minutes"):
+        row["shots_after_over_two_minutes_not_in_median"] = d["shots_over_two_minutes"]
     return row
 
 

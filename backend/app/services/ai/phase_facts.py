@@ -158,9 +158,7 @@ def possessions(events: Iterable) -> list[Possession]:
             if end_ev.type in SCORE_TYPES:
                 open_p.points = points_for(end_ev.type)
             if end_ev.clock_s is not None and open_p.clock_s is not None and end_ev.clock_s >= open_p.clock_s:
-                gap = end_ev.clock_s - open_p.clock_s
-                if gap <= MAX_TRUSTED_SECONDS:
-                    open_p.seconds = gap
+                open_p.seconds = end_ev.clock_s - open_p.clock_s
         open_p = None
 
     for ev in evs:
@@ -221,7 +219,12 @@ def group_stats(ps: list[Possession]) -> dict:
     fin = [p for p in ps if p.finished]
     shots = [p for p in fin if p.shot]
     scores = [p for p in shots if p.outcome == "score"]
-    secs = [p.seconds for p in shots if p.seconds is not None]
+    # Timings: only a possession the clock timed within MAX_TRUSTED_SECONDS counts towards the median; longer ones are
+    # counted and reported separately so nothing is hidden (a real long possession and two merged by an untagged event
+    # look the same on the clock, and the data cannot tell them apart).
+    timed = [p.seconds for p in shots if p.seconds is not None]
+    secs = [x for x in timed if x <= MAX_TRUSTED_SECONDS]
+    long_n = len(timed) - len(secs)
     return {
         "n": len(ps),
         "finished": len(fin),
@@ -233,6 +236,7 @@ def group_stats(ps: list[Possession]) -> dict:
         "shot_rate": rate(len(shots), len(fin)),
         "score_rate": rate(len(scores), len(fin)),
         "median_seconds_to_shot": round(median(secs)) if len(secs) >= MIN_N else None,
+        "shots_over_two_minutes": long_n,
     }
 
 

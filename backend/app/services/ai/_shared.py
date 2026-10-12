@@ -4199,6 +4199,14 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     )
     _seg_index = {id(s): i for i, (_ts, kind, s) in enumerate(_timeline) if kind == 'segment'}
 
+    # An event that starts a NEW possession (a kickout, a turnover, a forced win, a breaking ball) ends the search: a
+    # score logged after one of those belongs to that possession, not to the carry before it. Looking past them credited
+    # an earlier chain with a later score (17 'scoring chains' for 14 scores in one match). One score is credited once.
+    from app.services.ai.phase_facts import KICKOUTS as _KO, WIN_FORCED as _WF, WIN_GENERIC as _WG, LOSE_TYPES as _LT
+    _NEW_POSSESSION_TYPES = set(_KO) | set(_WF) | set(_WG) | set(_LT) | {"breaking_ball_won", "breaking_ball_lost"}
+    _claimed_events: set = set()
+    _claimed_events_owner: dict = {}
+
     def _real_outcome_at(seg) -> Optional[str]:
         idx = _seg_index.get(id(seg))
         if idx is None:
@@ -4209,6 +4217,14 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
             if _ev_team(obj) != seg.team:
                 return None  # the other team's event came first — not ours to attribute
             t = _ev_type(obj)
+            if t in _NEW_POSSESSION_TYPES:
+                return None  # a new possession began - anything after it is not this carry's outcome
+            if t in _SCORE_EVENT_TYPES or t in _MISS_EVENT_TYPES:
+                key = getattr(obj, "id", None) or id(obj)
+                if key in _claimed_events and _claimed_events_owner.get(key) != id(seg):
+                    return None
+                _claimed_events.add(key)
+                _claimed_events_owner[key] = id(seg)
             if t in _SCORE_EVENT_TYPES:
                 return "score"
             if t in _MISS_EVENT_TYPES:

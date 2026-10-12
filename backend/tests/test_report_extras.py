@@ -75,5 +75,8 @@ def test_long_possession_has_no_trusted_seconds():
         NS(event_type="turnover_lost", team="own", minute=5, half=1, match_clock_s=300, pitch_x=None, pitch_y=None),
         NS(event_type="point", team="opponent", minute=9, half=1, match_clock_s=300 + 208, pitch_x=None, pitch_y=None),
     ]
+    from app.services.ai.phase_facts import group_stats
     p = possessions(normalise(rows, 30))[0]
-    assert p.outcome == "score" and p.seconds is None
+    assert p.outcome == "score" and p.seconds == 208         # kept, not hidden...
+    g = group_stats([p])
+    assert g["median_seconds_to_shot"] is None and g["shots_over_two_minutes"] == 1   # ...but not in the median
