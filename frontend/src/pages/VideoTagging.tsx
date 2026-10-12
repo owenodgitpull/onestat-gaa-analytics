@@ -73,6 +73,7 @@ import { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
 import { useOppositionSquad, swapOppositionLineup, oppositionPickerOptions } from '../hooks/useOppositionSquad'
+import OppositionPlayerSelector from '../components/OppositionPlayerSelector'
 import { useAutoShootingTab } from '../hooks/useAutoShootingTab'
 import BallQuickActionIcon from '../components/video/BallQuickActionIcon'
 import GAAPitch from '../components/GAAPitch'
@@ -222,6 +223,27 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
 // Actual scores only — a wide or short has no scorer to ask about (matches live recording)
 const KICKOUT_WON_BY_US_TYPES = ['OWN_KICKOUT_WON', 'OWN_KICKOUT_WON_BREAK', 'OPP_KICKOUT_WON', 'OPP_KICKOUT_WON_BREAK']
 const OPPONENT_SCORE_TYPES = ['GOAL_SCORED', 'POINT_SCORED', 'FREE_KICK']
+
+// Inter-county only (the opposition lineup exists): opposition-side events that ask "which opposition player?" with
+// the same pitch picker as our own players. Value = the picker's title key. Always skippable; the event is logged first.
+const OPP_PLAYER_PROMPT: Record<string, string> = {
+  FOUL_COMMITTED: 'foul_committed',
+  YELLOW_CARD: 'yellow_card', BLACK_CARD: 'black_card', RED_CARD: 'red_card',
+  WIDE: 'wide', SHORT: 'saved', HIT_POST: 'wide', SAVED: 'saved',
+  OPP_UNFORCED_ERROR: 'opp_unforced_error',
+  OPP_KICKOUT_OPPOSITION_WON: 'opp_kickout_won', OPP_KICKOUT_OPPOSITION_WON_BREAK: 'opp_kickout_won_break',
+  OWN_KICKOUT_OPPOSITION_WON: 'turnover', OWN_KICKOUT_OPPOSITION_WON_BREAK: 'turnover',
+  TURNOVER_WON: 'turnover_won', TACKLE_WON: 'turnover_won', INTERCEPTION: 'interception', BLOCK_SHOT: 'block',
+}
+
+// OUR events where an opposition player is the other half of the story: the player picker stays OUR player (the team
+// we care about); this optional second tap records the opposition player on the same event. Value = picker title key.
+const OPP_INVOLVED_PROMPT: Record<string, string> = {
+  TURNOVER_LOST: 'turnover',          // we lost it → who won it?  ("Who Won?")
+  TURNOVER_WON: 'turnover_lost',      // we won it → who lost it?  ("Who Lost Possession?")
+  TACKLE_WON: 'turnover_lost',
+  INTERCEPTION: 'turnover_lost',
+}
 
 // Shot attempts (make + miss) eligible for the post-hoc "Under pressure?"
 // prompt — own team only, mirrors live recording's PRESSURE_ELIGIBLE_TYPES
@@ -442,6 +464,8 @@ export default function VideoTagging() {
   // follow-up panels shown after their trigger event finalizes. Also reused
   // for the turnover-forced-from prompt (mode: 'turnover_forced') — same
   // banner, no footedness step, no scoringContext to merge into.
+  const [pendingOppPlayer, setPendingOppPlayer] = useState<{ eventId: string; eventType: string } | null>(null)
+  const oppEnabledRef = useRef(false)   // mirrors oppSquad.enabled for callbacks declared above it
   const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string; mode: 'score' | 'turnover_forced'; scoringContext?: ScoringContext } | null>(null)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
   const [pendingSidelineDecision, setPendingSidelineDecision] = useState(false)
@@ -1797,7 +1821,12 @@ export default function VideoTagging() {
         data.opposition_player_id = c.playerId
         data.opponent_player_name = c.playerName
       }
-      createEvent.mutate({ sessionId, data })
+      createEvent.mutate({ sessionId, data }, {
+        // no carrier selected: ask, rather than leaving the scorer silently blank
+        onSuccess: (created: any) => {
+          if (!c && created?.id) setPendingOppPlayer({ eventId: created.id, eventType: data.event_type === 'GOAL_SCORED' ? 'goal' : 'point' })
+        },
+      })
     } else if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type)) {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
@@ -1811,6 +1840,18 @@ export default function VideoTagging() {
           // Live offers "who assisted?" on every own goal / point / two-pointer from play — not frees or 45s. Until now
           // this only fired from the manual-event form, so scores tagged the normal way never asked.
           if (created?.id && ['GOAL_SCORED', 'POINT_SCORED'].includes(data.event_type)) setAssistPromptEventId(created.id)
+        },
+      })
+    } else if (data.team === 'team_b' && oppSquad.enabled && !data.opposition_player_id && OPP_PLAYER_PROMPT[data.event_type]) {
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => {
+          if (created?.id) setPendingOppPlayer({ eventId: created.id, eventType: OPP_PLAYER_PROMPT[data.event_type] })
+        },
+      })
+    } else if (data.team === 'team_a' && oppEnabledRef.current && OPP_INVOLVED_PROMPT[data.event_type]) {
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => {
+          if (created?.id) setPendingOppPlayer({ eventId: created.id, eventType: OPP_INVOLVED_PROMPT[data.event_type] })
         },
       })
     } else {
@@ -2238,7 +2279,11 @@ export default function VideoTagging() {
         pitch_zone: zone,
         source: 'human_tag',
       }
-      createEvent.mutate({ sessionId, data })
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => {
+          if (oppEnabledRef.current && created?.id) setPendingOppPlayer({ eventId: created.id, eventType: 'foul_committed' })
+        },
+      })
       carrierTerminalRef.current('FOUL_COMMITTED')
       setPossession('team_a')
       carrierPossessionSwapRef.current()
@@ -3135,6 +3180,7 @@ export default function VideoTagging() {
 
   // ── Inter-county: opposition circles ──────────────────────────────────────
   const oppSquad = useOppositionSquad(matchData as any, club)
+  oppEnabledRef.current = oppSquad.enabled
   const oppActive = oppSquad.enabled && possession === 'team_b'
 
   const handleOppCarrierSelect = useCallback((playerId: string, jerseyNumber: number | null) => {
@@ -4755,6 +4801,21 @@ export default function VideoTagging() {
             </div>
           </div>
         </div>
+      )}
+      {pendingOppPlayer && oppSquad.enabled && (
+        <OppositionPlayerSelector
+          squad={oppSquad}
+          eventType={pendingOppPlayer.eventType}
+          ourAttackingRight={teamAttackingRightThisHalf ?? true}
+          ballPosition={ballPosition}
+          onSelect={(id, name) => {
+            if (sessionId) {
+              updateEvent.mutate({ eventId: pendingOppPlayer.eventId, sessionId, data: { opposition_player_id: id, opponent_player_name: name } })
+            }
+            setPendingOppPlayer(null)
+          }}
+          onClose={() => setPendingOppPlayer(null)}
+        />
       )}
       {pendingOppScorer && (
         <div className="fixed inset-0 z-[140]">

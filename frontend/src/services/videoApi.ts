@@ -166,6 +166,8 @@ export interface VideoEventUpdateData {
   player_id?: string | null;
   sub_in_player_id?: string | null;
   assist_player_id?: string | null;
+  // Inter-county: the opposition-lineup player this event is about (who fouled, who won it...)
+  opposition_player_id?: string | null;
   jersey_number?: number;
   scoring_context?: ScoringContext;
   kickout_context?: KickoutContext;

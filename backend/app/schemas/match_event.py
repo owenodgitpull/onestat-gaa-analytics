@@ -134,6 +134,8 @@ class MatchEventUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=500)
     under_pressure: Optional[bool] = None
     opposition_foot: Optional[str] = Field(None, max_length=1)
+    # Inter-county: the opposition-lineup player this event is about (who fouled, who won it, who shot...)
+    opposition_player_id: Optional[UUID] = None
 
 
 class MatchEventResponse(MatchEventBase):

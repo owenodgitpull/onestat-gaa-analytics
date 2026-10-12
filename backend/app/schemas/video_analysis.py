@@ -225,6 +225,7 @@ class VideoEventUpdateRequest(BaseModel):
     possession_team: Optional[str] = None
     description: Optional[str] = None
     opponent_player_name: Optional[str] = Field(None, max_length=200)
+    opposition_player_id: Optional[UUID] = None        # inter-county: the opposition-lineup player this event is about
 
     @validator("event_type")
     def validate_event_type(cls, v):
