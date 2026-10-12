@@ -68,6 +68,38 @@ def _stats_row(ps: list) -> dict:
     return row
 
 
+SCORECARD_ORDER = ["own_ko_kept", "own_ko_lost", "opp_ko_won", "opp_ko_kept", "turnovers_won", "turnovers_lost",
+                   "contests_won", "contests_lost", "all_ours", "all_theirs"]
+SCORECARD_NAME = {
+    "own_ko_kept": "Our kickouts we kept", "own_ko_lost": "Our kickouts we lost (their ball)",
+    "opp_ko_won": "Their kickouts we won", "opp_ko_kept": "Their kickouts they kept (their ball)",
+    "turnovers_won": "Turnovers we won", "turnovers_lost": "Turnovers we lost (their ball)",
+    "contests_won": "Breaking balls we won", "contests_lost": "Breaking balls we lost (their ball)",
+    "all_ours": "All our tracked possessions", "all_theirs": "All their tracked possessions",
+}
+
+
+def _half_cell(r: dict) -> str:
+    if not r or not r.get("possessions"):
+        return "-"
+    return f"{r['became_a_shot']}/{r['finished']} shots, {r['scored']} scored"
+
+
+def scorecard_table(phases: dict) -> str:
+    """One scannable table of what each way of getting the ball became. Every cell is copied from the rows already
+    computed (never re-derived), so the report can paste it unchanged."""
+    lines = ["| Phase | Possessions | Finished | Became a shot | Scored | Points | 1st half | 2nd half |",
+             "|---|---|---|---|---|---|---|---|"]
+    for g in SCORECARD_ORDER:
+        p = phases.get(g)
+        if not p:
+            continue
+        m = p["match"]
+        lines.append(f"| {SCORECARD_NAME[g]} | {m['possessions']} | {m['finished']} | {m['became_a_shot']} | "
+                     f"{m['scored']} | {m['points']} | {_half_cell(p['first_half'])} | {_half_cell(p['second_half'])} |")
+    return "\n".join(lines)
+
+
 async def _load(db, match_id, club_id):
     """(match, ordered source rows, normalised events) or None when the match is not this club's."""
     q = select(Match).where(Match.id == match_id)
@@ -169,6 +201,7 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
             "note": "Scores split by how the possession that produced them began, for both teams (traced possessions only).",
         },
         "phases": phases,
+        "scorecard_table_markdown": scorecard_table(phases),
         **extras,
         "margin_by_ten_minutes": blocks,
         "ranked_findings": [{"theme": f.theme, "phase": PHASES.get(f.phase, f.phase), "text": f.text, "n": f.n,
@@ -202,7 +235,10 @@ async def get_phase_sequences(db, match_id: str, club_id=None, phase: Optional[s
             who = names.get(getattr(end, "player_id", None)) or their_player_label(
                 getattr(end, "opponent_player_name", None), names.values())
         et = p.end_type or ""
+        half_word = "1st half" if p.half == 1 else "2nd half"
         out.append({
+            "when": f"{half_word}, {p.minute}'",
+            "ended_at_minute": getattr(end, "minute", None),
             "minute": p.minute, "half": p.half,
             "possession": "ours" if p.owner_is_own else "theirs",
             "began": ORIGIN_TEXT.get(p.origin, p.origin),

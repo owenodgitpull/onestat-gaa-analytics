@@ -2845,6 +2845,11 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
                 turnovers_won += 1
                 opp_unforced_errors += 1
 
+    # Turnovers are two sides of one event: what one team won the other lost. Our direct wins (tackle, interception,
+    # turnover won) were never added to THEIR losses, so they showed 1 lost against our 9 won.
+    opp_turnovers_lost = turnovers_won
+    turnovers_lost = opp_turnovers_won
+
     blocks = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.BLOCK])
     fouls_committed = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FOUL_COMMITTED])
     frees_won = len([e for e in events if e.team == Team.OWN and e.event_type == EventType.FREE_WON])
@@ -2866,7 +2871,9 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
 
     # Calculate shots and accuracy
     scoring_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
-    missed_types = [EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT, EventType.SAVED, EventType.FORTY_FIVE_MISSED]
+    # a shot that hit the post is a shot (the results page counts it; leaving it out made the report say 28 shots for 30)
+    missed_types = [EventType.WIDE, EventType.WIDE_FREE, EventType.SHORT, EventType.SAVED, EventType.FORTY_FIVE_MISSED,
+                    EventType.HIT_POST, EventType.PENALTY_MISS]
 
     tm_scores = len([e for e in events if e.team == Team.OWN and e.event_type in scoring_types])
     tm_misses = len([e for e in events if e.team == Team.OWN and e.event_type in missed_types])

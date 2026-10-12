@@ -53,3 +53,27 @@ def test_kickouts_by_half_length_and_channel():
     assert h1["our_kickouts"]["kept"] == 2 and h1["our_kickouts"]["of"] == 3
     assert any("long" in key for key in h1["by_length"])
     assert k["half_2"]["their_kickouts"] == {"won_by_us": 1, "of": 1}
+
+
+def test_phase_groups_do_not_overlap():
+    from app.services.ai.phase_facts import GROUPS, Possession
+    names = ["own_ko_kept", "own_ko_lost", "opp_ko_won", "opp_ko_kept", "turnovers_won", "turnovers_lost",
+             "contests_won", "contests_lost"]
+    origins = ["own_ko_kept", "own_ko_lost", "opp_ko_won", "opp_ko_kept", "turnover_won", "turnover_won_forced",
+               "turnover_lost", "turnover_lost_unforced", "contest_won", "contest_lost", "free_won"]
+    for origin in origins:
+        for own in (True, False):
+            for contested in (True, False):
+                p = Possession(origin, own, 5, 1, "open", contested=contested)
+                hit = [g for g in names if GROUPS[g](p)]
+                assert len(hit) <= 1, (origin, own, contested, hit)
+
+
+def test_long_possession_has_no_trusted_seconds():
+    from app.services.ai.phase_facts import normalise, possessions
+    rows = [
+        NS(event_type="turnover_lost", team="own", minute=5, half=1, match_clock_s=300, pitch_x=None, pitch_y=None),
+        NS(event_type="point", team="opponent", minute=9, half=1, match_clock_s=300 + 208, pitch_x=None, pitch_y=None),
+    ]
+    p = possessions(normalise(rows, 30))[0]
+    assert p.outcome == "score" and p.seconds is None

@@ -40,6 +40,9 @@ LOSE_TYPES = {"turnover_lost", "unforced_error"}
 FOUL_AGAINST_OWNER = {"foul_committed", "free_conceded"}
 
 MIN_N = 3   # below this a rate is described, never concluded
+# A possession that runs longer than this on the clock almost always has untagged events inside it (two possessions
+# merged, or the footage clock was moved), so its length is not trusted as a time-to-shot.
+MAX_TRUSTED_SECONDS = 120
 
 
 @dataclass
@@ -155,7 +158,9 @@ def possessions(events: Iterable) -> list[Possession]:
             if end_ev.type in SCORE_TYPES:
                 open_p.points = points_for(end_ev.type)
             if end_ev.clock_s is not None and open_p.clock_s is not None and end_ev.clock_s >= open_p.clock_s:
-                open_p.seconds = end_ev.clock_s - open_p.clock_s
+                gap = end_ev.clock_s - open_p.clock_s
+                if gap <= MAX_TRUSTED_SECONDS:
+                    open_p.seconds = gap
         open_p = None
 
     for ev in evs:
@@ -231,15 +236,20 @@ def group_stats(ps: list[Possession]) -> dict:
     }
 
 
+TURNOVER_ORIGINS = {"turnover_won", "turnover_won_forced", "turnover_lost", "turnover_lost_unforced"}
+CONTEST_ORIGINS = {"contest_won", "contest_lost"}
+
 GROUPS = {
     "own_ko_kept": lambda p: p.origin == "own_ko_kept",
     "own_ko_lost": lambda p: p.origin == "own_ko_lost",            # THEIR possession after a kickout we lost
     "opp_ko_won": lambda p: p.origin == "opp_ko_won",
     "opp_ko_kept": lambda p: p.origin == "opp_ko_kept",            # THEIR possession after they kept their restart
-    "turnovers_won": lambda p: p.owner_is_own and p.origin in ("turnover_won", "turnover_won_forced", "turnover_lost", "turnover_lost_unforced", "contest_lost"),
-    "turnovers_lost": lambda p: (not p.owner_is_own) and p.origin in ("turnover_won", "turnover_won_forced", "turnover_lost", "turnover_lost_unforced", "contest_lost"),
-    "contests_won": lambda p: p.owner_is_own and p.contested,
-    "contests_lost": lambda p: (not p.owner_is_own) and p.contested,
+    # Each possession has exactly one origin, so these groups never overlap: a breaking ball is a contest, not a turnover,
+    # and a kickout that was won on the break is a kickout, not a contest.
+    "turnovers_won": lambda p: p.owner_is_own and p.origin in TURNOVER_ORIGINS,
+    "turnovers_lost": lambda p: (not p.owner_is_own) and p.origin in TURNOVER_ORIGINS,
+    "contests_won": lambda p: p.owner_is_own and p.origin in CONTEST_ORIGINS,
+    "contests_lost": lambda p: (not p.owner_is_own) and p.origin in CONTEST_ORIGINS,
     "all_ours": lambda p: p.owner_is_own,
     "all_theirs": lambda p: not p.owner_is_own,
 }

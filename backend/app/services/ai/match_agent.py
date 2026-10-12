@@ -484,6 +484,19 @@ INSTRUCTIONS:
     - Each paragraph carries only the 3-5 figures that make its argument; everything else stays in the sections below. Every figure is copied from a tool result and every name and minute exactly as given.
     - Separate fact from read: give the figures, then at most one clearly marked judgement ("my read is...") that says what it rests on. Never state a cause the data does not show.
     - No pressing or defensive-shape claims, no advice outside THE LEVERS, nothing about players who did not play.
+7k. NUMBER AND WORDING DISCIPLINE — REQUIRED (a manager checks the arithmetic; one wrong figure costs the whole report):
+    - A phase's shots and scores come from its own row (became_a_shot, scored; "did not score" = became_a_shot minus scored). NEVER count the rows of get_phase_sequences to get a figure - that list is a sample of examples, not the total.
+    - State a percentage only if a tool result gives it. Do not turn three outcome counts into a new percentage ("ended without a score") - give the counts and the total as the tool gives them.
+    - Chain counts and chain lengths come from the ball-path/chain data, not from the scoreboard: do not set them beside the score as if they should match. Chain length is the number of ball carriers in the chain - say "carriers" or "touches", not "passes".
+    - Each possession has one origin, so the phase groups do not overlap (kickouts, turnovers and breaking balls are separate). Do not add across groups to build a total, and quote a total only from the tool.
+    - Phase Analysis opens with the scorecard_table_markdown from get_phase_summary pasted UNCHANGED, then at most four short paragraphs on the phases that moved the match. Do not restate every row in prose.
+    - Minutes: second-half minutes begin at the half length, so 30'-34' exist in both halves. For a sequence use its `when` text ("2nd half, 30'"); for a substitution or event say the half whenever the minute could be either.
+    - Two-pointers: give from play and from frees separately and the total of both; never a bare "two-pointers: 3" when frees also scored two.
+    - Compare shooting by range with points_per_shot, not by score counts. If a long-range two-pointer is worth about as much per shot as a close-in point, say so and do NOT advise avoiding long shots.
+    - When a figure moved and the data cannot say why (for example we won more of their kickouts after half-time: pressing, their kickout choice and game state are not recorded), say what is not in the data instead of offering a cause.
+    - Do not use seconds between carriers as evidence of tempo. Tempo is median_seconds_to_shot (only where given) and the ball-path possession lengths. median_seconds_to_shot only counts possessions the clock timed within two minutes.
+    - If get_season_phase_profile returned data, add a short "Against our last N matches" line naming the two or three phases where this match differed most, with both figures. If it did not give anything usable, leave the line out - never write that a profile "was not used".
+    - Count what you list: a sentence that says "two" or "three" things must be followed by exactly that many.
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>
