@@ -163,7 +163,7 @@ export default function MatchResult() {
   }, [postMatchReport])
 
   // Fetch existing GPS data
-  const { data: gpsData, refetch: refetchGps } = useQuery({
+  const { data: gpsData, refetch: refetchGps, isFetching: gpsFetching } = useQuery({
     queryKey: ['match-gps', matchId],
     queryFn: () => api.matchGps.getMatchGps(matchId!),
     enabled: !!matchId && match?.status === 'completed',
@@ -262,6 +262,8 @@ export default function MatchResult() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [gpsPreviewData, setGpsPreviewData] = useState<import('../services/api').GPSPreviewData | null>(null)
   const [isConfirmingGps, setIsConfirmingGps] = useState(false)
+  // a GPS save / delete / refresh is in flight: show a small loader where the button and label are, not a full-screen one
+  const gpsBusy = isConfirmingGps || isDeleting || (gpsFetching && gpsData !== undefined)
 
   // AI report regeneration state
   const [isRegenerating, setIsRegenerating] = useState(false)
@@ -747,7 +749,12 @@ export default function MatchResult() {
         {/* GPS Data Section */}
         <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 mr-auto">
-            {gpsData && gpsData.length > 0 ? (
+            {gpsBusy ? (
+              <div className="flex items-center gap-1.5 text-emerald-300">
+                <Loader2 size={14} className="flex-shrink-0 animate-spin" />
+                <span className="text-xs font-medium">Updating GPS…</span>
+              </div>
+            ) : gpsData && gpsData.length > 0 ? (
               <div className="flex items-center gap-1.5 text-emerald-400">
                 <CheckCircle size={14} className="flex-shrink-0" />
                 <span className="text-xs font-medium">GPS ({gpsData.length})</span>
@@ -758,7 +765,11 @@ export default function MatchResult() {
                 <span className="text-xs">No GPS</span>
               </div>
             )}
-            {postMatchReport?.gps_included && (
+            {gpsData && gpsData.length > 0 && isPollingReport ? (
+              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 whitespace-nowrap">
+                <Loader2 size={10} className="animate-spin" /> Updating insights…
+              </span>
+            ) : postMatchReport?.gps_included && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 whitespace-nowrap">
                 +GPS insights
               </span>
@@ -775,7 +786,12 @@ export default function MatchResult() {
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {gpsData && gpsData.length > 0 ? (
+            {gpsBusy ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600/30 text-emerald-200 text-xs font-medium cursor-wait">
+                <Loader2 size={14} className="animate-spin" />
+                <span>Updating…</span>
+              </div>
+            ) : gpsData && gpsData.length > 0 ? (
               <>
                 {showDeleteConfirm ? (
                   <div className="flex items-center gap-1.5">
