@@ -27,6 +27,13 @@ export function useVideoSession(sessionId: string | null) {
     queryKey: videoSessionKeys.detail(sessionId!),
     queryFn: () => videoSessionsAPI.get(sessionId!),
     enabled: !!sessionId,
+    // A session opened while its upload is still finishing has no download_url yet: keep checking until it does,
+    // otherwise the player stays on "No video loaded" until the page is refreshed.
+    refetchOnMount: 'always',
+    refetchInterval: (query) => {
+      const s = query.state.data;
+      return s && !s.download_url && s.status !== 'failed' ? 3000 : false;
+    },
   });
 }
 
