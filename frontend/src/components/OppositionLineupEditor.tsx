@@ -16,6 +16,14 @@ type Rows = Record<string, Row>
 
 const STARTER_BY_JERSEY = Object.fromEntries(Object.entries(POSITION_DEFAULT_JERSEY).map(([pos, j]) => [j, pos]))
 
+const POS_NAME: Record<string, string> = {
+  gk: 'Goalkeeper', 'fb-left': 'Left corner back', 'fb-center': 'Full back', 'fb-right': 'Right corner back',
+  'hb-left': 'Left half back', 'hb-center': 'Centre half back', 'hb-right': 'Right half back',
+  'mf-left': 'Midfield', 'mf-right': 'Midfield', 'hf-left': 'Left half forward', 'hf-center': 'Centre half forward',
+  'hf-right': 'Right half forward', 'ff-left': 'Left corner forward', 'ff-center': 'Full forward', 'ff-right': 'Right corner forward',
+}
+const SLOT_ORDER = [...FORMATION_POSITIONS.map(p => p.id), ...SUBSTITUTE_POSITIONS.map(p => p.id)]
+
 function emptyRows(): Rows {
   const rows: Rows = {}
   for (const p of FORMATION_POSITIONS) rows[p.id] = { jersey: String(POSITION_DEFAULT_JERSEY[p.id] ?? ''), surname: '' }
@@ -88,6 +96,7 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [selected, setSelected] = useState<string | null>(null)
 
   useEffect(() => {
     if (!data) return
@@ -124,25 +133,43 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
     }
   }
 
-  const cell = (pos: string, label: string) => (
-    <div key={pos} className="flex items-center gap-2">
-      <span className="w-9 text-[10px] font-semibold text-white/40 text-right">{label}</span>
-      <input
-        value={rows[pos]?.jersey ?? ''}
-        onChange={e => setField(pos, 'jersey', e.target.value.replace(/\D/g, '').slice(0, 2))}
-        inputMode="numeric"
-        className="w-11 px-1.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-center text-sm text-orange-300 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-        aria-label={`${label} jersey number`}
-      />
-      <input
-        value={rows[pos]?.surname ?? ''}
-        onChange={e => setField(pos, 'surname', e.target.value)}
-        placeholder="Full name"
-        className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-        aria-label={`${label} full name`}
-      />
-    </div>
-  )
+  const slotName = (id: string) => {
+    if (POS_NAME[id]) return POS_NAME[id]
+    const i = SUBSTITUTE_POSITIONS.findIndex(p => p.id === id)
+    return i >= 0 ? `Substitute ${i + 1}` : id
+  }
+  const goNext = (id: string) => {
+    const i = SLOT_ORDER.indexOf(id)
+    setSelected(i >= 0 && i < SLOT_ORDER.length - 1 ? SLOT_ORDER[i + 1] : null)
+  }
+  const clearSlot = (id: string) => {
+    setRows(prev => ({ ...prev, [id]: { ...prev[id], surname: '' } }))
+    setDirty(true)
+    setSaved(false)
+  }
+
+  const circle = (id: string, label: string, small: boolean) => {
+    const r = rows[id]
+    const has = !!r?.surname.trim()
+    const isSel = selected === id
+    return (
+      <>
+        {isSel && <span className="absolute inset-0 rounded-full ring-4 ring-amber-400 animate-ping" />}
+        <div
+          className={`${small ? 'w-7 h-7 sm:w-9 sm:h-9 text-[9px] sm:text-xs' : 'w-8 h-8 sm:w-10 sm:h-10 text-[10px] sm:text-xs'} rounded-full flex items-center justify-center font-bold transition-all ${
+            has ? `ring-2 shadow-lg ${isSel ? 'scale-125 ring-4' : 'hover:scale-105'}` : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
+          }`}
+          style={has ? ({
+            backgroundColor: '#F97316', color: '#FFFFFF',
+            '--tw-ring-color': isSel ? '#fbbf24' : '#FFFFFF',
+            boxShadow: isSel ? '0 0 16px rgba(251,191,36,0.5)' : undefined,
+          } as React.CSSProperties) : undefined}
+        >
+          {has ? (r.jersey || label) : label}
+        </div>
+      </>
+    )
+  }
 
   return (
     <div className="space-y-3">
@@ -152,7 +179,8 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
         </p>
       )}
       <p className="text-xs text-white/40">
-        Starters sit in the same position slots as your own lineup, so their circles lay out the same way on the pitch. Enter full names (first name and surname) so players who share a surname are told apart.
+        Same pitch and slots as your own lineup. Tap a position, type the player's number and full name (first name and surname),
+        press Enter to move to the next position.
       </p>
 
       <button
@@ -190,14 +218,101 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
       {isLoading ? (
         <div className="text-xs text-white/40">Loading…</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1.5">
-          <div className="space-y-1.5">
-            <div className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Starting 15</div>
-            {FORMATION_POSITIONS.map(p => cell(p.id, p.label))}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* Pitch + bench: the same layout as the starting lineup picker */}
+          <div className="md:col-span-2 flex flex-col gap-2">
+            <div className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-2xl overflow-hidden aspect-[16/10]">
+              <svg viewBox="0 0 2332 1446" className="absolute inset-0 w-full h-full opacity-40">
+                <rect width="2332" height="1446" fill="#2d5016" />
+                <image href="/pitch-svg.svg" width="2332" height="1446" preserveAspectRatio="xMidYMid meet" />
+              </svg>
+              {FORMATION_POSITIONS.map(pos => (
+                <div
+                  key={pos.id}
+                  className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+                  style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                  onClick={() => setSelected(pos.id)}
+                >
+                  {circle(pos.id, String(POSITION_DEFAULT_JERSEY[pos.id] ?? pos.label), false)}
+                  {rows[pos.id]?.surname.trim() && (
+                    <div className="absolute top-full mt-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                      <span className={`text-[9px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded ${selected === pos.id ? 'bg-amber-500/30 text-amber-200' : 'bg-black/50 text-white'}`}>
+                        {rows[pos.id].surname}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-center flex-wrap gap-x-3 gap-y-2 px-2">
+              {SUBSTITUTE_POSITIONS.map((pos, i) => (
+                <div key={pos.id} className="cursor-pointer flex flex-col items-center" onClick={() => setSelected(pos.id)}>
+                  <div className="relative">{circle(pos.id, rows[pos.id]?.jersey || String(16 + i), true)}</div>
+                  {rows[pos.id]?.surname.trim() && (
+                    <div className="mt-2">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${selected === pos.id ? 'bg-amber-500/30 text-amber-200' : 'bg-black/50 text-white'}`}>
+                        {rows[pos.id].surname}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <div className="text-[10px] uppercase tracking-wider text-white/30 mb-1">Bench</div>
-            {SUBSTITUTE_POSITIONS.map((p, i) => cell(p.id, `S${i + 1}`))}
+
+          {/* Side panel: edit the tapped position, or list everyone */}
+          <div>
+            {selected ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-white">{slotName(selected)}</h3>
+                  <button onClick={() => setSelected(null)} className="text-xs text-white/50 hover:text-white">Done</button>
+                </div>
+                <label className="block text-[11px] text-white/50">
+                  Number
+                  <input
+                    value={rows[selected]?.jersey ?? ''}
+                    onChange={e => setField(selected, 'jersey', e.target.value.replace(/\D/g, '').slice(0, 2))}
+                    inputMode="numeric"
+                    className="mt-1 w-20 px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-center text-base text-orange-300 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                  />
+                </label>
+                <label className="block text-[11px] text-white/50">
+                  Full name
+                  <input
+                    key={selected}
+                    autoFocus
+                    value={rows[selected]?.surname ?? ''}
+                    onChange={e => setField(selected, 'surname', e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); goNext(selected) } }}
+                    placeholder="e.g. Conor Cox"
+                    className="mt-1 w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button onClick={() => goNext(selected)} className="flex-1 text-xs font-semibold px-2 py-2 rounded-lg bg-orange-500/15 border border-orange-400/30 text-orange-300">Next position →</button>
+                  <button onClick={() => clearSlot(selected)} className="flex-1 text-xs font-semibold px-2 py-2 rounded-lg bg-red-500/15 border border-red-400/30 text-red-300">Clear</button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+                <p className="text-white/50 text-xs font-semibold mb-1">Players ({filled})</p>
+                {SLOT_ORDER.map(id => {
+                  const r = rows[id]
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setSelected(id)}
+                      className="w-full glass-card px-2 py-1 flex items-center gap-2 text-left"
+                    >
+                      <span className="text-white/50 text-[10px] font-semibold w-24 flex-shrink-0 truncate">{slotName(id)}</span>
+                      <span className="w-6 text-center text-xs font-bold text-orange-300">{r?.jersey}</span>
+                      <span className={`text-xs truncate flex-1 ${r?.surname.trim() ? 'text-white font-medium' : 'text-white/30 italic'}`}>{r?.surname.trim() || '—'}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
