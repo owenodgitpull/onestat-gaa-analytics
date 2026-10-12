@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { humanEventType } from '@/utils/eventLabels'
 import { BallPosition, PossessionTeam } from '@/types'
 
 interface PitchEvent {
@@ -12,11 +13,7 @@ interface PitchEvent {
 }
 
 // Format event type for display
-const formatEventType = (type: string): string => {
-  return type
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (l) => l.toUpperCase())
-}
+const formatEventType = (type: string): string => humanEventType(type)
 
 interface GAAPitchProps {
   onBallMove?: (position: BallPosition) => void

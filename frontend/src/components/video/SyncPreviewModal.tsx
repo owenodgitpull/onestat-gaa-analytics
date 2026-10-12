@@ -4,7 +4,8 @@
  * Shows new / replaced / skipped event counts and details,
  * then lets the user confirm to trigger the merge + AI re-analysis.
  */
-
+
+import { humanEventType } from '../../utils/eventLabels'
 import { X, Plus, RefreshCw, SkipForward, FileText, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { VideoSyncPreview, VideoSyncStatus, SyncPreviewEvent } from '../../services/videoApi'
 
@@ -24,7 +25,7 @@ function EventRow({ event, icon: Icon, color }: { event: SyncPreviewEvent; icon:
   return (
     <div className="flex items-center gap-2 py-1.5 px-2 rounded bg-white/5 text-sm">
       <Icon size={14} className={color} />
-      <span className="text-white/80 font-medium">{event.event_type.replace(/_/g, ' ')}</span>
+      <span className="text-white/80 font-medium">{humanEventType(event.event_type, false)}</span>
       <span className="text-white/40">
         {event.team === 'team_a' ? 'Own' : 'Opposition'} &bull; {event.minute}'
       </span>

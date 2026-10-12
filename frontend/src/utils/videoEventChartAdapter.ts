@@ -158,6 +158,12 @@ export function mapVideoEventType(ve: VideoEvent): string | null {
   const contextMapped = mapContextDependent(ve, isTwoPointer)
   if (contextMapped) return contextMapped
 
+  // A free played short / as a high ball instead of a shot is stored as PASS_HAND / HIGH_BALL with a description:
+  // show it as what it is, not as "other"
+  const desc = (ve.description || '').trim().toLowerCase()
+  if (ve.event_type === 'PASS_HAND' && desc === 'free short pass') return 'free_short_pass'
+  if (ve.event_type === 'HIGH_BALL' && desc === 'high ball (free)') return 'free_high_ball'
+
   if (DIRECT_MAP[ve.event_type]) return DIRECT_MAP[ve.event_type]
   if (LENIENT_OTHER.has(ve.event_type)) return 'other'
 

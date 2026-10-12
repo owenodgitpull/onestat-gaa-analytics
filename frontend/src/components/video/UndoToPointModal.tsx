@@ -3,6 +3,7 @@
  * all events/carrier segments after that timestamp, then resume tracking.
  */
 
+import { humanEventType } from '../../utils/eventLabels'
 import { useState, useMemo, useEffect } from 'react'
 import { X, AlertTriangle, Undo2, Clock } from 'lucide-react'
 import type { VideoEvent } from '@/services/videoApi'
@@ -169,7 +170,7 @@ export default function UndoToPointModal({
                         <ul className="text-sm text-white/60 space-y-0.5 ml-4">
                           {Object.entries(deletionPreview.eventTypes).map(([type, count]) => (
                             <li key={type}>
-                              {count} {type.toLowerCase().replace(/_/g, ' ')}
+                              {count} {humanEventType(type, false)}
                               {count !== 1 ? 's' : ''}
                             </li>
                           ))}

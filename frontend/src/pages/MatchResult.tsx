@@ -3,6 +3,7 @@
  * Read-only view of a completed match with event visualization on pitch
  */
 
+import { humanEventType } from '../utils/eventLabels'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1631,7 +1632,7 @@ function formatEventDescription(event: any, players: any[], opponentName: string
     case 'substitution':
       return event.notes ? `Substitution: ${event.notes}` : `${playerName} substituted`
     default:
-      return `${event.event_type.replace(/_/g, ' ')} - ${playerName}`
+      return `${humanEventType(event.event_type, false)} - ${playerName}`
   }
 }
 

@@ -321,7 +321,7 @@ export default function PitchPlayerSelector({
           const delay = hasRanking
             ? (isPromoted ? index * 25 : 150 + index * 15)
             : index * 30
-          const circleSize = hasRanking ? (isPromoted ? 'w-16 h-16' : 'w-11 h-11') : 'w-14 h-14'
+          const circleSize = hasRanking ? (isPromoted ? 'w-16 h-16' : 'w-11 h-11') : (readOnly ? 'w-12 h-12' : 'w-14 h-14')
           const restOpacity = hasRanking && !isPromoted ? 0.55 : 1
           // Gold takes priority over the "near the ball" green when a player
           // is both — the tracked carrier is a stronger signal than proximity.

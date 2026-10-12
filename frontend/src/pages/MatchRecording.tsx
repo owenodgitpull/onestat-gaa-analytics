@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { humanEventType } from '../utils/eventLabels'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GAAPitch from '@/components/GAAPitch'
@@ -448,8 +449,7 @@ export default function MatchRecording() {
     actionToastTimeoutRef.current = setTimeout(() => setActionToast(null), 1100)
   }
 
-  const formatActionLabel = (type: string): string =>
-    type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())
+  const formatActionLabel = (type: string): string => humanEventType(type)
 
   /** True (and records the tap) if this isn't a repeat of the same action within the debounce window. */
   const shouldProceedWithQuickAction = (key: string): boolean => {
@@ -2277,8 +2277,8 @@ export default function MatchRecording() {
 
       default:
         return isOwn
-          ? `${event.event_type.replace(/_/g, ' ')} - ${playerName}`
-          : `${event.event_type.replace(/_/g, ' ')} - ${teamName}`
+          ? `${humanEventType(event.event_type, false)} - ${playerName}`
+          : `${humanEventType(event.event_type, false)} - ${teamName}`
     }
   }
 
@@ -4006,7 +4006,7 @@ export default function MatchRecording() {
         e.minute === capturedMinute
       )
       if (alreadyLogged) {
-        const label = String(event.eventType).toLowerCase().replace(/_/g, ' ')
+        const label = humanEventType(String(event.eventType), false)
         const confirmed = await confirmDialog({
           title: 'Possible duplicate',
           message: `${player.name} already has a ${label} logged at minute ${capturedMinute}. Log another one?`,
