@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, String, DateTime, Boolean, Text, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import backref, relationship
 from app.database import Base
 import enum
 
@@ -62,7 +62,7 @@ class InsightAlert(Base):
 
     # Relationships
     session = relationship("TrainingSession", backref="insight_alerts", lazy="selectin")
-    match = relationship("Match", backref="insight_alerts", lazy="selectin")
+    match = relationship("Match", backref=backref("insight_alerts", cascade="all, delete-orphan", passive_deletes=True), lazy="selectin")
 
     def __repr__(self):
         return f"<InsightAlert(title='{self.title}', category={self.category.value}, severity={self.severity})>"

@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import Column, String, DateTime, Integer, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import backref, relationship
 from app.database import Base
 import enum
 
@@ -65,7 +65,7 @@ class LiveInsight(Base):
     created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationship
-    match = relationship("Match", backref="live_insights")
+    match = relationship("Match", backref=backref("live_insights", cascade="all, delete-orphan", passive_deletes=True))
 
     def __repr__(self):
         return f"<LiveInsight(match_id={self.match_id}, minute={self.minute}, trigger={self.trigger})>"
