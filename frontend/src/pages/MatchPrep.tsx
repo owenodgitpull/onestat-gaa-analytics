@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   Users,
   Copy,
@@ -154,6 +155,16 @@ export default function MatchPrep() {
   const { canEdit } = useAuth()
   const jerseyBg = club?.primary_colour || '#10B981'
   const jerseyText = club?.secondary_colour || '#FFFFFF'
+  // Inter-county: the opposition lineup is the same picker as ours, one switch away at the top
+  const hasOppLineup = !!club?.features?.opposition_lineup
+  const [lineupTab, setLineupTab] = useState<'ours' | 'opposition'>('ours')
+  const { data: oppLineupData } = useQuery({
+    queryKey: ['oppositionLineup', matchId],
+    queryFn: () => api.matchPrep.getOppositionLineup(matchId!),
+    enabled: hasOppLineup && !!matchId,
+    staleTime: 60_000,
+  })
+  const oppCount = oppLineupData?.lineup?.length ?? 0
 
   const [match, setMatch] = useState<Match | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
@@ -701,6 +712,36 @@ export default function MatchPrep() {
         </div>
       </div>
 
+      {/* Our lineup / opposition lineup switch (inter-county) */}
+      {hasOppLineup && matchId && (
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-xl bg-white/5 border border-white/10 p-1">
+            <button
+              onClick={() => setLineupTab('ours')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${lineupTab === 'ours' ? 'bg-emerald-500/20 text-emerald-300' : 'text-white/50 hover:text-white'}`}
+            >
+              Our lineup
+            </button>
+            <button
+              onClick={() => setLineupTab('opposition')}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${lineupTab === 'opposition' ? 'bg-orange-500/20 text-orange-300' : 'text-white/50 hover:text-white'}`}
+            >
+              {match?.opponent || 'Opposition'} lineup
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${oppCount >= 15 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
+                {oppCount}/26
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {hasOppLineup && matchId && lineupTab === 'opposition' && (
+        <div className="glass-card p-4">
+          <OppositionLineupEditor matchId={matchId} opponent={match?.opponent || 'the opposition'} />
+        </div>
+      )}
+
+      <div className={hasOppLineup && lineupTab === 'opposition' ? 'hidden' : 'contents'}>
       {/* Use Last Lineup button */}
       {lastMatchLineup && (
         <button
@@ -1088,6 +1129,8 @@ export default function MatchPrep() {
         </div>
       </div>
 
+      </div>
+
       {/* ── Match Prep Sections ────────────────────────────────── */}
 
       {/* Tactical Notes */}
@@ -1139,7 +1182,8 @@ export default function MatchPrep() {
         )}
       </div>
 
-      {/* Opposition Roster */}
+      {/* Opposition Roster (clubs: key-players box; inter-county uses the lineup switch at the top) */}
+      {!hasOppLineup && (
       <div className="glass-card overflow-hidden">
         <button
           onClick={() => toggleSection('opposition')}
@@ -1203,6 +1247,7 @@ export default function MatchPrep() {
           </div>
         )}
       </div>
+      )}
 
       {/* Man Marking Assignments */}
       <div className="glass-card overflow-hidden">
