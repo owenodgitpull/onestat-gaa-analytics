@@ -4253,11 +4253,19 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     if _current:
         _raw_chains.append(_current)
 
-    def _chain_outcome(last_seg) -> str:
+    def _chain_outcome(last_seg, budgets=None) -> str:
         real = _real_outcome_at(last_seg)
         if real:
             return real
         eb = last_seg.ended_by
+        # A carry flagged 'score' / 'wide' at tagging time is only believed while there is a logged score / miss of this
+        # team that no chain has claimed: one logged score can be one scoring chain, never two (17 chains for 14 scores).
+        if eb in ("score", "wide") and budgets is not None:
+            key = "score" if eb == "score" else "miss"
+            if budgets.get(key, 0) > 0:
+                budgets[key] -= 1
+                return eb
+            return "unknown"
         if eb in ("score", "wide", "turnover"):
             return eb
         if eb == "foul":
@@ -4385,6 +4393,24 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                 stats["primary_carry_zones"] = [z for z, _ in Counter(stats["carry_zones"]).most_common(3)]
             del stats["carry_zones"]
 
+        # First settle which logged scores / misses the strict sequence already credited, then let flagged carries claim
+        # only what is left.
+        for _cs in _raw_chains:
+            if _belongs(_cs[0], team):
+                _real_outcome_at(_cs[-1])
+        _budgets = {"score": 0, "miss": 0}
+        for _e in _all_events:
+            if _ev_team(_e) != team:
+                continue
+            _k = getattr(_e, "id", None) or id(_e)
+            if _k in _claimed_events:
+                continue
+            _t = _ev_type(_e)
+            if _t in _SCORE_EVENT_TYPES:
+                _budgets["score"] += 1
+            elif _t in _MISS_EVENT_TYPES:
+                _budgets["miss"] += 1
+
         chains = []
         for chain_segs in _raw_chains:
             if not _belongs(chain_segs[0], team):
@@ -4397,7 +4423,7 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                 player_sequence=[_carrier_key(sg) for sg in chain_segs],
                 jersey_sequence=[sg.jersey_number for sg in chain_segs],
                 chain_length=len(chain_segs),
-                outcome=_chain_outcome(last),
+                outcome=_chain_outcome(last, _budgets),
                 start_zone=_xy_zone(first.start_x, first.start_y),
                 end_zone=_xy_zone(end_x, end_y),
             ))
