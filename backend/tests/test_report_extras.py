@@ -80,3 +80,12 @@ def test_long_possession_has_no_trusted_seconds():
     assert p.outcome == "score" and p.seconds == 208         # kept, not hidden...
     g = group_stats([p])
     assert g["median_seconds_to_shot"] is None and g["shots_over_two_minutes"] == 1   # ...but not in the median
+
+
+def test_scorecard_is_put_back_exactly():
+    from app.services.ai.match_agent import _apply_scorecard
+    tool = "| Phase | Possessions | Finished |\n|---|---|---|\n| A | 1 | 1 |"
+    typed = "intro\n\n| Phase | Possessions | Finished |\n|---|---|---|\n| A | 1 | 1 finished, 3 shots |\n\nafter"
+    out = _apply_scorecard(typed, tool)
+    assert "| A | 1 | 1 |" in out and "3 shots" not in out and out.startswith("intro") and out.endswith("after")
+    assert _apply_scorecard("no table here", tool) == "no table here"

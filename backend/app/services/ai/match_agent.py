@@ -46,6 +46,28 @@ LIVE_MODEL = "claude-sonnet-5-5"
 #                           used to measure how often the agent drifts from the data while tuning the prompt
 LIVE_FACT_CHECK_MODE = "off"
 
+def _apply_scorecard(text: str, table_md: str) -> str:
+    """Put the tool's own scorecard table into the report, replacing whatever table the model typed under that header.
+    The cells are computed, so a model that re-typed one (and altered it) must not reach the manager. If the model wrote
+    no such table nothing is added."""
+    if not table_md or not text:
+        return text
+    lines = text.split("\n")
+    out, i, done = [], 0, False
+    while i < len(lines):
+        ln = lines[i]
+        if not done and ln.strip().startswith("|") and "Phase" in ln and "Possessions" in ln and "Finished" in ln:
+            j = i
+            while j < len(lines) and lines[j].strip().startswith("|"):
+                j += 1
+            out.extend(table_md.split("\n"))
+            i, done = j, True
+            continue
+        out.append(ln)
+        i += 1
+    return "\n".join(out)
+
+
 # match_id -> the post-match report generation currently running (see MatchAgent.generate_post_match_report)
 _REPORT_INFLIGHT: dict = {}
 
@@ -387,6 +409,7 @@ Reference knowledge base context when relevant to a specific trigger.
         _mid = _UUID(match_id) if isinstance(match_id, str) else match_id
         _mq = await db.execute(select(_Match.club_id).where(_Match.id == _mid))
         _cid = _mq.scalar_one_or_none()
+        _scorecard_md = ""   # the phase scorecard exactly as computed (put back into the report below)
         club_name, club_context = await get_club_context(db, _cid)
 
         # Get knowledge base context via RAG
@@ -549,8 +572,16 @@ INSTRUCTIONS:
                         "name": block.name,
                         "input": block.input,
                     })
-                    tool_result = await execute_tool(block.name, block.input, db, club_id=_cid)
+                    _tool_input = dict(block.input or {})
+                    if block.name == "get_season_phase_profile" and not _tool_input.get("exclude_match_id"):
+                        _tool_input["exclude_match_id"] = str(match_id)   # the baseline is the matches BEFORE this one
+                    tool_result = await execute_tool(block.name, _tool_input, db, club_id=_cid)
                     logger.info(f"Tool {block.name} returned {len(tool_result)} chars")
+                    if block.name == "get_phase_summary":
+                        try:
+                            _scorecard_md = json.loads(tool_result).get("scorecard_table_markdown") or _scorecard_md
+                        except Exception:
+                            pass
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -957,6 +988,7 @@ INSTRUCTIONS:
 
         # Strip the <chart_insights> block from the displayed analysis
         clean_analysis = re.sub(r'\s*<chart_insights>[\s\S]*?</chart_insights>\s*', '', analysis).strip()
+        clean_analysis = _apply_scorecard(clean_analysis, _scorecard_md)
 
         # Defensive: strip a leaked "narrating my own process" preamble if the
         # model wrote one anyway despite the system prompt instruction against it

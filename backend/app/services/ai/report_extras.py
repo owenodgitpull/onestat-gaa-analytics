@@ -148,6 +148,7 @@ def our_shots_by_range(rows: list, evs: list, atk_first, hdm, length_m=None, wid
                       **({"points_per_shot": round(v[2] / v[0], 2)} if v[0] >= MIN_N else {"note": f"only {v[0]} - describe, do not conclude"})}
                   for k, v in bands.items()},
         "shots_with_a_position": placed, "shots_logged": total,
+        "covers": "all our shots, frees and 45s included",
         "note": ("Distance from the goal we attack. 40m+ is outside the two-point arc range, so those scores can be two-pointers. "
                  "Compare ranges by points_per_shot, not by score count: a two-pointer from range can be worth as much per shot "
                  "as a point from close in, and then 'avoid long shots' is NOT what the numbers say."),

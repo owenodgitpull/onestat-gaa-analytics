@@ -683,7 +683,7 @@ TOOLS = [
     {
         "name": "get_season_phase_profile",
         "description": "The club's own average phase rates over its last N matches (default 10): what kept/lost kickouts, turnovers won/lost and all possessions turn into. Use it as the baseline when judging whether a match or a spell was typical for this team, and describe it as 'over our last N matches' (give N).",
-        "input_schema": {"type": "object", "properties": {"last_n": {"type": "integer", "description": "How many recent matches to pool (default 10, max 30)"}}}
+        "input_schema": {"type": "object", "properties": {"last_n": {"type": "integer", "description": "How many recent matches to pool (default 10, max 30)"}, "exclude_match_id": {"type": "string", "description": "The match being analysed - left out so the baseline is the matches BEFORE it"}}}
     },
     {
         "name": "get_turnover_analysis",
@@ -1238,7 +1238,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
                                          phase=tool_input.get("phase"), limit=tool_input.get("limit", 12))
     elif tool_name == "get_season_phase_profile":
         from app.services.ai.phase_report import get_season_phase_profile
-        return await get_season_phase_profile(db, club_id, last_n=tool_input.get("last_n", 10))
+        return await get_season_phase_profile(db, club_id, last_n=tool_input.get("last_n", 10),
+                                              exclude_match_id=tool_input.get("exclude_match_id"))
     elif tool_name == "get_turnover_analysis":
         return await get_turnover_analysis(db, tool_input.get("match_id"), club_id=club_id)
     elif tool_name == "get_player_gps_stats":

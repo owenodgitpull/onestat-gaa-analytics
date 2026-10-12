@@ -255,12 +255,13 @@ async def get_phase_sequences(db, match_id: str, club_id=None, phase: Optional[s
                       default=str)
 
 
-async def get_season_phase_profile(db, club_id, last_n: int = 10) -> str:
+async def get_season_phase_profile(db, club_id, last_n: int = 10, exclude_match_id=None) -> str:
     """Phase rates pooled over the club's most recent completed matches (possessions built per match, then pooled)."""
     last_n = max(1, min(int(last_n or 10), 30))
-    matches = (await db.execute(
-        select(Match).where(Match.club_id == club_id).order_by(Match.match_date.desc()).limit(last_n)
-    )).scalars().all()
+    q = select(Match).where(Match.club_id == club_id)
+    if exclude_match_id:
+        q = q.where(Match.id != exclude_match_id)
+    matches = (await db.execute(q.order_by(Match.match_date.desc()).limit(last_n))).scalars().all()
     if not matches:
         return json.dumps({"error": "no matches"})
     ids = [m.id for m in matches]
@@ -291,7 +292,8 @@ async def get_season_phase_profile(db, club_id, last_n: int = 10) -> str:
             phases[g] = {"phase": name, "meaning": meaning, **_stats_row(sel)}
     return json.dumps({
         "matches_used": used,
-        "scope": f"the club's last {used} match{'es' if used != 1 else ''} with enough events logged",
+        "scope": (f"the club's last {used} match{'es' if used != 1 else ''} with enough events logged"
+                  + (", not counting this one" if exclude_match_id else "")),
         "how_to_read": ("These rates are the club's own average over its last matches (see scope). Same definitions as "
                         "get_phase_summary. Compare a single match's phase rates with them to say what was unusual for this team. "
                         "When you quote them say 'over our last N matches' with the real number - never 'the pool' or "
