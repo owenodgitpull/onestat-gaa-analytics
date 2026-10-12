@@ -2059,7 +2059,7 @@ export default function MatchRecording() {
       return isOwn ? `${playerName} played a high ball into ${area}` : `${teamName} played a high ball into ${area}`
     }
     if (event.event_type === 'long_kick_pass') {
-      return isOwn ? `${playerName} played a long kick pass into ${area}` : `${teamName} played a long kick pass into ${area}`
+      return isOwn ? `${playerName} played a kick pass into ${area}` : `${teamName} played a kick pass into ${area}`
     }
     if (event.event_type === 'other') {
       if (event.notes === 'High ball') {
@@ -5001,7 +5001,7 @@ export default function MatchRecording() {
                             ballSvgY={ballSvgY}
                             angleDeg={-135}
                             label="LK"
-                            title="Log Long Kick Pass"
+                            title="Log Kick Pass"
                             color="#0d9488"
                             onTap={() => handleToggleLongKickArm('long_kick_pass')}
                             armed={pendingLongKick?.kind === 'long_kick_pass'}

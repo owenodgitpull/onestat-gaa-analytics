@@ -1562,7 +1562,7 @@ export default function VideoTagging() {
         end_x: position.x,
         end_y: position.y,
         pitch_zone: xyToZone(kickedFrom.x, kickedFrom.y),
-        description: kind === 'high_ball' ? 'High ball' : 'Long kick pass',
+        description: kind === 'high_ball' ? 'High ball' : 'Kick pass',
         source: 'human_tag',
         ...(kickPlayerId ? { player_id: kickPlayerId } : {}),
       }
@@ -4117,7 +4117,7 @@ export default function VideoTagging() {
           fontSize: 30, fontWeight: 700, whiteSpace: 'nowrap',
           color: pendingLongKick ? '#fbbf24' : (possession === 'team_a' ? '#6ee7b7' : '#fdba74'),
         }}>
-          {pendingDrop ? pendingDrop.label : pendingLongKick ? `${pendingLongKick.kind === 'high_ball' ? 'High Ball' : 'Long Kick Pass'} — tap pitch for landing spot` : statusText}
+          {pendingDrop ? pendingDrop.label : pendingLongKick ? `${pendingLongKick.kind === 'high_ball' ? 'High Ball' : 'Kick Pass'} — tap pitch for landing spot` : statusText}
         </span>
       </div>
     </div>
@@ -4201,7 +4201,7 @@ export default function VideoTagging() {
                 ballSvgY={ballSvgY}
                 angleDeg={-90}
                 label="LK"
-                title="Log Long Kick Pass"
+                title="Log Kick Pass"
                 color="#0d9488"
                 orientation={taggingPitchOrientation}
                 onTap={() => handleToggleLongKickArm('long_kick_pass')}

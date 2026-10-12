@@ -1547,7 +1547,7 @@ function formatEventDescription(event: any, players: any[], opponentName: string
     return `${playerName} played a high ball into ${area}`
   }
   if (event.event_type === 'long_kick_pass') {
-    return `${playerName} played a long kick pass into ${area}`
+    return `${playerName} played a kick pass into ${area}`
   }
   if (event.event_type === 'other') {
     if (event.notes === 'High ball') {

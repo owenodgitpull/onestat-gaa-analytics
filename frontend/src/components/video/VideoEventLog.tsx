@@ -36,7 +36,7 @@ interface VideoEventLogProps {
 const EVENT_LABELS: Record<string, string> = {
   POINT_SCORED: 'Point', GOAL_SCORED: 'Goal', WIDE: 'Wide', SHORT: 'Short',
   POST_HIT: 'Post', GOAL_CHANCE: 'Goal Chance',
-  PASS_HAND: 'Hand Pass', PASS_KICK: 'Long Kick Pass', LONG_KICK_PASS: 'Long Kick Pass', HIGH_BALL: 'High Ball', SOLO_RUN: 'Solo',
+  PASS_HAND: 'Hand Pass', PASS_KICK: 'Kick Pass', LONG_KICK_PASS: 'Kick Pass', HIGH_BALL: 'High Ball', SOLO_RUN: 'Solo',
   CATCH: 'Catch', PICKUP: 'Pick Up', MARK_CLAIMED: 'Mark',
   TACKLE: 'Tackle', BLOCK_SHOT: 'Block Shot', BLOCK_PASS: 'Block Pass',
   INTERCEPTION: 'Intercept', HOOK: 'Hook', SPOIL: 'Spoil',

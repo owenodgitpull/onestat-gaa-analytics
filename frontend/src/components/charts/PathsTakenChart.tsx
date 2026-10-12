@@ -37,7 +37,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   opp_kickout_won: 'Won their kickout', opp_kickout_won_break: 'Won their kickout (break)',
   turnover_won: 'Turnover won', interception: 'Interception', block: 'Block', tackle_won: 'Tackle won',
   free_won: 'Free won', foul_won: 'Free won', free_short_pass: 'Free short', free_high_ball: 'Free high ball',
-  long_kick_pass: 'Long kick pass', high_ball: 'High ball', forty_five: '45', point_free: 'Free (point)',
+  long_kick_pass: 'Kick pass', high_ball: 'High ball', forty_five: '45', point_free: 'Free (point)',
   goal: 'Goal', point: 'Point', two_point: '2-pointer', two_point_free: '2-pointer (free)',
   wide: 'Wide', wide_free: 'Wide (free)', turnover_lost: 'Turnover lost', unforced_error: 'Unforced error',
   breaking_ball_won: 'Breaking ball won',

@@ -290,9 +290,11 @@ properly.
   kicked from and end_x/end_y is where it landed. sub_type is the outcome: won / lost (who ended up with
   possession), optionally with _clean or _break (clean catch vs broken/breaking ball), e.g. won_break.
   When we won it, kickout_target_player_id is the player who came away with it. Useful for "how often did
-  we go direct/long" and "do we win our high balls" style questions.
-- Long Kick Pass (event_type=LONG_KICK_PASS; older events: PASS_KICK/OTHER): a direct, long kicked pass to
-  a team-mate, as opposed to a contestable High Ball. player_id is the kicker; pitch_x/y is where it was
+  we kick it forward" and "do we win our high balls" style questions (length only from the landing distance).
+- Kick Pass (event_type=LONG_KICK_PASS, shown in the app as 'Kick Pass'; older events: PASS_KICK/OTHER): a kicked pass to
+  a team-mate, as opposed to a contestable High Ball. It is NOT necessarily long: it may be a short kick of 10m or a long
+  ball - judge the length from the distance between where it was kicked from and where it landed, never assume 'long'.
+  Do not call kick passes 'long balls' or count them as 'going direct' unless the distance says so. player_id is the kicker; pitch_x/y is where it was
   kicked from and end_x/y where it landed. sub_type is the outcome: completed (kickout_target_player_id is
   the receiver) or intercepted. An intercepted one is also a turnover with origin "Kick Pass".
 - Short / Saved / Hit Post shots: besides `x`/`y` (where the shot was TAKEN from) an event may carry
