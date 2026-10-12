@@ -186,7 +186,7 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.SHORT]: { videoType: 'SHORT', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'saved' },
   [EventType.SAVED]: { videoType: 'SAVED', needsPlayer: false, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts' },
   [EventType.BLOCK]: { videoType: 'BLOCK_SHOT', needsPlayer: true, playerModalTitle: 'Who Blocked?', playerModalEventType: 'block' },
-  [EventType.FREE_SHORT_PASS]: { videoType: 'PASS_HAND', needsPlayer: true, autoSwitchTab: 'scoring', playerModalTitle: 'Who Took the Free?', playerModalEventType: 'point_free', description: 'Free short pass' },
+  [EventType.FREE_SHORT_PASS]: { videoType: 'PASS_HAND', needsPlayer: false, autoSwitchTab: 'scoring', description: 'Free short pass' },  // taker isn't useful: possession is picked next
   [EventType.FREE_HIGH_BALL]: { videoType: 'HIGH_BALL', needsPlayer: true, autoSwitchTab: 'scoring', playerModalTitle: 'Who Took the Free?', playerModalEventType: 'point_free', description: 'High ball (free)' },
   [EventType.HIT_POST]: { videoType: 'HIT_POST', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'our_kickouts', playerModalTitle: 'Who Shot?', playerModalEventType: 'wide' },
   [EventType.POINT_FREE]: { videoType: 'POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },

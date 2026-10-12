@@ -3395,7 +3395,10 @@ export default function MatchRecording() {
 
     // Free kick results - record with context of which team is taking the free
     if (isFreeKickResult) {
-      if (isTeamTakingFree) {
+      if (isTeamTakingFree && eventType === EventType.FREE_SHORT_PASS) {
+        // A short free is just a restart: who took it isn't useful — record it and let possession be picked next
+        recordFreeKickResult(eventType as EventType, actionPosition, true)
+      } else if (isTeamTakingFree) {
         // Own team taking the free — open player modal to select who takes it
         setPendingEvent({
           eventType: eventType as EventType,
