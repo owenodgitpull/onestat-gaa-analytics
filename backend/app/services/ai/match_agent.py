@@ -70,6 +70,8 @@ def _apply_scorecard(text: str, table_md: str) -> str:
 
 # match_id -> the post-match report generation currently running (see MatchAgent.generate_post_match_report)
 _REPORT_INFLIGHT: dict = {}
+# match_id -> the phase scorecard table exactly as get_phase_summary computed it, held until the report is assembled
+_SCORECARD_BY_MATCH: dict = {}
 
 # Details of the most recent audit (the replay tool reads this)
 LAST_FACT_CHECK: dict = {}
@@ -409,7 +411,6 @@ Reference knowledge base context when relevant to a specific trigger.
         _mid = _UUID(match_id) if isinstance(match_id, str) else match_id
         _mq = await db.execute(select(_Match.club_id).where(_Match.id == _mid))
         _cid = _mq.scalar_one_or_none()
-        _scorecard_md = ""   # the phase scorecard exactly as computed (put back into the report below)
         club_name, club_context = await get_club_context(db, _cid)
 
         # Get knowledge base context via RAG
@@ -579,7 +580,9 @@ INSTRUCTIONS:
                     logger.info(f"Tool {block.name} returned {len(tool_result)} chars")
                     if block.name == "get_phase_summary":
                         try:
-                            _scorecard_md = json.loads(tool_result).get("scorecard_table_markdown") or _scorecard_md
+                            _md = json.loads(tool_result).get("scorecard_table_markdown")
+                            if _md:
+                                _SCORECARD_BY_MATCH[str(match_id)] = _md
                         except Exception:
                             pass
                     tool_results.append({
@@ -988,7 +991,7 @@ INSTRUCTIONS:
 
         # Strip the <chart_insights> block from the displayed analysis
         clean_analysis = re.sub(r'\s*<chart_insights>[\s\S]*?</chart_insights>\s*', '', analysis).strip()
-        clean_analysis = _apply_scorecard(clean_analysis, _scorecard_md)
+        clean_analysis = _apply_scorecard(clean_analysis, _SCORECARD_BY_MATCH.pop(str(match_id), ""))
 
         # Defensive: strip a leaked "narrating my own process" preamble if the
         # model wrote one anyway despite the system prompt instruction against it
