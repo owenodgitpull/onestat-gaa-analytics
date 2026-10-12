@@ -1815,16 +1815,13 @@ export default function VideoTagging() {
     // system, so unlike our own scores this only captures a free-text name
     // (mirrors live recording's OppositionScorerStrip + opposition_roster).
     if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type) && oppSquad.enabled) {
-      // Inter-county: no "who scored?" pop-up — their scorer is the opposition carrier, derived exactly like ours.
+      // Inter-county: the scorer is always PICKED (same over-the-pitch picker as our own scorers), never assumed from
+      // the tracked carrier. The carrier is only highlighted in that picker as a suggestion.
       const carrierId = activeOppCarrierIdRef.current
       const c = carrierId ? oppSquad.players.find(p => p.playerId === carrierId) : null
-      if (c) {
-        data.opposition_player_id = c.playerId
-        data.opponent_player_name = c.playerName
-      }
       createEvent.mutate({ sessionId, data }, {
-        // Always ask who scored, with the same over-the-pitch picker as our own scorers. The carrier (if any) is already
-        // saved as the default and is highlighted as the suggestion; closing the picker keeps it.
+        // Always ask who scored, with the same over-the-pitch picker as our own scorers. The carrier (if any) is only
+        // highlighted as the suggestion; closing the picker leaves the scorer blank rather than guessing.
         onSuccess: (created: any) => {
           if (created?.id) {
             setPendingOppPlayer({
