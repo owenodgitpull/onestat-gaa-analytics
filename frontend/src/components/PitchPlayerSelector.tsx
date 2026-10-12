@@ -108,6 +108,21 @@ export default function PitchPlayerSelector({
   const [animateIn, setAnimateIn] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [animateOut, setAnimateOut] = useState(false)
+  // Sit over the pitch panel only (never the video — play carries on underneath while a player is picked). Falls back
+  // to the whole screen on pages that don't mark a pitch panel.
+  const [panelRect, setPanelRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
+  useEffect(() => {
+    if (!isOpen) return
+    const measure = () => {
+      const el = document.querySelector('[data-pitch-panel]')
+      if (!el) { setPanelRect(null); return }
+      const r = el.getBoundingClientRect()
+      setPanelRect(r.width > 200 && r.height > 150 ? { left: r.left, top: r.top, width: r.width, height: r.height } : null)
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [isOpen])
 
   // Map players to formation positions using position_id from lineup
   const playerPositions = useMemo(() => {
@@ -222,7 +237,10 @@ export default function PitchPlayerSelector({
   }
 
   const content = (
-    <div className="fixed inset-0 z-[110] flex flex-col">
+    <div
+      className={panelRect ? 'fixed z-[110] flex flex-col rounded-xl overflow-hidden' : 'fixed inset-0 z-[110] flex flex-col'}
+      style={panelRect ? { left: panelRect.left, top: panelRect.top, width: panelRect.width, height: panelRect.height } : undefined}
+    >
       {/* Semi-transparent backdrop */}
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity duration-300"
@@ -339,7 +357,7 @@ export default function PitchPlayerSelector({
               <div
                 className={`${circleSize} rounded-full flex flex-col items-center justify-center shadow-lg transition-transform active:scale-90 ${
                   isSelected ? 'scale-110' : 'hover:scale-105'
-                }`}
+                } ${!readOnly && !animateOut && !isSelected ? 'animate-pulse' : ''}`}
                 style={{
                   backgroundColor: teamPrimaryColor,
                   color: teamSecondaryColor,
