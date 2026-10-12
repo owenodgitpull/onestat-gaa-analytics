@@ -2598,6 +2598,8 @@ export default function VideoTagging() {
       },
     })
   }
+  // Always OUR press (logged-in team) - say so on the button so there is never any doubt whose it is
+  const pressTeamLabel = (clubName || 'Our').replace(/\s+(GAA|GFC|CLG)$/i, '')
   const togglePress = useCallback(() => {
     if (pressActive) { closePressRef.current('manual_end'); return }
     if (possession === 'team_a') return   // nothing to press while we have the ball
@@ -4396,10 +4398,10 @@ export default function VideoTagging() {
                 : 'bg-white/10 border-white/20 text-white/80 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed'
             }`}
             title={!pressActive && possession === 'team_a'
-              ? 'Press Trigger only applies while the opposition has the ball'
-              : 'Mark the start of a high press — auto-ends when we win it back or they score; tap again to end it'}
+              ? `${pressTeamLabel} press: only available while the opposition has the ball`
+              : `Mark the start of ${pressTeamLabel}'s press — auto-ends when they win it back or the opposition score; tap again to end it`}
           >
-            {pressActive ? 'Press Active' : 'Press'}
+            {pressActive ? `${pressTeamLabel} Press Active` : `${pressTeamLabel} Press`}
           </button>
         )}
         <button
