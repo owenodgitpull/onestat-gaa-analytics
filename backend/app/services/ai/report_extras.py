@@ -125,7 +125,7 @@ def frees(rows: list, evs: list, atk_first, hdm) -> dict:
 def our_shots_by_range(rows: list, evs: list, atk_first, hdm, length_m=None, width_m=None) -> dict:
     LEN = length_m or DEFAULT_LENGTH_M
     WID = width_m or DEFAULT_WIDTH_M
-    bands = {"inside_20m": [0, 0, 0], "20_to_40m": [0, 0, 0], "40m_plus": [0, 0, 0]}
+    bands = {"inside_20m": [0, 0, 0], "20_to_40m": [0, 0, 0], "40m_plus": [0, 0, 0], "no_position_recorded": [0, 0, 0]}
     placed = 0
     total = 0
     for e in evs:
@@ -134,6 +134,11 @@ def our_shots_by_range(rows: list, evs: list, atk_first, hdm, length_m=None, wid
         total += 1
         f = _framed(rows[e.idx], e.half, atk_first, hdm)
         if not f:
+            b = bands["no_position_recorded"]
+            b[0] += 1
+            if e.type in SCORE_TYPES:
+                b[1] += 1
+                b[2] += points_for(e.type)
             continue
         placed += 1
         d = distance_to_goal_m(f[0], f[1], True, LEN, WID)

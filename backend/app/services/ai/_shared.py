@@ -2678,6 +2678,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             _player_breakdown_raw[_pid] = {
                 'unforced_errors': 0, 'error_subtypes': [],
                 'turnovers_lost': 0, 'turnovers_won': 0,
+                'shorts': 0, 'hit_posts': 0, 'saved': 0,
                 'wides': 0, 'fouls_committed': 0,
                 'yellow_cards': 0, 'black_cards': 0, 'red_cards': 0,
                 'blocks': 0, 'frees_won': 0,
@@ -2696,6 +2697,12 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             _pb['turnovers_won'] += 1
         elif _et in {EventType.WIDE, EventType.WIDE_FREE}:
             _pb['wides'] += 1
+        elif _et == EventType.SHORT:
+            _pb['shorts'] += 1
+        elif _et == EventType.HIT_POST:
+            _pb['hit_posts'] += 1
+        elif _et == EventType.SAVED:
+            _pb['saved'] += 1
         elif _et == EventType.FOUL_COMMITTED:
             _pb['fouls_committed'] += 1
         elif _et == EventType.YELLOW_CARD:
@@ -2778,6 +2785,12 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             _entry['turnovers_won'] = _pb['turnovers_won']
         if _pb['wides']:
             _entry['wides'] = _pb['wides']
+        if _pb['shorts']:
+            _entry['shorts'] = _pb['shorts']          # dropped short - NOT a wide
+        if _pb['hit_posts']:
+            _entry['hit_posts'] = _pb['hit_posts']
+        if _pb['saved']:
+            _entry['saved'] = _pb['saved']
         if _pb['fouls_committed']:
             _entry['fouls_committed'] = _pb['fouls_committed']
         if _pb['blocks']:
@@ -2869,6 +2882,9 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     _wide_types = {EventType.WIDE, EventType.WIDE_FREE}
     wides = len([e for e in events if e.team == Team.OWN and e.event_type in _wide_types])
     opp_wides = len([e for e in events if e.team == Team.OPPONENT and e.event_type in _wide_types])
+
+    def _n(team, et):
+        return len([e for e in events if e.team == team and e.event_type == et])
 
     # Calculate shots and accuracy
     scoring_types = [EventType.GOAL, EventType.POINT, EventType.TWO_POINT, EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE]
@@ -2973,6 +2989,15 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             "fouls_committed": fouls_committed,
             "frees_won": frees_won,
             "wides": wides,
+            "shorts": _n(Team.OWN, EventType.SHORT),
+            "hit_posts": _n(Team.OWN, EventType.HIT_POST),
+            "saved": _n(Team.OWN, EventType.SAVED),
+            "missed_shots_total": tm_misses,
+            "opponent_shorts": _n(Team.OPPONENT, EventType.SHORT),
+            "opponent_hit_posts": _n(Team.OPPONENT, EventType.HIT_POST),
+            "opponent_saved": _n(Team.OPPONENT, EventType.SAVED),
+            "opponent_missed_shots_total": opp_misses,
+            "shots_note": "wides = wide + free wide only. A short, a hit post and a save are separate kinds of missed shot - never call them wides. missed_shots_total is all of them.",
             "team_total_shots": tm_total_shots,
             "team_accuracy": tm_accuracy,
             "team_possession_percentage": tm_possession,
@@ -4432,7 +4457,12 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         scoring_chains = [c for c in chains if c.outcome == "score"]
         turnover_chains = [c for c in chains if c.outcome == "turnover"]
         wide_chains = [c for c in chains if c.outcome == "wide"]
+        _ended_other = [c for c in chains if c.outcome not in ("score", "turnover", "wide")]
         chain_effectiveness = {
+            "other_endings": len(_ended_other),
+            "other_endings_detail": dict(Counter(c.outcome for c in _ended_other)),
+            "note": ("scoring + turnover + wide (missed shot) + other_endings = total_chains. 'wide' here means any missed shot "
+                     "(wide, short, post, saved). Chain counts come from the ball-path log, not the scoreboard."),
             "total_chains": len(chains),
             "scoring_chains": len(scoring_chains),
             "turnover_chains": len(turnover_chains),

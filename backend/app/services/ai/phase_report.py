@@ -24,7 +24,7 @@ from app.services.ai.insight_findings import (
 from app.services.ai.report_extras import build_extras
 from app.utils.names import their_player_label
 from app.services.ai.phase_facts import (
-    GROUPS, MIN_N, SCORE_TYPES, group_stats, normalise, order_key, possessions,
+    GROUPS, MAX_TRUSTED_SECONDS, MIN_N, SCORE_TYPES, group_stats, normalise, order_key, possessions,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,20 @@ ORIGIN_TEXT = {
     "turnover_lost": "turnover lost", "turnover_lost_unforced": "unforced error", "contest_won": "breaking ball won",
     "contest_lost": "breaking ball lost", "free_won": "free won",
 }
+def origin_text(origin: str, owner_is_own: bool) -> str:
+    """The same origin read from the right side: the other team's unforced error is OUR turnover won."""
+    if origin == "turnover_lost_unforced":
+        return ("their unforced error (counted as a turnover we won)" if owner_is_own
+                else "our unforced error (counted as a turnover we lost)")
+    if origin == "turnover_lost":
+        return "turnover we won" if owner_is_own else "turnover we lost"
+    if origin == "turnover_won_forced":
+        return "forced turnover we won" if owner_is_own else "forced turnover they won"
+    if origin == "turnover_won":
+        return "turnover we won" if owner_is_own else "turnover we lost"
+    return ORIGIN_TEXT.get(origin, origin)
+
+
 ENDING_TEXT = {"score": "ended in a score", "miss": "ended in a shot that missed", "lost": "was lost without a shot",
                "foul": "ended in a foul", "half_end": "ran to the end of the half", "open": "was still open at the end",
                "unknown": "ended unclear"}
@@ -175,13 +189,21 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         if p.outcome != "score":
             continue
         side = origins["ours" if p.owner_is_own else "theirs"]
-        row = side.setdefault(ORIGIN_TEXT.get(p.origin, p.origin), {"scores": 0, "points": 0})
+        row = side.setdefault(origin_text(p.origin, p.owner_is_own), {"scores": 0, "points": 0})
         row["scores"] += 1
         row["points"] += p.points
 
     hdm = getattr(match, "half_duration_mins", None) or 30
     extras = build_extras(rows, evs, getattr(match, "attacking_right_first_half", None), hdm,
                           getattr(match, "pitch_length_m", None), getattr(match, "pitch_width_m", None))
+
+    # what the scorecard does and does not cover, stated under the table
+    n_long = sum(1 for p in ps if p.shot and p.seconds is not None and p.seconds > MAX_TRUSTED_SECONDS)
+    footnote = (f"*These phase counts cover {traced_shots} of the {all_shots} shots logged (possessions the event order could trace)."
+                + (f" {n_long} shot{'s' if n_long != 1 else ''} followed a possession timed at over two minutes and "
+                   f"{'is' if n_long == 1 else 'are'} left out of the median seconds." if n_long else "")
+                + "*")
+    scorecard_md = scorecard_table(phases) + "\n\n" + footnote
 
     return json.dumps({
         "how_to_read": ("Possessions are followed in event ORDER from the event that gave a team the ball until a score, a missed shot, "
@@ -200,10 +222,18 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         },
         "scores_by_origin": {
             **origins,
-            "note": "Scores split by how the possession that produced them began, for both teams (traced possessions only).",
+            "scores_traced": {
+                "ours": {"in_this_list": sum(v["scores"] for v in origins["ours"].values()),
+                         "scores_in_match": us.goals + us.point_scores},
+                "theirs": {"in_this_list": sum(v["scores"] for v in origins["theirs"].values()),
+                           "scores_in_match": them.goals + them.point_scores},
+            },
+            "note": ("Scores split by how the possession that produced them began, for both teams (traced possessions only). "
+                     "scores_traced says how many of the match's scores this list covers - say so when it is fewer. A score from "
+                     "'their unforced error' is also counted as a turnover we won in the phase table."),
         },
         "phases": phases,
-        "scorecard_table_markdown": scorecard_table(phases),
+        "scorecard_table_markdown": scorecard_md,
         **extras,
         "margin_by_ten_minutes": blocks,
         "ranked_findings": [{"theme": f.theme, "phase": PHASES.get(f.phase, f.phase), "text": f.text, "n": f.n,
@@ -237,13 +267,17 @@ async def get_phase_sequences(db, match_id: str, club_id=None, phase: Optional[s
             who = names.get(getattr(end, "player_id", None)) or their_player_label(
                 getattr(end, "opponent_player_name", None), names.values())
         et = p.end_type or ""
-        half_word = "1st half" if p.half == 1 else "2nd half"
+        # the shot's own minute and half are the ones to quote (a possession can begin a minute earlier, before a substitute
+        # came on, and second-half minutes start at the half length so 30'-34' exist in both halves)
+        end_minute = getattr(end, "minute", None) if end is not None else p.minute
+        end_half = (getattr(end, "half", None) if end is not None else None) or p.half
+        half_word = "1st half" if end_half == 1 else "2nd half"
         out.append({
-            "when": f"{half_word}, {p.minute}'",
-            "ended_at_minute": getattr(end, "minute", None),
-            "minute": p.minute, "half": p.half,
+            "when": f"{half_word} {end_minute}'",
+            "minute": end_minute, "half": end_half,
+            "began_at_minute": p.minute,
             "possession": "ours" if p.owner_is_own else "theirs",
-            "began": ORIGIN_TEXT.get(p.origin, p.origin),
+            "began": origin_text(p.origin, p.owner_is_own),
             "ended": ENDING_TEXT.get(p.outcome, p.outcome),
             "shot": et or None,
             "points": p.points,
