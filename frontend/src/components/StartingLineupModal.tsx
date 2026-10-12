@@ -343,7 +343,7 @@ export default function StartingLineupModal({
                 <span className="text-white text-xs font-semibold">Use Last Lineup</span>
               </button>
             )}
-            {matchId && (
+            {matchId && !club?.features?.opposition_lineup && (
               <button
                 onClick={handleToggleRoster}
                 className="glass-card-hover px-3 py-1.5 flex items-center space-x-1.5 ml-2"
@@ -361,7 +361,7 @@ export default function StartingLineupModal({
         </div>
 
         {/* Opposition Key Players — inline, collapsed by default */}
-        {matchId && rosterExpanded && (
+        {matchId && !club?.features?.opposition_lineup && rosterExpanded && (
           <div className="mb-3 p-3 rounded-xl bg-white/5 border border-white/10 space-y-2">
             <p className="text-xs text-white/40">
               Enter key opposition players by full name — one per line, or separated by commas (a list pasted from a team sheet works). Full names keep two players with the same surname apart. These appear for quick selection when recording opponent scores or tagging who we forced a turnover from.

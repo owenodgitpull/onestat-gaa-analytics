@@ -5,6 +5,7 @@ import { format } from 'date-fns'
 import { ArrowLeft, MapPin, Trophy, User, Swords, ClipboardList, ClipboardCheck, Pencil, Users, ChevronDown, ChevronUp, Flag, GraduationCap, Trash2 } from 'lucide-react'
 import { api } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
+import { useClub } from '../contexts/ClubContext'
 import EditFixtureModal from '../components/EditFixtureModal'
 import { hasPendingTutorial } from '../components/MatchRecordingTutorial'
 import type { Match, FormResult } from '../types'
@@ -53,6 +54,9 @@ function FormRow({ results }: { results: FormResult[] }) {
 export default function FixturePreview() {
   const { matchId } = useParams<{ matchId: string }>()
   const navigate = useNavigate()
+  const { club } = useClub()
+  // Inter-county clubs enter the opposition in the full lineup editor in Match Prep, so the key-players box is not shown
+  const hasOppositionLineup = !!club?.features?.opposition_lineup
   const { canEdit } = useAuth()
   const queryClient = useQueryClient()
   const [editingFixture, setEditingFixture] = useState<Match | null>(null)
@@ -206,6 +210,7 @@ export default function FixturePreview() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
+                if (hasOppositionLineup) { navigate(`/match-prep/${match.id}`); return }
                 setRosterExpanded(true)
                 if (!rosterLoaded && matchId) {
                   api.matchPrep.getOppositionRoster(matchId)
@@ -454,7 +459,8 @@ export default function FixturePreview() {
         </div>
       </div>
 
-      {/* Opposition Key Players */}
+      {/* Opposition Key Players (clubs only - inter-county uses the lineup editor in Match Prep) */}
+      {!hasOppositionLineup && (
       <div id="opposition-roster" className="glass-card overflow-hidden">
         <button
           onClick={async () => {
@@ -519,6 +525,7 @@ export default function FixturePreview() {
           </div>
         )}
       </div>
+      )}
 
       <EditFixtureModal
         fixture={editingFixture}
