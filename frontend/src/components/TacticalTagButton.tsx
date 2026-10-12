@@ -9,11 +9,10 @@ import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { Tag } from 'lucide-react'
 
-// 'High Press' deliberately dropped from this list — Press Trigger (the
-// toolbar's own dedicated toggle) now covers that concept with real
-// start/end timing, pass count and outcome, making a static one-tap tag
-// with none of that a redundant, weaker duplicate.
+// All four tags from the plan. 'High Press' is a quick one-tap marker of a press happening; the toolbar's Press
+// Trigger toggle is the timed version (start/end, passes allowed, outcome) - they complement each other.
 const QUICK_TAGS = [
+  { type: 'high_press', label: 'High Press' },
   { type: 'blanket_defence', label: 'Blanket Defence' },
   { type: 'formation_change', label: 'Formation Change' },
 ]
