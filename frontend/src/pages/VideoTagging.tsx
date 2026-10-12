@@ -74,6 +74,7 @@ import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
 import { useOppositionSquad, swapOppositionLineup, oppositionPickerOptions } from '../hooks/useOppositionSquad'
 import OppositionWhoChip from '../components/OppositionWhoChip'
+import OppositionPlayerSelector from '../components/OppositionPlayerSelector'
 import { useAutoShootingTab } from '../hooks/useAutoShootingTab'
 import BallQuickActionIcon from '../components/video/BallQuickActionIcon'
 import GAAPitch from '../components/GAAPitch'
@@ -464,7 +465,7 @@ export default function VideoTagging() {
   // follow-up panels shown after their trigger event finalizes. Also reused
   // for the turnover-forced-from prompt (mode: 'turnover_forced') — same
   // banner, no footedness step, no scoringContext to merge into.
-  const [pendingOppPlayer, setPendingOppPlayer] = useState<{ eventId: string; eventType: string; when?: string } | null>(null)
+  const [pendingOppPlayer, setPendingOppPlayer] = useState<{ eventId: string; eventType: string; when?: string; overlay?: boolean; suggestedId?: string | null } | null>(null)
   const oppEnabledRef = useRef(false)   // mirrors oppSquad.enabled for callbacks declared above it
   const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string; mode: 'score' | 'turnover_forced'; scoringContext?: ScoringContext } | null>(null)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
@@ -1822,9 +1823,15 @@ export default function VideoTagging() {
         data.opponent_player_name = c.playerName
       }
       createEvent.mutate({ sessionId, data }, {
-        // no carrier selected: ask, rather than leaving the scorer silently blank
+        // Always ask who scored, with the same over-the-pitch picker as our own scorers. The carrier (if any) is already
+        // saved as the default and is highlighted as the suggestion; closing the picker keeps it.
         onSuccess: (created: any) => {
-          if (!c && created?.id) setPendingOppPlayer({ eventId: created.id, eventType: data.event_type === 'GOAL_SCORED' ? 'goal' : 'point', when: `${data.match_minute}'` })
+          if (created?.id) {
+            setPendingOppPlayer({
+              eventId: created.id, eventType: data.event_type === 'GOAL_SCORED' ? 'goal' : 'point',
+              when: `${data.match_minute}'`, overlay: true, suggestedId: c?.playerId ?? null,
+            })
+          }
         },
       })
     } else if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type)) {
@@ -4219,7 +4226,7 @@ export default function VideoTagging() {
   /** Ball-carrier tracking pitch panel — right half of the 50/50 split */
   const pitchPanel = (
     <div className="relative flex-1 min-w-0 min-h-0" data-pitch-panel>
-      {pendingOppPlayer && oppSquad.enabled && (
+      {pendingOppPlayer && !pendingOppPlayer.overlay && oppSquad.enabled && (
         <OppositionWhoChip
           squad={oppSquad}
           eventType={pendingOppPlayer.eventType}
@@ -4879,6 +4886,22 @@ export default function VideoTagging() {
             </div>
           </div>
         </div>
+      )}
+      {pendingOppPlayer?.overlay && oppSquad.enabled && (
+        <OppositionPlayerSelector
+          squad={oppSquad}
+          eventType={pendingOppPlayer.eventType}
+          ourAttackingRight={teamAttackingRightThisHalf ?? true}
+          ballPosition={ballPosition}
+          suggestedPlayerId={pendingOppPlayer.suggestedId}
+          onSelect={(id, name) => {
+            if (sessionId) {
+              updateEvent.mutate({ eventId: pendingOppPlayer.eventId, sessionId, data: { opposition_player_id: id, opponent_player_name: name } })
+            }
+            setPendingOppPlayer(null)
+          }}
+          onClose={() => setPendingOppPlayer(null)}
+        />
       )}
       {pendingOppScorer && (
         <div className="fixed inset-0 z-[140]">
