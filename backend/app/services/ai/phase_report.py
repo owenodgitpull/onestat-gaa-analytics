@@ -194,8 +194,19 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         row["points"] += p.points
 
     hdm = getattr(match, "half_duration_mins", None) or 30
+    _pids = {getattr(r, "player_id", None) for r, e in ((rows[x.idx], x) for x in evs) if e.type == "saved"}
+    _pids.discard(None)
+    _full = {}
+    if _pids:
+        for pid, nm in (await db.execute(select(Player.id, Player.name).where(Player.id.in_(list(_pids))))).all():
+            _full[pid] = (nm or "").strip()
+
+    def _shooter(r):
+        return _full.get(getattr(r, "player_id", None)) or their_player_label(
+            getattr(r, "opponent_player_name", None), _full.values())
+
     extras = build_extras(rows, evs, getattr(match, "attacking_right_first_half", None), hdm,
-                          getattr(match, "pitch_length_m", None), getattr(match, "pitch_width_m", None))
+                          getattr(match, "pitch_length_m", None), getattr(match, "pitch_width_m", None), _shooter)
 
     # what the scorecard does and does not cover, stated under the table
     n_long = sum(1 for p in ps if p.shot and p.seconds is not None and p.seconds > MAX_TRUSTED_SECONDS)

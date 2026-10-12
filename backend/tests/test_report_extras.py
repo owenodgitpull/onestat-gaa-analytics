@@ -89,3 +89,21 @@ def test_scorecard_is_put_back_exactly():
     out = _apply_scorecard(typed, tool)
     assert "| A | 1 | 1 |" in out and "3 shots" not in out and out.startswith("intro") and out.endswith("after")
     assert _apply_scorecard("no table here", tool) == "no table here"
+
+
+def test_saves_from_inside_the_13m_are_chances_and_distance_saves_are_not():
+    rows, evs = _build([
+        _row("saved", "own", 10, x=94, y=50),        # ours, right on the goal: a chance
+        _row("saved", "own", 12, x=70, y=50),        # ours, from distance: routine
+        _row("saved", "opponent", 20, x=4, y=48),    # theirs, close in, saved by our keeper
+        _row("saved", "opponent", 25, x=30, y=50),   # theirs, from distance
+        _row("saved", "own", 28),                     # no position
+    ])
+    out = build_extras(rows, evs, True, 30, name_of=lambda r: "Shot Taker")["saved_chances"]
+    assert out["ours"]["saved_in_total"] == 3
+    assert out["ours"]["from_inside_the_13m_count"] == 1
+    assert out["ours"]["from_inside_the_13m"][0]["saved_by"] == "their goalkeeper"
+    assert out["theirs"]["saved_in_total"] == 2
+    assert out["theirs"]["from_inside_the_13m_count"] == 1
+    assert out["theirs"]["from_inside_the_13m"][0]["saved_by"] == "our goalkeeper"
+    assert out["theirs"]["from_inside_the_13m"][0]["when"] == "1st half 20'"

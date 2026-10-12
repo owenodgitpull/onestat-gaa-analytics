@@ -14,8 +14,11 @@ from typing import Optional
 from app.services.ai.phase_facts import (
     FOUL_AGAINST_OWNER, KICKOUTS, MIN_N, OPP_KO_WON, OWN_KO_KEPT, OWN_KO_LOST, SCORE_TYPES, SHOT_TYPES, points_for,
 )
-from app.utils.attack_direction import own_attacks_right, to_attack_frame
-from app.utils.pitch_calibration import DEFAULT_LENGTH_M, DEFAULT_WIDTH_M, distance_to_goal_m
+from app.utils.attack_direction import own_attacks_right, side_attacks_right, to_attack_frame
+from app.utils.pitch_calibration import DEFAULT_LENGTH_M, DEFAULT_WIDTH_M, along_m, distance_to_goal_m, lateral_m
+
+BIG_CHANCE_ALONG_M = 13.0      # inside the 13m line ...
+BIG_CHANCE_ACROSS_M = 9.5      # ... and within the width of the large rectangle (19m)
 
 FREE_SHOTS = {"point_free", "two_point_free", "wide_free", "forty_five", "forty_five_missed", "penalty_goal", "penalty_miss"}
 FREE_SCORES = {"point_free", "two_point_free", "forty_five", "penalty_goal"}
@@ -160,8 +163,44 @@ def our_shots_by_range(rows: list, evs: list, atk_first, hdm, length_m=None, wid
     }
 
 
-def build_extras(rows: list, evs: list, atk_first, hdm, length_m=None, width_m=None) -> dict:
+def saved_chances(rows: list, evs: list, atk_first, hdm, name_of=None, length_m=None, width_m=None) -> dict:
+    """Saves are not all equal: a catch from distance is routine, a save from inside the 13m line is a goal chance."""
+    LEN = length_m or DEFAULT_LENGTH_M
+    WID = width_m or DEFAULT_WIDTH_M
+    out = {"ours": {"saved_in_total": 0, "from_inside_the_13m": []},
+           "theirs": {"saved_in_total": 0, "from_inside_the_13m": []}}
+    for e in evs:
+        if e.type != "saved":
+            continue
+        side = out["ours" if e.own else "theirs"]
+        side["saved_in_total"] += 1
+        row = rows[e.idx]
+        x, y = getattr(row, "pitch_x", None), getattr(row, "pitch_y", None)
+        if x is None or y is None:
+            continue
+        right = side_attacks_right(e.own, own_attacks_right(atk_first, e.half, getattr(row, "minute", None), hdm))
+        fx, fy = to_attack_frame(float(x), float(y), right)
+        if along_m(100.0 - fx, LEN) > BIG_CHANCE_ALONG_M or lateral_m(fy, WID) > BIG_CHANCE_ACROSS_M:
+            continue
+        who = name_of(row) if name_of else None
+        side["from_inside_the_13m"].append({
+            "when": f"{'1st half' if e.half == 1 else '2nd half'} {e.minute}'",
+            "shot_by": who or ("our player" if e.own else "their player"),
+            "metres_from_goal": round(distance_to_goal_m(fx, fy, True, LEN, WID)),
+            "saved_by": "their goalkeeper" if e.own else "our goalkeeper",
+        })
+    for s in out.values():
+        s["from_inside_the_13m_count"] = len(s["from_inside_the_13m"])
+    out["note"] = ("A SAVED shot is not automatically a big chance: from distance it is often a routine catch. A save from inside "
+                   "the 13m line is a genuine goal chance - name each one (shot_by, when, saved_by) in the report under the "
+                   "match story, credit the goalkeeper who made it when it is ours, and say a goal was denied. Do not describe "
+                   "the saves from distance as chances.")
+    return out
+
+
+def build_extras(rows: list, evs: list, atk_first, hdm, length_m=None, width_m=None, name_of=None) -> dict:
     return {
+        "saved_chances": saved_chances(rows, evs, atk_first, hdm, name_of, length_m, width_m),
         "kickouts_by_half": kickouts_by_half(rows, evs, atk_first, hdm),
         "scores_by_game_state": scores_by_game_state(evs),
         "frees": frees(rows, evs, atk_first, hdm),
