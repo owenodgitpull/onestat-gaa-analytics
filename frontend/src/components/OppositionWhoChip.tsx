@@ -16,6 +16,7 @@ const QUESTION: Record<string, string> = {
   turnover: 'Who won the turnover?', turnover_lost: 'Who lost it?', turnover_won: 'Who won it?',
   interception: 'Who intercepted it?', block: 'Who blocked it?',
   goal: 'Who scored the goal?', point: 'Who scored?',
+  assist: 'Who assisted?',
 }
 
 interface Props {

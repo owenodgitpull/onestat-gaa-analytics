@@ -74,6 +74,7 @@ import { type JerseyPlayer } from '../components/JerseyNumberStrip'
 import BallCarrierPicker from '../components/BallCarrierPicker'
 import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
 import { useOppositionSquad, swapOppositionLineup, oppositionPickerOptions } from '../hooks/useOppositionSquad'
+import type { OppositionSquad } from '../hooks/useOppositionSquad'
 import OppositionWhoChip from '../components/OppositionWhoChip'
 import OppositionPlayerSelector from '../components/OppositionPlayerSelector'
 import { useAutoShootingTab } from '../hooks/useAutoShootingTab'
@@ -3857,11 +3858,10 @@ export default function VideoTagging() {
   const isInPenaltyArea = !!ballPosition && Math.abs(cabAttackingGoalX - ballPosition.x) <= 10.5
 
   // A top banner (input prompt or Review) is showing — the status controls sit just below it
-  const topBannerShown = reviewing || deadBall || !!assistPromptEventId || showManualEvent || showViewLineup || showWeatherPicker
+  const topBannerShown = reviewing || deadBall || showManualEvent || showViewLineup || showWeatherPicker
   // What was left open when the user stepped out to Review (kept, shown as a chip)
   const parkedPromptLabel =
-    assistPromptEventId ? 'Assist player'
-    : overlayState === 'player' ? 'Player selection'
+    overlayState === 'player' ? 'Player selection'
     : overlayState === 'pitch' ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? '45m line tap' : 'Kickout landing tap')
     : pendingFoulSubtype ? 'Foul type'
     : pendingTurnoverReason ? 'Turnover reason'
@@ -3917,7 +3917,7 @@ export default function VideoTagging() {
         />
       )}
 
-      {!reviewing && (deadBall || assistPromptEventId || showManualEvent || showViewLineup || showWeatherPicker) && (
+      {!reviewing && (deadBall || showManualEvent || showViewLineup || showWeatherPicker) && (
         <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
           <style>{`
             @keyframes _vtChevR { 0%{transform:translateX(-4px);opacity:.25} 50%{opacity:1} 100%{transform:translateX(6px);opacity:.25} }
@@ -3944,8 +3944,7 @@ export default function VideoTagging() {
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
                 </span>
                 <span className="text-sm font-semibold text-white truncate">
-                  {assistPromptEventId ? 'Select assist player (or skip)'
-                    : overlayState === 'player' ? 'Select player'
+                  {overlayState === 'player' ? 'Select player'
                     : overlayState === 'pitch' ? (pendingOverlay?.action.pitchPrompt === 'forty_five' ? 'Tap the 45m line on the pitch graphic' : 'Tap where the kickout landed')
                     : pendingFoulSubtype ? 'Select foul type on the pitch graphic'
                     : pendingTurnoverReason ? 'How was possession lost? Select on the pitch graphic'
@@ -4260,6 +4259,29 @@ export default function VideoTagging() {
     </div>
   ) : undefined
 
+  // Assist prompt as a non-blocking sideline chip (our on-field players, minus the scorer)
+  const assistScorerId = assistPromptEventId
+    ? ((events as any[]).find(e => e.id === assistPromptEventId)?.player_id ?? null)
+    : null
+  const assistSquad: OppositionSquad = {
+    enabled: !!assistPromptEventId && !!matchLineup && matchLineup.length > 0,
+    primary: club?.primary_colour || '#10B981',
+    secondary: club?.secondary_colour || '#FFFFFF',
+    players: (matchLineup || [])
+      .filter((l: any) => l.is_on_field !== false && l.player_id !== assistScorerId)
+      .map((l: any) => {
+        const pl: any = playerList.find((q: any) => q.id === l.player_id)
+        return {
+          playerId: l.player_id,
+          jerseyNumber: l.match_jersey_number ?? l.player_jersey_number ?? pl?.jersey_number ?? null,
+          playerName: pl?.name || 'Player',
+          isOnField: true,
+          positionLabel: '',
+          positionId: l.position_id,
+        }
+      }),
+  }
+
   /** Ball-carrier tracking pitch panel — right half of the 50/50 split */
   const pitchPanel = (
     <div className="relative flex-1 min-w-0 min-h-0" data-pitch-panel>
@@ -4291,6 +4313,20 @@ export default function VideoTagging() {
             </button>
           </div>
         </div>
+      )}
+      {assistPromptEventId && !pendingOppPlayer && assistSquad.enabled && (
+        <OppositionWhoChip
+          squad={assistSquad}
+          eventType="assist"
+          teamName={pressTeamLabel}
+          onSelect={(id) => {
+            if (sessionId && assistPromptEventId) {
+              updateEvent.mutate({ eventId: assistPromptEventId, sessionId, data: { assist_player_id: id } })
+            }
+            setAssistPromptEventId(null)
+          }}
+          onDismiss={() => setAssistPromptEventId(null)}
+        />
       )}
       {pendingOppPlayer && !pendingOppPlayer.overlay && oppSquad.enabled && (
         <OppositionWhoChip
@@ -4813,26 +4849,6 @@ export default function VideoTagging() {
           oppositionOnField={oppositionPickerOptions(oppSquad).onField}
           oppositionBench={oppositionPickerOptions(oppSquad).bench}
           halfMins={matchHalfMins}
-        />
-      )}
-      {assistPromptEventId && matchLineup && matchLineup.length > 0 && (
-        <PitchPlayerSelector
-          isOpen={!!assistPromptEventId}
-          onClose={() => setAssistPromptEventId(null)}
-          onSelectPlayer={(player) => {
-            if (sessionId && assistPromptEventId) {
-              updateEvent.mutate({ eventId: assistPromptEventId, sessionId, data: { assist_player_id: player.id } })
-            }
-            setAssistPromptEventId(null)
-          }}
-          eventType="assist"
-          team="own"
-          players={playerList}
-          matchLineup={matchLineup}
-          teamPrimaryColor={club?.primary_colour || '#10B981'}
-          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-          attackingRight={teamAttackingRightThisHalf ?? true}
-          ballPosition={ballPosition}
         />
       )}
       {/* Pressure prompt — small non-blocking pill, same intent as the
