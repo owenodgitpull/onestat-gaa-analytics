@@ -92,7 +92,10 @@ export default function VideoEventLog({
       team_b_goals: 0, team_b_points: 0,
     }
 
-    return events.map((event) => {
+    // Hand passes (the opposition pass-count taps) are not listed - live recording hides them too. A free short
+    // pass is a free's outcome, so it stays.
+    const listed = events.filter(e => !(e.event_type === 'PASS_HAND' && (e.description || '').trim().toLowerCase() !== 'free short pass'))
+    return listed.map((event) => {
       let scoreChange = ''
       const isTwoPointer = event.scoring_context?.is_two_pointer
 

@@ -3,6 +3,7 @@
  * Read-only view of a completed match with event visualization on pitch
  */
 
+import { isMapEventType } from '../utils/eventMapFilter'
 import { humanEventType } from '../utils/eventLabels'
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
@@ -505,7 +506,7 @@ export default function MatchResult() {
 
     // Exclude cards (location not meaningful) and only include events with valid coordinates
     const CARD_TYPES = ['yellow_card', 'black_card', 'red_card']
-    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type))
+    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type) && isMapEventType(e.event_type))
   }, [eventsData, activeFilters, teamFilter, halfFilter])
 
   // Also gate on events loading, not just the match itself — hasEvents

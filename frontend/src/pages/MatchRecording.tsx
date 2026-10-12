@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { isMapEventType } from '../utils/eventMapFilter'
 import { humanEventType } from '../utils/eventLabels'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -1686,7 +1687,7 @@ export default function MatchRecording() {
       events = events.filter((e: any) => eventTypes.includes(e.event_type))
     }
     const CARD_TYPES = ['yellow_card', 'black_card', 'red_card']
-    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type))
+    return events.filter((e: any) => e.pitch_x !== null && e.pitch_y !== null && !CARD_TYPES.includes(e.event_type) && isMapEventType(e.event_type))
   }, [matchEventsData, eventMapFilters, eventMapTeamFilter, eventMapHalfFilter])
 
   // Helper function to check if position is in 2-point zone (outside 40m arc)

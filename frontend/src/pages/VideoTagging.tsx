@@ -22,6 +22,7 @@
  * └──────────────────────────────────────────────────┘
  */
 
+import { isMapEventType } from '../utils/eventMapFilter'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight, UserPlus } from 'lucide-react'
@@ -745,7 +746,7 @@ export default function VideoTagging() {
     const eventTypes = getEventTypesForFilters(eventMapFilters)
     let filtered = chartEvents.filter(e => e.pitch_x != null && e.pitch_y != null)
     const CARD_TYPES = ['yellow_card', 'black_card', 'red_card']
-    filtered = filtered.filter(e => !CARD_TYPES.includes(e.event_type))
+    filtered = filtered.filter(e => !CARD_TYPES.includes(e.event_type) && isMapEventType(e.event_type))
     if (eventMapTeamFilter !== 'all') {
       filtered = filtered.filter(e => e.team === eventMapTeamFilter)
     }
@@ -1706,6 +1707,7 @@ export default function VideoTagging() {
       if (snap.pendingBlockRecovery) setPendingBlockRecovery(true)
       if (snap.pendingSidelineDecision) setPendingSidelineDecision(true)
       if (snap.awaitingKickout) setAwaitingKickout(true)
+      if (snap.kickoutTab === 'our_kickouts' || snap.kickoutTab === 'opp_kickouts') setKickoutTab(snap.kickoutTab)
       if (snap.pendingFoulSubtype) setPendingFoulSubtype(snap.pendingFoulSubtype)
       if (snap.pendingTurnoverReason) setPendingTurnoverReason(snap.pendingTurnoverReason)
       if (snap.pendingErrorSubtype) setPendingErrorSubtype(snap.pendingErrorSubtype)
@@ -1734,12 +1736,12 @@ export default function VideoTagging() {
       if (!anyPending) { localStorage.removeItem(key); return }
       localStorage.setItem(key, JSON.stringify({
         at: Date.now(), possession, ballPosition, pendingFreeKick, pending45, pendingBlockRecovery, pendingSidelineDecision,
-        awaitingKickout, pendingFoulSubtype, pendingTurnoverReason, pendingErrorSubtype, pendingOppScorer, pendingPressure,
+        awaitingKickout, kickoutTab, pendingFoulSubtype, pendingTurnoverReason, pendingErrorSubtype, pendingOppScorer, pendingPressure,
         assistPromptEventId, pendingLongKick, pendingDrop, tacticalFoul, highlight45LineX,
         overlayState, pendingOverlay: overlayState !== 'none' ? pendingOverlay : null,
       }))
     } catch { /* storage unavailable — prompts just won't survive a refresh */ }
-  }, [sessionId, possession, ballPosition, pendingFreeKick, pending45, pendingBlockRecovery, pendingSidelineDecision, awaitingKickout,
+  }, [sessionId, possession, ballPosition, pendingFreeKick, pending45, pendingBlockRecovery, pendingSidelineDecision, awaitingKickout, kickoutTab,
     pendingFoulSubtype, pendingTurnoverReason, pendingErrorSubtype, pendingOppScorer, pendingPressure, assistPromptEventId,
     pendingLongKick, pendingDrop, tacticalFoul, highlight45LineX, overlayState, pendingOverlay])
 
@@ -2577,6 +2579,18 @@ export default function VideoTagging() {
         from: ballPosition ? { x: ballPosition.x, y: ballPosition.y } : null,
       })
   }, [possession, activeCarrierId, ballPosition])
+
+  // A refresh while a kickout was awaited used to lose WHICH team's kickout it was, so the prompt read "Opp Kickout" and
+  // offered the opposition's buttons after the opposition scored. Derive it from the latest shot/restart event.
+  useEffect(() => {
+    if (!awaitingKickout || kickoutTab) return
+    let last: any = null
+    for (const e of events as any[]) {
+      if (!KICKOUT_RESTART_VIDEO_TYPES.has(e.event_type) || e.video_timestamp_ms == null) continue
+      if (!last || e.video_timestamp_ms > last.video_timestamp_ms) last = e
+    }
+    if (last) setKickoutTab(last.team === 'team_a' ? 'opp_kickouts' : 'our_kickouts')
+  }, [awaitingKickout, kickoutTab, events])
 
   // ── Press Trigger — same data live recording writes ("Press: {outcome}, {n} passes, {duration}m"), so the press
   // chart and the agent read video-tagged and live matches identically. Time is the VIDEO position (slow-motion safe).
