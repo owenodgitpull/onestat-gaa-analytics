@@ -215,9 +215,9 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.OPP_KICKOUT_WON_BREAK]: { videoType: 'OPP_KICKOUT_WON_BREAK', needsPlayer: true, autoFlipTo: 'us', autoSwitchTab: 'scoring', playerModalTitle: 'Who Won?', playerModalEventType: 'kickout' },
   [EventType.OPP_KICKOUT_OPPOSITION_WON_BREAK]: { videoType: 'OPP_KICKOUT_OPPOSITION_WON_BREAK', needsPlayer: false, autoFlipTo: 'them', autoSwitchTab: 'scoring' },
   [EventType.OPP_KICKOUT_SIDELINE]: { videoType: 'SIDELINE_KICK', needsPlayer: false, autoFlipTo: 'us', autoSwitchTab: 'scoring' },
-  [EventType.YELLOW_CARD]: { videoType: 'YELLOW_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Yellow Card?' },
-  [EventType.BLACK_CARD]: { videoType: 'BLACK_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Black Card?' },
-  [EventType.RED_CARD]: { videoType: 'RED_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Red Card?' },
+  [EventType.YELLOW_CARD]: { videoType: 'YELLOW_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Yellow Card?', playerModalEventType: 'yellow_card' },
+  [EventType.BLACK_CARD]: { videoType: 'BLACK_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Black Card?', playerModalEventType: 'black_card' },
+  [EventType.RED_CARD]: { videoType: 'RED_CARD', needsPlayer: true, playerModalTitle: 'Who Got a Red Card?', playerModalEventType: 'red_card' },
 }
 
 // Scoring event types that trigger the opposition-scorer name prompt when
@@ -467,6 +467,7 @@ export default function VideoTagging() {
   // for the turnover-forced-from prompt (mode: 'turnover_forced') — same
   // banner, no footedness step, no scoringContext to merge into.
   const [pendingOppPlayer, setPendingOppPlayer] = useState<{ eventId: string; eventType: string; when?: string; overlay?: boolean; suggestedId?: string | null } | null>(null)
+  const [pendingCardChoice, setPendingCardChoice] = useState<EventType | null>(null)
   const oppEnabledRef = useRef(false)   // mirrors oppSquad.enabled for callbacks declared above it
   const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string; mode: 'score' | 'turnover_forced'; scoringContext?: ScoringContext } | null>(null)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
@@ -2308,14 +2309,23 @@ export default function VideoTagging() {
   }, [possession, compute45LineX])
 
   /** CategorizedActionButtons discipline callback (cards) */
+  // A card can be for either team, so the tap first asks which (handleCardTeam finishes it).
   const handleDiscipline = useCallback((eventType: EventType) => {
+    if (!EVENT_TYPE_CONFIG[eventType]) return
+    setPendingCardChoice(eventType)
+  }, [])
+
+  const handleCardTeam = useCallback((cardTeam: 'team_a' | 'team_b') => {
+    const eventType = pendingCardChoice
+    setPendingCardChoice(null)
+    if (!eventType) return
     const config = EVENT_TYPE_CONFIG[eventType]
     if (!config) return
     const matchTime = calcMatchTime(currentTimeMs)
     const zone = ballPosition ? xyToZone(ballPosition.x, ballPosition.y) : undefined
     const data: VideoEventCreateData = {
       event_type: config.videoType,
-      team: 'team_a',
+      team: cardTeam,
       half: matchTime.half,
       match_minute: matchTime.minute,
       match_second: matchTime.second,
@@ -2332,8 +2342,24 @@ export default function VideoTagging() {
       needsPlayer: true,
       playerModalTitle: config.playerModalTitle,
     }
-    handleEventTap({ action, eventData: data })
-  }, [calcMatchTime, currentTimeMs, ballPosition, handleEventTap])
+    if (cardTeam === 'team_a') {
+      handleEventTap({ action, eventData: data })
+      return
+    }
+    // Opposition card: logged straight away, then the same over-the-pitch picker with the opposition lineup asks who
+    // (skipping keeps the card, with no player).
+    if (!sessionId) return
+    createEvent.mutate({ sessionId, data }, {
+      onSuccess: (created: any) => {
+        if (oppEnabledRef.current && created?.id) {
+          setPendingOppPlayer({
+            eventId: created.id, eventType: OPP_PLAYER_PROMPT[config.videoType] || 'yellow_card',
+            when: `${matchTime.minute}'`, overlay: true,
+          })
+        }
+      },
+    })
+  }, [pendingCardChoice, calcMatchTime, currentTimeMs, ballPosition, handleEventTap, sessionId, createEvent])
 
   /** Block deflected out for a sideline ball */
   const handleBlockResultSideline = useCallback(() => {
@@ -4237,6 +4263,35 @@ export default function VideoTagging() {
   /** Ball-carrier tracking pitch panel — right half of the 50/50 split */
   const pitchPanel = (
     <div className="relative flex-1 min-w-0 min-h-0" data-pitch-panel>
+      {pendingCardChoice && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="rounded-2xl border border-white/15 bg-slate-900/95 p-4 w-[min(92%,22rem)] shadow-2xl">
+            <p className="text-sm font-bold text-white text-center mb-3">
+              {String(pendingCardChoice).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} — which team?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleCardTeam('team_a')}
+                className="flex-1 py-3 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+              >
+                {pressTeamLabel}
+              </button>
+              <button
+                onClick={() => handleCardTeam('team_b')}
+                className="flex-1 py-3 rounded-xl text-sm font-bold bg-orange-600 hover:bg-orange-500 text-white transition-colors"
+              >
+                {matchData?.opponent || 'Opposition'}
+              </button>
+            </div>
+            <button
+              onClick={() => setPendingCardChoice(null)}
+              className="w-full mt-2 py-2 rounded-xl text-xs font-medium bg-white/10 text-white/60 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {pendingOppPlayer && !pendingOppPlayer.overlay && oppSquad.enabled && (
         <OppositionWhoChip
           squad={oppSquad}
