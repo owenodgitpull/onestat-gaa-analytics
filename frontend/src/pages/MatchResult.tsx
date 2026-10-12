@@ -335,6 +335,8 @@ export default function MatchResult() {
       setUploadStatus('success')
       refetchGps()
       refetchReport()
+      // the team-volume chart is scaled to the GPS total: it was cached as all zeros before GPS existed
+      queryClient.invalidateQueries({ queryKey: ['team-volume', matchId] })
       setTimeout(() => setUploadStatus('idle'), 3000)
     } catch (e: any) {
       setUploadError(e.message || 'Failed to save GPS data')
@@ -354,6 +356,7 @@ export default function MatchResult() {
       // Refetch GPS data and AI analysis
       refetchGps()
       refetchReport()
+      queryClient.invalidateQueries({ queryKey: ['team-volume', matchId] })
     } catch (e: any) {
       console.error('Failed to delete GPS data:', e)
     } finally {
@@ -2100,6 +2103,9 @@ function TeamVolumeChart({ gpsData, events, volumeData }: { gpsData: GPSData[]; 
         </span>
       </div>
 
+      {chartData.every(d => !d.distance) && (
+        <p className="text-xs text-white/40 mb-2">No GPS distance to spread yet - upload the GPS file and this fills in.</p>
+      )}
       <div className="h-[200px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>

@@ -46,6 +46,9 @@ LIVE_MODEL = "claude-sonnet-5-5"
 #                           used to measure how often the agent drifts from the data while tuning the prompt
 LIVE_FACT_CHECK_MODE = "off"
 
+# match_id -> the post-match report generation currently running (see MatchAgent.generate_post_match_report)
+_REPORT_INFLIGHT: dict = {}
+
 # Details of the most recent audit (the replay tool reads this)
 LAST_FACT_CHECK: dict = {}
 
@@ -586,6 +589,31 @@ INSTRUCTIONS:
 
     @staticmethod
     async def generate_post_match_report(db: AsyncSession, match_id: str, force_regenerate: bool = False, exclude_ball_carry: bool = False) -> dict:
+        """One generation per match at a time. The GPS upload's background task and the results page's own poll both see
+        "GPS not in the report yet" and used to start a full generation each (four at once for one upload); a caller that
+        arrives while one is running now waits for it and gets the same report."""
+        import asyncio
+        key = str(match_id)
+        running = _REPORT_INFLIGHT.get(key)
+        if running is not None and not running.done():
+            logger.info(f"Joining the report generation already running for match {key}")
+            try:
+                return await asyncio.shield(running)
+            except asyncio.CancelledError:
+                if not running.cancelled():
+                    raise            # this caller was cancelled, not the generation
+            except Exception:
+                pass                  # the running one failed - fall through and generate our own
+        task = asyncio.ensure_future(MatchAgent._generate_post_match_report_impl(db, match_id, force_regenerate, exclude_ball_carry))
+        _REPORT_INFLIGHT[key] = task
+        try:
+            return await task
+        finally:
+            if _REPORT_INFLIGHT.get(key) is task:
+                _REPORT_INFLIGHT.pop(key, None)
+
+    @staticmethod
+    async def _generate_post_match_report_impl(db: AsyncSession, match_id: str, force_regenerate: bool = False, exclude_ball_carry: bool = False) -> dict:
         """
         Generate a comprehensive post-match report.
         Returns structured data for display including chart-specific insights.
