@@ -22,6 +22,7 @@ from app.services.ai.insight_findings import (
     PHASES, build_findings, margin, margin_phrase, tally, top_findings,
 )
 from app.services.ai.report_extras import build_extras
+from app.utils.names import their_player_label
 from app.services.ai.phase_facts import (
     GROUPS, MIN_N, SCORE_TYPES, group_stats, normalise, order_key, possessions,
 )
@@ -198,7 +199,8 @@ async def get_phase_sequences(db, match_id: str, club_id=None, phase: Optional[s
         end = rows[p.end_idx] if p.end_idx >= 0 else None
         who = ""
         if end is not None:
-            who = names.get(getattr(end, "player_id", None)) or (getattr(end, "opponent_player_name", None) or "").strip()
+            who = names.get(getattr(end, "player_id", None)) or their_player_label(
+                getattr(end, "opponent_player_name", None), names.values())
         et = p.end_type or ""
         out.append({
             "minute": p.minute, "half": p.half,

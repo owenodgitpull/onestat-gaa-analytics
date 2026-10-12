@@ -20,6 +20,7 @@ from app.models.player import Player
 from app.models.match_event import MatchEvent, Team
 from app.models.possession_event import PossessionEvent
 from app.utils.attack_direction import own_attacks_right, to_attack_frame
+from app.utils.names import their_player_label
 from app.services.ai.insight_findings import (
     Finding, PHASES, build_findings, early_read_note, margin, margin_phrase, tally, top_findings, update_on_previous,
 )
@@ -53,12 +54,7 @@ def _is_own(e) -> bool:
 
 
 def _their_name(name, our_surnames) -> str:
-    """An opposition player's name as entered. When it shares a surname with one of OUR players in this match, say whose
-    it is - the brief names our players by surname, so a bare 'O'Donnell' would be ambiguous."""
-    n = (name or "").strip()
-    if n and n.split()[-1].lower() in {str(s).lower() for s in our_surnames}:
-        return f"{n} (their player)"
-    return n
+    return their_player_label(name, our_surnames)
 
 
 def _third(fx: float) -> str:

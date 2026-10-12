@@ -20,3 +20,16 @@ def surname_only(name: str) -> str:
     if len(parts) >= 2 and parts[-1].lower().rstrip(".") in _NAME_SUFFIXES:
         return f"{parts[-2]} {parts[-1]}"
     return parts[-1]
+
+
+def their_player_label(name, our_surnames) -> str:
+    """An opposition player's name as entered. When it shares a surname with one of OUR players in the same match, say
+    whose it is - the analysis names our players by surname, so a bare "O'Donnell" would be ambiguous."""
+    def norm(t: str) -> str:
+        return str(t).replace("’", "'").strip().lower()
+    n = (name or "").strip()
+    parts = n.split()
+    if parts and norm(parts[-1]) in {norm(s) for s in our_surnames}:
+        return f"{n} (their player)"
+    return n
+
