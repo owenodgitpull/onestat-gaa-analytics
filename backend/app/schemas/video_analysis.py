@@ -167,6 +167,8 @@ class VideoEventCreateRequest(BaseModel):
     sub_in_player_id: Optional[UUID] = None
     # Scoring events only.
     assist_player_id: Optional[UUID] = None
+    # Own kickouts: the player it was aimed at (becomes MatchEvent.kickout_target_player_id on live sync).
+    target_player_id: Optional[UUID] = None
     jersey_number: Optional[int] = None
     player_confidence: Optional[str] = None
     event_confidence: Optional[str] = None

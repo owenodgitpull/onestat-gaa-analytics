@@ -1498,7 +1498,12 @@ export default function VideoTagging() {
       // Optional "aimed for" target chosen on the landing banner
       if (isKickout && kickoutAimedForId) {
         const target = (players || []).find((p: any) => p.id === kickoutAimedForId)
-        if (target) data.description = `Aimed for: ${(target as any).name}`
+        if (target) {
+          data.description = `Aimed for: ${(target as any).name}`
+          // The real field live recording fills (kickout_target_player_id) — the description alone is invisible to the
+          // kickout-target analysis, so video-tagged kickouts never showed who they were aimed at.
+          if (data.team === 'team_a') data.target_player_id = (target as any).id
+        }
       }
       setKickoutAimedForId(undefined)
       const pending = { ...pendingOverlay, eventData: data }
@@ -1803,6 +1808,9 @@ export default function VideoTagging() {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
           if (created?.id) setPendingPressure({ eventId: created.id, scoringContext: created.scoring_context || {} })
+          // Live offers "who assisted?" on every own goal / point / two-pointer from play — not frees or 45s. Until now
+          // this only fired from the manual-event form, so scores tagged the normal way never asked.
+          if (created?.id && ['GOAL_SCORED', 'POINT_SCORED'].includes(data.event_type)) setAssistPromptEventId(created.id)
         },
       })
     } else {

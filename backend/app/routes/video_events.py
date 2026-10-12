@@ -161,6 +161,7 @@ async def create_video_event(
         player_id=body.player_id,
         sub_in_player_id=body.sub_in_player_id,
         assist_player_id=body.assist_player_id,
+        target_player_id=body.target_player_id,
         jersey_number=body.jersey_number,
         player_confidence=body.player_confidence or "HIGH",
         event_confidence=body.event_confidence or "HIGH",

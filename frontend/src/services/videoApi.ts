@@ -125,6 +125,8 @@ export interface VideoEventCreateData {
   sub_in_player_id?: string;
   // Scoring events only.
   assist_player_id?: string;
+  // Own kickouts: the player it was aimed at.
+  target_player_id?: string;
   jersey_number?: number;
   player_confidence?: string;
   event_confidence?: string;
