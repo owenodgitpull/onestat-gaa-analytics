@@ -26,6 +26,7 @@ from app.models.video_event import VideoEvent
 from app.models.possession_chain import PossessionChain
 from app.models.ball_position_sample import BallPositionSample
 from app.models.possession_event import PossessionEvent
+from app.models.ball_carrier_segment import BallCarrierSegment
 from app.models.match_event import MatchEvent
 from app.services.storage_service import storage
 from app.schemas.video_analysis import (
@@ -682,6 +683,8 @@ async def reset_match(
     )).scalar_one()
     if match_event_count == 0:
         await db.execute(delete(PossessionEvent).where(PossessionEvent.match_id == session.match_id))
+        # carrier segments are written alongside the tagged events and were left behind by a reset
+        await db.execute(delete(BallCarrierSegment).where(BallCarrierSegment.match_id == session.match_id))
 
     session.tracking_started_at = None
     session.tracking_completed_at = None
