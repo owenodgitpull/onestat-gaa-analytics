@@ -68,6 +68,8 @@ class VideoEventMapper:
         # SIDELINE_KICK (a kickout restart going straight out), no direct
         # MatchEvent equivalent, kept for possession-flip bookkeeping only.
         "SIDELINE_BALL": EventType.OTHER,
+        # Press Trigger window: same OTHER marker + "Press: ..." note live recording writes
+        "PRESS_TRIGGER": EventType.OTHER,
 
         # Kickouts — granular types map directly
         "OWN_KICKOUT_WON": EventType.OWN_KICKOUT_WON,

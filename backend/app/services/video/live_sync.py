@@ -73,7 +73,8 @@ def _match_event_fields(ve: VideoEvent) -> Optional[dict]:
         opponent_player_name=ve.opponent_player_name,
         opposition_player_id=ve.opposition_player_id,
         opposition_sub_in_player_id=ve.opposition_sub_in_player_id,
-        notes=f"[video] {ve.description or ''}".strip(),
+        # a Press Trigger keeps its note exactly as live recording writes it - the press chart matches on "Press: ..."
+        notes=(ve.description or "") if ve.event_type == "PRESS_TRIGGER" else f"[video] {ve.description or ''}".strip(),
     )
 
 

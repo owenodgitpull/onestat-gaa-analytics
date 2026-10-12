@@ -43,6 +43,8 @@ VIDEO_EVENT_TYPES = [
     "SAVED", "HIT_POST", "TACKLE_WON",
     # Long balls (PASS_KICK is kept for older events and maps to LONG_KICK_PASS)
     "LONG_KICK_PASS", "HIGH_BALL",
+    # Coach-toggled press window (description = "Press: {outcome}, {n} passes, {duration}m"), same data as live recording
+    "PRESS_TRIGGER",
 ]
 
 PITCH_ZONES = [

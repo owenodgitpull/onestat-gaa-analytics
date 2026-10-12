@@ -765,7 +765,7 @@ async def sync_events_to_match(
                 under_pressure=(ve.scoring_context or {}).get("under_pressure"),
                 opposition_foot=_normalize_foot(ve.scoring_context),
                 opponent_player_name=ve.opponent_player_name,
-                notes=f"[video-sync] {ve.description or ''}".strip(),
+                notes=(ve.description or "") if ve.event_type == "PRESS_TRIGGER" else f"[video-sync] {ve.description or ''}".strip(),
             )
             db.add(match_event)
             synced += 1

@@ -2574,6 +2574,51 @@ export default function VideoTagging() {
       })
   }, [possession, activeCarrierId, ballPosition])
 
+  // ── Press Trigger — same data live recording writes ("Press: {outcome}, {n} passes, {duration}m"), so the press
+  // chart and the agent read video-tagged and live matches identically. Time is the VIDEO position (slow-motion safe).
+  const [pressActive, setPressActive] = useState(false)
+  const pressStartRef = useRef<{ x?: number; y?: number; ms: number; minute: number; second: number; half: number } | null>(null)
+  const closePressRef = useRef<(outcome: 'won_back' | 'broken' | 'manual_end') => void>(() => {})
+  closePressRef.current = (outcome) => {
+    const st = pressStartRef.current
+    setPressActive(false)
+    pressStartRef.current = null
+    if (!st || !sessionId) return
+    const nowMs = playerRef.current?.getCurrentTimeMs?.() ?? currentTimeMs
+    const passes = eventsRef.current.filter((e: any) =>
+      e.team === 'team_b' && e.event_type === 'PASS_HAND' && e.video_timestamp_ms != null &&
+      e.video_timestamp_ms >= st.ms && e.video_timestamp_ms <= nowMs).length
+    const durationMin = Math.max(0, calcMatchTime(nowMs).minute - st.minute)
+    createEvent.mutate({
+      sessionId,
+      data: {
+        event_type: 'PRESS_TRIGGER', team: 'team_a', half: st.half, match_minute: st.minute, match_second: st.second,
+        video_timestamp_ms: st.ms, pitch_x: st.x, pitch_y: st.y,
+        description: `Press: ${outcome}, ${passes} passes, ${durationMin}m`, source: 'human_tag',
+      },
+    })
+  }
+  const togglePress = useCallback(() => {
+    if (pressActive) { closePressRef.current('manual_end'); return }
+    if (possession === 'team_a') return   // nothing to press while we have the ball
+    const t = calcMatchTime(currentTimeMs)
+    pressStartRef.current = {
+      x: ballPosition?.x, y: ballPosition?.y, ms: currentTimeMs, minute: t.minute, second: t.second, half: t.half,
+    }
+    setPressActive(true)
+  }, [pressActive, possession, calcMatchTime, currentTimeMs, ballPosition])
+  // Auto-close the moment we win it back (turnover won / interception / tackle) or they score through it
+  useEffect(() => {
+    const st = pressStartRef.current
+    if (!pressActive || !st) return
+    for (const e of events as any[]) {
+      if (e.video_timestamp_ms == null || e.video_timestamp_ms <= st.ms) continue
+      if (e.team === 'team_a' && ['TURNOVER_WON', 'INTERCEPTION', 'TACKLE_WON'].includes(e.event_type)) { closePressRef.current('won_back'); return }
+      if (e.team === 'team_b' && (['GOAL_SCORED', 'POINT_SCORED'].includes(e.event_type) ||
+          (['FREE_KICK', 'FORTY_FIVE', 'PENALTY'].includes(e.event_type) && e.scoring_context?.scored))) { closePressRef.current('broken'); return }
+    }
+  }, [events, pressActive])
+
   const handleTacticalTag = useCallback(async (tagType: string, label?: string) => {
     if (!session?.match_id) return
     const matchTime = calcMatchTime(currentTimeMs)
@@ -4339,6 +4384,22 @@ export default function VideoTagging() {
             title="Ball is with this team. Tap to hand it to the other team (nothing else is logged)."
           >
             <ArrowLeftRight size={14} /> Ball: {possession === 'team_a' ? 'Us' : (matchData?.opponent || 'Opposition')}
+          </button>
+        )}
+        {mode === 'tracking' && !reviewing && !halfTimeBreak && (
+          <button
+            onClick={togglePress}
+            disabled={!pressActive && possession === 'team_a'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border backdrop-blur-md transition-colors ${
+              pressActive
+                ? 'bg-orange-500/35 border-orange-400/60 text-orange-50 animate-pulse'
+                : 'bg-white/10 border-white/20 text-white/80 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed'
+            }`}
+            title={!pressActive && possession === 'team_a'
+              ? 'Press Trigger only applies while the opposition has the ball'
+              : 'Mark the start of a high press — auto-ends when we win it back or they score; tap again to end it'}
+          >
+            {pressActive ? 'Press Active' : 'Press'}
           </button>
         )}
         <button
