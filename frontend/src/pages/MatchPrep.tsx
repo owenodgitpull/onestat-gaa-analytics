@@ -158,6 +158,7 @@ export default function MatchPrep() {
   // Inter-county: the opposition lineup is the same picker as ours, one switch away at the top
   const hasOppLineup = !!club?.features?.opposition_lineup
   const [lineupTab, setLineupTab] = useState<'ours' | 'opposition'>('ours')
+  const [oppNudged, setOppNudged] = useState(false) // asked once, after our lineup is saved, for the opposition's
   const { data: oppLineupData } = useQuery({
     queryKey: ['oppositionLineup', matchId],
     queryFn: () => api.matchPrep.getOppositionLineup(matchId!),
@@ -497,6 +498,7 @@ export default function MatchPrep() {
       }))
       await api.matchLineups.saveLineup(matchId, entries)
       setSaved(true)
+      if (hasOppLineup && oppCount < 15 && !oppNudged) { setOppNudged(true); setLineupTab('opposition') }
     } catch (err) {
       console.error('Failed to save lineup:', err)
     } finally {
@@ -515,6 +517,11 @@ export default function MatchPrep() {
         jersey_number: entry.jerseyNumber,
       }))
       await api.matchLineups.saveLineup(matchId, entries)
+      if (hasOppLineup && oppCount < 15 && !oppNudged) {
+        // our lineup is saved; ask once for theirs before recording starts - saving again goes straight on
+        setOppNudged(true); setLineupTab('opposition'); setSaving(false)
+        return
+      }
       navigate(`/match/${matchId}/setup`)
     } catch (err) {
       console.error('Failed to save lineup:', err)
@@ -736,7 +743,12 @@ export default function MatchPrep() {
       )}
 
       {hasOppLineup && matchId && lineupTab === 'opposition' && (
-        <div className="glass-card p-4">
+        <div className="glass-card p-4 space-y-3">
+          {oppNudged && oppCount < 15 && (
+            <p className="text-xs text-amber-300/90 bg-amber-500/10 border border-amber-400/20 rounded-lg px-3 py-2">
+              Your lineup is saved. Now add {match?.opponent || 'their'} lineup so their players appear on the pitch while you record - tap a position, type the number and full name, then save. You can go back and press Save &amp; Start when you are ready.
+            </p>
+          )}
           <OppositionLineupEditor matchId={matchId} opponent={match?.opponent || 'the opposition'} />
         </div>
       )}
