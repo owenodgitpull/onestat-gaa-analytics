@@ -4395,12 +4395,17 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                 pass_count_by_player[to_pid]["passes_received"] += 1
 
 
-                # Video-tagged carriers: these times are the tagger's wall clock (pauses, slow-motion, reaction time), not
-                # the match's tempo - so they are not timed at all rather than reported as a tempo figure.
-                if getattr(seg, "source", None) != "video" and prev_seg.end_time_ms and seg.start_time_ms:
-                    gap = seg.start_time_ms - prev_seg.end_time_ms
-                    if 0 <= gap <= 30000:  # ignore gaps > 30s (dead ball)
-                        transition_times_ms.append(gap)
+                # Time between passes = the start of one carry to the start of the next, in MATCH time: a video-tagged
+                # match uses the video position (so slow-motion, pauses and tagging delay cannot change it); a live
+                # match is recorded in real time, so its own clock is the match clock.
+                gap = None
+                if (getattr(seg, "source", None) == "video" and getattr(prev_seg, "source", None) == "video"
+                        and seg.video_timestamp_ms is not None and prev_seg.video_timestamp_ms is not None):
+                    gap = seg.video_timestamp_ms - prev_seg.video_timestamp_ms
+                elif getattr(seg, "source", None) != "video" and prev_seg.start_time_ms and seg.start_time_ms:
+                    gap = seg.start_time_ms - prev_seg.start_time_ms
+                if gap is not None and 0 < gap <= 30000:  # ignore > 30s (dead ball)
+                    transition_times_ms.append(gap)
 
             prev_seg = seg
 
@@ -4487,6 +4492,7 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
             avg_ms = sum(transition_times_ms) / len(transition_times_ms)
             tempo = {
                 "avg_transition_seconds": round(avg_ms / 1000, 1),
+                "definition": "avg_transition_seconds = average time between one carry starting and the next carry starting (a pass to the next carrier), match time; capped at 30s so dead balls are ignored",
                 "fastest_transition_seconds": round(min(transition_times_ms) / 1000, 1),
                 "total_transitions_timed": len(transition_times_ms),
             }
