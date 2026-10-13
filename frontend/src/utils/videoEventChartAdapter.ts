@@ -189,7 +189,7 @@ export function videoEventsToChartEvents(events: VideoEvent[]): ChartEvent[] {
       pitch_x: ve.pitch_x ?? zoneX,
       pitch_y: ve.pitch_y ?? zoneY,
       player_id: ve.player_id,
-      player_name: ve.player_name,
+      player_name: ve.player_name ?? ve.opponent_player_name ?? null,   // opposition scorers carry their name here
       sub_type: ve.sub_type,
       match_id: ve.match_id,
     })
