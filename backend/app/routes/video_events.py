@@ -238,6 +238,13 @@ async def update_video_event(
     for field, value in update_data.items():
         setattr(event, field, value)
 
+    # A kickout's team is the team that WON it: editing the result (e.g. Down won -> we won the break) must move the
+    # event to the winning side too, unless the same edit set the team explicitly.
+    if "event_type" in update_data and "team" not in update_data and "KICKOUT" in (event.event_type or ""):
+        _et = event.event_type or ""
+        if _et.startswith(("OWN_KICKOUT_", "OPP_KICKOUT_")) and not _et.endswith("SIDELINE"):
+            event.team = "team_b" if "OPPOSITION_WON" in _et else "team_a"
+
     # Re-check two-pointer if zone or event type changed
     zone = event.pitch_zone
     scoring_ctx = event.scoring_context or {}
