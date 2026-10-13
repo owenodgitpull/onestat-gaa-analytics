@@ -196,9 +196,12 @@ export function AimedForChips({ players, selectedId, onToggle }: {
 export function HighBallChips({
   onPick,
   onDismiss,
+  onStray,
 }: {
   onPick: (contact: 'clean' | 'break') => void
   onDismiss: () => void
+  /** Our high ball that went straight to the opposition with no contest (an unforced error) */
+  onStray?: () => void
 }) {
   const dismissRef = useRef(onDismiss)
   dismissRef.current = onDismiss
@@ -230,6 +233,15 @@ export function HighBallChips({
       >
         Break
       </button>
+      {onStray && (
+        <button
+          onClick={onStray}
+          title="Went straight to the opposition, no contest - logged as an unforced error"
+          className="text-[11px] font-bold px-2.5 py-1 rounded-lg border bg-white/5 border-white/15 text-white/80 hover:bg-red-500/20 hover:border-red-400/50 hover:text-white transition-colors"
+        >
+          Stray
+        </button>
+      )}
       <button onClick={onDismiss} className="text-white/40 hover:text-white text-xs px-1" title="Skip">✕</button>
     </div>
   )

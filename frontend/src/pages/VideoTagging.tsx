@@ -508,7 +508,7 @@ export default function VideoTagging() {
     kickTeam: 'team_a' | 'team_b'
     outcome?: string
     targetPlayerId?: string
-    contact?: 'clean' | 'break'
+    contact?: 'clean' | 'break' | 'stray'
     sent?: string
   }
   const ballOutcomeRef = useRef<BallOutcomeCtx | null>(null)
@@ -4804,6 +4804,26 @@ export default function VideoTagging() {
               setShowHighBallChips(false)
             }}
             onDismiss={() => setShowHighBallChips(false)}
+            onStray={ballOutcomeRef.current?.kickTeam === 'team_a' ? () => {
+              // Straight to the opposition, no contest: the high ball is lost ("lost_stray") AND it is the kicker's
+              // unforced error - logged with the same event the "Our Error" flow writes.
+              const ctx = ballOutcomeRef.current
+              const kick: any = ctx?.eventId ? (eventsRef.current as any[]).find(e => e.id === ctx.eventId) : null
+              if (ctx) { ctx.outcome = 'lost'; ctx.contact = 'stray'; persistBallOutcomeRef.current() }
+              if (sessionId && kick) {
+                createEvent.mutate({
+                  sessionId,
+                  data: {
+                    event_type: 'OUR_UNFORCED_ERROR', team: 'team_a', half: kick.half, match_minute: kick.match_minute,
+                    match_second: kick.match_second, video_timestamp_ms: (kick.video_timestamp_ms ?? 0) + 1,
+                    ...(kick.player_id ? { player_id: kick.player_id } : {}),
+                    pitch_x: kick.end_x ?? kick.pitch_x, pitch_y: kick.end_y ?? kick.pitch_y,
+                    sub_type: 'stray_pass', description: 'High ball straight to the opposition', source: 'human_tag',
+                  },
+                })
+              }
+              setShowHighBallChips(false)
+            } : undefined}
           />
         </div>
       )}
