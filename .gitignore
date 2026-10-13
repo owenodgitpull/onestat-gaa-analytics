@@ -84,3 +84,6 @@ backend/fix_timer.py
 /package-lock.json
 frontend/public/Claude outputs/
 frontend/src/components/requirements.litcoffee
+
+# Local data backups (match data) - never commit
+backups/

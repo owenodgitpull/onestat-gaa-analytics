@@ -1621,7 +1621,9 @@ export default function VideoTagging() {
       // an opposition high ball shouldn't be able to close out OUR active
       // carrier's segment if one happens to be open.
       if (kickTeam === 'team_a') {
-        endCarrierQueued(position.x, position.y, 'pass')
+        endCarrierQueued(kickedFrom.x, kickedFrom.y, 'pass')
+      } else if (activeOppCarrierIdRef.current) {
+        endCarrierQueued(kickedFrom.x, kickedFrom.y, 'pass')
       }
     }
 
@@ -2622,8 +2624,12 @@ export default function VideoTagging() {
    *  team carrier radial, which can't show for the opposition since we
    *  don't track their player identities. One tap logs a hand-pass event
    *  at the ball's current spot, no follow-up. */
-  const handleQuickPass = useCallback(() => {
+  const handleQuickPass = useCallback((arg?: unknown) => {
     if (!sessionId) return
+    // Called with a click event from the Pass button, or with {from, to} from a carrier switch
+    const split = (arg && typeof arg === 'object' && 'from' in (arg as object))
+      ? (arg as { from: { x: number; y: number } | null; to: { x: number; y: number } | null })
+      : null
     const matchTime = calcMatchTime(currentTimeMs)
     const data: VideoEventCreateData = {
       event_type: 'PASS_HAND',
@@ -2636,11 +2642,13 @@ export default function VideoTagging() {
       // The opposition player who has the ball right now is the passer (the carrier is picked on the pitch circles)
       opposition_player_id: activeOppCarrierIdRef.current ?? undefined,
     }
-    if (ballPosition) {
-      data.pitch_x = ballPosition.x
-      data.pitch_y = ballPosition.y
-      data.pitch_zone = xyToZone(ballPosition.x, ballPosition.y)
+    const startPos = split?.from ?? ballPosition
+    if (startPos) {
+      data.pitch_x = startPos.x
+      data.pitch_y = startPos.y
+      data.pitch_zone = xyToZone(startPos.x, startPos.y)
     }
+    if (split?.to) { data.end_x = split.to.x; data.end_y = split.to.y }
     handleDirectCreate(data)
     setOppPassCount(c => c + 1)
   }, [sessionId, calcMatchTime, currentTimeMs, ballPosition, handleDirectCreate])
@@ -3241,6 +3249,24 @@ export default function VideoTagging() {
 
   /** Instant end: clear the visible carrier now, snapshot the buffered path,
    *  and queue the network work. `keepState` when immediately switching carrier. */
+  /** A carrier switch (hand pass): the last ball move just before it is the tap ahead = the pass destination when it is
+   *  a real jump (>= 6m) made within 3s of the switch. The carry then ends where the ball was BEFORE that move, and
+   *  the gap is the pass. No jump (players running toward each other, or the ball dragged along) = no pass flight. */
+  const splitCarryAndPass = useCallback((bx: number | null, by: number | null): {
+    carryEnd: { x: number; y: number } | null; dest: { x: number; y: number } | null
+  } => {
+    const hist = ballHistoryRef.current
+    const n = hist.length
+    if (bx != null && by != null && n >= 2) {
+      const last = hist[n - 1], prev = hist[n - 2]
+      const recent = Math.abs(currentTimeMsRef.current - last.ms) <= 3000
+      const atBall = Math.abs(last.x - bx) < 0.01 && Math.abs(last.y - by) < 0.01
+      const distM = Math.hypot((last.x - prev.x) / 100 * 145, (last.y - prev.y) / 100 * 90)
+      if (recent && atBall && distM >= 6) return { carryEnd: { x: prev.x, y: prev.y }, dest: { x: last.x, y: last.y } }
+    }
+    return { carryEnd: bx != null && by != null ? { x: bx, y: by } : null, dest: null }
+  }, [])
+
   const endCarrierQueued = useCallback((
     endX: number | null | undefined,
     endY: number | null | undefined,
@@ -3323,9 +3349,10 @@ export default function VideoTagging() {
     // Switching carrier: close the previous carry at the pass spot, then
     // start the new one — all behind the instant visible update below.
     if (current) {
-      endCarrierQueued(bx, by, 'pass', true)
+      const { carryEnd, dest } = splitCarryAndPass(bx, by)
+      endCarrierQueued(carryEnd?.x ?? bx, carryEnd?.y ?? by, 'pass', true)
       // Same hand-pass event the opposition gets on a pickup, so both teams read identically in the events data
-      // (passer = outgoing carrier, target = the player who took it).
+      // (passer = outgoing carrier, target = the player who took it; from -> to when there was a tap ahead).
       if (sessionId) {
         const t = calcMatchTimeRef.current(currentTimeMsRef.current)
         createEvent.mutate({
@@ -3333,7 +3360,8 @@ export default function VideoTagging() {
           data: {
             event_type: 'PASS_HAND', team: 'team_a', half: t.half, match_minute: t.minute, match_second: t.second,
             video_timestamp_ms: Math.round(currentTimeMsRef.current), player_id: current, target_player_id: playerId,
-            ...(bx != null && by != null ? { pitch_x: bx, pitch_y: by, pitch_zone: xyToZone(bx, by) } : {}),
+            ...(carryEnd ? { pitch_x: carryEnd.x, pitch_y: carryEnd.y, pitch_zone: xyToZone(carryEnd.x, carryEnd.y) } : {}),
+            ...(dest ? { end_x: dest.x, end_y: dest.y } : {}),
             source: 'human_tag',
           },
         })
@@ -3344,7 +3372,7 @@ export default function VideoTagging() {
     // Track recent carriers (most recent first, max 10)
     setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by))
-  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, sessionId, createEvent])
+  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, sessionId, createEvent, splitCarryAndPass])
 
   carrierSelectRef.current = handleCarrierSelect
 
@@ -3362,13 +3390,14 @@ export default function VideoTagging() {
       return
     }
     if (current) {
-      endCarrierQueued(bx, by, 'pass', true)
-      handleQuickPass()   // a different opposition player picking it up is a pass (keeps the PPDA pass count)
+      const { carryEnd, dest } = splitCarryAndPass(bx, by)
+      endCarrierQueued(carryEnd?.x ?? bx, carryEnd?.y ?? by, 'pass', true)
+      handleQuickPass({ from: carryEnd, to: dest })   // a different opposition player picking it up is a pass (keeps the PPDA pass count)
     }
     setActiveOppCarrierId(playerId)
     setRecentOppCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'opponent'))
-  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, handleQuickPass])
+  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, handleQuickPass, splitCarryAndPass])
 
   // Open the Shooting tab as soon as the team in possession works the ball into shooting range (once per entry)
   useAutoShootingTab({
