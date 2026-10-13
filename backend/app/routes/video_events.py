@@ -297,6 +297,10 @@ async def delete_video_events_after_timestamp(
     if doomed:
         await db.flush()
         await live_sync.recalc_scores(db, session.match_id)
+    # Rolling back means tracking resumes from this point: the stored high-water mark must come back with it, otherwise a
+    # reload jumps the tracking position (and the scrub lock) forward to where tagging had reached before the undo.
+    if session.tracking_progress_ms is not None and session.tracking_progress_ms > timestamp_ms:
+        session.tracking_progress_ms = timestamp_ms
     await db.commit()
     return {"deleted_count": len(doomed), "session_id": str(session_id), "after_ms": timestamp_ms}
 

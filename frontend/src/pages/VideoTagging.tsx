@@ -998,6 +998,7 @@ export default function VideoTagging() {
       // Reset high-water mark to allow re-recording from this point
       setHighWaterMarkMs(timestampMs)
       highWaterMarkRef.current = timestampMs
+      lastPersistedProgressRef.current = timestampMs   // progress persists again from the rollback point
 
       // Seek video to this point
       undoSeekGuardRef.current = { target: timestampMs, until: Date.now() + 4000 }
