@@ -1727,6 +1727,30 @@ export default function VideoTagging() {
     } catch { /* storage unavailable or corrupt — start clean */ }
   }, [sessionId, session])
 
+  // Recovery from the SAVED events (not browser storage): if the very last event logged was a score/wide/45/penalty and
+  // nothing has happened since, the restart kickout is still owed - bring the kickout prompt back after a reload even
+  // when the local snapshot is missing, stale or was cleared.
+  const kickoutRecoveredRef = useRef(false)
+  useEffect(() => {
+    if (kickoutRecoveredRef.current || !eventsData || !session || mode !== 'tracking') return
+    kickoutRecoveredRef.current = true
+    const evs = (eventsData.events || []) as any[]
+    let last: any = null
+    for (const e of evs) {
+      if (e.video_timestamp_ms == null) continue
+      if (!last || e.video_timestamp_ms >= last.video_timestamp_ms) last = e
+    }
+    if (!last || !KICKOUT_RESTART_VIDEO_TYPES.has(last.event_type)) return
+    if (last.event_type === 'FREE_KICK' && !(last.scoring_context?.scored || last.scoring_context?.wide)) return
+    const kickingIsOwn = last.team !== 'team_a'            // the OTHER team restarts
+    const attackRight = teamAttackingRightThisHalf ?? true
+    setAwaitingKickout(true)
+    setKickoutTab(last.team === 'team_a' ? 'opp_kickouts' : 'our_kickouts')
+    setKickoutMinimised(false)
+    setPossession(kickingIsOwn ? 'team_a' : 'team_b')
+    setBallPosition({ x: kickingIsOwn === attackRight ? 5 : 95, y: 50 })
+  }, [eventsData, session, mode, teamAttackingRightThisHalf])
+
   useEffect(() => {
     if (!pendingRestoredRef.current || !sessionId) return
     const anyPending =
