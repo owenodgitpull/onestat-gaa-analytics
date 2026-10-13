@@ -141,19 +141,23 @@ export default function VideoManualEventModal({
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedKey(optionKey(EVENT_OPTIONS[1]))
+      // Open on the type the button asked for (the Sub button -> Substitution); the generic Event button starts on the
+      // first real event. (This reset used to ignore initialEventType, so Sub still showed the long type list.)
+      setSelectedKey(optionKey((initialEventType && EVENT_OPTIONS.find(o => o.eventType === initialEventType)) || EVENT_OPTIONS[1]))
       setTeam('team_a')
       setPlayerId('')
       setPlayerComingOn('')
       setOppOff('')
       setOppOn('')
     }
-  }, [isOpen])
+  }, [isOpen, initialEventType])
 
   if (!isOpen) return null
 
   const selected = EVENT_OPTIONS.find(o => optionKey(o) === selectedKey) ?? EVENT_OPTIONS[1]
   const isSub = selected.eventType === 'SUB_ON'
+  // Opened from the Sub button: it is only ever a substitution, so no event-type list
+  const subOnly = initialEventType === 'SUB_ON'
   const kickout = isKickoutType(selected.eventType)
   // an opposition substitution is picked from the opposition lineup (inter-county)
   const hasOppLineup = oppositionOnField.length > 0
@@ -199,7 +203,7 @@ export default function VideoManualEventModal({
               <Plus className="text-blue-400" size={20} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">Manual Event</h2>
+              <h2 className="text-lg font-bold text-white">{subOnly ? 'Substitution' : 'Manual Event'}</h2>
               <p className="text-white/40 text-xs">{currentHalf === 2 ? currentMinute + halfMins : currentMinute}' (Half {currentHalf})</p>
             </div>
           </div>
@@ -237,6 +241,7 @@ export default function VideoManualEventModal({
             </div>
           )}
 
+          {!subOnly && (
           <div>
             <label className="block text-white/80 text-sm font-semibold mb-2">Event Type</label>
             <select
@@ -255,6 +260,7 @@ export default function VideoManualEventModal({
               ))}
             </select>
           </div>
+          )}
 
           {oppSub ? (
             <>
@@ -296,7 +302,7 @@ export default function VideoManualEventModal({
               disabled={!canSubmit}
               className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-3 rounded-xl text-sm font-semibold transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Add Event
+              {subOnly ? 'Make Substitution' : 'Add Event'}
             </button>
           </div>
         </div>
