@@ -135,8 +135,16 @@ async def _swap(db: AsyncSession, match_id, off_id, on_id) -> bool:
     off, on = by_player.get(off_id), by_player.get(on_id)
     if off is None or on is None:
         return False
-    # jersey numbers stay with the players; only the slots (pitch positions) swap
-    off.position_id, on.position_id = on.position_id, off.position_id
+    # jersey numbers stay with the players; only the slots (pitch positions) swap.
+    # (match_id, position_id) is unique and checked per statement, so a straight swap collides with itself (this made
+    # every opposition substitution a 500): park one row on a temporary slot, move the other, then land the first.
+    off_slot, on_slot = off.position_id, on.position_id
+    off.position_id = f"tmp-{str(off.id)[:8]}"
+    await db.flush()
+    on.position_id = off_slot
+    await db.flush()
+    off.position_id = on_slot
+    await db.flush()
     for r in (off, on):
         bench = r.position_id.startswith("sub")
         r.is_substitute = bench
