@@ -11,12 +11,18 @@ function EfficiencyRow({
   label,
   attacks,
   shots,
+  withShot,
+  playShots,
+  deadBallShots,
   pct,
   color,
 }: {
   label: string
   attacks: number
   shots: number
+  withShot?: number
+  playShots?: number
+  deadBallShots?: number
   pct: number
   color: string
 }) {
@@ -25,7 +31,7 @@ function EfficiencyRow({
       <div className="flex items-center justify-between text-xs">
         <span className="font-semibold text-white truncate max-w-[50%]">{label}</span>
         <span className="text-white/50">
-          {attacks} attacks → {shots} shots
+          {withShot != null ? `${withShot} of ${attacks} attacks ended in a shot (${playShots ?? shots} from play)` : `${attacks} attacks → ${shots} shots`}
         </span>
       </div>
       <div className="flex items-center gap-2">
@@ -37,6 +43,11 @@ function EfficiencyRow({
         </div>
         <span className="text-xs font-bold text-white w-10 text-right">{pct.toFixed(0)}%</span>
       </div>
+      {deadBallShots != null && (
+        <div className="text-[11px] text-white/40">
+          Frees &amp; 45s: {deadBallShots} shot{deadBallShots === 1 ? '' : 's'} (kept separate from open play)
+        </div>
+      )}
     </div>
   )
 }
@@ -68,6 +79,9 @@ export default function AttackEfficiencyCard({ data, teamName = 'Us', opponentNa
           label={teamName}
           attacks={data.own.attacks}
           shots={data.own.shots}
+          withShot={data.own.attacks_with_shot}
+          playShots={data.own.shots_from_play}
+          deadBallShots={data.own.dead_ball_shots}
           pct={data.own.attack_to_shot_pct}
           color="#10b981"
         />
@@ -75,6 +89,9 @@ export default function AttackEfficiencyCard({ data, teamName = 'Us', opponentNa
           label={opponentName}
           attacks={data.opp.attacks}
           shots={data.opp.shots}
+          withShot={data.opp.attacks_with_shot}
+          playShots={data.opp.shots_from_play}
+          deadBallShots={data.opp.dead_ball_shots}
           pct={data.opp.attack_to_shot_pct}
           color="#f97316"
         />
@@ -82,7 +99,7 @@ export default function AttackEfficiencyCard({ data, teamName = 'Us', opponentNa
 
       <div className="pt-2 border-t border-white/10">
         <div className="text-xs text-white/40">
-          Attack-to-shot conversion rate — how often an attack resulted in a shot
+          Open-play attacks only: the share that produced a shot from play. Frees and 45s are shown separately.
         </div>
         {data.estimated && (
           <div className="text-[11px] text-white/30 mt-1">* attacks estimated from shot data</div>

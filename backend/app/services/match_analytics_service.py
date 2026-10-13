@@ -218,7 +218,7 @@ async def get_attack_efficiency(db: AsyncSession, match_id: UUID, club_id: UUID)
     poss_events = _framed
 
     shots_result = await db.execute(
-        select(MatchEvent.event_type, MatchEvent.team)
+        select(MatchEvent.event_type, MatchEvent.team, MatchEvent.minute)
         .where(
             and_(
                 MatchEvent.match_id == match_id,
@@ -245,37 +245,75 @@ async def get_attack_efficiency(db: AsyncSession, match_id: UUID, club_id: UUID)
             'own': {
                 'attacks': own_attacks,
                 'shots': own_shots,
-                'attack_to_shot_pct': _safe_pct(own_shots, own_attacks),
+                'attacks_with_shot': min(own_shots, own_attacks),
+                'attack_to_shot_pct': _safe_pct(min(own_shots, own_attacks), own_attacks),
                 'estimated': True,
             },
             'opp': {
                 'attacks': opp_attacks,
                 'shots': opp_shots,
-                'attack_to_shot_pct': _safe_pct(opp_shots, opp_attacks),
+                'attacks_with_shot': min(opp_shots, opp_attacks),
+                'attack_to_shot_pct': _safe_pct(min(opp_shots, opp_attacks), opp_attacks),
                 'estimated': True,
             },
         }
 
-    def _count_attacks(team_filter: str, threshold_x: float, compare_gt: bool) -> int:
-        count = 0
+    # Dead-ball shots (frees, 45s, penalties) are kept SEPARATE from open play: free-takers convert at a higher rate than
+    # shooters from play, so mixing them in flatters attacking from play and hides how much comes from winning frees.
+    # They are counted on their own line and never touch the open-play attack state.
+    _DEAD_BALL_SHOTS = {'point_free', 'two_point_free', 'wide_free', 'forty_five', 'forty_five_missed',
+                        'penalty_goal', 'penalty_miss'}
+
+    def _count_attacks(team_filter: str, threshold_x: float, compare_gt: bool) -> tuple[int, int, int, int]:
+        """Returns (open-play attacks, open-play attacks with at least one shot, shots from play, dead-ball shots).
+        Possession points and shots are walked in match order (possession first within a minute); an open-play attack
+        is a spell of possession that reached the attacking zone. A shot from play with no open attack (a snap shot
+        from outside the zone) is its own attack, so the share can never exceed 100%."""
+        timeline = [(row[1] if row[1] is not None else 0, 0, 'poss', row) for row in poss_events]
+        for row in shot_events:
+            timeline.append((row[2] if row[2] is not None else 0, 1, 'shot', row))
+        timeline.sort(key=lambda r: (r[0], r[1]))
+
+        attacks = 0
+        with_shot = 0
+        play_shots = 0
+        dead_shots = 0
         in_attack = False
+        has_shot = False
         last_team = None
         last_minute = None
 
-        for row in poss_events:
-            t = _team_val(row[0])
-            m = row[1] if row[1] is not None else 0
-            px = row[2]
-
-            if t != team_filter:
-                in_attack = False
-                last_team = t
-                last_minute = m
+        for minute, _order, kind, row in timeline:
+            if kind == 'shot':
+                if _team_val(row[1]) != team_filter:
+                    continue
+                if _et_val(row[0]) in _DEAD_BALL_SHOTS:
+                    dead_shots += 1
+                    continue
+                play_shots += 1
+                if not in_attack:
+                    attacks += 1
+                    with_shot += 1
+                    in_attack = True
+                    has_shot = True
+                elif not has_shot:
+                    with_shot += 1
+                    has_shot = True
                 continue
 
-            gap = (last_minute is not None) and (m - last_minute > 5)
+            t = _team_val(row[0])
+            px = row[2]
+            if t != team_filter:
+                in_attack = False
+                has_shot = False
+                last_team = t
+                last_minute = minute
+                continue
+
+            gap = (last_minute is not None) and (minute - last_minute > 5)
             if last_team != team_filter or gap:
                 in_attack = False
+                has_shot = False
 
             if px is not None:
                 reached = (px > threshold_x) if compare_gt else (px < threshold_x)
@@ -283,27 +321,34 @@ async def get_attack_efficiency(db: AsyncSession, match_id: UUID, club_id: UUID)
                 reached = False
 
             if reached and not in_attack:
-                count += 1
+                attacks += 1
                 in_attack = True
+                has_shot = False
 
             last_team = t
-            last_minute = m
+            last_minute = minute
 
-        return count
+        return attacks, with_shot, play_shots, dead_shots
 
-    own_attacks = _count_attacks('own', 55.0, True)
-    opp_attacks = _count_attacks('opponent', 45.0, False)
+    own_attacks, own_with_shot, own_play_shots, own_dead_shots = _count_attacks('own', 55.0, True)
+    opp_attacks, opp_with_shot, opp_play_shots, opp_dead_shots = _count_attacks('opponent', 45.0, False)
 
     return {
         'own': {
             'attacks': own_attacks,
             'shots': own_shots,
-            'attack_to_shot_pct': _safe_pct(own_shots, own_attacks),
+            'shots_from_play': own_play_shots,
+            'dead_ball_shots': own_dead_shots,
+            'attacks_with_shot': own_with_shot,
+            'attack_to_shot_pct': _safe_pct(own_with_shot, own_attacks),
         },
         'opp': {
             'attacks': opp_attacks,
             'shots': opp_shots,
-            'attack_to_shot_pct': _safe_pct(opp_shots, opp_attacks),
+            'shots_from_play': opp_play_shots,
+            'dead_ball_shots': opp_dead_shots,
+            'attacks_with_shot': opp_with_shot,
+            'attack_to_shot_pct': _safe_pct(opp_with_shot, opp_attacks),
         },
     }
 

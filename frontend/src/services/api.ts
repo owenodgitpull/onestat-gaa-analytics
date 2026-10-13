@@ -131,8 +131,8 @@ export interface ScoreableFreesData {
 }
 
 export interface AttackEfficiencyData {
-  own: { attacks: number; shots: number; attack_to_shot_pct: number }
-  opp: { attacks: number; shots: number; attack_to_shot_pct: number }
+  own: { attacks: number; shots: number; shots_from_play?: number; dead_ball_shots?: number; attacks_with_shot?: number; attack_to_shot_pct: number }
+  opp: { attacks: number; shots: number; shots_from_play?: number; dead_ball_shots?: number; attacks_with_shot?: number; attack_to_shot_pct: number }
   estimated?: boolean
 }
 
