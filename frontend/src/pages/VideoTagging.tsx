@@ -2632,6 +2632,8 @@ export default function VideoTagging() {
       match_second: matchTime.second,
       video_timestamp_ms: currentTimeMs,
       source: 'human_tag',
+      // The opposition player who has the ball right now is the passer (the carrier is picked on the pitch circles)
+      opposition_player_id: activeOppCarrierIdRef.current ?? undefined,
     }
     if (ballPosition) {
       data.pitch_x = ballPosition.x
