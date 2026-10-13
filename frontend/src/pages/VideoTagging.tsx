@@ -1756,6 +1756,14 @@ export default function VideoTagging() {
     setKickoutMinimised(false)
     setPossession(kickingIsOwn ? 'team_a' : 'team_b')
     setBallPosition({ x: kickingIsOwn === attackRight ? 5 : 95, y: 50 })
+    // Put the footage back at the score/wide that owes this kickout (a reload otherwise leaves the video at a stale
+    // saved position, nowhere near it) and resume tracking from there.
+    const at = last.video_timestamp_ms as number
+    setHighWaterMarkMs(at)
+    highWaterMarkRef.current = at
+    for (const delay of [0, 800, 2000]) {
+      window.setTimeout(() => { playerRef.current?.seekTo(at); playerRef.current?.pause() }, delay)
+    }
   }, [eventsData, session, mode, teamAttackingRightThisHalf])
 
   // After an undo-to-point: the last surviving event decides whether a restart kickout is owed (same rule as the
