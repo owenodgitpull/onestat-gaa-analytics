@@ -58,6 +58,22 @@ export default function StatsTable({ stats, opponent, teamName = 'Us' }: { stats
     { label: 'Unforced Errors', left: stats.team_unforced_errors ?? 0, right: stats.opponent_unforced_errors ?? 0, leftVal: stats.opponent_unforced_errors ?? 0, rightVal: stats.team_unforced_errors ?? 0 },
     { label: 'Kickouts Won', left: `${stats.team_kickouts_won}/${totalTeamKickouts}`, right: `${stats.opponent_kickouts_won}/${totalOpponentKickouts}`, leftVal: stats.team_kickouts_won, rightVal: stats.opponent_kickouts_won },
     { label: 'Kickout Ret. %', left: `${teamKickoutRetention}%`, right: `${opponentKickoutRetention}%`, leftVal: parseFloat(teamKickoutRetention), rightVal: parseFloat(opponentKickoutRetention) },
+    // Retention lines: "x of y" so a small sample is not read as a trend. Logged events only; shown only when outcomes
+    // were logged for the ball type (both completed and lost), otherwise there is nothing to divide.
+    ...((stats.team_kick_passes_attempted ?? 0) + (stats.opponent_kick_passes_attempted ?? 0) > 0 ? [{
+      label: 'Kick Pass Ret.',
+      left: `${stats.team_kick_passes_completed ?? 0} of ${stats.team_kick_passes_attempted ?? 0}`,
+      right: `${stats.opponent_kick_passes_completed ?? 0} of ${stats.opponent_kick_passes_attempted ?? 0}`,
+      leftVal: (stats.team_kick_passes_attempted ?? 0) > 0 ? (stats.team_kick_passes_completed ?? 0) / (stats.team_kick_passes_attempted ?? 1) : 0,
+      rightVal: (stats.opponent_kick_passes_attempted ?? 0) > 0 ? (stats.opponent_kick_passes_completed ?? 0) / (stats.opponent_kick_passes_attempted ?? 1) : 0,
+    }] : []),
+    ...((stats.team_high_balls_contested ?? 0) + (stats.opponent_high_balls_contested ?? 0) > 0 ? [{
+      label: 'High Balls Won',
+      left: `${stats.team_high_balls_won ?? 0} of ${stats.team_high_balls_contested ?? 0}`,
+      right: `${stats.opponent_high_balls_won ?? 0} of ${stats.opponent_high_balls_contested ?? 0}`,
+      leftVal: (stats.team_high_balls_contested ?? 0) > 0 ? (stats.team_high_balls_won ?? 0) / (stats.team_high_balls_contested ?? 1) : 0,
+      rightVal: (stats.opponent_high_balls_contested ?? 0) > 0 ? (stats.opponent_high_balls_won ?? 0) / (stats.opponent_high_balls_contested ?? 1) : 0,
+    }] : []),
     { label: 'Fouls', left: stats.team_fouls, right: stats.opponent_fouls, leftVal: stats.opponent_fouls, rightVal: stats.team_fouls },
     { label: 'Yellow Cards', left: stats.team_yellow_cards, right: stats.opponent_yellow_cards, leftVal: stats.opponent_yellow_cards, rightVal: stats.team_yellow_cards },
     { label: 'Black Cards', left: stats.team_black_cards ?? 0, right: stats.opponent_black_cards ?? 0, leftVal: stats.opponent_black_cards ?? 0, rightVal: stats.team_black_cards ?? 0 },

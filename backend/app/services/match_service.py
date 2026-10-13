@@ -439,8 +439,17 @@ class MatchService:
             "opponent_yellow_cards": 0,
             "opponent_black_cards": 0,
             "opponent_red_cards": 0,
+            # Kick pass / high ball retention (logged outcomes only)
+            "team_kick_passes_completed": 0,
+            "team_kick_passes_attempted": 0,
+            "opponent_kick_passes_completed": 0,
+            "opponent_kick_passes_attempted": 0,
+            "team_high_balls_won": 0,
+            "team_high_balls_contested": 0,
+            "opponent_high_balls_won": 0,
+            "opponent_high_balls_contested": 0,
         }
-        
+
         # Calculate possession percentages (time-based, not event-based)
         own_s, opp_s = poss["own_seconds"], poss["opponent_seconds"]
         if poss["own_count"] + poss["opponent_count"] > 0:
@@ -552,6 +561,38 @@ class MatchService:
             elif event.event_type == EventType.RED_CARD:
                 stats[f"{team_prefix}_red_cards"] += 1
         
+        # Kick pass / high ball retention, and intercepted kick passes as turnovers (counted ONCE: skipped when the same
+        # turnover is already logged - a turnover lost/error by the kicker or a recovery by the other side within a
+        # minute either way).
+        _marks = {"team": {"lost": [], "won": [], "kick_lost": []}, "opponent": {"lost": [], "won": [], "kick_lost": []}}
+        for _e in events:
+            _p = "team" if _e.team == Team.OWN else "opponent"
+            _o = "opponent" if _p == "team" else "team"
+            _st = (getattr(_e, "sub_type", None) or "")
+            if _e.event_type in (EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON):
+                _marks[_p]["won"].append(_e.minute or 0)
+            elif _e.event_type in (EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR):
+                _marks[_p]["lost"].append(_e.minute or 0)
+            elif _e.event_type == EventType.LONG_KICK_PASS:
+                if _st == "completed":
+                    stats[f"{_p}_kick_passes_completed"] += 1
+                    stats[f"{_p}_kick_passes_attempted"] += 1
+                elif _st == "intercepted":
+                    stats[f"{_p}_kick_passes_attempted"] += 1
+                    _marks[_p]["kick_lost"].append(_e.minute or 0)
+            elif _e.event_type == EventType.HIGH_BALL:
+                if _st.startswith("won"):
+                    stats[f"{_p}_high_balls_won"] += 1
+                    stats[f"{_p}_high_balls_contested"] += 1
+                elif _st.startswith("lost"):
+                    stats[f"{_p}_high_balls_contested"] += 1
+        for _p, _o in (("team", "opponent"), ("opponent", "team")):
+            for _m in _marks[_p]["kick_lost"]:
+                if any(abs(x - _m) <= 1 for x in _marks[_p]["lost"]) or any(abs(x - _m) <= 1 for x in _marks[_o]["won"]):
+                    continue
+                stats[f"{_p}_turnovers_lost"] += 1
+                stats[f"{_o}_turnovers_won"] += 1
+
         # Calculate accuracy: scores / (scores + wides)
         # Wides = missed target (wide, wide_free, 45_missed). Saves/shorts excluded
         # — if the keeper stops it or it falls short, that's not inaccuracy.

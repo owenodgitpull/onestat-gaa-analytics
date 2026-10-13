@@ -317,6 +317,15 @@ export interface MatchStats {
   opponent_red_cards: number;
   team_ball_recovery_avg_min?: number | null;
   opponent_ball_recovery_avg_min?: number | null;
+  // Kick pass / high ball retention (logged events only): completed of attempted, won of contested
+  team_kick_passes_completed?: number;
+  team_kick_passes_attempted?: number;
+  opponent_kick_passes_completed?: number;
+  opponent_kick_passes_attempted?: number;
+  team_high_balls_won?: number;
+  team_high_balls_contested?: number;
+  opponent_high_balls_won?: number;
+  opponent_high_balls_contested?: number;
 }
 
 export interface PlayerMatchStats {

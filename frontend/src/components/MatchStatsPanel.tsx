@@ -77,6 +77,10 @@ function computeStatsFromEvents(
     goal_chances: 0, total_shots: 0, scores: 0, wides: 0, dropped_short: 0, hit_post: 0,
     turnovers_won: 0, turnovers_lost: 0, unforced_errors: 0,
     kickouts_won: 0, kickouts_lost: 0, fouls: 0, yellow: 0, black: 0, red: 0,
+    kp_completed: 0, kp_attempted: 0, hb_won: 0, hb_contested: 0,
+    lost_kicks: [] as number[],     // minutes of this side's intercepted kick passes
+    turnover_marks: [] as number[], // minutes of turnovers already logged against this side (lost) ...
+    won_marks: [] as number[],      // ... or won by this side
   })
   const T = mk()
   const O = mk()
@@ -91,9 +95,18 @@ function computeStatsFromEvents(
     else if (ty === 'short') { me.total_shots++; me.dropped_short++ }
     else if (ty === 'saved') { me.total_shots++ }
     else if (ty === 'hit_post') { me.total_shots++; me.hit_post++ }
-    else if (ty === 'turnover_won' || ty === 'interception' || ty === 'tackle_won') me.turnovers_won++
-    else if (ty === 'turnover_lost') { me.turnovers_lost++; other.turnovers_won++ }
-    else if (ty === 'unforced_error') { me.turnovers_lost++; other.turnovers_won++; me.unforced_errors++ }
+    else if (ty === 'turnover_won' || ty === 'interception' || ty === 'tackle_won') { me.turnovers_won++; me.won_marks.push(e.minute) }
+    else if (ty === 'turnover_lost') { me.turnovers_lost++; other.turnovers_won++; me.turnover_marks.push(e.minute) }
+    else if (ty === 'unforced_error') { me.turnovers_lost++; other.turnovers_won++; me.unforced_errors++; me.turnover_marks.push(e.minute) }
+    else if (ty === 'long_kick_pass') {
+      // Kick pass retention: completed of attempted (only outcomes that were logged count)
+      if (e.sub_type === 'completed') { me.kp_completed++; me.kp_attempted++ }
+      else if (e.sub_type === 'intercepted') { me.kp_attempted++; me.lost_kicks.push(e.minute) }
+    }
+    else if (ty === 'high_ball') {
+      if ((e.sub_type || '').startsWith('won')) { me.hb_won++; me.hb_contested++ }
+      else if ((e.sub_type || '').startsWith('lost')) { me.hb_contested++ }
+    }
     else if (OWN_KO_WON.has(ty)) T.kickouts_won++
     else if (OWN_KO_LOST.has(ty)) T.kickouts_lost++
     else if (OPP_KO_RETAINED.has(ty)) O.kickouts_won++
@@ -105,6 +118,18 @@ function computeStatsFromEvents(
     else if (ty === 'yellow_card') me.yellow++
     else if (ty === 'black_card') me.black++
     else if (ty === 'red_card') me.red++
+  }
+
+  // An intercepted kick pass is a turnover lost for the kicker and won by the other side - counted ONCE: skipped when
+  // that same turnover is already logged (a turnover lost / error by the kicker or a recovery by the other side
+  // within a minute either way).
+  for (const [me, other] of [[T, O], [O, T]] as const) {
+    for (const m of me.lost_kicks) {
+      const near = (marks: number[]) => marks.some(x => Math.abs(x - m) <= 1)
+      if (near(me.turnover_marks) || near(other.won_marks)) continue
+      me.turnovers_lost++
+      other.turnovers_won++
+    }
   }
 
   const ownShots = T.total_shots, oppShots = O.total_shots
@@ -214,6 +239,14 @@ function computeStatsFromEvents(
     opponent_red_cards: oppRed,
     team_ball_recovery_avg_min: calcRecovery('own'),
     opponent_ball_recovery_avg_min: calcRecovery('opponent'),
+    team_kick_passes_completed: T.kp_completed,
+    team_kick_passes_attempted: T.kp_attempted,
+    opponent_kick_passes_completed: O.kp_completed,
+    opponent_kick_passes_attempted: O.kp_attempted,
+    team_high_balls_won: T.hb_won,
+    team_high_balls_contested: T.hb_contested,
+    opponent_high_balls_won: O.hb_won,
+    opponent_high_balls_contested: O.hb_contested,
   }
 }
 

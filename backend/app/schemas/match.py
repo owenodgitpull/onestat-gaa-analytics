@@ -294,3 +294,13 @@ class MatchStatsResponse(BaseModel):
     team_ball_recovery_avg_min: Optional[float] = None
     opponent_ball_recovery_avg_min: Optional[float] = None
 
+    # Kick pass / high ball retention (logged events only)
+    team_kick_passes_completed: int = 0
+    team_kick_passes_attempted: int = 0
+    opponent_kick_passes_completed: int = 0
+    opponent_kick_passes_attempted: int = 0
+    team_high_balls_won: int = 0
+    team_high_balls_contested: int = 0
+    opponent_high_balls_won: int = 0
+    opponent_high_balls_contested: int = 0
+
