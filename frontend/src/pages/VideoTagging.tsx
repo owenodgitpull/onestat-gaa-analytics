@@ -76,6 +76,7 @@ import VideoPitchReceiverDots from '../components/video/VideoPitchReceiverDots'
 import { useOppositionSquad, swapOppositionLineup, oppositionPickerOptions } from '../hooks/useOppositionSquad'
 import type { OppositionSquad } from '../hooks/useOppositionSquad'
 import OppositionWhoChip from '../components/OppositionWhoChip'
+import FoulTypeChip from '../components/FoulTypeChip'
 import OppositionPlayerSelector from '../components/OppositionPlayerSelector'
 import { useAutoShootingTab } from '../hooks/useAutoShootingTab'
 import BallQuickActionIcon from '../components/video/BallQuickActionIcon'
@@ -467,6 +468,8 @@ export default function VideoTagging() {
   // follow-up panels shown after their trigger event finalizes. Also reused
   // for the turnover-forced-from prompt (mode: 'turnover_forced') — same
   // banner, no footedness step, no scoringContext to merge into.
+  // Opposition foul just logged: ask what type (overcarrying, pushing...) once the who-fouled chip is done
+  const [oppFoulTypeEventId, setOppFoulTypeEventId] = useState<string | null>(null)
   const [pendingOppPlayer, setPendingOppPlayer] = useState<{ eventId: string; eventType: string; when?: string; overlay?: boolean; suggestedId?: string | null } | null>(null)
   const [pendingCardChoice, setPendingCardChoice] = useState<EventType | null>(null)
   const oppEnabledRef = useRef(false)   // mirrors oppSquad.enabled for callbacks declared above it
@@ -2388,6 +2391,7 @@ export default function VideoTagging() {
       }
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
+          if (created?.id) setOppFoulTypeEventId(created.id)
           if (oppEnabledRef.current && created?.id) setPendingOppPlayer({ eventId: created.id, eventType: 'foul_committed', when: `${matchTime.minute}'` })
         },
       })
@@ -4508,6 +4512,18 @@ export default function VideoTagging() {
             setAssistPromptEventId(null)
           }}
           onDismiss={() => setAssistPromptEventId(null)}
+        />
+      )}
+      {oppFoulTypeEventId && !pendingOppPlayer && !assistPromptEventId && (
+        <FoulTypeChip
+          teamName={matchData?.opponent || 'Opposition'}
+          onSelect={(subType) => {
+            if (sessionId && oppFoulTypeEventId) {
+              updateEvent.mutate({ eventId: oppFoulTypeEventId, sessionId, data: { sub_type: subType } })
+            }
+            setOppFoulTypeEventId(null)
+          }}
+          onDismiss={() => setOppFoulTypeEventId(null)}
         />
       )}
       {pendingOppPlayer && !pendingOppPlayer.overlay && oppSquad.enabled && (
