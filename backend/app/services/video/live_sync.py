@@ -74,7 +74,13 @@ def _match_event_fields(ve: VideoEvent) -> Optional[dict]:
         opposition_player_id=ve.opposition_player_id,
         opposition_sub_in_player_id=ve.opposition_sub_in_player_id,
         # a Press Trigger keeps its note exactly as live recording writes it - the press chart matches on "Press: ..."
-        notes=(ve.description or "") if ve.event_type == "PRESS_TRIGGER" else f"[video] {ve.description or ''}".strip(),
+        notes=(
+            (ve.description or "") if ve.event_type == "PRESS_TRIGGER"
+            # A carrier-change hand pass is the same count-only marker live recording writes ("Pass"), so every list that
+            # hides those rows hides these too
+            else "Pass" if ve.event_type == "PASS_HAND" and not (ve.description or "").strip()
+            else f"[video] {ve.description or ''}".strip()
+        ),
     )
 
 

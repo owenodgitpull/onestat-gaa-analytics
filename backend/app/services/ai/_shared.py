@@ -307,6 +307,8 @@ properly.
   passes we allowed before winning it back), not a tactical event in its own right. There is NO full PPDA
   (passes-per-defensive-action) metric built yet — only the raw opposition pass count exists. If asked for
   PPDA specifically, say that metric isn't available yet rather than approximating one from this count.
+  Our own carrier changes are logged the same way (notes="Pass", team=OWN, passer = the player): bookkeeping markers only,
+  never a shot, turnover or other tactical event - team pass counts come from the carry data.
 - Press Trigger (notes="Press: {outcome}, {n} passes, {duration}m"): a coach-toggled window marking a
   deliberate press — started when the press begins, closed when it ends. outcome is one of won_back
   (we regained possession — success), broken (the opposition played through/past it), or manual_end
