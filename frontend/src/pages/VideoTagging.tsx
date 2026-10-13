@@ -1503,7 +1503,9 @@ export default function VideoTagging() {
     // ...but never when a kickout-landing / 45 tap is what's being asked for: that tap must always go through. A stale
     // "free pending" flag (e.g. restored from the saved pending-prompt snapshot after a reload) used to swallow every
     // tap here and leave the landing prompt stuck.
-    if (pendingFreeKick && !(overlayState === 'pitch' && pendingOverlay)) return
+    // ...and never when a dropped-short / hit-post / save landing tap is being asked for (a free that ended in one of
+    // those must not have its landing tap swallowed by the still-pending free flag).
+    if (pendingFreeKick && !pendingDrop && !(overlayState === 'pitch' && pendingOverlay)) return
 
     // If waiting for a pitch tap (kickout landing / 45 line), resolve it
     if (overlayState === 'pitch' && pendingOverlay) {
@@ -1553,6 +1555,8 @@ export default function VideoTagging() {
     if (pendingDrop && sessionId) {
       const drop = pendingDrop
       setPendingDrop(null)
+      // a free that ended in this outcome is finished: do not leave the free flag pending behind it
+      if (pendingFreeKick) { setPendingFreeKick(null); setIsAdjustingFree(false) }
       const spot = { end_x: position.x, end_y: position.y }
       let tries = 0
       const apply = () => {
