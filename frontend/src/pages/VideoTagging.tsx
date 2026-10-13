@@ -3322,13 +3322,29 @@ export default function VideoTagging() {
     }
     // Switching carrier: close the previous carry at the pass spot, then
     // start the new one — all behind the instant visible update below.
-    if (current) endCarrierQueued(bx, by, 'pass', true)
+    if (current) {
+      endCarrierQueued(bx, by, 'pass', true)
+      // Same hand-pass event the opposition gets on a pickup, so both teams read identically in the events data
+      // (passer = outgoing carrier, target = the player who took it).
+      if (sessionId) {
+        const t = calcMatchTimeRef.current(currentTimeMsRef.current)
+        createEvent.mutate({
+          sessionId,
+          data: {
+            event_type: 'PASS_HAND', team: 'team_a', half: t.half, match_minute: t.minute, match_second: t.second,
+            video_timestamp_ms: Math.round(currentTimeMsRef.current), player_id: current, target_player_id: playerId,
+            ...(bx != null && by != null ? { pitch_x: bx, pitch_y: by, pitch_zone: xyToZone(bx, by) } : {}),
+            source: 'human_tag',
+          },
+        })
+      }
+    }
     setActiveCarrierId(playerId)
     resolveBallOutcomeRef.current('team_a', playerId)
     // Track recent carriers (most recent first, max 10)
     setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by))
-  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment])
+  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, sessionId, createEvent])
 
   carrierSelectRef.current = handleCarrierSelect
 
