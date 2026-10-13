@@ -96,7 +96,7 @@ import {
   useCompleteTracking,
   useResetVideoSession,
 } from '../hooks/useVideoSessions'
-import { FOUL_SUBTYPES, UNFORCED_ERROR_SUBTYPES, TURNOVER_REASON_CONFIG, type TurnoverReason } from '../constants/turnoverSubtypes'
+import { FOUL_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES, UNFORCED_ERROR_SUBTYPES, TURNOVER_REASON_CONFIG, type TurnoverReason } from '../constants/turnoverSubtypes'
 import PitchActionOverlay from '../components/PitchActionOverlay'
 import {
   SubtypePrompt,
@@ -4887,7 +4887,7 @@ export default function VideoTagging() {
         <SubtypePrompt
           title="What type of foul?"
           playerName={(players || []).find((p: any) => p.id === pendingFoulSubtype.data.player_id)?.name}
-          options={FOUL_SUBTYPES}
+          options={[...OFFENSIVE_FOUL_SUBTYPES, ...FOUL_SUBTYPES]}
           tactical={tacticalFoul}
           onTacticalChange={setTacticalFoul}
           onSelect={handleFoulSubtypeSelect}
