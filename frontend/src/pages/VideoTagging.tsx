@@ -952,6 +952,7 @@ export default function VideoTagging() {
 
   const ballHistoryRef = useRef<Array<{ ms: number; x: number; y: number }>>([])
   const restoreCarrierRef = useRef<(matchId: string, playerId: string, jersey: number | null, atMs: number, x: number | null, y: number | null) => void>(() => {})
+  const restartAfterUndoRef = useRef<(atMs: number) => void>(() => {})
   const handleUndoToPoint = useCallback(async (timestampMs: number) => {
     if (!sessionId || !matchData) return
 
@@ -991,6 +992,8 @@ export default function VideoTagging() {
       autoReturnAtRef.current = null
       setReviewing(false)
       queryClient.invalidateQueries({ queryKey: ['possession-summary', matchData.id] })
+      // If the point we rolled back to is a score/wide/45/penalty, its restart kickout is owed again
+      restartAfterUndoRef.current(timestampMs)
 
       // Reset high-water mark to allow re-recording from this point
       setHighWaterMarkMs(timestampMs)
@@ -1754,6 +1757,26 @@ export default function VideoTagging() {
     setPossession(kickingIsOwn ? 'team_a' : 'team_b')
     setBallPosition({ x: kickingIsOwn === attackRight ? 5 : 95, y: 50 })
   }, [eventsData, session, mode, teamAttackingRightThisHalf])
+
+  // After an undo-to-point: the last surviving event decides whether a restart kickout is owed (same rule as the
+  // reload recovery above). Without this the kickout prompt never came back and possession just ran.
+  restartAfterUndoRef.current = (atMs: number) => {
+    let last: any = null
+    for (const e of eventsRef.current as any[]) {
+      if (e.video_timestamp_ms == null || e.video_timestamp_ms > atMs) continue
+      if (!last || e.video_timestamp_ms >= last.video_timestamp_ms) last = e
+    }
+    const owed = !!last && KICKOUT_RESTART_VIDEO_TYPES.has(last.event_type) &&
+      !(last.event_type === 'FREE_KICK' && !(last.scoring_context?.scored || last.scoring_context?.wide))
+    if (!owed) { setAwaitingKickout(false); return }
+    const kickingIsOwn = last.team !== 'team_a'
+    const attackRight = teamAttackingRightThisHalf ?? true
+    setAwaitingKickout(true)
+    setKickoutTab(last.team === 'team_a' ? 'opp_kickouts' : 'our_kickouts')
+    setKickoutMinimised(false)
+    setPossession(kickingIsOwn ? 'team_a' : 'team_b')
+    setBallPosition({ x: kickingIsOwn === attackRight ? 5 : 95, y: 50 })
+  }
 
   useEffect(() => {
     if (!pendingRestoredRef.current || !sessionId) return
