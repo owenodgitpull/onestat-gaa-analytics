@@ -238,12 +238,18 @@ async def update_video_event(
     for field, value in update_data.items():
         setattr(event, field, value)
 
-    # A kickout's team is the team that WON it: editing the result (e.g. Down won -> we won the break) must move the
-    # event to the winning side too, unless the same edit set the team explicitly.
-    if "event_type" in update_data and "team" not in update_data and "KICKOUT" in (event.event_type or ""):
-        _et = event.event_type or ""
-        if _et.startswith(("OWN_KICKOUT_", "OPP_KICKOUT_")) and not _et.endswith("SIDELINE"):
+    # A kickout's team is the team that WON it, so the result and the team must always agree: editing the result moves
+    # the event to the winning side, and editing the team (the winner) flips the result to match.
+    _et = event.event_type or ""
+    if _et.startswith(("OWN_KICKOUT_", "OPP_KICKOUT_")) and not _et.endswith("SIDELINE"):
+        if "event_type" in update_data and "team" not in update_data:
             event.team = "team_b" if "OPPOSITION_WON" in _et else "team_a"
+        elif "team" in update_data and "event_type" not in update_data:
+            _won_by_opposition = "OPPOSITION_WON" in _et
+            if event.team == "team_b" and not _won_by_opposition:
+                event.event_type = _et.replace("_WON", "_OPPOSITION_WON", 1)
+            elif event.team == "team_a" and _won_by_opposition:
+                event.event_type = _et.replace("_OPPOSITION_WON", "_WON", 1)
 
     # Re-check two-pointer if zone or event type changed
     zone = event.pitch_zone
