@@ -682,6 +682,8 @@ export default function VideoTagging() {
   const events = eventsData?.events || []
   const eventsRef = useRef(events)
   eventsRef.current = events
+  const sessionIdRef = useRef(sessionId)
+  sessionIdRef.current = sessionId
 
   // Track players on yellow cards (for second yellow → automatic red)
   const yellowCardPlayerIds = useMemo(() => {
@@ -1770,6 +1772,21 @@ export default function VideoTagging() {
       if (e.video_timestamp_ms == null) continue
       if (!last || e.video_timestamp_ms >= last.video_timestamp_ms) last = e
     }
+    // A sideline ball that nothing has followed and that was never answered: the "who has it" question is still owed
+    if (last && (last.event_type === 'SIDELINE_BALL' || last.event_type === 'SIDELINE_KICK')) {
+      let answered: string | null = null
+      try { answered = localStorage.getItem(`vt-sideline-answered-${sessionId}`) } catch { /* storage unavailable */ }
+      if (answered !== String(last.video_timestamp_ms)) {
+        setPendingSidelineDecision(true)
+        const at = last.video_timestamp_ms as number
+        setHighWaterMarkMs(at)
+        highWaterMarkRef.current = at
+        for (const delay of [0, 800, 2000]) {
+          window.setTimeout(() => { playerRef.current?.seekTo(at); playerRef.current?.pause() }, delay)
+        }
+      }
+      return
+    }
     if (!last || !KICKOUT_RESTART_VIDEO_TYPES.has(last.event_type)) return
     if (last.event_type === 'FREE_KICK' && !(last.scoring_context?.scored || last.scoring_context?.wide)) return
     const kickingIsOwn = last.team !== 'team_a'            // the OTHER team restarts
@@ -2577,6 +2594,10 @@ export default function VideoTagging() {
     })
     onCarrierTerminalEvent(payload.eventType)
     setAiDismissed(true)
+    // A sideline ball logged from the Event window pauses possession and asks who has it, same as the sideline button
+    if (payload.eventType === 'SIDELINE_BALL' || payload.eventType === 'SIDELINE_KICK') {
+      setPendingSidelineDecision(true)
+    }
 
     // Opposition substitution (inter-county): the server swaps their lineup slots when the event is written; the
     // circles update instantly from the same swap applied to the cached match.
@@ -2835,6 +2856,16 @@ export default function VideoTagging() {
     setPossession(weWonIt ? 'team_a' : 'team_b')
     onCarrierPossessionSwap()
     setPendingSidelineDecision(false)
+    // Remember which sideline event this answered, so reloading the page does not ask again
+    try {
+      let lastTs: number | null = null
+      for (const e of eventsRef.current as any[]) {
+        if ((e.event_type === 'SIDELINE_BALL' || e.event_type === 'SIDELINE_KICK') && e.video_timestamp_ms != null) {
+          if (lastTs == null || e.video_timestamp_ms > lastTs) lastTs = e.video_timestamp_ms
+        }
+      }
+      if (lastTs != null) localStorage.setItem(`vt-sideline-answered-${sessionIdRef.current}`, String(lastTs))
+    } catch { /* storage unavailable */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
