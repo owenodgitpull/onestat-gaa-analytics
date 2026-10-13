@@ -2883,6 +2883,25 @@ export default function VideoTagging() {
     verifyEvent.mutate({ eventId, sessionId })
   }, [sessionId, verifyEvent])
 
+  /** Referee ruled a score out (square ball, overcarrying...): the score becomes the matching unforced error for that
+   *  team, with a note, so the scoreboard is right and the agent still sees what happened. */
+  const handleDisallowScore = useCallback((eventId: string, reason: string, reasonLabel: string) => {
+    if (!sessionId) return
+    const ev: any = (events as any[]).find(e => e.id === eventId)
+    if (!ev) return
+    const what = ev.event_type === 'GOAL_SCORED' ? 'Goal' : ev.event_type === 'FREE_KICK' ? 'Free' : 'Point'
+    updateEvent.mutate({
+      eventId,
+      sessionId,
+      data: {
+        event_type: ev.team === 'team_a' ? 'OUR_UNFORCED_ERROR' : 'OPP_UNFORCED_ERROR',
+        sub_type: reason,
+        description: `${what} disallowed - ${reasonLabel}`,
+        scoring_context: null as any,
+      },
+    })
+  }, [sessionId, events, updateEvent])
+
   /** Explicit 1pt <-> 2pt correction from the event log. The pitch position stays as
    *  tagged; only the flag changes (merged into the existing scoring_context, since the
    *  update route replaces it wholesale and would drop source/scored/wide). */
@@ -5547,6 +5566,7 @@ export default function VideoTagging() {
           onDelete={handleDeleteEvent}
           onVerify={handleVerifyEvent}
           onToggleTwoPointer={handleToggleTwoPointer}
+          onDisallow={handleDisallowScore}
           onEditTeam={handleEditEventTeam}
           onEditPlayer={handleEditEventPlayer}
           onMovePosition={handleMovePosition}

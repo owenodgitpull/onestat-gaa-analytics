@@ -8,7 +8,7 @@
  * is the source of truth for where an event happened).
  */
 
-import { useMemo, useRef, useEffect } from 'react'
+import { useMemo, useRef, useEffect, useState } from 'react'
 import { seekTimeForEvent } from '../../utils/videoSeek'
 import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, Pencil, MapPin } from 'lucide-react'
 import type { VideoEvent } from '../../services/videoApi'
@@ -27,6 +27,9 @@ interface VideoEventLogProps {
   onEditTeam?: (eventId: string) => void
   /** Open the player picker for this event with no team change. */
   onEditPlayer?: (eventId: string) => void
+  /** A score the referee ruled out (square ball, overcarrying...): turns the score into the matching error so the
+   *  score is right and the story is kept. */
+  onDisallow?: (eventId: string, reason: string, reasonLabel: string) => void
   selectedEventId?: string | null
   collapsed?: boolean
   onToggle?: () => void
@@ -69,6 +72,15 @@ interface RunningScore {
   team_b_points: number
 }
 
+/** Why a score was ruled out: value = the unforced-error subtype it is stored under. */
+const DISALLOW_REASONS: Array<{ value: string; label: string }> = [
+  { value: 'square_ball', label: 'Square ball' },
+  { value: 'overcarrying', label: 'Overcarrying' },
+  { value: 'picked_off_ground', label: 'Picked off ground' },
+  { value: 'three_v_three', label: '3v3 violation' },
+  { value: 'other', label: 'Other' },
+]
+
 export default function VideoEventLog({
   events,
   onSeek,
@@ -78,12 +90,14 @@ export default function VideoEventLog({
   onMovePosition,
   onEditTeam,
   onEditPlayer,
+  onDisallow,
   selectedEventId,
   collapsed = false,
   onToggle,
   onVerifyAll,
 }: VideoEventLogProps) {
   const listRef = useRef<HTMLDivElement>(null)
+  const [disallowFor, setDisallowFor] = useState<string | null>(null)
 
   // Calculate running score alongside events
   const eventsWithScore = useMemo(() => {
@@ -280,6 +294,35 @@ export default function VideoEventLog({
                       >
                         {isTwoPointer ? '→1pt' : '→2pt'}
                       </button>
+                    )}
+                    {/* Score ruled out by the referee: keeps the story, fixes the score */}
+                    {onDisallow && (event.event_type === 'POINT_SCORED' || event.event_type === 'GOAL_SCORED' ||
+                      (event.event_type === 'FREE_KICK' && event.scoring_context?.scored)) && (
+                      disallowFor === event.id ? (
+                        <select
+                          autoFocus
+                          defaultValue=""
+                          onClick={(e) => e.stopPropagation()}
+                          onBlur={() => setDisallowFor(null)}
+                          onChange={(e) => {
+                            const opt = DISALLOW_REASONS.find(r => r.value === e.target.value)
+                            if (opt) onDisallow(event.id, opt.value, opt.label)
+                            setDisallowFor(null)
+                          }}
+                          className="bg-slate-800 text-white text-[10px] rounded border border-white/20 px-1 py-0.5"
+                        >
+                          <option value="" disabled>Why?</option>
+                          {DISALLOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                        </select>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDisallowFor(event.id) }}
+                          className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                          title="Ruled out by the referee (square ball, overcarrying...) - removes it from the score and keeps a note"
+                        >
+                          Disallowed
+                        </button>
+                      )
                     )}
                     {onMovePosition && (
                       <button
