@@ -25,7 +25,7 @@
 import { isMapEventType } from '../utils/eventMapFilter'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight, UserPlus } from 'lucide-react'
+import { PauseCircle, ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight, UserPlus } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -594,6 +594,9 @@ export default function VideoTagging() {
   const [kickoutAimedForId, setKickoutAimedForId] = useState<string | undefined>(undefined)
   // "Adjust Free Position" — overlay hidden so the ball can be dragged.
   const [isAdjustingFree, setIsAdjustingFree] = useState(false)
+  // Manual "Dead ball": the ball is out / play has stopped and no prompt covers it (a sideline ball, an injury, a
+  // wrongly-placed ball being sorted out). Possession stops accruing until "Play on".
+  const [manualDeadBall, setManualDeadBall] = useState(false)
   // The instruction banner over the video can be dragged out of the way (e.g. of the TV score/clock graphic). The spot
   // is remembered in this browser; double-tap the handle to put it back.
   const [bannerOffset, setBannerOffset] = useState<{ x: number; y: number }>(() => {
@@ -723,9 +726,10 @@ export default function VideoTagging() {
   // false. Time is accumulated in VIDEO time per team (see handleTimeUpdate)
   // and flushed with an explicit duration, because the backend's wall-clock
   // chaining is meaningless for video (pauses, 0.5x playback, scrubbing).
-  const deadBall = !!pendingFreeKick || awaitingKickout || overlayState !== 'none' || pending45 ||
+  const promptDeadBall = !!pendingFreeKick || awaitingKickout || overlayState !== 'none' || pending45 ||
     !!pendingFoulSubtype || !!pendingTurnoverReason || !!pendingErrorSubtype ||
     pendingBlockRecovery || pendingSidelineDecision || isAdjustingFree
+  const deadBall = promptDeadBall || manualDeadBall
   // Input is needed ON the pitch (overlay / tap step) — drives the pulsing
   // pitch border that the top banner points to.
   const pitchInputNeeded = overlayState === 'pitch' || !!pendingFoulSubtype || !!pendingTurnoverReason ||
@@ -1014,6 +1018,7 @@ export default function VideoTagging() {
       setHighWaterMarkMs(timestampMs)
       highWaterMarkRef.current = timestampMs
       lastPersistedProgressRef.current = timestampMs   // progress persists again from the rollback point
+      setManualDeadBall(false)
 
       // Seek video to this point
       undoSeekGuardRef.current = { target: timestampMs, until: Date.now() + 4000 }
@@ -3818,6 +3823,7 @@ export default function VideoTagging() {
         label: (!matchLineup || matchLineup.length === 0) ? 'Select Lineup' : 'Lineup',
         onClick: () => { if (!matchLineup || matchLineup.length === 0) setIsLineupModalOpen(true); else setShowViewLineup(true) },
       },
+      { key: 'dead', icon: manualDeadBall ? <Play size={15} /> : <PauseCircle size={15} />, label: manualDeadBall ? 'Play on' : 'Dead ball', onClick: () => setManualDeadBall(v => !v) },
       { key: 'weather', icon: <CloudSun size={15} />, label: 'Weather', onClick: () => setShowWeatherPicker(true) },
       { key: 'sub', icon: <UserPlus size={15} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
       { key: 'swap', icon: <ArrowLeftRight size={15} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
@@ -3982,7 +3988,7 @@ export default function VideoTagging() {
   const isInPenaltyArea = !!ballPosition && Math.abs(cabAttackingGoalX - ballPosition.x) <= 10.5
 
   // A top banner (input prompt or Review) is showing — the status controls sit just below it
-  const topBannerShown = reviewing || deadBall || showManualEvent || showViewLineup || showWeatherPicker
+  const topBannerShown = reviewing || promptDeadBall || showManualEvent || showViewLineup || showWeatherPicker
   // What was left open when the user stepped out to Review (kept, shown as a chip)
   const parkedPromptLabel =
     overlayState === 'player' ? 'Player selection'
@@ -4041,7 +4047,7 @@ export default function VideoTagging() {
         />
       )}
 
-      {!reviewing && (deadBall || showManualEvent || showViewLineup || showWeatherPicker) && (
+      {!reviewing && (promptDeadBall || showManualEvent || showViewLineup || showWeatherPicker) && (
         <div className="absolute top-3 inset-x-3 z-40 pointer-events-none" style={{ transform: `translate(${bannerOffset.x}px, ${bannerOffset.y}px)` }}>
           <style>{`
             @keyframes _vtChevR { 0%{transform:translateX(-4px);opacity:.25} 50%{opacity:1} 100%{transform:translateX(6px);opacity:.25} }
@@ -4673,7 +4679,7 @@ export default function VideoTagging() {
       {/* Possession-frozen indicator — shown while the footage plays through a
           dead ball (free being taken, kickout/45 restart, a prompt open), so
           it's obvious no possession time is being counted. */}
-      {mode === 'tracking' && deadBall && isPlaying && (
+      {mode === 'tracking' && ((deadBall && isPlaying) || manualDeadBall) && (
         <div
           className="absolute bottom-2 left-2 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-cyan-100 whitespace-nowrap pointer-events-none"
           style={{
@@ -4685,6 +4691,14 @@ export default function VideoTagging() {
         >
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-300" />
           Dead ball — possession paused
+          {manualDeadBall && (
+            <button
+              onClick={() => setManualDeadBall(false)}
+              className="pointer-events-auto ml-1 px-2.5 py-1 rounded-lg bg-emerald-500/25 hover:bg-emerald-500/40 border border-emerald-400/50 text-emerald-100 text-xs font-bold"
+            >
+              Play on
+            </button>
+          )}
         </div>
       )}
 
@@ -5203,6 +5217,7 @@ export default function VideoTagging() {
           {clockControls(true)}
           <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1 py-0.5">
             {[
+              { key: 'dead', icon: manualDeadBall ? <Play size={14} /> : <PauseCircle size={14} />, label: manualDeadBall ? 'Play on' : 'Dead ball', onClick: () => setManualDeadBall(v => !v) },
               { key: 'sub', icon: <UserPlus size={14} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
               { key: 'swap', icon: <ArrowLeftRight size={14} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
               { key: 'event', icon: <Plus size={14} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
