@@ -2404,6 +2404,8 @@ export default function VideoTagging() {
       eventType: config.videoType,
       needsPlayer: true,
       playerModalTitle: config.playerModalTitle,
+      // the picker's heading comes from this (falls back to "Who Scored?" without it)
+      playerModalEventType: config.playerModalEventType,
     }
     if (cardTeam === 'team_a') {
       handleEventTap({ action, eventData: data })
