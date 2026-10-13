@@ -51,6 +51,8 @@ interface Props {
    *  elsewhere so the user can log a sub/card/correction without it in the
    *  way. Not offered for the free-kick outcome picker (out of scope here). */
   onMinimize?: () => void
+  /** Offer "Hit Post" as a free outcome (Video Tagging; the live recording handler does not treat it as a free result yet). */
+  offerHitPost?: boolean
 }
 
 export default function PitchActionOverlay({
@@ -64,6 +66,7 @@ export default function PitchActionOverlay({
   onCancelKickout,
   onAdjustFreePosition,
   onMinimize,
+  offerHitPost = false,
 }: Props) {
   if (!awaitingKickout && !pendingFreeKick) return null
 
@@ -79,6 +82,7 @@ export default function PitchActionOverlay({
     { eventType: EventType.TWO_POINT_FREE, label: '2PT (Free)',      icon: Target,          variant: 'green' as Variant, disabled: !isIn2PointZone },
     { eventType: EventType.WIDE_FREE,      label: 'Wide (Free)',     icon: XCircle,         variant: 'red'   as Variant, disabled: false           },
     { eventType: EventType.SHORT,          label: 'Dropped Short',   icon: ArrowDownCircle, variant: 'amber' as Variant, disabled: false           },
+    ...(offerHitPost ? [{ eventType: EventType.HIT_POST, label: 'Hit Post', icon: Target, variant: 'amber' as Variant, disabled: false }] : []),
   ]
 
   return (

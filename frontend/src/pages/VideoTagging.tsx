@@ -2140,7 +2140,7 @@ export default function VideoTagging() {
     if (!config) return
 
     const isFreeResult = [EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE, EventType.FREE_SHORT_PASS, EventType.FREE_HIGH_BALL].includes(eventType) ||
-      (eventType === EventType.SHORT && !!pendingFreeKick)
+      ((eventType === EventType.SHORT || eventType === EventType.HIT_POST) && !!pendingFreeKick)
     const is45Result = eventType === EventType.FORTY_FIVE || eventType === EventType.FORTY_FIVE_MISSED
 
     // Which team the event belongs to — decided by the event itself, same
@@ -4590,6 +4590,7 @@ export default function VideoTagging() {
 
       {/* Kickout outcome (after a score/wide/45/penalty) + free outcome */}
       <PitchActionOverlay
+        offerHitPost
         awaitingKickout={mode === 'tracking' && awaitingKickout && overlayState === 'none' && !kickoutMinimised && !pendingFoulSubtype && !pendingTurnoverReason && !pendingErrorSubtype}
         pendingFreeKick={mode === 'tracking' && !!pendingFreeKick && !isAdjustingFree && overlayState === 'none' && !pendingFoulSubtype && !pendingTurnoverReason && !pendingErrorSubtype}
         pendingFoul={pendingFoulTeam}
