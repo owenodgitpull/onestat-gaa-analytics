@@ -594,6 +594,21 @@ export default function VideoTagging() {
   const [kickoutAimedForId, setKickoutAimedForId] = useState<string | undefined>(undefined)
   // "Adjust Free Position" — overlay hidden so the ball can be dragged.
   const [isAdjustingFree, setIsAdjustingFree] = useState(false)
+  // The instruction banner over the video can be dragged out of the way (e.g. of the TV score/clock graphic). The spot
+  // is remembered in this browser; double-tap the handle to put it back.
+  const [bannerOffset, setBannerOffset] = useState<{ x: number; y: number }>(() => {
+    try {
+      const raw = localStorage.getItem('vt-banner-offset')
+      if (raw) { const p = JSON.parse(raw); if (typeof p?.x === 'number' && typeof p?.y === 'number') return p }
+    } catch { /* storage unavailable */ }
+    return { x: 0, y: 0 }
+  })
+  const bannerDragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+  const bannerOffsetRef = useRef(bannerOffset)
+  bannerOffsetRef.current = bannerOffset
+  const saveBannerOffset = useCallback((o: { x: number; y: number }) => {
+    try { localStorage.setItem('vt-banner-offset', JSON.stringify(o)) } catch { /* storage unavailable */ }
+  }, [])
   // Why the ref brought the free forward (optional, chosen while adjusting its spot)
   const [broughtForwardReason, setBroughtForwardReason] = useState<BroughtForwardReason | null>(null)
   useEffect(() => { if (!pendingFreeKick) setBroughtForwardReason(null) }, [pendingFreeKick])
@@ -4027,7 +4042,7 @@ export default function VideoTagging() {
       )}
 
       {!reviewing && (deadBall || showManualEvent || showViewLineup || showWeatherPicker) && (
-        <div className="absolute top-3 inset-x-3 z-40 pointer-events-none">
+        <div className="absolute top-3 inset-x-3 z-40 pointer-events-none" style={{ transform: `translate(${bannerOffset.x}px, ${bannerOffset.y}px)` }}>
           <style>{`
             @keyframes _vtChevR { 0%{transform:translateX(-4px);opacity:.25} 50%{opacity:1} 100%{transform:translateX(6px);opacity:.25} }
             @keyframes _vtChevD { 0%{transform:translateY(-4px);opacity:.25} 50%{opacity:1} 100%{transform:translateY(6px);opacity:.25} }
@@ -4048,6 +4063,27 @@ export default function VideoTagging() {
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
+                <span
+                  title="Drag to move the banner (double-tap to reset)"
+                  className="pointer-events-auto touch-none cursor-grab active:cursor-grabbing select-none flex-shrink-0 px-1.5 py-1 -ml-1 rounded-md bg-white/10 text-white/70 text-xs leading-none tracking-tighter"
+                  onPointerDown={(e) => {
+                    e.currentTarget.setPointerCapture(e.pointerId)
+                    bannerDragRef.current = { sx: e.clientX, sy: e.clientY, ox: bannerOffsetRef.current.x, oy: bannerOffsetRef.current.y }
+                  }}
+                  onPointerMove={(e) => {
+                    const d = bannerDragRef.current
+                    if (!d) return
+                    setBannerOffset({
+                      x: Math.max(-900, Math.min(900, d.ox + e.clientX - d.sx)),
+                      y: Math.max(-40, Math.min(700, d.oy + e.clientY - d.sy)),
+                    })
+                  }}
+                  onPointerUp={() => { bannerDragRef.current = null; saveBannerOffset(bannerOffsetRef.current) }}
+                  onPointerCancel={() => { bannerDragRef.current = null }}
+                  onDoubleClick={() => { const o = { x: 0, y: 0 }; setBannerOffset(o); saveBannerOffset(o) }}
+                >
+                  ⋮⋮
+                </span>
                 <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
                   <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" />
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
