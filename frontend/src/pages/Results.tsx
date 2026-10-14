@@ -5,13 +5,15 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Trophy, Calendar, MapPin, ChevronRight, RefreshCw,
   Activity, Video, ClipboardList, Search, X, ChevronDown,
-  Filter,
+  Filter, MoreHorizontal, Trash2, Loader2,
 } from 'lucide-react'
 import { useMatches } from '../hooks/useMatches'
 import { useClubName } from '../contexts/ClubContext'
+import { useAuth } from '../contexts/AuthContext'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import { api } from '../services/api'
 import type { Match } from '../types'
@@ -70,6 +72,74 @@ function DataBadge({ icon: Icon, label, color }: { icon: typeof Activity; label:
   )
 }
 
+/** Permanent delete, guarded: the button stays disabled until "delete match" is typed. */
+function DeleteMatchModal({ match, onClose, onDeleted }: { match: Match; onClose: () => void; onDeleted: () => void }) {
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const ok = typed.trim().toLowerCase() === 'delete match'
+
+  const confirm = async () => {
+    if (!ok || busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await api.matches.delete(match.id)
+      onDeleted()
+    } catch (e: any) {
+      setError(e?.message || 'Could not delete the match. Please try again.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => !busy && onClose()}>
+      <div className="w-full max-w-md glass-card p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="p-2 rounded-full bg-red-500/20"><Trash2 size={18} className="text-red-400" /></div>
+          <h2 className="text-lg font-bold text-white">Delete this match?</h2>
+        </div>
+        <p className="text-sm text-white/70 mb-1">
+          <span className="font-semibold text-white">vs {match.opponent}</span> · {new Date(match.match_date).toLocaleDateString()}
+        </p>
+        <p className="text-sm text-white/60 mb-4">
+          This permanently deletes the match and everything attached to it: events, possession, lineup, GPS and video
+          tagging. It cannot be undone.
+        </p>
+        <label className="block text-xs font-semibold text-white/70 mb-1.5">
+          Type <span className="font-mono text-red-300">delete match</span> to confirm
+        </label>
+        <input
+          autoFocus
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') confirm() }}
+          placeholder="delete match"
+          className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500/60"
+        />
+        {error && <p className="text-xs text-red-300 mt-2">{error}</p>}
+        <div className="flex gap-3 mt-5">
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="flex-1 px-4 py-2.5 rounded-xl bg-white/10 text-white/80 hover:text-white text-sm font-semibold transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirm}
+            disabled={!ok || busy}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {busy && <Loader2 size={14} className="animate-spin" />}
+            Delete match
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type ResultFilter = 'all' | 'W' | 'L' | 'D'
 type VenueFilter = 'all' | 'home' | 'away' | 'neutral'
 
@@ -77,6 +147,10 @@ export default function Results() {
   const { data: matches, isLoading, error, refetch } = useMatches()
   const clubName = useClubName()
   const navigate = useNavigate()
+  const { canEdit } = useAuth()
+  const queryClient = useQueryClient()
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<Match | null>(null)
 
   // Same "next match → prep" quick-access shown on the Dashboard — added here
   // too since Matches (this page) is where a coach naturally lands after
@@ -375,7 +449,7 @@ export default function Results() {
                 <Link
                   key={match.id}
                   to={`/results/${match.id}`}
-                  className="glass-card p-5 hover:bg-white/10 transition-all group"
+                  className="glass-card p-5 hover:bg-white/10 transition-all group relative"
                 >
                   {/* Result Badge & Opponent */}
                   <div className="flex items-start justify-between mb-4">
@@ -385,10 +459,40 @@ export default function Results() {
                       </span>
                       <h3 className="text-lg font-bold text-white">vs {match.opponent}</h3>
                     </div>
-                    <ChevronRight
-                      size={20}
-                      className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all"
-                    />
+                    <div className="flex items-center gap-1">
+                      {canEdit && (
+                        <div className="relative">
+                          <button
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuFor(menuFor === match.id ? null : match.id) }}
+                            className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                            aria-label="Match options"
+                            title="Options"
+                          >
+                            <MoreHorizontal size={18} />
+                          </button>
+                          {menuFor === match.id && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-30"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuFor(null) }}
+                              />
+                              <div className="absolute right-0 top-full mt-1 z-40 min-w-[150px] rounded-xl bg-slate-900 border border-white/15 shadow-xl py-1">
+                                <button
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuFor(null); setDeleting(match) }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-300 hover:bg-red-500/15 transition-colors"
+                                >
+                                  <Trash2 size={14} /> Delete match
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                      <ChevronRight
+                        size={20}
+                        className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all"
+                      />
+                    </div>
                   </div>
 
                   {/* Score */}
@@ -443,6 +547,18 @@ export default function Results() {
               )
             })}
           </div>
+
+          {deleting && (
+            <DeleteMatchModal
+              match={deleting}
+              onClose={() => setDeleting(null)}
+              onDeleted={() => {
+                setDeleting(null)
+                queryClient.invalidateQueries({ queryKey: ['matches'] })
+                queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+              }}
+            />
+          )}
 
           {/* Load More */}
           {hasMore && (
