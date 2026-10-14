@@ -2248,6 +2248,15 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         for p in player_result.scalars().all():
             players[str(p.id)] = p.name
 
+    # Inter-county matches record WHICH opposition player did it (scored, won their kickout, fouled...). Without the
+    # name here the agents could only say "Down", never who.
+    _opp_ids = [e.opposition_player_id for e in events if getattr(e, "opposition_player_id", None)]
+    opp_names: dict = {}
+    if _opp_ids:
+        from app.models.opposition import OppositionPlayer as _OppPlayer
+        _opp_rows = await db.execute(select(_OppPlayer).where(_OppPlayer.id.in_(_opp_ids)))
+        opp_names = {str(p.id): p.surname for p in _opp_rows.scalars().all()}
+
     # pitch_x / pitch_y are stored raw (as drawn on screen). Which goal we attack depends on the match's
     # recorded direction AND the half, and the opposition attacks the other way. Everything below is
     # written for "our goal at x=0, their goal at x=100", so re-express EVERY event in OUR attacking frame
@@ -2279,6 +2288,11 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         }
         if e.assist_player_id:
             event_dict["assist"] = players.get(str(e.assist_player_id), "Unknown")
+        _opp_name = opp_names.get(str(e.opposition_player_id)) if getattr(e, "opposition_player_id", None) else None
+        if not _opp_name and getattr(e, "opponent_player_name", None):
+            _opp_name = e.opponent_player_name
+        if _opp_name:
+            event_dict["opposition_player"] = _opp_name
         if e.sub_type:
             event_dict["sub_type"] = e.sub_type
         loc = _pitch_location(*_frame[e.id])
@@ -2396,6 +2410,39 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         zone_summary["turnover_zones"] = turnover_zones
 
     result_payload: dict = {"events": events_data, "total": len(events_data)}
+
+    # Named opposition roll-ups (only present when the opposition players were recorded)
+    _OPP_KO_WON = {"own_kickout_opposition_won", "own_kickout_opposition_won_break",
+                   "opp_kickout_opposition_won", "opp_kickout_opposition_won_break"}
+    _opp_ko: dict = {}
+    _opp_scorers: dict = {}
+    for ed in events_data:
+        nm = ed.get("opposition_player")
+        if not nm:
+            continue
+        et_ = str(ed.get("event_type", "")).lower()
+        if et_ in _OPP_KO_WON:
+            row = _opp_ko.setdefault(nm, {"player": nm, "kickouts_won": 0, "from_own_kickouts": 0, "from_their_kickouts": 0, "on_the_break": 0})
+            row["kickouts_won"] += 1
+            row["from_own_kickouts" if et_.startswith("own_") else "from_their_kickouts"] += 1
+            if et_.endswith("_break"):
+                row["on_the_break"] += 1
+        elif et_ in SCORE_TYPES and ed.get("team") == "opponent":
+            row = _opp_scorers.setdefault(nm, {"player": nm, "scores": 0, "goals": 0, "points": 0})
+            row["scores"] += 1
+            if et_ in ("goal", "penalty_goal"):
+                row["goals"] += 1
+            else:
+                row["points"] += 1
+    if _opp_ko:
+        result_payload["opposition_kickout_winners"] = sorted(_opp_ko.values(), key=lambda r: -r["kickouts_won"])
+    if _opp_scorers:
+        result_payload["opposition_scorers"] = sorted(_opp_scorers.values(), key=lambda r: -r["scores"])
+    if opp_names:
+        result_payload["opposition_players_note"] = (
+            "Events carry `opposition_player` (the named opposition player). opposition_kickout_winners and "
+            "opposition_scorers are roll-ups of those names - use them to say who won their kickouts or scored."
+        )
     if zone_summary:
         result_payload["zone_summary"] = zone_summary
         result_payload["zone_summary_guide"] = (
