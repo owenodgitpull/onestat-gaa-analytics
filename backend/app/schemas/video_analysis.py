@@ -75,6 +75,17 @@ class SetFullTimeRequest(BaseModel):
     full_time_ms: int = Field(..., gt=0)
 
 
+class ClockStoppage(BaseModel):
+    start_ms: int = Field(..., ge=0)
+    end_ms: int = Field(..., gt=0)
+    note: Optional[str] = Field(None, max_length=60)
+
+
+class SetClockStoppagesRequest(BaseModel):
+    """Replace the list of periods the match clock was stopped (video ms)."""
+    stoppages: list[ClockStoppage] = Field(default_factory=list, max_length=20)
+
+
 class SetExtraTimeRequest(BaseModel):
     """Extra-time markers (video ms). Any field may be omitted to leave it untouched; `clear: true` removes all four."""
     et_first_half_start_ms: Optional[int] = Field(None, gt=0)
@@ -115,6 +126,7 @@ class VideoSessionResponse(BaseModel):
     et_halftime_ms: Optional[int] = None
     et_second_half_start_ms: Optional[int] = None
     et_full_time_ms: Optional[int] = None
+    clock_stoppages: Optional[list] = None
     tracking_started_at: Optional[datetime] = None
     tracking_completed_at: Optional[datetime] = None
     tracking_progress_ms: Optional[int] = None

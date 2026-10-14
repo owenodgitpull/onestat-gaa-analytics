@@ -8,7 +8,7 @@ Supports multiple analysis modes: human tagging, Gemini full-video, keyframe pip
 import uuid
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, BigInteger, Text
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, BigInteger, Text, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -48,6 +48,9 @@ class VideoSession(Base):
     et_halftime_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
     et_second_half_start_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
     et_full_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    # Periods (video ms) when the match clock was stopped - an injury, a water break. The match clock skips them:
+    # [{"start_ms": 1735417, "end_ms": 1932700, "note": "injury"}, ...]
+    clock_stoppages: Column[Optional[list]] = Column(JSON, nullable=True)
 
     # Tracking-mode state: setup (none set) -> tracking (started, not completed)
     # -> edit (completed). tracking_progress_ms is a monotonic high-water mark

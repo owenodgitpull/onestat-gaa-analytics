@@ -30,6 +30,8 @@ export interface VideoSession {
   et_halftime_ms?: number | null;
   et_second_half_start_ms?: number | null;
   et_full_time_ms?: number | null;
+  /** Periods (video ms) the match clock was stopped: injury, water break */
+  clock_stoppages?: Array<{ start_ms: number; end_ms: number; note?: string }> | null;
   tracking_started_at: string | null;
   tracking_completed_at: string | null;
   tracking_progress_ms: number | null;
@@ -346,6 +348,13 @@ export const videoSessionsAPI = {
     fetchAPI<VideoSession>(
       `/video/session/${sessionId}/set-extra-time`,
       { method: 'POST', body: JSON.stringify(body) }
+    ),
+
+  /** Replace the periods the match clock was stopped (video ms). */
+  setClockStoppages: (sessionId: string, stoppages: Array<{ start_ms: number; end_ms: number; note?: string }>) =>
+    fetchAPI<VideoSession>(
+      `/video/session/${sessionId}/set-clock-stoppages`,
+      { method: 'POST', body: JSON.stringify({ stoppages }) }
     ),
 
   /** Set which way the home team attacks in the 1st half (writes to the match). */

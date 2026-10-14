@@ -30,6 +30,9 @@ export default function NewFixtureModal({ isOpen, onClose, onCreate, defaultHalf
   const [competition, setCompetition] = useState('')
   const [stage, setStage] = useState('')
   const [halfDurationMins, setHalfDurationMins] = useState(defaultHalfDuration)
+  // The club's default can arrive after this modal first rendered (it was created at 30 minutes for an
+  // inter-county club): follow it whenever the modal opens or the default changes.
+  useEffect(() => { setHalfDurationMins(defaultHalfDuration) }, [defaultHalfDuration, isOpen])
   // Optional — every distance derived from the pitch (Team Volume,
   // Orchestrator carry distance, xP) assumes a fixed 145x90m app-wide when
   // these are blank. Real GAA grounds vary within regulation (130-145m x

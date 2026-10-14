@@ -240,7 +240,8 @@ const OPP_PLAYER_PROMPT: Record<string, string> = {
   WIDE: 'wide', SHORT: 'saved', HIT_POST: 'wide', SAVED: 'saved',
   OPP_UNFORCED_ERROR: 'opp_unforced_error',
   OPP_KICKOUT_OPPOSITION_WON: 'opp_kickout_won', OPP_KICKOUT_OPPOSITION_WON_BREAK: 'opp_kickout_won_break',
-  OWN_KICKOUT_OPPOSITION_WON: 'turnover', OWN_KICKOUT_OPPOSITION_WON_BREAK: 'turnover',
+  // They won OUR kickout: the question is about the kickout, not a generic "who won the turnover"
+  OWN_KICKOUT_OPPOSITION_WON: 'own_kickout_opposition_won', OWN_KICKOUT_OPPOSITION_WON_BREAK: 'own_kickout_opposition_won_break',
   TURNOVER_WON: 'turnover_won', TACKLE_WON: 'turnover_won', INTERCEPTION: 'interception', BLOCK_SHOT: 'block',
 }
 
@@ -1099,6 +1100,14 @@ export default function VideoTagging() {
 
     const h1Start = session.first_half_start_ms ?? 0
     const h2Start = session.second_half_start_ms
+    // Time the match clock was stopped (injury, water break) inside [fromMs, toMs] - the clock skips it
+    const stoppedBetween = (fromMs: number, toMs: number): number => {
+      let total = 0
+      for (const st of session.clock_stoppages || []) {
+        total += Math.max(0, Math.min(toMs, st.end_ms) - Math.max(fromMs, st.start_ms))
+      }
+      return total
+    }
 
     // Extra time: periods 3 and 4. Minutes carry on past two full halves (70 + ...); each period is 10 minutes.
     const et1 = session.et_first_half_start_ms
@@ -1114,7 +1123,7 @@ export default function VideoTagging() {
 
     // If we have a 2nd half marker and video is past it
     if (h2Start != null && videoMs >= h2Start) {
-      const elapsed = Math.max(0, videoMs - h2Start)
+      const elapsed = Math.max(0, videoMs - h2Start - stoppedBetween(h2Start, videoMs))
       const totalSec = Math.floor(elapsed / 1000)
       const hdm = matchHalfMins
       return { minute: hdm + Math.floor(totalSec / 60), second: totalSec % 60, half: 2 }
@@ -1123,10 +1132,10 @@ export default function VideoTagging() {
     // Otherwise first half (relative to the 1st-half mark). The offset is the
     // match clock at that mark: 0 for a real throw-in, >0 when the footage
     // joins mid-match (e.g. the TV clock already reads 2:05).
-    const elapsed = Math.max(0, videoMs - h1Start) + (session.first_half_clock_offset_ms ?? 0)
+    const elapsed = Math.max(0, videoMs - h1Start - stoppedBetween(h1Start, videoMs)) + (session.first_half_clock_offset_ms ?? 0)
     const totalSec = Math.floor(elapsed / 1000)
     return { minute: Math.floor(totalSec / 60), second: totalSec % 60, half: 1 }
-  }, [session?.first_half_start_ms, session?.first_half_clock_offset_ms, session?.second_half_start_ms, session?.et_first_half_start_ms, session?.et_second_half_start_ms, matchHalfMins])
+  }, [session?.first_half_start_ms, session?.first_half_clock_offset_ms, session?.second_half_start_ms, session?.et_first_half_start_ms, session?.et_second_half_start_ms, session?.clock_stoppages, matchHalfMins])
 
   calcMatchTimeRef.current = calcMatchTime
 
@@ -4893,22 +4902,29 @@ export default function VideoTagging() {
       {/* Possession-frozen indicator — shown while the footage plays through a
           dead ball (free being taken, kickout/45 restart, a prompt open), so
           it's obvious no possession time is being counted. */}
-      {mode === 'tracking' && ((deadBall && isPlaying) || manualDeadBall) && (
+      {mode === 'tracking' && (deadBall || manualDeadBall) && (
         <div
-          className="absolute bottom-2 left-2 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-cyan-100 whitespace-nowrap pointer-events-none"
+          className="absolute bottom-3 left-3 z-20 flex items-center gap-3 px-5 py-3 rounded-2xl text-base font-extrabold tracking-wide text-amber-50 whitespace-nowrap pointer-events-none"
           style={{
-            background: 'rgba(8,20,26,0.7)',
-            border: '1px solid rgba(0,176,255,0.4)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
+            background: 'linear-gradient(135deg, rgba(180,83,9,0.92), rgba(120,53,15,0.92))',
+            border: '2px solid rgba(251,191,36,0.95)',
+            boxShadow: '0 0 0 3px rgba(251,191,36,0.25), 0 10px 30px rgba(0,0,0,0.55), 0 0 26px rgba(251,191,36,0.45)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
           }}
         >
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-300" />
-          Dead ball — possession paused
+          <span className="relative flex h-3.5 w-3.5 flex-shrink-0">
+            <span className="absolute inline-flex h-full w-full rounded-full bg-amber-200 opacity-70 animate-ping" />
+            <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-amber-300" />
+          </span>
+          <span>
+            DEAD BALL
+            <span className="ml-2 font-semibold text-amber-100/90">possession paused</span>
+          </span>
           {manualDeadBall && (
             <button
               onClick={() => setManualDeadBall(false)}
-              className="pointer-events-auto ml-1 px-2.5 py-1 rounded-lg bg-emerald-500/25 hover:bg-emerald-500/40 border border-emerald-400/50 text-emerald-100 text-xs font-bold"
+              className="pointer-events-auto ml-1 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 border border-emerald-200/70 text-emerald-950 text-sm font-extrabold"
             >
               Play on
             </button>

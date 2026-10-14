@@ -76,6 +76,8 @@ const EVENT_LABELS: Record<string, { title: string; color: string }> = {
   own_kickout_won: { title: 'Who Won Our Kickout?', color: 'text-emerald-400' },
   opp_kickout_won: { title: 'Who Won Opp Kickout?', color: 'text-emerald-400' },
   own_kickout_won_break: { title: 'Who Won Break?', color: 'text-emerald-400' },
+  own_kickout_opposition_won: { title: 'Who Won Our Kickout?', color: 'text-orange-400' },
+  own_kickout_opposition_won_break: { title: 'Who Won the Break From Our Kickout?', color: 'text-orange-400' },
   opp_kickout_won_break: { title: 'Who Won Break?', color: 'text-emerald-400' },
   yellow_card: { title: 'Yellow Card — Who?', color: 'text-yellow-400' },
   black_card: { title: 'Black Card — Who?', color: 'text-slate-300' },

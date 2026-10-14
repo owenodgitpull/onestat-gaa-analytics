@@ -14,6 +14,7 @@ const QUESTION: Record<string, string> = {
   opp_unforced_error: 'Who made the error?',
   opp_kickout_won: 'Who won their kickout?', opp_kickout_won_break: 'Who won the break?',
   turnover: 'Who won the turnover?', turnover_lost: 'Who lost it?', turnover_won: 'Who won it?',
+  own_kickout_opposition_won: 'Who won our kickout?', own_kickout_opposition_won_break: 'Who won the break from our kickout?',
   interception: 'Who intercepted it?', block: 'Who blocked it?',
   goal: 'Who scored the goal?', point: 'Who scored?',
   assist: 'Who assisted?',

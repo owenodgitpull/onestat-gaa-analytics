@@ -38,6 +38,7 @@ from app.schemas.video_analysis import (
     SetHalfStartsRequest,
     SetFullTimeRequest,
     SetExtraTimeRequest,
+    SetClockStoppagesRequest,
     SetAttackDirectionRequest,
     TrackingProgressRequest,
     VideoSessionResponse,
@@ -88,6 +89,7 @@ def _session_to_response(session: VideoSession, download_url: str = None) -> Vid
         et_halftime_ms=session.et_halftime_ms,
         et_second_half_start_ms=session.et_second_half_start_ms,
         et_full_time_ms=session.et_full_time_ms,
+        clock_stoppages=session.clock_stoppages,
         tracking_started_at=session.tracking_started_at,
         tracking_completed_at=session.tracking_completed_at,
         tracking_progress_ms=session.tracking_progress_ms,
@@ -543,6 +545,42 @@ async def set_extra_time(
         f"Extra time set: session={session_id}, start={session.et_first_half_start_ms}, ht={session.et_halftime_ms}, "
         f"2nd={session.et_second_half_start_ms}, ft={session.et_full_time_ms}"
     )
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/set-clock-stoppages", response_model=VideoSessionResponse)
+async def set_clock_stoppages(
+    session_id: UUID,
+    body: SetClockStoppagesRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace the periods (video ms) the match clock was stopped - an injury, a water break. New events are stamped with
+    a match clock that skips them; existing events keep the minute they were saved with."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    cleaned = []
+    for s_ in body.stoppages:
+        if s_.end_ms <= s_.start_ms:
+            raise HTTPException(status_code=400, detail="A stoppage must end after it starts")
+        cleaned.append({"start_ms": s_.start_ms, "end_ms": s_.end_ms, **({"note": s_.note} if s_.note else {})})
+    cleaned.sort(key=lambda x: x["start_ms"])
+    session.clock_stoppages = cleaned
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+    logger.info(f"Clock stoppages set: session={session_id}, {cleaned}")
     return _session_to_response(session, download_url=download_url)
 
 
