@@ -11,6 +11,7 @@
  */
 
 import type { JerseyPlayer } from './JerseyNumberStrip'
+import { displaySurname } from '../utils/playerName'
 
 interface CarrierSideColumnProps {
   players: JerseyPlayer[]
@@ -22,8 +23,7 @@ interface CarrierSideColumnProps {
 }
 
 function surname(name: string) {
-  const parts = name.trim().split(' ')
-  return parts[parts.length - 1] || name
+  return displaySurname(name)
 }
 
 export default function CarrierSideColumn({

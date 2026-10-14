@@ -29,6 +29,7 @@ import {
 import { X, RefreshCw, Lightbulb, Pin, PinOff, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import type { AIChartSpec } from '@/services/api'
+import { displaySurname } from '../utils/playerName'
 
 interface DynamicChartProps {
   chart: AIChartSpec
@@ -496,10 +497,7 @@ export default function DynamicChart({ chart, onDismiss, onPin, onUnpin, isPinne
           y: (py / 100) * PITCH_H + PITCH_Y_OFFSET,
         })
 
-        const surname = (name: string) => {
-          const parts = (name || '').trim().split(' ')
-          return parts[parts.length - 1] || name || '?'
-        }
+        const surname = (name: string) => displaySurname(name) || '?'
 
         const starters = data.filter((d: any) => FORMATION_POS[d.position_id])
         const subs = data.filter((d: any) => !FORMATION_POS[d.position_id])

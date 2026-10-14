@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Eye } from 'lucide-react'
 import { matchesAPI } from '@/services/api'
 import type { PitchPath } from '@/services/api'
 import { ownAttacksRight, toAttackFrame } from '@/utils/attackDirection'
+import { displaySurname } from '../../utils/playerName'
 
 interface PathsTakenChartProps {
   matchId: string
@@ -47,7 +48,7 @@ const eventLabel = (t: string) => EVENT_TYPE_LABELS[t] || t.replace(/_/g, ' ')
 const LOSS_TYPES = new Set(['turnover_lost', 'unforced_error'])
 const ORIGIN_LETTER: Record<string, string> = { Kickout: 'K', Turnover: 'T', Free: 'F', 'Open play': 'O' }
 
-const surname = (n: string | null | undefined) => (n ? (n.trim().split(' ').pop() || n) : '')
+const surname = (n: string | null | undefined) => (n ? displaySurname(n, false) : '')
 
 // A small triangle pointing from a towards b, sitting `t` of the way along the segment
 const arrowTriangle = (a: { x: number; y: number }, b: { x: number; y: number }, t = 0.55, size = 30): string => {
@@ -230,7 +231,7 @@ const describePath = (
     if (carriers.length === 1) {
       carrierText = `. ${carriers[0]} carried`
     } else {
-      const surnames = carriers.map(n => n.split(' ').pop() || n)
+      const surnames = carriers.map(n => displaySurname(n, false))
       carrierText = `. ${surnames.slice(0, -1).join(' to ')} to ${surnames[surnames.length - 1]}`
     }
   }

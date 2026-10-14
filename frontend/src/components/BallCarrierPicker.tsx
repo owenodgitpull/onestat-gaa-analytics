@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { JerseyPlayer } from './JerseyNumberStrip'
 import { rankLikelyReceivers, rankAlternativeReceivers } from '@/utils/likelyReceivers'
+import { displaySurname } from '../utils/playerName'
 
 interface BallCarrierPickerProps {
   players: JerseyPlayer[]
@@ -38,8 +39,7 @@ interface BallCarrierPickerProps {
 const LIKELY_COUNT = 5
 
 function surname(name: string) {
-  const parts = name.trim().split(' ')
-  return parts[parts.length - 1] || name
+  return displaySurname(name)
 }
 
 // Icon sits diagonally up-right of the ball, far enough out that it never

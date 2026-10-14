@@ -10,6 +10,7 @@
 
 import { useState, useMemo, useRef } from 'react'
 import { X, Check, RotateCcw, Users } from 'lucide-react'
+import { playerInitials } from '../../utils/playerName'
 
 interface OwnPlayer {
   playerId: string
@@ -342,7 +343,7 @@ export default function VideoFormationSnapshot({
                     >
                       {player.jerseyNumber != null
                         ? player.jerseyNumber
-                        : player.playerName.split(' ').map(w => w[0]).join('').slice(0, 3)}
+                        : playerInitials(player.playerName)}
                     </button>
                   ))
                 : unplacedOpp.map((jersey) => (

@@ -126,6 +126,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PossessionTeam, EventType } from '../types'
 import type { Player, BallPosition } from '../types'
 import { confirmDialog } from '../utils/dialog'
+import { playerInitials } from '../utils/playerName'
 
 type OverlayState = 'none' | 'player' | 'pitch'
 type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
@@ -1912,7 +1913,7 @@ export default function VideoTagging() {
       const player = playerList.find(p => p.id === data.player_id)
       setBlackCardTimers(prev => [...prev, {
         id: crypto.randomUUID(),
-        playerLabel: player ? player.name.split(' ').map(n => n[0]).join('. ') + '.' : (data.jersey_number ? `#${data.jersey_number}` : `${data.match_minute}'`),
+        playerLabel: player ? playerInitials(player.name, 4).split('').join('. ') + '.' : (data.jersey_number ? `#${data.jersey_number}` : `${data.match_minute}'`),
         startedAt: Date.now(),
       }])
     }

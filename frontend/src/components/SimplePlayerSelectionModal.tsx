@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { X, Search, User, Trophy, Hash } from 'lucide-react'
 import type { Player } from '../types'
+import { cleanPlayerName, isCaptainName } from '../utils/playerName'
 
 /**
  * Simple Scoring's own player-selection modal — a fork of PlayerSelectionModal
@@ -60,7 +61,8 @@ const EVENT_LABELS: Record<string, EventLabelEntry> = {
 
 /** "Cianan McDaid" -> ["Cianan", "McDaid"]. Split on the FIRST space only,
  *  so a multi-word surname ("De Brún") stays together on the second line. */
-function splitName(fullName: string): [string, string] {
+function splitName(rawName: string): [string, string] {
+  const fullName = cleanPlayerName(rawName) + (isCaptainName(rawName) ? ' ©' : '')
   const idx = fullName.indexOf(' ')
   if (idx === -1) return [fullName, '']
   return [fullName.slice(0, idx), fullName.slice(idx + 1)]

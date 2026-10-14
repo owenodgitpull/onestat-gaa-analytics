@@ -93,6 +93,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { confirmDialog } from '../utils/dialog'
+import { playerInitials } from '../utils/playerName'
 
 type MatchPhase = 'not_started' | 'first_half' | 'half_time' | 'second_half' | 'finished'
 
@@ -4154,7 +4155,7 @@ export default function MatchRecording() {
     if (event.eventType === EventType.BLACK_CARD) {
       setBlackCardTimers(prev => [...prev, {
         id: crypto.randomUUID(),
-        playerLabel: player.name.split(' ').map(n => n[0]).join('. ') + '.',
+        playerLabel: playerInitials(player.name, 4).split('').join('. ') + '.',
         startedAt: Date.now(),
       }])
     }

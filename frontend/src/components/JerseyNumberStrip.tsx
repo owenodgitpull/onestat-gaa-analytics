@@ -12,6 +12,7 @@
 
 import { useMemo } from 'react'
 import { PossessionTeam } from '@/types'
+import { displaySurname } from '../utils/playerName'
 
 export interface JerseyPlayer {
   playerId: string
@@ -36,8 +37,7 @@ interface JerseyNumberStripProps {
 }
 
 function surname(name: string) {
-  const parts = name.trim().split(' ')
-  return parts[parts.length - 1] || name
+  return displaySurname(name)
 }
 
 /** Map position_id prefixes to positional line order (defence → attack) */

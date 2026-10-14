@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { Player } from '../types'
 import type { JerseyPlayer } from './JerseyNumberStrip'
 import { rankLikelyReceivers } from '@/utils/likelyReceivers'
+import { displaySurname } from '../utils/playerName'
 
 interface PitchPlayerSelectorProps {
   isOpen: boolean
@@ -231,10 +232,7 @@ export default function PitchPlayerSelector({
     onSelectPlayer(player)
   }
 
-  const surname = (name: string) => {
-    const parts = name.trim().split(' ')
-    return parts[parts.length - 1] || name
-  }
+  const surname = (name: string) => displaySurname(name)
 
   const content = (
     <div

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { X, Search, User, Trophy, Hash } from 'lucide-react'
 import type { Player } from '../types'
+import { displaySurname } from '../utils/playerName'
 
 interface PlayerSelectionModalProps {
   isOpen: boolean
@@ -190,7 +191,7 @@ export default function PlayerSelectionModal({
             <div className="grid grid-cols-5 sm:grid-cols-8 gap-2">
               {jerseyNumbers.map(num => {
                 const player = byJersey.get(num)
-                const surname = player?.name?.split(' ').pop() || ''
+                const surname = displaySurname(player?.name)
                 const isSuggested = !!suggestedPlayerId && player?.id === suggestedPlayerId
                 return (
                   <button
