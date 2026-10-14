@@ -24,6 +24,16 @@ const POS_NAME: Record<string, string> = {
 }
 const SLOT_ORDER = [...FORMATION_POSITIONS.map(p => p.id), ...SUBSTITUTE_POSITIONS.map(p => p.id)]
 
+/** Label for a pitch circle: "Conor Cox" -> "C. Cox" (names already given as "C. Cox" stay), so neighbouring names
+ *  do not run into each other. The full name is in the list beside the pitch and in the tooltip. */
+function shortLabel(name: string): string {
+  const parts = name.trim().split(/\s+/)
+  if (parts.length < 2) return name.trim()
+  const first = parts[0]
+  const initial = /\.$/.test(first) ? first : `${first.charAt(0).toUpperCase()}.`
+  return `${initial} ${parts.slice(1).join(' ')}`
+}
+
 function emptyRows(): Rows {
   const rows: Rows = {}
   for (const p of FORMATION_POSITIONS) rows[p.id] = { jersey: String(POSITION_DEFAULT_JERSEY[p.id] ?? ''), surname: '' }
@@ -218,9 +228,9 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
       {isLoading ? (
         <div className="text-xs text-white/40">Loading…</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(260px,2fr)] gap-5">
           {/* Pitch + bench: the same layout as the starting lineup picker */}
-          <div className="md:col-span-2 flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             <div className="relative bg-gradient-to-br from-green-900/40 to-green-800/40 rounded-2xl overflow-hidden aspect-[16/10]">
               <svg viewBox="0 0 2332 1446" className="absolute inset-0 w-full h-full opacity-40">
                 <rect width="2332" height="1446" fill="#2d5016" />
@@ -235,23 +245,29 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
                 >
                   {circle(pos.id, String(POSITION_DEFAULT_JERSEY[pos.id] ?? pos.label), false)}
                   {rows[pos.id]?.surname.trim() && (
-                    <div className="absolute top-full mt-1 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-                      <span className={`text-[9px] sm:text-xs font-semibold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded ${selected === pos.id ? 'bg-amber-500/30 text-amber-200' : 'bg-black/50 text-white'}`}>
-                        {rows[pos.id].surname}
+                    <div className="absolute top-full mt-0.5 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
+                      <span
+                        title={rows[pos.id].surname}
+                        className={`block max-w-[84px] sm:max-w-[104px] truncate text-[9px] sm:text-[11px] leading-tight font-semibold px-1.5 py-0.5 rounded ${selected === pos.id ? 'bg-amber-500/30 text-amber-200' : 'bg-black/50 text-white'}`}
+                      >
+                        {shortLabel(rows[pos.id].surname)}
                       </span>
                     </div>
                   )}
                 </div>
               ))}
             </div>
-            <div className="flex justify-center flex-wrap gap-x-3 gap-y-2 px-2">
+            <div className="flex justify-center flex-wrap gap-x-4 gap-y-3 px-2 pb-1">
               {SUBSTITUTE_POSITIONS.map((pos, i) => (
                 <div key={pos.id} className="cursor-pointer flex flex-col items-center" onClick={() => setSelected(pos.id)}>
                   <div className="relative">{circle(pos.id, rows[pos.id]?.jersey || String(16 + i), true)}</div>
                   {rows[pos.id]?.surname.trim() && (
-                    <div className="mt-2">
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${selected === pos.id ? 'bg-amber-500/30 text-amber-200' : 'bg-black/50 text-white'}`}>
-                        {rows[pos.id].surname}
+                    <div className="mt-1.5">
+                      <span
+                        title={rows[pos.id].surname}
+                        className={`block max-w-[84px] truncate text-[10px] font-semibold px-1.5 py-0.5 rounded ${selected === pos.id ? 'bg-amber-500/30 text-amber-200' : 'bg-black/50 text-white'}`}
+                      >
+                        {shortLabel(rows[pos.id].surname)}
                       </span>
                     </div>
                   )}
@@ -295,7 +311,7 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
                 </div>
               </div>
             ) : (
-              <div className="space-y-1 max-h-[60vh] overflow-y-auto">
+              <div className="space-y-1.5 max-h-[60vh] overflow-y-auto pr-1">
                 <p className="text-white/50 text-xs font-semibold mb-1">Players ({filled})</p>
                 {SLOT_ORDER.map(id => {
                   const r = rows[id]
@@ -303,9 +319,9 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
                     <button
                       key={id}
                       onClick={() => setSelected(id)}
-                      className="w-full glass-card px-2 py-1 flex items-center gap-2 text-left"
+                      className="w-full glass-card px-3 py-1.5 flex items-center gap-3 text-left"
                     >
-                      <span className="text-white/50 text-[10px] font-semibold w-24 flex-shrink-0 truncate">{slotName(id)}</span>
+                      <span className="text-white/50 text-[10px] font-semibold w-28 flex-shrink-0 truncate">{slotName(id)}</span>
                       <span className="w-6 text-center text-xs font-bold text-orange-300">{r?.jersey}</span>
                       <span className={`text-xs truncate flex-1 ${r?.surname.trim() ? 'text-white font-medium' : 'text-white/30 italic'}`}>{r?.surname.trim() || '—'}</span>
                     </button>

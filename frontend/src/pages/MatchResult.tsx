@@ -958,7 +958,7 @@ export default function MatchResult() {
       {/* Opposition lineup entry */}
       {showOppLineup && canEnterOppLineup && matchId && (
         <div className="fixed inset-0 z-[110] flex items-start justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto" onClick={() => setShowOppLineup(false)}>
-          <div className="relative w-full max-w-3xl my-6 glass-card p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-full max-w-6xl my-6 glass-card p-6 sm:p-8" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-white">{match?.opponent || 'Opposition'} lineup</h2>
               <button onClick={() => setShowOppLineup(false)} className="text-white/60 hover:text-white p-1" aria-label="Close">
