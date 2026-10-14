@@ -4931,7 +4931,7 @@ export default function VideoTagging() {
           it's obvious no possession time is being counted. */}
       {mode === 'tracking' && (deadBall || manualDeadBall) && (
         <div
-          className="absolute bottom-3 left-3 z-[30] flex items-center gap-3 px-5 py-3 rounded-2xl text-base font-extrabold tracking-wide text-amber-50 whitespace-nowrap pointer-events-none"
+          className="absolute top-12 left-1/2 -translate-x-1/2 z-[30] flex items-center gap-3 px-4 py-2 rounded-2xl text-sm font-extrabold tracking-wide text-amber-50 whitespace-nowrap pointer-events-none"
           style={{
             background: 'linear-gradient(135deg, rgba(180,83,9,0.92), rgba(120,53,15,0.92))',
             border: '2px solid rgba(251,191,36,0.95)',
