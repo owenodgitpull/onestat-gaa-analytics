@@ -25,6 +25,8 @@ PLUMBING = (
     "services/leaderboard_service.py",
     # Echoes raw screen coords straight back to the screen (Video Tagging undo restores the ball spot) — same frame, no analytics.
     "routes/possession_events.py",
+    # Edits a move's carriers / passes: copies the stored positions between steps, never interprets them.
+    "routes/video_moves.py",
 )
 
 HELPER_MARKERS = (

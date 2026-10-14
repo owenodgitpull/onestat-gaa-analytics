@@ -574,8 +574,12 @@ async def set_clock_stoppages(
         cleaned.append({"start_ms": s_.start_ms, "end_ms": s_.end_ms, **({"note": s_.note} if s_.note else {})})
     cleaned.sort(key=lambda x: x["start_ms"])
     session.clock_stoppages = cleaned
+    # Everything already tagged is re-stamped from its video position, so the minutes agree with the new stoppages
+    from app.services.video.restamp import restamp_session
+    restamped = await restamp_session(db, session)
     await db.commit()
     await db.refresh(session)
+    logger.info(f"Clock re-stamped after stoppage change: {restamped}")
 
     download_url = None
     if session.video_r2_key:

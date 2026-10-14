@@ -31,6 +31,10 @@ interface VideoEventLogProps {
   /** A score the referee ruled out (square ball, overcarrying...): turns the score into the matching error so the
    *  score is right and the story is kept. */
   onDisallow?: (eventId: string, reason: string, reasonLabel: string) => void
+  /** Open the chain editor (who carried, missing / extra steps) for a score, kickout or turnover. */
+  onEditMove?: (eventId: string) => void
+  /** Open the full fix-up form (players, type, outcome, time...) for any event. */
+  onEditEvent?: (eventId: string) => void
   selectedEventId?: string | null
   collapsed?: boolean
   onToggle?: () => void
@@ -75,6 +79,8 @@ export default function VideoEventLog({
   onEditTeam,
   onEditPlayer,
   onDisallow,
+  onEditMove,
+  onEditEvent,
   selectedEventId,
   collapsed = false,
   onToggle,
@@ -328,6 +334,26 @@ export default function VideoEventLog({
                           Disallowed
                         </button>
                       )
+                    )}
+                    {onEditMove && (event.event_type === 'POINT_SCORED' || event.event_type === 'GOAL_SCORED' ||
+                      event.event_type.includes('KICKOUT') || event.event_type.includes('TURNOVER') ||
+                      event.event_type === 'WIDE' || event.event_type === 'SHORT') && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditMove(event.id) }}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                        title="Fix the move: who carried, missing or extra steps"
+                      >
+                        Move
+                      </button>
+                    )}
+                    {onEditEvent && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditEvent(event.id) }}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
+                        title="Fix this event: players, type, outcome, time"
+                      >
+                        Fix
+                      </button>
                     )}
                     {onMovePosition && (
                       <button

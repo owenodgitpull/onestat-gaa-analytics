@@ -25,7 +25,7 @@
 import { isMapEventType } from '../utils/eventMapFilter'
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { PauseCircle, ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight, UserPlus } from 'lucide-react'
+import { PauseCircle, ChevronsRight, ChevronsDown, BarChart3, PieChart, CloudSun, Plus, RotateCcw, MoreHorizontal, ArrowLeft, FileText, Download, Loader2, Sparkles, X, AlertTriangle, Users, Palette, Maximize, Camera, Play, Target, Undo2, CheckCircle2, Eye, ArrowLeftRight, UserPlus, Wrench, ClipboardCheck, Timer } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../components/video/VideoPlayer'
 import VideoTacticalView from '../components/video/VideoTacticalView'
 import EventTimeline from '../components/video/EventTimeline'
@@ -34,6 +34,10 @@ import PositionSwapModal, { swapLineupPositions } from '../components/PositionSw
 import ScoresList from '../components/video/ScoresList'
 import PitchTapCue from '../components/PitchTapCue'
 import VideoEventLog from '../components/video/VideoEventLog'
+import MoveEditorModal from '../components/video/MoveEditorModal'
+import EventEditModal from '../components/video/EventEditModal'
+import NeedsAttentionModal from '../components/video/NeedsAttentionModal'
+import MatchSettingsModal from '../components/video/MatchSettingsModal'
 import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
 import PitchPlayerSelector from '../components/PitchPlayerSelector'
@@ -631,6 +635,12 @@ export default function VideoTagging() {
   // Manual "Dead ball": the ball is out / play has stopped and no prompt covers it (a sideline ball, an injury, a
   // wrongly-placed ball being sorted out). Possession stops accruing until "Play on".
   const [manualDeadBall, setManualDeadBall] = useState(false)
+  // Fix-up tools: move editor, event editor, needs-attention list, match settings, stop-the-clock
+  const [moveEditEventId, setMoveEditEventId] = useState<string | null>(null)
+  const [fixEventId, setFixEventId] = useState<string | null>(null)
+  const [showNeedsAttention, setShowNeedsAttention] = useState(false)
+  const [showMatchSettings, setShowMatchSettings] = useState(false)
+  const [clockStopStartMs, setClockStopStartMs] = useState<number | null>(null)
   // The instruction banner over the video can be dragged out of the way (e.g. of the TV score/clock graphic). The spot
   // is remembered in this browser; double-tap the handle to put it back.
   const [bannerOffset, setBannerOffset] = useState<{ x: number; y: number }>(() => {
@@ -3808,6 +3818,20 @@ export default function VideoTagging() {
     )
   }
 
+  const toggleClockStop = () => {
+    if (!sessionId) return
+    if (clockStopStartMs == null) { setClockStopStartMs(currentTimeMs); return }
+    const start = clockStopStartMs
+    const end = currentTimeMs
+    setClockStopStartMs(null)
+    if (end <= start) return
+    const next = [...(session.clock_stoppages || []), { start_ms: start, end_ms: end }].sort((a, b) => a.start_ms - b.start_ms)
+    videoSessionsAPI.setClockStoppages(sessionId, next).then(() => { refetchSession(); refetchEvents() })
+  }
+
+  const pickableOwn = (players || []).map((p: any) => ({ id: p.id as string, name: p.name as string, jerseyNumber: (p.jersey_number ?? null) as number | null }))
+  const pickableOpp = (oppSquad.players || []).filter((p: any) => p.playerId).map((p: any) => ({ id: p.playerId as string, name: (p.playerName || `#${p.jerseyNumber}`) as string, jerseyNumber: (p.jerseyNumber ?? null) as number | null }))
+
   const playerList = (players || []).map((p: any) => ({
     id: p.id, name: p.name, jersey_number: p.jersey_number,
     position: p.position || '', date_of_birth: p.date_of_birth || null,
@@ -4025,6 +4049,9 @@ export default function VideoTagging() {
       { key: 'sub', icon: <UserPlus size={15} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
       { key: 'swap', icon: <ArrowLeftRight size={15} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
       { key: 'event', icon: <Plus size={15} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
+      { key: 'attention', icon: <ClipboardCheck size={15} />, label: 'Needs attention', onClick: () => setShowNeedsAttention(true) },
+      { key: 'stopclock', icon: <Timer size={15} />, label: clockStopStartMs == null ? 'Stop clock' : 'Resume clock', onClick: () => toggleClockStop() },
+      { key: 'settings', icon: <Wrench size={15} />, label: 'Match settings', onClick: () => setShowMatchSettings(true) },
     ]
     return (
       <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1.5 py-1">
@@ -5195,6 +5222,41 @@ export default function VideoTagging() {
           onClose={() => setShowExtraStats(false)}
         />
       )}
+      <MoveEditorModal
+        isOpen={moveEditEventId != null}
+        onClose={() => setMoveEditEventId(null)}
+        sessionId={sessionId || ''}
+        eventId={moveEditEventId}
+        ownPlayers={pickableOwn}
+        oppPlayers={pickableOpp}
+        onChanged={() => { refetchEvents(); refetchMatchData() }}
+      />
+      <EventEditModal
+        event={events.find(e => e.id === fixEventId) || null}
+        ownPlayers={pickableOwn}
+        oppPlayers={pickableOpp}
+        onClose={() => setFixEventId(null)}
+        onSave={(eventId, data) => sessionId && updateEvent.mutate({ eventId, sessionId, data })}
+      />
+      <NeedsAttentionModal
+        isOpen={showNeedsAttention}
+        sessionId={sessionId || ''}
+        onClose={() => setShowNeedsAttention(false)}
+        onSeek={handleSeek}
+        onFixEvent={(id) => setFixEventId(id)}
+        onFixMove={(id) => setMoveEditEventId(id)}
+      />
+      <MatchSettingsModal
+        isOpen={showMatchSettings}
+        onClose={() => setShowMatchSettings(false)}
+        halfMins={matchHalfMins}
+        attackingRightFirstHalf={matchData?.attacking_right_first_half ?? null}
+        stoppages={session.clock_stoppages || []}
+        currentTimeMs={currentTimeMs}
+        onSetHalfMins={async (m) => { await api.matches.update(session.match_id, { half_duration_mins: m } as any); await refetchMatchData() }}
+        onSetDirection={async (r) => { await handleSetDirection(r) }}
+        onSaveStoppages={async (st) => { await videoSessionsAPI.setClockStoppages(sessionId!, st); await refetchSession(); await refetchEvents() }}
+      />
       {showViewLineup && matchLineup && matchLineup.length > 0 && (() => {
         const hasOppLineup = oppSquad.enabled && oppSquad.players.length > 0
         const side: 'own' | 'opposition' = hasOppLineup ? lineupSide : 'own'
@@ -5513,6 +5575,9 @@ export default function VideoTagging() {
               { key: 'sub', icon: <UserPlus size={14} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
               { key: 'swap', icon: <ArrowLeftRight size={14} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
               { key: 'event', icon: <Plus size={14} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
+              { key: 'attention', icon: <ClipboardCheck size={14} />, label: 'Needs attention', onClick: () => setShowNeedsAttention(true) },
+              { key: 'stopclock', icon: <Timer size={14} />, label: clockStopStartMs == null ? 'Stop clock' : 'Resume clock', onClick: () => toggleClockStop() },
+              { key: 'settings', icon: <Wrench size={14} />, label: 'Match settings', onClick: () => setShowMatchSettings(true) },
             ].map(t => (
               <button key={t.key} onClick={t.onClick} title={t.label}
                 className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-[11px] font-medium transition-colors whitespace-nowrap">
@@ -5773,6 +5838,8 @@ export default function VideoTagging() {
           onVerify={handleVerifyEvent}
           onToggleTwoPointer={handleToggleTwoPointer}
           onDisallow={handleDisallowScore}
+          onEditMove={(id) => setMoveEditEventId(id)}
+          onEditEvent={(id) => setFixEventId(id)}
           onEditTeam={handleEditEventTeam}
           onEditPlayer={handleEditEventPlayer}
           onMovePosition={handleMovePosition}
