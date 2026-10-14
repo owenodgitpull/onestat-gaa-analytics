@@ -4191,6 +4191,10 @@ export default function VideoTagging() {
         firstHalfStartMs={session.first_half_start_ms ?? undefined}
         secondHalfStartMs={session.second_half_start_ms ?? undefined}
         fullTimeMs={session.full_time_ms ?? undefined}
+        etFirstHalfStartMs={session.et_first_half_start_ms ?? undefined}
+        etHalftimeMs={session.et_halftime_ms ?? undefined}
+        etSecondHalfStartMs={session.et_second_half_start_ms ?? undefined}
+        etFullTimeMs={session.et_full_time_ms ?? undefined}
         maxSeekMs={mode === 'tracking' && !reviewing ? highWaterMarkMs : undefined}
         initialTimeMs={
           mode === 'tracking'

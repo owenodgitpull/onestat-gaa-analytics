@@ -31,6 +31,11 @@ interface VideoPlayerProps {
   firstHalfStartMs?: number
   secondHalfStartMs?: number
   fullTimeMs?: number
+  /** Extra-time marks: 1st period throw-in, its half-time, 2nd period throw-in, final whistle */
+  etFirstHalfStartMs?: number
+  etHalftimeMs?: number
+  etSecondHalfStartMs?: number
+  etFullTimeMs?: number
   /** Forward-seek ceiling (ms) — while set, scrubbing/skip-forward/seekTo
    * can't jump past this point. Used during tracking mode so events are
    * always logged in chronological order; rewinding is never restricted. */
@@ -60,7 +65,7 @@ interface VideoPlayerProps {
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, maxSeekMs, initialTimeMs, fillHeight, disabled = false }, ref) => {
+  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, etFirstHalfStartMs, etHalftimeMs, etSecondHalfStartMs, etFullTimeMs, maxSeekMs, initialTimeMs, fillHeight, disabled = false }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null)
     const hasRestoredPositionRef = useRef(false)
     const [playing, setPlaying] = useState(false)
@@ -363,42 +368,51 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 title="Can't skip ahead while tracking — rewinding is fine"
               />
             )}
-            {firstHalfStartMs != null && duration > 0 && (
-              <div
-                className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
-                style={{ left: `${(firstHalfStartMs / duration) * 100}%` }}
-              >
-                <span className="text-[9px] font-bold text-cyan-400 -translate-y-3.5 select-none">1H</span>
-                <div className="w-0.5 h-full bg-cyan-400 rounded-full" />
-              </div>
-            )}
-            {secondHalfStartMs != null && duration > 0 && (
-              <div
-                className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
-                style={{ left: `${(secondHalfStartMs / duration) * 100}%` }}
-              >
-                <span className="text-[9px] font-bold text-cyan-400 -translate-y-3.5 select-none">2H</span>
-                <div className="w-0.5 h-full bg-cyan-400 rounded-full" />
-              </div>
-            )}
-            {fullTimeMs != null && duration > 0 && (
-              <div
-                className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
-                style={{ left: `${(fullTimeMs / duration) * 100}%` }}
-              >
-                <span className="text-[9px] font-bold text-rose-400 -translate-y-3.5 select-none">FT</span>
-                <div className="w-0.5 h-full bg-rose-400 rounded-full" />
-              </div>
-            )}
-            {halftimeMs != null && duration > 0 && (
-              <div
-                className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
-                style={{ left: `${(halftimeMs / duration) * 100}%` }}
-              >
-                <span className="text-[9px] font-bold text-amber-400 -translate-y-3.5 select-none">HT</span>
-                <div className="w-0.5 h-full bg-amber-400 rounded-full" />
-              </div>
-            )}
+            {/* Match-timing marks. Marks that sit close together (a throw-in a few seconds after the whistle, as on
+                broadcast footage) are drawn as one line each but their labels stack at different heights so none
+                hides another. Hover a label for the exact time. */}
+            {duration > 0 && (() => {
+              const marks = [
+                { key: '1H', label: '1H', ms: firstHalfStartMs, color: 'cyan', name: '1st half throw-in' },
+                { key: 'HT', label: 'HT', ms: halftimeMs, color: 'amber', name: 'Half-time whistle' },
+                { key: '2H', label: '2H', ms: secondHalfStartMs, color: 'cyan', name: '2nd half throw-in' },
+                { key: 'FT', label: 'FT', ms: fullTimeMs, color: 'rose', name: 'Full-time whistle' },
+                { key: 'ET1', label: 'ET', ms: etFirstHalfStartMs, color: 'violet', name: 'Extra-time throw-in' },
+                { key: 'ETHT', label: 'ET HT', ms: etHalftimeMs, color: 'amber', name: 'Extra-time half-time' },
+                { key: 'ET2', label: 'ET 2', ms: etSecondHalfStartMs, color: 'violet', name: 'Extra-time 2nd period' },
+                { key: 'ETFT', label: 'ET FT', ms: etFullTimeMs, color: 'rose', name: 'Final whistle' },
+              ].filter(m => m.ms != null) as Array<{ key: string; label: string; ms: number; color: string; name: string }>
+              const COLORS: Record<string, string> = { cyan: '#22d3ee', amber: '#fbbf24', rose: '#fb7185', violet: '#a78bfa' }
+              const ordered = [...marks].sort((x, y) => x.ms - y.ms)
+              let lastPct = -100
+              let level = 0
+              const placed = ordered.map(m => {
+                const pct = (m.ms / duration) * 100
+                level = pct - lastPct < 4 ? Math.min(level + 1, 3) : 0   // closer than ~4% of the bar: stack the label
+                lastPct = pct
+                return { ...m, pct, level }
+              })
+              const fmt = (ms: number) => {
+                const t = Math.floor(ms / 1000)
+                return `${Math.floor(t / 3600) > 0 ? Math.floor(t / 3600) + ':' : ''}${String(Math.floor((t % 3600) / 60)).padStart(Math.floor(t / 3600) > 0 ? 2 : 1, '0')}:${String(t % 60).padStart(2, '0')}`
+              }
+              return placed.map(m => (
+                <div
+                  key={m.key}
+                  className="absolute top-0 bottom-0 flex flex-col items-center pointer-events-none"
+                  style={{ left: `${m.pct}%` }}
+                >
+                  <span
+                    className="text-[9px] font-bold select-none whitespace-nowrap"
+                    style={{ color: COLORS[m.color], transform: `translateY(${-14 - m.level * 11}px)` }}
+                    title={`${m.name} - ${fmt(m.ms)}`}
+                  >
+                    {m.label}
+                  </span>
+                  <div className="w-0.5 h-full rounded-full" style={{ background: COLORS[m.color], marginTop: `${-m.level * 0}px` }} />
+                </div>
+              ))
+            })()}
           </div>
 
           {/* Playback speed - quick access buttons + full menu */}
