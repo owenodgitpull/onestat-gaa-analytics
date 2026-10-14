@@ -277,21 +277,30 @@ function getStatusLabel(
   clubName: string,
   opponentName: string,
   carrierName?: string | null,
+  /** Does the team in possession attack towards x = 100 (the right of the screen) right now? Raw x / y are as drawn
+   *  on screen, so a team going right-to-left (or anyone in the 2nd half) has to be flipped first, or the zone is
+   *  inverted and left / right swap. null = direction not recorded, treat as left-to-right. */
+  possessionAttacksRight: boolean | null = true,
 ): string {
   const teamLabel = possession === 'team_a'
     ? (carrierName || clubName)
     : opponentName
+  // Put the point in the possessing team's own attacking frame: they attack towards x = 100, own goal at x = 0, and
+  // (turning the pitch 180 degrees) small y is THEIR left, large y THEIR right.
+  const attacksRight = possessionAttacksRight ?? true
+  const x = attacksRight ? pos.x : 100 - pos.x
+  const y = attacksRight ? pos.y : 100 - pos.y
   // x: 0 = own DEF → 100 = attacking SQ
   const zone =
-    pos.x < 17 ? 'inside own 21m line' :
-    pos.x < 33 ? 'inside own 45m line' :
-    pos.x < 50 ? 'around midfield' :
-    pos.x < 67 ? 'past the 45m line' :
-    pos.x < 83 ? 'inside the 21m line' :
+    x < 17 ? 'inside own 21m line' :
+    x < 33 ? 'inside own 45m line' :
+    x < 50 ? 'around midfield' :
+    x < 67 ? 'past the 45m line' :
+    x < 83 ? 'inside the 21m line' :
     'in the square'
   const side =
-    pos.y < 33 ? ', left side' :
-    pos.y > 67 ? ', right side' :
+    y < 33 ? ', left side' :
+    y > 67 ? ', right side' :
     ''
   return `${teamLabel} ${zone}${side}`
 }
@@ -444,6 +453,8 @@ export default function VideoTagging() {
   // PitchPlayerSelector already has a readOnly mode and WeatherPickerPopover
   // is already the shared component live recording uses.
   const [showViewLineup, setShowViewLineup] = useState(false)
+  // The lineup viewer is a two-card carousel: our lineup and the opposition's (when they have one)
+  const [lineupSide, setLineupSide] = useState<'own' | 'opposition'>('own')
   const [isLineupModalOpen, setIsLineupModalOpen] = useState(false)
   const [lastMatchLineup, setLastMatchLineup] = useState<Record<string, LineupEntry> | undefined>(undefined)
   const [showWeatherPicker, setShowWeatherPicker] = useState(false)
@@ -4570,6 +4581,8 @@ export default function VideoTagging() {
         clubName,
         opponentName,
         activeCarrierId ? jerseyStripPlayers.find(p => p.playerId === activeCarrierId)?.playerName : null,
+        // our direction this half (null until it is recorded); the opposition attacks the other way
+        teamAttackingRightThisHalf == null ? null : (possession === 'team_a' ? teamAttackingRightThisHalf : !teamAttackingRightThisHalf),
       )
     : ''
   const pitchStatusOverlay = mode === 'tracking' && ballPosition ? (
@@ -5166,21 +5179,63 @@ export default function VideoTagging() {
           onClose={() => setShowExtraStats(false)}
         />
       )}
-      {showViewLineup && matchLineup && matchLineup.length > 0 && (
-        <PitchPlayerSelector
-          isOpen={showViewLineup}
-          onClose={() => setShowViewLineup(false)}
-          onSelectPlayer={() => {}}
-          eventType="point"
-          team="own"
-          players={playerList}
-          matchLineup={matchLineup}
-          teamPrimaryColor={club?.primary_colour || '#10B981'}
-          teamSecondaryColor={club?.secondary_colour || '#FFFFFF'}
-          attackingRight={teamAttackingRightThisHalf ?? true}
-          readOnly={true}
-        />
-      )}
+      {showViewLineup && matchLineup && matchLineup.length > 0 && (() => {
+        const hasOppLineup = oppSquad.enabled && oppSquad.players.length > 0
+        const side: 'own' | 'opposition' = hasOppLineup ? lineupSide : 'own'
+        const flip = () => setLineupSide(side === 'own' ? 'opposition' : 'own')
+        // The opposition's lineup in the shape the pitch viewer already reads (their ids stand in for player ids)
+        const oppPlayers: any[] = oppSquad.players.map(p => ({
+          id: p.playerId, name: p.playerName, position: '', jersey_number: p.jerseyNumber,
+          date_of_birth: null, status: 'ACTIVE', active: true,
+        }))
+        const oppLineup = oppSquad.players.map(p => ({
+          player_id: p.playerId,
+          position_id: p.positionId,
+          match_jersey_number: p.jerseyNumber,
+          player_jersey_number: p.jerseyNumber,
+          is_on_field: p.isOnField,
+        }))
+        return (
+          <>
+            <PitchPlayerSelector
+              key={side}
+              isOpen={showViewLineup}
+              onClose={() => setShowViewLineup(false)}
+              onSelectPlayer={() => {}}
+              eventType="point"
+              team={side === 'own' ? 'own' : 'opponent'}
+              players={side === 'own' ? playerList : oppPlayers}
+              matchLineup={side === 'own' ? matchLineup : oppLineup}
+              teamPrimaryColor={side === 'own' ? (club?.primary_colour || '#10B981') : oppSquad.primary}
+              teamSecondaryColor={side === 'own' ? (club?.secondary_colour || '#FFFFFF') : oppSquad.secondary}
+              attackingRight={side === 'own' ? (teamAttackingRightThisHalf ?? true) : !(teamAttackingRightThisHalf ?? true)}
+              readOnly={true}
+            />
+            {hasOppLineup && (
+              <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[130] flex items-center gap-1 rounded-full bg-slate-900/90 border border-white/15 px-1 py-1 shadow-xl">
+                <button
+                  onClick={flip}
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  aria-label="Previous lineup"
+                >
+                  ‹
+                </button>
+                <span className="px-3 text-xs font-bold text-white min-w-[150px] text-center">
+                  {side === 'own' ? `${clubName} lineup` : `${opponentName} lineup`}
+                  <span className="ml-2 text-[10px] font-semibold text-white/40">{side === 'own' ? '1 / 2' : '2 / 2'}</span>
+                </span>
+                <button
+                  onClick={flip}
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  aria-label="Next lineup"
+                >
+                  ›
+                </button>
+              </div>
+            )}
+          </>
+        )
+      })()}
       {isLineupModalOpen && (
         <StartingLineupModal
           isOpen={isLineupModalOpen}

@@ -2313,6 +2313,9 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         }
         if e.assist_player_id:
             event_dict["assist"] = players.get(str(e.assist_player_id), "Unknown")
+        # An opposition assist is not one of our players, so it travels in the note ("Assist: T. Clancy")
+        elif e.notes and "Assist: " in e.notes:
+            event_dict["assist"] = e.notes.split("Assist: ", 1)[1].strip()
         _opp_name = opp_names.get(str(e.opposition_player_id)) if getattr(e, "opposition_player_id", None) else None
         if not _opp_name and getattr(e, "opponent_player_name", None):
             _opp_name = e.opponent_player_name
@@ -2505,7 +2508,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     if zone_summary:
         result_payload["zone_summary"] = zone_summary
         result_payload["zone_summary_guide"] = (
-            "ALL x/y values and locations are in OUR attacking frame: we always attack towards x=100 (their goal), our own goal is x=0, y<33 is OUR left and y>67 OUR right — already corrected for which end we attacked in each half. "
+            "ALL x/y values and locations are in OUR attacking frame: we always attack towards x=100 (their goal), our own goal is x=0, y<33 is OUR left and y>67 OUR right — already corrected for which end we attacked in each half. For the OPPOSITION's events 'own half' / 'inside own 45' etc. still mean OUR half (their attacking end is x=0) - say 'in our half' / 'at our end' for them. "
             "zone_summary keys: own_scoring_zones/opp_scoring_zones use format "
             "'inside_45_left' / 'outside_45_center' etc. "
             "turnover_zones use 'defensive_left', 'midfield_center', 'attacking_right' etc. "
