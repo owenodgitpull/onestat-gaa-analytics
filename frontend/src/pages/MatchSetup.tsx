@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Play,
@@ -19,6 +19,7 @@ import { useClub } from '../contexts/ClubContext'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../services/api'
 import StartingLineupModal, { type LineupEntry } from '../components/StartingLineupModal'
+import OppositionLineupEditor from '../components/OppositionLineupEditor'
 import WeatherPickerPopover, { getWeatherIcon, getWeatherLabel } from '../components/WeatherPickerPopover'
 import { consumePendingTutorial } from '../components/MatchRecordingTutorial'
 import SimpleScoringConfirmModal from '../components/SimpleScoringConfirmModal'
@@ -66,6 +67,20 @@ export default function MatchSetup() {
 
   // Simple Scoring (tap-only, no tablet needed)
   const [showSimpleScoringConfirm, setShowSimpleScoringConfirm] = useState(false)
+
+  // Weather already entered when the match was created: show it here (and keep it on save) instead of asking again -
+  // starting from an empty list used to ask twice and then overwrite the first answer with nothing.
+  const weatherPrefilled = useRef(false)
+  useEffect(() => {
+    if (!match || weatherPrefilled.current) return
+    weatherPrefilled.current = true
+    const existing = (match as any).weather_conditions?.length
+      ? (match as any).weather_conditions as string[]
+      : ((match as any).weather_condition ? [(match as any).weather_condition as string] : [])
+    if (existing.length) setWeatherConditions(existing)
+    if ((match as any).temperature_celsius != null) setTemperature((match as any).temperature_celsius)
+    if ((match as any).notes) setMatchNotes((match as any).notes)
+  }, [match])
 
   // Default team colours from club
   useEffect(() => {
@@ -443,6 +458,17 @@ export default function MatchSetup() {
               </div>
             )}
           </div>
+
+          {/* Opposition lineup (inter-county): asked here too, so the video tagging that follows has their players */}
+          {club?.features?.opposition_lineup && matchId && (
+            <div className="glass-card p-6">
+              <h3 className="text-lg font-bold text-white">{match?.opponent || 'Opposition'} lineup</h3>
+              <p className="text-white/40 text-sm mt-0.5 mb-4">
+                Their 15 and bench, so their players appear when you tag the video. You can skip it and add it later from the calendar.
+              </p>
+              <OppositionLineupEditor matchId={matchId} opponent={match?.opponent || 'the opposition'} />
+            </div>
+          )}
 
           {/* Error */}
           {error && (

@@ -33,7 +33,8 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelL
 import { api, TeamVolumeData } from '../services/api'
 import ChartZoomModal from '@/components/ChartZoomModal'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
-import { useClubName } from '../contexts/ClubContext'
+import { useClubName, useClub } from '../contexts/ClubContext'
+import OppositionLineupEditor from '../components/OppositionLineupEditor'
 import GAAPitch from '../components/GAAPitch'
 import MatchLineupViewer from '../components/MatchLineupViewer'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
@@ -93,6 +94,7 @@ export default function MatchResult() {
   const { matchId } = useParams<{ matchId: string }>()
   const queryClient = useQueryClient()
   const clubName = useClubName()
+  const { club: clubInfo } = useClub()
   const { data: match, isLoading: matchLoading } = useMatch(matchId || null)
   const [statsHalf, setStatsHalf] = useState<1 | 2 | undefined>(undefined)
   const [showExtendedStats, setShowExtendedStats] = useState(false)
@@ -304,6 +306,9 @@ export default function MatchResult() {
 
   // Lineup (query itself declared earlier, alongside GPS data)
   const [showLineup, setShowLineup] = useState(false)
+  // Opposition lineup (inter-county): enter it here so video tagging has their players
+  const [showOppLineup, setShowOppLineup] = useState(false)
+  const canEnterOppLineup = !!clubInfo?.features?.opposition_lineup
 
   // Man marking
   const { data: markingAssignments = [], refetch: refetchMarkings } = useQuery({
@@ -789,6 +794,16 @@ export default function MatchResult() {
                 Lineup
               </button>
             )}
+            {canEnterOppLineup && (
+              <button
+                onClick={() => setShowOppLineup(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 text-xs font-medium transition-colors border border-orange-500/30"
+                title="Enter or edit the opposition lineup"
+              >
+                <Users size={14} />
+                Opposition lineup
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
             {gpsBusy ? (
@@ -936,6 +951,24 @@ export default function MatchResult() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Opposition lineup entry */}
+      {showOppLineup && canEnterOppLineup && matchId && (
+        <div className="fixed inset-0 z-[110] flex items-start justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto" onClick={() => setShowOppLineup(false)}>
+          <div className="relative w-full max-w-3xl my-6 glass-card p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-white">{match?.opponent || 'Opposition'} lineup</h2>
+              <button onClick={() => setShowOppLineup(false)} className="text-white/60 hover:text-white p-1" aria-label="Close">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-xs text-white/50 mb-4">
+              Their 15 and bench with numbers and full names, so their players appear when you tag the video. Save, then close.
+            </p>
+            <OppositionLineupEditor matchId={matchId} opponent={match?.opponent || 'the opposition'} />
           </div>
         </div>
       )}
