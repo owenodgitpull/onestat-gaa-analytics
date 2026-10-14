@@ -183,6 +183,9 @@ const KICKOUT_RESTART_VIDEO_TYPES = new Set([
  *  no kickout prompt (matches live recording). */
 const SHOT_TURNOVER_VIDEO_TYPES = new Set(['SHORT', 'SAVED', 'HIT_POST'])
 
+/** Minutes in each period of extra time. */
+const ET_PERIOD_MINS = 10
+
 const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.GOAL]: { videoType: 'GOAL_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'goal' },
   [EventType.POINT]: { videoType: 'POINT_SCORED', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Scored?', playerModalEventType: 'point' },
@@ -366,6 +369,21 @@ export default function VideoTagging() {
   // Setup-flow state (throw-in / half-time / 2nd-half / full-time / direction / throw-in winner)
   const [secondHalfSkipped, setSecondHalfSkipped] = useState(false)
   const [fullTimeSkipped, setFullTimeSkipped] = useState(false)
+  // Extra time: asked once after full-time is marked; the four marks follow when yes. The answer survives a refresh.
+  const [etAnswer, setEtAnswerState] = useState<'unknown' | 'yes' | 'no'>(() => {
+    try {
+      const v = localStorage.getItem(`vt-et-answer-${window.location.pathname}`)
+      return v === 'yes' || v === 'no' ? v : 'unknown'
+    } catch { return 'unknown' }
+  })
+  const setEtAnswer = useCallback((v: 'yes' | 'no') => {
+    setEtAnswerState(v)
+    try { localStorage.setItem(`vt-et-answer-${window.location.pathname}`, v) } catch { /* storage unavailable */ }
+  }, [])
+  const [etHalftimeSkipped, setEtHalftimeSkipped] = useState(false)
+  const [etSecondSkipped, setEtSecondSkipped] = useState(false)
+  const [etFullTimeSkipped, setEtFullTimeSkipped] = useState(false)
+  const [periodLabel, setPeriodLabel] = useState('2nd half')
   const [throwInWinnerChosen, setThrowInWinnerChosen] = useState(false)
   const setFullTime = useSetFullTime()
   const setAttackDirection = useSetAttackDirection()
@@ -579,7 +597,7 @@ export default function VideoTagging() {
     // A moved score is re-measured against the real 40m arc (the 1pt/2pt toggle can still override it)
     if (ev.event_type === 'POINT_SCORED' || (ev.event_type === 'FREE_KICK' && ev.scoring_context?.scored)) {
       const firstRight = matchData?.attacking_right_first_half ?? true
-      const ownRight = ev.half === 2 ? !firstRight : firstRight
+      const ownRight = (ev.half === 2 || ev.half === 4) ? !firstRight : firstRight
       const takingRight = ev.team === 'team_a' ? ownRight : !ownRight
       const goalX = takingRight ? 100 : 0
       const outside = (((startPt.x - goalX) / 29.0) ** 2 + ((startPt.y - 50) / 46.0) ** 2) > 1
@@ -835,6 +853,21 @@ export default function VideoTagging() {
 
   const handleSkipFullTime = useCallback(() => setFullTimeSkipped(true), [])
 
+  const handleExtraTimeAnswer = useCallback(async (had: boolean) => {
+    setEtAnswer(had ? 'yes' : 'no')
+    // "No" after marking some extra time (changed mind): clear the marks so tracking does not jump into them
+    if (!had && sessionId && session && (session.et_first_half_start_ms != null || session.et_halftime_ms != null)) {
+      await videoSessionsAPI.setExtraTime(sessionId, { clear: true })
+      await refetchSession()
+    }
+  }, [sessionId, session, setEtAnswer, refetchSession])
+
+  const markExtraTime = useCallback(async (field: 'et_first_half_start_ms' | 'et_halftime_ms' | 'et_second_half_start_ms' | 'et_full_time_ms') => {
+    if (!sessionId) return
+    await videoSessionsAPI.setExtraTime(sessionId, { [field]: Math.max(1, Math.round(currentTimeMs)) })
+    await refetchSession()
+  }, [sessionId, currentTimeMs, refetchSession])
+
   const handleSetDirection = useCallback(async (attackingRight: boolean) => {
     if (!sessionId) return
     await setAttackDirection.mutateAsync({ sessionId, attackingRightFirstHalf: attackingRight })
@@ -958,6 +991,7 @@ export default function VideoTagging() {
   }, [sessionId, session, startTracking, matchLineup])
 
   const endFirstHalfRef = useRef<() => void>(() => {})
+  const startPeriodRef = useRef<(startMs: number, label: string) => void>(() => {})
   const startSecondHalfRef = useRef<() => void>(() => {})
   const handleRequestEndTracking = useCallback(() => {
     // End of the first half of a two-half video: go to half time (like live recording) instead of finishing
@@ -965,9 +999,19 @@ export default function VideoTagging() {
       endFirstHalfRef.current()
       return
     }
+    // Regular time over and extra time marked: move on to the extra-time throw-in; ET half-time likewise
+    const periodNow = calcMatchTimeRef.current(highWaterMarkRef.current).half
+    if (periodNow === 2 && session?.et_first_half_start_ms != null) {
+      startPeriodRef.current(session.et_first_half_start_ms, 'Extra time - 1st period')
+      return
+    }
+    if (periodNow === 3 && session?.et_second_half_start_ms != null) {
+      startPeriodRef.current(session.et_second_half_start_ms, 'Extra time - 2nd period')
+      return
+    }
     playerRef.current?.pause()
     setShowFullTimeConfirm(true)
-  }, [session?.second_half_start_ms])
+  }, [session?.second_half_start_ms, session?.et_first_half_start_ms, session?.et_second_half_start_ms])
 
   const handleConfirmFinishTracking = useCallback(async () => {
     if (!sessionId) return
@@ -1045,6 +1089,18 @@ export default function VideoTagging() {
     const h1Start = session.first_half_start_ms ?? 0
     const h2Start = session.second_half_start_ms
 
+    // Extra time: periods 3 and 4. Minutes carry on past two full halves (70 + ...); each period is 10 minutes.
+    const et1 = session.et_first_half_start_ms
+    const et2 = session.et_second_half_start_ms
+    if (et2 != null && videoMs >= et2) {
+      const totalSec = Math.floor(Math.max(0, videoMs - et2) / 1000)
+      return { minute: matchHalfMins * 2 + ET_PERIOD_MINS + Math.floor(totalSec / 60), second: totalSec % 60, half: 4 }
+    }
+    if (et1 != null && videoMs >= et1) {
+      const totalSec = Math.floor(Math.max(0, videoMs - et1) / 1000)
+      return { minute: matchHalfMins * 2 + Math.floor(totalSec / 60), second: totalSec % 60, half: 3 }
+    }
+
     // If we have a 2nd half marker and video is past it
     if (h2Start != null && videoMs >= h2Start) {
       const elapsed = Math.max(0, videoMs - h2Start)
@@ -1059,7 +1115,7 @@ export default function VideoTagging() {
     const elapsed = Math.max(0, videoMs - h1Start) + (session.first_half_clock_offset_ms ?? 0)
     const totalSec = Math.floor(elapsed / 1000)
     return { minute: Math.floor(totalSec / 60), second: totalSec % 60, half: 1 }
-  }, [session?.first_half_start_ms, session?.first_half_clock_offset_ms, session?.second_half_start_ms])
+  }, [session?.first_half_start_ms, session?.first_half_clock_offset_ms, session?.second_half_start_ms, session?.et_first_half_start_ms, session?.et_second_half_start_ms, matchHalfMins])
 
   calcMatchTimeRef.current = calcMatchTime
 
@@ -1157,13 +1213,14 @@ export default function VideoTagging() {
   // still be near wherever full-time was just marked in setup for one
   // render after "Start Match Tracking", before the throw-in seek lands.
   useEffect(() => {
-    if (mode !== 'tracking' || session?.full_time_ms == null) return
-    if (highWaterMarkMs >= session.full_time_ms && !fullTimeConfirmShownRef.current) {
+    const endMs = session?.et_first_half_start_ms != null ? session.et_full_time_ms : session?.full_time_ms
+    if (mode !== 'tracking' || endMs == null) return
+    if (highWaterMarkMs >= endMs && !fullTimeConfirmShownRef.current) {
       fullTimeConfirmShownRef.current = true
       playerRef.current?.pause()
       setShowFullTimeConfirm(true)
     }
-  }, [highWaterMarkMs, mode, session?.full_time_ms])
+  }, [highWaterMarkMs, mode, session?.full_time_ms, session?.et_first_half_start_ms, session?.et_full_time_ms])
 
   // ── Possession writes — buffered and BATCHED. Live recording hit a real
   // backend bottleneck from per-tap/per-tick possession requests (and
@@ -1496,7 +1553,7 @@ export default function VideoTagging() {
   const compute45LineX = useCallback((isHomeTeam: boolean): number => {
     const attackingRightFirstHalf = matchData?.attacking_right_first_half ?? true
     const currentHalf = calcMatchTime(currentTimeMs).half
-    const teamAttackingRight = currentHalf === 2 ? !attackingRightFirstHalf : attackingRightFirstHalf
+    const teamAttackingRight = (currentHalf === 2 || currentHalf === 4) ? !attackingRightFirstHalf : attackingRightFirstHalf
     const kickingTeamAttacksRight = isHomeTeam ? teamAttackingRight : !teamAttackingRight
     return kickingTeamAttacksRight ? 66 : 34
   }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
@@ -1682,7 +1739,7 @@ export default function VideoTagging() {
     const attackingRightFirstHalf = matchData?.attacking_right_first_half
     if (attackingRightFirstHalf == null) return null
     const currentHalf = calcMatchTime(currentTimeMs).half
-    return currentHalf === 2 ? !attackingRightFirstHalf : attackingRightFirstHalf
+    return (currentHalf === 2 || currentHalf === 4) ? !attackingRightFirstHalf : attackingRightFirstHalf
   }, [matchData?.attacking_right_first_half, calcMatchTime, currentTimeMs])
 
   const [highlight45LineX, setHighlight45LineX] = useState<number | null>(null)
@@ -3532,6 +3589,50 @@ export default function VideoTagging() {
     }
   }
 
+  /** Start an extra-time period: closes whatever is open, resets play state, jumps to its throw-in and asks who won it
+   *  (same flow as the 2nd half). */
+  startPeriodRef.current = (startMs: number, label: string) => {
+    playerRef.current?.pause()
+    flushPossession(false, undefined, true)
+    if (activeCarrierIdRef.current || activeOppCarrierIdRef.current || activeSegmentRef.current) endCarrierQueued(ballPosition?.x ?? null, ballPosition?.y ?? null, 'manual')
+    setPendingFreeKick(null); setPending45(false); setPendingBlockRecovery(false); setPendingSidelineDecision(false)
+    setAwaitingKickout(false); setPendingFoulSubtype(null); setPendingTurnoverReason(null); setPendingErrorSubtype(null)
+    setPendingLongKick(null); setIsAdjustingFree(false); setHighlight45LineX(null)
+    setOverlayState('none'); setPendingOverlay(null)
+    if (reviewingRef.current) { reviewingRef.current = false; autoReturnAtRef.current = null; reviewExitedAtRef.current = Date.now(); setReviewing(false) }
+    setPeriodLabel(label)
+    possAccumMsRef.current = { team_a: 0, team_b: 0 }
+    lastPossTickMsRef.current = null
+    setBallPosition({ x: 50, y: 50 })
+    setBallTrail([])
+    setActiveCarrierId(null)
+    setActiveOppCarrierId(null)
+    setSecondHalfThrowInPending(true)
+    setHighWaterMarkMs(startMs)
+    highWaterMarkRef.current = startMs
+    setTimeout(() => {
+      playerRef.current?.seekTo(startMs)
+      enterReviewRef.current({ pause: true })
+    }, 150)
+  }
+
+  // Tracking has run through a break (full time -> extra-time throw-in, or extra-time half-time -> 2nd period):
+  // jump over the break and start the next period.
+  useEffect(() => {
+    if (mode !== 'tracking' || reviewing || !session) return
+    const et1 = session.et_first_half_start_ms
+    const ft = session.full_time_ms
+    if (et1 != null && ft != null && highWaterMarkMs >= ft && highWaterMarkMs < et1) {
+      startPeriodRef.current(et1, 'Extra time - 1st period')
+      return
+    }
+    const etHt = session.et_halftime_ms
+    const et2 = session.et_second_half_start_ms
+    if (etHt != null && et2 != null && highWaterMarkMs >= etHt && highWaterMarkMs < et2) {
+      startPeriodRef.current(et2, 'Extra time - 2nd period')
+    }
+  }, [highWaterMarkMs, mode, reviewing, session?.et_first_half_start_ms, session?.full_time_ms, session?.et_halftime_ms, session?.et_second_half_start_ms])
+
   // Append path points to the carrier's segment (throttled 200ms batching).
   // Points are buffered even while the new segment is still being created
   // (no segment id yet) and sent as soon as it exists.
@@ -3705,11 +3806,24 @@ export default function VideoTagging() {
   const needsSecondHalfMark = !isSingleHalfUpload && session.second_half_start_ms == null && !secondHalfSkipped
   const needsFullTimeMark = session.full_time_ms == null && !fullTimeSkipped
   const needsDirection = matchData?.attacking_right_first_half == null
+  // Extra time (asked once, right after full time): ask -> its throw-in -> its half-time -> 2nd period -> final whistle
+  const etMarked = session.et_first_half_start_ms != null
+  const hasExtraTime = etMarked || etAnswer === 'yes'
+  const needsEtAsk = !etMarked && etAnswer === 'unknown'
+  const needsEtFirst = hasExtraTime && !etMarked
+  const needsEtHalftime = hasExtraTime && etMarked && session.et_halftime_ms == null && !etHalftimeSkipped
+  const needsEtSecond = hasExtraTime && etMarked && session.et_second_half_start_ms == null && !etSecondSkipped
+  const needsEtFull = hasExtraTime && etMarked && session.et_full_time_ms == null && !etFullTimeSkipped
   const setupStep: SetupStep =
     session.first_half_start_ms == null ? 'first_half'
     : needsHalftime ? 'half_time'
     : needsSecondHalfMark ? 'second_half'
     : needsFullTimeMark ? 'full_time'
+    : needsEtAsk ? 'extra_time_ask'
+    : needsEtFirst ? 'et_first_half'
+    : needsEtHalftime ? 'et_half_time'
+    : needsEtSecond ? 'et_second_half'
+    : needsEtFull ? 'et_full_time'
     : needsDirection ? 'direction'
     : !throwInWinnerChosen ? 'throw_in_winner'
     : 'ready'
@@ -3800,7 +3914,9 @@ export default function VideoTagging() {
    *  recording's injury-time clock format. */
   const formatTrackingClock = (clock: { minute: number; second: number; half: number }): string => {
     const hdm = matchHalfMins
-    const normalMinute = clock.half === 2 ? hdm * 2 : hdm
+    const normalMinute = clock.half === 4 ? hdm * 2 + ET_PERIOD_MINS * 2
+      : clock.half === 3 ? hdm * 2 + ET_PERIOD_MINS
+      : clock.half === 2 ? hdm * 2 : hdm
     if (clock.minute <= normalMinute) {
       return `${clock.minute}:${String(clock.second).padStart(2, '0')}`
     }
@@ -3820,7 +3936,13 @@ export default function VideoTagging() {
       return trackingClock.minute >= hdm ? 'Half Time' : 'End Half'
     }
     if (trackingClock.half === 2) {
-      return trackingClock.minute >= fullTime ? 'Full Time' : 'End Match'
+      return trackingClock.minute >= fullTime ? (session?.et_first_half_start_ms != null ? 'Start Extra Time' : 'Full Time') : 'End Match'
+    }
+    if (trackingClock.half === 3) {
+      return trackingClock.minute >= fullTime + ET_PERIOD_MINS ? 'ET Half Time' : 'End Half'
+    }
+    if (trackingClock.half === 4) {
+      return trackingClock.minute >= fullTime + ET_PERIOD_MINS * 2 ? 'Full Time' : 'End Match'
     }
     return 'End'
   }
@@ -4096,6 +4218,14 @@ export default function VideoTagging() {
           onSkipSecondHalf={handleSkipSecondHalf}
           onMarkFullTime={handleMarkFullTime}
           onSkipFullTime={handleSkipFullTime}
+          onExtraTimeAnswer={handleExtraTimeAnswer}
+          onMarkEtFirstHalf={() => markExtraTime('et_first_half_start_ms')}
+          onMarkEtHalftime={() => markExtraTime('et_halftime_ms')}
+          onSkipEtHalftime={() => setEtHalftimeSkipped(true)}
+          onMarkEtSecondHalf={() => markExtraTime('et_second_half_start_ms')}
+          onSkipEtSecondHalf={() => setEtSecondSkipped(true)}
+          onMarkEtFullTime={() => markExtraTime('et_full_time_ms')}
+          onSkipEtFullTime={() => setEtFullTimeSkipped(true)}
           onSetDirection={handleSetDirection}
           onSelectThrowInWinner={handleSelectThrowInWinner}
           onStartTracking={handleStartTracking}
@@ -4199,7 +4329,7 @@ export default function VideoTagging() {
               boxShadow: '0 8px 28px rgba(0,0,0,0.5), 0 0 18px rgba(0,230,118,0.18), inset 0 1px 0 rgba(255,255,255,0.12)',
             }}
           >
-            <div className="text-sm font-bold text-white">2nd half — who won the throw-in?</div>
+            <div className="text-sm font-bold text-white">{periodLabel === '2nd half' ? '2nd half' : periodLabel} — who won the throw-in?</div>
             <div className="text-[11px] text-white/65 mt-0.5">
               Press play (or scrub) to watch the throw-in and see who wins it. Nothing is recorded yet.
             </div>
@@ -5018,7 +5148,7 @@ export default function VideoTagging() {
   })()
   const editPickerAttackingRight: boolean = (() => {
     const firstRight = matchData?.attacking_right_first_half ?? true
-    return editingEvent?.half === 2 ? !firstRight : firstRight
+    return (editingEvent?.half === 2 || editingEvent?.half === 4) ? !firstRight : firstRight
   })()
 
   const trackingOverlays = (
@@ -5092,7 +5222,7 @@ export default function VideoTagging() {
           opponentName={opponentName}
           clubName={clubName}
           currentMinute={calcMatchTime(currentTimeMs).minute}
-          currentHalf={calcMatchTime(currentTimeMs).half as 1 | 2}
+          currentHalf={Math.min(2, calcMatchTime(currentTimeMs).half) as 1 | 2}
           oppositionOnField={oppositionPickerOptions(oppSquad).onField}
           oppositionBench={oppositionPickerOptions(oppSquad).bench}
           halfMins={matchHalfMins}

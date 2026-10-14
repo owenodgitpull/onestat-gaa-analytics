@@ -26,6 +26,10 @@ export interface VideoSession {
   first_half_clock_offset_ms?: number;
   second_half_start_ms: number | null;
   full_time_ms: number | null;
+  et_first_half_start_ms?: number | null;
+  et_halftime_ms?: number | null;
+  et_second_half_start_ms?: number | null;
+  et_full_time_ms?: number | null;
   tracking_started_at: string | null;
   tracking_completed_at: string | null;
   tracking_progress_ms: number | null;
@@ -335,6 +339,13 @@ export const videoSessionsAPI = {
     fetchAPI<VideoSession>(
       `/video/session/${sessionId}/set-full-time`,
       { method: 'POST', body: JSON.stringify({ full_time_ms: fullTimeMs }) }
+    ),
+
+  /** Extra-time markers (video ms): any subset, or { clear: true } to remove them all. */
+  setExtraTime: (sessionId: string, body: { et_first_half_start_ms?: number; et_halftime_ms?: number; et_second_half_start_ms?: number; et_full_time_ms?: number; clear?: boolean }) =>
+    fetchAPI<VideoSession>(
+      `/video/session/${sessionId}/set-extra-time`,
+      { method: 'POST', body: JSON.stringify(body) }
     ),
 
   /** Set which way the home team attacks in the 1st half (writes to the match). */

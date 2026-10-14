@@ -105,3 +105,12 @@ def test_the_reported_kickout_lands_short_and_left_in_the_kickers_frame():
     fx, fy = side_frame(_ev(72.16, 97.62, half=1), {"m1": (False, 30)}, is_own=True)
     assert fx < 31        # SHORT (within 31 of its own goal)
     assert fy < 33        # on the kicking team's LEFT
+
+
+def test_extra_time_periods_keep_swapping_ends():
+    from app.utils.attack_direction import own_attacks_right
+    # attacked right in the 1st half: 2nd half left, extra time 1st period right again, 2nd period left
+    assert own_attacks_right(True, 1) is True
+    assert own_attacks_right(True, 2) is False
+    assert own_attacks_right(True, 3) is True
+    assert own_attacks_right(True, 4) is False

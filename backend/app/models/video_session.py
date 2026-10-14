@@ -42,6 +42,12 @@ class VideoSession(Base):
     # >0 when the footage joins mid-match (e.g. TV clock already at 2:05).
     first_half_clock_offset_ms: Column[int] = Column(BigInteger, nullable=False, default=0, server_default="0")
     full_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    # Extra time (video ms): 1st extra-time throw-in, its half-time, 2nd extra-time throw-in, and the final whistle.
+    # Events in extra time carry half 3 (first period) / 4 (second period) and minutes continue past 2 x half length.
+    et_first_half_start_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    et_halftime_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    et_second_half_start_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    et_full_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
 
     # Tracking-mode state: setup (none set) -> tracking (started, not completed)
     # -> edit (completed). tracking_progress_ms is a monotonic high-water mark

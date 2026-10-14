@@ -75,6 +75,15 @@ class SetFullTimeRequest(BaseModel):
     full_time_ms: int = Field(..., gt=0)
 
 
+class SetExtraTimeRequest(BaseModel):
+    """Extra-time markers (video ms). Any field may be omitted to leave it untouched; `clear: true` removes all four."""
+    et_first_half_start_ms: Optional[int] = Field(None, gt=0)
+    et_halftime_ms: Optional[int] = Field(None, gt=0)
+    et_second_half_start_ms: Optional[int] = Field(None, gt=0)
+    et_full_time_ms: Optional[int] = Field(None, gt=0)
+    clear: bool = False
+
+
 class SetAttackDirectionRequest(BaseModel):
     """Set which way the home team attacks in the 1st half. Writes through
     to Match.attacking_right_first_half (the single source of truth read by
@@ -102,6 +111,10 @@ class VideoSessionResponse(BaseModel):
     first_half_clock_offset_ms: int = 0
     second_half_start_ms: Optional[int] = None
     full_time_ms: Optional[int] = None
+    et_first_half_start_ms: Optional[int] = None
+    et_halftime_ms: Optional[int] = None
+    et_second_half_start_ms: Optional[int] = None
+    et_full_time_ms: Optional[int] = None
     tracking_started_at: Optional[datetime] = None
     tracking_completed_at: Optional[datetime] = None
     tracking_progress_ms: Optional[int] = None

@@ -108,7 +108,7 @@ def _own_attacking_right(
     attacking_right_first_half: Optional[bool], half: Optional[int],
     minute: Optional[int] = None, half_duration_mins: Optional[int] = None,
 ) -> bool:
-    is_first = _is_first_half(half, minute, half_duration_mins)
+    is_first = (half in (1, 3)) if half is not None else _is_first_half(half, minute, half_duration_mins)
     base = attacking_right_first_half if attacking_right_first_half is not None else True
     return base if is_first else (not base)
 

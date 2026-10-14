@@ -39,7 +39,9 @@ export function ownAttacksRight(
   halfDurationMins?: number | null,
 ): boolean {
   const base = attackingRightFirstHalf ?? true
-  return isFirstHalf(half, minute, halfDurationMins) ? base : !base
+  // Extra time keeps swapping ends: period 3 faces the way the 1st half did, period 4 the way the 2nd did.
+  const firstDirection = half != null ? (half === 1 || half === 3) : isFirstHalf(half, minute, halfDurationMins)
+  return firstDirection ? base : !base
 }
 
 /** The opposition always attacks the opposite way to us. */

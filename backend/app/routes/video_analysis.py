@@ -37,6 +37,7 @@ from app.schemas.video_analysis import (
     SetHalftimeRequest,
     SetHalfStartsRequest,
     SetFullTimeRequest,
+    SetExtraTimeRequest,
     SetAttackDirectionRequest,
     TrackingProgressRequest,
     VideoSessionResponse,
@@ -83,6 +84,10 @@ def _session_to_response(session: VideoSession, download_url: str = None) -> Vid
         second_half_start_ms=session.second_half_start_ms,
         first_half_clock_offset_ms=session.first_half_clock_offset_ms or 0,
         full_time_ms=session.full_time_ms,
+        et_first_half_start_ms=session.et_first_half_start_ms,
+        et_halftime_ms=session.et_halftime_ms,
+        et_second_half_start_ms=session.et_second_half_start_ms,
+        et_full_time_ms=session.et_full_time_ms,
         tracking_started_at=session.tracking_started_at,
         tracking_completed_at=session.tracking_completed_at,
         tracking_progress_ms=session.tracking_progress_ms,
@@ -492,6 +497,52 @@ async def set_full_time(
         download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
 
     logger.info(f"Full-time set: session={session_id}, timestamp={body.full_time_ms}ms")
+    return _session_to_response(session, download_url=download_url)
+
+
+@router.post("/session/{session_id}/set-extra-time", response_model=VideoSessionResponse)
+async def set_extra_time(
+    session_id: UUID,
+    body: SetExtraTimeRequest,
+    user: AuthenticatedUser = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set (or clear) the extra-time markers: 1st-period throw-in, its half-time, 2nd-period throw-in, final whistle."""
+    result = await db.execute(
+        select(VideoSession).where(
+            VideoSession.id == session_id,
+            VideoSession.club_id == user.club_id,
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Video session not found")
+
+    if body.clear:
+        session.et_first_half_start_ms = None
+        session.et_halftime_ms = None
+        session.et_second_half_start_ms = None
+        session.et_full_time_ms = None
+    else:
+        for field in ("et_first_half_start_ms", "et_halftime_ms", "et_second_half_start_ms", "et_full_time_ms"):
+            value = getattr(body, field)
+            if value is None:
+                continue
+            if session.video_duration_ms and value > session.video_duration_ms:
+                raise HTTPException(status_code=400, detail="Extra-time timestamps must be within the video")
+            setattr(session, field, value)
+
+    await db.commit()
+    await db.refresh(session)
+
+    download_url = None
+    if session.video_r2_key:
+        download_url = storage.get_download_url(session.video_r2_key, expires_in=7200, club_id=str(user.club_id))
+
+    logger.info(
+        f"Extra time set: session={session_id}, start={session.et_first_half_start_ms}, ht={session.et_halftime_ms}, "
+        f"2nd={session.et_second_half_start_ms}, ft={session.et_full_time_ms}"
+    )
     return _session_to_response(session, download_url=download_url)
 
 

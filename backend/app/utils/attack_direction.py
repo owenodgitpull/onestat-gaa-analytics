@@ -31,7 +31,9 @@ def own_attacks_right(
 ) -> bool:
     """Does OUR team attack towards x = 100 in this half? Unrecorded direction defaults to True."""
     base = True if attacking_right_first_half is None else bool(attacking_right_first_half)
-    return base if is_first_half(half, minute, half_duration_mins) else (not base)
+    # Extra time (half 3 / 4) keeps swapping ends: period 3 faces the same way as the 1st half, period 4 as the 2nd.
+    first_direction = (half in (1, 3)) if half is not None else is_first_half(half, minute, half_duration_mins)
+    return base if first_direction else (not base)
 
 
 def side_attacks_right(is_own: bool, own_right: bool) -> bool:

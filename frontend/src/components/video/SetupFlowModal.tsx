@@ -14,7 +14,9 @@
 import { useState } from 'react'
 import { Loader2, SkipForward, ArrowLeftRight, ChevronDown } from 'lucide-react'
 
-export type SetupStep = 'first_half' | 'half_time' | 'second_half' | 'full_time' | 'direction' | 'throw_in_winner' | 'ready'
+export type SetupStep = 'first_half' | 'half_time' | 'second_half' | 'full_time'
+  | 'extra_time_ask' | 'et_first_half' | 'et_half_time' | 'et_second_half' | 'et_full_time'
+  | 'direction' | 'throw_in_winner' | 'ready'
 
 interface SetupFlowModalProps {
   step: SetupStep
@@ -31,6 +33,15 @@ interface SetupFlowModalProps {
   onSkipSecondHalf: () => void
   onMarkFullTime: () => void
   onSkipFullTime: () => void
+  /** Extra time: was there any? yes -> the four extra-time marks follow */
+  onExtraTimeAnswer?: (hadExtraTime: boolean) => void
+  onMarkEtFirstHalf?: () => void
+  onMarkEtHalftime?: () => void
+  onSkipEtHalftime?: () => void
+  onMarkEtSecondHalf?: () => void
+  onSkipEtSecondHalf?: () => void
+  onMarkEtFullTime?: () => void
+  onSkipEtFullTime?: () => void
   onSetDirection: (attackingRight: boolean) => void
   onSelectThrowInWinner: (winner: 'team_a' | 'team_b') => void
   onStartTracking: () => void
@@ -41,6 +52,7 @@ const STEP_ORDER: { key: SetupStep; label: string }[] = [
   { key: 'half_time', label: 'Half-Time' },
   { key: 'second_half', label: '2nd Half' },
   { key: 'full_time', label: 'Full-Time' },
+  { key: 'extra_time_ask', label: 'Extra Time' },
   { key: 'direction', label: 'Direction' },
   { key: 'throw_in_winner', label: 'Possession' },
 ]
@@ -70,11 +82,20 @@ export default function SetupFlowModal({
   onSkipSecondHalf,
   onMarkFullTime,
   onSkipFullTime,
+  onExtraTimeAnswer,
+  onMarkEtFirstHalf,
+  onMarkEtHalftime,
+  onSkipEtHalftime,
+  onMarkEtSecondHalf,
+  onSkipEtSecondHalf,
+  onMarkEtFullTime,
+  onSkipEtFullTime,
   onSetDirection,
   onSelectThrowInWinner,
   onStartTracking,
 }: SetupFlowModalProps) {
-  const stepIndex = STEP_ORDER.findIndex(s => s.key === step)
+  // the four extra-time marks share the single "Extra Time" bar of the step indicator
+  const stepIndex = STEP_ORDER.findIndex(s => s.key === (step.startsWith('et_') ? 'extra_time_ask' : step))
   // Optional: footage starts after the throw-in (e.g. broadcast cut in late)
   const [joinsMidMatch, setJoinsMidMatch] = useState(false)
   const [clockText, setClockText] = useState('')
@@ -82,7 +103,7 @@ export default function SetupFlowModal({
   const midMatchInvalid = joinsMidMatch && clockMs == null
 
   // Steps that need video interaction (scrubbing) vs steps that are pure choice
-  const needsVideoInteraction = ['first_half', 'half_time', 'second_half', 'full_time'].includes(step)
+  const needsVideoInteraction = ['first_half', 'half_time', 'second_half', 'full_time', 'et_first_half', 'et_half_time', 'et_second_half', 'et_full_time'].includes(step)
   const showOverlay = !needsVideoInteraction // Overlay for direction, throw_in_winner, and ready
 
   return (
@@ -247,6 +268,108 @@ export default function SetupFlowModal({
               primaryLabel="Mark Full-Time"
               onPrimary={onMarkFullTime}
               onSkip={onSkipFullTime}
+              skipLabel="Skip for now"
+              isSaving={isSaving}
+              disabled={currentTimeMs < 1000}
+            />
+          </>
+        )}
+
+        {step === 'extra_time_ask' && (
+          <>
+            <h3 className="text-sm font-bold text-white mb-1">Was there extra time?</h3>
+            <p className="text-xs text-white/60 mb-3">
+              If the match went to extra time you'll mark its throw-in, half-time, second-period throw-in and final whistle next,
+              so every period is timed and attacks the right way.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => onExtraTimeAnswer?.(false)}
+                disabled={isSaving}
+                className="flex-1 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold transition-all disabled:opacity-40"
+              >
+                No extra time
+              </button>
+              <button
+                onClick={() => onExtraTimeAnswer?.(true)}
+                disabled={isSaving}
+                className="flex-1 px-3 py-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-200 text-xs font-semibold transition-all disabled:opacity-40"
+              >
+                Yes, mark extra time
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === 'et_first_half' && (
+          <>
+            <h3 className="text-sm font-bold text-white mb-1">Mark Extra-Time Throw-In</h3>
+            <p className="text-xs text-white/60 mb-3">
+              Scrub to the throw-in that starts the first period of extra time, then mark it.
+            </p>
+            <VideoTimeReadout ms={currentTimeMs} />
+            {currentTimeMs < 1000 && (
+              <p className="text-xs text-amber-400/80 mb-2 flex items-center gap-1.5">
+                <span>👆</span> Scrub to the extra-time throw-in first
+              </p>
+            )}
+            <ActionRow
+              primaryLabel="Mark Extra-Time Start"
+              onPrimary={() => onMarkEtFirstHalf?.()}
+              onSkip={() => onExtraTimeAnswer?.(false)}
+              skipLabel="No extra time"
+              isSaving={isSaving}
+              disabled={currentTimeMs < 1000}
+            />
+          </>
+        )}
+
+        {step === 'et_half_time' && (
+          <>
+            <h3 className="text-sm font-bold text-white mb-1">Mark Extra-Time Half-Time</h3>
+            <p className="text-xs text-white/60 mb-3">
+              Scrub to the whistle at the end of the first period of extra time.
+            </p>
+            <VideoTimeReadout ms={currentTimeMs} />
+            <ActionRow
+              primaryLabel="Mark Extra-Time Half-Time"
+              onPrimary={() => onMarkEtHalftime?.()}
+              onSkip={onSkipEtHalftime}
+              isSaving={isSaving}
+              disabled={currentTimeMs < 1000}
+            />
+          </>
+        )}
+
+        {step === 'et_second_half' && (
+          <>
+            <h3 className="text-sm font-bold text-white mb-1">Mark Extra-Time 2nd-Period Throw-In</h3>
+            <p className="text-xs text-white/60 mb-3">
+              Scrub to the restart for the second period of extra time, then mark it.
+            </p>
+            <VideoTimeReadout ms={currentTimeMs} />
+            <ActionRow
+              primaryLabel="Mark 2nd Period Start"
+              onPrimary={() => onMarkEtSecondHalf?.()}
+              onSkip={onSkipEtSecondHalf}
+              skipLabel="Skip (one period)"
+              isSaving={isSaving}
+              disabled={currentTimeMs < 1000}
+            />
+          </>
+        )}
+
+        {step === 'et_full_time' && (
+          <>
+            <h3 className="text-sm font-bold text-white mb-1">Mark Extra-Time Full-Time</h3>
+            <p className="text-xs text-white/60 mb-3">
+              Scrub to the final whistle of the match, then mark it. Tracking ends there.
+            </p>
+            <VideoTimeReadout ms={currentTimeMs} />
+            <ActionRow
+              primaryLabel="Mark Final Whistle"
+              onPrimary={() => onMarkEtFullTime?.()}
+              onSkip={onSkipEtFullTime}
               skipLabel="Skip for now"
               isSaving={isSaving}
               disabled={currentTimeMs < 1000}

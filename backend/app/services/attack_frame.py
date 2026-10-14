@@ -52,7 +52,7 @@ def own_frame_x_sql(event_model, match_model):
 
     base = func.coalesce(match_model.attacking_right_first_half, True)
     is_first = case(
-        (event_model.half.isnot(None), event_model.half == 1),
+        (event_model.half.isnot(None), event_model.half.in_((1, 3))),   # 3 = extra time, ends swap back
         else_=(func.coalesce(event_model.minute, 0) < func.coalesce(match_model.half_duration_mins, 30)),
     )
     own_right = case((is_first, base), else_=not_(base))
