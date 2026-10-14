@@ -188,6 +188,13 @@ GAA_ESSENTIALS = """
 - Half length varies by grade — club matches are commonly 2×30 minutes, inter-county senior football is 2×35 minutes. This is a per-club setting chosen at onboarding (`half_duration_mins` on the match), NOT a fixed convention. Full time (before any injury/stoppage time) is `half_duration_mins × 2` for THIS match — never assume 70 minutes as if every match were inter-county.
 - Never state a specific "before/around/after the Nth minute" reference for full time or a late-match moment unless you've derived it from this match's own `half_duration_mins` and the actual recorded event minutes (which naturally include any injury time played, since the clock kept running through it). Confirmed live 2026-09-08: a report said "subbed before the 70th minute" for a club match whose real playing time (including ~8 mins injury time) ended at minute 68 — 70 was never reached, the number was just assumed rather than checked. If you don't have a precise figure, say "before full time" / "late in the game" rather than inventing a minute number.
 
+## Extra Time — some championship matches go beyond full time
+- A match can have EXTRA TIME: two further periods (normally 10 minutes each) after full time, when the scores are level in a knockout. Events in extra time carry half = 3 (first extra-time period) and half = 4 (second period), and the match minutes keep counting on past full time (e.g. 70-80 and 80-90 in a 2x35 match). The match summary says `extra_time.had_extra_time` and gives the score at the end of regular time (`score_at_regular_time`) as well as the final score.
+- Never confuse extra time with injury/stoppage time: injury time is added to the end of the 1st or 2nd half and stays in half 1 or 2; extra time is its own periods (half 3 and 4). A minute beyond full time is only extra time when the event's half is 3 or 4.
+- When a match went to extra time: say so plainly ("level at full time, won in extra time"), give BOTH the score at full time and the final score, and keep regular-time analysis (the 70 minutes) separate from extra time. Do not blend extra-time events into "second half" patterns, last-10-minutes or per-minute averages without saying they include extra time.
+- Per-match averages, possession, playing minutes and workload for a match with extra time cover MORE minutes than a normal match: compare "per 70 minutes" or flag the longer game when comparing with other matches. Players' minutes may exceed the usual full-match total.
+- A match decided by a replay or penalty shootout is separate: only report what the recorded events show.
+
 ## Positions (15 players)
 1. GK (Goalkeeper)  2. RCB  3. FB (Full Back)  4. LCB
 5. RHB  6. CHB (Centre Half Back)  7. LHB
@@ -2956,10 +2963,46 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
                            _own_right(match.attacking_right_first_half, getattr(ev, 'half', None), ev.minute, _hdm_sum))
         return _pitch_location(fx, fy)
 
+    # Extra time: events with half 3 / 4 (video tagging), or a video session with its extra-time marks.
+    _et_events = [e for e in events if (getattr(e, 'half', None) or 0) >= 3]
+    _had_et = bool(_et_events)
+    if not _had_et:
+        try:
+            from app.models.video_session import VideoSession as _VS
+            _et_marks = await db.execute(
+                select(_VS.id).where(_VS.match_id == match_id, _VS.et_first_half_start_ms.isnot(None)).limit(1)
+            )
+            _had_et = _et_marks.scalar_one_or_none() is not None
+        except Exception:
+            pass
+    _extra_time_block: dict = {"had_extra_time": _had_et}
+    if _had_et:
+        _reg = [e for e in events if (getattr(e, 'half', None) or 0) < 3]
+
+        def _reg_n(team, types):
+            return len([e for e in _reg if e.team == team and e.event_type in types])
+
+        _rt_goals, _rt_points = _reg_n(Team.OWN, goal_types), _reg_n(Team.OWN, point_types)
+        _rt_2p_play, _rt_2p_free = _reg_n(Team.OWN, {EventType.TWO_POINT}), _reg_n(Team.OWN, {EventType.TWO_POINT_FREE})
+        _ro_goals, _ro_points = _reg_n(Team.OPPONENT, goal_types), _reg_n(Team.OPPONENT, point_types)
+        _ro_2p_play, _ro_2p_free = _reg_n(Team.OPPONENT, {EventType.TWO_POINT}), _reg_n(Team.OPPONENT, {EventType.TWO_POINT_FREE})
+        _extra_time_block.update({
+            "regular_time_mins": (match.half_duration_mins or 30) * 2,
+            "extra_time_period_mins": 10,
+            "score_at_regular_time": {
+                "team": _gaa_score(_rt_goals, _rt_points, _rt_2p_play, _rt_2p_free),
+                "team_total": _rt_goals * 3 + _rt_points + (_rt_2p_play + _rt_2p_free) * 2,
+                "opponent": _gaa_score(_ro_goals, _ro_points, _ro_2p_play, _ro_2p_free),
+                "opponent_total": _ro_goals * 3 + _ro_points + (_ro_2p_play + _ro_2p_free) * 2,
+            },
+            "note": "The score block below is the FINAL score including extra time. Events in extra time have half 3 or 4.",
+        })
+
     return safe_json({
         "match": {
             "opponent": match.opponent,
             "date": str(match.match_date),
+            "extra_time": _extra_time_block,
             "venue": match.venue.value if match.venue else None,
             "status": match.status.value if match.status else None,
             "current_phase": match.current_phase,

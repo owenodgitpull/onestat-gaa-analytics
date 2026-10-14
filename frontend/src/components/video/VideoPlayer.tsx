@@ -73,6 +73,15 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     // Hover-time preview on the scrub bar — percent (0-1) of the hovered
     // position, null when not hovering. Purely informational, no seek.
     const [hoverPercent, setHoverPercent] = useState<number | null>(null)
+    const scrubbingRef = useRef(false)
+    // Seek to the pointer position on the track: the same x / width scale the hover preview and tick marks use.
+    const seekToPointer = (el: HTMLElement, clientX: number) => {
+      const rect = el.getBoundingClientRect()
+      if (!rect.width || !duration || !videoRef.current) return
+      const percent = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+      const ms = percent * duration
+      videoRef.current.currentTime = (maxSeekMs != null ? Math.min(ms, maxSeekMs) : ms) / 1000
+    }
 
     useImperativeHandle(ref, () => ({
       seekTo: (ms: number) => {
@@ -307,27 +316,46 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 {formatTime(hoverPercent * duration)}
               </div>
             )}
-            <input
-              type="range"
-              min={0}
-              // Always the full duration — this MUST match the scale the tick
-              // marks and hover-preview tooltip use (both position by
-              // `x / duration`), or a click/drag lands at a completely
-              // different time than what's shown under the pointer. The
-              // forward-scrub lock is enforced entirely in onChange below
-              // (clamping the actual seek) and in the `value` clamp for
-              // display, not by shrinking the slider's own range.
-              max={duration}
-              value={Math.min(currentTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration)}
-              onChange={(e) => {
-                const ms = parseInt(e.target.value)
-                if (videoRef.current) {
-                  const clamped = maxSeekMs != null ? Math.min(ms, maxSeekMs) : ms
-                  videoRef.current.currentTime = clamped / 1000
+            {/* Custom track (not a native range input): a native range maps the pointer with a thumb-width inset, so the
+                hover time and the click disagreed by up to a minute on a long match. Here the hover, the click and the
+                tick marks all use the same x / width scale. */}
+            <div
+              role="slider"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(duration)}
+              aria-valuenow={Math.round(currentTime)}
+              tabIndex={0}
+              className="relative w-full h-4 flex items-center cursor-pointer select-none touch-none"
+              onPointerDown={(e) => {
+                if (!duration) return
+                e.currentTarget.setPointerCapture(e.pointerId)
+                scrubbingRef.current = true
+                seekToPointer(e.currentTarget, e.clientX)
+              }}
+              onPointerMove={(e) => { if (scrubbingRef.current) seekToPointer(e.currentTarget, e.clientX) }}
+              onPointerUp={() => { scrubbingRef.current = false }}
+              onPointerCancel={() => { scrubbingRef.current = false }}
+              onKeyDown={(e) => {
+                if (!videoRef.current) return
+                const step = e.shiftKey ? 30 : 5
+                if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                  e.preventDefault()
+                  const target = Math.max(0, videoRef.current.currentTime + (e.key === 'ArrowRight' ? step : -step))
+                  videoRef.current.currentTime = maxSeekMs != null ? Math.min(target, maxSeekMs / 1000) : target
                 }
               }}
-              className="w-full h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-emerald-500"
-            />
+            >
+              <div className="relative w-full h-1.5 bg-white/10 rounded-full">
+                <div
+                  className="absolute left-0 top-0 h-full bg-emerald-500 rounded-full"
+                  style={{ width: `${duration > 0 ? Math.min(100, (Math.min(currentTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration) / duration) * 100) : 0}%` }}
+                />
+                <div
+                  className="absolute top-1/2 w-3 h-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400 shadow"
+                  style={{ left: `${duration > 0 ? Math.min(100, (Math.min(currentTime, maxSeekMs != null ? Math.min(duration, maxSeekMs) : duration) / duration) * 100) : 0}%` }}
+                />
+              </div>
+            </div>
             {maxSeekMs != null && duration > 0 && maxSeekMs < duration && (
               <div
                 className="absolute top-0 bottom-0 right-0 bg-black/40 rounded-r-full pointer-events-none"
