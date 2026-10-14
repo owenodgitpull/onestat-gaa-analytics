@@ -103,7 +103,7 @@ export default function SetupFlowModal({
   const midMatchInvalid = joinsMidMatch && clockMs == null
 
   // Steps that need video interaction (scrubbing) vs steps that are pure choice
-  const needsVideoInteraction = ['first_half', 'half_time', 'second_half', 'full_time', 'et_first_half', 'et_half_time', 'et_second_half', 'et_full_time'].includes(step)
+  const needsVideoInteraction = ['first_half', 'half_time', 'second_half', 'full_time', 'et_first_half', 'et_half_time', 'et_second_half', 'et_full_time', 'direction', 'throw_in_winner'].includes(step)
   const showOverlay = !needsVideoInteraction // Overlay for direction, throw_in_winner, and ready
 
   return (
@@ -382,7 +382,9 @@ export default function SetupFlowModal({
             <h3 className="text-sm font-bold text-white mb-1">Attack Direction</h3>
             <p className="text-xs text-white/60 mb-3">
               Which way is <span className="text-white font-medium">{homeTeamName}</span> attacking in the 1st half?
+              Scrub the video to the 1st half to check, then choose.
             </p>
+            <VideoTimeReadout ms={currentTimeMs} />
             <div className="flex gap-2">
               <button
                 onClick={() => onSetDirection(false)}
