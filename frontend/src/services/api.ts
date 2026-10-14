@@ -491,7 +491,7 @@ export const matchEventsAPI = {
    * Get all events for a match
    */
   getByMatch: async (matchId: string): Promise<{ events: MatchEvent[], total: number, page: number, page_size: number }> => {
-    return fetchAPI<{ events: MatchEvent[], total: number, page: number, page_size: number }>(`/match-events/match/${matchId}?limit=500`);
+    return fetchAPI<{ events: MatchEvent[], total: number, page: number, page_size: number }>(`/match-events/match/${matchId}?limit=5000`);
   },
 
   /**

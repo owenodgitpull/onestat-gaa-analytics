@@ -161,7 +161,7 @@ async def quick_event(
 async def list_match_events(
     match_id: UUID,
     skip: int = Query(0, ge=0),
-    limit: int = Query(500, ge=1, le=1000),
+    limit: int = Query(500, ge=1, le=5000),
     event_type: Optional[EventType] = Query(None, description="Filter by event type"),
     team: Optional[Team] = Query(None, description="Filter by team"),
     user: AuthenticatedUser = Depends(require_admin_or_viewer),

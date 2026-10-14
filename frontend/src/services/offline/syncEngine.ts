@@ -293,7 +293,7 @@ export async function resyncLocalEvents(matchId: string): Promise<number> {
   let serverEvents: Array<{ event_type: string; team: string; minute: number | null; pitch_x: number | null; pitch_y: number | null; player_id: string | null }> = []
   try {
     const baseUrl = import.meta.env.VITE_API_URL || '/api/v1'
-    const res = await fetch(`${baseUrl}/match-events/match/${matchId}?limit=1000`, { credentials: 'include' })
+    const res = await fetch(`${baseUrl}/match-events/match/${matchId}?limit=5000`, { credentials: 'include' })
     if (res.ok) {
       const data = await res.json()
       serverEvents = (data.events || []).map((e: any) => ({

@@ -89,6 +89,27 @@ async def _remove_stats(db: AsyncSession, me: MatchEvent) -> None:
         await MatchEventService._update_player_stats(db, me, is_delete=True)
 
 
+async def _substitution_notes(db: AsyncSession, ve: VideoEvent) -> str:
+    """"{off} off, {on} on" - the same note Live Recording writes, so a video-tagged substitution reads the same on
+    the match result page (not the generic "[video]" marker)."""
+    from app.models.opposition import OppositionPlayer
+    from app.models.player import Player
+
+    async def _name(model, pid, attr: str) -> str:
+        if not pid:
+            return "Player"
+        row = await db.get(model, pid)
+        return (getattr(row, attr, None) or "Player") if row else "Player"
+
+    if ve.team == "team_b":
+        off = await _name(OppositionPlayer, ve.opposition_player_id, "surname")
+        on = await _name(OppositionPlayer, ve.opposition_sub_in_player_id, "surname")
+    else:
+        off = await _name(Player, ve.player_id, "name")
+        on = await _name(Player, ve.sub_in_player_id, "name")
+    return f"{off} off, {on} on"
+
+
 async def write_through(db: AsyncSession, ve: VideoEvent) -> None:
     """Create/update the MatchEvent mirroring `ve`. No-op for unverified
     events (AI drafts wait until verified). Caller commits."""
@@ -99,6 +120,8 @@ async def write_through(db: AsyncSession, ve: VideoEvent) -> None:
     if fields is None:
         await remove(db, ve)
         return
+    if ve.event_type == "SUB_ON":
+        fields["notes"] = await _substitution_notes(db, ve)
 
     existing = await db.get(MatchEvent, ve.match_event_id) if ve.match_event_id else None
 
