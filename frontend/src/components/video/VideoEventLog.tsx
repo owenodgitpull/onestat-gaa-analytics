@@ -10,6 +10,7 @@
 
 import { useMemo, useRef, useEffect, useState } from 'react'
 import { seekTimeForEvent } from '../../utils/videoSeek'
+import { videoEventLabel, videoEventDetail, isBackgroundVideoEvent } from '../../utils/videoEventDisplay'
 import { Trash2, CheckCircle, Bot, ChevronDown, ChevronUp, Pencil, MapPin } from 'lucide-react'
 import type { VideoEvent } from '../../services/videoApi'
 
@@ -34,23 +35,6 @@ interface VideoEventLogProps {
   collapsed?: boolean
   onToggle?: () => void
   onVerifyAll?: () => void
-}
-
-const EVENT_LABELS: Record<string, string> = {
-  POINT_SCORED: 'Point', GOAL_SCORED: 'Goal', WIDE: 'Wide', SHORT: 'Short',
-  POST_HIT: 'Post', GOAL_CHANCE: 'Goal Chance',
-  PASS_HAND: 'Hand Pass', PASS_KICK: 'Kick Pass', LONG_KICK_PASS: 'Kick Pass', HIGH_BALL: 'High Ball', SOLO_RUN: 'Solo',
-  CATCH: 'Catch', PICKUP: 'Pick Up', MARK_CLAIMED: 'Mark',
-  TACKLE: 'Tackle', BLOCK_SHOT: 'Block Shot', BLOCK_PASS: 'Block Pass',
-  INTERCEPTION: 'Intercept', HOOK: 'Hook', SPOIL: 'Spoil',
-  BALL_WON: 'Ball Won', TURNOVER_WON: 'T/O Won', TURNOVER_LOST: 'T/O Lost',
-  FREE_KICK: 'Free', FORTY_FIVE: '45m Free', SIDELINE_KICK: 'Sideline',
-  PENALTY: 'Penalty', KICKOUT_SHORT: 'KO Short', KICKOUT_LONG: 'KO Long',
-  THROW_IN: 'Throw In',
-  YELLOW_CARD: 'Yellow Card', RED_CARD: 'Red Card', BLACK_CARD: 'Black Card',
-  SUB_ON: 'Substitution', SUB_OFF: 'Sub Off',
-  HALF_TIME: 'Half Time', FULL_TIME: 'Full Time',
-  INJURY_STOPPAGE: 'Injury Stop', WATER_BREAK: 'Water Break',
 }
 
 const SCORING_EVENTS = ['POINT_SCORED', 'GOAL_SCORED', 'FREE_KICK', 'FORTY_FIVE', 'PENALTY']
@@ -98,6 +82,9 @@ export default function VideoEventLog({
 }: VideoEventLogProps) {
   const listRef = useRef<HTMLDivElement>(null)
   const [disallowFor, setDisallowFor] = useState<string | null>(null)
+  // Hand passes and kick passes are kept for the agent but not listed (they would drown the real events)
+  const [showPasses, setShowPasses] = useState(false)
+  const passCount = useMemo(() => events.filter(isBackgroundVideoEvent).length, [events])
 
   // Calculate running score alongside events
   const eventsWithScore = useMemo(() => {
@@ -108,7 +95,7 @@ export default function VideoEventLog({
 
     // Hand passes (the opposition pass-count taps) are not listed - live recording hides them too. A free short
     // pass is a free's outcome, so it stays.
-    const listed = events.filter(e => !(e.event_type === 'PASS_HAND' && (e.description || '').trim().toLowerCase() !== 'free short pass'))
+    const listed = showPasses ? events : events.filter(e => !isBackgroundVideoEvent(e))
     return listed.map((event) => {
       let scoreChange = ''
       const isTwoPointer = event.scoring_context?.is_two_pointer
@@ -145,7 +132,7 @@ export default function VideoEventLog({
         isTwoPointer: !!isTwoPointer,
       }
     })
-  }, [events])
+  }, [events, showPasses])
 
   const currentScore = eventsWithScore.length > 0
     ? eventsWithScore[eventsWithScore.length - 1].score
@@ -186,7 +173,7 @@ export default function VideoEventLog({
 
           {/* Event count */}
           <span className="text-xs text-white/40">
-            Events ({events.length})
+            Events ({eventsWithScore.length})
           </span>
         </div>
 
@@ -209,6 +196,18 @@ export default function VideoEventLog({
           )}
         </div>
       </button>
+
+      {passCount > 0 && (
+        <div className="flex justify-end px-3 py-1 border-b border-white/5">
+          <button
+            onClick={() => setShowPasses(v => !v)}
+            className="text-[10px] text-white/35 hover:text-white/70 transition-colors"
+            title="Hand passes and kick passes are recorded for the analysis but kept out of the list"
+          >
+            {showPasses ? 'Hide passes' : `Show ${passCount} passes`}
+          </button>
+        </div>
+      )}
 
       {/* Event list */}
       <div
@@ -249,7 +248,7 @@ export default function VideoEventLog({
 
                   {/* Event badge */}
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${getEventBadgeColor(event.event_type)}`}>
-                    {EVENT_LABELS[event.event_type] || event.event_type}
+                    {videoEventLabel(event.event_type)}
                   </span>
 
                   {/* AI badge */}
@@ -273,6 +272,12 @@ export default function VideoEventLog({
                       ? `${event.player_name ?? 'Player'} off · ${event.sub_in_player_name ?? 'Player'} on`
                       : (event.player_name || (event.jersey_number ? `#${event.jersey_number}` : ''))}
                   </span>
+
+                  {/* Reason / outcome (never a raw code) */}
+                  {(() => {
+                    const detail = videoEventDetail(event)
+                    return detail ? <span className="text-[10px] text-white/35 truncate max-w-[40%] shrink">{detail}</span> : null
+                  })()}
 
                   {/* Score change indicator */}
                   {scoreChange && (

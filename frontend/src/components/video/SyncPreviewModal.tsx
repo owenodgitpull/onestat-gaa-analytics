@@ -5,7 +5,7 @@
  * then lets the user confirm to trigger the merge + AI re-analysis.
  */
 
-import { humanEventType } from '../../utils/eventLabels'
+import { videoEventLabel, videoEventDetail, isBackgroundVideoEvent } from '../../utils/videoEventDisplay'
 import { X, Plus, RefreshCw, SkipForward, FileText, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { VideoSyncPreview, VideoSyncStatus, SyncPreviewEvent } from '../../services/videoApi'
 
@@ -25,13 +25,14 @@ function EventRow({ event, icon: Icon, color }: { event: SyncPreviewEvent; icon:
   return (
     <div className="flex items-center gap-2 py-1.5 px-2 rounded bg-white/5 text-sm">
       <Icon size={14} className={color} />
-      <span className="text-white/80 font-medium">{humanEventType(event.event_type, false)}</span>
+      <span className="text-white/80 font-medium">{videoEventLabel(event.event_type)}</span>
       <span className="text-white/40">
-        {event.team === 'team_a' ? 'Own' : 'Opposition'} &bull; {event.minute}'
+        {event.team === 'team_a' ? 'Us' : 'Them'} &bull; {event.minute}'
       </span>
-      {event.pitch_zone && (
-        <span className="text-white/30 text-xs">{event.pitch_zone}</span>
-      )}
+      {(() => {
+        const detail = videoEventDetail({ event_type: event.event_type, description: event.description })
+        return detail ? <span className="text-white/30 text-xs truncate">{detail}</span> : null
+      })()}
     </div>
   )
 }
@@ -46,6 +47,15 @@ export default function SyncPreviewModal({
   onViewResult,
 }: SyncPreviewModalProps) {
   if (!isOpen) return null
+
+  // Passes are recorded for the analysis but are not events a person reviews: keep them out of the lists and say so
+  const foreground = (arr: SyncPreviewEvent[] | undefined) => (arr || []).filter(e => !isBackgroundVideoEvent(e))
+  const vNew = foreground(preview?.new_events)
+  const vReplaced = foreground(preview?.replaced_events)
+  const vSkipped = foreground(preview?.skipped_events)
+  const passesHidden = preview
+    ? (preview.new_events.length + preview.replaced_events.length + preview.skipped_events.length) - (vNew.length + vReplaced.length + vSkipped.length)
+    : 0
 
   const isProcessing = syncStatus && ['processing', 'syncing', 'analyzing'].includes(syncStatus.status)
   const isComplete = syncStatus?.status === 'completed' && syncStatus.ai_report_ready
@@ -82,18 +92,24 @@ export default function SyncPreviewModal({
               {/* Summary cards */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-emerald-400">{preview.new_events.length}</div>
+                  <div className="text-2xl font-bold text-emerald-400">{vNew.length}</div>
                   <div className="text-xs text-emerald-300/70 mt-1">New events</div>
                 </div>
                 <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-amber-400">{preview.replaced_events.length}</div>
+                  <div className="text-2xl font-bold text-amber-400">{vReplaced.length}</div>
                   <div className="text-xs text-amber-300/70 mt-1">Enriched</div>
                 </div>
                 <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
-                  <div className="text-2xl font-bold text-white/50">{preview.skipped_events.length}</div>
+                  <div className="text-2xl font-bold text-white/50">{vSkipped.length}</div>
                   <div className="text-xs text-white/30 mt-1">Already in match</div>
                 </div>
               </div>
+
+              {passesHidden > 0 && (
+                <p className="text-xs text-white/40">
+                  {passesHidden} hand and kick passes are also in the match for the analysis (not listed here).
+                </p>
+              )}
 
               {preview.manual_only_count > 0 && (
                 <p className="text-sm text-white/50">
@@ -102,13 +118,13 @@ export default function SyncPreviewModal({
               )}
 
               {/* New events list */}
-              {preview.new_events.length > 0 && (
+              {vNew.length > 0 && (
                 <div>
                   <h3 className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-2">
-                    New Events ({preview.new_events.length})
+                    New Events ({vNew.length})
                   </h3>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {preview.new_events.map((e) => (
+                    {vNew.map((e) => (
                       <EventRow key={e.video_event_id} event={e} icon={Plus} color="text-emerald-400" />
                     ))}
                   </div>
@@ -116,13 +132,13 @@ export default function SyncPreviewModal({
               )}
 
               {/* Replaced events list */}
-              {preview.replaced_events.length > 0 && (
+              {vReplaced.length > 0 && (
                 <div>
                   <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider mb-2">
-                    Enriched with Zone Data ({preview.replaced_events.length})
+                    Enriched ({vReplaced.length})
                   </h3>
                   <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {preview.replaced_events.map((e) => (
+                    {vReplaced.map((e) => (
                       <EventRow key={e.video_event_id} event={e} icon={RefreshCw} color="text-amber-400" />
                     ))}
                   </div>
@@ -130,13 +146,13 @@ export default function SyncPreviewModal({
               )}
 
               {/* Skipped */}
-              {preview.skipped_events.length > 0 && (
+              {vSkipped.length > 0 && (
                 <div>
                   <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
-                    Already in the match ({preview.skipped_events.length})
+                    Already in the match ({vSkipped.length})
                   </h3>
                   <div className="space-y-1 max-h-24 overflow-y-auto">
-                    {preview.skipped_events.map((e) => (
+                    {vSkipped.map((e) => (
                       <EventRow key={e.video_event_id} event={e} icon={SkipForward} color="text-white/30" />
                     ))}
                   </div>
