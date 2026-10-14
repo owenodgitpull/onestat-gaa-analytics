@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ClipboardPaste, Save } from 'lucide-react'
 import api from '@/services/api'
+import { useMatch } from '@/hooks/useMatches'
 import { FORMATION_POSITIONS, POSITION_DEFAULT_JERSEY, SUBSTITUTE_POSITIONS } from '@/components/StartingLineupModal'
 
 type Row = { jersey: string; surname: string }
@@ -32,6 +33,15 @@ function shortLabel(name: string): string {
   const first = parts[0]
   const initial = /\.$/.test(first) ? first : `${first.charAt(0).toUpperCase()}.`
   return `${initial} ${parts.slice(1).join(' ')}`
+}
+
+/** Black or white text, whichever reads on this strip colour. */
+function readableOn(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex || '').trim())
+  if (!m) return '#FFFFFF'
+  const n = parseInt(m[1], 16)
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 160 ? '#0f172a' : '#FFFFFF'
 }
 
 function emptyRows(): Rows {
@@ -94,6 +104,10 @@ function parseTeamSheet(text: string, base: Rows): { rows: Rows; count: number }
 
 export default function OppositionLineupEditor({ matchId, opponent }: { matchId: string; opponent: string }) {
   const queryClient = useQueryClient()
+  // Their circles wear the strip colours saved for this match (setup form), not a fixed orange
+  const { data: matchInfo } = useMatch(matchId)
+  const stripPrimary = matchInfo?.opponent_strip_colour || '#F97316'
+  const stripSecondary = matchInfo?.opponent_strip_secondary_colour || (readableOn(stripPrimary) === '#FFFFFF' ? '#FFFFFF' : '#0f172a')
   const { data, isLoading } = useQuery({
     queryKey: ['oppositionLineup', matchId],
     queryFn: () => api.matchPrep.getOppositionLineup(matchId),
@@ -170,8 +184,8 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
             has ? `ring-2 shadow-lg ${isSel ? 'scale-125 ring-4' : 'hover:scale-105'}` : 'bg-slate-600/80 text-white/90 hover:bg-slate-500 hover:scale-110'
           }`}
           style={has ? ({
-            backgroundColor: '#F97316', color: '#FFFFFF',
-            '--tw-ring-color': isSel ? '#fbbf24' : '#FFFFFF',
+            backgroundColor: stripPrimary, color: readableOn(stripPrimary),
+            '--tw-ring-color': isSel ? '#fbbf24' : stripSecondary,
             boxShadow: isSel ? '0 0 16px rgba(251,191,36,0.5)' : undefined,
           } as React.CSSProperties) : undefined}
         >
