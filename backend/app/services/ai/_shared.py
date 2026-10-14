@@ -2171,6 +2171,31 @@ async def _execute_generate_chart(db: AsyncSession, query: str, club_id=None) ->
         return safe_json({"success": False, "error": str(e)})
 
 
+async def _opposition_lineup_block(db: AsyncSession, match_id) -> list:
+    """The opposition's named lineup for a match (inter-county): number, name, where they lined up, started or bench,
+    on the field now. Empty when the club did not enter one."""
+    try:
+        from app.models.opposition import OppositionLineup, OppositionPlayer
+        rows = (await db.execute(
+            select(OppositionLineup, OppositionPlayer)
+            .join(OppositionPlayer, OppositionPlayer.id == OppositionLineup.opposition_player_id)
+            .where(OppositionLineup.match_id == match_id)
+        )).all()
+    except Exception:
+        return []
+    out = []
+    for lu, pl in rows:
+        out.append({
+            "number": lu.jersey_number,
+            "player": pl.surname,
+            "position": lu.position_id,
+            "role": "bench" if lu.is_substitute and not lu.is_on_field else ("started" if not lu.is_substitute else "came on"),
+            "on_field_at_end": bool(lu.is_on_field),
+        })
+    out.sort(key=lambda r: (r["role"] == "bench", r["number"] if r["number"] is not None else 99))
+    return out
+
+
 async def get_match_events(db: AsyncSession, match_id: str, event_types: list = None,
                            team: str = None, half: int = None, club_id=None) -> str:
     """Get events from a match with optional filters."""
@@ -2314,6 +2339,23 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
                 event_dict["ball_ended_m_from_goal"] = round(distance_to_goal_m(_dx, _dy, _own_shot), 1)
             except Exception:
                 pass
+        # Kick passes, high balls and hand passes carry where the ball WENT (end_x/end_y) - destination, direction and
+        # length of the pass. Both teams, in OUR attacking frame like every other coordinate.
+        elif _et in ("long_kick_pass", "high_ball", "other", "free_short_pass", "free_high_ball") \
+                and getattr(e, "end_x", None) is not None and getattr(e, "end_y", None) is not None:
+            try:
+                _kx, _ky = to_attack_frame(float(e.end_x), float(e.end_y),
+                                           own_attacks_right(_atk_first, getattr(e, 'half', None), e.minute, hdm))
+                event_dict["ball_ended_at"] = {"x": round(_kx, 1), "y": round(_ky, 1)}
+                _kloc = _pitch_location(_kx, _ky)
+                if _kloc:
+                    event_dict["ball_ended_location"] = _kloc
+                if _frame[e.id][0] is not None:
+                    # real-world length of the pass (145m x 90m pitch)
+                    event_dict["distance_m"] = round((((_kx - _frame[e.id][0]) / 100 * 145) ** 2
+                                                       + ((_ky - _frame[e.id][1]) / 100 * 90) ** 2) ** 0.5, 1)
+            except Exception:
+                pass
         events_data.append(event_dict)
 
     # ── Spatial zone summary ────────────────────────────────────────────────
@@ -2434,6 +2476,23 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
                 row["goals"] += 1
             else:
                 row["points"] += 1
+    # Everything each named opposition player did (counts by event type), so "what did their number 8 do?" is one lookup
+    _opp_by_player: dict = {}
+    for ed in events_data:
+        nm = ed.get("opposition_player")
+        if not nm or ed.get("team") != "opponent":
+            continue
+        et_ = str(ed.get("event_type", "")).lower()
+        if et_ == "other" and ed.get("notes") == "Pass":
+            et_ = "hand_pass"
+        row = _opp_by_player.setdefault(nm, {"player": nm, "actions": {}})
+        row["actions"][et_] = row["actions"].get(et_, 0) + 1
+    if _opp_by_player:
+        result_payload["opposition_player_actions"] = sorted(
+            _opp_by_player.values(), key=lambda r: -sum(r["actions"].values()))
+    _opp_lineup = await _opposition_lineup_block(db, match_row.id if match_row else match_id)
+    if _opp_lineup:
+        result_payload["opposition_lineup"] = _opp_lineup
     if _opp_ko:
         result_payload["opposition_kickout_winners"] = sorted(_opp_ko.values(), key=lambda r: -r["kickouts_won"])
     if _opp_scorers:
@@ -3045,7 +3104,10 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             "note": "The score block below is the FINAL score including extra time. Events in extra time have half 3 or 4.",
         })
 
+    _opp_lineup_sum = await _opposition_lineup_block(db, match.id)
+
     return safe_json({
+        "opposition_lineup": _opp_lineup_sum,
         "match": {
             "opponent": match.opponent,
             "date": str(match.match_date),
