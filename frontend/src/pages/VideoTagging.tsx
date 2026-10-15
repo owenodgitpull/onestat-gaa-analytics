@@ -1396,7 +1396,7 @@ export default function VideoTagging() {
   const currentScore = useMemo(() => {
     const score = { team_a_goals: 0, team_a_points: 0, team_b_goals: 0, team_b_points: 0 }
     for (const event of events) {
-      const isTwoPointer = event.scoring_context?.is_two_pointer
+      const isTwoPointer = event.scoring_context?.is_two_pointer && event.event_type !== 'FORTY_FIVE'
       if (event.event_type === 'GOAL_SCORED') {
         if (event.team === 'team_a') score.team_a_goals++
         else score.team_b_goals++
@@ -1409,7 +1409,8 @@ export default function VideoTagging() {
           if (event.team === 'team_a') score.team_a_goals++
           else score.team_b_goals++
         } else {
-          const pts = isTwoPointer ? 2 : 1
+          // a 45 is one point however far out it was taken
+          const pts = isTwoPointer && event.event_type !== 'FORTY_FIVE' ? 2 : 1
           if (event.team === 'team_a') score.team_a_points += pts
           else score.team_b_points += pts
         }
@@ -2021,6 +2022,19 @@ export default function VideoTagging() {
             setPendingOppPlayer({
               eventId: created.id, eventType: data.event_type === 'GOAL_SCORED' ? 'goal' : 'point',
               when: `${data.match_minute}'`, overlay: true, suggestedId: c?.playerId ?? null,
+            })
+          }
+        },
+      })
+    } else if (data.team === 'team_b' && data.event_type === 'FORTY_FIVE' && oppSquad.enabled) {
+      // Their 45 (scored or dropped short): ask who took it, with the same over-the-pitch picker as their scorers.
+      const scored = !!(data.scoring_context as any)?.scored
+      createEvent.mutate({ sessionId, data }, {
+        onSuccess: (created: any) => {
+          if (created?.id) {
+            setPendingOppPlayer({
+              eventId: created.id, eventType: scored ? 'point' : 'wide',
+              when: `${data.match_minute}'`, overlay: true, suggestedId: null,
             })
           }
         },
@@ -5821,6 +5835,7 @@ export default function VideoTagging() {
           events={events}
           videoDurationMs={videoDurationMs}
           currentTimeMs={currentTimeMs}
+          matchClockAt={(ms) => { const t = calcMatchTime(ms); return `${t.minute}:${String(t.second).padStart(2, '0')}` }}
           onSeek={handleSeek}
           firstHalfStartMs={session.first_half_start_ms}
           secondHalfStartMs={session.second_half_start_ms}

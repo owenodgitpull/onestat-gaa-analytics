@@ -4,7 +4,7 @@
  * Events displayed as colored dots. Click to seek video to that timestamp.
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { seekTimeForEvent } from '../../utils/videoSeek'
 import type { VideoEvent } from '../../services/videoApi'
 
@@ -12,6 +12,8 @@ interface EventTimelineProps {
   events: VideoEvent[]
   videoDurationMs: number
   currentTimeMs: number
+  /** Match clock (e.g. "47:35", "ET 3:10") for a video time - shown at the playhead and under the pointer */
+  matchClockAt?: (ms: number) => string
   onSeek: (timestampMs: number) => void
   firstHalfStartMs?: number | null
   secondHalfStartMs?: number | null
@@ -48,6 +50,7 @@ export default function EventTimeline({
   events,
   videoDurationMs,
   currentTimeMs,
+  matchClockAt,
   onSeek,
   firstHalfStartMs,
   secondHalfStartMs,
@@ -63,16 +66,29 @@ export default function EventTimeline({
     ? Math.min((currentTimeMs / videoDurationMs) * 100, 100)
     : 0
 
+  const [hoverMs, setHoverMs] = useState<number | null>(null)
+
   return (
     <div className="relative bg-white/5 rounded-lg border border-white/10 p-2">
       <div className="flex items-center gap-2 mb-1">
         <span className="text-[10px] text-white/40 uppercase tracking-wider">Timeline</span>
         <span className="text-[10px] text-white/30">{sortedEvents.length} events</span>
+        {matchClockAt && (
+          <span className="ml-auto text-[11px] font-mono font-bold text-emerald-300 tabular-nums">
+            {hoverMs != null ? `Go to ${matchClockAt(hoverMs)}` : `Match clock ${matchClockAt(currentTimeMs)}`}
+          </span>
+        )}
       </div>
 
       {/* Timeline bar */}
       <div
         className="relative h-8 bg-white/5 rounded cursor-pointer"
+        onMouseMove={(e) => {
+          if (!matchClockAt || videoDurationMs <= 0) return
+          const rect = e.currentTarget.getBoundingClientRect()
+          setHoverMs(Math.round(((e.clientX - rect.left) / rect.width) * videoDurationMs))
+        }}
+        onMouseLeave={() => setHoverMs(null)}
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect()
           const percent = (e.clientX - rect.left) / rect.width

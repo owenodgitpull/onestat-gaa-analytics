@@ -104,7 +104,8 @@ export default function VideoEventLog({
     const listed = showPasses ? events : events.filter(e => !isBackgroundVideoEvent(e))
     return listed.map((event) => {
       let scoreChange = ''
-      const isTwoPointer = event.scoring_context?.is_two_pointer
+      // a 45 is one point however far out it was taken
+      const isTwoPointer = event.scoring_context?.is_two_pointer && event.event_type !== 'FORTY_FIVE'
 
       if (event.event_type === 'GOAL_SCORED') {
         if (event.team === 'team_a') score.team_a_goals++
@@ -118,7 +119,7 @@ export default function VideoEventLog({
       } else if (SCORING_EVENTS.includes(event.event_type) && event.scoring_context?.scored !== false) {
         // Free kick, penalty, 45 that scored
         if (event.scoring_context?.scored) {
-          const pts = isTwoPointer ? 2 : (event.event_type === 'PENALTY' ? 3 : 1)
+          const pts = isTwoPointer && event.event_type !== 'FORTY_FIVE' ? 2 : (event.event_type === 'PENALTY' ? 3 : 1)
           if (event.event_type === 'PENALTY') {
             if (event.team === 'team_a') score.team_a_goals++
             else score.team_b_goals++

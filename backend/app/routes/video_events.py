@@ -95,7 +95,8 @@ def _auto_set_two_pointer(event_type: str, pitch_zone: str, scoring_context: dic
     """Auto-detect two-pointer from the pitch zone for scoring events — only when
     the caller didn't say. The zone grid is coarse (whole rows), so an explicit
     is_two_pointer from the client (the 2PT button, or an edit) always wins."""
-    if event_type in SCORING_EVENT_TYPES and pitch_zone:
+    # A 45 is always one point, however far out it is taken, and a penalty is a goal: never a two-pointer
+    if event_type in SCORING_EVENT_TYPES and event_type not in ("FORTY_FIVE", "PENALTY") and pitch_zone:
         scoring_context = scoring_context or {}
         if scoring_context.get("is_two_pointer") is None:
             scoring_context["is_two_pointer"] = pitch_zone in TWO_POINTER_ZONES
