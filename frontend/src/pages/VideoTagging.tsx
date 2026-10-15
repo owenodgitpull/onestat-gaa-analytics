@@ -5306,24 +5306,8 @@ export default function VideoTagging() {
           player_jersey_number: p.jerseyNumber,
           is_on_field: p.isOnField,
         }))
-        return (
-          <>
-            <PitchPlayerSelector
-              key={side}
-              isOpen={showViewLineup}
-              onClose={() => setShowViewLineup(false)}
-              onSelectPlayer={() => {}}
-              eventType="point"
-              team={side === 'own' ? 'own' : 'opponent'}
-              players={side === 'own' ? playerList : oppPlayers}
-              matchLineup={side === 'own' ? matchLineup : oppLineup}
-              teamPrimaryColor={side === 'own' ? (club?.primary_colour || '#10B981') : oppSquad.primary}
-              teamSecondaryColor={side === 'own' ? (club?.secondary_colour || '#FFFFFF') : oppSquad.secondary}
-              attackingRight={side === 'own' ? (teamAttackingRightThisHalf ?? true) : !(teamAttackingRightThisHalf ?? true)}
-              readOnly={true}
-            />
-            {hasOppLineup && (
-              <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[130] flex items-center gap-1 rounded-full bg-slate-900/90 border border-white/15 px-1 py-1 shadow-xl">
+        const lineupSwitch = hasOppLineup ? (
+              <div className="flex items-center gap-1 rounded-full bg-slate-900/90 border border-white/15 px-1 py-1 shadow-xl">
                 <button
                   onClick={flip}
                   className="w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
@@ -5343,7 +5327,24 @@ export default function VideoTagging() {
                   ›
                 </button>
               </div>
-            )}
+        ) : null
+        return (
+          <>
+            <PitchPlayerSelector
+              key={side}
+              footerSlot={lineupSwitch}
+              isOpen={showViewLineup}
+              onClose={() => setShowViewLineup(false)}
+              onSelectPlayer={() => {}}
+              eventType="point"
+              team={side === 'own' ? 'own' : 'opponent'}
+              players={side === 'own' ? playerList : oppPlayers}
+              matchLineup={side === 'own' ? matchLineup : oppLineup}
+              teamPrimaryColor={side === 'own' ? (club?.primary_colour || '#10B981') : oppSquad.primary}
+              teamSecondaryColor={side === 'own' ? (club?.secondary_colour || '#FFFFFF') : oppSquad.secondary}
+              attackingRight={side === 'own' ? (teamAttackingRightThisHalf ?? true) : !(teamAttackingRightThisHalf ?? true)}
+              readOnly={true}
+            />
           </>
         )
       })()}

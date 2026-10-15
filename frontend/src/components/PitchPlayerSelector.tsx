@@ -24,6 +24,8 @@ interface PitchPlayerSelectorProps {
   teamSecondaryColor?: string
   attackingRight?: boolean
   readOnly?: boolean  // View-only mode — shows lineup without player selection
+  /** Optional controls shown just above the bottom button (the lineup viewer's our/opposition switch) */
+  footerSlot?: React.ReactNode
   /** Current ball position (screen-space %, same frame as the main recording pitch) —
    *  when provided, the 5 players nearest the ball are visually promoted so the likely
    *  receiver/defender doesn't require scanning the full row of circles. */
@@ -105,6 +107,7 @@ export default function PitchPlayerSelector({
   teamSecondaryColor = '#FFFFFF',
   attackingRight = true,
   readOnly = false,
+  footerSlot,
   ballPosition = null,
   suggestedPlayerId = null,
 }: PitchPlayerSelectorProps) {
@@ -408,6 +411,7 @@ export default function PitchPlayerSelector({
           transform: animateIn && !animateOut ? 'translateY(0)' : 'translateY(20px)',
         }}
       >
+        {footerSlot && <div className="flex justify-center mb-2">{footerSlot}</div>}
         <button
           onClick={onClose}
           className="w-full py-3 rounded-xl bg-white/10 border border-white/20 text-white/70 text-sm font-medium hover:bg-white/15 transition-colors"
