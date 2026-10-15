@@ -3039,6 +3039,8 @@ export default function VideoTagging() {
   // land alongside player_id once a player is chosen or skipped. Plain
   // "edit player" (no team change) leaves this null.
   const [editingPlayerEventId, setEditingPlayerEventId] = useState<string | null>(null)
+  // editing which OPPOSITION player an event is about (the P button on a Dublin event)
+  const [editingOppEventId, setEditingOppEventId] = useState<string | null>(null)
   const [pendingTeamForPlayerEdit, setPendingTeamForPlayerEdit] = useState<'team_a' | 'team_b' | null>(null)
 
   const handleEditEventTeam = useCallback((eventId: string) => {
@@ -3073,6 +3075,9 @@ export default function VideoTagging() {
   // handleEditEventPlayer.
   const handleEditEventPlayer = useCallback((eventId: string) => {
     setPendingTeamForPlayerEdit(null)
+    const ev = eventsRef.current.find((e: any) => e.id === eventId)
+    // An opposition event is about an opposition player: pick from THEIR lineup, not ours
+    if (ev?.team === 'team_b' && oppEnabledRef.current) { setEditingOppEventId(eventId); return }
     setEditingPlayerEventId(eventId)
   }, [])
 
@@ -5500,6 +5505,27 @@ export default function VideoTagging() {
           </div>
         </div>
       )}
+      {editingOppEventId && oppSquad.enabled && (() => {
+        const ev: any = events.find(e => e.id === editingOppEventId)
+        const firstRight = matchData?.attacking_right_first_half ?? true
+        const ownRight = (ev?.half === 2 || ev?.half === 4) ? !firstRight : firstRight
+        const cfg = ev ? Object.values(EVENT_TYPE_CONFIG).find(c => c.videoType === ev.event_type && c.playerModalEventType) : null
+        return (
+          <OppositionPlayerSelector
+            squad={oppSquad}
+            eventType={cfg?.playerModalEventType || (ev?.event_type || 'point').toLowerCase()}
+            ourAttackingRight={ownRight}
+            ballPosition={ev?.pitch_x != null && ev?.pitch_y != null ? { x: ev.pitch_x, y: ev.pitch_y } : ballPosition}
+            suggestedPlayerId={null}
+            onSelect={(id, name) => {
+              const eventId = editingOppEventId
+              setEditingOppEventId(null)
+              if (sessionId && eventId) updateEvent.mutate({ eventId, sessionId, data: { opposition_player_id: id, opponent_player_name: name } })
+            }}
+            onClose={() => setEditingOppEventId(null)}
+          />
+        )
+      })()}
       {pendingOppCreate && oppSquad.enabled && (
         <OppositionPlayerSelector
           squad={oppSquad}
