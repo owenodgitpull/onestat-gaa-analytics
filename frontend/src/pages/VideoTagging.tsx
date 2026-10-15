@@ -507,6 +507,10 @@ export default function VideoTagging() {
   const [oppFoulTypeEventId, setOppFoulTypeEventId] = useState<string | null>(null)
   const [pendingOppPlayer, setPendingOppPlayer] = useState<{ eventId: string; eventType: string; when?: string; overlay?: boolean; suggestedId?: string | null } | null>(null)
   const [pendingCardChoice, setPendingCardChoice] = useState<EventType | null>(null)
+  // An opposition score / wide / 45 whose player is asked BEFORE it is saved (same over-the-pitch picker as our own
+  // players, last carrier highlighted), so the prompt is instant instead of waiting for the save to come back.
+  const oppCreateDoneRef = useRef<unknown>(null)   // the pending data already saved (guards a select-then-close double save)
+  const [pendingOppCreate, setPendingOppCreate] = useState<{ data: VideoEventCreateData; eventType: string; suggestedId: string | null } | null>(null)
   const oppEnabledRef = useRef(false)   // mirrors oppSquad.enabled for callbacks declared above it
   const [pendingOppScorer, setPendingOppScorer] = useState<{ eventId: string; mode: 'score' | 'turnover_forced'; scoringContext?: ScoringContext } | null>(null)
   const [pendingBlockRecovery, setPendingBlockRecovery] = useState(false)
@@ -2014,30 +2018,21 @@ export default function VideoTagging() {
       // the tracked carrier. The carrier is only highlighted in that picker as a suggestion.
       const carrierId = activeOppCarrierIdRef.current
       const c = carrierId ? oppSquad.players.find(p => p.playerId === carrierId) : null
-      createEvent.mutate({ sessionId, data }, {
-        // Always ask who scored, with the same over-the-pitch picker as our own scorers. The carrier (if any) is only
-        // highlighted as the suggestion; closing the picker leaves the scorer blank rather than guessing.
-        onSuccess: (created: any) => {
-          if (created?.id) {
-            setPendingOppPlayer({
-              eventId: created.id, eventType: data.event_type === 'GOAL_SCORED' ? 'goal' : 'point',
-              when: `${data.match_minute}'`, overlay: true, suggestedId: c?.playerId ?? null,
-            })
-          }
-        },
+      // Asked first (instantly, before the save), exactly like our own scorers. The carrier is only highlighted as
+      // the suggestion; closing the picker saves the score with the scorer blank rather than guessing.
+      const sc: any = data.scoring_context || {}
+      setPendingOppCreate({
+        data,
+        eventType: data.event_type === 'GOAL_SCORED' ? 'goal' : (sc.wide || sc.scored === false) ? 'wide' : 'point',
+        suggestedId: c?.playerId ?? null,
       })
     } else if (data.team === 'team_b' && data.event_type === 'FORTY_FIVE' && oppSquad.enabled) {
       // Their 45 (scored or dropped short): ask who took it, with the same over-the-pitch picker as their scorers.
       const scored = !!(data.scoring_context as any)?.scored
-      createEvent.mutate({ sessionId, data }, {
-        onSuccess: (created: any) => {
-          if (created?.id) {
-            setPendingOppPlayer({
-              eventId: created.id, eventType: scored ? 'point' : 'wide',
-              when: `${data.match_minute}'`, overlay: true, suggestedId: null,
-            })
-          }
-        },
+      const cid = activeOppCarrierIdRef.current
+      setPendingOppCreate({
+        data, eventType: scored ? 'point' : 'wide',
+        suggestedId: cid && oppSquad.players.some(p => p.playerId === cid) ? cid : null,
       })
     } else if (data.team === 'team_b' && OPPONENT_SCORE_TYPES.includes(data.event_type)) {
       createEvent.mutate({ sessionId, data }, {
@@ -2053,6 +2048,14 @@ export default function VideoTagging() {
           // this only fired from the manual-event form, so scores tagged the normal way never asked.
           if (created?.id && ['GOAL_SCORED', 'POINT_SCORED'].includes(data.event_type)) setAssistPromptEventId(created.id)
         },
+      })
+    } else if (data.team === 'team_b' && oppSquad.enabled && !data.opposition_player_id
+      && ['WIDE', 'SHORT', 'HIT_POST', 'SAVED'].includes(data.event_type)) {
+      // A shot that missed: same instant over-the-pitch picker as a score, shooter (last carrier) highlighted
+      const cid = activeOppCarrierIdRef.current
+      setPendingOppCreate({
+        data, eventType: OPP_PLAYER_PROMPT[data.event_type],
+        suggestedId: cid && oppSquad.players.some(p => p.playerId === cid) ? cid : null,
       })
     } else if (data.team === 'team_b' && oppSquad.enabled && !data.opposition_player_id && OPP_PLAYER_PROMPT[data.event_type]) {
       createEvent.mutate({ sessionId, data }, {
@@ -5496,6 +5499,29 @@ export default function VideoTagging() {
             </div>
           </div>
         </div>
+      )}
+      {pendingOppCreate && oppSquad.enabled && (
+        <OppositionPlayerSelector
+          squad={oppSquad}
+          eventType={pendingOppCreate.eventType}
+          ourAttackingRight={teamAttackingRightThisHalf ?? true}
+          ballPosition={ballPosition}
+          suggestedPlayerId={pendingOppCreate.suggestedId}
+          onSelect={(id, name) => {
+            const pc = pendingOppCreate
+            if (oppCreateDoneRef.current === pc.data) return
+            oppCreateDoneRef.current = pc.data
+            setPendingOppCreate(null)
+            if (sessionId) createEvent.mutate({ sessionId, data: { ...pc.data, opposition_player_id: id, opponent_player_name: name } })
+          }}
+          onClose={() => {
+            const pc = pendingOppCreate
+            if (oppCreateDoneRef.current === pc.data) return
+            oppCreateDoneRef.current = pc.data
+            setPendingOppCreate(null)
+            if (sessionId) createEvent.mutate({ sessionId, data: pc.data })
+          }}
+        />
       )}
       {pendingOppPlayer?.overlay && oppSquad.enabled && (
         <OppositionPlayerSelector
