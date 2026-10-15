@@ -341,8 +341,12 @@ async def data_health(session_id: UUID,
         if "KICKOUT" in et and not ev.player_id and not ev.opposition_player_id and not et.endswith("SIDELINE") and et != "SIDELINE_KICK":
             add("kickout_no_player", ev, "Kickout with no player named")
         if et in SCORE_EVENT_TYPES or et == "FREE_KICK" and (ev.scoring_context or {}).get("scored"):
+            src = str((ev.scoring_context or {}).get("source") or "").lower()
+            dead_ball = src in ("free", "from_free", "forty_five", "from_45", "from_forty_five", "penalty")
             if not ev.player_id and not ev.opposition_player_id:
                 add("score_no_player", ev, "Score with no scorer")
+            elif dead_ball:
+                pass   # a free / 45 is taken from a standing ball - there is no carry to check
             else:
                 chain = _chain_for(segs, ev)
                 if not chain:
@@ -361,17 +365,6 @@ async def data_health(session_id: UUID,
             add("ball_no_outcome", ev, "Kick pass / high ball with no outcome")
         if et == "PASS_HAND" and ev.team == "team_a" and not ev.player_id and (ev.description or "").lower() != "free short pass":
             add("pass_no_player", ev, "Hand pass with no player")
-
-    # the same player twice in a row in a move, with nothing between: usually a stray step left behind by an undo
-    for a, b in zip(segs, segs[1:]):
-        same = (a.player_id and a.player_id == b.player_id) or (
-            a.opposition_player_id and a.opposition_player_id == b.opposition_player_id)
-        if same and a.team == b.team and a.video_timestamp_ms is not None and b.video_timestamp_ms is not None \
-                and 0 <= b.video_timestamp_ms - a.video_timestamp_ms < 6000 and a.ended_by in ("pass", "manual", "turnover"):
-            issues.append({"kind": "duplicate_step", "message": "The same player appears twice in a row in a move",
-                           "segment_id": str(b.id), "event_id": None, "video_timestamp_ms": b.video_timestamp_ms,
-                           "match_minute": b.minute, "match_second": (b.match_clock_s or 0) % 60 if b.match_clock_s is not None else None,
-                           "team": _team_of_segment(b)})
 
     # stored minute disagreeing with the video position (a stoppage added after the fact, a mis-set half mark)
     from app.services.video.restamp import match_clock

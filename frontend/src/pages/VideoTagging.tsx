@@ -4116,7 +4116,7 @@ export default function VideoTagging() {
           title={taggingFinished
             ? 'Tagging finished — this match counts in season stats. Edits still save straight to the match.'
             : 'Events save to the match as you tag. This match stays out of season stats until you finish tagging.'}
-          className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors ${
+          className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors whitespace-nowrap shrink-0 ${
             taggingFinished
               ? 'bg-emerald-500/10 border-emerald-400/25 text-emerald-300 hover:bg-emerald-500/20'
               : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:text-white'
