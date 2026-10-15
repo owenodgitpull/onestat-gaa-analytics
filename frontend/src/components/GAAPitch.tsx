@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { humanEventType } from '@/utils/eventLabels'
 import { BallPosition, PossessionTeam } from '@/types'
 
@@ -375,13 +376,14 @@ export default function GAAPitch({
       onTouchEnd={handleContainerClick}
     >
       {/* Event Tooltip */}
-      {selectedEvent && (
+      {selectedEvent && createPortal(
         <div
-          className="absolute z-50 pointer-events-none"
+          className="fixed z-[200] pointer-events-none"
           style={{
-            left: tooltipPos.x,
-            top: tooltipPos.y - 10,
-            transform: 'translate(-50%, -100%)'
+            // clamped so it never leaves the screen; flips below the dot when there is no room above
+            left: Math.min(Math.max(tooltipPos.x, 90), (typeof window !== 'undefined' ? window.innerWidth : 1200) - 90),
+            top: tooltipPos.y < 90 ? tooltipPos.y + 22 : tooltipPos.y - 10,
+            transform: tooltipPos.y < 90 ? 'translate(-50%, 0)' : 'translate(-50%, -100%)'
           }}
         >
           <div className="bg-slate-900/95 backdrop-blur-sm text-white text-sm px-3 py-2 rounded-lg shadow-xl border border-white/10">
@@ -397,7 +399,8 @@ export default function GAAPitch({
           </div>
           {/* Tooltip arrow */}
           <div className="w-0 h-0 mx-auto border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-slate-900/95" />
-        </div>
+        </div>,
+        document.body
       )}
 
       <svg
@@ -487,14 +490,8 @@ export default function GAAPitch({
                 style={{ filter: selectedEvent?.id === event.id ? 'drop-shadow(0 0 8px rgba(255,255,255,0.5))' : 'none' }}
                 // Desktop: hover to show tooltip
                 onMouseEnter={(e) => {
-                  const container = containerRef.current
-                  if (container) {
-                    const rect = container.getBoundingClientRect()
-                    setTooltipPos({
-                      x: e.clientX - rect.left,
-                      y: e.clientY - rect.top
-                    })
-                  }
+                  // viewport coordinates: the bubble is portalled to <body>, so the pitch's overflow can't clip it
+                  setTooltipPos({ x: e.clientX, y: e.clientY })
                   setSelectedEvent(event)
                 }}
                 onMouseLeave={() => setSelectedEvent(null)}
@@ -503,14 +500,7 @@ export default function GAAPitch({
                   e.preventDefault()
                   e.stopPropagation()
                   const touch = e.changedTouches[0]
-                  const container = containerRef.current
-                  if (container && touch) {
-                    const rect = container.getBoundingClientRect()
-                    setTooltipPos({
-                      x: touch.clientX - rect.left,
-                      y: touch.clientY - rect.top
-                    })
-                  }
+                  if (touch) setTooltipPos({ x: touch.clientX, y: touch.clientY })
                   // Toggle: tap again to close
                   setSelectedEvent(selectedEvent?.id === event.id ? null : event)
                 }}
