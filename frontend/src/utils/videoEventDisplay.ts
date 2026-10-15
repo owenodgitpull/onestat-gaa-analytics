@@ -33,7 +33,7 @@ const VIDEO_EVENT_LABELS: Record<string, string> = {
 const DETAIL_LABELS: Record<string, string> = {
   tackle: 'Tackle', strip: 'Strip', forced_interception: 'Forced interception',
   stray_pass: 'Stray pass', dropped_ball: 'Dropped ball', miscue: 'Miscue', kick_over_sideline: 'Kicked over the sideline',
-  square_ball: 'Square ball', three_v_three: '3v3 violation', time_wasting: 'Time wasting',
+  square_ball: 'Square ball', three_v_three: '3v3 breach', time_wasting: 'Time wasting',
   overcarrying: 'Overcarrying', picked_off_ground: 'Picked off the ground',
   pushing: 'Pushing', pulling: 'Pulling', charging: 'Charging', late_tackle: 'Late tackle', jersey_pull: 'Jersey pull',
   obstruction: 'Obstruction', dissent: 'Dissent', tactical: 'Tactical',

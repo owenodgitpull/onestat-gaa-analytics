@@ -50,6 +50,7 @@ export const FOUL_SUBTYPES: SubtypeOption[] = [
   { value: 'jersey_pull', label: 'Jersey Pull' },
   { value: 'obstruction', label: 'Obstruction' },
   { value: 'dissent', label: 'Dissent' },
+  { value: 'three_v_three', label: '3v3 Breach' },
 ]
 
 /** The three turnover-reason choices shown by the reason picker before a
