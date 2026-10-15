@@ -3584,6 +3584,7 @@ export default function VideoTagging() {
       handleQuickPass({ from: carryEnd, to: dest })   // a different opposition player picking it up is a pass (keeps the PPDA pass count)
     }
     setActiveOppCarrierId(playerId)
+    resolveBallOutcomeRef.current('team_b')   // their kick pass found one of their players: completed
     setRecentOppCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'opponent'))
   }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, handleQuickPass, splitCarryAndPass])
