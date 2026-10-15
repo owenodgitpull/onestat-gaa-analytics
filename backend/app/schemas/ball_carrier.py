@@ -18,7 +18,7 @@ class BallCarrierSegmentCreate(BaseModel):
     opposition_player_id: Optional[UUID] = None
     jersey_number: Optional[int] = None
     team: str = Field(..., max_length=20)
-    half: int = Field(..., ge=1, le=2)
+    half: int = Field(..., ge=1, le=4)
     minute: Optional[int] = None
     match_clock_s: Optional[int] = None
     start_x: Optional[float] = None

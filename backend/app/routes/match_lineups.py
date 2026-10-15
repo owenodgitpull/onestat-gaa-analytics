@@ -296,7 +296,7 @@ async def swap_positions(
         raise HTTPException(status_code=400, detail="Invalid ID format")
     if a_uuid == b_uuid:
         raise HTTPException(status_code=400, detail="Pick two different players")
-    if body.half not in (1, 2) or body.minute < 0 or body.minute > 130:
+    if body.half not in (1, 2, 3, 4) or body.minute < 0 or body.minute > 130:
         raise HTTPException(status_code=400, detail="Invalid half or minute")
 
     from app.models.match_position_change import MatchPositionChange

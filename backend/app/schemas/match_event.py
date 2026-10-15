@@ -33,7 +33,7 @@ class MatchEventBase(BaseModel):
     notes: Optional[str] = Field(None, max_length=500, description="Optional event notes")
     opponent_player_name: Optional[str] = Field(None, max_length=200, description="Opposition player name for opponent scoring events")
     sub_type: Optional[str] = Field(None, max_length=50, description="Sub-category (e.g. 'stray_pass' for unforced errors, 'pushing' for fouls)")
-    half: Optional[int] = Field(None, ge=1, le=2, description="Which half (1 or 2)")
+    half: Optional[int] = Field(None, ge=1, le=4, description="Which half (1 or 2)")
     under_pressure: Optional[bool] = Field(None, description="Was the shot taken under defensive pressure — None means not recorded, treated as neutral by the xP formula")
     opposition_foot: Optional[str] = Field(None, max_length=1, description="Which foot an opposition player's shot/key pass was taken with ('L'/'R')")
     opposition_player_id: Optional[UUID] = Field(None, description="Opposition-lineup player behind this event (inter-county); for a substitution, who came OFF")

@@ -177,7 +177,7 @@ class VideoEventCreateRequest(BaseModel):
     # Turnover reason/subtype — mirrors MatchEvent.sub_type, see video_event.py.
     sub_type: Optional[str] = Field(None, max_length=50)
     team: str = Field(..., max_length=20)  # team_a / team_b
-    half: int = Field(..., ge=1, le=2)
+    half: int = Field(..., ge=1, le=4)
     match_minute: int = Field(..., ge=0)
     match_second: int = Field(default=0, ge=0, le=59)
     video_timestamp_ms: Optional[int] = None

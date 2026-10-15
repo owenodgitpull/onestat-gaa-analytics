@@ -13,7 +13,7 @@ class TacticalTagCreate(BaseModel):
     match_id: UUID
     tag_type: str = Field(..., max_length=30)
     label: Optional[str] = Field(None, max_length=100)
-    half: int = Field(..., ge=1, le=2)
+    half: int = Field(..., ge=1, le=4)
     minute: Optional[int] = None
     match_clock_s: Optional[int] = None
     pitch_x: Optional[float] = None

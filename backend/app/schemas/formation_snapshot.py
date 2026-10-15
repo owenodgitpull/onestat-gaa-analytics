@@ -17,7 +17,7 @@ class SnapshotPosition(BaseModel):
 
 class FormationSnapshotCreate(BaseModel):
     match_id: UUID
-    half: int = Field(..., ge=1, le=2)
+    half: int = Field(..., ge=1, le=4)
     minute: Optional[int] = None
     label: Optional[str] = None
     positions: List[SnapshotPosition] = Field(..., min_length=2)
