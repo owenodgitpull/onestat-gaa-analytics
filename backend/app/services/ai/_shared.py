@@ -1866,7 +1866,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             seg_result = await db.execute(
                 select(BallCarrierSegment)
                 .where(BallCarrierSegment.match_id == mid)
-                .order_by(BallCarrierSegment.created_at)
+                .order_by(BallCarrierSegment.video_timestamp_ms.asc().nulls_last(), BallCarrierSegment.created_at)
             )
             carrier_segments_by_match[mid] = seg_result.scalars().all()
         except Exception:
@@ -1877,7 +1877,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             poss_result = await db.execute(
                 select(PossEvent)
                 .where(PossEvent.match_id == mid, PossEvent.team == 'own')
-                .order_by(PossEvent.created_at)
+                .order_by(PossEvent.video_ms.asc().nulls_last(), PossEvent.created_at)
             )
             all_poss = poss_result.scalars().all()
             # Downsample: keep every 5th possession event to avoid too many points

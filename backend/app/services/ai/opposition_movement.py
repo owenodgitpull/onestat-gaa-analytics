@@ -31,7 +31,7 @@ def _channel(y: float) -> str:
 
 async def _runs(db, match_id) -> list[dict]:
     rows = (await db.execute(
-        select(PossessionEvent).where(PossessionEvent.match_id == match_id).order_by(PossessionEvent.created_at, PossessionEvent.id)
+        select(PossessionEvent).where(PossessionEvent.match_id == match_id).order_by(PossessionEvent.video_ms.asc().nulls_last(), PossessionEvent.created_at, PossessionEvent.id)
     )).scalars().all()
     if not rows:
         return []

@@ -203,7 +203,7 @@ async def get_attack_efficiency(db: AsyncSession, match_id: UUID, club_id: UUID)
     poss_result = await db.execute(
         select(PossessionEvent.team, PossessionEvent.minute, PossessionEvent.pitch_x, PossessionEvent.half)
         .where(PossessionEvent.match_id == match_id)
-        .order_by(func.coalesce(PossessionEvent.minute, 0).asc(), PossessionEvent.created_at.asc())
+        .order_by(func.coalesce(PossessionEvent.minute, 0).asc(), PossessionEvent.video_ms.asc().nulls_last(), PossessionEvent.created_at.asc())
     )
     # Possession points are placed in OUR attacking frame (we attack towards x=100) before checking
     # who reached which 45 — raw x is only that for one end of one half.
