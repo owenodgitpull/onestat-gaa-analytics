@@ -509,6 +509,9 @@ export default function VideoTagging() {
   const [pendingCardChoice, setPendingCardChoice] = useState<EventType | null>(null)
   // An opposition score / wide / 45 whose player is asked BEFORE it is saved (same over-the-pitch picker as our own
   // players, last carrier highlighted), so the prompt is instant instead of waiting for the save to come back.
+  // After an opposition goal / point is saved: "who assisted?" from their lineup (stored in scoring_context + the note,
+  // the shape the agents already read - an opposition assist is not one of our players)
+  const [pendingOppAssist, setPendingOppAssist] = useState<{ eventId: string; scorerId: string | null; scoringContext: Record<string, unknown> } | null>(null)
   const oppCreateDoneRef = useRef<unknown>(null)   // the pending data already saved (guards a select-then-close double save)
   const [pendingOppCreate, setPendingOppCreate] = useState<{ data: VideoEventCreateData; eventType: string; suggestedId: string | null } | null>(null)
   const oppEnabledRef = useRef(false)   // mirrors oppSquad.enabled for callbacks declared above it
@@ -5534,6 +5537,27 @@ export default function VideoTagging() {
           />
         )
       })()}
+      {pendingOppAssist && !pendingOppCreate && oppSquad.enabled && (
+        <OppositionWhoChip
+          squad={{ ...oppSquad, players: oppSquad.players.filter(p => p.playerId !== pendingOppAssist.scorerId) }}
+          eventType="assist"
+          teamName={matchData?.opponent || 'Opposition'}
+          onSelect={(id, name) => {
+            const pa = pendingOppAssist
+            setPendingOppAssist(null)
+            if (sessionId) {
+              updateEvent.mutate({
+                eventId: pa.eventId, sessionId,
+                data: {
+                  scoring_context: { ...pa.scoringContext, assist_opposition_player_id: id, assist_player_name: name } as any,
+                  description: `Assist: ${name}`,
+                },
+              })
+            }
+          }}
+          onDismiss={() => setPendingOppAssist(null)}
+        />
+      )}
       {pendingOppCreate && oppSquad.enabled && (
         <OppositionPlayerSelector
           squad={oppSquad}
@@ -5546,7 +5570,15 @@ export default function VideoTagging() {
             if (oppCreateDoneRef.current === pc.data) return
             oppCreateDoneRef.current = pc.data
             setPendingOppCreate(null)
-            if (sessionId) createEvent.mutate({ sessionId, data: { ...pc.data, opposition_player_id: id, opponent_player_name: name } })
+            if (sessionId) {
+              const asksAssist = pc.eventType === 'goal' || pc.eventType === 'point'
+              createEvent.mutate({ sessionId, data: { ...pc.data, opposition_player_id: id, opponent_player_name: name } },
+                asksAssist ? {
+                  onSuccess: (created: any) => {
+                    if (created?.id) setPendingOppAssist({ eventId: created.id, scorerId: id, scoringContext: created.scoring_context || pc.data.scoring_context || {} })
+                  },
+                } : undefined)
+            }
           }}
           onClose={() => {
             const pc = pendingOppCreate
