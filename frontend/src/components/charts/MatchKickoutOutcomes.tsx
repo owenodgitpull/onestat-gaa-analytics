@@ -276,12 +276,12 @@ export default function MatchKickoutOutcomes({ events, teamName = 'Our', opponen
         </div>
       )}
 
-      <TopWinnersSection events={events} mode={mode} />
+      <TopWinnersSection events={events} mode={mode} teamName={teamName} opponentName={opponentName} />
     </div>
   )
 }
 
-function TopWinnersSection({ events, mode }: { events: any[]; mode: KickoutMode }) {
+function TopWinnersSection({ events, mode, teamName, opponentName }: { events: any[]; mode: KickoutMode; teamName: string; opponentName: string }) {
   const topWinners = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const e of events) {
@@ -299,7 +299,10 @@ function TopWinnersSection({ events, mode }: { events: any[]; mode: KickoutMode 
 
   return (
     <div className="mt-3 pt-3 border-t border-white/10">
-      <p className="text-xs text-white/40 font-medium mb-1.5">Top Winners</p>
+      <p className="text-xs text-white/40 font-medium">Top Winners</p>
+      <p className="text-[10px] text-white/30 mb-1.5">
+        {teamName} players who won the ball on {mode === 'own' ? `${teamName} kickouts` : `${opponentName} kickouts`} only - not both teams
+      </p>
       {topWinners.slice(0, 5).map(([name, count], i) => (
         <div key={name} className="flex items-center justify-between py-0.5">
           <span className="text-xs text-white/70">{i + 1}. {name}</span>

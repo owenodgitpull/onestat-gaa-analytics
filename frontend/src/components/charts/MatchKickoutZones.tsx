@@ -36,17 +36,18 @@ function toSvg(xPct: number, yPct: number) {
 // drawn 45m/20m markings almost pixel-for-pixel — an earlier pass briefly
 // switched this to a 130m-derived scale based on the artwork's decorative 2pt
 // arc curve, which turned out to be ambiguous evidence; reverted back to 145m.
-// Short = our 20m to our 45m (14–31%), Mid = our 45m to opp 45m (31–69%), Long = beyond opp 45m (69–100%)
+// Short = up to ~40m from the kicker's goal (to 28%), Mid = 28% to the far 65m line (55%, the third of the three
+// lines across the middle), Long = beyond that. Midfield itself is Mid, never Long.
 const ZONE_DEFS = [
-  { id: 'Short_Left',   xMin: 14, xMax: 31,  yMin: 0,  yMax: 33,  label: 'Short L', circleCenterXPct: 29 },
-  { id: 'Short_Centre', xMin: 14, xMax: 31,  yMin: 33, yMax: 67,  label: 'Short C', circleCenterXPct: 29 },
-  { id: 'Short_Right',  xMin: 14, xMax: 31,  yMin: 67, yMax: 100, label: 'Short R', circleCenterXPct: 29 },
-  { id: 'Mid_Left',     xMin: 31, xMax: 69,  yMin: 0,  yMax: 33,  label: 'Mid L',   circleCenterXPct: 55 },
-  { id: 'Mid_Centre',   xMin: 31, xMax: 69,  yMin: 33, yMax: 67,  label: 'Mid C',   circleCenterXPct: 55 },
-  { id: 'Mid_Right',    xMin: 31, xMax: 69,  yMin: 67, yMax: 100, label: 'Mid R',   circleCenterXPct: 55 },
-  { id: 'Long_Left',    xMin: 69, xMax: 100, yMin: 0,  yMax: 33,  label: 'Long L',  circleCenterXPct: 72 },
-  { id: 'Long_Centre',  xMin: 69, xMax: 100, yMin: 33, yMax: 67,  label: 'Long C',  circleCenterXPct: 72 },
-  { id: 'Long_Right',   xMin: 69, xMax: 100, yMin: 67, yMax: 100, label: 'Long R',  circleCenterXPct: 72 },
+  { id: 'Short_Left',   xMin: 14, xMax: 28,  yMin: 0,  yMax: 33,  label: 'Short L', circleCenterXPct: 21 },
+  { id: 'Short_Centre', xMin: 14, xMax: 28,  yMin: 33, yMax: 67,  label: 'Short C', circleCenterXPct: 21 },
+  { id: 'Short_Right',  xMin: 14, xMax: 28,  yMin: 67, yMax: 100, label: 'Short R', circleCenterXPct: 21 },
+  { id: 'Mid_Left',     xMin: 28, xMax: 55,  yMin: 0,  yMax: 33,  label: 'Mid L',   circleCenterXPct: 41 },
+  { id: 'Mid_Centre',   xMin: 28, xMax: 55,  yMin: 33, yMax: 67,  label: 'Mid C',   circleCenterXPct: 41 },
+  { id: 'Mid_Right',    xMin: 28, xMax: 55,  yMin: 67, yMax: 100, label: 'Mid R',   circleCenterXPct: 41 },
+  { id: 'Long_Left',    xMin: 55, xMax: 100, yMin: 0,  yMax: 33,  label: 'Long L',  circleCenterXPct: 68 },
+  { id: 'Long_Centre',  xMin: 55, xMax: 100, yMin: 33, yMax: 67,  label: 'Long C',  circleCenterXPct: 68 },
+  { id: 'Long_Right',   xMin: 55, xMax: 100, yMin: 67, yMax: 100, label: 'Long R',  circleCenterXPct: 68 },
 ]
 
 // Classify event type into own/opponent kickout and whether we won it (includes sideline events)
@@ -120,9 +121,9 @@ export default function MatchKickoutZones({ events, attackingRightFirstHalf, hal
       const distFromGoal = p.x
 
       let xZone: string
-      if (distFromGoal < 31) xZone = 'Short'       // our 20m–45m corridor
-      else if (distFromGoal < 69) xZone = 'Mid'    // midfield (our 45m to opp 45m)
-      else xZone = 'Long'                           // beyond opp 45m arc
+      if (distFromGoal < 28) xZone = 'Short'       // up to ~40m from our goal
+      else if (distFromGoal < 55) xZone = 'Mid'    // ~40m out to the far 65m line (the 3 lines across the middle)
+      else xZone = 'Long'                           // past the far 65m line
       let yZone: string
       if (p.y < 33) yZone = 'Left'
       else if (p.y < 67) yZone = 'Centre'
