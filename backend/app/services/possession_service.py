@@ -29,7 +29,10 @@ class PossessionService:
         only the fallback for rows recorded before the half was stored.
         """
         is_own = case((PossessionEvent.team == "own", True), else_=False)
-        prev_own = func.lag(is_own).over(order_by=(PossessionEvent.created_at, PossessionEvent.id))
+        # Video-tagged rows can be inserted or corrected after the fact, so created_at is not game order: order by
+        # the video time first (NULL for live-recorded rows, which fall back to created_at).
+        prev_own = func.lag(is_own).over(
+            order_by=(PossessionEvent.video_ms.asc().nulls_last(), PossessionEvent.created_at, PossessionEvent.id))
         rows = (
             select(
                 is_own.label("own"),
