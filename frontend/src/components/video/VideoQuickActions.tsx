@@ -189,7 +189,7 @@ export default function VideoQuickActions({
   // here, unlike live recording where it's a second interception of the
   // same event type) so that shortcut still only shows unforced-error
   // subtypes, not all 3 groups.
-  const [turnoverPanel, setTurnoverPanel] = useState<{ onlyReason?: TurnoverReason } | null>(null)
+  const [turnoverPanel, setTurnoverPanel] = useState<{ onlyReason?: TurnoverReason; opposition?: boolean } | null>(null)
 
   const isUs = possession === 'team_a'
 
@@ -273,6 +273,13 @@ export default function VideoQuickActions({
     if (action.id === 'our_error') {
       setFlashButton(action.id)
       setTurnoverPanel({ onlyReason: 'unforced' })
+      return
+    }
+
+    // Opposition error - the same unforced-error picker as ours (what kind of error it was)
+    if (action.id === 'opp_error') {
+      setFlashButton(action.id)
+      setTurnoverPanel({ onlyReason: 'unforced', opposition: true })
       return
     }
 
@@ -378,7 +385,18 @@ export default function VideoQuickActions({
       eventType === 'unforced_error' ? 'OUR_UNFORCED_ERROR'
       : eventType === 'foul_committed' ? 'FOUL_COMMITTED'
       : 'TURNOVER_LOST'
+    const oppositionError = !!turnoverPanel?.opposition
     setTurnoverPanel(null)
+    if (oppositionError) {
+      const oppAction = TURNOVER_ACTIONS.find(a => a.id === 'opp_error')!
+      const oppData = buildEventData(oppAction)
+      if (subtype) oppData.sub_type = subtype
+      setFlashButton(oppAction.id)
+      onCreateEvent(oppData)
+      if (oppAction.autoFlipTo) onPossessionChange(oppAction.autoFlipTo === 'us' ? 'team_a' : 'team_b')
+      if (oppAction.autoSwitchTab) onTabChange(oppAction.autoSwitchTab)
+      return
+    }
     const action: ActionButton = {
       id: videoEventType === 'OUR_UNFORCED_ERROR' ? 'our_error'
           : videoEventType === 'FOUL_COMMITTED' ? 'foul'
@@ -399,7 +417,7 @@ export default function VideoQuickActions({
     if (subtype) eventData.sub_type = subtype
     setFlashButton(action.id)
     onEventTap({ action, eventData })
-  }, [buildEventData, onEventTap])
+  }, [buildEventData, onEventTap, onCreateEvent, onPossessionChange, onTabChange, turnoverPanel])
 
   const isButtonDisabled = (action: ActionButton): boolean => {
     if (disabled) return true
