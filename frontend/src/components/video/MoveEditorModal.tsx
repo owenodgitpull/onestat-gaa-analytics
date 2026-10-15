@@ -11,6 +11,25 @@ export interface PickablePlayer {
   id: string
   name: string
   jerseyNumber: number | null
+  /** on the field now - listed first; the rest (bench / subbed off) sit in their own group */
+  onField?: boolean
+}
+
+/** The options of a player <select>: on the field first, then the rest, each with their match number */
+export function PlayerOptions({ players }: { players: PickablePlayer[] }) {
+  const label = (p: PickablePlayer) => `${p.jerseyNumber != null ? `#${p.jerseyNumber} ` : ''}${p.name}`
+  const on = players.filter(p => p.onField !== false)
+  const off = players.filter(p => p.onField === false)
+  return (
+    <>
+      {on.map(p => <option key={p.id} value={p.id}>{label(p)}</option>)}
+      {off.length > 0 && (
+        <optgroup label="Bench / subbed off">
+          {off.map(p => <option key={p.id} value={p.id}>{label(p)}</option>)}
+        </optgroup>
+      )}
+    </>
+  )
 }
 
 interface Props {
@@ -128,9 +147,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                   >
                     {!current && <option value="">Choose a player…</option>}
                     {current && !opts.some(o => o.id === current) && <option value={current}>{s.name ?? 'Unknown'}</option>}
-                    {opts.map(o => (
-                      <option key={o.id} value={o.id}>{o.jerseyNumber != null ? `#${o.jerseyNumber} ` : ''}{o.name}</option>
-                    ))}
+                    <PlayerOptions players={opts} />
                   </select>
                   <span className="text-[11px] text-white/40 whitespace-nowrap">{clock(s.match_clock_s)}</span>
                   <button
@@ -159,9 +176,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                       className="bg-slate-800 text-white text-xs rounded-lg border border-white/15 px-2 py-1"
                     >
                       <option value="" disabled>Who took it next?</option>
-                      {opts.map(o => (
-                        <option key={o.id} value={o.id}>{o.jerseyNumber != null ? `#${o.jerseyNumber} ` : ''}{o.name}</option>
-                      ))}
+                      <PlayerOptions players={opts} />
                     </select>
                   ) : (
                     <button

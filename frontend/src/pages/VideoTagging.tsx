@@ -3851,8 +3851,16 @@ export default function VideoTagging() {
     videoSessionsAPI.setClockStoppages(sessionId, next).then(() => { refetchSession(); refetchEvents() })
   }
 
-  const pickableOwn = (players || []).map((p: any) => ({ id: p.id as string, name: p.name as string, jerseyNumber: (p.jersey_number ?? null) as number | null }))
-  const pickableOpp = (oppSquad.players || []).filter((p: any) => p.playerId).map((p: any) => ({ id: p.playerId as string, name: (p.playerName || `#${p.jerseyNumber}`) as string, jerseyNumber: (p.jerseyNumber ?? null) as number | null }))
+  // The match lineup's numbers (not the squad numbers), on-field players first. Without a lineup, fall back to the squad.
+  const pickableOwn = (matchLineup && matchLineup.length > 0)
+    ? (matchLineup as any[]).filter(e => e.player_id).map(e => ({
+        id: e.player_id as string,
+        name: (e.player_name || `#${e.match_jersey_number ?? '?'}`) as string,
+        jerseyNumber: (e.match_jersey_number ?? e.player_jersey_number ?? null) as number | null,
+        onField: !!e.is_on_field,
+      })).sort((a, b) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99))
+    : (players || []).map((p: any) => ({ id: p.id as string, name: p.name as string, jerseyNumber: (p.jersey_number ?? null) as number | null, onField: true }))
+  const pickableOpp = (oppSquad.players || []).filter((p: any) => p.playerId).map((p: any) => ({ id: p.playerId as string, name: (p.playerName || `#${p.jerseyNumber}`) as string, jerseyNumber: (p.jerseyNumber ?? null) as number | null, onField: !!p.isOnField })).sort((a: any, b: any) => (a.jerseyNumber ?? 99) - (b.jerseyNumber ?? 99))
 
   const playerList = (players || []).map((p: any) => ({
     id: p.id, name: p.name, jersey_number: p.jersey_number,

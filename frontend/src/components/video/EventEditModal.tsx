@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import type { VideoEvent, VideoEventUpdateData } from '../../services/videoApi'
-import type { PickablePlayer } from './MoveEditorModal'
+import { PlayerOptions, type PickablePlayer } from './MoveEditorModal'
 
 interface Props {
   event: VideoEvent | null
@@ -16,8 +16,6 @@ interface Props {
 }
 
 const SCORING = ['POINT_SCORED', 'GOAL_SCORED', 'FREE_KICK', 'FORTY_FIVE', 'PENALTY']
-
-const label = (p: PickablePlayer) => `${p.jerseyNumber != null ? `#${p.jerseyNumber} ` : ''}${p.name}`
 
 export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose, onSave }: Props) {
   const [ownId, setOwnId] = useState('')
@@ -92,7 +90,7 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
             <label className={lab}>Our player</label>
             <select className={sel} value={ownId} onChange={e => setOwnId(e.target.value)}>
               <option value="">— none —</option>
-              {ownPlayers.map(p => <option key={p.id} value={p.id}>{label(p)}</option>)}
+              <PlayerOptions players={ownPlayers} />
             </select>
           </>
         ) : (
@@ -100,7 +98,7 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
             <label className={lab}>Opposition player</label>
             <select className={sel} value={oppId} onChange={e => setOppId(e.target.value)}>
               <option value="">— none —</option>
-              {oppPlayers.map(p => <option key={p.id} value={p.id}>{label(p)}</option>)}
+              <PlayerOptions players={oppPlayers} />
             </select>
           </>
         )}
@@ -110,7 +108,7 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
             <label className={lab}>Assist (our player)</label>
             <select className={sel} value={assistId} onChange={e => setAssistId(e.target.value)}>
               <option value="">— none —</option>
-              {ownPlayers.map(p => <option key={p.id} value={p.id}>{label(p)}</option>)}
+              <PlayerOptions players={ownPlayers} />
             </select>
             <div className="flex gap-4 mt-3 text-sm text-white/80">
               <label className="flex items-center gap-2"><input type="checkbox" checked={pressure} onChange={e => setPressure(e.target.checked)} /> Under pressure</label>
