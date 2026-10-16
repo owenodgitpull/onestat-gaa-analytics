@@ -421,9 +421,14 @@ export default function MatchResult() {
     // Try to parse AI MOTM from the analysis text
     if (postMatchReport?.analysis) {
       // Match patterns like "**Man of the Match: Player Name**" or "Man of the Match: Player Name"
-      const motmMatch = postMatchReport.analysis.match(/\*?\*?Man of the Match[:\s—–-]+\*?\*?\s*([A-Z][a-zA-Z'\-]+(?:\s+[A-Z][a-zA-Z'\-]+)+)/i)
+      const motmMatch = postMatchReport.analysis.match(/Man of the Match[ \t]*[:—–-][ \t]*\**[ \t]*([^\n*]+)/i)
       if (motmMatch) {
-        const name = motmMatch[1].replace(/\*+/g, '').trim()
+        // Name only: the header line can carry trailing words ("... He scored 1-3"), so keep the leading capitalised names
+        const raw = motmMatch[1].split(/\s+[—–-]\s+|[.,(]/)[0].trim()
+        const words = raw.split(/\s+/)
+        const nameWords: string[] = []
+        for (const w of words) { if (/^[A-ZÁÉÍÓÚ]/.test(w) && nameWords.length < 4) nameWords.push(w); else break }
+        const name = (nameWords.length ? nameWords : words.slice(0, 3)).join(' ')
         return { playerName: name, breakdown: { goals: 0, points: 0, twoPointers: 0, turnoversWon: 0, turnoversLost: 0, kickoutsWon: 0 }, score: 0, playerId: '', aiPicked: true }
       }
     }
@@ -439,6 +444,18 @@ export default function MatchResult() {
     }))
     return calculateManOfMatch(eventsWithTeam, players)
   }, [eventsData, players, postMatchReport, reportLoading, isPollingReport])
+
+  // "Best <club> Player" - the agent names the logged-in team's best player separately from Man of the Match
+  const bestOwnPlayer = useMemo(() => {
+    const t = postMatchReport?.analysis
+    if (!t) return null
+    const m = t.match(/Best[^:\n]{0,60}Player[ \t]*:[ \t]*\**[ \t]*([^\n*]+)/i)
+    if (!m) return null
+    const raw = m[1].split(/\s+[—–-]\s+|[.,(]/)[0].trim()
+    const nameWords: string[] = []
+    for (const w of raw.split(/\s+/)) { if (/^[A-ZÁÉÍÓÚ]/.test(w) && nameWords.length < 4) nameWords.push(w); else break }
+    return nameWords.length ? nameWords.join(' ') : null
+  }, [postMatchReport])
 
   // Scorers — per-player breakdown of own-team scores, GAA-style (G-PP + 2pt note)
   const scorers = useMemo(() => {
@@ -674,6 +691,11 @@ export default function MatchResult() {
                           })()
                       }
                     </div>
+                    {bestOwnPlayer && (
+                      <div className="text-xs text-white/60 mt-1.5">
+                        Best {clubName || 'our'} player: <span className="font-semibold text-white/80">{bestOwnPlayer}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
