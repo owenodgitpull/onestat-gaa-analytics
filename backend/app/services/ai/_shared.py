@@ -1172,6 +1172,25 @@ TOOLS = [
         }
     },
     {
+        "name": "search_knowledge_base",
+        "description": (
+            "Search the knowledge base: the platform's built-in GAA material (official football rules, coaching/defensive "
+            "play, tactical periodisation) AND any documents this club uploaded (game plans, playbooks, tactical notes). "
+            "Use specific queries, several times if needed. Returns the best matching passages with their source document "
+            "and section. Use it whenever a rule, coaching principle or the club's own tactical plan is relevant - never "
+            "answer a rules or coaching-principle question from memory when this can be checked."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What to look up, in plain words (e.g. 'square ball rule', 'short kickout principles')."},
+                "doc_types": {"type": "array", "items": {"type": "string"}, "description": "Optional filter by document type (e.g. rules, tactics)."},
+                "limit": {"type": "integer", "description": "Max passages (default 5, max 8)."}
+            },
+            "required": ["query"]
+        }
+    },
+    {
         "name": "create_video_compilation",
         "description": (
             "Build a single downloadable video file by stitching together tagged match clips matching a "
@@ -1324,6 +1343,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_match_expected_points(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_player_impact":
         return await get_match_player_impact(db, **tool_input, club_id=club_id)
+    elif tool_name == "search_knowledge_base":
+        return await search_knowledge_base(db, **tool_input, club_id=club_id)
     elif tool_name == "create_video_compilation":
         return await create_video_compilation(db, **tool_input, club_id=club_id, user_id=user_id)
     else:
@@ -6595,6 +6616,31 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
             "do not favour the logged-in club's players. Opposition rows exist only for players entered in their lineup."
         ),
     })
+
+
+async def search_knowledge_base(db: AsyncSession, query: str, doc_types: list = None, limit: int = 5, club_id=None) -> str:
+    """Agent-callable retrieval over the knowledge base (shared platform docs + this club's uploads)."""
+    from app.services.rag_service import RAGService
+    try:
+        n = max(1, min(int(limit or 5), 8))
+    except (TypeError, ValueError):
+        n = 5
+    try:
+        results = await RAGService.search(db, query, doc_types=doc_types or None, limit=n, club_id=club_id)
+    except Exception as e:
+        return safe_json({"error": f"Knowledge base search failed: {e}"})
+    if not results:
+        return safe_json({"query": query, "passages": [], "note": "Nothing in the knowledge base matched. Say so rather than answering from memory as if it were sourced."})
+    passages = []
+    for r in results:
+        passages.append({
+            "source": r.get("source_file"),
+            "doc_type": r.get("doc_type"),
+            "section": r.get("section"),
+            "scope": "club's own document" if r.get("club_id") else "platform base knowledge",
+            "text": (r.get("content") or "")[:1600],
+        })
+    return safe_json({"query": query, "passages": passages})
 
 
 async def create_video_compilation(

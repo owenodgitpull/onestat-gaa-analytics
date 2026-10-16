@@ -305,6 +305,7 @@ class RAGService:
                 'source_file': chunk.source_file,
                 'doc_type': chunk.doc_type,
                 'section': chunk.section_title,
+                'club_id': str(chunk.club_id) if chunk.club_id else None,
                 'content': chunk.content,
                 'score': score,
                 'keywords_matched': [k for k in query_keywords if k in (chunk.keywords or [])]

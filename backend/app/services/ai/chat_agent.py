@@ -122,13 +122,7 @@ async def chat_with_analyst(db: AsyncSession, conversation_history: list, user_m
     club_name, club_context = await get_club_context(db, club_id)
 
     # Get relevant knowledge base context via RAG
-    try:
-        kb_context = await RAGService.get_context_for_query(
-            db, user_message, context_type='general', max_tokens=3000, club_id=club_id
-        )
-    except Exception as e:
-        logger.warning(f"RAG context retrieval failed: {e}")
-        kb_context = ""
+    kb_context = "\n# KNOWLEDGE BASE (use it as a tool)\nThe GAA knowledge base (rules, coaching and tactical material, plus the club's own uploaded documents) is NOT pasted here. Call search_knowledge_base whenever a rule, coaching principle or the club's own game plan matters to your answer, with specific queries (e.g. 'kickout restart rules', '3v3 breach', 'transition defence'); call it more than once if needed and cite the source document when you rely on it.\n"
 
     # Get recent AI insight alerts for proactive reference
     insight_alerts_text = ""
@@ -290,13 +284,7 @@ async def _build_chat_system_prompt(
     club_name, club_context = await get_club_context(db, club_id)
 
     # Get relevant knowledge base context via RAG
-    try:
-        kb_context = await RAGService.get_context_for_query(
-            db, user_message, context_type='general', max_tokens=3000, club_id=club_id
-        )
-    except Exception as e:
-        logger.warning(f"RAG context retrieval failed: {e}")
-        kb_context = ""
+    kb_context = "\n# KNOWLEDGE BASE (use it as a tool)\nThe GAA knowledge base (rules, coaching and tactical material, plus the club's own uploaded documents) is NOT pasted here. Call search_knowledge_base whenever a rule, coaching principle or the club's own game plan matters to your answer, with specific queries (e.g. 'kickout restart rules', '3v3 breach', 'transition defence'); call it more than once if needed and cite the source document when you rely on it.\n"
 
     # Get recent AI insight alerts for proactive reference
     insight_alerts_text = ""

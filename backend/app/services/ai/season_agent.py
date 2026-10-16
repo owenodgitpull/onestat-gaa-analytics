@@ -65,6 +65,7 @@ SEASON_TOOLS = [
     "get_kickout_targets",
     "get_match_expected_points",
     "get_match_player_impact",
+    "search_knowledge_base",
     "create_video_compilation",
     "get_phase_summary",
     "get_season_phase_profile",
@@ -133,14 +134,7 @@ class SeasonAgent:
         fixture_context = await get_fixture_context(db, club_id=club_id)
 
         # Get RAG context
-        try:
-            rag_query = _task_to_rag_query(task)
-            kb_context = await RAGService.get_context_for_query(
-                db, rag_query, context_type='analytics', max_tokens=2000, club_id=club_id
-            )
-        except Exception as e:
-            logger.warning(f"RAG context retrieval failed: {e}")
-            kb_context = ""
+        kb_context = "\n# KNOWLEDGE BASE (use it as a tool)\nThe GAA knowledge base (rules, coaching and tactical material, plus the club's own uploaded documents) is NOT pasted here. Call search_knowledge_base whenever a rule, coaching principle or the club's own game plan matters to your answer, with specific queries (e.g. 'kickout restart rules', '3v3 breach', 'transition defence'); call it more than once if needed and cite the source document when you rely on it.\n"
 
         system_prompt = _build_season_system_prompt(task, kb_context, fixture_context, context, club_name, club_context_str)
         user_message = _build_season_user_message(task, context)

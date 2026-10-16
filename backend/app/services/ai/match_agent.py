@@ -414,14 +414,7 @@ Reference knowledge base context when relevant to a specific trigger.
         club_name, club_context = await get_club_context(db, _cid)
 
         # Get knowledge base context via RAG
-        try:
-            query = question or "post-match tactical analysis scoring turnovers GPS performance"
-            kb_context = await RAGService.get_context_for_query(
-                db, query, context_type='post_match', max_tokens=3000, club_id=_cid
-            )
-        except Exception as e:
-            logger.warning(f"RAG context retrieval failed: {e}")
-            kb_context = ""
+        kb_context = "\n# KNOWLEDGE BASE (use it as a tool)\nThe GAA knowledge base (rules, coaching and tactical material, plus the club's own uploaded documents) is NOT pasted here. Call search_knowledge_base whenever a rule, coaching principle or the club's own game plan matters to your answer, with specific queries (e.g. 'kickout restart rules', '3v3 breach', 'transition defence'); call it more than once if needed and cite the source document when you rely on it.\n"
 
         system_prompt = f"""You are an expert GAA football analyst for {club_name}.
 
