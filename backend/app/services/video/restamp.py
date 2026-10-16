@@ -41,10 +41,10 @@ def match_clock(session: VideoSession, half_mins: int, video_ms: int) -> tuple[i
     et2 = session.et_second_half_start_ms
 
     if et2 is not None and video_ms >= et2:
-        sec = max(0, video_ms - et2) // 1000
+        sec = max(0, video_ms - et2 - _stopped_between(stoppages, et2, video_ms)) // 1000
         return 4, half_mins * 2 + ET_PERIOD_MINS + sec // 60, sec % 60
     if et1 is not None and video_ms >= et1:
-        sec = max(0, video_ms - et1) // 1000
+        sec = max(0, video_ms - et1 - _stopped_between(stoppages, et1, video_ms)) // 1000
         return 3, half_mins * 2 + sec // 60, sec % 60
     if h2 is not None and video_ms >= h2:
         elapsed = max(0, video_ms - h2 - _stopped_between(stoppages, h2, video_ms))

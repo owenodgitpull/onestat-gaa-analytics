@@ -1123,6 +1123,8 @@ export default function VideoTagging() {
       for (const st of session.clock_stoppages || []) {
         total += Math.max(0, Math.min(toMs, st.end_ms) - Math.max(fromMs, st.start_ms))
       }
+      // "Stop clock" pressed and not yet resumed: the clock stands still from that moment, live
+      if (clockStopStartMs != null) total += Math.max(0, toMs - Math.max(fromMs, clockStopStartMs))
       return total
     }
 
@@ -1130,11 +1132,11 @@ export default function VideoTagging() {
     const et1 = session.et_first_half_start_ms
     const et2 = session.et_second_half_start_ms
     if (et2 != null && videoMs >= et2) {
-      const totalSec = Math.floor(Math.max(0, videoMs - et2) / 1000)
+      const totalSec = Math.floor(Math.max(0, videoMs - et2 - stoppedBetween(et2, videoMs)) / 1000)
       return { minute: matchHalfMins * 2 + ET_PERIOD_MINS + Math.floor(totalSec / 60), second: totalSec % 60, half: 4 }
     }
     if (et1 != null && videoMs >= et1) {
-      const totalSec = Math.floor(Math.max(0, videoMs - et1) / 1000)
+      const totalSec = Math.floor(Math.max(0, videoMs - et1 - stoppedBetween(et1, videoMs)) / 1000)
       return { minute: matchHalfMins * 2 + Math.floor(totalSec / 60), second: totalSec % 60, half: 3 }
     }
 
@@ -1152,7 +1154,7 @@ export default function VideoTagging() {
     const elapsed = Math.max(0, videoMs - h1Start - stoppedBetween(h1Start, videoMs)) + (session.first_half_clock_offset_ms ?? 0)
     const totalSec = Math.floor(elapsed / 1000)
     return { minute: Math.floor(totalSec / 60), second: totalSec % 60, half: 1 }
-  }, [session?.first_half_start_ms, session?.first_half_clock_offset_ms, session?.second_half_start_ms, session?.et_first_half_start_ms, session?.et_second_half_start_ms, session?.clock_stoppages, matchHalfMins])
+  }, [session?.first_half_start_ms, session?.first_half_clock_offset_ms, session?.second_half_start_ms, session?.et_first_half_start_ms, session?.et_second_half_start_ms, session?.clock_stoppages, clockStopStartMs, matchHalfMins])
 
   calcMatchTimeRef.current = calcMatchTime
 
