@@ -1153,6 +1153,25 @@ TOOLS = [
         }
     },
     {
+        "name": "get_match_player_impact",
+        "description": (
+            "Like-for-like impact table for EVERY player on BOTH teams in one match: the logged-in club's players AND the "
+            "opposition's named players, measured with identical metrics - scores (goals / points / two-pointers), assists, "
+            "wides, turnovers won (turnover won / interception / tackle / block), turnovers lost, unforced errors, kickouts "
+            "won, fouls, cards, ball carries and passes made - plus one impact_points number computed the same way for both "
+            "sides. ALWAYS use this for Man of the Match, best-performer or 'who was the best player' questions so the "
+            "opposition's players are judged on exactly the same evidence as ours (never pick only from the logged-in team). "
+            "Opposition players only appear when their lineup was entered for the match."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "match_id": {"type": "string", "description": "UUID of the match, or 'recent'/'latest'."}
+            },
+            "required": ["match_id"]
+        }
+    },
+    {
         "name": "create_video_compilation",
         "description": (
             "Build a single downloadable video file by stitching together tagged match clips matching a "
@@ -1303,6 +1322,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_turnover_to_shot_time(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_expected_points":
         return await get_match_expected_points(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_match_player_impact":
+        return await get_match_player_impact(db, **tool_input, club_id=club_id)
     elif tool_name == "create_video_compilation":
         return await create_video_compilation(db, **tool_input, club_id=club_id, user_id=user_id)
     else:
@@ -6418,6 +6439,160 @@ async def get_match_expected_points(db: AsyncSession, match_id: str, club_id=Non
             "defensive pressure (real pressured-vs-not conversion rate, shrunk toward a literature estimate "
             "until enough tagged shots exist). model_sample_size / pressure_model_sample_size show exactly "
             "how many real shots back each shot group's numbers — cite these if asked how confident to be."
+        ),
+    })
+
+
+async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None) -> str:
+    """Per-player impact for both teams with identical metrics (see the tool description)."""
+    import uuid as uuid_mod
+    try:
+        mid = uuid_mod.UUID(match_id)
+    except (ValueError, AttributeError, TypeError):
+        if str(match_id).lower() in ("recent", "latest", "last"):
+            cond = [Match.counts_in_stats]
+            if club_id:
+                cond.append(Match.club_id == club_id)
+            m = (await db.execute(select(Match).where(*cond).order_by(Match.match_date.desc()).limit(1))).scalar_one_or_none()
+            if not m:
+                return safe_json({"error": "No completed matches found"})
+            mid = m.id
+        else:
+            return safe_json({"error": f"'{match_id}' is not a valid match UUID."})
+    match_q = select(Match).where(Match.id == mid)
+    if club_id:
+        match_q = match_q.where(Match.club_id == club_id)
+    match = (await db.execute(match_q)).scalar_one_or_none()
+    if not match:
+        return safe_json({"error": "Match not found"})
+
+    from app.models.opposition import OppositionLineup, OppositionPlayer
+    from app.models.ball_carrier_segment import BallCarrierSegment
+    from app.models.video_event import VideoEvent
+
+    own_players = {str(p.id): p for p in (await db.execute(select(Player).where(Player.club_id == match.club_id))).scalars().all()}
+    opp_rows = (await db.execute(
+        select(OppositionLineup, OppositionPlayer)
+        .join(OppositionPlayer, OppositionPlayer.id == OppositionLineup.opposition_player_id)
+        .where(OppositionLineup.match_id == mid)
+    )).all()
+    opp_info = {str(pl.id): {"name": pl.surname, "number": lu.jersey_number} for lu, pl in opp_rows}
+
+    events = (await db.execute(select(MatchEvent).where(MatchEvent.match_id == mid))).scalars().all()
+    # Opposition assists are not our players: they travel in the linked video event's scoring_context
+    assist_by_event: dict = {}
+    try:
+        ve_rows = (await db.execute(
+            select(VideoEvent.match_event_id, VideoEvent.scoring_context)
+            .where(VideoEvent.match_id == mid, VideoEvent.match_event_id.isnot(None))
+        )).all()
+        for me_id, ctx in ve_rows:
+            nm = (ctx or {}).get("assist_player_name")
+            if nm:
+                assist_by_event[str(me_id)] = nm
+    except Exception:
+        pass
+
+    SCORE = {"goal": "goals", "penalty_goal": "goals", "point": "points", "point_free": "points", "forty_five": "points",
+             "two_point": "two_pointers", "two_point_free": "two_pointers"}
+    WIDE = {"wide", "wide_free", "forty_five_missed", "short"}
+    WON = {"turnover_won", "interception", "tackle_won", "block"}
+    KO_WON = {"own_kickout_won", "own_kickout_won_break", "opp_kickout_won", "opp_kickout_won_break",
+              "own_kickout_opposition_won", "own_kickout_opposition_won_break",
+              "opp_kickout_opposition_won", "opp_kickout_opposition_won_break", "kickout_won", "breaking_ball_won"}
+    CARDS = {"yellow_card": "yellow", "black_card": "black", "red_card": "red"}
+
+    def blank(side, name, number):
+        return {"team": side, "player": name, "number": number, "goals": 0, "points": 0, "two_pointers": 0, "assists": 0,
+                "wides": 0, "turnovers_won": 0, "turnovers_lost": 0, "unforced_errors": 0, "kickouts_won": 0,
+                "fouls": 0, "yellow": 0, "black": 0, "red": 0, "carries": 0, "passes_made": 0}
+
+    stats: dict = {}
+
+    def row(side, key, name, number):
+        k = (side, key)
+        if k not in stats:
+            stats[k] = blank(side, name, number)
+        return stats[k]
+
+    def is_opp(e):
+        return str(getattr(e.team, "value", e.team)).lower() == "opponent"
+
+    def actor(e):
+        """(side, key, name, number) for the player who did the event, or None."""
+        if is_opp(e):
+            oid = str(e.opposition_player_id) if getattr(e, "opposition_player_id", None) else None
+            if oid and oid in opp_info:
+                return ("opposition", oid, opp_info[oid]["name"], opp_info[oid]["number"])
+            nm = getattr(e, "opponent_player_name", None)
+            return ("opposition", nm, nm, None) if nm else None
+        pid = str(e.player_id) if e.player_id else None
+        if pid and pid in own_players:
+            p = own_players[pid]
+            return ("own", pid, p.name, p.jersey_number)
+        return None
+
+    for e in events:
+        et = e.event_type.value if hasattr(e.event_type, "value") else str(e.event_type)
+        a = actor(e)
+        if a:
+            r = row(*a)
+            if et in SCORE:
+                r[SCORE[et]] += 1
+            elif et in WIDE:
+                r["wides"] += 1
+            elif et in WON:
+                r["turnovers_won"] += 1
+            elif et == "turnover_lost":
+                r["turnovers_lost"] += 1
+            elif et == "unforced_error":
+                r["turnovers_lost"] += 1
+                r["unforced_errors"] += 1
+            elif et in KO_WON:
+                r["kickouts_won"] += 1
+            elif et == "foul_committed":
+                r["fouls"] += 1
+            elif et in CARDS:
+                r[CARDS[et]] += 1
+        if et in SCORE:
+            if e.assist_player_id and str(e.assist_player_id) in own_players:
+                p = own_players[str(e.assist_player_id)]
+                row("own", str(p.id), p.name, p.jersey_number)["assists"] += 1
+            elif is_opp(e) and str(e.id) in assist_by_event:
+                nm = assist_by_event[str(e.id)]
+                hit = next((k for k, v in opp_info.items() if v["name"] == nm), None)
+                row("opposition", hit or nm, nm, opp_info[hit]["number"] if hit else None)["assists"] += 1
+
+    segs = (await db.execute(select(BallCarrierSegment).where(BallCarrierSegment.match_id == mid))).scalars().all()
+    for sg in segs:
+        if sg.opposition_player_id and str(sg.opposition_player_id) in opp_info:
+            oid = str(sg.opposition_player_id)
+            r = row("opposition", oid, opp_info[oid]["name"], opp_info[oid]["number"])
+        elif sg.player_id and str(sg.player_id) in own_players:
+            p = own_players[str(sg.player_id)]
+            r = row("own", str(p.id), p.name, p.jersey_number)
+        else:
+            continue
+        r["carries"] += 1
+        if sg.ended_by == "pass":
+            r["passes_made"] += 1
+
+    for r in stats.values():
+        r["impact_points"] = (r["goals"] * 10 + r["two_pointers"] * 5 + r["points"] * 3 + r["assists"] * 3
+                              + r["turnovers_won"] * 2 + r["kickouts_won"] * 2 - r["turnovers_lost"])
+    out = {"own": [], "opposition": []}
+    for (side, _), r in stats.items():
+        out[side].append(r)
+    for side in out:
+        out[side].sort(key=lambda r: -r["impact_points"])
+    return safe_json({
+        "match_id": str(mid),
+        "own": out["own"], "opposition": out["opposition"],
+        "how_to_read": (
+            "Both lists use identical metrics. impact_points = goals x10 + two-pointers x5 + points x3 + assists x3 + "
+            "turnovers won x2 + kickouts won x2 - turnovers lost x1. It is a starting point, not the verdict: weigh the "
+            "quality and moment of each player's contribution. Judge the opposition's players on exactly this evidence - "
+            "do not favour the logged-in club's players. Opposition rows exist only for players entered in their lineup."
         ),
     })
 

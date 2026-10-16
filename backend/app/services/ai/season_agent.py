@@ -64,6 +64,7 @@ SEASON_TOOLS = [
     "get_turnover_to_shot_time",
     "get_kickout_targets",
     "get_match_expected_points",
+    "get_match_player_impact",
     "create_video_compilation",
     "get_phase_summary",
     "get_season_phase_profile",
