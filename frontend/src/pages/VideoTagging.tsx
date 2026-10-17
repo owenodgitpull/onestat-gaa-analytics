@@ -100,6 +100,8 @@ import {
   useCompleteTracking,
   useResetVideoSession,
 } from '../hooks/useVideoSessions'
+import FinishWarningModal from '../components/video/FinishWarningModal'
+import { videoMovesAPI } from '../services/videoMovesApi'
 import { FOUL_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES, UNFORCED_ERROR_SUBTYPES, TURNOVER_REASON_CONFIG, type TurnoverReason } from '../constants/turnoverSubtypes'
 import PitchActionOverlay from '../components/PitchActionOverlay'
 import {
@@ -3244,6 +3246,33 @@ export default function VideoTagging() {
     }
   }
 
+  // Finish never blocks, but it asks first when tagging looks unfinished: tracking stopped before full time, or items
+  // still need attention. "Finish anyway" goes on to the normal finish step.
+  const [finishWarning, setFinishWarning] = useState<{ lines: string[]; issueCount: number } | null>(null)
+  const requestFinish = async () => {
+    if (!sessionId || !session) return
+    if (session.status === 'completed') { handleSyncClick(); return }
+    const lines: string[] = []
+    const regular = matchHalfMins * 2
+    const total = session.et_first_half_start_ms != null ? regular + ET_PERIOD_MINS * 2 : regular
+    if (session.tracking_completed_at == null) {
+      const t = calcMatchTimeRef.current(highWaterMarkRef.current)
+      const mm = `${t.minute}:${String(t.second).padStart(2, '0')}`
+      const left = Math.max(0, total - t.minute)
+      if (left >= 1) lines.push(`Tracking stopped at ${mm} of ${total}:00, so about ${left} minute${left === 1 ? '' : 's'} have no possession or carries tracked.`)
+      else lines.push('The final whistle has not been marked yet.')
+    }
+    let issueCount = 0
+    try {
+      const h = await videoMovesAPI.health(sessionId)
+      // "no outcome / no type" gaps are tidy-ups, not errors in what happened - count only real problems
+      issueCount = h.issues.filter(i => !['ball_no_outcome'].includes(i.kind)).length
+      if (issueCount > 0) lines.push(`${issueCount} item${issueCount === 1 ? '' : 's'} in "Needs attention" still to check.`)
+    } catch { /* the check is advisory */ }
+    if (lines.length === 0) { handleSyncClick(); return }
+    setFinishWarning({ lines, issueCount })
+  }
+
   const handleSyncClick = async () => {
     if (!sessionId) return
     // Open the dialog at once (with a loading state) instead of after the preview request returns - the button used to
@@ -4147,7 +4176,7 @@ export default function VideoTagging() {
     <div className="relative flex items-center gap-2">
       {events.length > 0 && (
         <button
-          onClick={() => handleSyncClick()}
+          onClick={() => requestFinish()}
           disabled={syncPreview.isPending}
           title={taggingFinished
             ? 'Tagging finished — this match counts in season stats. Edits still save straight to the match.'
@@ -4183,7 +4212,7 @@ export default function VideoTagging() {
             }}
           >
             <button
-              onClick={() => { setShowMoreMenu(false); handleSyncClick() }}
+              onClick={() => { setShowMoreMenu(false); requestFinish() }}
               disabled={syncPreview.isPending || events.length === 0}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left text-sm text-white hover:bg-emerald-500/15 disabled:opacity-40 disabled:hover:bg-transparent transition-colors"
             >
@@ -5385,6 +5414,14 @@ export default function VideoTagging() {
           </>
         )
       })()}
+      <FinishWarningModal
+        open={!!finishWarning}
+        lines={finishWarning?.lines || []}
+        issueCount={finishWarning?.issueCount || 0}
+        onKeepTagging={() => setFinishWarning(null)}
+        onReviewIssues={() => { setFinishWarning(null); setShowNeedsAttention(true) }}
+        onFinishAnyway={() => { setFinishWarning(null); handleSyncClick() }}
+      />
       {isLineupModalOpen && (
         <StartingLineupModal
           isOpen={isLineupModalOpen}
@@ -5731,7 +5768,7 @@ export default function VideoTagging() {
           </div>
           {session.tracking_completed_at != null && !taggingFinished && events.length > 0 && (
             <button
-              onClick={() => handleSyncClick()}
+              onClick={() => requestFinish()}
               disabled={syncPreview.isPending}
               className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors disabled:opacity-60 whitespace-nowrap"
             >
@@ -5845,7 +5882,7 @@ export default function VideoTagging() {
             </p>
           </div>
           <button
-            onClick={() => handleSyncClick()}
+            onClick={() => requestFinish()}
             disabled={syncPreview.isPending}
             className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition-colors disabled:opacity-60 whitespace-nowrap"
           >
