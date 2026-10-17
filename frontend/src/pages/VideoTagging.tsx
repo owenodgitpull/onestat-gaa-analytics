@@ -3641,6 +3641,26 @@ export default function VideoTagging() {
   // Restart winners: whoever first takes the ball after a period's throw-in (1st half, 2nd half, extra time) won it.
   // Recorded once per period as a THROW_IN event at the throw-in mark, with the player.
   const throwInRecordedRef = useRef<Set<number>>(new Set())
+  // Referee's throw ball mid-match (both sides fouling, no free given): arm it, then tap whoever wins it
+  const [throwBallArmed, setThrowBallArmed] = useState(false)
+  const throwBallArmedRef = useRef(false)
+  throwBallArmedRef.current = throwBallArmed
+  const recordThrowBall = (team: 'team_a' | 'team_b', who: { playerId?: string; oppId?: string }) => {
+    if (!sessionId) return
+    const ms = Math.round(currentTimeMsRef.current)
+    const t = calcMatchTimeRef.current(ms)
+    createEvent.mutate({
+      sessionId,
+      data: {
+        event_type: 'THROW_IN', sub_type: 'throw_ball', team, half: t.half, match_minute: t.minute, match_second: t.second,
+        video_timestamp_ms: ms, pitch_x: ballPosition?.x ?? 50, pitch_y: ballPosition?.y ?? 50,
+        description: 'Throw ball won', source: 'human_tag',
+        ...(who.playerId ? { player_id: who.playerId } : {}),
+        ...(who.oppId ? { opposition_player_id: who.oppId } : {}),
+      } as any,
+    })
+    setThrowBallArmed(false)
+  }
   const recordThrowInWinner = (team: 'team_a' | 'team_b', who: { playerId?: string; oppId?: string }) => {
     if (!sessionId || !session) return
     const ms = currentTimeMsRef.current
@@ -3655,7 +3675,7 @@ export default function VideoTagging() {
     if (!hit) return
     const [half, mark] = hit
     if (throwInRecordedRef.current.has(half)) return
-    if ((eventsRef.current as any[]).some(e => e.event_type === 'THROW_IN' && e.half === half)) { throwInRecordedRef.current.add(half); return }
+    if ((eventsRef.current as any[]).some(e => e.event_type === 'THROW_IN' && e.half === half && e.sub_type !== 'throw_ball')) { throwInRecordedRef.current.add(half); return }
     throwInRecordedRef.current.add(half)
     const t = calcMatchTimeRef.current(mark)
     createEvent.mutate({
@@ -3673,7 +3693,12 @@ export default function VideoTagging() {
   const handleCarrierSelect = useCallback((playerId: string, jerseyNumber: number | null) => {
     const bx = ballPosition?.x ?? null
     const by = ballPosition?.y ?? null
-    const current = activeCarrierIdRef.current
+    let current = activeCarrierIdRef.current
+    if (throwBallArmedRef.current) {
+      recordThrowBall('team_a', { playerId })
+      if (current === playerId) return   // he already had it and won the throw ball
+      if (current) { endCarrierQueued(bx, by, 'manual'); current = null }   // a throw ball ends the previous carry (no pass)
+    }
 
     if (current === playerId) {
       // Deselect
@@ -3708,7 +3733,7 @@ export default function VideoTagging() {
     setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     const tapMs = Math.round(currentTimeMsRef.current)
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'own', tapMs))
-  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, sessionId, createEvent, splitCarryAndPass])
+  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, sessionId, createEvent, splitCarryAndPass, recordThrowBall])
 
   carrierSelectRef.current = handleCarrierSelect
 
@@ -3720,7 +3745,12 @@ export default function VideoTagging() {
   const handleOppCarrierSelect = useCallback((playerId: string, jerseyNumber: number | null) => {
     const bx = ballPosition?.x ?? null
     const by = ballPosition?.y ?? null
-    const current = activeOppCarrierIdRef.current
+    let current = activeOppCarrierIdRef.current
+    if (throwBallArmedRef.current) {
+      recordThrowBall('team_b', { oppId: playerId })
+      if (current === playerId) return
+      if (current) { endCarrierQueued(bx, by, 'manual'); current = null }
+    }
     if (current === playerId) {
       endCarrierQueued(bx, by, 'manual')
       return
@@ -3736,7 +3766,7 @@ export default function VideoTagging() {
     setRecentOppCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
     const tapMs = Math.round(currentTimeMsRef.current)
     enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'opponent', tapMs))
-  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, handleQuickPass, splitCarryAndPass])
+  }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, handleQuickPass, splitCarryAndPass, recordThrowBall])
 
   // Open the Shooting tab as soon as the team in possession works the ball into shooting range (once per entry)
   useAutoShootingTab({
@@ -4233,7 +4263,7 @@ export default function VideoTagging() {
       { key: 'dead', icon: manualDeadBall ? <Play size={15} /> : <PauseCircle size={15} />, label: manualDeadBall ? 'Play on' : 'Dead ball', onClick: () => setManualDeadBall(v => !v) },
       { key: 'weather', icon: <CloudSun size={15} />, label: 'Weather', onClick: () => setShowWeatherPicker(true) },
       { key: 'sub', icon: <UserPlus size={15} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
-      { key: 'swap', icon: <ArrowLeftRight size={15} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
+      { key: 'throwball', icon: <ArrowLeftRight size={15} />, label: throwBallArmed ? 'Cancel throw ball' : 'Throw ball', onClick: () => setThrowBallArmed(v => !v) },
       { key: 'event', icon: <Plus size={15} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
       { key: 'attention', icon: <ClipboardCheck size={15} />, label: 'Needs attention', onClick: () => setShowNeedsAttention(true) },
       { key: 'stopclock', icon: <Timer size={15} />, label: clockStopStartMs == null ? 'Stop clock' : 'Resume clock', onClick: () => toggleClockStop() },
@@ -5598,6 +5628,14 @@ export default function VideoTagging() {
           Feeds expected_points_service.py's pressure multiplier; closing
           without choosing leaves under_pressure at None (the correct
           "not recorded" default). */}
+      {throwBallArmed && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[200] animate-fade-in">
+          <div className="flex items-center gap-3 rounded-2xl px-4 py-2" style={{ background: 'rgba(15,23,42,0.92)', border: '1px solid rgba(251,191,36,0.6)' }}>
+            <span className="text-amber-300 text-sm font-bold">Throw ball - tap the player who wins it</span>
+            <button onClick={() => setThrowBallArmed(false)} className="text-white/50 hover:text-white text-sm px-1.5">Cancel</button>
+          </div>
+        </div>
+      )}
       {pendingPressure && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[200] animate-fade-in">
           <div
@@ -5874,7 +5912,7 @@ export default function VideoTagging() {
             {[
               { key: 'dead', icon: manualDeadBall ? <Play size={14} /> : <PauseCircle size={14} />, label: manualDeadBall ? 'Play on' : 'Dead ball', onClick: () => setManualDeadBall(v => !v) },
               { key: 'sub', icon: <UserPlus size={14} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
-              { key: 'swap', icon: <ArrowLeftRight size={14} />, label: 'Swap', onClick: () => setShowPositionSwap(true) },
+              { key: 'throwball', icon: <ArrowLeftRight size={14} />, label: throwBallArmed ? 'Cancel throw ball' : 'Throw ball', onClick: () => setThrowBallArmed(v => !v) },
               { key: 'event', icon: <Plus size={14} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
               { key: 'attention', icon: <ClipboardCheck size={14} />, label: 'Needs attention', onClick: () => setShowNeedsAttention(true) },
               { key: 'stopclock', icon: <Timer size={14} />, label: clockStopStartMs == null ? 'Stop clock' : 'Resume clock', onClick: () => toggleClockStop() },
