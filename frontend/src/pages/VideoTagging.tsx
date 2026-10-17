@@ -494,6 +494,9 @@ export default function VideoTagging() {
 
   // Assist prompt — auto-opened after an own-team score finalizes.
   const [assistPromptEventId, setAssistPromptEventId] = useState<string | null>(null)
+  // optional 'which foot?' chip after a score from play (only tagged when unusual, e.g. a left-footed score)
+  const [footChipEventId, setFootChipEventId] = useState<string | null>(null)
+  const scoreFootRef = useRef<Record<string, 'L' | 'R' | 'F'>>({})
 
   // Pressure prompt — auto-opened after any own-team shot attempt (make or
   // miss) finalizes. Stores the created event's existing scoring_context so
@@ -2078,6 +2081,7 @@ export default function VideoTagging() {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
           if (created?.id) setPendingPressure({ eventId: created.id, scoringContext: created.scoring_context || {} })
+          if (created?.id && ['POINT_SCORED', 'GOAL'].includes(data.event_type)) setFootChipEventId(created.id)
           // Live offers "who assisted?" on every own goal / point / two-pointer from play — not frees or 45s. Until now
           // this only fired from the manual-event form, so scores tagged the normal way never asked.
           if (created?.id && ['GOAL_SCORED', 'POINT_SCORED'].includes(data.event_type)) setAssistPromptEventId(created.id)
@@ -4885,6 +4889,32 @@ export default function VideoTagging() {
           </div>
         </div>
       )}
+      {footChipEventId && (
+        <div
+          className="absolute bottom-16 left-2 z-30 flex items-center gap-1.5 rounded-xl px-2 py-1.5 animate-fade-in"
+          style={{ background: 'rgba(15,23,42,0.92)', border: '1px solid rgba(251,191,36,0.6)', backdropFilter: 'blur(10px)' }}
+        >
+          <span className="text-[11px] font-bold text-white/70">Foot?</span>
+          {([['L', 'Left'], ['R', 'Right'], ['F', 'Fist']] as const).map(([code, label]) => (
+            <button
+              key={code}
+              onClick={() => {
+                scoreFootRef.current[footChipEventId] = code
+                if (sessionId) {
+                  const ev: any = (events as any[]).find(e => e.id === footChipEventId)
+                  const ctx = { ...(ev?.scoring_context || {}), ...(pendingPressure?.eventId === footChipEventId ? pendingPressure.scoringContext : {}), foot: code }
+                  updateEvent.mutate({ eventId: footChipEventId, sessionId, data: { scoring_context: ctx } })
+                }
+                setFootChipEventId(null)
+              }}
+              className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-white bg-white/10 hover:bg-amber-500/30 active:scale-95 transition"
+            >
+              {label}
+            </button>
+          ))}
+          <button onClick={() => setFootChipEventId(null)} className="text-white/40 hover:text-white p-0.5" aria-label="Skip">✕</button>
+        </div>
+      )}
       {assistPromptEventId && !pendingOppPlayer && assistSquad.enabled && (
         <OppositionWhoChip
           squad={assistSquad}
@@ -5587,7 +5617,7 @@ export default function VideoTagging() {
                   updateEvent.mutate({
                     eventId: pendingPressure.eventId,
                     sessionId,
-                    data: { scoring_context: { ...pendingPressure.scoringContext, under_pressure: true } },
+                    data: { scoring_context: { ...pendingPressure.scoringContext, ...(scoreFootRef.current[pendingPressure.eventId] ? { foot: scoreFootRef.current[pendingPressure.eventId] } : {}), under_pressure: true } },
                   })
                 }
                 setPendingPressure(null)
@@ -5602,7 +5632,7 @@ export default function VideoTagging() {
                   updateEvent.mutate({
                     eventId: pendingPressure.eventId,
                     sessionId,
-                    data: { scoring_context: { ...pendingPressure.scoringContext, under_pressure: false } },
+                    data: { scoring_context: { ...pendingPressure.scoringContext, ...(scoreFootRef.current[pendingPressure.eventId] ? { foot: scoreFootRef.current[pendingPressure.eventId] } : {}), under_pressure: false } },
                   })
                 }
                 setPendingPressure(null)

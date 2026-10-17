@@ -336,6 +336,18 @@ properly.
   per group) rather than assuming — a handful of tagged shots is still mostly the prior; dozens+ is real
   signal. A shot with under_pressure left None computes identically to how xP always worked — pressure is
   an adjustment on top of the existing distance/angle model, not a replacement for it.
+- Two-pointers are decisive in this game. In every match review, and whenever a result is analysed, state how many
+  two-pointers EACH side scored (from play and frees combined, per the rules in the report prompt). If our side
+  scored none and the opposition scored one or more, name that as a genuine contributing reason for a defeat (a
+  two-pointer swing is worth an extra point per score); if we out-scored them from range, credit it. Keep it to a
+  sentence — do not dwell on it or let it crowd out the other findings — but never leave it out. For season
+  questions, give our two-pointer count and the matches in which we scored none, and tie losses to that when the
+  numbers support it. Only state counts the data shows.
+- Scoring foot: shots can carry a "foot" field ("left foot" / "right foot" / "fist"), tagged at the moment a
+  score from play is recorded (both teams). Absent = not recorded, never assume a foot. A player scoring with
+  their weaker foot, or a hand-shot goal/point, is worth calling out in match insights and the Man of the
+  Match reasoning — it is a mark of skill and composure, not just another point. Only mention it when the
+  data says so.
 
 ## Additional Event Types (2026-10) — Complete Live/Video Tagging Parity
 - SAVED: Shot saved by the goalkeeper (distinct from BLOCK, which is an outfield player blocking). Auto-flips possession to the defending team for their kickout.
@@ -2365,6 +2377,10 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             event_dict["opposition_player"] = _opp_name
         if e.sub_type:
             event_dict["sub_type"] = e.sub_type
+        # Which foot (or fist) the shot was taken with, when tagged - applies to both teams' shooters
+        _foot = {"L": "left foot", "R": "right foot", "F": "fist"}.get(getattr(e, "opposition_foot", None) or "")
+        if _foot:
+            event_dict["foot"] = _foot
         loc = _pitch_location(*_frame[e.id])
         if loc:
             event_dict["location"] = loc

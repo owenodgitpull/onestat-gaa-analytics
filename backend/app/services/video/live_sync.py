@@ -31,7 +31,7 @@ def _normalize_foot(scoring_context: Optional[dict]) -> Optional[str]:
     if not raw:
         return None
     first = raw[0].upper()
-    return first if first in ("L", "R") else None
+    return first if first in ("L", "R", "F") else None
 
 
 def _match_event_fields(ve: VideoEvent) -> Optional[dict]:

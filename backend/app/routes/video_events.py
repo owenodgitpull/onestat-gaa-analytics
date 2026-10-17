@@ -88,7 +88,7 @@ def _normalize_foot(scoring_context: Optional[dict]) -> Optional[str]:
     if not raw:
         return None
     first = raw[0].upper()
-    return first if first in ("L", "R") else None
+    return first if first in ("L", "R", "F") else None
 
 
 def _auto_set_two_pointer(event_type: str, pitch_zone: str, scoring_context: dict) -> dict:
