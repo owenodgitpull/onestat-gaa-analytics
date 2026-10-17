@@ -210,7 +210,10 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
 
     # what the scorecard does and does not cover, stated under the table
     n_long = sum(1 for p in ps if p.shot and p.seconds is not None and p.seconds > MAX_TRUSTED_SECONDS)
-    footnote = (f"*These phase counts cover {traced_shots} of the {all_shots} shots logged (possessions the event order could trace)."
+    our_traced = sum(1 for p in ps if p.shot and p.owner_is_own)
+    their_traced = traced_shots - our_traced
+    footnote = (f"*The phase counts cover {our_traced} of our {us.shots} shots and {their_traced} of their {them.shots} "
+                f"(possessions the event order could trace)."
                 + (f" {n_long} shot{'s' if n_long != 1 else ''} followed a possession timed at over two minutes and "
                    f"{'is' if n_long == 1 else 'are'} left out of the median seconds." if n_long else "")
                 + "*")

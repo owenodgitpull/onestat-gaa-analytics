@@ -65,7 +65,16 @@ def _apply_scorecard(text: str, table_md: str) -> str:
             continue
         out.append(ln)
         i += 1
-    return "\n".join(out)
+    # the table already carries its own footnote: drop any copy of it the model typed underneath
+    seen_note = False
+    cleaned = []
+    for ln in out:
+        if ln.strip().startswith("*These phase counts cover") or ln.strip().startswith("*The phase counts cover"):
+            if seen_note:
+                continue
+            seen_note = True
+        cleaned.append(ln)
+    return "\n".join(cleaned)
 
 
 # match_id -> the post-match report generation currently running (see MatchAgent.generate_post_match_report)
