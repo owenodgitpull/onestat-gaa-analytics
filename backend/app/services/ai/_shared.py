@@ -343,6 +343,24 @@ properly.
   sentence — do not dwell on it or let it crowd out the other findings — but never leave it out. For season
   questions, give our two-pointer count and the matches in which we scored none, and tie losses to that when the
   numbers support it. Only state counts the data shows.
+- Event sub_types are the reason/detail behind an event; read them, do not ignore them. Fouls: overcarrying and
+  picked_off_ground are OFFENSIVE fouls by the ball carrier (technical infringements that concede a free - a
+  discipline/skill-execution issue, not a defensive error); pushing, pulling, charging, late_tackle, jersey_pull,
+  obstruction, dissent and three_v_three (3v3 breach: more than three players of one team in a zone) are defensive/
+  conduct fouls. Unforced errors: stray_pass, dropped_ball, miscue, kick_over_sideline, square_ball, three_v_three,
+  time_wasting. Dispossessions: strip, tackle, forced_interception. A THROW_IN event with sub_type throw_ball is the
+  referee's mid-match throw ball (both sides at fault, no free) - its winner is a contested-ball win, not a
+  turnover. When fouls cluster in one sub_type for one player or team, say so and what it implies.
+- Players dropping deep: get_match_player_impact gives each player's starting_position and how far from the goal
+  they attack they pick the ball up (avg_pickup_m_from_goal_attacked, pickups_over_60m_from_goal), for both teams.
+  When a forward (hf/ff line) averages far deeper than forwards normally operate, or several players do, treat it
+  as a tactical signal and explain what it may mean using search_knowledge_base (tactics documents) plus GAA
+  knowledge: a forward dropping deep to collect can be a deliberate tactic (a "link"/playmaker role or a decoy
+  that drags the marker out and opens the inside lane), an outlet vs a sweeper/pressing system, a sign the team is
+  struggling to get clean possession into the forward line, or a fix for a lack of ball-winners at midfield; and the
+  cost is fewer bodies inside, more distance from goal for the shots that follow and exposure on the turnover.
+  Look at what happened next (did the deep collection lead to scores, shots, turnovers?) before judging it good or
+  bad, name the players, and only state the depth figures the data gives.
 - Scoring foot: shots can carry a "foot" field ("left foot" / "right foot" / "fist"), tagged at the moment a
   score from play is recorded (both teams). Absent = not recorded, never assume a foot. A player scoring with
   their weaker foot, or a hand-shot goal/point, is worth calling out in match insights and the Man of the
@@ -6538,6 +6556,14 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
         .where(OppositionLineup.match_id == mid)
     )).all()
     opp_info = {str(pl.id): {"name": pl.surname, "number": lu.jersey_number} for lu, pl in opp_rows}
+    # starting slot per player ('hf-center', 'ff-left', ...) so pick-up depth can be read against the role
+    slot_by_player: dict = {("opposition", str(pl.id)): lu.position_id for lu, pl in opp_rows}
+    try:
+        from app.models.match_lineup import MatchLineup as _ML
+        for _pid, _slot in (await db.execute(select(_ML.player_id, _ML.position_id).where(_ML.match_id == mid))).all():
+            slot_by_player[("own", str(_pid))] = _slot
+    except Exception:
+        pass
 
     events = (await db.execute(select(MatchEvent).where(MatchEvent.match_id == mid))).scalars().all()
     # Opposition assists are not our players: they travel in the linked video event's scoring_context
@@ -6639,6 +6665,11 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
         pass
 
     segs = (await db.execute(select(BallCarrierSegment).where(BallCarrierSegment.match_id == mid))).scalars().all()
+    from app.utils.attack_direction import own_attacks_right, to_attack_frame
+    from app.utils.pitch_calibration import along_m
+    _hdm = match.half_duration_mins or 30
+    _len = float(match.pitch_length_m) if getattr(match, "pitch_length_m", None) else 145.0
+    pickups: dict = {}
     for sg in segs:
         if sg.opposition_player_id and str(sg.opposition_player_id) in opp_info:
             oid = str(sg.opposition_player_id)
@@ -6651,7 +6682,25 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
         r["carries"] += 1
         if sg.ended_by == "pass":
             r["passes_made"] += 1
+        # where the player picked the ball up: metres from the goal line THEIR team is attacking
+        if sg.start_x is not None and sg.start_y is not None:
+            try:
+                fx, _fy = to_attack_frame(float(sg.start_x), float(sg.start_y),
+                                          own_attacks_right(match.attacking_right_first_half, sg.half, sg.minute, _hdm))
+                side_own = r["team"] == "own"
+                pickups.setdefault(id(r), []).append(along_m((100.0 - fx) if side_own else fx, _len))
+            except Exception:
+                pass
 
+    for (_side, _key), r in stats.items():
+        _p = pickups.get(id(r)) or []
+        _slot = slot_by_player.get((_side, str(_key)))
+        if _slot:
+            r["starting_position"] = _slot
+        if len(_p) >= 3:
+            r["pickups_measured"] = len(_p)
+            r["avg_pickup_m_from_goal_attacked"] = round(sum(_p) / len(_p))
+            r["pickups_over_60m_from_goal"] = sum(1 for d in _p if d > 60)
     for r in stats.values():
         r["impact_points"] = (r["goals"] * 10 + r["two_pointers"] * 5 + r["points"] * 3 + r["assists"] * 3
                               + r["turnovers_won"] * 2 + r["kickouts_won"] * 2 + r["throw_ins_won"] * 2 - r["turnovers_lost"])
@@ -6667,7 +6716,12 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
             "Both lists use identical metrics. impact_points = goals x10 + two-pointers x5 + points x3 + assists x3 + "
             "turnovers won x2 + kickouts won x2 + throw-ins won x2 - turnovers lost x1. It is a starting point, not the verdict: weigh the "
             "quality and moment of each player's contribution. Judge the opposition's players on exactly this evidence - "
-            "do not favour the logged-in club's players. Opposition rows exist only for players entered in their lineup."
+            "do not favour the logged-in club's players. Opposition rows exist only for players entered in their lineup. "
+            "PICK-UP DEPTH: avg_pickup_m_from_goal_attacked is how far from the goal line a player's team is attacking he "
+            "picked the ball up on average (pickups_over_60m_from_goal counts pick-ups that deep); starting_position is his "
+            "named slot (fb/hb/mf/hf/ff = full-back, half-back, midfield, half-forward, full-forward lines). A forward whose average "
+            "is far deeper than a forward normally operates (roughly beyond 50-60m) is dropping deep to collect - see the "
+            "'Players dropping deep' guidance."
         ),
     })
 
