@@ -5856,7 +5856,7 @@ export default function VideoTagging() {
     return (
       <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col">
         {/* Compact top bar */}
-        <div className="flex items-center justify-between px-2 py-1.5 bg-slate-900/90 border-b border-white/10 flex-shrink-0 gap-2">
+        <div className="flex flex-wrap items-center justify-between px-2 py-1.5 bg-slate-900/90 border-b border-white/10 flex-shrink-0 gap-x-2 gap-y-1">
           <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
             <button
               onClick={() => setIsFullscreen(false)}
@@ -5869,7 +5869,7 @@ export default function VideoTagging() {
           </div>
 
           {scoreboard(true)}
-          {clockControls(true)}
+          <div className="relative z-10 flex-shrink-0">{clockControls(true)}</div>
           <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1 py-0.5">
             {[
               { key: 'dead', icon: manualDeadBall ? <Play size={14} /> : <PauseCircle size={14} />, label: manualDeadBall ? 'Play on' : 'Dead ball', onClick: () => setManualDeadBall(v => !v) },
@@ -5985,7 +5985,7 @@ export default function VideoTagging() {
           <div className="flex-shrink-0" data-tour="video-scoreboard">{scoreboard(true)}</div>
         </div>
         {/* Centre: match clock */}
-        <div className="justify-self-center flex-shrink-0">{clockControls()}</div>
+        <div className="justify-self-center flex-shrink-0 relative z-10">{clockControls()}</div>
         {/* Right: view tools + More */}
         <div className="flex items-center gap-2 justify-self-end">
           {viewToolsBar()}
