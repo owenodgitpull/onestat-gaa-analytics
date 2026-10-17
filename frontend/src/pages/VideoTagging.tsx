@@ -794,6 +794,10 @@ export default function VideoTagging() {
   const pitchInputNeeded = overlayState === 'pitch' || !!pendingFoulSubtype || !!pendingTurnoverReason ||
     !!pendingErrorSubtype || !!pendingFreeKick || (awaitingKickout && !kickoutMinimised)
   const possLive = mode === 'tracking' && isPlaying && !deadBall && !reviewing
+  // Full time reached: a restart prompt left over from the last event (e.g. waiting for a kickout outcome) is over
+  useEffect(() => {
+    if (mode === 'edit') { setAwaitingKickout(false); setKickoutTab(null); setKickoutMinimised(false) }
+  }, [mode])
   const possLiveRef = useRef(false)
   possLiveRef.current = possLive
   inputPendingRef.current = pitchInputNeeded || overlayState !== 'none' || deadBall
@@ -5432,7 +5436,7 @@ export default function VideoTagging() {
             : undefined
         }
         pendingFortyFivePosition={overlayState === 'pitch' && pendingOverlay?.action.pitchPrompt === 'forty_five'}
-        awaitingKickout={awaitingKickout && !kickoutMinimised && overlayState === 'none'}
+        awaitingKickout={mode === 'tracking' && awaitingKickout && !kickoutMinimised && overlayState === 'none'}
         onCancelFree={handleCancelFree}
         onCancel45={handleCancel45}
         onCancelKickout={handleCancelPitchStep}

@@ -65,10 +65,36 @@ const detailWord = (code: string | null | undefined): string => {
 }
 
 /** Short extra line for an event (reason, outcome, note), or '' when there is nothing useful to add. */
+const SHOT_TYPES = new Set(['POINT_SCORED', 'GOAL_SCORED', 'WIDE', 'SHORT', 'SAVED', 'HIT_POST', 'POST_HIT', 'GOAL_CHANCE'])
+const FOOT_WORDS: Record<string, string> = { L: 'left foot', R: 'right foot', F: 'fist' }
+
+/** A half-sentence for a shot: "from play, left foot, assisted by Moore, under pressure". Only what was tagged. */
+function shotPhrase(e: {
+  event_type: string; scoring_context?: Record<string, any> | null; assist_player_name?: string | null
+}): string {
+  const sc = e.scoring_context || {}
+  const src = String(sc.source ?? '').toUpperCase()
+  const bits: string[] = []
+  if (src.includes('FREE')) bits.push('from a free')
+  else if (src.includes('45')) bits.push('from a 45')
+  else if (src.includes('PLAY')) bits.push('from play')
+  const foot = FOOT_WORDS[String(sc.foot ?? '').trim().charAt(0).toUpperCase()]
+  if (foot) bits.push(foot)
+  const assist = (e.assist_player_name || sc.assist_player_name || '').toString().trim()
+  if (assist && (e.event_type === 'POINT_SCORED' || e.event_type === 'GOAL_SCORED')) bits.push(`assisted by ${assist.split(' ').slice(-1)[0]}`)
+  if (sc.under_pressure === true) bits.push('under pressure')
+  return bits.join(', ')
+}
+
 export function videoEventDetail(e: {
   event_type: string; sub_type?: string | null; description?: string | null
-  scoring_context?: Record<string, any> | null
+  scoring_context?: Record<string, any> | null; assist_player_name?: string | null; brought_forward?: boolean
 }): string {
+  if (SHOT_TYPES.has(e.event_type)) {
+    const p = shotPhrase(e)
+    const extra = e.sub_type ? detailWord(e.sub_type) : ''
+    return [p, extra].filter(Boolean).join(' · ')
+  }
   const parts: string[] = []
   const sc = e.scoring_context || {}
   if (e.event_type === 'FREE_KICK') {
@@ -83,5 +109,6 @@ export function videoEventDetail(e: {
     const word = detailWord(d)
     if (!parts.includes(word)) parts.push(d === word ? d : d)
   }
+  if (e.event_type === 'FOUL_COMMITTED' && e.brought_forward) parts.push('brought forward')
   return Array.from(new Set(parts)).join(' · ')
 }
