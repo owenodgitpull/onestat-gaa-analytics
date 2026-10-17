@@ -228,8 +228,8 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
             "shots_logged": all_shots,
             "shots_inside_traced_possessions": traced_shots,
             "note": ("The phase counts only cover shots that sit inside a possession the event order could trace. "
-                     "Quote the match totals from the score line and halves; when you give a phase figure say how much of "
-                     "the match it covers (for example '22 of 28 shots')."),
+                     "Quote the match totals from the score line and halves. The scorecard footnote already states this "
+                     "coverage, so do not repeat it in the written analysis and never quote a coverage figure that adds both teams' shots together."),
         },
         "scores_by_origin": {
             **origins,

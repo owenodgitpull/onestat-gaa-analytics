@@ -491,8 +491,11 @@ INSTRUCTIONS:
       `frees` (frees we conceded, how many were followed by a free shot for them and how many were scored - say the two facts side by side, never "caused"),
       `our_shots_by_range` (shots, scores and points by distance from goal). Do not mix these with phase counts as if they were the same denominator.
     - get_phase_summary also returns `halves` (score at the end of each half and how long each half ran), `coverage` (how many shots
-      the phase counts cover) and `scores_by_origin` (where each team's scores came from). Use those figures; state coverage when you
-      quote a phase count.
+      the phase counts cover) and `scores_by_origin` (where each team's scores came from). Use those figures. Coverage is already stated
+      in the footnote under the scorecard table, so do NOT write coverage sentences in the analysis (never "these phase counts cover 35 of
+      the 49 shots logged" - that is both teams' shots added together and means nothing to a reader). Describe phase figures in terms of the
+      team and the half they belong to ("five turnovers we lost in the second half became four Cork shots"). Only if a figure rests on very
+      few possessions, say so in plain words ("only three possessions, so treat it as a pointer").
 7j. HOW THE GAME WAS WON / LOST — REQUIRED, placed straight after the Summary. Heading by result: "How the Game Was Won", "How the Game Was Lost", or "How the Game Was Shared" for a draw. Short headed paragraphs, NOT bullets, with the figures inside the sentences (a manager wants numbers carried by a sentence, not a list of numbers):
     - One bold verdict sentence: the result, the margin in GAA language, and when it was decided (from `halves` and margin_by_ten_minutes). Example shape: "Lost by 3 points (0-18 to 1-18), and the match was decided in the first half."
     - Paragraph 1, "What decided it" (a win: "What won it"): the one or two phases that moved the scoreboard, in order of importance, each with its figures from get_phase_summary and scores_by_origin and how much of the match it covers. This is the ONE story from 7i; the Phase Analysis section carries the detail.
