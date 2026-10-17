@@ -2538,6 +2538,30 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
     _opp_lineup = await _opposition_lineup_block(db, match_row.id if match_row else match_id)
     if _opp_lineup:
         result_payload["opposition_lineup"] = _opp_lineup
+    try:
+        from app.models.video_event import VideoEvent as _VE
+        _ti = (await db.execute(
+            select(_VE).where(_VE.match_id == (match_row.id if match_row else match_id), _VE.event_type == "THROW_IN")
+            .order_by(_VE.video_timestamp_ms)
+        )).scalars().all()
+        if _ti:
+            _label = {1: "1st half", 2: "2nd half", 3: "extra time 1st period", 4: "extra time 2nd period"}
+            _opp_nm = {}
+            _oids = [e.opposition_player_id for e in _ti if e.opposition_player_id]
+            if _oids:
+                from app.models.opposition import OppositionPlayer as _OP
+                _opp_nm = {str(p.id): p.surname for p in (await db.execute(select(_OP).where(_OP.id.in_(_oids)))).scalars().all()}
+            _own_nm = {}
+            _pids = [e.player_id for e in _ti if e.player_id]
+            if _pids:
+                _own_nm = {str(p.id): p.name for p in (await db.execute(select(Player).where(Player.id.in_(_pids)))).scalars().all()}
+            result_payload["throw_in_winners"] = [{
+                "period": _label.get(e.half, f"period {e.half}"),
+                "won_by_team": "own" if e.team == "team_a" else "opposition",
+                "player": _own_nm.get(str(e.player_id)) if e.player_id else _opp_nm.get(str(e.opposition_player_id)),
+            } for e in _ti]
+    except Exception:
+        pass
     if _opp_ko:
         result_payload["opposition_kickout_winners"] = sorted(_opp_ko.values(), key=lambda r: -r["kickouts_won"])
     if _opp_scorers:
@@ -6526,7 +6550,7 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
     def blank(side, name, number):
         return {"team": side, "player": name, "number": number, "goals": 0, "points": 0, "two_pointers": 0, "assists": 0,
                 "wides": 0, "turnovers_won": 0, "turnovers_lost": 0, "unforced_errors": 0, "kickouts_won": 0,
-                "fouls": 0, "yellow": 0, "black": 0, "red": 0, "carries": 0, "passes_made": 0}
+                "throw_ins_won": 0, "fouls": 0, "yellow": 0, "black": 0, "red": 0, "carries": 0, "passes_made": 0}
 
     stats: dict = {}
 
@@ -6584,6 +6608,20 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
                 hit = next((k for k, v in opp_info.items() if v["name"] == nm), None)
                 row("opposition", hit or nm, nm, opp_info[hit]["number"] if hit else None)["assists"] += 1
 
+    try:
+        ti_rows = (await db.execute(
+            select(VideoEvent).where(VideoEvent.match_id == mid, VideoEvent.event_type == "THROW_IN")
+        )).scalars().all()
+        for ev in ti_rows:
+            if ev.opposition_player_id and str(ev.opposition_player_id) in opp_info:
+                o = opp_info[str(ev.opposition_player_id)]
+                row("opposition", str(ev.opposition_player_id), o["name"], o["number"])["throw_ins_won"] += 1
+            elif ev.player_id and str(ev.player_id) in own_players:
+                p = own_players[str(ev.player_id)]
+                row("own", str(p.id), p.name, p.jersey_number)["throw_ins_won"] += 1
+    except Exception:
+        pass
+
     segs = (await db.execute(select(BallCarrierSegment).where(BallCarrierSegment.match_id == mid))).scalars().all()
     for sg in segs:
         if sg.opposition_player_id and str(sg.opposition_player_id) in opp_info:
@@ -6600,7 +6638,7 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
 
     for r in stats.values():
         r["impact_points"] = (r["goals"] * 10 + r["two_pointers"] * 5 + r["points"] * 3 + r["assists"] * 3
-                              + r["turnovers_won"] * 2 + r["kickouts_won"] * 2 - r["turnovers_lost"])
+                              + r["turnovers_won"] * 2 + r["kickouts_won"] * 2 + r["throw_ins_won"] * 2 - r["turnovers_lost"])
     out = {"own": [], "opposition": []}
     for (side, _), r in stats.items():
         out[side].append(r)
@@ -6611,7 +6649,7 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
         "own": out["own"], "opposition": out["opposition"],
         "how_to_read": (
             "Both lists use identical metrics. impact_points = goals x10 + two-pointers x5 + points x3 + assists x3 + "
-            "turnovers won x2 + kickouts won x2 - turnovers lost x1. It is a starting point, not the verdict: weigh the "
+            "turnovers won x2 + kickouts won x2 + throw-ins won x2 - turnovers lost x1. It is a starting point, not the verdict: weigh the "
             "quality and moment of each player's contribution. Judge the opposition's players on exactly this evidence - "
             "do not favour the logged-in club's players. Opposition rows exist only for players entered in their lineup."
         ),

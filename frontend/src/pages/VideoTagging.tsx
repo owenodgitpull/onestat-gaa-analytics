@@ -3527,6 +3527,38 @@ export default function VideoTagging() {
     })
   }
 
+  // Restart winners: whoever first takes the ball after a period's throw-in (1st half, 2nd half, extra time) won it.
+  // Recorded once per period as a THROW_IN event at the throw-in mark, with the player.
+  const throwInRecordedRef = useRef<Set<number>>(new Set())
+  const recordThrowInWinner = (team: 'team_a' | 'team_b', who: { playerId?: string; oppId?: string }) => {
+    if (!sessionId || !session) return
+    const ms = currentTimeMsRef.current
+    const marks: Array<[number, number | null | undefined]> = [
+      [1, session.first_half_start_ms], [2, session.second_half_start_ms],
+      [3, session.et_first_half_start_ms], [4, session.et_second_half_start_ms],
+    ]
+    let hit: [number, number] | null = null
+    for (const [half, mark] of marks) {
+      if (mark != null && ms >= mark - 500 && ms <= mark + 30000) hit = [half, mark]
+    }
+    if (!hit) return
+    const [half, mark] = hit
+    if (throwInRecordedRef.current.has(half)) return
+    if ((eventsRef.current as any[]).some(e => e.event_type === 'THROW_IN' && e.half === half)) { throwInRecordedRef.current.add(half); return }
+    throwInRecordedRef.current.add(half)
+    const t = calcMatchTimeRef.current(mark)
+    createEvent.mutate({
+      sessionId,
+      data: {
+        event_type: 'THROW_IN', team, half: t.half, match_minute: t.minute, match_second: t.second,
+        video_timestamp_ms: Math.round(mark), pitch_x: 50, pitch_y: 50, pitch_zone: 'MID_CENTRE',
+        description: 'Throw-in won', source: 'human_tag',
+        ...(who.playerId ? { player_id: who.playerId } : {}),
+        ...(who.oppId ? { opposition_player_id: who.oppId } : {}),
+      } as any,
+    })
+  }
+
   const handleCarrierSelect = useCallback((playerId: string, jerseyNumber: number | null) => {
     const bx = ballPosition?.x ?? null
     const by = ballPosition?.y ?? null
@@ -3558,6 +3590,7 @@ export default function VideoTagging() {
         })
       }
     }
+    if (!current) recordThrowInWinner('team_a', { playerId })
     setActiveCarrierId(playerId)
     resolveBallOutcomeRef.current('team_a', playerId)
     // Track recent carriers (most recent first, max 10)
@@ -3585,6 +3618,7 @@ export default function VideoTagging() {
       endCarrierQueued(carryEnd?.x ?? bx, carryEnd?.y ?? by, 'pass', true)
       handleQuickPass({ from: carryEnd, to: dest })   // a different opposition player picking it up is a pass (keeps the PPDA pass count)
     }
+    if (!current) recordThrowInWinner('team_b', { oppId: playerId })
     setActiveOppCarrierId(playerId)
     resolveBallOutcomeRef.current('team_b')   // their kick pass found one of their players: completed
     setRecentOppCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
