@@ -17,7 +17,7 @@ import {
 import type { PitchZone } from './PitchZoneSelector'
 import { TWO_POINTER_ZONES, xyToZone } from './PitchZoneSelector'
 import type { VideoEventCreateData } from '../../services/videoApi'
-import { TURNOVER_REASON_CONFIG, FOUL_SUBTYPES, type TurnoverReason } from '../../constants/turnoverSubtypes'
+import { TURNOVER_REASON_CONFIG, FOUL_SUBTYPES, UNFORCED_ERROR_PICKER_SUBTYPES, isFoulLikeError, type TurnoverReason } from '../../constants/turnoverSubtypes'
 
 export type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
 
@@ -380,6 +380,8 @@ export default function VideoQuickActions({
   // Finalize the flat reason+subtype picker in one tap — `subtype` is
   // omitted when a group header (not a specific subtype button) was tapped.
   const handleTurnoverFlatTap = useCallback((reason: TurnoverReason, subtype?: string) => {
+    // overcarrying / picked off the ground picked from the Unforced Error list is still the offensive foul (concedes a free)
+    if (reason === 'unforced' && isFoulLikeError(subtype) && !turnoverPanel?.opposition) reason = 'offensive_foul'
     const { eventType } = TURNOVER_REASON_CONFIG[reason]
     const videoEventType =
       eventType === 'unforced_error' ? 'OUR_UNFORCED_ERROR'
@@ -795,7 +797,7 @@ export default function VideoQuickActions({
                   {TURNOVER_REASON_CONFIG[reason].label}
                 </button>
                 <div className="pl-2 space-y-1">
-                  {TURNOVER_REASON_CONFIG[reason].subtypeOptions.map((opt) => (
+                  {(reason === 'unforced' && !turnoverPanel.opposition ? UNFORCED_ERROR_PICKER_SUBTYPES : TURNOVER_REASON_CONFIG[reason].subtypeOptions).map((opt) => (
                     <button
                       key={opt.value}
                       onClick={() => handleTurnoverFlatTap(reason, opt.value)}

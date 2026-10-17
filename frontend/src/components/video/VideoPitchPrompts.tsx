@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MapPin } from 'lucide-react'
 import {
-  UNFORCED_ERROR_SUBTYPES, FOUL_SUBTYPES, DISPOSSESSION_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES,
+  UNFORCED_ERROR_SUBTYPES, UNFORCED_ERROR_PICKER_SUBTYPES, FOUL_SUBTYPES, DISPOSSESSION_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES,
   type SubtypeOption, type TurnoverReason,
 } from '../../constants/turnoverSubtypes'
 
@@ -95,6 +95,7 @@ const QUICK: Array<{ label: string; reason: TurnoverReason; sub?: string; hover:
   { label: 'Kick Pass', reason: 'unforced', sub: 'kick_over_sideline', hover: 'hover:bg-amber-600/30 hover:border-amber-500/40' },
   { label: 'Handling', reason: 'unforced', sub: 'dropped_ball', hover: 'hover:bg-amber-600/30 hover:border-amber-500/40' },
   { label: 'Tackled', reason: 'dispossession', sub: 'tackle', hover: 'hover:bg-red-600/30 hover:border-red-500/40' },
+  { label: 'Off Ground', reason: 'offensive_foul', sub: 'picked_off_ground', hover: 'hover:bg-orange-600/30 hover:border-orange-500/40' },
   { label: 'Foul', reason: 'offensive_foul', hover: 'hover:bg-orange-600/30 hover:border-orange-500/40' },
   { label: 'Stray Pass', reason: 'unforced', sub: 'stray_pass', hover: 'hover:bg-amber-600/30 hover:border-amber-500/40' },
   { label: 'Square', reason: 'unforced', sub: 'square_ball', hover: 'hover:bg-amber-600/30 hover:border-amber-500/40' },
@@ -135,7 +136,7 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip }: TurnoverR
             <div>
               <p className="text-[10px] font-semibold text-amber-400/60 uppercase tracking-wide mb-1">Unforced Error</p>
               <div className="flex flex-wrap gap-1.5">
-                {UNFORCED_ERROR_SUBTYPES.filter(s => !['dropped_ball', 'kick_over_sideline', 'square_ball', 'stray_pass'].includes(s.value)).map(({ value, label }) => (
+                {UNFORCED_ERROR_PICKER_SUBTYPES.filter(s => !['dropped_ball', 'kick_over_sideline', 'square_ball', 'stray_pass'].includes(s.value)).map(({ value, label }) => (
                   <button key={value} onClick={() => onSelect('unforced', value)} className={`${chip} hover:bg-amber-600/20 hover:border-amber-500/30`}>{label}</button>
                 ))}
               </div>

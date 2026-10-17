@@ -103,7 +103,7 @@ import {
 import FinishWarningModal from '../components/video/FinishWarningModal'
 import ClockStoppedModal from '../components/video/ClockStoppedModal'
 import { videoMovesAPI } from '../services/videoMovesApi'
-import { FOUL_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES, UNFORCED_ERROR_SUBTYPES, TURNOVER_REASON_CONFIG, type TurnoverReason } from '../constants/turnoverSubtypes'
+import { FOUL_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES, UNFORCED_ERROR_PICKER_SUBTYPES, TURNOVER_REASON_CONFIG, isFoulLikeError, type TurnoverReason } from '../constants/turnoverSubtypes'
 import PitchActionOverlay from '../components/PitchActionOverlay'
 import {
   SubtypePrompt,
@@ -2317,6 +2317,8 @@ export default function VideoTagging() {
     const stash = pendingTurnoverReason
     setPendingTurnoverReason(null)
     if (!stash || !sessionId) return
+    // overcarrying / picked off the ground chosen from the Unforced Error list are still the offensive foul
+    if (reason === 'unforced' && isFoulLikeError(subType)) reason = 'offensive_foul'
     const cfg = TURNOVER_REASON_CONFIG[reason]
     const resolvedSub = cfg.foulMode && tactical ? 'tactical' : subType
     const videoType = reason === 'dispossession' ? 'TURNOVER_LOST' : reason === 'unforced' ? 'OUR_UNFORCED_ERROR' : 'FOUL_COMMITTED'
@@ -2350,9 +2352,19 @@ export default function VideoTagging() {
     const stash = pendingErrorSubtype
     setPendingErrorSubtype(null)
     if (!stash || !sessionId) return
+    if (isFoulLikeError(subtype)) {
+      // overcarrying / picked off the ground: a foul by the carrier that concedes a free, same as the offensive-foul path
+      createEvent.mutate({ sessionId, data: { ...stash.data, event_type: 'FOUL_COMMITTED', sub_type: subtype } as VideoEventCreateData })
+      beginOppositionFree('FOUL_COMMITTED')
+      if (wasPlayingRef.current) {
+        wasPlayingRef.current = false
+        setTimeout(() => playerRef.current?.play(), 100)
+      }
+      return
+    }
     const data: VideoEventCreateData = { ...stash.data, ...(subtype ? { sub_type: subtype } : {}) }
     commitEventRef.current(stash.pending, data)
-  }, [pendingErrorSubtype, sessionId])
+  }, [pendingErrorSubtype, sessionId, createEvent, beginOppositionFree])
 
   /** CategorizedActionButtons main dispatcher — translates EventType enum
    *  into the existing OverlayPendingEvent + handleEventTap pipeline. */
@@ -5367,7 +5379,7 @@ export default function VideoTagging() {
         <SubtypePrompt
           title="What type of error?"
           playerName={pendingErrorSubtype.playerName}
-          options={UNFORCED_ERROR_SUBTYPES}
+          options={UNFORCED_ERROR_PICKER_SUBTYPES}
           onSelect={handleErrorSubtypeSelect}
         />
       )}

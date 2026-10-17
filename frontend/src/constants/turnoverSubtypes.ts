@@ -31,6 +31,11 @@ export const UNFORCED_ERROR_SUBTYPES: SubtypeOption[] = [
   { value: 'time_wasting', label: 'Time Wasting' },
 ]
 
+// Video Tagging shows these two inside the Unforced Error list too (a tagger thinks of them as unforced errors),
+// but they are still logged as the offensive FOUL behind the scenes (a free is conceded) - see FOUL_LIKE_ERROR_VALUES.
+export const FOUL_LIKE_ERROR_VALUES = ['overcarrying', 'picked_off_ground']
+export const isFoulLikeError = (sub?: string | null) => !!sub && FOUL_LIKE_ERROR_VALUES.includes(sub)
+
 export const DISPOSSESSION_SUBTYPES: SubtypeOption[] = [
   { value: 'strip', label: 'Strip' },
   { value: 'tackle', label: 'Tackle' },
@@ -41,6 +46,9 @@ export const OFFENSIVE_FOUL_SUBTYPES: SubtypeOption[] = [
   { value: 'overcarrying', label: 'Overcarrying' },
   { value: 'picked_off_ground', label: 'Picked Off Ground' },
 ]
+
+/** Unforced-error choices for the VIDEO pickers: the normal errors plus overcarrying / picked off the ground. */
+export const UNFORCED_ERROR_PICKER_SUBTYPES: SubtypeOption[] = [...UNFORCED_ERROR_SUBTYPES, ...OFFENSIVE_FOUL_SUBTYPES]
 
 export const FOUL_SUBTYPES: SubtypeOption[] = [
   { value: 'pushing', label: 'Pushing' },
