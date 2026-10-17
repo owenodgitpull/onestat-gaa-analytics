@@ -5785,7 +5785,7 @@ export default function VideoTagging() {
           Title/event-count and the scoreboard were dropped from here to
           keep the video area in focus on laptop-height screens — the
           scoreboard now lives inline in the status bar below instead. */}
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2 xl:grid xl:grid-cols-[1fr_auto_1fr]">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2 2xl:grid 2xl:grid-cols-[1fr_auto_1fr]">
         {/* Left: back + scoreline */}
         <div className="flex items-center gap-2 justify-self-start min-w-0">
           <button onClick={() => navigate(-1)} className="p-2 text-white/50 hover:text-white transition-colors flex-shrink-0">
@@ -5794,7 +5794,7 @@ export default function VideoTagging() {
           <div className="flex-shrink-0" data-tour="video-scoreboard">{scoreboard(true)}</div>
         </div>
         {/* Centre: match clock */}
-        <div className="justify-self-center">{clockControls()}</div>
+        <div className="justify-self-center flex-shrink-0">{clockControls()}</div>
         {/* Right: view tools + More */}
         <div className="flex items-center gap-2 justify-self-end">
           {viewToolsBar()}
