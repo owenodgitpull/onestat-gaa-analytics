@@ -5,28 +5,28 @@ const toSvgX = (pct: number) => (pct / 100) * 1960 + 183
 const toSvgY = (pct: number) => (pct / 100) * 1167 + 123
 const VB_W = 2332, VB_H = 1446
 
-// 45m line from opponent's goal sits at pitch_x ≈ 69 (45/145 * 100)
+// 45m line from opponent's goal sits at pitch_x ≈ 65 (the line AS DRAWN is 35% from a goal line; not 45/145)
 // 6 zones: outside/inside 45m × left/center/right channel
 
 interface Zone { id: string; xMin: number; xMax: number; yMin: number; yMax: number; svgX: number; svgY: number }
 
 const OWN_ZONES: Zone[] = [
-  { id:'o-l', xMin:50, xMax:69, yMin:0,  yMax:33,  svgX:toSvgX(59.5), svgY:toSvgY(16.5) },
-  { id:'o-c', xMin:50, xMax:69, yMin:33, yMax:67,  svgX:toSvgX(59.5), svgY:toSvgY(50)   },
-  { id:'o-r', xMin:50, xMax:69, yMin:67, yMax:100, svgX:toSvgX(59.5), svgY:toSvgY(83.5) },
-  { id:'i-l', xMin:69, xMax:100,yMin:0,  yMax:33,  svgX:toSvgX(84.5), svgY:toSvgY(16.5) },
-  { id:'i-c', xMin:69, xMax:100,yMin:33, yMax:67,  svgX:toSvgX(84.5), svgY:toSvgY(50)   },
-  { id:'i-r', xMin:69, xMax:100,yMin:67, yMax:100, svgX:toSvgX(84.5), svgY:toSvgY(83.5) },
+  { id:'o-l', xMin:50, xMax:65, yMin:0,  yMax:33,  svgX:toSvgX(57.5), svgY:toSvgY(16.5) },
+  { id:'o-c', xMin:50, xMax:65, yMin:33, yMax:67,  svgX:toSvgX(57.5), svgY:toSvgY(50)   },
+  { id:'o-r', xMin:50, xMax:65, yMin:67, yMax:100, svgX:toSvgX(57.5), svgY:toSvgY(83.5) },
+  { id:'i-l', xMin:65, xMax:100,yMin:0,  yMax:33,  svgX:toSvgX(82.5), svgY:toSvgY(16.5) },
+  { id:'i-c', xMin:65, xMax:100,yMin:33, yMax:67,  svgX:toSvgX(82.5), svgY:toSvgY(50)   },
+  { id:'i-r', xMin:65, xMax:100,yMin:67, yMax:100, svgX:toSvgX(82.5), svgY:toSvgY(83.5) },
 ]
 
-// 45m from own goal at pitch_x ≈ 31 (45/145 * 100)
+// 45m from own goal at pitch_x ≈ 35 (the line as drawn)
 const OPP_ZONES: Zone[] = [
-  { id:'o-l', xMin:31, xMax:50, yMin:0,  yMax:33,  svgX:toSvgX(40.5), svgY:toSvgY(16.5) },
-  { id:'o-c', xMin:31, xMax:50, yMin:33, yMax:67,  svgX:toSvgX(40.5), svgY:toSvgY(50)   },
-  { id:'o-r', xMin:31, xMax:50, yMin:67, yMax:100, svgX:toSvgX(40.5), svgY:toSvgY(83.5) },
-  { id:'i-l', xMin:0,  xMax:31, yMin:0,  yMax:33,  svgX:toSvgX(15.5), svgY:toSvgY(16.5) },
-  { id:'i-c', xMin:0,  xMax:31, yMin:33, yMax:67,  svgX:toSvgX(15.5), svgY:toSvgY(50)   },
-  { id:'i-r', xMin:0,  xMax:31, yMin:67, yMax:100, svgX:toSvgX(15.5), svgY:toSvgY(83.5) },
+  { id:'o-l', xMin:35, xMax:50, yMin:0,  yMax:33,  svgX:toSvgX(42.5), svgY:toSvgY(16.5) },
+  { id:'o-c', xMin:35, xMax:50, yMin:33, yMax:67,  svgX:toSvgX(42.5), svgY:toSvgY(50)   },
+  { id:'o-r', xMin:35, xMax:50, yMin:67, yMax:100, svgX:toSvgX(42.5), svgY:toSvgY(83.5) },
+  { id:'i-l', xMin:0,  xMax:35, yMin:0,  yMax:33,  svgX:toSvgX(17.5), svgY:toSvgY(16.5) },
+  { id:'i-c', xMin:0,  xMax:35, yMin:33, yMax:67,  svgX:toSvgX(17.5), svgY:toSvgY(50)   },
+  { id:'i-r', xMin:0,  xMax:35, yMin:67, yMax:100, svgX:toSvgX(17.5), svgY:toSvgY(83.5) },
 ]
 
 const SCORE_TYPES = new Set(['goal','point','two_point','point_free','two_point_free','forty_five','penalty_goal'])

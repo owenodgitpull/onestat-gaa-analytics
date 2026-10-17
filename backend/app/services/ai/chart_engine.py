@@ -53,7 +53,7 @@ Your task is to generate PYTHON CODE that transforms match data into Recharts-co
 The `data` dict contains pre-fetched data with these fields:
 - data["matches"]: id, opponent, match_date, venue, status
 - data["events"]: match_id, event_type, team, minute, player (name string or None), pitch_x, pitch_y
-  pitch_x / pitch_y are ALREADY in OUR attacking frame (direction + half corrected): OUR team always attacks towards pitch_x=100, our own goal is x=0, the opposition attacks towards x=0, and pitch_y<33 is OUR left, >67 our right. So pitch_x>=69 is "inside the 45m line we are attacking" for OUR events, and pitch_x<=31 is "inside our own 45". Never re-flip these.
+  pitch_x / pitch_y are ALREADY in OUR attacking frame (direction + half corrected): OUR team always attacks towards pitch_x=100, our own goal is x=0, the opposition attacks towards x=0, and pitch_y<33 is OUR left, >67 our right. So pitch_x>=65 is "inside the 45m line we are attacking" for OUR events, and pitch_x<=35 is "inside our own 45" (the 45m line as drawn is at 35% from a goal line; the 40m arc apex is at 30.5%). Never re-flip these.
 - data["players"]: id, name, jersey_number, position
 
 CRITICAL: All event_type and team values are LOWERCASE strings. Use lowercase in all comparisons:

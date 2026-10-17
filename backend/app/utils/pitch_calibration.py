@@ -34,6 +34,11 @@ LENGTH_M = [0.0, 13.0, 20.0, 40.0, 45.0, 65.0, None]   # last = half the pitch l
 LATERAL_APP_M = [0.0, 7.55, 11.17, 40.0, 44.5]
 LATERAL_M = [0.0, 7.0, 9.5, 34.6, None]                 # last = half the pitch width (set per call)
 
+# The 45m line as drawn (% of pitch length from a goal line). Use THIS for any 'inside/outside the 45' split:
+# the straight-line 45/145 = 31% is NOT where the 45 is drawn (35%), so a shot between the arc and the 45 reads 'inside the 45'.
+LINE_45_PCT = 34.99
+LINE_45_ATTACK_X = 100.0 - LINE_45_PCT   # 65.01: the 45m line we attack, in OUR attacking frame
+
 DEFAULT_LENGTH_M = 145.0
 DEFAULT_WIDTH_M = 80.0     # the drawing's arc spans its full width, i.e. an 80m-wide drawing
 APP_WIDTH_M = 90.0         # the scale the 0-100 y axis was historically converted with

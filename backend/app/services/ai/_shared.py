@@ -2467,7 +2467,8 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         if tm != "own": continue
         x, y = _frame[e.id]
         if x is None or y is None or x < 50: continue
-        depth = "inside_45" if x >= 69 else "outside_45"
+        from app.utils.pitch_calibration import LINE_45_PCT
+        depth = "inside_45" if x >= 100.0 - LINE_45_PCT else "outside_45"   # the 45m line AS DRAWN (65), not 45/145 (69)
         channel = _y_channel(y)
         key = f"{depth}_{channel}"
         z = scoring_zones.setdefault(key, {"scores": 0, "misses": 0})
@@ -2491,7 +2492,8 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
         if tm != "opponent": continue
         x, y = _frame[e.id]
         if x is None or y is None or x > 50: continue
-        depth = "inside_45" if x <= 31 else "outside_45"
+        from app.utils.pitch_calibration import LINE_45_PCT
+        depth = "inside_45" if x <= LINE_45_PCT else "outside_45"   # the 45m line AS DRAWN (35), not 45/145 (31)
         channel = _y_channel(y)
         key = f"{depth}_{channel}"
         z = opp_scoring_zones.setdefault(key, {"scores": 0, "misses": 0})
@@ -3964,8 +3966,8 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=N
     # Events with x <= 50 logged as scores/wides are carrier/transition positions,
     # not actual shot locations — quarantine them rather than call them "shots."
     zones = {
-        "inside_45m":   {"scored": 0, "missed": 0},   # x >= 69 (inside opp 45m line)
-        "outside_45m":  {"scored": 0, "missed": 0},   # 50 < x < 69 (opp half, outside 45m)
+        "inside_45m":   {"scored": 0, "missed": 0},   # x >= 65 (inside the opp 45m line as drawn)
+        "outside_45m":  {"scored": 0, "missed": 0},   # 50 < x < 65 (opp half, outside the 45m line)
     }
     suspicious_positions = []   # scoring events with x <= 50 — likely carrier coords, not shot coords
 
@@ -3983,7 +3985,8 @@ async def get_scoring_patterns(db: AsyncSession, match_id: str = None, club_id=N
             })
             continue
 
-        zone = "inside_45m" if fx >= 69 else "outside_45m"
+        from app.utils.pitch_calibration import LINE_45_ATTACK_X
+        zone = "inside_45m" if fx >= LINE_45_ATTACK_X else "outside_45m"
 
         if e.event_type in [EventType.GOAL, EventType.POINT, EventType.TWO_POINT]:
             zones[zone]["scored"] += 1

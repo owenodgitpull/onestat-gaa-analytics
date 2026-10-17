@@ -560,8 +560,9 @@ class SeasonDashboardService:
         # pitch_x 0=own team goal, 100=Opponent goal.  GAA pitch ~145m.
         # Opposition 45m line ≈ (145-45)/145 * 100 ≈ 69 for own team attacking.
         # Own team 45m line ≈ 45/145 * 100 ≈ 31 for Opponent attacking.
-        TEAM_ATTACK_THRESHOLD = 69.0  # inside opponent's 45
-        OPP_ATTACK_THRESHOLD = 31.0   # inside own team's 45
+        # the 45m line AS DRAWN is at 35% from a goal line (not 45/145 = 31%)
+        TEAM_ATTACK_THRESHOLD = 65.01  # inside opponent's 45
+        OPP_ATTACK_THRESHOLD = 34.99   # inside own team's 45
         # The thresholds above assume OUR goal is at x=0. pitch_x is raw (as drawn on screen), so first
         # re-express every point in OUR attacking frame (direction + half aware) — otherwise any match
         # where we attacked right-to-left, and every second half, counted entries into the WRONG end.
