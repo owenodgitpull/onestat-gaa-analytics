@@ -4260,10 +4260,8 @@ export default function VideoTagging() {
         label: (!matchLineup || matchLineup.length === 0) ? 'Select Lineup' : 'Lineup',
         onClick: () => { if (!matchLineup || matchLineup.length === 0) setIsLineupModalOpen(true); else setShowViewLineup(true) },
       },
-      { key: 'dead', icon: manualDeadBall ? <Play size={15} /> : <PauseCircle size={15} />, label: manualDeadBall ? 'Play on' : 'Dead ball', onClick: () => setManualDeadBall(v => !v) },
       { key: 'weather', icon: <CloudSun size={15} />, label: 'Weather', onClick: () => setShowWeatherPicker(true) },
       { key: 'sub', icon: <UserPlus size={15} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
-      { key: 'throwball', icon: <ArrowLeftRight size={15} />, label: throwBallArmed ? 'Cancel throw ball' : 'Throw ball', onClick: () => setThrowBallArmed(v => !v) },
       { key: 'event', icon: <Plus size={15} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
       { key: 'attention', icon: <ClipboardCheck size={15} />, label: 'Needs attention', onClick: () => setShowNeedsAttention(true) },
       { key: 'stopclock', icon: <Timer size={15} />, label: clockStopStartMs == null ? 'Stop clock' : 'Resume clock', onClick: () => toggleClockStop() },
@@ -5156,6 +5154,34 @@ export default function VideoTagging() {
             {pressActive ? `${pressTeamLabel} Press Active` : `${pressTeamLabel} Press`}
           </button>
         )}
+        {mode === 'tracking' && !reviewing && !halfTimeBreak && (
+          <>
+            <button
+              onClick={() => setManualDeadBall(v => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border backdrop-blur-md transition-colors ${
+                manualDeadBall
+                  ? 'bg-amber-500/35 border-amber-400/60 text-amber-50 animate-pulse'
+                  : 'bg-white/10 border-white/20 text-white/80 hover:bg-white/15'
+              }`}
+              title={manualDeadBall ? 'Play on - possession time counts again' : 'Dead ball - pause possession time (injury, delay)'}
+            >
+              {manualDeadBall ? <Play size={14} /> : <PauseCircle size={14} />}
+              {manualDeadBall ? 'Play on' : 'Dead ball'}
+            </button>
+            <button
+              onClick={() => setThrowBallArmed(v => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border backdrop-blur-md transition-colors ${
+                throwBallArmed
+                  ? 'bg-amber-500/35 border-amber-400/60 text-amber-50'
+                  : 'bg-white/10 border-white/20 text-white/80 hover:bg-white/15'
+              }`}
+              title="Referee's throw ball: tap this, then tap the player who wins it"
+            >
+              <ArrowLeftRight size={14} />
+              {throwBallArmed ? 'Cancel throw ball' : 'Throw ball'}
+            </button>
+          </>
+        )}
         <button
           onClick={() => { playerRef.current?.pause(); setIsSnapshotOpen(true) }}
           title="Take formation snapshot"
@@ -5910,9 +5936,7 @@ export default function VideoTagging() {
           <div className="relative z-10 flex-shrink-0">{clockControls(true)}</div>
           <div className="flex items-center gap-0.5 bg-white/5 rounded-lg px-1 py-0.5">
             {[
-              { key: 'dead', icon: manualDeadBall ? <Play size={14} /> : <PauseCircle size={14} />, label: manualDeadBall ? 'Play on' : 'Dead ball', onClick: () => setManualDeadBall(v => !v) },
               { key: 'sub', icon: <UserPlus size={14} />, label: 'Sub', onClick: () => { setManualInitialType('SUB_ON'); setShowManualEvent(true) } },
-              { key: 'throwball', icon: <ArrowLeftRight size={14} />, label: throwBallArmed ? 'Cancel throw ball' : 'Throw ball', onClick: () => setThrowBallArmed(v => !v) },
               { key: 'event', icon: <Plus size={14} />, label: 'Event', onClick: () => { setManualInitialType(undefined); setShowManualEvent(true) } },
               { key: 'attention', icon: <ClipboardCheck size={14} />, label: 'Needs attention', onClick: () => setShowNeedsAttention(true) },
               { key: 'stopclock', icon: <Timer size={14} />, label: clockStopStartMs == null ? 'Stop clock' : 'Resume clock', onClick: () => toggleClockStop() },
