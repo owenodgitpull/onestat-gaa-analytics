@@ -77,6 +77,7 @@ class PlayerMovementService:
         end_x: Optional[float] = None,
         end_y: Optional[float] = None,
         ended_by: Optional[str] = None,
+        end_video_ms: Optional[int] = None,
     ) -> Optional[BallCarrierSegment]:
         result = await db.execute(
             select(BallCarrierSegment).where(BallCarrierSegment.id == segment_id)
@@ -85,6 +86,8 @@ class PlayerMovementService:
         if not segment:
             return None
 
+        if end_video_ms is not None:
+            segment.end_video_ms = end_video_ms
         segment.end_x = end_x
         segment.end_y = end_y
         segment.end_time_ms = int(time.time() * 1000)

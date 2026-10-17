@@ -3459,10 +3459,20 @@ export default function VideoTagging() {
   const activeOppCarrierIdRef = useRef<string | null>(null)
   activeOppCarrierIdRef.current = activeOppCarrierId
   const carrierQueueRef = useRef<Promise<unknown>>(Promise.resolve())
+  const carrierPendingRef = useRef(0)
   const enqueueCarrierOp = useCallback((op: () => Promise<unknown>) => {
+    carrierPendingRef.current += 1
     carrierQueueRef.current = carrierQueueRef.current
       .then(op)
       .catch(err => console.error('Carrier segment operation failed:', err))
+      .finally(() => { carrierPendingRef.current = Math.max(0, carrierPendingRef.current - 1) })
+  }, [])
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (carrierPendingRef.current > 0) { e.preventDefault(); e.returnValue = '' }
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
   }, [])
 
   /** Runs inside the queue: flush `points` to the active segment, then end it. */
@@ -3471,6 +3481,7 @@ export default function VideoTagging() {
     endY: number | null | undefined,
     endedBy: string | undefined,
     points: Array<{ x: number; y: number }>,
+    endVideoMs?: number,
   ) => {
     const seg = activeSegmentRef.current
     if (!seg) return
@@ -3488,6 +3499,8 @@ export default function VideoTagging() {
         end_x: endX ?? undefined,
         end_y: endY ?? undefined,
         ended_by: endedBy,
+        // the video time the carry ended at (a carry that was queued behind others keeps the time it actually ended)
+        end_video_ms: endVideoMs,
       })
     } catch (err) {
       console.error('Failed to end carrier segment:', err)
@@ -3527,7 +3540,8 @@ export default function VideoTagging() {
       carrierFlushTimerRef.current = null
     }
     if (!keepState) { setActiveCarrierId(null); setActiveOppCarrierId(null) }
-    enqueueCarrierOp(() => endCarrierSegment(endX, endY, endedBy, points))
+    const endVideoMs = Math.round(currentTimeMsRef.current)
+    enqueueCarrierOp(() => endCarrierSegment(endX, endY, endedBy, points, endVideoMs))
   }, [enqueueCarrierOp, endCarrierSegment])
 
   /** Runs inside the queue: create the new segment, then send any path points
@@ -3538,23 +3552,27 @@ export default function VideoTagging() {
     startX: number | null,
     startY: number | null,
     side: 'own' | 'opponent' = 'own',
+    tappedAtMs?: number,
   ) => {
     if (!session?.match_id) return null
-    const matchTime = calcMatchTime(currentTimeMs)
+    // When the server is slow the carry queue backs up and this runs seconds (once 34s) after the tap: always use the
+    // video time captured at the tap, never "now".
+    const atMs = Math.round(tappedAtMs ?? currentTimeMsRef.current)
+    const matchTime = calcMatchTimeRef.current(atMs)
     try {
       const segment = await api.playerMovement.startCarrierSegment({
         match_id: session.match_id,
         // an opposition carrier is an opposition-lineup id, never one of our players
         ...(side === 'opponent' ? { opposition_player_id: playerId } : { player_id: playerId }),
         jersey_number: jerseyNumber,
-        team: possession === 'team_a' ? 'own' : 'opponent',
+        team: side === 'opponent' ? 'opponent' : 'own',
         half: matchTime.half,
         minute: matchTime.minute,
         match_clock_s: matchTime.minute * 60 + matchTime.second,
         start_x: startX,
         start_y: startY,
         source: 'video',
-        video_timestamp_ms: Math.round(currentTimeMsRef.current),
+        video_timestamp_ms: atMs,
       })
       activeSegmentRef.current = segment
       if (carrierPathBufferRef.current.length > 0) {
@@ -3569,7 +3587,7 @@ export default function VideoTagging() {
       console.error('Failed to start carrier segment:', err)
       return null
     }
-  }, [session?.match_id, calcMatchTime, currentTimeMs, possession])
+  }, [session?.match_id])
 
   restoreCarrierRef.current = (matchId, playerId, jersey, atMs, x, y) => {
     const t = calcMatchTimeRef.current(atMs)
@@ -3684,7 +3702,8 @@ export default function VideoTagging() {
     resolveBallOutcomeRef.current('team_a', playerId)
     // Track recent carriers (most recent first, max 10)
     setRecentCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
-    enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by))
+    const tapMs = Math.round(currentTimeMsRef.current)
+    enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'own', tapMs))
   }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, sessionId, createEvent, splitCarryAndPass])
 
   carrierSelectRef.current = handleCarrierSelect
@@ -3711,7 +3730,8 @@ export default function VideoTagging() {
     setActiveOppCarrierId(playerId)
     resolveBallOutcomeRef.current('team_b')   // their kick pass found one of their players: completed
     setRecentOppCarrierIds(prev => [playerId, ...prev.filter(id => id !== playerId)].slice(0, 10))
-    enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'opponent'))
+    const tapMs = Math.round(currentTimeMsRef.current)
+    enqueueCarrierOp(() => startCarrierSegment(playerId, jerseyNumber, bx, by, 'opponent', tapMs))
   }, [ballPosition, endCarrierQueued, enqueueCarrierOp, startCarrierSegment, handleQuickPass, splitCarryAndPass])
 
   // Open the Shooting tab as soon as the team in possession works the ball into shooting range (once per entry)
@@ -3853,6 +3873,9 @@ export default function VideoTagging() {
       TURNOVER_LOST: 'turnover',
       KICKOUT_WON: 'kickout',
       KICKOUT_LOST: 'kickout',
+      // a foul stops the clock on the carry: no possession is counted until the next carrier is picked
+      FOUL_COMMITTED: 'free',
+      FOUL_WON: 'free',
     }
 
     const endReason = terminalMap[eventType]

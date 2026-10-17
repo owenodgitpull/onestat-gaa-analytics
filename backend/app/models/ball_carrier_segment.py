@@ -49,6 +49,8 @@ class BallCarrierSegment(Base):
     # Timing
     start_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
     end_time_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
+    # Video Tagging: the video time (ms) the carry ended at - carry length = end_video_ms - video_timestamp_ms
+    end_video_ms: Column[Optional[int]] = Column(BigInteger, nullable=True)
 
     # How the segment ended
     ended_by: Column[Optional[str]] = Column(String(30), nullable=True)  # 'pass', 'score', 'turnover', 'wide', 'free', 'kickout', 'manual'

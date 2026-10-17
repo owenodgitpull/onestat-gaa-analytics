@@ -40,6 +40,7 @@ class BallCarrierSegmentUpdate(BaseModel):
     end_x: Optional[float] = None
     end_y: Optional[float] = None
     end_time_ms: Optional[int] = None
+    end_video_ms: Optional[int] = None
     ended_by: Optional[str] = None
 
 

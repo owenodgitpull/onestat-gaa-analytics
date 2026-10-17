@@ -123,6 +123,7 @@ async def end_carrier_segment(
         end_x=body.end_x,
         end_y=body.end_y,
         ended_by=body.ended_by,
+        end_video_ms=body.end_video_ms,
     )
     if not segment:
         raise HTTPException(status_code=404, detail="Segment not found")

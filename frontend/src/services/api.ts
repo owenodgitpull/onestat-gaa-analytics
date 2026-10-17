@@ -3079,6 +3079,7 @@ const playerMovementAPI = {
     end_x?: number | null;
     end_y?: number | null;
     ended_by?: string | null;
+    end_video_ms?: number | null;
   }): Promise<BallCarrierSegment> =>
     fetchAPI(`/player-movement/carrier-segments/${segmentId}`, {
       method: 'PUT',
