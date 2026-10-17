@@ -2081,7 +2081,7 @@ export default function VideoTagging() {
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
           if (created?.id) setPendingPressure({ eventId: created.id, scoringContext: created.scoring_context || {} })
-          if (created?.id && ['POINT_SCORED', 'GOAL'].includes(data.event_type)) setFootChipEventId(created.id)
+          if (created?.id) setFootChipEventId(created.id)
           // Live offers "who assisted?" on every own goal / point / two-pointer from play — not frees or 45s. Until now
           // this only fired from the manual-event form, so scores tagged the normal way never asked.
           if (created?.id && ['GOAL_SCORED', 'POINT_SCORED'].includes(data.event_type)) setAssistPromptEventId(created.id)
