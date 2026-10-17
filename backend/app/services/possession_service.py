@@ -60,11 +60,6 @@ class PossessionService:
             )
         )
         own_s, opp_s, own_n, opp_n, own_spells, opp_spells = result.one()
-        # Video-tagged matches: possession TIME comes from who was carrying the ball (every carry is logged), with the
-        # clock stoppages taken out - the sampled possession rows only cover part of the tracked time.
-        carried = await PossessionService._carrier_seconds(db, match_id, half)
-        if carried is not None:
-            own_s, opp_s = carried
         return {
             "own_seconds": int(own_s),
             "opponent_seconds": int(opp_s),
@@ -73,44 +68,6 @@ class PossessionService:
             "own_spells": int(own_spells),
             "opponent_spells": int(opp_spells),
         }
-
-    # A carry lasts until the next carry starts; anything longer than this is a break in play (restart, injury, paused
-    # tagging), not possession.
-    MAX_CARRY_MS = 40_000
-    MIN_CARRIES = 10
-
-    @staticmethod
-    async def _carrier_seconds(db: AsyncSession, match_id, half: Optional[int] = None):
-        """(own_seconds, opponent_seconds) from the ball-carrier segments, minus clock stoppages, or None when the match
-        has no (or too few) video-timed carries - live-recorded matches keep the sampled possession rows."""
-        from app.models.ball_carrier_segment import BallCarrierSegment
-        from app.models.video_session import VideoSession
-        rows = (await db.execute(
-            select(BallCarrierSegment.team, BallCarrierSegment.video_timestamp_ms, BallCarrierSegment.half)
-            .where(BallCarrierSegment.match_id == match_id, BallCarrierSegment.video_timestamp_ms.isnot(None))
-            .order_by(BallCarrierSegment.video_timestamp_ms)
-        )).all()
-        if len(rows) < PossessionService.MIN_CARRIES:
-            return None
-        stops = (await db.execute(
-            select(VideoSession.clock_stoppages).where(VideoSession.match_id == match_id)
-        )).scalars().all()
-        stoppages = [st for lst in stops for st in (lst or [])]
-        own = opp = 0.0
-        for i, (team, start, seg_half) in enumerate(rows[:-1]):
-            if half is not None:
-                h = seg_half or 1
-                if (half == 1 and h != 1) or (half == 2 and h < 2):
-                    continue
-            end = rows[i + 1][1]
-            length = max(0, min(end - start, PossessionService.MAX_CARRY_MS))
-            stopped = sum(max(0, min(start + length, st["end_ms"]) - max(start, st["start_ms"])) for st in stoppages)
-            length = max(0, length - stopped)
-            if team == "own":
-                own += length
-            else:
-                opp += length
-        return own / 1000.0, opp / 1000.0
 
     @staticmethod
     async def create_possession_event(
