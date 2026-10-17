@@ -1822,6 +1822,29 @@ export default function VideoTagging() {
     } catch { /* storage unavailable */ }
   }, [halfTimeBreak, sessionId])
 
+  // ── The ball's position survives a refresh ────────────────────────────
+  // Saved on every move (this browser only) and put back on load once tracking has started, so a reload no longer drops
+  // the ball in the centre of the pitch. A saved open prompt (below) can still override it with its own snapshot.
+  const ballRestoredRef = useRef(false)
+  useEffect(() => {
+    if (ballRestoredRef.current || !sessionId || !session) return
+    ballRestoredRef.current = true
+    if (session.tracking_progress_ms == null) return
+    try {
+      const raw = localStorage.getItem(`vt-ball-${sessionId}`)
+      if (!raw) return
+      const b = JSON.parse(raw)
+      if (b && typeof b.x === 'number' && typeof b.y === 'number') {
+        setBallPosition({ x: b.x, y: b.y })
+        setBallTrail([{ x: b.x, y: b.y }])
+      }
+    } catch { /* storage unavailable */ }
+  }, [sessionId, session?.tracking_progress_ms])
+  useEffect(() => {
+    if (!ballRestoredRef.current || !sessionId || !ballPosition) return
+    try { localStorage.setItem(`vt-ball-${sessionId}`, JSON.stringify({ x: ballPosition.x, y: ballPosition.y })) } catch { /* storage unavailable */ }
+  }, [sessionId, ballPosition])
+
   // ── Prompts survive a refresh ──────────────────────────────────────────
   // Any open prompt (free outcome, 45, block recovery, player picker, turnover reason…) is saved while it's
   // open and put back after a reload, with the ball, possession and the original tap time (the event data
