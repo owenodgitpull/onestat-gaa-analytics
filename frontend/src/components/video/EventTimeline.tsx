@@ -62,7 +62,6 @@ export default function EventTimeline({
       .sort((a, b) => a.video_timestamp_ms! - b.video_timestamp_ms!),
     [events],
   )
-  const hiddenCount = events.filter(e => e.video_timestamp_ms != null).length - shown.length
 
   const boxRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(800)
@@ -234,7 +233,7 @@ export default function EventTimeline({
     <div className="relative bg-white/5 rounded-lg border border-white/10 p-2 select-none">
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <span className="text-[10px] text-white/40 uppercase tracking-wider">Timeline</span>
-        <span className="text-[10px] text-white/30">{shown.length} events{hiddenCount > 0 ? ` · ${hiddenCount} passes hidden` : ''}</span>
+        <span className="text-[10px] text-white/30">{shown.length} events</span>
         <div className="flex items-center gap-1 ml-2">
           <button className={presetBtn} onClick={() => { zoomAbout(1.6, (vs + ve) / 2); setFollow(false) }} title="Zoom out" aria-label="Zoom out"><Minus size={12} /></button>
           <button className={presetBtn} onClick={() => { zoomAbout(0.6, (vs + ve) / 2); setFollow(false) }} title="Zoom in" aria-label="Zoom in"><Plus size={12} /></button>
