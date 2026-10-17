@@ -101,6 +101,7 @@ import {
   useResetVideoSession,
 } from '../hooks/useVideoSessions'
 import FinishWarningModal from '../components/video/FinishWarningModal'
+import ClockStoppedModal from '../components/video/ClockStoppedModal'
 import { videoMovesAPI } from '../services/videoMovesApi'
 import { FOUL_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES, UNFORCED_ERROR_SUBTYPES, TURNOVER_REASON_CONFIG, type TurnoverReason } from '../constants/turnoverSubtypes'
 import PitchActionOverlay from '../components/PitchActionOverlay'
@@ -3582,6 +3583,39 @@ export default function VideoTagging() {
     })
   }
 
+  // ── Stop clock reminder ────────────────────────────────────────────────
+  // A stopped clock is easy to forget (it ran for 2 minutes of video by mistake once). After 20s of video time stopped the
+  // video pauses and asks whether to start it again; "keep stopped" snoozes the ask for another 20s. The stop also
+  // survives a refresh (this browser), otherwise it would silently vanish.
+  const CLOCK_REMIND_AFTER_MS = 20000
+  const [clockReminderOpen, setClockReminderOpen] = useState(false)
+  const clockSnoozeUntilRef = useRef(0)
+  const clockStopRestoredRef = useRef(false)
+  useEffect(() => {
+    if (clockStopRestoredRef.current || !sessionId) return
+    clockStopRestoredRef.current = true
+    try {
+      const raw = localStorage.getItem(`vt-clockstop-${sessionId}`)
+      const v = raw != null ? parseInt(raw, 10) : NaN
+      if (!isNaN(v)) setClockStopStartMs(v)
+    } catch { /* storage unavailable */ }
+  }, [sessionId])
+  useEffect(() => {
+    if (!clockStopRestoredRef.current || !sessionId) return
+    try {
+      if (clockStopStartMs == null) localStorage.removeItem(`vt-clockstop-${sessionId}`)
+      else localStorage.setItem(`vt-clockstop-${sessionId}`, String(Math.round(clockStopStartMs)))
+    } catch { /* storage unavailable */ }
+  }, [clockStopStartMs, sessionId])
+  useEffect(() => {
+    if (clockStopStartMs == null) { if (clockReminderOpen) setClockReminderOpen(false); return }
+    if (clockReminderOpen) return
+    if (currentTimeMs - clockStopStartMs >= CLOCK_REMIND_AFTER_MS && currentTimeMs >= clockSnoozeUntilRef.current) {
+      playerRef.current?.pause()
+      setClockReminderOpen(true)
+    }
+  }, [currentTimeMs, clockStopStartMs, clockReminderOpen])
+
   // Restart winners: whoever first takes the ball after a period's throw-in (1st half, 2nd half, extra time) won it.
   // Recorded once per period as a THROW_IN event at the throw-in mark, with the player.
   const throwInRecordedRef = useRef<Set<number>>(new Set())
@@ -5440,6 +5474,13 @@ export default function VideoTagging() {
           </>
         )
       })()}
+      <ClockStoppedModal
+        open={clockReminderOpen && clockStopStartMs != null}
+        stoppedForSeconds={clockStopStartMs != null ? Math.max(0, (currentTimeMs - clockStopStartMs) / 1000) : 0}
+        onResume={() => { setClockReminderOpen(false); toggleClockStop(); setTimeout(() => playerRef.current?.play(), 100) }}
+        onCancelStop={() => { setClockReminderOpen(false); setClockStopStartMs(null); setTimeout(() => playerRef.current?.play(), 100) }}
+        onKeepStopped={() => { clockSnoozeUntilRef.current = currentTimeMs + CLOCK_REMIND_AFTER_MS; setClockReminderOpen(false); setTimeout(() => playerRef.current?.play(), 100) }}
+      />
       <FinishWarningModal
         open={!!finishWarning}
         lines={finishWarning?.lines || []}
