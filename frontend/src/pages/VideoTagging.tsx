@@ -1726,6 +1726,9 @@ export default function VideoTagging() {
         description: kind === 'high_ball' ? 'High ball' : 'Kick pass',
         source: 'human_tag',
         ...(kickPlayerId ? { player_id: kickPlayerId } : {}),
+        // No prompt: the kicker is whoever is carrying the ball (same context a hand pass gets)
+        ...(!kickPlayerId && kickTeam === 'team_a' && activeCarrierIdRef.current ? { player_id: activeCarrierIdRef.current } : {}),
+        ...(kickTeam === 'team_b' && activeOppCarrierIdRef.current ? { opposition_player_id: activeOppCarrierIdRef.current } : {}),
       }
       ballOutcomeRef.current = { eventId: null, kind, kickTeam }
       createEvent.mutate({ sessionId, data }, {
