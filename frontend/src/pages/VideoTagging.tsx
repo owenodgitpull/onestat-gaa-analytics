@@ -6193,6 +6193,8 @@ export default function VideoTagging() {
         className="xl:hidden px-1"
       />
 
+      {/* Everything below the video/pitch split sits in a readable-width column with side margins; only the split above is edge to edge */}
+      <div className="max-w-[1500px] mx-auto w-full px-1 md:px-6 space-y-3">
       {/* ── Ball Carrier Strip ─────────────────────────────────────────── */}
       {/* ── Event Timeline ──────────────────────────────────────────────── */}
       <div data-tour="event-timeline">
@@ -6384,6 +6386,7 @@ export default function VideoTagging() {
             {seasonBenchmarkData && <SeasonBenchmarkCard data={seasonBenchmarkData} teamName={clubName} />}
           </ChartZoomModal>
         </div>
+      </div>
       </div>
 
       {/* Enrichment Report */}

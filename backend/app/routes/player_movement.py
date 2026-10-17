@@ -60,6 +60,54 @@ def _carrier_name(segment: BallCarrierSegment) -> Optional[str]:
     return None
 
 
+async def _resolve_open_kick_outcome(db: AsyncSession, segment: BallCarrierSegment) -> None:
+    """Safety net: the browser normally completes a kick pass / high ball when the next carrier is picked, but that
+    link lives in memory and is lost by a refresh, a slow save or a second kick. The carry itself IS saved, so if a
+    kick pass / high ball in the last 20s has no outcome yet, derive it from who picked the ball up:
+    same team = completed (kick pass) / won (high ball), other team = intercepted / lost. Never overwrites an outcome."""
+    if segment.source != "video" or segment.video_timestamp_ms is None:
+        return
+    try:
+        from app.models.video_event import VideoEvent
+        from app.services.video import live_sync
+        ts = int(segment.video_timestamp_ms)
+        seg_team = "team_a" if segment.team == "own" else "team_b"
+        ev = (await db.execute(
+            select(VideoEvent).where(
+                VideoEvent.match_id == segment.match_id,
+                VideoEvent.event_type.in_(["LONG_KICK_PASS", "HIGH_BALL"]),
+                (VideoEvent.sub_type.is_(None)) | (VideoEvent.sub_type == ""),
+                VideoEvent.video_timestamp_ms.between(ts - 20000, ts + 1500),
+            ).order_by(VideoEvent.video_timestamp_ms.desc()).limit(1)
+        )).scalar_one_or_none()
+        if ev is None:
+            return
+        # anything else of note between the kick and the pickup (a shot, foul, turnover...) means this carry is not its receiver
+        between = (await db.execute(
+            select(VideoEvent.id).where(
+                VideoEvent.match_id == segment.match_id,
+                VideoEvent.video_timestamp_ms > ev.video_timestamp_ms,
+                VideoEvent.video_timestamp_ms < ts,
+                VideoEvent.event_type.notin_(["PASS_HAND", "LONG_KICK_PASS", "HIGH_BALL"]),
+            ).limit(1)
+        )).first()
+        if between is not None:
+            return
+        same = ev.team == seg_team
+        if ev.event_type == "LONG_KICK_PASS":
+            ev.sub_type = "completed" if same else "intercepted"
+        else:
+            ev.sub_type = "won" if same else "lost"
+        if same and segment.player_id and not ev.target_player_id and seg_team == "team_a":
+            ev.target_player_id = segment.player_id
+        await db.flush()
+        await live_sync.write_through(db, ev)
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await db.refresh(segment)
+
+
 @router.post("/carrier-segments", response_model=BallCarrierSegmentResponse, status_code=status.HTTP_201_CREATED)
 async def start_carrier_segment(
     body: BallCarrierSegmentCreate,
@@ -104,6 +152,7 @@ async def start_carrier_segment(
         match_clock_s=body.match_clock_s,
         opposition_player_id=body.opposition_player_id,
     )
+    await _resolve_open_kick_outcome(db, segment)
     resp = BallCarrierSegmentResponse.model_validate(segment)
     resp.player_name = _carrier_name(segment)
     return resp
