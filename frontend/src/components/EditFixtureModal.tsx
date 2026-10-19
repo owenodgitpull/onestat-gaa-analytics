@@ -18,10 +18,13 @@ interface EditFixtureModalProps {
     pitch_length_m?: number | null
     pitch_width_m?: number | null
   }) => Promise<void>
-  onDelete: (id: string) => Promise<void>
+  onDelete?: (id: string) => Promise<void>
+  /** Basic details (opponent, date, venue, competition, stage...) stay editable after the match has been played. */
+  alwaysEditable?: boolean
+  title?: string
 }
 
-export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }: EditFixtureModalProps) {
+export default function EditFixtureModal({ fixture, onClose, onSave, onDelete, alwaysEditable = false, title = 'Edit Fixture' }: EditFixtureModalProps) {
   const [opponent, setOpponent] = useState('')
   const [venue, setVenue] = useState<'home' | 'away' | 'neutral'>('home')
   const [matchDate, setMatchDate] = useState('')
@@ -66,7 +69,8 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }:
 
   const isCompleted = fixture.status === 'completed' || fixture.status === 'COMPLETED'
   const isInProgress = fixture.status === 'in_progress' || fixture.status === 'IN_PROGRESS'
-  const isEditable = !isCompleted && !isInProgress
+  const isEditable = alwaysEditable || (!isCompleted && !isInProgress)
+  const canDelete = !!onDelete && !isCompleted && !isInProgress
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -98,7 +102,7 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }:
   const handleDelete = async () => {
     setDeleting(true)
     try {
-      await onDelete(fixture.id)
+      await onDelete?.(fixture.id)
       onClose()
     } catch {
       // Error handled by parent
@@ -119,7 +123,7 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }:
               <CalendarDays size={24} className="text-cyan-300" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white">Edit Fixture</h2>
+              <h2 className="text-2xl font-bold text-white">{title}</h2>
               <p className="text-sm text-white/60">
                 {isEditable ? 'Update match details' : `Match ${isCompleted ? 'completed' : 'in progress'}`}
               </p>
@@ -347,7 +351,7 @@ export default function EditFixtureModal({ fixture, onClose, onSave, onDelete }:
             )}
 
             {/* Delete section */}
-            {isEditable && (
+            {isEditable && canDelete && (
               <div className="border-t border-white/10 pt-3">
                 {!showDeleteConfirm ? (
                   <button

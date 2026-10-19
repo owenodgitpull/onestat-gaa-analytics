@@ -27,7 +27,8 @@ import {
   Video,
   Info,
   Users,
-  RotateCcw
+  RotateCcw,
+  Pencil
 } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell, LabelList } from 'recharts'
 import { api, TeamVolumeData } from '../services/api'
@@ -35,6 +36,8 @@ import ChartZoomModal from '@/components/ChartZoomModal'
 import ExtendedStatsModal from '@/components/ExtendedStatsModal'
 import { useClubName, useClub } from '../contexts/ClubContext'
 import OppositionLineupEditor from '../components/OppositionLineupEditor'
+import EditFixtureModal from '../components/EditFixtureModal'
+import { useAuth } from '../contexts/AuthContext'
 import GAAPitch from '../components/GAAPitch'
 import MatchLineupViewer from '../components/MatchLineupViewer'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
@@ -93,6 +96,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 export default function MatchResult() {
   const { matchId } = useParams<{ matchId: string }>()
   const queryClient = useQueryClient()
+  const { canEdit } = useAuth()
+  const [editingDetails, setEditingDetails] = useState(false)
   const clubName = useClubName()
   const { club: clubInfo } = useClub()
   const { data: match, isLoading: matchLoading } = useMatch(matchId || null)
@@ -591,13 +596,38 @@ export default function MatchResult() {
         )}
       </div>
 
+      {canEdit && (
+        <EditFixtureModal
+          fixture={editingDetails ? match : null}
+          title="Edit Match Details"
+          alwaysEditable
+          onClose={() => setEditingDetails(false)}
+          onSave={async (id, data) => {
+            await api.matches.update(id, data)
+            queryClient.invalidateQueries({ queryKey: ['matches'] })
+            queryClient.invalidateQueries({ queryKey: ['fixtures'] })
+          }}
+        />
+      )}
+
       {/* Header */}
       <div className="glass-card p-6 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
           {/* Left: Match Info */}
           <div className="space-y-3">
-            <h1 className="text-2xl font-bold text-white">
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
               vs {match.opponent}
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setEditingDetails(true)}
+                  title="Edit match details (opponent, date, venue, competition, stage)"
+                  aria-label="Edit match details"
+                  className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <Pencil size={16} />
+                </button>
+              )}
             </h1>
             {match.competition && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
