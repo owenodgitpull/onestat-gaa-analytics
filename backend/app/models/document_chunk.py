@@ -51,10 +51,12 @@ class DocumentChunk(Base):
     # Keywords for hybrid search (extracted from content)
     keywords: Column[Optional[List[str]]] = Column(ARRAY(String), nullable=True)
 
-    # Embedding vector (1536 dimensions for ada-002, 1024 for voyage-2)
-    # Note: pgvector extension must be installed for full vector support
-    # If not available, we fall back to keyword-based search
-    # embedding: Column = Column(Vector(1536), nullable=True)  # Uncomment when pgvector is installed
+    # One-sentence situating note written at index time (contextual retrieval); searched + embedded with the content
+    context_blurb: Column[Optional[str]] = Column(Text, nullable=True)
+    token_count: Column[Optional[int]] = Column(Integer, nullable=True)
+
+    # Not mapped on purpose (read/written with raw SQL in RAGService): `embedding vector(1024)` (Voyage, HNSW cosine)
+    # and `content_tsv tsvector` (generated from context_blurb + content, GIN) - see migration b076.
 
     # Timestamps
     created_at: Column[datetime] = Column(DateTime, default=datetime.utcnow, nullable=False)

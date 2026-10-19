@@ -25,6 +25,7 @@ from sqlalchemy import select, func
 from app.models.match import Match, MatchStatus
 from app.models.attendance import TrainingSession
 from app.services.ai._shared import (
+    KB_TOOL_BLOCK,
     client, GAA_ESSENTIALS, execute_tool,
     get_tools_subset, get_fixture_context,
     STATIC_CHARTS_TEXT, safe_json, get_club_context,
@@ -134,7 +135,7 @@ class SeasonAgent:
         fixture_context = await get_fixture_context(db, club_id=club_id)
 
         # Get RAG context
-        kb_context = "\n# KNOWLEDGE BASE (use it as a tool)\nThe GAA knowledge base (rules, coaching and tactical material, plus the club's own uploaded documents) is NOT pasted here. Call search_knowledge_base whenever a rule, coaching principle or the club's own game plan matters to your answer, with specific queries (e.g. 'kickout restart rules', '3v3 breach', 'transition defence'); call it more than once if needed and cite the source document when you rely on it.\n"
+        kb_context = KB_TOOL_BLOCK
 
         system_prompt = _build_season_system_prompt(task, kb_context, fixture_context, context, club_name, club_context_str)
         user_message = _build_season_user_message(task, context)

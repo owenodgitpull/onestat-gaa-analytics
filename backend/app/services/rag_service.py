@@ -1,47 +1,51 @@
 """
 RAG (Retrieval-Augmented Generation) Service for GAA Analytics.
 
-Implements a hybrid search approach:
-1. Keyword-based search using TF-IDF style scoring
-2. Optional vector search using pgvector (when embeddings are available)
+Hybrid retrieval:
+1. Postgres full-text search (GIN over context blurb + content)
+2. pgvector cosine search over Voyage embeddings (when VOYAGE_API_KEY is set)
+3. Reciprocal Rank Fusion of the two lists, then Voyage reranking of the top candidates
 
-Multi-tenant: all queries are scoped to club_id OR shared defaults (club_id=NULL).
+Indexing: hard-capped chunks (never more than MAX_CHUNK chars) that keep their section + page, each with a one-sentence
+Claude Haiku "situating" blurb (contextual retrieval) that is searched and embedded together with the passage.
+
+Multi-tenant: every query is scoped to the club's own chunks plus shared defaults (club_id NULL). With no club only the
+shared defaults are visible.
 """
 
 import re
 import logging
 import hashlib
 import asyncio
-from typing import List, Optional, Dict, Any, Tuple
+import os
+from typing import List, Optional, Dict, Any
 from pathlib import Path
 from collections import Counter
-from datetime import datetime
-from sqlalchemy import select, delete, func, or_, and_
+from sqlalchemy import select, delete, func, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from math import log
 
 from app.models.document_chunk import DocumentChunk, DocumentEmbeddingLog
+from app.services import voyage_client
 
 logger = logging.getLogger(__name__)
 
+BLURB_MODEL = os.getenv("RAG_BLURB_MODEL", "claude-haiku-5-5")
+
 
 class RAGService:
-    """
-    Service for RAG-based document retrieval.
-
-    Features:
-    - Intelligent document chunking
-    - Keyword extraction for hybrid search
-    - BM25-style ranking for relevance
-    - Context-aware retrieval for different use cases
-    - Multi-tenant club scoping
-    """
+    """Service for RAG-based document retrieval (static methods only; never instantiated)."""
 
     # Chunking parameters
-    CHUNK_SIZE = 800  # Target chunk size in characters
-    CHUNK_OVERLAP = 100  # Overlap between chunks for context
+    CHUNK_SIZE = 800    # flush a chunk once it reaches this many characters
+    MAX_CHUNK = 1000    # hard maximum - no chunk is ever longer than this
+    CHUNK_OVERLAP = 100  # characters of the previous chunk repeated at the start of the next
 
-    # GAA-specific stopwords to filter out
+    # Retrieval parameters
+    CANDIDATES = 30     # per ranked list (full-text and vector)
+    RERANK_POOL = 20    # fused candidates sent to the reranker
+    RRF_K = 60
+    CLUB_BOOST = 0.05   # a club's own document edges out the shared base on a near-tie
+
     STOPWORDS = {
         'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
         'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been',
@@ -55,7 +59,6 @@ class RAGService:
         'also', 'now', 'here', 'there', 'then', 'once', 'if', 'when',
     }
 
-    # GAA-specific important terms (boost these in search)
     GAA_TERMS = {
         'goal', 'point', 'score', 'free', 'penalty', '45', 'kickout',
         'turnover', 'tackle', 'block', 'interception', 'mark', 'solo',
@@ -65,6 +68,8 @@ class RAGService:
         'fatigue', 'workload', 'intensity', 'recovery', 'gps',
         'dungloe', 'donegal', 'ulster', 'championship', 'league',
     }
+
+    # ------------------------------------------------------------------ indexing
 
     @staticmethod
     async def process_document(
@@ -76,22 +81,18 @@ class RAGService:
         club_id=None,
     ) -> Dict[str, Any]:
         """
-        Process a document for RAG retrieval.
-
-        Chunks the document, extracts keywords, and stores in database.
-        club_id=None means shared default (accessible to all clubs).
+        Chunk, annotate, embed and store a document. club_id=None means shared default (all clubs).
         """
-        # Check if already processed
         content_hash = hashlib.sha256(content.encode()).hexdigest()
 
         existing = await db.execute(
-            select(DocumentEmbeddingLog).where(
-                DocumentEmbeddingLog.source_file == source_file
-            )
+            select(DocumentEmbeddingLog).where(DocumentEmbeddingLog.source_file == source_file)
         )
         existing_log = existing.scalar_one_or_none()
 
-        if existing_log and existing_log.file_hash == content_hash and not force:
+        # An old keyword-only index is re-done even when the text is unchanged
+        if existing_log and existing_log.file_hash == content_hash and not force \
+                and existing_log.processing_method == 'hybrid':
             logger.info(f"Document {source_file} already processed, skipping")
             return {
                 "status": "skipped",
@@ -99,153 +100,240 @@ class RAGService:
                 "chunk_count": existing_log.chunk_count
             }
 
-        # Delete existing chunks if reprocessing
         if existing_log:
+            await db.execute(delete(DocumentChunk).where(DocumentChunk.source_file == source_file))
             await db.execute(
-                delete(DocumentChunk).where(DocumentChunk.source_file == source_file)
-            )
-            await db.execute(
-                delete(DocumentEmbeddingLog).where(
-                    DocumentEmbeddingLog.source_file == source_file
-                )
+                delete(DocumentEmbeddingLog).where(DocumentEmbeddingLog.source_file == source_file)
             )
 
-        # Chunk the document
         chunks = RAGService._chunk_document(content, doc_type)
         logger.info(f"Split {source_file} into {len(chunks)} chunks")
 
-        # Store chunks with club_id
+        blurbs = await RAGService._make_blurbs(source_file, chunks)
+        for chunk_data, blurb in zip(chunks, blurbs):
+            # model gave nothing (rare): a plain locator keeps every passage self-describing
+            chunk_data['blurb'] = blurb or (f"From {source_file}" + (f", section '{chunk_data['section']}'" if chunk_data.get('section') else "")
+                                           + (f", page {chunk_data['page']}" if chunk_data.get('page') else "") + ".")
+
+        rows = []
         for i, chunk_data in enumerate(chunks):
-            chunk = DocumentChunk(
+            row = DocumentChunk(
                 source_file=source_file,
                 doc_type=doc_type,
                 chunk_index=i,
                 content=chunk_data['content'],
                 content_length=len(chunk_data['content']),
-                section_title=chunk_data.get('section'),
+                section_title=(chunk_data.get('section') or None) and chunk_data['section'][:255],
                 page_number=chunk_data.get('page'),
                 keywords=chunk_data['keywords'],
+                context_blurb=chunk_data.get('blurb'),
+                token_count=max(1, len(chunk_data['content']) // 4),
                 club_id=club_id,
             )
-            db.add(chunk)
+            db.add(row)
+            rows.append(row)
+        await db.flush()  # ids assigned
 
-        # Log the processing
-        log_entry = DocumentEmbeddingLog(
+        # Embeddings: blurb + passage together. Unavailable Voyage = full-text-only index (still searchable).
+        embeddings = await voyage_client.embed(
+            [RAGService._embed_text(source_file, c) for c in chunks], input_type="document"
+        )
+        if embeddings:
+            await db.execute(
+                text("UPDATE document_chunks SET embedding = CAST(:v AS vector) WHERE id = :id"),
+                [{"v": voyage_client.vector_literal(vec), "id": row.id} for row, vec in zip(rows, embeddings)],
+            )
+
+        db.add(DocumentEmbeddingLog(
             source_file=source_file,
             file_hash=content_hash,
             chunk_count=len(chunks),
-            processing_method='keyword'
-        )
-        db.add(log_entry)
-
+            processing_method='hybrid' if embeddings else 'fulltext',
+        ))
         await db.commit()
 
         return {
             "status": "processed",
             "source_file": source_file,
             "chunk_count": len(chunks),
-            "total_keywords": sum(len(c['keywords']) for c in chunks)
+            "embedded": bool(embeddings),
+            "blurbs": sum(1 for b in blurbs if b),
+            "max_chunk_chars": max((len(c['content']) for c in chunks), default=0),
         }
+
+    @staticmethod
+    def _embed_text(source_file: str, chunk: Dict[str, Any]) -> str:
+        head = f"{source_file}" + (f" - {chunk['section']}" if chunk.get('section') else "")
+        blurb = f"\n{chunk['blurb']}" if chunk.get('blurb') else ""
+        return f"{head}{blurb}\n{chunk['content']}"
+
+    @staticmethod
+    async def _make_blurbs(source_file: str, chunks: List[Dict[str, Any]]) -> List[Optional[str]]:
+        """One short sentence per chunk situating it in its document (Anthropic's 'contextual retrieval')."""
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key or not chunks:
+            return [None] * len(chunks)
+        try:
+            import anthropic
+        except ImportError:
+            return [None] * len(chunks)
+        client = anthropic.AsyncAnthropic(api_key=api_key, max_retries=6)  # SDK backs off on 429/5xx
+        sem = asyncio.Semaphore(4)
+
+        async def one(i: int, c: Dict[str, Any]) -> Optional[str]:
+            prev = chunks[i - 1]['content'][-400:] if i > 0 else ""
+            prompt = (
+                f"Document: {source_file}\nSection: {c.get('section') or 'n/a'}\nPage: {c.get('page') or 'n/a'}\n"
+                f"Text just before the passage: {prev or '(start of document)'}\n\n"
+                f"<passage>\n{c['content']}\n</passage>\n\n"
+                "Write ONE sentence (max 30 words) that situates this passage within the document - what topic it "
+                "belongs to and what question it would answer - so a search can find it. Plain words, no preamble."
+            )
+            async with sem:
+                try:
+                    resp = await client.messages.create(
+                        model=BLURB_MODEL, max_tokens=90,
+                        messages=[{"role": "user", "content": prompt}],
+                    )
+                    out = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
+                    return out[:400] or None
+                except Exception as e:
+                    logger.warning("Blurb failed for %s chunk %s: %s", source_file, i, e)
+                    return None
+
+        return list(await asyncio.gather(*(one(i, c) for i, c in enumerate(chunks))))
+
+    @staticmethod
+    def _split_long(para: str, limit: int) -> List[str]:
+        """Break an over-long paragraph on sentence ends, then on words, so no piece exceeds `limit`."""
+        if len(para) <= limit:
+            return [para]
+        pieces: List[str] = []
+        cur = ""
+        for sent in re.split(r'(?<=[.!?])\s+', para):
+            while len(sent) > limit:  # no sentence break: cut on a word boundary
+                cut = sent.rfind(' ', 0, limit)
+                cut = cut if cut > limit // 2 else limit
+                if cur:
+                    pieces.append(cur)
+                    cur = ""
+                pieces.append(sent[:cut].strip())
+                sent = sent[cut:].strip()
+            if cur and len(cur) + 1 + len(sent) > limit:
+                pieces.append(cur)
+                cur = sent
+            else:
+                cur = f"{cur} {sent}".strip()
+        if cur:
+            pieces.append(cur)
+        return [p for p in pieces if p]
+
+    @staticmethod
+    def _looks_like_heading(line: str) -> bool:
+        s = line.strip()
+        if not s or len(s) > 80 or '\n' in s or s[-1] in '.,;:':
+            return False
+        letters = [ch for ch in s if ch.isalpha()]
+        if len(letters) < 4:
+            return False
+        words = s.split()
+        return s.isupper() or (len(words) <= 9 and all(w[0].isupper() or not w[0].isalpha() or w.lower() in
+                {'and', 'of', 'the', 'in', 'to', 'for', 'a', 'on', 'vs'} for w in words))
 
     @staticmethod
     def _chunk_document(content: str, doc_type: str) -> List[Dict[str, Any]]:
         """
-        Split document into semantic chunks.
-
-        Tries to split on natural boundaries (paragraphs, sections)
-        while maintaining target chunk size.
+        Split a document into chunks of ~CHUNK_SIZE characters, never over MAX_CHUNK, keeping the section title and the
+        page each chunk starts on. Splits on headings, then paragraphs, then sentences.
         """
-        chunks = []
+        chunks: List[Dict[str, Any]] = []
+        section: Optional[str] = None
+        page = 1
 
-        # Split on section headers first (markdown style)
-        sections = re.split(r'\n(#{1,3}\s+[^\n]+)\n', content)
+        buf: List[str] = []
+        buf_len = 0
+        buf_section: Optional[str] = None
+        buf_page = 1
+        tail = ""  # overlap carried into the next chunk
 
-        current_section = None
-        current_page = 1
-        current_content = []
-        current_length = 0
+        def flush():
+            nonlocal buf, buf_len, tail
+            if not buf:
+                return
+            body = "\n\n".join(buf).strip()
+            if body:
+                text_out = f"{tail}\n\n{body}".strip() if tail else body
+                chunks.append({
+                    'content': text_out,
+                    'section': buf_section,
+                    'page': buf_page,
+                    'keywords': RAGService._extract_keywords(text_out),
+                })
+                cut = body[-RAGService.CHUNK_OVERLAP:]
+                sp = cut.find(' ')
+                tail = cut[sp + 1:] if 0 <= sp < len(cut) - 20 else ""
+            buf, buf_len = [], 0
 
-        for part in sections:
-            # Check if this is a header
-            if re.match(r'^#{1,3}\s+', part):
-                current_section = part.strip('# \n')
+        for raw in re.split(r'\n\s*\n', content):
+            for line_block in raw.split('\n'):
+                m = re.match(r'^\s*\[Page (\d+)\]\s*$', line_block)
+                if m:
+                    page = int(m.group(1))
+            para = re.sub(r'^\s*\[Page \d+\]\s*$', '', raw, flags=re.M).strip()
+            if not para:
                 continue
 
-            # Check for page markers
-            page_match = re.search(r'\[Page (\d+)\]', part)
-            if page_match:
-                current_page = int(page_match.group(1))
+            md = re.match(r'^#{1,3}\s+(.*)$', para)
+            if md and '\n' not in para:
+                flush()
+                section = md.group(1).strip()
+                continue
+            if RAGService._looks_like_heading(para):
+                flush()
+                section = para.strip()
+                continue
 
-            # Split into paragraphs
-            paragraphs = re.split(r'\n\n+', part)
-
-            for para in paragraphs:
-                para = para.strip()
-                if not para:
-                    continue
-
-                # Add to current chunk
-                current_content.append(para)
-                current_length += len(para)
-
-                # Check if we need to create a new chunk
-                if current_length >= RAGService.CHUNK_SIZE:
-                    chunk_text = '\n\n'.join(current_content)
-                    keywords = RAGService._extract_keywords(chunk_text)
-
-                    chunks.append({
-                        'content': chunk_text,
-                        'section': current_section,
-                        'page': current_page,
-                        'keywords': keywords
-                    })
-
-                    # Keep last paragraph for overlap
-                    current_content = [current_content[-1]] if current_content else []
-                    current_length = len(current_content[0]) if current_content else 0
-
-        # Don't forget the last chunk
-        if current_content:
-            chunk_text = '\n\n'.join(current_content)
-            keywords = RAGService._extract_keywords(chunk_text)
-
-            chunks.append({
-                'content': chunk_text,
-                'section': current_section,
-                'page': current_page,
-                'keywords': keywords
-            })
-
+            para = re.sub(r'[ \t]+', ' ', para)
+            # keep room for the overlap so the final text still honours MAX_CHUNK
+            room = RAGService.MAX_CHUNK - RAGService.CHUNK_OVERLAP - 5
+            for piece in RAGService._split_long(para, room):
+                if buf and buf_len + len(piece) + 2 > room:
+                    flush()
+                if not buf:
+                    buf_section, buf_page = section, page
+                buf.append(piece)
+                buf_len += len(piece) + 2
+                if buf_len >= RAGService.CHUNK_SIZE:
+                    flush()
+        flush()
         return chunks
 
     @staticmethod
-    def _extract_keywords(text: str) -> List[str]:
-        """
-        Extract important keywords from text.
-
-        Uses TF-based extraction with GAA domain boosting.
-        """
-        # Tokenize and normalize
-        words = re.findall(r'\b[a-z]+\b', text.lower())
-
-        # Filter stopwords
+    def _extract_keywords(text_in: str) -> List[str]:
+        """Top keywords of a passage (kept for display/diagnostics and the query cleaner)."""
+        words = re.findall(r'\b[a-z]+\b', text_in.lower())
         words = [w for w in words if w not in RAGService.STOPWORDS and len(w) > 2]
-
-        # Count frequencies
         word_counts = Counter(words)
-
-        # Boost GAA-specific terms
         for word, count in list(word_counts.items()):
             if word in RAGService.GAA_TERMS:
                 word_counts[word] = count * 2
-
-        # Also extract numbers (important for stats)
-        numbers = re.findall(r'\b\d+(?:\.\d+)?\b', text)
-        for num in numbers[:5]:  # Limit numbers
+        for num in re.findall(r'\b\d+(?:\.\d+)?\b', text_in)[:5]:
             word_counts[f"num_{num}"] = 1
-
-        # Return top keywords
         return [word for word, _ in word_counts.most_common(20)]
+
+    # ------------------------------------------------------------------ retrieval
+
+    @staticmethod
+    def _tsquery(query: str) -> str:
+        """OR-joined, stemmed-by-Postgres query terms (a long natural-language query must not need every word)."""
+        terms = [w for w in re.findall(r"[a-z0-9]+", query.lower())
+                 if (w not in RAGService.STOPWORDS and len(w) > 2) or w.isdigit()]
+        seen, out = set(), []
+        for w in terms:
+            if w not in seen:
+                seen.add(w)
+                out.append(w)
+        return " | ".join(out[:24])
 
     @staticmethod
     async def search(
@@ -256,102 +344,83 @@ class RAGService:
         context_type: str = 'general',
         club_id=None,
     ) -> List[Dict[str, Any]]:
-        """
-        Search for relevant document chunks using hybrid search.
-        Returns club's own chunks + shared defaults (club_id=NULL).
-        """
-        # Extract query keywords
-        query_keywords = RAGService._extract_keywords(query)
-
-        if not query_keywords:
-            logger.warning(f"No keywords extracted from query: {query}")
+        """Hybrid search: full-text + vector, fused with RRF, reranked. Club's own docs + shared defaults only."""
+        tsq = RAGService._tsquery(query)
+        if not tsq and not query.strip():
             return []
 
-        # Build the base query
-        base_query = select(DocumentChunk)
-
-        # Filter by doc types if specified
-        if doc_types:
-            base_query = base_query.where(DocumentChunk.doc_type.in_(doc_types))
-
-        # Multi-tenant: club's own docs + shared defaults
+        scope = "(club_id IS NULL OR club_id = CAST(:club AS uuid))" if club_id else "club_id IS NULL"
+        type_clause = "AND doc_type = ANY(CAST(:types AS text[]))" if doc_types else ""
+        params: Dict[str, Any] = {}
         if club_id:
-            base_query = base_query.where(
-                or_(DocumentChunk.club_id == club_id, DocumentChunk.club_id.is_(None))
-            )
+            params["club"] = str(club_id)
+        if doc_types:
+            params["types"] = list(doc_types)
 
-        # Get all matching chunks
-        result = await db.execute(base_query)
-        all_chunks = result.scalars().all()
+        ranked: Dict[str, List[str]] = {"fts": [], "vec": []}
 
-        if not all_chunks:
+        if tsq:
+            res = await db.execute(text(
+                f"SELECT id FROM document_chunks WHERE {scope} {type_clause} "
+                "AND content_tsv @@ to_tsquery('english', :tsq) "
+                "ORDER BY ts_rank_cd(content_tsv, to_tsquery('english', :tsq)) DESC LIMIT :n"
+            ), {**params, "tsq": tsq, "n": RAGService.CANDIDATES})
+            ranked["fts"] = [str(r[0]) for r in res.all()]
+
+        qvec = await voyage_client.embed([query], input_type="query")
+        if qvec:
+            res = await db.execute(text(
+                f"SELECT id FROM document_chunks WHERE {scope} {type_clause} AND embedding IS NOT NULL "
+                "ORDER BY embedding <=> CAST(:qv AS vector) LIMIT :n"
+            ), {**params, "qv": voyage_client.vector_literal(qvec[0]), "n": RAGService.CANDIDATES})
+            ranked["vec"] = [str(r[0]) for r in res.all()]
+
+        # Reciprocal Rank Fusion
+        fused: Dict[str, float] = {}
+        for ids in ranked.values():
+            for rank, cid in enumerate(ids):
+                fused[cid] = fused.get(cid, 0.0) + 1.0 / (RAGService.RRF_K + rank + 1)
+        if not fused:
             return []
+        pool_ids = [cid for cid, _ in sorted(fused.items(), key=lambda kv: kv[1], reverse=True)][:RAGService.RERANK_POOL]
 
-        # Score each chunk using BM25-style ranking
-        scored_chunks = []
-        for chunk in all_chunks:
-            score = RAGService._score_chunk(chunk, query_keywords)
-            if score > 0:
-                scored_chunks.append((chunk, score))
+        rows = (await db.execute(
+            select(DocumentChunk).where(DocumentChunk.id.in_(pool_ids))
+        )).scalars().all()
+        by_id = {str(r.id): r for r in rows}
+        pool = [by_id[cid] for cid in pool_ids if cid in by_id]
 
-        # Sort by score
-        scored_chunks.sort(key=lambda x: x[1], reverse=True)
+        scores = {str(c.id): fused[str(c.id)] for c in pool}
+        reranked = await voyage_client.rerank(
+            query,
+            [f"{c.source_file}" + (f" - {c.section_title}" if c.section_title else "")
+             + (f"\n{c.context_blurb}" if c.context_blurb else "") + f"\n{c.content}" for c in pool],
+            top_k=max(limit, 8),
+        )
+        if reranked:
+            scores = {str(pool[idx].id): score for idx, score in reranked}
+            pool = [pool[idx] for idx, _ in reranked]
+        for c in pool:
+            if c.club_id:
+                scores[str(c.id)] += RAGService.CLUB_BOOST
+        pool.sort(key=lambda c: scores[str(c.id)], reverse=True)
 
-        # Return top results
         results = []
-        for chunk, score in scored_chunks[:limit]:
+        for chunk in pool[:limit]:
             results.append({
                 'id': str(chunk.id),
                 'source_file': chunk.source_file,
                 'doc_type': chunk.doc_type,
                 'section': chunk.section_title,
+                'page': chunk.page_number,
                 'club_id': str(chunk.club_id) if chunk.club_id else None,
                 'content': chunk.content,
-                'score': score,
-                'keywords_matched': [k for k in query_keywords if k in (chunk.keywords or [])]
+                'score': round(scores[str(chunk.id)], 4),
+                'keywords_matched': [k for k in RAGService._extract_keywords(query) if k in (chunk.keywords or [])],
             })
-
-        logger.info(f"Found {len(results)} relevant chunks for query")
+        logger.info("KB search %r -> %d results (fts=%d vec=%d reranked=%s)", query[:80], len(results),
+                    len(ranked["fts"]), len(ranked["vec"]), bool(reranked))
         return results
-
-    @staticmethod
-    def _score_chunk(chunk: DocumentChunk, query_keywords: List[str]) -> float:
-        """
-        Score a chunk against query keywords using BM25-style scoring.
-        """
-        if not chunk.keywords:
-            return 0.0
-
-        chunk_keywords_set = set(chunk.keywords)
-        query_keywords_set = set(query_keywords)
-
-        # Calculate keyword overlap
-        matches = chunk_keywords_set & query_keywords_set
-        if not matches:
-            return 0.0
-
-        # Basic TF-IDF-like scoring
-        # More matches = higher score
-        # Rare keywords (GAA terms) = higher weight
-        score = 0.0
-        for keyword in matches:
-            if keyword in RAGService.GAA_TERMS:
-                score += 2.0  # Boost GAA terms
-            else:
-                score += 1.0
-
-        # Normalize by query length
-        score = score / len(query_keywords)
-
-        # Boost by document type relevance
-        type_boost = {
-            'rules': 1.0,
-            'statsports': 1.2,  # Slightly boost GPS data
-            'tactics': 1.1,
-        }
-        score *= type_boost.get(chunk.doc_type, 1.0)
-
-        return score
 
     @staticmethod
     async def get_context_for_query(
@@ -361,81 +430,51 @@ class RAGService:
         max_tokens: int = 2000,
         club_id=None,
     ) -> str:
-        """
-        Get relevant context for an AI query using RAG.
-
-        This is the main entry point for the AI service to get
-        relevant knowledge base context.
-        """
-        # Determine which doc types are most relevant
+        """Relevant knowledge-base context as a prompt block (used by the live insight pre-query)."""
         doc_types = None
         if context_type == 'live_match':
-            doc_types = ['statsports', 'tactics']  # Focus on performance data
+            doc_types = ['statsports', 'tactics']
         elif context_type == 'analytics':
-            doc_types = ['statsports', 'rules']  # Stats and scoring rules
-        elif context_type == 'post_match':
-            doc_types = None  # All types for comprehensive analysis
+            doc_types = ['statsports', 'rules']
 
-        # Search for relevant chunks
-        results = await RAGService.search(
-            db, query, doc_types=doc_types, limit=8, club_id=club_id
-        )
-
+        results = await RAGService.search(db, query, doc_types=doc_types, limit=8, club_id=club_id)
         if not results:
             return ""
 
-        # Build context string
         context_parts = []
         total_length = 0
-        char_limit = max_tokens * 4  # Approximate chars per token
+        char_limit = max_tokens * 4
 
         for result in results:
+            page = f", p.{result['page']}" if result.get('page') else ""
             chunk_text = f"""
-## From: {result['source_file']} ({result['doc_type']})
+## From: {result['source_file']} ({result['doc_type']}{page})
 {f"Section: {result['section']}" if result['section'] else ""}
 
 {result['content']}
 """
             if total_length + len(chunk_text) > char_limit:
                 break
-
             context_parts.append(chunk_text)
             total_length += len(chunk_text)
 
         if context_parts:
             return "# Relevant Knowledge Base Context\n" + "\n---\n".join(context_parts)
-
         return ""
 
     @staticmethod
     async def sync_knowledge_base(db: AsyncSession, kb_path: Path, club_id=None) -> Dict[str, Any]:
-        """
-        Sync all documents from the knowledge base folder to the database.
-
-        Processes new documents and updates changed ones.
-        Bundled defaults use club_id=None (shared).
-        """
+        """Sync all documents from the knowledge base folder to the database (bundled defaults use club_id=None)."""
         from app.services.knowledge_base_service import get_knowledge_base
 
         def _load_kb_sync():
-            # KnowledgeBaseService is a fully synchronous class (PDF parsing
-            # via fitz is CPU-bound, and image-based PDFs fall back to a
-            # blocking Claude Vision call in _extract_with_vision). Its only
-            # entry point is this method, so rather than threading `async`
-            # through the whole class (load_documents -> _load_pdf ->
-            # _extract_with_vision, most of it dead/unused elsewhere), both
-            # calls are dispatched together as one thread-offloaded unit.
             kb = get_knowledge_base()
             kb.load_documents()
             return kb
 
         kb = await asyncio.to_thread(_load_kb_sync)
 
-        results = {
-            "processed": [],
-            "skipped": [],
-            "errors": []
-        }
+        results = {"processed": [], "skipped": [], "errors": []}
 
         for doc in kb.documents.values():
             try:
@@ -446,31 +485,19 @@ class RAGService:
                     doc_type=doc.doc_type,
                     club_id=club_id,
                 )
-
                 if result['status'] == 'processed':
                     results['processed'].append(doc.filename)
                 else:
                     results['skipped'].append(doc.filename)
-
             except Exception as e:
                 logger.error(f"Error processing {doc.filename}: {e}")
-                results['errors'].append({
-                    'file': doc.filename,
-                    'error': str(e)
-                })
+                results['errors'].append({'file': doc.filename, 'error': str(e)})
 
         return results
 
     @staticmethod
     async def get_stats(db: AsyncSession, club_id=None) -> Dict[str, Any]:
         """Get statistics about the RAG index, scoped to club + shared."""
-        base_filter = select(DocumentChunk)
-        if club_id:
-            base_filter = base_filter.where(
-                or_(DocumentChunk.club_id == club_id, DocumentChunk.club_id.is_(None))
-            )
-
-        # Count chunks by doc type
         result = await db.execute(
             select(
                 DocumentChunk.doc_type,
@@ -483,14 +510,10 @@ class RAGService:
         )
 
         stats_by_type = {
-            row.doc_type: {
-                'chunk_count': row.count,
-                'total_chars': row.total_length
-            }
+            row.doc_type: {'chunk_count': row.count, 'total_chars': row.total_length}
             for row in result.all()
         }
 
-        # Get processing logs
         logs_result = await db.execute(select(DocumentEmbeddingLog))
         logs = logs_result.scalars().all()
 

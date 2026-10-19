@@ -110,11 +110,80 @@ async def _substitution_notes(db: AsyncSession, ve: VideoEvent) -> str:
     return f"{off} off, {on} on"
 
 
+# Overcarrying / picked-off-ground are logged as the carrier's FOUL (a free is conceded) but are ALSO unforced errors
+# (an unpressured mistake). The foul row stays; a linked UNFORCED_ERROR row is mirrored beside it so every unforced-error
+# count, chart and agent tool sees them without each one special-casing the sub-type.
+FOUL_LIKE_ERROR_SUBTYPES = ("overcarrying", "picked_off_ground")
+_SHADOW_PREFIX = "[video-ue:"
+
+
+def _shadow_marker(ve: VideoEvent) -> str:
+    return f"{_SHADOW_PREFIX}{ve.id}]"
+
+
+def _wants_shadow(ve: VideoEvent) -> bool:
+    return bool(ve.is_verified and ve.event_type == "FOUL_COMMITTED" and (ve.sub_type or "") in FOUL_LIKE_ERROR_SUBTYPES)
+
+
+async def _find_shadow(db: AsyncSession, ve: VideoEvent) -> Optional[MatchEvent]:
+    from sqlalchemy import select
+
+    res = await db.execute(
+        select(MatchEvent).where(MatchEvent.match_id == ve.match_id, MatchEvent.notes == _shadow_marker(ve))
+    )
+    return res.scalars().first()
+
+
+async def _drop_shadow(db: AsyncSession, ve: VideoEvent) -> None:
+    shadow = await _find_shadow(db, ve)
+    if shadow is None:
+        return
+    await _remove_stats(db, shadow)
+    await db.delete(shadow)
+    await db.flush()
+
+
+async def _sync_shadow(db: AsyncSession, ve: VideoEvent) -> None:
+    from app.models.match_event import EventType
+
+    if not _wants_shadow(ve):
+        await _drop_shadow(db, ve)
+        return
+    fields = _match_event_fields(ve)
+    if fields is None:
+        return
+    fields["event_type"] = EventType.UNFORCED_ERROR
+    fields["team"] = VideoEventMapper.video_team_to_match_team(ve.team)
+    fields["notes"] = _shadow_marker(ve)
+    shadow = await _find_shadow(db, ve)
+    if shadow is None:
+        shadow = MatchEvent(match_id=ve.match_id, **fields)
+        db.add(shadow)
+        await db.flush()
+        if shadow.player_id:
+            await MatchEventService._update_player_stats(db, shadow, is_delete=False)
+        return
+    await _remove_stats(db, MatchEvent(
+        match_id=shadow.match_id, event_type=shadow.event_type, team=shadow.team,
+        player_id=shadow.player_id, assist_player_id=shadow.assist_player_id,
+    ))
+    for key, value in fields.items():
+        setattr(shadow, key, value)
+    await db.flush()
+    if shadow.player_id:
+        await MatchEventService._update_player_stats(db, shadow, is_delete=False)
+
+
 async def write_through(db: AsyncSession, ve: VideoEvent) -> None:
-    """Create/update the MatchEvent mirroring `ve`. No-op for unverified
-    events (AI drafts wait until verified). Caller commits."""
+    """Create/update the MatchEvent mirroring `ve` (plus the linked unforced-error row for overcarrying /
+    picked-off-ground). No-op for unverified events (AI drafts wait until verified). Caller commits."""
     if not ve.is_verified:
         return
+    await _write_main(db, ve)
+    await _sync_shadow(db, ve)
+
+
+async def _write_main(db: AsyncSession, ve: VideoEvent) -> None:
 
     fields = _match_event_fields(ve)
     if fields is None:
@@ -156,6 +225,7 @@ async def remove(db: AsyncSession, ve: VideoEvent, recalc: bool = True) -> None:
     `recalc=False` skips the per-event scoreboard recalculation — bulk callers
     (reset, undo-to-point) remove many events and call `recalc_scores` once at
     the end instead of re-reading every scoring event after each delete."""
+    await _drop_shadow(db, ve)
     if not ve.match_event_id:
         return
     me = await db.get(MatchEvent, ve.match_event_id)

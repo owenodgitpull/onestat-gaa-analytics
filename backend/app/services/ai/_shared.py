@@ -14,6 +14,8 @@ not from this file. See AI_ARCHITECTURE.md for the three-layer design.
 import os
 import json
 import logging
+import time
+from contextvars import ContextVar
 from decimal import Decimal
 from typing import Optional
 from datetime import datetime, date
@@ -344,8 +346,10 @@ properly.
   questions, give our two-pointer count and the matches in which we scored none, and tie losses to that when the
   numbers support it. Only state counts the data shows.
 - Event sub_types are the reason/detail behind an event; read them, do not ignore them. Fouls: overcarrying and
-  picked_off_ground are OFFENSIVE fouls by the ball carrier (technical infringements that concede a free - a
-  discipline/skill-execution issue, not a defensive error); pushing, pulling, charging, late_tackle, jersey_pull,
+  picked_off_ground are OFFENSIVE fouls by the ball carrier (they concede a free) AND are counted as unforced
+  errors (an unpressured mistake by the carrier): each appears as a foul event and as an unforced_error event with
+  the same sub_type, so they are inside both the foul and the unforced-error totals - do not add them on top
+  of each other or describe them as two separate mistakes; pushing, pulling, charging, late_tackle, jersey_pull,
   obstruction, dissent and three_v_three (3v3 breach: more than three players of one team in a zone) are defensive/
   conduct fouls. Unforced errors: stray_pass, dropped_ball, miscue, kick_over_sideline, square_ball, three_v_three,
   time_wasting. Dispossessions: strip, tackle, forced_interception. A THROW_IN event with sub_type throw_ball is the
@@ -1206,9 +1210,12 @@ TOOLS = [
         "description": (
             "Search the knowledge base: the platform's built-in GAA material (official football rules, coaching/defensive "
             "play, tactical periodisation) AND any documents this club uploaded (game plans, playbooks, tactical notes). "
-            "Use specific queries, several times if needed. Returns the best matching passages with their source document "
-            "and section. Use it whenever a rule, coaching principle or the club's own tactical plan is relevant - never "
-            "answer a rules or coaching-principle question from memory when this can be checked."
+            "Hybrid semantic + keyword search, so describe the idea in plain words (e.g. 'forwards dropping deep to "
+            "support the half-back line', 'press after a turnover') as well as exact terms. Use specific queries and "
+            "search several times for different angles. Returns the best matching passages with source document, "
+            "section and page - cite them as (Source, p.N). Use it whenever a rule, coaching principle or the club's "
+            "own tactical plan is relevant - never answer a rules or coaching-principle question from memory when "
+            "this can be checked."
         ),
         "input_schema": {
             "type": "object",
@@ -6729,9 +6736,74 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
     })
 
 
+# One knowledge-base instruction block shared by MatchAgent, ChatAgent and SeasonAgent.
+KB_TOOL_BLOCK = (
+    "\n# KNOWLEDGE BASE (use it as a tool)\n"
+    "The GAA knowledge base (official rules, coaching and tactical material, plus this club's own uploaded documents) is "
+    "NOT pasted here. Call search_knowledge_base:\n"
+    "- BEFORE any tactical or coaching explanation (why a side won or lost, players dropping deep, kickout strategy, "
+    "pressing, transition, shot selection, defensive shape) - at least once, with queries that describe the situation in "
+    "plain words (e.g. 'forwards dropping deep to support the half-back line'), and again from other angles if the first "
+    "result is thin.\n"
+    "- BEFORE stating or applying any rule.\n"
+    "The data (events, counts, positions) tells you WHAT happened; the knowledge base supplies the principle for WHY it "
+    "matters. Never let a retrieved passage override or invent a number. Cite what you use inline as (Source name, p.N). "
+    "If the club has uploaded its own game plan, it takes priority over the platform's general material. If nothing "
+    "relevant comes back, say so plainly - do not present general knowledge as if it were sourced.\n"
+)
+
+
+# Sources retrieved during the current report/chat turn (a report lists them under "Sources used"). The list is created
+# by begin_kb_source_tracking() and shared with every task the agent loop spawns.
+_kb_sources_used: ContextVar[Optional[list]] = ContextVar("kb_sources_used", default=None)
+
+
+def begin_kb_source_tracking() -> list:
+    """Start collecting the knowledge-base passages the agent retrieves from now on; returns the live list."""
+    sources: list = []
+    _kb_sources_used.set(sources)
+    return sources
+
+
+def format_sources_used(sources: list) -> str:
+    """"Sources used" footer: unique documents (with the pages retrieved), or '' if none."""
+    by_doc: dict = {}
+    for src in sources or []:
+        pages = by_doc.setdefault(src["source"], set())
+        if src.get("page"):
+            pages.add(src["page"])
+    if not by_doc:
+        return ""
+    lines = []
+    for doc, pages in by_doc.items():
+        name = doc.rsplit(".", 1)[0].replace("_", " ")
+        lines.append(f"{name} (p.{', '.join(str(p) for p in sorted(pages))})" if pages else name)
+    return "; ".join(lines)
+
+
+async def _log_tool_call(tool_name: str, club_id, tool_input: dict, result_count: int, sources: list, started: float) -> None:
+    """Record the call in agent_tool_calls (own session, never allowed to break the agent)."""
+    try:
+        from sqlalchemy import text as sql_text
+        from app.database import async_session_maker
+        async with async_session_maker() as log_db:
+            await log_db.execute(sql_text(
+                "INSERT INTO agent_tool_calls (id, tool_name, club_id, tool_input, result_count, sources, duration_ms) "
+                "VALUES (gen_random_uuid(), :t, CAST(:c AS uuid), CAST(:i AS jsonb), :n, CAST(:s AS jsonb), :d)"
+            ), {
+                "t": tool_name, "c": str(club_id) if club_id else None,
+                "i": json.dumps(tool_input, default=str), "n": result_count,
+                "s": json.dumps(sources, default=str), "d": int((time.monotonic() - started) * 1000),
+            })
+            await log_db.commit()
+    except Exception as e:
+        logger.warning("agent_tool_calls log failed: %s", e)
+
+
 async def search_knowledge_base(db: AsyncSession, query: str, doc_types: list = None, limit: int = 5, club_id=None) -> str:
     """Agent-callable retrieval over the knowledge base (shared platform docs + this club's uploads)."""
     from app.services.rag_service import RAGService
+    started = time.monotonic()
     try:
         n = max(1, min(int(limit or 5), 8))
     except (TypeError, ValueError):
@@ -6739,15 +6811,24 @@ async def search_knowledge_base(db: AsyncSession, query: str, doc_types: list = 
     try:
         results = await RAGService.search(db, query, doc_types=doc_types or None, limit=n, club_id=club_id)
     except Exception as e:
+        logger.warning("Knowledge base search failed: %s", e)
+        await _log_tool_call("search_knowledge_base", club_id, {"query": query, "doc_types": doc_types}, -1, [], started)
         return safe_json({"error": f"Knowledge base search failed: {e}"})
+    sources = [{"source": r.get("source_file"), "page": r.get("page"), "section": r.get("section")} for r in results]
+    await _log_tool_call("search_knowledge_base", club_id, {"query": query, "doc_types": doc_types, "limit": n},
+                         len(results), sources, started)
     if not results:
         return safe_json({"query": query, "passages": [], "note": "Nothing in the knowledge base matched. Say so rather than answering from memory as if it were sourced."})
+    tracker = _kb_sources_used.get()
+    if tracker is not None:
+        tracker.extend(sources)
     passages = []
     for r in results:
         passages.append({
             "source": r.get("source_file"),
             "doc_type": r.get("doc_type"),
             "section": r.get("section"),
+            "page": r.get("page"),
             "scope": "club's own document" if r.get("club_id") else "platform base knowledge",
             "text": (r.get("content") or "")[:1600],
         })

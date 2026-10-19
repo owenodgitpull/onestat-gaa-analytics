@@ -22,6 +22,7 @@ from app.models.knowledge_document import KnowledgeDocument
 from app.models.document_chunk import DocumentChunk, DocumentEmbeddingLog
 from app.services.storage_service import storage
 from app.services.rag_service import RAGService
+from app.services.kb_extraction import extract_pdf_text
 from app.auth.dependencies import AuthenticatedUser, require_admin
 
 logger = logging.getLogger(__name__)
@@ -290,9 +291,9 @@ async def _process_document_background(
             # Extract text based on content type
             text_content = ""
             if content_type == "application/pdf":
-                text_content = _extract_text_from_pdf(file_bytes)
+                text_content = await extract_pdf_text(file_bytes)
             elif "wordprocessingml" in (content_type or ""):
-                text_content = _extract_text_from_docx(file_bytes)
+                text_content = await asyncio.to_thread(_extract_text_from_docx, file_bytes)
 
             if not text_content or len(text_content.strip()) < 50:
                 doc.processing_status = "failed"
@@ -351,7 +352,13 @@ def _extract_text_from_docx(file_bytes: bytes) -> str:
     import io
 
     doc = docx.Document(io.BytesIO(file_bytes))
-    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    paragraphs = []
+    for p in doc.paragraphs:
+        if not p.text.strip():
+            continue
+        # Word headings become markdown headings so each chunk keeps its section title
+        style = (p.style.name or "") if p.style is not None else ""
+        paragraphs.append(f"## {p.text.strip()}" if style.startswith("Heading") or style == "Title" else p.text)
     return "\n\n".join(paragraphs)
 
 
@@ -481,9 +488,9 @@ async def _process_default_document_background(
             # Extract text
             text_content = ""
             if content_type == "application/pdf":
-                text_content = _extract_text_from_pdf(file_bytes)
+                text_content = await extract_pdf_text(file_bytes)
             elif "wordprocessingml" in (content_type or ""):
-                text_content = _extract_text_from_docx(file_bytes)
+                text_content = await asyncio.to_thread(_extract_text_from_docx, file_bytes)
 
             if not text_content or len(text_content.strip()) < 50:
                 doc.processing_status = "failed"

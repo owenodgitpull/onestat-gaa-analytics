@@ -20,6 +20,8 @@ from sqlalchemy import select
 
 from app.services.ai.live_brief import build_live_brief
 from app.services.ai._shared import (
+    KB_TOOL_BLOCK,
+    begin_kb_source_tracking, format_sources_used,
     client, GAA_ESSENTIALS, PANEL_EXPERT, TOOLS, execute_tool,
     get_match_summary, get_tools_subset, get_club_context,
 )
@@ -171,10 +173,15 @@ class MatchAgent:
         tactical_notes = match_row[1] if match_row else None
         club_name, club_context = await get_club_context(db, club_id)
 
-        # Get knowledge base context via RAG
+        # Spatial + pattern + last-five-minutes brief (deterministic, computed from the tagged data)
+        live_brief = await build_live_brief(db, match_uuid, minute, club_id)
+
+        # Knowledge base context via RAG - the query is the current SITUATION (what the brief says is happening),
+        # not a fixed string, so the passages returned are the ones that bear on what the coaches are seeing now.
         try:
             event_types = [e.get('type', '') for e in recent_events[:5]]
-            query = f"live match analysis {' '.join(event_types)} fatigue kickout tactics GPS benchmarks"
+            situation = " ".join((live_brief or "").split())[:500]
+            query = f"Gaelic football tactics for this situation: {situation} Recent events: {', '.join(t for t in event_types if t)}"
             kb_context = await RAGService.get_context_for_query(
                 db, query, context_type='live_match', max_tokens=1500, club_id=club_id
             )
@@ -182,8 +189,6 @@ class MatchAgent:
             logger.warning(f"RAG context retrieval failed: {e}")
             kb_context = ""
 
-        # Spatial + pattern + last-five-minutes brief (deterministic, computed from the tagged data)
-        live_brief = await build_live_brief(db, match_uuid, minute, club_id)
         brief_section = f"\n## LIVE TACTICAL BRIEF (computed from the tagged data — quote it, do not contradict it)\n{live_brief}\n" if live_brief else ""
 
         # Build tactical notes section
@@ -423,7 +428,7 @@ Reference knowledge base context when relevant to a specific trigger.
         club_name, club_context = await get_club_context(db, _cid)
 
         # Get knowledge base context via RAG
-        kb_context = "\n# KNOWLEDGE BASE (use it as a tool)\nThe GAA knowledge base (rules, coaching and tactical material, plus the club's own uploaded documents) is NOT pasted here. Call search_knowledge_base whenever a rule, coaching principle or the club's own game plan matters to your answer, with specific queries (e.g. 'kickout restart rules', '3v3 breach', 'transition defence'); call it more than once if needed and cite the source document when you rely on it.\n"
+        kb_context = KB_TOOL_BLOCK
 
         system_prompt = f"""You are an expert GAA football analyst for {club_name}.
 
@@ -975,6 +980,7 @@ INSTRUCTIONS:
         except Exception as e:
             logger.warning(f"Lineup context computation failed for match {match_id}: {e}")
 
+        kb_sources = begin_kb_source_tracking()  # knowledge-base passages the agent retrieves while writing this report
         analysis = await MatchAgent.analyze_match(db, match_id,
             f"""Generate a detailed post-match report including, IN THIS EXACT ORDER — always start with Match Summary, never lead with any other section:{ball_carry_note}
             1. Match Summary (2-3 sentences)
@@ -1008,6 +1014,9 @@ INSTRUCTIONS:
         # Strip the <chart_insights> block from the displayed analysis
         clean_analysis = re.sub(r'\s*<chart_insights>[\s\S]*?</chart_insights>\s*', '', analysis).strip()
         clean_analysis = _apply_scorecard(clean_analysis, _SCORECARD_BY_MATCH.pop(str(match_id), ""))
+        kb_note = format_sources_used(kb_sources)
+        if kb_note:
+            clean_analysis += f"\n\n*Knowledge base sources used: {kb_note}.*"
 
         # Defensive: strip a leaked "narrating my own process" preamble if the
         # model wrote one anyway despite the system prompt instruction against it
