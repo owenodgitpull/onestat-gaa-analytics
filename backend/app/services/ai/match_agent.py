@@ -866,6 +866,32 @@ INSTRUCTIONS:
         if match.notes and match.notes.strip():
             notes_hint = f"\n\nCOACH'S OWN NOTE about this match (their words, not a computed fact — factor it in as context, don't let it override what the event log/scoreline actually shows): \"{match.notes.strip()}\""
 
+        # The Match Prep plan: the manager's tactical notes (team news, late shuffles, the plan) and man-marking jobs.
+        # Context in the coach's own words - the data still decides what actually happened.
+        try:
+            from app.models.man_marking_assignment import ManMarkingAssignment
+            marks = (await db.execute(
+                select(ManMarkingAssignment).where(ManMarkingAssignment.match_id == match.id)
+            )).scalars().all()
+        except Exception as e:
+            logger.warning(f"Man-marking lookup failed for match {match_id}: {e}")
+            marks = []
+        plan_lines = []
+        if (match.tactical_notes or "").strip():
+            plan_lines.append(f"Tactical notes / team news (coach's words): {match.tactical_notes.strip()}")
+        for m_ in marks:
+            who = getattr(getattr(m_, "player", None), "name", None) or "one of our players"
+            opp_name = (m_.opponent_player_name or "").strip()
+            if opp_name:
+                plan_lines.append(f"Man-marking job: {who} marked {opp_name}" + (f" ({m_.notes.strip()})" if (m_.notes or "").strip() else ""))
+        if plan_lines:
+            notes_hint += (
+                "\n\nPRE-MATCH PLAN (set up by the coach in Match Prep - context, not computed fact; treat positions named here as the intended "
+                "roles when the lineup alone would mislead, and judge the plan against what the event data shows):\n- "
+                + "\n- ".join(plan_lines)
+                + "\nFor each man-marking job, use get_match_events / get_match_player_impact to say how the marked player actually fared (shots, scores, turnovers) and whether the job held."
+            )
+
         # Lineup-change facts — computed deterministically (same rationale as
         # momentum_hint above: this is arithmetic/lookup, not something to
         # trust to agentic recall). Flags three things by comparing this
