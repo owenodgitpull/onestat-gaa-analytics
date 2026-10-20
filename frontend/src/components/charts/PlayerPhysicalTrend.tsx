@@ -5,6 +5,7 @@ import {
 } from 'recharts'
 import { Zap, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import type { MatchGPSData } from '@/services/api'
+import { cleanPlayerName } from '@/utils/playerName'
 
 interface Props {
   matchGpsHistory: MatchGPSData[]
@@ -19,7 +20,7 @@ const METRICS: { key: MetricKey; label: string; shortLabel: string; unit: string
 ]
 
 function abbrev(name: string): string {
-  const words = (name || '').trim().split(/\s+/).filter(Boolean)
+  const words = cleanPlayerName(name).split(/\s+/).filter(Boolean)
   if (words.length === 0) return '?'
   if (words.length === 1) return words[0].slice(0, 7)
   const first = words[0].length <= 3 ? words[0] : words[0][0]

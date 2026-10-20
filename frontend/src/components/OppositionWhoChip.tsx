@@ -6,6 +6,7 @@
 import { useMemo } from 'react'
 import { X } from 'lucide-react'
 import type { OppositionSquad } from '@/hooks/useOppositionSquad'
+import { displaySurname } from '@/utils/playerName'
 
 const QUESTION: Record<string, string> = {
   foul_committed: 'Who fouled?',
@@ -36,7 +37,7 @@ export default function OppositionWhoChip({ squad, eventType, when, teamName, on
     [squad.players],
   )
   if (!squad.enabled || !onField.length) return null
-  const surname = (n: string) => n.trim().split(' ').slice(-1)[0] || n
+  const surname = (n: string) => displaySurname(n) || n
   return (
     <div
       className="absolute bottom-2 left-2 right-52 z-30 rounded-xl px-2.5 py-2 animate-fade-in"

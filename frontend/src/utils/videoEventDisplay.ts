@@ -4,6 +4,8 @@
  * Same wording as Live Recording / Match Result, never raw type codes.
  */
 
+import { displaySurname } from './playerName'
+
 const VIDEO_EVENT_LABELS: Record<string, string> = {
   POINT_SCORED: 'Point', GOAL_SCORED: 'Goal', WIDE: 'Wide', SHORT: 'Dropped short', SAVED: 'Saved',
   HIT_POST: 'Hit post', POST_HIT: 'Hit post', BLOCK_SHOT: 'Block', BLOCK_PASS: 'Block',
@@ -81,7 +83,7 @@ function shotPhrase(e: {
   const foot = FOOT_WORDS[String(sc.foot ?? '').trim().charAt(0).toUpperCase()]
   if (foot) bits.push(foot)
   const assist = (e.assist_player_name || sc.assist_player_name || '').toString().trim()
-  if (assist && (e.event_type === 'POINT_SCORED' || e.event_type === 'GOAL_SCORED')) bits.push(`assisted by ${assist.split(' ').slice(-1)[0]}`)
+  if (assist && (e.event_type === 'POINT_SCORED' || e.event_type === 'GOAL_SCORED')) bits.push(`assisted by ${displaySurname(assist, false)}`)
   if (sc.under_pressure === true) bits.push('under pressure')
   return bits.join(', ')
 }

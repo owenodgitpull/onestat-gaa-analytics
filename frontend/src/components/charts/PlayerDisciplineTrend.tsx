@@ -3,6 +3,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { ShieldAlert } from 'lucide-react'
+import { cleanPlayerName } from '@/utils/playerName'
 
 interface DisciplineMatchPoint {
   match_id: string
@@ -18,7 +19,7 @@ interface Props {
 }
 
 function abbrev(name: string): string {
-  const words = (name || '').trim().split(/\s+/).filter(Boolean)
+  const words = cleanPlayerName(name).split(/\s+/).filter(Boolean)
   if (words.length === 0) return '?'
   if (words.length === 1) return words[0].slice(0, 7)
   const first = words[0].length <= 3 ? words[0] : words[0][0]
