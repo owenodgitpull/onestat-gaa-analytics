@@ -5,6 +5,7 @@ import { matchesAPI } from '@/services/api'
 import type { PitchPath } from '@/services/api'
 import { ownAttacksRight, toAttackFrame } from '@/utils/attackDirection'
 import { displaySurname } from '../../utils/playerName'
+import { describeMove, stepLabel } from '../../utils/pathDescription'
 
 interface PathsTakenChartProps {
   matchId: string
@@ -255,31 +256,11 @@ const describeFromNodes = (
     const f = normalizePoint({ x: n.x, y: n.y }, path.minute, attackingRightFirstHalf, halfMins, (path as any).half)
     return zoneDisplayName(getZoneId(f.x), f.y)
   }
-  const who = (n: { player: string | null }) => (n.player ? ` (${surname(n.player)})` : '')
-  const first = nodes[0]
-  const last = nodes[nodes.length - 1]
-  const verb = (t: string) => eventLabel(t).toLowerCase()
-
-  let start: string
-  if (nodes.length === 1) {
-    start = ''
-  } else {
-    start = `Started with ${verb(first.type)}${who(first)} ${where(first)}`
-    const middle = nodes.slice(1, -1)
-    if (middle.length > 0) {
-      start += `, then ${middle.map(n => `${verb(n.type)}${who(n)}`).join(', then ')}`
-    }
-  }
-  const outcome = path.outcome
-  const endZone = where(last)
-  let end: string
-  if (SCORING_TYPES.has(outcome)) end = `${(OUTCOME_LABELS[outcome] || outcome).toLowerCase()}${who(last)} from ${endZone}`
-  else if (WIDE_TYPES.has(outcome)) end = `went wide${who(last)} from ${endZone}`
-  else if (outcome === 'turnover_lost') end = `lost the ball${who(last)} in ${endZone}`
-  else if (outcome === 'unforced_error') end = `unforced error${who(last)} in ${endZone}`
-  else end = `${verb(outcome)}${who(last)} at ${endZone}`
-  const sentence = start ? `${start}. Ended: ${end}.` : `${end.charAt(0).toUpperCase()}${end.slice(1)}.`
-  return sentence
+  return describeMove(nodes as any, {
+    name: n => surname(n.player),
+    where: n => where(n as any),
+    outcome: path.outcome,
+  })
 }
 
 export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTakenChartProps) {
@@ -457,7 +438,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
                 {activeDetail.nodes!.map((n, ni) => (
                   <span key={ni} className="flex items-center gap-1">
                     <span className="inline-flex w-4 h-4 rounded-full bg-slate-900 border border-white/60 items-center justify-center text-[9px] font-bold text-white">{ni + 1}</span>
-                    <span>{eventLabel(n.type)}{n.player ? ` (${surname(n.player)})` : ''}</span>
+                    <span>{stepLabel(n as any, surname(n.player)) ?? `${eventLabel(n.type)}${n.player ? ` (${surname(n.player)})` : ''}`}</span>
                     {ni < activeDetail.nodes!.length - 1 && <span className="text-white/25">›</span>}
                   </span>
                 ))}

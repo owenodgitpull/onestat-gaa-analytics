@@ -1830,7 +1830,7 @@ export interface PitchPath {
   origin?: string;
   touches?: number;
   /** The tagged events that make up the move, in order (kicks carry their landing spot as end_x/end_y) */
-  nodes?: { x: number; y: number; type: string; player: string | null; minute: number; end_x?: number; end_y?: number }[];
+  nodes?: { x: number; y: number; type: string; player: string | null; minute: number; end_x?: number; end_y?: number; sub_type?: string | null }[];
 }
 
 export interface PitchPathsResponse {

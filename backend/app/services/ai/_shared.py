@@ -2141,6 +2141,8 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                     "type": ce.event_type.value if hasattr(ce.event_type, 'value') else str(ce.event_type),
                     "player": players.get(str(ce.player_id)) if ce.player_id else None,
                     "minute": ce.minute,
+                    # why it happened (stray_pass, dropped_ball, strip...) so the chart can say what the mistake was
+                    "sub_type": getattr(ce, "sub_type", None),
                 }
                 if getattr(ce, "end_x", None) is not None and getattr(ce, "end_y", None) is not None:
                     nd["end_x"] = round(ce.end_x, 1)
