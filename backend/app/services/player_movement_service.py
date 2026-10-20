@@ -7,7 +7,7 @@ import uuid
 import time
 from typing import Optional, List
 from uuid import UUID
-from sqlalchemy import select, and_, func, delete
+from sqlalchemy import select, and_, func, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ball_carrier_segment import BallCarrierSegment
@@ -153,11 +153,22 @@ class PlayerMovementService:
         timestamp_ms: int,
     ) -> int:
         """Delete all carrier segments that started after the given timestamp (in milliseconds).
-        Used for the undo-to-point feature in video tagging."""
+        Used for the undo-to-point feature in video tagging.
+
+        A carry that was already running at the cut point is REOPENED: it keeps its start but loses the end (time, spot
+        and "ended by") it was given by something that has just been undone. Without this the carry stays closed with an
+        end after the cut, nothing is left open, and the tagger has no carrier to continue from after a refresh."""
         result = await db.execute(
             delete(BallCarrierSegment)
             .where(BallCarrierSegment.match_id == match_id)
             .where(BallCarrierSegment.video_timestamp_ms > timestamp_ms)
+        )
+        await db.execute(
+            update(BallCarrierSegment)
+            .where(BallCarrierSegment.match_id == match_id)
+            .where(BallCarrierSegment.video_timestamp_ms <= timestamp_ms)
+            .where(BallCarrierSegment.end_video_ms > timestamp_ms)
+            .values(end_video_ms=None, end_time_ms=None, ended_by=None, end_x=None, end_y=None)
         )
         await db.commit()
         return result.rowcount
