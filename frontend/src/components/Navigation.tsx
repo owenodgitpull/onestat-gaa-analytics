@@ -107,6 +107,7 @@ export default function Navigation() {
         temperature_celsius: data.temperature_celsius,
         competition: data.competition,
         stage: data.stage,
+        half_duration_mins: club?.default_half_duration,
       })
       setIsNewMatchModalOpen(false)
       navigate(`/match/${match.id}/setup`)

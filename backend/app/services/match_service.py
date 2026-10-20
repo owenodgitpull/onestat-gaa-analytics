@@ -86,6 +86,19 @@ class MatchService:
             match_kwargs['pitch_length_m'] = match_data.pitch_length_m
         if match_data.pitch_width_m is not None:
             match_kwargs['pitch_width_m'] = match_data.pitch_width_m
+        # Half length: an explicit value from the request wins; otherwise the CLUB's default (an inter-county club is 35,
+        # a club side 30). This was never copied before, so every created match silently got the column default of 30.
+        sent = match_data.model_fields_set
+        half = match_data.half_duration_mins if 'half_duration_mins' in sent else None
+        if not half and club_id is not None:
+            from app.models.club import Club
+            club = await db.get(Club, club_id)
+            half = getattr(club, 'default_half_duration', None) if club else None
+        if half:
+            match_kwargs['half_duration_mins'] = half
+        # Simple Scoring (tap-only) was also dropped on create
+        if 'precise_tracking_enabled' in sent and match_data.precise_tracking_enabled is not None:
+            match_kwargs['precise_tracking_enabled'] = match_data.precise_tracking_enabled
         # Support client-provided UUID for offline-created matches
         if getattr(match_data, 'id', None):
             match_kwargs['id'] = match_data.id
