@@ -4938,7 +4938,18 @@ export default function VideoTagging() {
           className="absolute bottom-16 left-2 z-30 flex items-center gap-1.5 rounded-xl px-2 py-1.5 animate-fade-in"
           style={{ background: 'rgba(15,23,42,0.92)', border: '1px solid rgba(251,191,36,0.6)', backdropFilter: 'blur(10px)' }}
         >
-          <span className="text-[11px] font-bold text-white/70">Foot?</span>
+          <span className="text-[11px] font-bold text-white/70">
+            {(() => {
+              // Say whose score the foot is for, so it is clear what is being answered
+              const ev: any = (events as any[]).find(e => e.id === footChipEventId)
+              const full: string = ev?.opponent_player_name || (players as any[] | undefined)?.find(p => p.id === ev?.player_id)?.name || ''
+              const surname = full.replace(/\s*\(c\)\s*$/i, '').trim().split(/\s+/).slice(-1)[0] || ''
+              const kind = ev?.event_type === 'GOAL_SCORED' ? 'goal'
+                : ev?.event_type === 'WIDE' ? 'wide'
+                : ev?.scoring_context?.is_two_pointer ? 'two-pointer' : 'point'
+              return surname ? `${surname}'s ${kind} - foot?` : 'Foot?'
+            })()}
+          </span>
           {([['L', 'Left'], ['R', 'Right'], ['F', 'Fist']] as const).map(([code, label]) => (
             <button
               key={code}
@@ -5824,7 +5835,7 @@ export default function VideoTagging() {
               updateEvent.mutate({
                 eventId: pa.eventId, sessionId,
                 data: {
-                  scoring_context: { ...pa.scoringContext, assist_opposition_player_id: id, assist_player_name: name } as any,
+                  scoring_context: { ...pa.scoringContext, ...(scoreFootRef.current[pa.eventId] ? { foot: scoreFootRef.current[pa.eventId] } : {}), assist_opposition_player_id: id, assist_player_name: name } as any,
                   description: `Assist: ${name}`,
                 },
               })
@@ -5847,10 +5858,13 @@ export default function VideoTagging() {
             setPendingOppCreate(null)
             if (sessionId) {
               const asksAssist = pc.eventType === 'goal' || pc.eventType === 'point'
+              // Same optional "which foot?" chip as our own open-play scores/wides (goal, point or wide, not frees/45s)
+              const asksFoot = ['goal', 'point', 'wide'].includes(pc.eventType) && !isDeadBallShot(pc.data)
               createEvent.mutate({ sessionId, data: { ...pc.data, opposition_player_id: id, opponent_player_name: name } },
-                asksAssist ? {
+                (asksAssist || asksFoot) ? {
                   onSuccess: (created: any) => {
-                    if (created?.id) setPendingOppAssist({ eventId: created.id, scorerId: id, scoringContext: created.scoring_context || pc.data.scoring_context || {} })
+                    if (created?.id && asksFoot) setFootChipEventId(created.id)
+                    if (created?.id && asksAssist) setPendingOppAssist({ eventId: created.id, scorerId: id, scoringContext: created.scoring_context || pc.data.scoring_context || {} })
                   },
                 } : undefined)
             }
@@ -5860,7 +5874,12 @@ export default function VideoTagging() {
             if (oppCreateDoneRef.current === pc.data) return
             oppCreateDoneRef.current = pc.data
             setPendingOppCreate(null)
-            if (sessionId) createEvent.mutate({ sessionId, data: pc.data })
+            if (sessionId) {
+              const asksFoot = ['goal', 'point', 'wide'].includes(pc.eventType) && !isDeadBallShot(pc.data)
+              createEvent.mutate({ sessionId, data: pc.data }, asksFoot ? {
+                onSuccess: (created: any) => { if (created?.id) setFootChipEventId(created.id) },
+              } : undefined)
+            }
           }}
         />
       )}
