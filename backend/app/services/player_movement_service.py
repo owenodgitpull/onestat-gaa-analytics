@@ -56,6 +56,17 @@ class PlayerMovementService:
             if same is not None:
                 return same
 
+        # Video tagging: a new carry starting at T ends any carry still open from earlier. The page ends the previous carry
+        # itself, but after a refresh it no longer knows which one was open, so that one would stay open for ever.
+        if video_timestamp_ms is not None:
+            await db.execute(
+                update(BallCarrierSegment)
+                .where(BallCarrierSegment.match_id == match_id)
+                .where(BallCarrierSegment.end_video_ms.is_(None))
+                .where(BallCarrierSegment.video_timestamp_ms < video_timestamp_ms)
+                .values(end_video_ms=video_timestamp_ms, ended_by="manual")
+            )
+
         # Get next sequence number
         result = await db.execute(
             select(func.coalesce(func.max(BallCarrierSegment.sequence_number), -1))
