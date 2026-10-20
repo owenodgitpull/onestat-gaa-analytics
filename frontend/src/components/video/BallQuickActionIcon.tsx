@@ -42,8 +42,8 @@ interface BallQuickActionIconProps {
   armed?: boolean
 }
 
-const ICON_DIST = 148
-const ICON_R = 36
+const ICON_DIST = 108   // close to the ball so the icons stay out of the way of short passes (was 148)
+const ICON_R = 32
 
 /**
  * A single-tap ball-anchored icon button — the same visual language as

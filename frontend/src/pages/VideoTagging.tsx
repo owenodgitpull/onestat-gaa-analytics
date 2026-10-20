@@ -5085,7 +5085,7 @@ export default function VideoTagging() {
                 ballSvgX={ballSvgX}
                 ballSvgY={ballSvgY}
                 angleDeg={-90}
-                label="LK"
+                label="KP"
                 title="Log Kick Pass"
                 color="#0d9488"
                 orientation={taggingPitchOrientation}

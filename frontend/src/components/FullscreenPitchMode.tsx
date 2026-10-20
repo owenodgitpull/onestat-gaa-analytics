@@ -822,7 +822,7 @@ export default function FullscreenPitchMode({
                     ballSvgX={ballSvgX}
                     ballSvgY={ballSvgY}
                     angleDeg={-135}
-                    label="LK"
+                    label="KP"
                     title="Log Kick Pass"
                     color="#0d9488"
                     onTap={onToggleLongKickPassArm}
