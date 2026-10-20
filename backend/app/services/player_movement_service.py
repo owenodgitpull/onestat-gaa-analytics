@@ -40,6 +40,22 @@ class PlayerMovementService:
         match_clock_s: Optional[int] = None,
         opposition_player_id: Optional[UUID] = None,
     ) -> BallCarrierSegment:
+        # Video tagging: the same carrier already open from the same moment IS this carry (an undo that lands exactly where
+        # a carry begins reopens it, and the page then asks to start it again) - hand it back instead of doubling it.
+        if video_timestamp_ms is not None and (player_id is not None or opposition_player_id is not None):
+            same = (await db.execute(
+                select(BallCarrierSegment)
+                .where(BallCarrierSegment.match_id == match_id)
+                .where(BallCarrierSegment.team == team)
+                .where(BallCarrierSegment.player_id == player_id if player_id is not None
+                       else BallCarrierSegment.opposition_player_id == opposition_player_id)
+                .where(BallCarrierSegment.video_timestamp_ms == video_timestamp_ms)
+                .where(BallCarrierSegment.end_video_ms.is_(None))
+                .limit(1)
+            )).scalar_one_or_none()
+            if same is not None:
+                return same
+
         # Get next sequence number
         result = await db.execute(
             select(func.coalesce(func.max(BallCarrierSegment.sequence_number), -1))
@@ -155,9 +171,11 @@ class PlayerMovementService:
         """Delete all carrier segments that started after the given timestamp (in milliseconds).
         Used for the undo-to-point feature in video tagging.
 
-        A carry that was already running at the cut point is REOPENED: it keeps its start but loses the end (time, spot
-        and "ended by") it was given by something that has just been undone. Without this the carry stays closed with an
-        end after the cut, nothing is left open, and the tagger has no carrier to continue from after a refresh."""
+        A carry that was already running at the cut point is TRIMMED to end there: it keeps its start, but its end (time,
+        spot, "ended by") came from something that has just been undone, so it is cut back to the cut point. The page then
+        restarts the carrier from the cut point with a new carry (the possession record says who had the ball), which
+        continues from where this one now ends. Left as it was, the old carry stayed closed with an end AFTER the cut and
+        overlapped the restarted one."""
         result = await db.execute(
             delete(BallCarrierSegment)
             .where(BallCarrierSegment.match_id == match_id)
@@ -166,7 +184,15 @@ class PlayerMovementService:
         await db.execute(
             update(BallCarrierSegment)
             .where(BallCarrierSegment.match_id == match_id)
-            .where(BallCarrierSegment.video_timestamp_ms <= timestamp_ms)
+            .where(BallCarrierSegment.video_timestamp_ms < timestamp_ms)
+            .where(BallCarrierSegment.end_video_ms > timestamp_ms)
+            .values(end_video_ms=timestamp_ms, ended_by="manual", end_x=None, end_y=None)
+        )
+        # a carry that BEGINS exactly at the cut is the one the tagger is rolling back to: it carries on, so reopen it
+        await db.execute(
+            update(BallCarrierSegment)
+            .where(BallCarrierSegment.match_id == match_id)
+            .where(BallCarrierSegment.video_timestamp_ms == timestamp_ms)
             .where(BallCarrierSegment.end_video_ms > timestamp_ms)
             .values(end_video_ms=None, end_time_ms=None, ended_by=None, end_x=None, end_y=None)
         )
