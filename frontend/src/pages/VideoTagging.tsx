@@ -2474,6 +2474,12 @@ export default function VideoTagging() {
       description: config.description,
       source: 'human_tag',
     }
+    // A shot that was saved has no "who shot?" prompt: it is the player carrying the ball when it was taken
+    if (config.videoType === 'SAVED' && team === 'team_a' && !data.player_id && activeCarrierIdRef.current) {
+      data.player_id = activeCarrierIdRef.current
+      const jn = jerseyStripPlayers.find(p => p.playerId === activeCarrierIdRef.current)?.jerseyNumber
+      if (jn != null) data.jersey_number = jn
+    }
 
     if (isFreeResult) {
       // Ref brought the free forward: record it on the FOUL event that won the free
