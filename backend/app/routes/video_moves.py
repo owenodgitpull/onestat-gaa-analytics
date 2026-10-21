@@ -13,7 +13,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, text
-from sqlalchemy.orm import defer
+from sqlalchemy.orm import defer, lazyload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -38,8 +38,10 @@ PASS_LAG_MS = 600
 # ── helpers ──────────────────────────────────────────────────────────────────────────────────────
 
 async def _session_for_club(db: AsyncSession, session_id: UUID, club_id: UUID) -> VideoSession:
+    # lazyload("*"): the session's relationships (events, and their players) otherwise all load with it - several
+    # seconds of pointless work on every call, and the editor only needs the session's own columns
     s = (await db.execute(
-        select(VideoSession).where(VideoSession.id == session_id, VideoSession.club_id == club_id)
+        select(VideoSession).where(VideoSession.id == session_id, VideoSession.club_id == club_id).options(lazyload("*"))
     )).scalar_one_or_none()
     if not s:
         raise HTTPException(status_code=404, detail="Video session not found")
@@ -88,7 +90,7 @@ async def _pass_events_between(db: AsyncSession, session_id: UUID, lo_ms: int, h
     return list((await db.execute(select(VideoEvent).where(
         VideoEvent.video_session_id == session_id, VideoEvent.event_type == "PASS_HAND",
         VideoEvent.video_timestamp_ms >= lo_ms, VideoEvent.video_timestamp_ms <= hi_ms,
-    ))).scalars().all())
+    ).options(lazyload(VideoEvent.player), lazyload(VideoEvent.sub_in_player), lazyload(VideoEvent.assist_player), lazyload(VideoEvent.video_session), lazyload(VideoEvent.match), lazyload(VideoEvent.possession_chain)))).scalars().all())
 
 
 async def _linked_pass_event(db: AsyncSession, session_id: UUID, seg: BallCarrierSegment,
@@ -102,7 +104,8 @@ async def _linked_pass_event(db: AsyncSession, session_id: UUID, seg: BallCarrie
 async def _match_segments(db: AsyncSession, match_id: UUID) -> list[BallCarrierSegment]:
     return list((await db.execute(
         select(BallCarrierSegment).where(BallCarrierSegment.match_id == match_id)
-        .options(defer(BallCarrierSegment.path_points))   # the heavy JSON the editor never reads
+        .options(defer(BallCarrierSegment.path_points),   # the heavy JSON the editor never reads
+                 lazyload(BallCarrierSegment.match), lazyload(BallCarrierSegment.player), lazyload(BallCarrierSegment.opposition_player))
         .order_by(BallCarrierSegment.sequence_number.asc(), BallCarrierSegment.video_timestamp_ms.asc())
     )).scalars().all())
 
@@ -362,6 +365,7 @@ async def data_health(session_id: UUID,
 
     events = list((await db.execute(
         select(VideoEvent).where(VideoEvent.video_session_id == session.id).order_by(VideoEvent.video_timestamp_ms.asc())
+        .options(lazyload(VideoEvent.player), lazyload(VideoEvent.sub_in_player), lazyload(VideoEvent.assist_player), lazyload(VideoEvent.video_session), lazyload(VideoEvent.match), lazyload(VideoEvent.possession_chain))
     )).scalars().all())
     segs = await _match_segments(db, session.match_id)
 

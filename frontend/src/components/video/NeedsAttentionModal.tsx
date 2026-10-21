@@ -15,17 +15,33 @@ interface Props {
   onFixMove: (eventId: string) => void
 }
 
+// Last result per session: the window opens on it at once and re-checks quietly behind it
+const healthCache = new Map<string, HealthIssue[]>()
+
+/** Start the check before the window opens (call on hover / focus of the Needs attention button). */
+export function prefetchHealth(sessionId: string) {
+  if (!sessionId) return
+  videoMovesAPI.health(sessionId).then(r => healthCache.set(sessionId, r.issues)).catch(() => {})
+}
+
 const MOVE_KINDS = new Set(['score_no_carry', 'score_carrier_mismatch', 'duplicate_step', 'kickout_no_player'])
 
 export default function NeedsAttentionModal({ isOpen, sessionId, onClose, onSeek, onFixEvent, onFixMove }: Props) {
   const [issues, setIssues] = useState<HealthIssue[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     if (!isOpen) return
-    setIssues(null)
+    setIssues(healthCache.get(sessionId) ?? null)
     setError(null)
-    videoMovesAPI.health(sessionId).then(r => setIssues(r.issues)).catch(e => setError(e?.message || 'Could not run the check'))
+    setRefreshing(true)
+    let live = true
+    videoMovesAPI.health(sessionId)
+      .then(r => { healthCache.set(sessionId, r.issues); if (live) setIssues(r.issues) })
+      .catch(e => { if (live) setError(e?.message || 'Could not run the check') })
+      .finally(() => { if (live) setRefreshing(false) })
+    return () => { live = false }
   }, [isOpen, sessionId])
 
   if (!isOpen) return null
@@ -37,6 +53,7 @@ export default function NeedsAttentionModal({ isOpen, sessionId, onClose, onSeek
           <button onClick={onClose} className="text-white/60 hover:text-white p-1" aria-label="Close"><X size={18} /></button>
         </div>
         {!issues && !error && <div className="flex items-center gap-2 text-sm text-white/60 py-6"><Loader2 size={16} className="animate-spin" /> Checking…</div>}
+        {issues && refreshing && <div className="flex items-center gap-1.5 text-[11px] text-white/40 mb-2"><Loader2 size={11} className="animate-spin" /> Re-checking…</div>}
         {error && <p className="text-xs text-red-300">{error}</p>}
         {issues && issues.length === 0 && <p className="text-sm text-emerald-300 py-4">Nothing to fix — all clear.</p>}
         <ul className="space-y-2">

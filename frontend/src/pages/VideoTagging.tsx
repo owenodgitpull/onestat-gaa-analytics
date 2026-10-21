@@ -36,7 +36,7 @@ import PitchTapCue from '../components/PitchTapCue'
 import VideoEventLog from '../components/video/VideoEventLog'
 import MoveEditorModal, { prefetchMove } from '../components/video/MoveEditorModal'
 import EventEditModal from '../components/video/EventEditModal'
-import NeedsAttentionModal from '../components/video/NeedsAttentionModal'
+import NeedsAttentionModal, { prefetchHealth } from '../components/video/NeedsAttentionModal'
 import MatchSettingsModal from '../components/video/MatchSettingsModal'
 import TaggingPitch from '../components/video/TaggingPitch'
 import PlayerSelectionModal from '../components/PlayerSelectionModal'
@@ -4335,6 +4335,7 @@ export default function VideoTagging() {
           <button
             key={t.key}
             onClick={t.onClick}
+            onPointerEnter={() => { if (t.key === 'attention') prefetchHealth(sessionId || '') }}
             title={t.label}
             className={t.key === 'stopclock' && clockStopStartMs != null
               ? 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500/25 border border-amber-400/70 text-amber-100 text-xs font-bold animate-pulse whitespace-nowrap'
@@ -6046,7 +6047,7 @@ export default function VideoTagging() {
               { key: 'stopclock', icon: <Timer size={14} />, label: clockStopStartMs == null ? 'Stop clock' : 'Resume clock', onClick: () => toggleClockStop() },
               { key: 'settings', icon: <Wrench size={14} />, label: 'Match settings', onClick: () => setShowMatchSettings(true) },
             ].map(t => (
-              <button key={t.key} onClick={t.onClick} title={t.label}
+              <button key={t.key} onClick={t.onClick} onPointerEnter={() => { if (t.key === 'attention') prefetchHealth(sessionId || '') }} title={t.label}
                 className={t.key === 'stopclock' && clockStopStartMs != null
                   ? 'flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/25 border border-amber-400/70 text-amber-100 text-[11px] font-bold animate-pulse whitespace-nowrap'
                   : 'flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-[11px] font-medium transition-colors whitespace-nowrap'}>
