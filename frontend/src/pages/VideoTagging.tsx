@@ -494,6 +494,18 @@ export default function VideoTagging() {
 
   // Assist prompt — auto-opened after an own-team score finalizes.
   const [assistPromptEventId, setAssistPromptEventId] = useState<string | null>(null)
+  // The "who assisted?" prompts open the moment the score is tapped (on its on-screen temp id) instead of after the server
+  // has saved it. This maps temp id -> real id once saved, so a pick made early is applied as soon as the real id exists.
+  const tempToRealRef = useRef<Map<string, string>>(new Map())
+  const realEventId = useCallback(async (id: string): Promise<string | null> => {
+    if (!id.startsWith('temp-')) return id
+    for (let i = 0; i < 100; i++) {
+      const real = tempToRealRef.current.get(id)
+      if (real) return real
+      await new Promise(r => setTimeout(r, 150))
+    }
+    return null
+  }, [])
   // optional 'which foot?' chip after a score from play (only tagged when unusual, e.g. a left-footed score)
   const [footChipEventId, setFootChipEventId] = useState<string | null>(null)
   const scoreFootRef = useRef<Record<string, 'L' | 'R' | 'F'>>({})
@@ -2100,13 +2112,16 @@ export default function VideoTagging() {
         },
       })
     } else if (data.team === 'team_a' && PRESSURE_ELIGIBLE_TYPES.includes(data.event_type) && !isDeadBallShot(data)) {
-      createEvent.mutate({ sessionId, data }, {
+      let tid: string | null = null
+      const asksAssistNow = ['GOAL_SCORED', 'POINT_SCORED'].includes(data.event_type)
+      createEvent.mutate({ sessionId, data, onOptimistic: asksAssistNow ? (t: string) => { tid = t; setAssistPromptEventId(t) } : undefined }, {
         onSuccess: (created: any) => {
+          if (tid && created?.id) { tempToRealRef.current.set(tid, created.id); const t = tid; setAssistPromptEventId(cur => (cur === t ? created.id : cur)) }
           if (created?.id) setPendingPressure({ eventId: created.id, scoringContext: created.scoring_context || {} })
           if (created?.id) setFootChipEventId(created.id)
           // Live offers "who assisted?" on every own goal / point / two-pointer from play — not frees or 45s. Until now
           // this only fired from the manual-event form, so scores tagged the normal way never asked.
-          if (created?.id && ['GOAL_SCORED', 'POINT_SCORED'].includes(data.event_type)) setAssistPromptEventId(created.id)
+          if (created?.id && asksAssistNow && !tid) setAssistPromptEventId(created.id)
         },
       })
     } else if (data.team === 'team_b' && oppSquad.enabled && !data.opposition_player_id
@@ -2762,14 +2777,16 @@ export default function VideoTagging() {
       data.pitch_zone = xyToZone(ballPosition.x, ballPosition.y)
     }
 
-    createEvent.mutate({ sessionId, data }, {
+    const isOwnScoreNow = payload.team === 'team_a' &&
+      (payload.eventType === 'GOAL_SCORED' ||
+        (payload.eventType === 'POINT_SCORED') ||
+        (payload.eventType === 'FREE_KICK' && payload.scoringContext?.scored))
+    let earlyId: string | null = null
+    createEvent.mutate({ sessionId, data, onOptimistic: isOwnScoreNow ? (t: string) => { earlyId = t; setAssistPromptEventId(t) } : undefined }, {
       onSuccess: (created: any) => {
-        const isOwnScore = payload.team === 'team_a' &&
-          (payload.eventType === 'GOAL_SCORED' ||
-            (payload.eventType === 'POINT_SCORED') ||
-            (payload.eventType === 'FREE_KICK' && payload.scoringContext?.scored))
-        if (isOwnScore && created?.id) {
-          setAssistPromptEventId(created.id)
+        if (isOwnScoreNow && created?.id) {
+          if (earlyId) { tempToRealRef.current.set(earlyId, created.id); const t = earlyId; setAssistPromptEventId(cur => (cur === t ? created.id : cur)) }
+          else setAssistPromptEventId(created.id)
         }
       },
     })
@@ -5000,10 +5017,11 @@ export default function VideoTagging() {
           eventType="assist"
           teamName={pressTeamLabel}
           onSelect={(id) => {
-            if (sessionId && assistPromptEventId) {
-              updateEvent.mutate({ eventId: assistPromptEventId, sessionId, data: { assist_player_id: id } })
-            }
+            const pid = assistPromptEventId
             setAssistPromptEventId(null)
+            if (sessionId && pid) {
+              realEventId(pid).then(rid => { if (rid) updateEvent.mutate({ eventId: rid, sessionId, data: { assist_player_id: id } }) })
+            }
           }}
           onDismiss={() => setAssistPromptEventId(null)}
         />
@@ -5857,12 +5875,15 @@ export default function VideoTagging() {
             const pa = pendingOppAssist
             setPendingOppAssist(null)
             if (sessionId) {
-              updateEvent.mutate({
-                eventId: pa.eventId, sessionId,
-                data: {
-                  scoring_context: { ...pa.scoringContext, ...(scoreFootRef.current[pa.eventId] ? { foot: scoreFootRef.current[pa.eventId] } : {}), assist_opposition_player_id: id, assist_player_name: name } as any,
-                  description: `Assist: ${name}`,
-                },
+              realEventId(pa.eventId).then(rid => {
+                if (!rid) return
+                updateEvent.mutate({
+                  eventId: rid, sessionId,
+                  data: {
+                    scoring_context: { ...pa.scoringContext, ...(scoreFootRef.current[rid] ? { foot: scoreFootRef.current[rid] } : {}), assist_opposition_player_id: id, assist_player_name: name } as any,
+                    description: `Assist: ${name}`,
+                  },
+                })
               })
             }
           }}
@@ -5885,11 +5906,26 @@ export default function VideoTagging() {
               const asksAssist = pc.eventType === 'goal' || pc.eventType === 'point'
               // Same optional "which foot?" chip as our own open-play scores/wides (goal, point or wide, not frees/45s)
               const asksFoot = ['goal', 'point', 'wide'].includes(pc.eventType) && !isDeadBallShot(pc.data)
-              createEvent.mutate({ sessionId, data: { ...pc.data, opposition_player_id: id, opponent_player_name: name } },
+              let oppTid: string | null = null
+              createEvent.mutate({
+                sessionId, data: { ...pc.data, opposition_player_id: id, opponent_player_name: name },
+                onOptimistic: asksAssist ? (t: string) => {
+                  oppTid = t
+                  setPendingOppAssist({ eventId: t, scorerId: id, scoringContext: (pc.data.scoring_context as any) || {} })
+                } : undefined,
+              },
                 (asksAssist || asksFoot) ? {
                   onSuccess: (created: any) => {
                     if (created?.id && asksFoot) setFootChipEventId(created.id)
-                    if (created?.id && asksAssist) setPendingOppAssist({ eventId: created.id, scorerId: id, scoringContext: created.scoring_context || pc.data.scoring_context || {} })
+                    if (created?.id && asksAssist) {
+                      if (oppTid) {
+                        const t = oppTid
+                        tempToRealRef.current.set(t, created.id)
+                        setPendingOppAssist(cur => (cur && cur.eventId === t ? { ...cur, eventId: created.id, scoringContext: created.scoring_context || cur.scoringContext } : cur))
+                      } else {
+                        setPendingOppAssist({ eventId: created.id, scorerId: id, scoringContext: created.scoring_context || pc.data.scoring_context || {} })
+                      }
+                    }
                   },
                 } : undefined)
             }

@@ -184,17 +184,18 @@ export function useCreateVideoEvent(opts?: {
   return useMutation({
     mutationKey: WRITE_KEY,
     // One idempotency key per tap, stable across this mutation's retries (the args object is the same each time)
-    mutationFn: (args: { sessionId: string; data: VideoEventCreateData }) => {
+    mutationFn: (args: { sessionId: string; data: VideoEventCreateData; onOptimistic?: (tempId: string) => void }) => {
       let id = clientIds.get(args);
       if (!id) { id = crypto.randomUUID(); clientIds.set(args, id); }
       return videoEventsAPI.create(args.sessionId, { ...args.data, client_event_id: id });
     },
     retry: retryQuick,
     retryDelay,
-    onMutate: async ({ sessionId, data }) => {
+    onMutate: async ({ sessionId, data, onOptimistic }) => {
       await queryClient.cancelQueries({ queryKey: videoEventKeys.bySession(sessionId) });
       const tempId = `temp-${crypto.randomUUID()}`;
       patchCache(queryClient, sessionId, events => [...events, buildOptimistic(sessionId, data, tempId)]);
+      onOptimistic?.(tempId);   // lets a follow-up prompt open now, before the server has answered
       return { tempId };
     },
     onError: (error, variables, context) => {
