@@ -196,7 +196,9 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
             const jersey = player.match_jersey_number ?? player.player_jersey_number
             const meta = playerMeta.get(String(player.player_id))
             const scoreLine = meta ? formatScoreLine(meta) : ''
-            const isSubbedOff = meta?.subbedOff || !player.is_on_field
+            // a starter who came off and later came back on (a blood sub) finished on the pitch: not greyed, marked ↑
+            const returned = !!(meta?.cameOn && player.is_on_field)
+            const isSubbedOff = (meta?.subbedOff && !returned) || !player.is_on_field
 
             return (
               <div
