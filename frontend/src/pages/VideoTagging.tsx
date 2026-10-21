@@ -735,6 +735,13 @@ export default function VideoTagging() {
   if (session?.download_url && !stableVideoUrl.current) {
     stableVideoUrl.current = session.download_url
   }
+  // The signed video link lasts 2 hours. A long tagging session outlives it, and the next far seek (e.g. after an undo)
+  // then goes black. When the video errors, fetch a fresh link and swap it in; the player resumes where it was.
+  const [, bumpVideoUrl] = useState(0)
+  const refreshVideoUrl = useCallback(async () => {
+    const fresh = (await refetchSession())?.data?.download_url
+    if (fresh) { stableVideoUrl.current = fresh; bumpVideoUrl(n => n + 1) }
+  }, [refetchSession])
   const { data: eventsData, refetch: refetchEvents } = useVideoEvents(sessionId || null)
   const events = eventsData?.events || []
   // Players sent off (red card, including a second yellow): off the field for good - not on the pitch circles, not in any
@@ -4477,6 +4484,7 @@ export default function VideoTagging() {
       <VideoPlayer
         ref={playerRef}
         src={stableVideoUrl.current}
+        onSourceError={refreshVideoUrl}
         onTimeUpdate={handleTimeUpdate}
         onDurationChange={handleDurationChange}
         onPlayStateChange={setIsPlaying}

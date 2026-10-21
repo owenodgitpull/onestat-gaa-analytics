@@ -60,14 +60,26 @@ interface VideoPlayerProps {
   /** Disable all video controls (play/pause/seek/speed) — used during setup
    * flow when video scrubbing is allowed but tracking hasn't started yet. */
   disabled?: boolean
+  /** The video stopped loading (the signed link expires after 2 hours): the page should hand back a fresh src. */
+  onSourceError?: () => void
 }
 
 const PLAYBACK_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2]
 
 const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
-  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, etFirstHalfStartMs, etHalftimeMs, etSecondHalfStartMs, etFullTimeMs, maxSeekMs, initialTimeMs, fillHeight, disabled = false }, ref) => {
+  ({ src, onTimeUpdate, onDurationChange, onPlayStateChange, halftimeMs, firstHalfStartMs, secondHalfStartMs, fullTimeMs, etFirstHalfStartMs, etHalftimeMs, etSecondHalfStartMs, etFullTimeMs, maxSeekMs, initialTimeMs, fillHeight, disabled = false, onSourceError }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null)
     const hasRestoredPositionRef = useRef(false)
+    // Where we were when the video broke, so a fresh link resumes in the same place (paused or playing as before)
+    const resumeRef = useRef<{ t: number; wasPlaying: boolean } | null>(null)
+    const lastErrorAtRef = useRef(0)
+    const handleSourceError = () => {
+      const v = videoRef.current
+      if (!v || Date.now() - lastErrorAtRef.current < 15000) return   // one recovery at a time, never a loop
+      lastErrorAtRef.current = Date.now()
+      resumeRef.current = { t: v.currentTime, wasPlaying: !v.paused }
+      onSourceError?.()
+    }
     const [playing, setPlaying] = useState(false)
     const [currentTime, setCurrentTime] = useState(0)
     const [duration, setDuration] = useState(0)
@@ -117,6 +129,13 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         const ms = Math.round(videoRef.current.duration * 1000)
         setDuration(ms)
         onDurationChange?.(ms)
+        if (resumeRef.current) {   // reloaded with a fresh link: carry on from where it broke
+          const { t, wasPlaying } = resumeRef.current
+          resumeRef.current = null
+          videoRef.current.currentTime = t
+          if (wasPlaying) videoRef.current.play().catch(() => {})
+          return
+        }
         // Restore scrub position once per mount (see initialTimeMs doc) —
         // metadata must be loaded before currentTime can be set reliably.
         if (!hasRestoredPositionRef.current && initialTimeMs) {
@@ -232,6 +251,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleDurationChange}
                 onClick={togglePlay}
+                onError={handleSourceError}
                 className="w-full h-full object-contain cursor-pointer"
                 preload="metadata"
               />
