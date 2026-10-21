@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Eye } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Eye, Play, Pause } from 'lucide-react'
 import { matchesAPI } from '@/services/api'
 import type { PitchPath } from '@/services/api'
 import { ownAttacksRight, toAttackFrame } from '@/utils/attackDirection'
@@ -266,6 +266,12 @@ const describeFromNodes = (
 export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTakenChartProps) {
   const [mode, setMode] = useState<'scores' | 'wides' | 'losses'>('scores')
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null)
+  // Step-through of one move: how far along it is shown (null = the whole move), a "last N steps" window, play / speed
+  const [stepTo, setStepTo] = useState<number | null>(null)
+  const [windowN, setWindowN] = useState<number | null>(null)
+  const [playing, setPlaying] = useState(false)
+  const [speed, setSpeed] = useState(1)
+  const [chainOpen, setChainOpen] = useState(false)
 
   const { data: pathsData } = useQuery({
     queryKey: ['pitch-paths', matchId],
@@ -299,12 +305,15 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
   const currentPaths = mode === 'scores' ? scores : mode === 'wides' ? wides : losses
   const hasData = currentPaths.length > 0
 
+  const resetStepping = () => { setStepTo(null); setPlaying(false); setChainOpen(false) }
   const handleModeChange = (newMode: 'scores' | 'wides' | 'losses') => {
     setMode(newMode)
     setSelectedIdx(null)
+    resetStepping()
   }
 
   const goToPath = (idx: number) => {
+    resetStepping()
     if (idx < 0) setSelectedIdx(currentPaths.length - 1)
     else if (idx >= currentPaths.length) setSelectedIdx(0)
     else setSelectedIdx(idx)
@@ -312,6 +321,26 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
 
   const visiblePaths = selectedIdx !== null ? [currentPaths[selectedIdx]] : currentPaths
   const activeDetail = selectedIdx !== null ? currentPaths[selectedIdx] : null
+  // Which steps of the focused move are on the pitch: from..upTo (the last step is the outcome)
+  const allNodes = activeDetail?.nodes || []
+  const totalSteps = allNodes.length
+  const stepMode = totalSteps > 2
+  const upTo = stepTo === null ? Math.max(0, totalSteps - 1) : Math.min(stepTo, Math.max(0, totalSteps - 1))
+  const fromStep = stepMode && windowN ? Math.max(0, upTo - windowN + 1) : 0
+  const partial = stepMode && (upTo < totalSteps - 1 || fromStep > 0)
+
+  // Play: advance one step at a time; restarts from the beginning if pressed at the end
+  useEffect(() => {
+    if (!playing || !stepMode) return
+    const id = window.setInterval(() => {
+      setStepTo(cur => {
+        const next = (cur === null ? 0 : cur) + 1
+        if (next >= totalSteps - 1) { setPlaying(false); return null }
+        return next
+      })
+    }, 650 / speed)
+    return () => window.clearInterval(id)
+  }, [playing, speed, stepMode, totalSteps])
 
   // Build description for the active path using only the display points.
   // Cap carriers at 6 names — full chain can have 30+ which becomes unreadable.
@@ -433,17 +462,42 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
               {typeof activeDetail.directness_pct === 'number' && <Chip>{activeDetail.directness_pct}% direct</Chip>}
               {activeDetail.start_third && activeDetail.end_third && (activeDetail.metres_total ?? 0) > 0 && <Chip>Started in our {activeDetail.start_third.replace(' third', '')} third · ended in the {activeDetail.end_third.replace(' third', '')} third</Chip>}
             </div>
-            {(activeDetail.nodes?.length ?? 0) > 1 && (
-              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-2.5 text-[11px] text-white/60">
-                {activeDetail.nodes!.map((n, ni) => (
-                  <span key={ni} className="flex items-center gap-1">
-                    <span className="inline-flex w-4 h-4 rounded-full bg-slate-900 border border-white/60 items-center justify-center text-[9px] font-bold text-white">{ni + 1}</span>
-                    <span>{stepLabel(n as any, surname(n.player)) ?? `${eventLabel(n.type)}${n.player ? ` (${surname(n.player)})` : ''}`}</span>
-                    {ni < activeDetail.nodes!.length - 1 && <span className="text-white/25">›</span>}
-                  </span>
-                ))}
-              </div>
-            )}
+            {(activeDetail.nodes?.length ?? 0) > 1 && (() => {
+              const nodesAll = activeDetail.nodes!
+              const COLLAPSED = 10
+              // collapsed: just the last 10 steps (how it finished); the rest sit behind "Show all"
+              const startAt = chainOpen ? 0 : Math.max(0, nodesAll.length - COLLAPSED)
+              const hidden = startAt
+              return (
+                <div className="mt-2.5">
+                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-white/60">
+                    {hidden > 0 && <span className="text-white/40">… {hidden} earlier steps ›</span>}
+                    {nodesAll.slice(startAt).map((n, rel) => {
+                      const ni = startAt + rel
+                      const inView = !stepMode || (ni >= fromStep && ni <= upTo)
+                      return (
+                        <button
+                          key={ni}
+                          type="button"
+                          onClick={() => { if (stepMode) { setPlaying(false); setStepTo(ni) } }}
+                          className={`flex items-center gap-1 rounded px-0.5 ${inView ? '' : 'opacity-35'} ${stepMode ? 'hover:bg-white/10 cursor-pointer' : 'cursor-default'}`}
+                          title={stepMode ? 'Show the move up to this step' : undefined}
+                        >
+                          <span className={`inline-flex w-4 h-4 rounded-full border items-center justify-center text-[9px] font-bold text-white ${partial && ni === upTo ? 'bg-emerald-600 border-white' : 'bg-slate-900 border-white/60'}`}>{ni + 1}</span>
+                          <span>{stepLabel(n as any, surname(n.player)) ?? `${eventLabel(n.type)}${n.player ? ` (${surname(n.player)})` : ''}`}</span>
+                          {ni < nodesAll.length - 1 && <span className="text-white/25">›</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {nodesAll.length > COLLAPSED && (
+                    <button type="button" onClick={() => setChainOpen(o => !o)} className="mt-1.5 text-[11px] font-semibold text-emerald-300/90 hover:text-emerald-200">
+                      {chainOpen ? 'Show fewer steps' : `Show all ${nodesAll.length} steps`}
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )
       })()}
@@ -457,6 +511,50 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
           {summary.origins.map(([o, n]) => <Chip key={o}>{n} from {o.toLowerCase()}</Chip>)}
           {summary.fromAttackingThird > 0 && <Chip>{summary.fromAttackingThird} won in the attacking third</Chip>}
           {summary.fromDefensiveThird > 0 && <Chip>{summary.fromDefensiveThird} started in our defensive third</Chip>}
+        </div>
+      )}
+
+      {/* Step through this move: play it, drag along it, or look at just the last few steps */}
+      {activeDetail && stepMode && (
+        <div className="flex flex-wrap items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10">
+          <button
+            type="button"
+            onClick={() => {
+              if (playing) { setPlaying(false); return }
+              if (stepTo === null || stepTo >= totalSteps - 1) setStepTo(0)
+              setPlaying(true)
+            }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold"
+            aria-label={playing ? 'Pause' : 'Play the move'}
+          >
+            {playing ? <Pause size={12} /> : <Play size={12} />} {playing ? 'Pause' : 'Play'}
+          </button>
+          <input
+            type="range" min={0} max={totalSteps - 1} value={upTo}
+            onChange={e => { setPlaying(false); setStepTo(Number(e.target.value)) }}
+            className="flex-1 min-w-[120px] accent-emerald-500"
+            aria-label="Step"
+          />
+          <span className="text-[11px] text-white/60 tabular-nums whitespace-nowrap">Step {upTo + 1} of {totalSteps}</span>
+          <button
+            type="button"
+            onClick={() => setSpeed(v => (v >= 4 ? 1 : v * 2))}
+            className="px-2 py-1 rounded-md bg-white/10 text-white/70 hover:text-white text-[11px] font-semibold"
+            title="Playback speed"
+          >{speed}x</button>
+          <div className="flex items-center gap-0.5 text-[11px]">
+            {([['All', null], ['Last 10', 10], ['Last 5', 5]] as [string, number | null][]).map(([label, n]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setWindowN(n)}
+                className={`px-2 py-1 rounded-md font-semibold ${windowN === n ? 'bg-white/20 text-white' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
+              >{label}</button>
+            ))}
+          </div>
+          {(stepTo !== null || windowN !== null) && (
+            <button type="button" onClick={() => { setStepTo(null); setWindowN(null); setPlaying(false) }} className="text-[11px] text-white/50 hover:text-white underline">Reset</button>
+          )}
         </div>
       )}
 
@@ -482,16 +580,18 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
             const points = thinPoints(displayPoints, focused ? 3 : 6)
             const realIdx = focused ? selectedIdx! : currentPaths.indexOf(path)
             const rawSvgPoints = points.map(p => toSvg(p.x, p.y))
-            const nodeSeq = (focused ? (path.nodes || []) : []).flatMap(n => [
+            const shownNodes = focused ? (path.nodes || []).slice(fromStep, upTo + 1) : []
+            const nodeSeq = shownNodes.flatMap(n => [
               { x: n.x, y: n.y },
               ...(n.end_x != null && n.end_y != null ? [{ x: n.end_x, y: n.end_y }] : []),
             ])
-            const useNodeLine = nodeSeq.length >= 2
+            const useNodeLine = nodeSeq.length >= 2 || (partial && nodeSeq.length >= 1)
             // The solid line follows the tagged actions (and kick landings); the raw ball trace sits faintly behind it
             const svgPoints = useNodeLine ? nodeSeq.map(p => toSvg(p.x, p.y)) : rawSvgPoints
             const rawPathD = rawSvgPoints.map((p, i) => (i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`)).join(' ')
             const color = OUTCOME_COLORS[path.outcome] || '#10b981'
             const num = realIdx + 1
+            const endLabel = partial ? String(upTo + 1) : String(num)
             const isHighlighted = !focused || vIdx === 0
             const letter = ORIGIN_LETTER[path.origin || 'Open play'] || 'O'
 
@@ -499,7 +599,7 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
               return (
                 <g key={vIdx} opacity={isHighlighted ? 1 : 0.25}>
                   <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={36} fill={color} stroke="white" strokeWidth={4} />
-                  <text x={svgPoints[0].x} y={svgPoints[0].y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
+                  <text x={svgPoints[0].x} y={svgPoints[0].y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{endLabel}</text>
                 </g>
               )
             }
@@ -518,11 +618,12 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
               if (focused ? segLen > 110 : si === svgPoints.length - 2 && segLen > 110) arrows.push(arrowTriangle(a, b, 0.55, focused ? 30 : 26))
             }
 
-            const nodes = focused ? (path.nodes || []) : []
+            const nodes = shownNodes
+            const allN = focused ? (path.nodes || []) : []
 
             return (
               <g key={vIdx} opacity={isHighlighted ? 0.95 : 0.2}>
-                {useNodeLine && <path d={rawPathD} fill="none" stroke={color} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" opacity={0.22} />}
+                {useNodeLine && !partial && <path d={rawPathD} fill="none" stroke={color} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" opacity={0.22} />}
                 <path d={pathD} fill="none" stroke={color} strokeWidth={16} strokeLinecap="round" strokeLinejoin="round" opacity={0.2} />
                 <path d={pathD} fill="none" stroke={color} strokeWidth={10} strokeLinecap="round" strokeLinejoin="round" />
                 {arrows.map((pts, ai) => (
@@ -543,29 +644,43 @@ export default function PathsTakenChart({ matchId, pollInterval = 0 }: PathsTake
                 })}
 
                 {/* Numbered tagged actions with the player's surname */}
-                {nodes.map((n, ni) => {
+                {nodes.map((n, rel) => {
+                  const ni = fromStep + rel
                   const p = toSvg(n.x, n.y)
-                  const isLast = ni === nodes.length - 1
-                  if (isLast) return null // the outcome has its own marker below
+                  const isLast = ni === allN.length - 1
+                  if (isLast && !partial) return null // the outcome has its own marker below
+                  const isCurrent = partial && ni === upTo
                   return (
-                    <g key={`n${ni}`}>
-                      <circle cx={p.x} cy={p.y} r={22} fill="#0f172a" stroke="white" strokeWidth={4} />
-                      <text x={p.x} y={p.y + 9} textAnchor="middle" fill="white" fontSize={26} fontWeight="bold">{ni + 1}</text>
+                    <g key={`n${ni}`} opacity={partial && !isCurrent ? 0.55 : 1}>
+                      <circle cx={p.x} cy={p.y} r={isCurrent ? 30 : 22} fill={isCurrent ? color : '#0f172a'} stroke="white" strokeWidth={isCurrent ? 6 : 4} />
+                      <text x={p.x} y={p.y + (isCurrent ? 12 : 9)} textAnchor="middle" fill="white" fontSize={isCurrent ? 34 : 26} fontWeight="bold">{ni + 1}</text>
                       {n.player && (
-                        <text x={p.x} y={p.y + 62} textAnchor="middle" fill="white" fontSize={34} fontWeight="bold" stroke="#0f172a" strokeWidth={7} paintOrder="stroke">{surname(n.player)}</text>
+                        <text x={p.x} y={p.y + (isCurrent ? 70 : 62)} textAnchor="middle" fill="white" fontSize={34} fontWeight="bold" stroke="#0f172a" strokeWidth={7} paintOrder="stroke">{surname(n.player)}</text>
                       )}
                     </g>
                   )
                 })}
+                {/* the leg being played now, picked out in white */}
+                {partial && upTo > fromStep && (() => {
+                  const a = toSvg(allN[upTo - 1].x, allN[upTo - 1].y)
+                  const b = toSvg(allN[upTo].x, allN[upTo].y)
+                  return <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="white" strokeWidth={8} strokeLinecap="round" opacity={0.9} />
+                })()}
 
                 {/* Start marker: hollow dark ring with the origin letter (K kickout, T turnover, F free, O open play) */}
-                <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={focused ? 30 : 22} fill="#0f172a" stroke="white" strokeWidth={4} opacity={0.95} />
-                {focused && (
+                {fromStep === 0 && (
+                  <circle cx={svgPoints[0].x} cy={svgPoints[0].y} r={focused ? 30 : 22} fill="#0f172a" stroke="white" strokeWidth={4} opacity={0.95} />
+                )}
+                {focused && fromStep === 0 && (
                   <text x={svgPoints[0].x} y={svgPoints[0].y + 11} textAnchor="middle" fill="white" fontSize={30} fontWeight="bold">{letter}</text>
                 )}
-                <circle cx={last.x} cy={last.y} r={36} fill={color} stroke="white" strokeWidth={4} />
-                <text x={last.x} y={last.y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
-                {focused && path.player && (
+                {!partial && (
+                  <circle cx={last.x} cy={last.y} r={36} fill={color} stroke="white" strokeWidth={4} />
+                )}
+                {!partial && (
+                  <text x={last.x} y={last.y + 14} textAnchor="middle" fill="white" fontSize={44} fontWeight="bold">{num}</text>
+                )}
+                {focused && !partial && path.player && (
                   <text x={last.x} y={last.y + 78} textAnchor="middle" fill="white" fontSize={36} fontWeight="bold" stroke="#0f172a" strokeWidth={7} paintOrder="stroke">{surname(path.player)}</text>
                 )}
               </g>
