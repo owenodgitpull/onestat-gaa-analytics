@@ -9,6 +9,7 @@ from typing import Optional, Tuple, List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import lazyload
 
 from app.database import get_db, async_session_maker
 from app.auth.dependencies import AuthenticatedUser, require_admin, require_admin_or_viewer
@@ -109,11 +110,13 @@ async def _get_session_for_club(
     session_id: UUID, club_id: UUID, db: AsyncSession
 ) -> VideoSession:
     """Get a video session, verifying club ownership."""
+    # lazyload("*"): a VideoSession otherwise drags in ALL of its events, possession chains and their players on every
+    # call. That cost seconds per tap on a full match and starved the server (the proxy then answered 503s).
     result = await db.execute(
         select(VideoSession).where(
             VideoSession.id == session_id,
             VideoSession.club_id == club_id,
-        )
+        ).options(lazyload("*"))
     )
     session = result.scalar_one_or_none()
     if not session:
@@ -598,11 +601,11 @@ async def sync_status(
     """Poll sync + AI re-analysis progress."""
     session = await _get_session_for_club(session_id, user.club_id, db)
 
-    # Check if the match has an AI report
+    # Does the match have an AI report? Ask the database yes/no instead of loading the whole (large) report on every poll
     from app.models.match import Match
-    match_result = await db.execute(select(Match).where(Match.id == session.match_id))
-    match = match_result.scalar_one_or_none()
-    ai_report_ready = bool(match and match.ai_analysis)
+    ai_report_ready = bool((await db.execute(
+        select(Match.ai_analysis.isnot(None)).where(Match.id == session.match_id)
+    )).scalar())
 
     return VideoSyncStatusResponse(
         status=session.status,
