@@ -33,6 +33,8 @@ interface VideoManualEventModalProps {
   players: RosterPlayer[]
   matchLineup: LineupEntry[]
   onFieldPlayerIds: Set<string>
+  /** Players sent off: neither on the field nor an option to come on */
+  sentOffPlayerIds?: Set<string>
   opponentName: string
   clubName: string
   currentMinute: number
@@ -121,6 +123,7 @@ export default function VideoManualEventModal({
   players,
   matchLineup,
   onFieldPlayerIds,
+  sentOffPlayerIds,
   opponentName,
   clubName,
   currentMinute,
@@ -173,7 +176,7 @@ export default function VideoManualEventModal({
   })
 
   const onFieldOptions = rosterOptions.filter(p => onFieldPlayerIds.has(p.id))
-  const benchOptions = rosterOptions.filter(p => !onFieldPlayerIds.has(p.id))
+  const benchOptions = rosterOptions.filter(p => !onFieldPlayerIds.has(p.id) && !sentOffPlayerIds?.has(p.id))
 
   const groups = Array.from(new Set(EVENT_OPTIONS.map(o => o.group)))
 

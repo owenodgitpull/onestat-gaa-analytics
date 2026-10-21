@@ -737,6 +737,17 @@ export default function VideoTagging() {
   }
   const { data: eventsData, refetch: refetchEvents } = useVideoEvents(sessionId || null)
   const events = eventsData?.events || []
+  // Players sent off (red card, including a second yellow): off the field for good - not on the pitch circles, not in any
+  // picker, and not an option to come on as a substitute. Derived from the card events so it is instant and undo-safe.
+  const sentOffIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const e of (eventsData?.events || []) as any[]) {
+      if (e.event_type !== 'RED_CARD') continue
+      if (e.player_id) ids.add(e.player_id)
+      if (e.opposition_player_id) ids.add(e.opposition_player_id)
+    }
+    return ids
+  }, [eventsData?.events])
   const eventsRef = useRef(events)
   eventsRef.current = events
   const sessionIdRef = useRef(sessionId)
@@ -3432,7 +3443,7 @@ export default function VideoTagging() {
           playerId: entry.player_id,
           jerseyNumber: entry.match_jersey_number ?? entry.player_jersey_number ?? player?.jersey_number ?? null,
           playerName: player?.name ?? entry.player_name ?? 'Unknown',
-          isOnField: entry.is_on_field ?? true,
+          isOnField: (entry.is_on_field ?? true) && !sentOffIds.has(entry.player_id),
           positionLabel: POSITION_LABELS[entry.position_id] || entry.position_id || '',
           positionId: entry.position_id || '',
         }
@@ -3454,7 +3465,7 @@ export default function VideoTagging() {
       }))
     }
     return []
-  }, [matchLineup, players])
+  }, [matchLineup, players, sentOffIds])
 
   // On-field roster for the manual-event/substitution modal — real lineup
   // is_on_field, overridden in-memory by any subs logged this session.
@@ -3462,10 +3473,10 @@ export default function VideoTagging() {
     const ids = new Set<string>()
     for (const entry of matchLineup || []) {
       const isOn = subOverrides[entry.player_id] ?? entry.is_on_field ?? true
-      if (isOn) ids.add(entry.player_id)
+      if (isOn && !sentOffIds.has(entry.player_id)) ids.add(entry.player_id)
     }
     return ids
-  }, [matchLineup, subOverrides])
+  }, [matchLineup, subOverrides, sentOffIds])
 
   // ── Ball carrier segment management ───
   // Selecting a carrier must feel instant — live recording had this exact
@@ -3754,7 +3765,12 @@ export default function VideoTagging() {
   carrierSelectRef.current = handleCarrierSelect
 
   // ── Inter-county: opposition circles ──────────────────────────────────────
-  const oppSquad = useOppositionSquad(matchData as any, club)
+  const oppSquadBase = useOppositionSquad(matchData as any, club)
+  const oppSquad = useMemo(
+    () => sentOffIds.size === 0 ? oppSquadBase
+      : { ...oppSquadBase, players: oppSquadBase.players.map(p => sentOffIds.has(p.playerId) ? { ...p, isOnField: false } : p) },
+    [oppSquadBase, sentOffIds],
+  )
   oppEnabledRef.current = oppSquad.enabled
   const oppActive = oppSquad.enabled && possession === 'team_b'
 
@@ -4887,7 +4903,7 @@ export default function VideoTagging() {
     primary: club?.primary_colour || '#10B981',
     secondary: club?.secondary_colour || '#FFFFFF',
     players: (matchLineup || [])
-      .filter((l: any) => l.is_on_field !== false && l.player_id !== assistScorerId)
+      .filter((l: any) => l.is_on_field !== false && l.player_id !== assistScorerId && !sentOffIds.has(l.player_id))
       .map((l: any) => {
         const pl: any = playerList.find((q: any) => q.id === l.player_id)
         return {
@@ -5672,7 +5688,8 @@ export default function VideoTagging() {
           currentMinute={calcMatchTime(currentTimeMs).minute}
           currentHalf={Math.min(2, calcMatchTime(currentTimeMs).half) as 1 | 2}
           oppositionOnField={oppositionPickerOptions(oppSquad).onField}
-          oppositionBench={oppositionPickerOptions(oppSquad).bench}
+          oppositionBench={oppositionPickerOptions(oppSquad).bench.filter(o => !sentOffIds.has(o.id))}
+          sentOffPlayerIds={sentOffIds}
           halfMins={matchHalfMins}
         />
       )}

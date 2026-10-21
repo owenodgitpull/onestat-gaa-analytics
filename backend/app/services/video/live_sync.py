@@ -174,13 +174,43 @@ async def _sync_shadow(db: AsyncSession, ve: VideoEvent) -> None:
         await MatchEventService._update_player_stats(db, shadow, is_delete=False)
 
 
+async def _set_on_field(db: AsyncSession, ve: VideoEvent, on_field: bool) -> None:
+    """A red card sends a player off for good: he is no longer on the field (pitch circles, pickers, who is on the
+    pitch for the agent). Undoing or deleting the card puts him back on, unless he is on the bench."""
+    from sqlalchemy import select
+    from app.models.match_lineup import MatchLineup
+    from app.models.opposition import OppositionLineup
+
+    if ve.team == "team_b":
+        if ve.opposition_player_id is None:
+            return
+        row = (await db.execute(select(OppositionLineup).where(
+            OppositionLineup.match_id == ve.match_id,
+            OppositionLineup.opposition_player_id == ve.opposition_player_id))).scalars().first()
+    else:
+        if ve.player_id is None:
+            return
+        row = (await db.execute(select(MatchLineup).where(
+            MatchLineup.match_id == ve.match_id, MatchLineup.player_id == ve.player_id))).scalars().first()
+    if row is None:
+        return
+    if on_field:
+        row.is_on_field = not bool(getattr(row, "is_substitute", False))
+    else:
+        row.is_on_field = False
+    await db.flush()
+
+
 async def write_through(db: AsyncSession, ve: VideoEvent) -> None:
     """Create/update the MatchEvent mirroring `ve` (plus the linked unforced-error row for overcarrying /
-    picked-off-ground). No-op for unverified events (AI drafts wait until verified). Caller commits."""
+    picked-off-ground, and taking a sent-off player off the field). No-op for unverified events (AI drafts wait
+    until verified). Caller commits."""
     if not ve.is_verified:
         return
     await _write_main(db, ve)
     await _sync_shadow(db, ve)
+    if ve.event_type == "RED_CARD":
+        await _set_on_field(db, ve, False)
 
 
 async def _write_main(db: AsyncSession, ve: VideoEvent) -> None:
@@ -226,6 +256,8 @@ async def remove(db: AsyncSession, ve: VideoEvent, recalc: bool = True) -> None:
     (reset, undo-to-point) remove many events and call `recalc_scores` once at
     the end instead of re-reading every scoring event after each delete."""
     await _drop_shadow(db, ve)
+    if ve.event_type == "RED_CARD":
+        await _set_on_field(db, ve, True)   # the card is gone (undo / delete): he is back on
     if not ve.match_event_id:
         return
     me = await db.get(MatchEvent, ve.match_event_id)
