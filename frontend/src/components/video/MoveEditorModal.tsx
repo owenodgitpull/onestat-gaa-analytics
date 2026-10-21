@@ -3,7 +3,7 @@
  * can fix: change who carried, remove a step that should not be there, add a missing one. Every change is saved at once
  * (the carry, the pass that came out of it, and the match record all move together on the server).
  */
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { X, Trash2, Plus, Loader2 } from 'lucide-react'
 import { videoMovesAPI, type MoveResponse, type MoveStep } from '../../services/videoMovesApi'
 
@@ -100,6 +100,11 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
 
   const steps = move?.steps ?? []
   const teamLabel = move?.team === 'team_a' ? 'our' : 'their'
+  // Every change takes a couple of seconds on the server: always say what is happening, never leave the list looking idle
+  const busyLabel = busy === null ? null
+    : busy.startsWith('add-') ? 'Adding the step…'
+    : busy.startsWith('del-') ? 'Removing the step…'
+    : 'Saving the change…'
 
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
@@ -116,6 +121,11 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
           <button onClick={onClose} className="text-white/60 hover:text-white p-1" aria-label="Close"><X size={18} /></button>
         </div>
 
+        {busyLabel && (
+          <div className="flex items-center gap-2 text-xs text-emerald-200 bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-2.5 py-1.5 mt-2" role="status" aria-live="polite">
+            <Loader2 size={14} className="animate-spin" /> {busyLabel}
+          </div>
+        )}
         {loading && !move && (
           <div className="flex items-center gap-2 text-sm text-white/60 py-6"><Loader2 size={16} className="animate-spin" /> Loading…</div>
         )}
@@ -133,7 +143,8 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
             const current = s.team === 'team_a' ? s.player_id : s.opposition_player_id
             const isLast = i === steps.length - 1
             return (
-              <li key={s.segment_id} className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5">
+              <Fragment key={s.segment_id}>
+              <li className={`rounded-xl border border-white/10 bg-white/[0.04] p-2.5 transition-opacity ${busy === `set-${s.segment_id}` || busy === `del-${s.segment_id}` ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-2">
                   <span className="w-6 text-center text-[11px] font-bold text-white/40">{i + 1}</span>
                   <select
@@ -149,6 +160,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                     {current && !opts.some(o => o.id === current) && <option value={current}>{s.name ?? 'Unknown'}</option>}
                     <PlayerOptions players={opts} />
                   </select>
+                  {busy === `set-${s.segment_id}` && <Loader2 size={14} className="animate-spin text-emerald-300 flex-shrink-0" aria-label="Saving" />}
                   <span className="text-[11px] text-white/40 whitespace-nowrap">{clock(s.match_clock_s)}</span>
                   <button
                     onClick={() => run(`del-${s.segment_id}`, () => videoMovesAPI.deleteStep(sessionId, s.segment_id))}
@@ -178,6 +190,8 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                       <option value="" disabled>Who took it next?</option>
                       <PlayerOptions players={opts} />
                     </select>
+                  ) : busy === `add-${s.segment_id}` ? (
+                    <span className="flex items-center gap-1 text-[11px] text-emerald-200"><Loader2 size={12} className="animate-spin" /> Adding step…</span>
                   ) : (
                     <button
                       onClick={() => setAdding(s.segment_id)}
@@ -190,6 +204,12 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                   )}
                 </div>
               </li>
+              {busy === `add-${s.segment_id}` && (
+                <li className="rounded-xl border border-dashed border-emerald-400/40 bg-emerald-500/5 p-3 flex items-center gap-2 text-xs text-emerald-200 animate-pulse">
+                  <Loader2 size={14} className="animate-spin" /> Adding the new step here…
+                </li>
+              )}
+              </Fragment>
             )
           })}
         </ol>
