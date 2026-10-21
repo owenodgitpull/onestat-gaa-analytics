@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, text
+from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -61,33 +62,47 @@ async def _name_maps(db: AsyncSession, segs: list) -> tuple[dict, dict]:
     return players, opp
 
 
-async def _linked_pass_event(db: AsyncSession, session_id: UUID, seg: BallCarrierSegment,
-                             next_seg: Optional[BallCarrierSegment]) -> Optional[VideoEvent]:
+def _pick_pass(cands: list, seg: BallCarrierSegment, next_seg: Optional[BallCarrierSegment]) -> Optional[VideoEvent]:
     """The PASS_HAND the passer's carry produced: same team, same player, logged just before the next pickup."""
     if next_seg is None or seg.video_timestamp_ms is None or next_seg.video_timestamp_ms is None:
         return None
     team = _team_of_segment(seg)
-    q = select(VideoEvent).where(
-        VideoEvent.video_session_id == session_id,
-        VideoEvent.event_type == "PASS_HAND",
-        VideoEvent.team == team,
-        VideoEvent.video_timestamp_ms >= seg.video_timestamp_ms,
-        VideoEvent.video_timestamp_ms >= next_seg.video_timestamp_ms - PASS_LEAD_MS,
-        VideoEvent.video_timestamp_ms <= next_seg.video_timestamp_ms + PASS_LAG_MS,
-    )
-    if seg.player_id:
-        q = q.where(VideoEvent.player_id == seg.player_id)
-    elif seg.opposition_player_id:
-        q = q.where(VideoEvent.opposition_player_id == seg.opposition_player_id)
-    cands = (await db.execute(q)).scalars().all()
-    if not cands:
+    nts = next_seg.video_timestamp_ms
+    ok = [
+        e for e in cands
+        if e.team == team and e.video_timestamp_ms is not None
+        and e.video_timestamp_ms >= seg.video_timestamp_ms
+        and e.video_timestamp_ms >= nts - PASS_LEAD_MS
+        and e.video_timestamp_ms <= nts + PASS_LAG_MS
+        and ((seg.player_id and e.player_id == seg.player_id)
+             or (seg.opposition_player_id and e.opposition_player_id == seg.opposition_player_id)
+             or (not seg.player_id and not seg.opposition_player_id))
+    ]
+    if not ok:
         return None
-    return min(cands, key=lambda e: abs((e.video_timestamp_ms or 0) - next_seg.video_timestamp_ms))
+    return min(ok, key=lambda e: abs((e.video_timestamp_ms or 0) - nts))
+
+
+async def _pass_events_between(db: AsyncSession, session_id: UUID, lo_ms: int, hi_ms: int) -> list[VideoEvent]:
+    """Every hand pass in a video window, in ONE query (the editor used to run one query per step)."""
+    return list((await db.execute(select(VideoEvent).where(
+        VideoEvent.video_session_id == session_id, VideoEvent.event_type == "PASS_HAND",
+        VideoEvent.video_timestamp_ms >= lo_ms, VideoEvent.video_timestamp_ms <= hi_ms,
+    ))).scalars().all())
+
+
+async def _linked_pass_event(db: AsyncSession, session_id: UUID, seg: BallCarrierSegment,
+                             next_seg: Optional[BallCarrierSegment]) -> Optional[VideoEvent]:
+    if next_seg is None or seg.video_timestamp_ms is None or next_seg.video_timestamp_ms is None:
+        return None
+    cands = await _pass_events_between(db, session_id, seg.video_timestamp_ms, next_seg.video_timestamp_ms + PASS_LAG_MS)
+    return _pick_pass(cands, seg, next_seg)
 
 
 async def _match_segments(db: AsyncSession, match_id: UUID) -> list[BallCarrierSegment]:
     return list((await db.execute(
         select(BallCarrierSegment).where(BallCarrierSegment.match_id == match_id)
+        .options(defer(BallCarrierSegment.path_points))   # the heavy JSON the editor never reads
         .order_by(BallCarrierSegment.sequence_number.asc(), BallCarrierSegment.video_timestamp_ms.asc())
     )).scalars().all())
 
@@ -195,11 +210,12 @@ async def get_move(session_id: UUID, event_id: UUID,
     segs = await _match_segments(db, session.match_id)
     chain = _chain_for(segs, ev)
     players, opp = await _name_maps(db, chain)
+    ts_list = [c.video_timestamp_ms for c in chain if c.video_timestamp_ms is not None]
+    cands = await _pass_events_between(db, session.id, min(ts_list), max(ts_list) + 60000) if ts_list else []
     steps = []
     for i, seg in enumerate(chain):
         nxt = chain[i + 1] if i + 1 < len(chain) else None
-        pe = await _linked_pass_event(db, session.id, seg, nxt)
-        steps.append(_step_json(seg, players, opp, pe))
+        steps.append(_step_json(seg, players, opp, _pick_pass(cands, seg, nxt)))
     return {"event_id": str(ev.id), "event_type": ev.event_type, "team": ev.team,
             "match_minute": ev.match_minute, "match_second": ev.match_second, "steps": steps}
 
@@ -320,7 +336,12 @@ async def insert_step(session_id: UUID, body: InsertStep,
     await db.flush()
     await live_sync.write_through(db, pass_ev)
     await db.commit()
-    return {"ok": True, "segment_id": str(seg.id), "pass_event_id": str(pass_ev.id)}
+    players, opp = ({}, {})
+    nm = own_name or opp_name
+    step = _step_json(seg, players, opp, pass_ev)
+    step["name"] = nm
+    return {"ok": True, "segment_id": str(seg.id), "pass_event_id": str(pass_ev.id), "step": step,
+            "after_segment_id": str(after.id)}
 
 
 @router.get("/{session_id}/health")

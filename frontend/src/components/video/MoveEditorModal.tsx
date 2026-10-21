@@ -32,6 +32,17 @@ export function PlayerOptions({ players }: { players: PickablePlayer[] }) {
   )
 }
 
+// The last move shown for each event, so reopening it (or hovering its Move button first) paints at once while a fresh
+// copy loads quietly behind it - stale-while-revalidate instead of a blank spinner every time.
+const moveCache = new Map<string, MoveResponse>()
+const cacheKey = (sessionId: string, eventId: string) => `${sessionId}:${eventId}`
+
+/** Start loading a move before the window opens (call on hover / focus of the Move button). */
+export function prefetchMove(sessionId: string, eventId: string) {
+  if (!sessionId || !eventId) return
+  videoMovesAPI.getMove(sessionId, eventId).then(m => moveCache.set(cacheKey(sessionId, eventId), m)).catch(() => {})
+}
+
 interface Props {
   isOpen: boolean
   onClose: () => void
@@ -60,13 +71,16 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState<string | null>(null)   // segment id we are adding a step after
+  const [dirty, setDirty] = useState(false)                    // something changed: tell the page once, when the window closes
 
   const load = useCallback(async () => {
     if (!eventId) return
     setLoading(true)
     setError(null)
     try {
-      setMove(await videoMovesAPI.getMove(sessionId, eventId))
+      const fresh = await videoMovesAPI.getMove(sessionId, eventId)
+      moveCache.set(cacheKey(sessionId, eventId), fresh)
+      setMove(fresh)
     } catch (e: any) {
       setError(e?.message || 'Could not load this move')
     } finally {
@@ -74,20 +88,41 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
     }
   }, [sessionId, eventId])
 
-  useEffect(() => { if (isOpen) { setMove(null); setAdding(null); load() } }, [isOpen, load])
+  useEffect(() => {
+    if (!isOpen || !eventId) return
+    setMove(moveCache.get(cacheKey(sessionId, eventId)) ?? null)
+    setAdding(null)
+    setDirty(false)
+    load()
+  }, [isOpen, load, sessionId, eventId])
   if (!isOpen) return null
+
+  const close = () => {
+    if (dirty) onChanged()   // refresh the event list / charts once, not after every single tap
+    onClose()
+  }
+
+  // Patch the list we already have from what the server confirmed, instead of asking it for the whole move again
+  const patch = (fn: (steps: MoveStep[]) => MoveStep[]) => setMove(m => {
+    if (!m) return m
+    const next = { ...m, steps: fn(m.steps) }
+    if (eventId) moveCache.set(cacheKey(sessionId, eventId), next)
+    return next
+  })
 
   const optionsFor = (step: Pick<MoveStep, 'team'>) => (step.team === 'team_a' ? ownPlayers : oppPlayers)
 
-  const run = async (key: string, fn: () => Promise<unknown>) => {
+  const run = async (key: string, fn: () => Promise<unknown>, apply?: (result: any) => boolean | void) => {
     setBusy(key)
     setError(null)
     try {
-      await fn()
-      await load()
-      onChanged()
+      const result = await fn()
+      setDirty(true)
+      // no local patch possible (or the server did not send enough back): fall back to reloading the move
+      if (!apply || apply(result) === false) await load()
     } catch (e: any) {
       setError(e?.message || 'That change did not save')
+      load()   // show what the server really has
     } finally {
       setBusy(null)
     }
@@ -107,7 +142,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
     : 'Saving the change…'
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-start justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+    <div className="fixed inset-0 z-[120] flex items-start justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto" onClick={close}>
       <div className="relative w-full max-w-xl my-8 glass-card p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-1">
           <div>
@@ -118,7 +153,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-white/60 hover:text-white p-1" aria-label="Close"><X size={18} /></button>
+          <button onClick={close} className="text-white/60 hover:text-white p-1" aria-label="Close"><X size={18} /></button>
         </div>
 
         {busyLabel && (
@@ -152,7 +187,14 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                     disabled={busy !== null}
                     onChange={e => {
                       const p = opts.find(o => o.id === e.target.value)
-                      if (p) run(`set-${s.segment_id}`, () => videoMovesAPI.setStepPlayer(sessionId, s.segment_id, playerBody(s.team, p)))
+                      if (p) run(`set-${s.segment_id}`, () => videoMovesAPI.setStepPlayer(sessionId, s.segment_id, playerBody(s.team, p)), () => {
+                        patch(list => list.map(x => x.segment_id === s.segment_id ? {
+                          ...x,
+                          player_id: s.team === 'team_a' ? p.id : null,
+                          opposition_player_id: s.team === 'team_a' ? null : p.id,
+                          name: p.name, jersey_number: p.jerseyNumber ?? x.jersey_number,
+                        } : x))
+                      })
                     }}
                     className="flex-1 min-w-0 bg-slate-800 text-white text-sm rounded-lg border border-white/15 px-2 py-1.5"
                   >
@@ -163,7 +205,10 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                   {busy === `set-${s.segment_id}` && <Loader2 size={14} className="animate-spin text-emerald-300 flex-shrink-0" aria-label="Saving" />}
                   <span className="text-[11px] text-white/40 whitespace-nowrap">{clock(s.match_clock_s)}</span>
                   <button
-                    onClick={() => run(`del-${s.segment_id}`, () => videoMovesAPI.deleteStep(sessionId, s.segment_id))}
+                    onClick={() => run(`del-${s.segment_id}`, () => videoMovesAPI.deleteStep(sessionId, s.segment_id), () => {
+                      if (isLast) return false   // the step before it takes over how the move ended: reload to show that
+                      patch(list => list.filter(x => x.segment_id !== s.segment_id))
+                    })}
                     disabled={busy !== null}
                     className="p-1.5 rounded-lg text-white/40 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-40"
                     title="Remove this step"
@@ -183,7 +228,13 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                       onChange={e => {
                         const p = opts.find(o => o.id === e.target.value)
                         setAdding(null)
-                        if (p) run(`add-${s.segment_id}`, () => videoMovesAPI.insertStep(sessionId, { after_segment_id: s.segment_id, ...playerBody(s.team, p) }))
+                        if (p) run(`add-${s.segment_id}`, () => videoMovesAPI.insertStep(sessionId, { after_segment_id: s.segment_id, ...playerBody(s.team, p) }), r => {
+                          if (!r?.step) return false
+                          patch(list => {
+                            const at = list.findIndex(x => x.segment_id === s.segment_id)
+                            return at < 0 ? list : [...list.slice(0, at + 1), r.step, ...list.slice(at + 1)]
+                          })
+                        })
                       }}
                       className="bg-slate-800 text-white text-xs rounded-lg border border-white/15 px-2 py-1"
                     >
@@ -219,7 +270,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
           that event's own Edit button.
         </p>
         <div className="flex justify-end mt-3">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl bg-white/10 text-white/80 hover:text-white text-sm font-semibold">Done</button>
+          <button onClick={close} className="px-4 py-2 rounded-xl bg-white/10 text-white/80 hover:text-white text-sm font-semibold">Done</button>
         </div>
       </div>
     </div>

@@ -56,7 +56,7 @@ export function videoEventLabel(eventType: string): string {
 /** Passes are recorded for the agent (transition speed, carrying style) but are not "events" a person scans. */
 export function isBackgroundVideoEvent(e: { event_type: string; description?: string | null }): boolean {
   if (e.event_type === 'LONG_KICK_PASS' || e.event_type === 'PASS_KICK') return true
-  if (e.event_type === 'PASS_HAND') return (e.description || '').trim().toLowerCase() !== 'free short pass'
+  if (e.event_type === 'PASS_HAND') return true   // including "Free short pass": the next carrier shows what happened
   return false
 }
 

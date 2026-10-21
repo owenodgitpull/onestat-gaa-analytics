@@ -63,7 +63,7 @@ export const videoMovesAPI = {
 
   /** Add a missing carry after a step. */
   insertStep: (sessionId: string, body: StepPlayerInput & { after_segment_id: string }) =>
-    fetchAPI<{ ok: boolean }>(`/video/moves/${sessionId}/move/step`, {
+    fetchAPI<{ ok: boolean; step?: MoveStep; after_segment_id?: string }>(`/video/moves/${sessionId}/move/step`, {
       method: 'POST', body: JSON.stringify(body),
     }),
 

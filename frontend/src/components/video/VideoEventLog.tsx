@@ -33,6 +33,8 @@ interface VideoEventLogProps {
   onDisallow?: (eventId: string, reason: string, reasonLabel: string) => void
   /** Open the chain editor (who carried, missing / extra steps) for a score, kickout or turnover. */
   onEditMove?: (eventId: string) => void
+  /** warm the move editor's data when the pointer reaches the Move button */
+  onPrefetchMove?: (eventId: string) => void
   /** Open the full fix-up form (players, type, outcome, time...) for any event. */
   onEditEvent?: (eventId: string) => void
   selectedEventId?: string | null
@@ -80,6 +82,7 @@ export default function VideoEventLog({
   onEditPlayer,
   onDisallow,
   onEditMove,
+  onPrefetchMove,
   onEditEvent,
   selectedEventId,
   collapsed = false,
@@ -341,6 +344,8 @@ export default function VideoEventLog({
                       event.event_type === 'WIDE' || event.event_type === 'SHORT') && (
                       <button
                         onClick={(e) => { e.stopPropagation(); onEditMove(event.id) }}
+                        onPointerEnter={() => onPrefetchMove?.(event.id)}
+                        onFocus={() => onPrefetchMove?.(event.id)}
                         className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
                         title="Fix the move: who carried, missing or extra steps"
                       >

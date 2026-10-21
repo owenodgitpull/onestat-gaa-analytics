@@ -34,7 +34,7 @@ import PositionSwapModal, { swapLineupPositions } from '../components/PositionSw
 import ScoresList from '../components/video/ScoresList'
 import PitchTapCue from '../components/PitchTapCue'
 import VideoEventLog from '../components/video/VideoEventLog'
-import MoveEditorModal from '../components/video/MoveEditorModal'
+import MoveEditorModal, { prefetchMove } from '../components/video/MoveEditorModal'
 import EventEditModal from '../components/video/EventEditModal'
 import NeedsAttentionModal from '../components/video/NeedsAttentionModal'
 import MatchSettingsModal from '../components/video/MatchSettingsModal'
@@ -6257,6 +6257,7 @@ export default function VideoTagging() {
           onToggleTwoPointer={handleToggleTwoPointer}
           onDisallow={handleDisallowScore}
           onEditMove={(id) => setMoveEditEventId(id)}
+          onPrefetchMove={(id) => prefetchMove(sessionId || "", id)}
           onEditEvent={(id) => setFixEventId(id)}
           onEditTeam={handleEditEventTeam}
           onEditPlayer={handleEditEventPlayer}
