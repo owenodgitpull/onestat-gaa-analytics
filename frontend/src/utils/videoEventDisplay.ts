@@ -104,6 +104,14 @@ export function videoEventDetail(e: {
   } else if (e.event_type === 'POINT_SCORED' && String(sc.source ?? '').toUpperCase().includes('FREE')) {
     parts.push('From a free')
   }
+  if (e.event_type === 'SUB_ON') {
+    const SUB_WORDS: Record<string, string> = { tactical: 'Tactical', injury: 'Injury', blood_sub: 'Blood sub', concussion_check: 'Concussion check', fatigue: 'Fatigue' }
+    if (sc.sub_reason === 'other') { if (sc.sub_note) parts.push(String(sc.sub_note)) }
+    else {
+      if (sc.sub_reason && SUB_WORDS[sc.sub_reason]) parts.push(SUB_WORDS[sc.sub_reason])
+      if (sc.sub_note) parts.push(String(sc.sub_note))
+    }
+  }
   if (e.sub_type) parts.push(detailWord(e.sub_type))
   const d = (e.description || '').trim()
   const generic = new Set(['kick pass', 'high ball', 'hand pass'])

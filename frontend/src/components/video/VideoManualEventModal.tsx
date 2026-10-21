@@ -15,6 +15,16 @@ interface LineupEntry {
   player_jersey_number?: number | null
 }
 
+/** Why a substitution was made: stored on the event and read by the agents (a blood sub is not a tactical change). */
+export const SUB_REASONS: { value: string; label: string }[] = [
+  { value: 'tactical', label: 'Tactical' },
+  { value: 'injury', label: 'Injury' },
+  { value: 'blood_sub', label: 'Blood sub (can return)' },
+  { value: 'concussion_check', label: 'Concussion check' },
+  { value: 'fatigue', label: 'Fatigue' },
+  { value: 'other', label: 'Other (write the reason)' },
+]
+
 export interface ManualEventSubmitPayload {
   eventType: string
   team: 'team_a' | 'team_b'
@@ -141,6 +151,8 @@ export default function VideoManualEventModal({
   const [playerComingOn, setPlayerComingOn] = useState('')
   const [oppOff, setOppOff] = useState('')
   const [oppOn, setOppOn] = useState('')
+  const [subReason, setSubReason] = useState('')
+  const [subNote, setSubNote] = useState('')
 
   useEffect(() => {
     if (isOpen) {
@@ -152,6 +164,8 @@ export default function VideoManualEventModal({
       setPlayerComingOn('')
       setOppOff('')
       setOppOn('')
+      setSubReason('')
+      setSubNote('')
     }
   }, [isOpen, initialEventType])
 
@@ -188,7 +202,9 @@ export default function VideoManualEventModal({
       subInPlayerId: isSub && !oppSub ? (playerComingOn || null) : undefined,
       oppositionPlayerId: oppSub ? (oppOff || null) : undefined,
       oppositionSubInPlayerId: oppSub ? (oppOn || null) : undefined,
-      scoringContext: selected.scoringContext,
+      scoringContext: isSub && (subReason || subNote.trim())
+        ? { ...(selected.scoringContext || {}), ...(subReason ? { sub_reason: subReason } : {}), ...(subNote.trim() ? { sub_note: subNote.trim() } : {}) }
+        : selected.scoringContext,
     })
     onClose()
   }
@@ -293,6 +309,27 @@ export default function VideoManualEventModal({
                 Player {kickout && <span className="font-normal text-white/40">(optional)</span>}
               </label>
               <SearchablePlayerSelect value={playerId} onChange={setPlayerId} players={rosterOptions} />
+            </div>
+          )}
+
+          {isSub && (
+            <div className="space-y-2">
+              <label className="block text-white/80 text-sm font-semibold">Reason <span className="font-normal text-white/40">(optional)</span></label>
+              <select
+                value={subReason}
+                onChange={e => setSubReason(e.target.value)}
+                className="w-full bg-slate-800 text-white text-sm rounded-xl border border-white/15 px-3 py-2.5"
+              >
+                <option value="">No reason given</option>
+                {SUB_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+              <input
+                value={subNote}
+                onChange={e => setSubNote(e.target.value)}
+                maxLength={200}
+                placeholder={subReason === 'other' ? 'What was the reason?' : 'Add a note (optional), e.g. hurt in the incident before the red card'}
+                className="w-full bg-white/5 text-white text-sm rounded-xl border border-white/15 px-3 py-2.5 placeholder:text-white/30"
+              />
             </div>
           )}
 

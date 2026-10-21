@@ -107,7 +107,18 @@ async def _substitution_notes(db: AsyncSession, ve: VideoEvent) -> str:
     else:
         off = await _name(Player, ve.player_id, "name")
         on = await _name(Player, ve.sub_in_player_id, "name")
-    return f"{off} off, {on} on"
+    note = f"{off} off, {on} on"
+    sc = ve.scoring_context or {}
+    reason = {
+        "tactical": "tactical", "injury": "injury", "blood_sub": "blood sub (temporary, can return)",
+        "concussion_check": "concussion check", "fatigue": "fatigue",
+    }.get(str(sc.get("sub_reason") or ""), "")
+    extra = str(sc.get("sub_note") or "").strip()
+    if sc.get("sub_reason") == "other" and extra:
+        reason, extra = extra, ""
+    if reason or extra:
+        note += f" ({'; '.join(x for x in (reason, extra) if x)})"
+    return note
 
 
 # Overcarrying / picked-off-ground are logged as the carrier's FOUL (a free is conceded) but are ALSO unforced errors
