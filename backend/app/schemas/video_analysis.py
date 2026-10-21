@@ -302,6 +302,9 @@ class VideoEventResponse(BaseModel):
     possession_team: Optional[str]
     description: Optional[str]
     opponent_player_name: Optional[str] = None
+    # Opposition player ids (the page resolves names from the opposition lineup); for a substitution: off / on
+    opposition_player_id: Optional[UUID] = None
+    opposition_sub_in_player_id: Optional[UUID] = None
     source: str
     is_verified: bool
     created_at: datetime

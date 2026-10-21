@@ -133,7 +133,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { PossessionTeam, EventType } from '../types'
 import type { Player, BallPosition } from '../types'
 import { confirmDialog } from '../utils/dialog'
-import { playerInitials } from '../utils/playerName'
+import { playerInitials, displaySurname } from '../utils/playerName'
 
 type OverlayState = 'none' | 'player' | 'pitch'
 type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
@@ -6312,6 +6312,11 @@ export default function VideoTagging() {
           onDisallow={handleDisallowScore}
           onEditMove={(id) => setMoveEditEventId(id)}
           onPrefetchMove={(id) => prefetchMove(sessionId || "", id)}
+          oppPlayerLabel={(id) => {
+            if (!id) return null
+            const p = pickableOpp.find(o => o.id === id)
+            return p ? `${p.jerseyNumber != null ? `#${p.jerseyNumber} ` : ''}${displaySurname(p.name)}` : null
+          }}
           onEditEvent={(id) => setFixEventId(id)}
           onEditTeam={handleEditEventTeam}
           onEditPlayer={handleEditEventPlayer}

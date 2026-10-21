@@ -73,6 +73,8 @@ def _event_to_response(event: VideoEvent) -> VideoEventResponse:
         possession_team=event.possession_team,
         description=event.description,
         opponent_player_name=event.opponent_player_name,
+        opposition_player_id=event.opposition_player_id,
+        opposition_sub_in_player_id=event.opposition_sub_in_player_id,
         source=event.source,
         is_verified=event.is_verified,
         created_at=event.created_at,

@@ -35,6 +35,8 @@ interface VideoEventLogProps {
   onEditMove?: (eventId: string) => void
   /** warm the move editor's data when the pointer reaches the Move button */
   onPrefetchMove?: (eventId: string) => void
+  /** Opposition player's label ("#5 Morley") from their lineup, for substitutions and anything stored by id */
+  oppPlayerLabel?: (id: string | null | undefined) => string | null
   /** Open the full fix-up form (players, type, outcome, time...) for any event. */
   onEditEvent?: (eventId: string) => void
   selectedEventId?: string | null
@@ -83,6 +85,7 @@ export default function VideoEventLog({
   onDisallow,
   onEditMove,
   onPrefetchMove,
+  oppPlayerLabel,
   onEditEvent,
   selectedEventId,
   collapsed = false,
@@ -279,7 +282,9 @@ export default function VideoEventLog({
                   {/* Player name */}
                   <span className="text-xs text-white/50 truncate flex-1 min-w-0">
                     {event.event_type === 'SUB_ON'
-                      ? `${event.player_name ?? 'Player'} off · ${event.sub_in_player_name ?? 'Player'} on`
+                      ? (event.team === 'team_b'
+                          ? `${oppPlayerLabel?.(event.opposition_player_id) ?? 'Player'} off · ${oppPlayerLabel?.(event.opposition_sub_in_player_id) ?? 'Player'} on`
+                          : `${event.player_name ?? 'Player'} off · ${event.sub_in_player_name ?? 'Player'} on`)
                       : (event.player_name || event.opponent_player_name || (event.jersey_number ? `#${event.jersey_number}` : ''))}
                   </span>
 

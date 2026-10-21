@@ -93,6 +93,9 @@ export interface VideoEvent {
   // SUBSTITUTION only: player_id = who came off, sub_in_player_id = who came on.
   sub_in_player_id: string | null;
   sub_in_player_name: string | null;
+  /** Opposition player ids (names come from the opposition lineup); for a substitution: off / on */
+  opposition_player_id?: string | null;
+  opposition_sub_in_player_id?: string | null;
   // Scoring events only.
   assist_player_id: string | null;
   assist_player_name: string | null;
