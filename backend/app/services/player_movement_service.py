@@ -63,6 +63,7 @@ class PlayerMovementService:
                 update(BallCarrierSegment)
                 .where(BallCarrierSegment.match_id == match_id)
                 .where(BallCarrierSegment.end_video_ms.is_(None))
+                .where(BallCarrierSegment.ended_by.is_(None))   # a truly open carry; one with a reason has already ended
                 .where(BallCarrierSegment.video_timestamp_ms < video_timestamp_ms)
                 .values(end_video_ms=video_timestamp_ms, ended_by="manual")
             )

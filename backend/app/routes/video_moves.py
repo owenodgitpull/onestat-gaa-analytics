@@ -289,7 +289,15 @@ async def insert_step(session_id: UUID, body: InsertStep,
         "update ball_carrier_segments set sequence_number = sequence_number + 1 "
         "where match_id=:m and sequence_number >= :s"), {"m": session.match_id, "s": new_seq})
     clock_s = after.match_clock_s
+    # The new carry takes over the end of the carry it follows; that carry now ends where the new one starts. Without
+    # this the inserted carry had no end time, so it overlapped its neighbours and anything that closes "open" carries
+    # later stretched it across minutes.
+    orig_end = after.end_video_ms
+    new_end = orig_end if orig_end is not None and orig_end > new_ts else n_ts
+    if orig_end is None or orig_end > new_ts:
+        after.end_video_ms = new_ts
     seg = BallCarrierSegment(
+        end_video_ms=new_end,
         id=uuid4(), match_id=session.match_id, player_id=body.player_id, opposition_player_id=body.opposition_player_id,
         jersey_number=body.jersey_number, team=after.team, half=after.half, minute=after.minute, match_clock_s=clock_s,
         path_points=[{"x": sx, "y": sy}, {"x": ex, "y": ey}] if sx is not None and ex is not None else [],
