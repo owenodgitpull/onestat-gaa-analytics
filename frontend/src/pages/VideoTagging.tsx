@@ -4330,10 +4330,12 @@ export default function VideoTagging() {
             key={t.key}
             onClick={t.onClick}
             title={t.label}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-xs font-medium transition-colors whitespace-nowrap"
+            className={t.key === 'stopclock' && clockStopStartMs != null
+              ? 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500/25 border border-amber-400/70 text-amber-100 text-xs font-bold animate-pulse whitespace-nowrap'
+              : 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-xs font-medium transition-colors whitespace-nowrap'}
           >
             {t.icon}
-            <span className="hidden lg:inline">{t.label}</span>
+            <span className={t.key === 'stopclock' && clockStopStartMs != null ? 'inline' : 'hidden lg:inline'}>{t.key === 'stopclock' && clockStopStartMs != null ? 'Clock stopped - Resume' : t.label}</span>
           </button>
         ))}
       </div>
@@ -6039,8 +6041,10 @@ export default function VideoTagging() {
               { key: 'settings', icon: <Wrench size={14} />, label: 'Match settings', onClick: () => setShowMatchSettings(true) },
             ].map(t => (
               <button key={t.key} onClick={t.onClick} title={t.label}
-                className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-[11px] font-medium transition-colors whitespace-nowrap">
-                {t.icon}<span className="hidden xl:inline">{t.label}</span>
+                className={t.key === 'stopclock' && clockStopStartMs != null
+                  ? 'flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/25 border border-amber-400/70 text-amber-100 text-[11px] font-bold animate-pulse whitespace-nowrap'
+                  : 'flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-[11px] font-medium transition-colors whitespace-nowrap'}>
+                {t.icon}<span className={t.key === 'stopclock' && clockStopStartMs != null ? 'inline' : 'hidden xl:inline'}>{t.key === 'stopclock' && clockStopStartMs != null ? 'Clock stopped - Resume' : t.label}</span>
               </button>
             ))}
           </div>
