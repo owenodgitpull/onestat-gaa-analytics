@@ -26,6 +26,7 @@ interface PlayerMeta {
   blackCard: boolean
   redCard: boolean
   subbedOff: boolean
+  cameOn: boolean
 }
 
 interface MatchLineupViewerProps {
@@ -34,6 +35,10 @@ interface MatchLineupViewerProps {
   lineup: LineupPlayer[]
   events: any[]
   opponentName: string
+  /** 'opposition' shows THEIR lineup with the same scores, cards and subs (events are read by opposition_player_id) */
+  side?: 'own' | 'opposition'
+  /** jersey colours for the side shown (defaults to our club colours) */
+  colours?: { primary: string; secondary: string }
   matchId?: string
   markingAssignments?: ManMarkingAssignment[]
   players?: Player[]
@@ -75,7 +80,7 @@ const FORMATION_POSITIONS: FormationPos[] = [
   { id: 'ff-right', x: 80, y: 82, label: 'CF' },
 ]
 
-function buildPlayerMeta(events: any[]): Map<string, PlayerMeta> {
+function buildPlayerMeta(events: any[], side: 'own' | 'opposition' = 'own'): Map<string, PlayerMeta> {
   const map = new Map<string, PlayerMeta>()
 
   const getOrCreate = (pid: string): PlayerMeta => {
@@ -84,17 +89,21 @@ function buildPlayerMeta(events: any[]): Map<string, PlayerMeta> {
         goals: 0, points: 0, pointsFree: 0, twoPointers: 0,
         twoPointersFree: 0, fortyFives: 0, penaltyGoals: 0,
         yellowCard: false, blackCard: false, redCard: false,
-        subbedOff: false,
+        subbedOff: false, cameOn: false,
       })
     }
     return map.get(pid)!
   }
 
   for (const e of events) {
-    if (!e.player_id) continue
-    const pid = String(e.player_id)
     const team = e.team || (e.is_home_team ? 'own' : 'opponent')
-    if (team !== 'own') continue
+    // their events are stored against their own player ids; ours against ours
+    const rawId = side === 'opposition' ? e.opposition_player_id : e.player_id
+    if (side === 'own' ? team !== 'own' : team !== 'opponent') continue
+    const onId = side === 'opposition' ? e.opposition_sub_in_player_id : e.sub_in_player_id
+    if (e.event_type === 'substitution' && onId) getOrCreate(String(onId)).cameOn = true
+    if (!rawId) continue
+    const pid = String(rawId)
 
     const m = getOrCreate(pid)
     switch (e.event_type) {
@@ -141,14 +150,14 @@ function formatScoreLine(m: PlayerMeta): string {
   return parts.join('')
 }
 
-export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opponentName, matchId, markingAssignments, players, onAddMarking, onDeleteMarking }: MatchLineupViewerProps) {
+export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opponentName, side = 'own', colours, matchId, markingAssignments, players, onAddMarking, onDeleteMarking }: MatchLineupViewerProps) {
   const { club } = useClub()
-  const jerseyBg = club?.primary_colour || '#10B981'
-  const jerseyText = club?.secondary_colour || '#FFFFFF'
+  const jerseyBg = colours?.primary || club?.primary_colour || '#10B981'
+  const jerseyText = colours?.secondary || club?.secondary_colour || '#FFFFFF'
 
   if (!isOpen) return null
 
-  const playerMeta = buildPlayerMeta(events)
+  const playerMeta = buildPlayerMeta(events, side)
 
   const starters = lineup.filter(l => !l.is_substitute)
   const subs = lineup.filter(l => l.is_substitute)
@@ -164,8 +173,8 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
               <Users className="text-emerald-400" size={18} />
             </div>
             <div>
-              <h2 className="text-base sm:text-xl font-bold text-white">Match Lineup</h2>
-              <p className="text-[11px] sm:text-xs text-white/40">vs {opponentName}</p>
+              <h2 className="text-base sm:text-xl font-bold text-white">{side === 'opposition' ? `${opponentName} lineup` : 'Match Lineup'}</h2>
+              <p className="text-[11px] sm:text-xs text-white/40">{side === 'opposition' ? 'Scores, cards and substitutions from the tagged match' : `vs ${opponentName}`}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-white/60 hover:text-white transition-colors p-1">
@@ -208,6 +217,7 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
                   <span className="text-white text-[6px] sm:text-xs font-semibold bg-black/60 px-1 py-px sm:px-1.5 sm:py-0.5 rounded">
                     {displaySurname(player.player_name)}
                     {isSubbedOff && <span className="text-amber-400 ml-0.5">↓</span>}
+                    {!isSubbedOff && meta?.cameOn && <span className="text-emerald-400 ml-0.5">↑</span>}
                   </span>
                   {scoreLine && (
                     <span className="text-emerald-400 text-[5px] sm:text-[10px] font-bold bg-black/70 px-1 py-px sm:px-1.5 sm:py-0.5 rounded mt-0.5">
@@ -282,7 +292,7 @@ export default function MatchLineupViewer({ isOpen, onClose, lineup, events, opp
         </div>
 
         {/* Man Marking Assignments */}
-        {matchId && onAddMarking && onDeleteMarking && (
+        {side === 'own' && matchId && onAddMarking && onDeleteMarking && (
           <div className="mt-6 pt-5 border-t border-white/10">
             <ManMarkingPanel
               matchId={matchId}

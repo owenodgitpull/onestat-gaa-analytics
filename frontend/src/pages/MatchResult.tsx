@@ -40,6 +40,7 @@ import EditFixtureModal from '../components/EditFixtureModal'
 import { useAuth } from '../contexts/AuthContext'
 import GAAPitch from '../components/GAAPitch'
 import MatchLineupViewer from '../components/MatchLineupViewer'
+import { useOppositionSquad } from '../hooks/useOppositionSquad'
 import EventFilterToggles, { getEventTypesForFilters, EventMapLegend } from '../components/EventFilterToggles'
 import PossessionTerritoryChart from '../components/charts/PossessionTerritoryChart'
 import AttackingThirdsChart from '../components/charts/AttackingThirdsChart'
@@ -313,7 +314,22 @@ export default function MatchResult() {
   const [showLineup, setShowLineup] = useState(false)
   // Opposition lineup (inter-county): enter it here so video tagging has their players
   const [showOppLineup, setShowOppLineup] = useState(false)
+  const [showOppView, setShowOppView] = useState(false)
   const canEnterOppLineup = !!clubInfo?.features?.opposition_lineup
+  // Once the match has been tagged the opposition lineup is shown like ours (scores, cards, subs) - the entry form
+  // (paste a team sheet, link, spreadsheet) is only for before the match
+  const oppSquad = useOppositionSquad(match as any, clubInfo as any)
+  const matchIsTagged = (eventsData?.events?.length ?? 0) > 0 && !match?.video_tagging_in_progress
+  const oppLineupForViewer = oppSquad.players.map(p => ({
+    player_id: p.playerId,
+    position_id: p.positionId || '',
+    is_substitute: (p.positionId || '').startsWith('sub'),
+    is_on_field: p.isOnField,
+    player_name: p.playerName,
+    player_jersey_number: p.jerseyNumber,
+    match_jersey_number: p.jerseyNumber,
+  }))
+  const showOppAsViewer = matchIsTagged && oppSquad.enabled
 
   // Man marking
   const { data: markingAssignments = [], refetch: refetchMarkings } = useQuery({
@@ -854,9 +870,9 @@ export default function MatchResult() {
             )}
             {canEnterOppLineup && (
               <button
-                onClick={() => setShowOppLineup(true)}
+                onClick={() => (showOppAsViewer ? setShowOppView(true) : setShowOppLineup(true))}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 text-xs font-medium transition-colors border border-orange-500/30"
-                title="Enter or edit the opposition lineup"
+                title={showOppAsViewer ? 'View the opposition lineup' : 'Enter or edit the opposition lineup'}
               >
                 <Users size={14} />
                 Opposition lineup
@@ -1029,6 +1045,19 @@ export default function MatchResult() {
             <OppositionLineupEditor matchId={matchId} opponent={match?.opponent || 'the opposition'} />
           </div>
         </div>
+      )}
+
+      {/* Opposition lineup, after the match: same view as ours */}
+      {showOppAsViewer && (
+        <MatchLineupViewer
+          isOpen={showOppView}
+          onClose={() => setShowOppView(false)}
+          lineup={oppLineupForViewer}
+          events={eventsData?.events || []}
+          opponentName={match?.opponent || 'Opposition'}
+          side="opposition"
+          colours={{ primary: oppSquad.primary, secondary: oppSquad.secondary }}
+        />
       )}
 
       {/* Match Lineup Viewer */}
