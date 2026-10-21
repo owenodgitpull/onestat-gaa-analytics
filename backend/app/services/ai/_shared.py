@@ -4495,6 +4495,7 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         key=lambda t: t[0],
     )
     _seg_index = {id(s): i for i, (_ts, kind, s) in enumerate(_timeline) if kind == 'segment'}
+    _next_seg = {id(a_): b_ for a_, b_ in zip(segments, segments[1:])}
 
     # An event that starts a NEW possession (a kickout, a turnover, a forced win, a breaking ball) ends the search: a
     # score logged after one of those belongs to that possession, not to the carry before it. Looking past them credited
@@ -4508,6 +4509,13 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         idx = _seg_index.get(id(seg))
         if idx is None:
             return None
+        # A video-tagged carry that PASSED to a team-mate is not where the move ended, whatever got saved after it. Records
+        # are created in tagging order (a score is saved before the carry that took it), so reading them in that order
+        # credited the score to the PREVIOUS carry and left the scorer's own chain with an 'unknown' ending.
+        if getattr(seg, 'ended_by', None) == 'pass' and getattr(seg, 'source', None) == 'video':
+            _nx = _next_seg.get(id(seg))
+            if _nx is not None and _nx.team == seg.team:
+                return None
         for _ts, kind, obj in _timeline[idx + 1:]:
             if kind == 'segment':
                 return None  # another carry happened first — no dead-ball outcome yet
