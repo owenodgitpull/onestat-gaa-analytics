@@ -554,6 +554,12 @@ export default function MatchResult() {
     return <LoadingSkeleton variant="match" />
   }
 
+  // Mid video-tagging: this page is not the result yet and the effect above sends the user to the video sessions, so
+  // keep the skeleton up instead of flashing the half-built result while the sessions load.
+  if (match?.video_tagging_in_progress && (videoSessionsLoading || (videoSessionsData?.sessions?.length ?? 0) > 0)) {
+    return <LoadingSkeleton variant="match" />
+  }
+
   if (!match) {
     return (
       <div className="glass-card p-8 text-center">

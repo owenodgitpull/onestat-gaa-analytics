@@ -448,7 +448,7 @@ export default function Results() {
               return (
                 <Link
                   key={match.id}
-                  to={`/results/${match.id}`}
+                  to={match.video_tagging_in_progress ? `/results/${match.id}/video` : `/results/${match.id}`}
                   className="glass-card p-5 hover:bg-white/10 transition-all group relative"
                 >
                   {/* Result Badge & Opponent */}
