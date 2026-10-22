@@ -4614,7 +4614,7 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                     "carries": 0, "total_points": 0,
                     "carry_zones": [],
                     "avg_gain_x": None,
-                    "start_xs": [], "end_xs": [],
+                    "start_xs": [], "end_xs": [], "gain_ms": [],
                 }
             carrier_stats[pid]["carries"] += 1
             carrier_stats[pid]["total_points"] += path_len
@@ -4623,6 +4623,12 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                 carrier_stats[pid]["start_xs"].append(seg.start_x)
             if seg.end_x is not None:
                 carrier_stats[pid]["end_xs"].append(seg.end_x)
+            if seg.start_x is not None and seg.end_x is not None:
+                # real metres gained towards the goal this team attacks, per carry, on the pitch calibration (the drawing's
+                # lines are not at linear distances, so pct x length is ~10% off near the goals)
+                from app.utils.pitch_calibration import along_m as _along_m
+                carrier_stats[pid]["gain_ms"].append(
+                    (_along_m(seg.end_x, _PITCH_LENGTH_M) - _along_m(seg.start_x, _PITCH_LENGTH_M)) * sgn)
 
             # Turnover consequence: did the other team score within 3 minutes of this team losing the ball?
             if seg.ended_by == "turnover":
@@ -4689,13 +4695,14 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
         for stats in carrier_stats.values():
             sx = stats.pop("start_xs", [])
             ex = stats.pop("end_xs", [])
+            _gm = stats.pop("gain_ms", [])
             if sx and ex:
                 stats["avg_start_x"] = round(sum(sx) / len(sx), 1)
                 stats["avg_end_x"] = round(sum(ex) / len(ex), 1)
                 # positive = gained ground towards the goal THIS team attacks
                 gain_pct = (stats["avg_end_x"] - stats["avg_start_x"]) * sgn
                 stats["avg_gain_x"] = round(gain_pct, 1)
-                stats["avg_gain_x_metres"] = round(gain_pct / 100 * _PITCH_LENGTH_M, 1)
+                stats["avg_gain_x_metres"] = round(sum(_gm) / len(_gm), 1) if _gm else round(gain_pct / 100 * _PITCH_LENGTH_M, 1)
             else:
                 stats["avg_start_x"] = None
                 stats["avg_end_x"] = None

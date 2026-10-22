@@ -122,3 +122,16 @@ def zone_phrase(x_pct: float, y_pct: float, length_m: float = DEFAULT_LENGTH_M, 
     if r <= 45.0:
         return "inside own 45m line"
     return "own half"
+
+def position_m(x_pct: float, y_pct: float, length_m: float = DEFAULT_LENGTH_M, width_m: float = DEFAULT_WIDTH_M):
+    """A drawn position as real metres (along the pitch from the x=0 goal line, across from the centre line, + towards y=100).
+    The same calibration as `along_m` / `lateral_m`, so straight-line distances between two positions are real metres."""
+    ym = lateral_m(y_pct, width_m)
+    return along_m(float(x_pct), length_m), (ym if float(y_pct) >= 50.0 else -ym)
+
+
+def distance_m(a, b, length_m: float = DEFAULT_LENGTH_M, width_m: float = DEFAULT_WIDTH_M) -> float:
+    """Straight-line real metres between two drawn positions (x%, y%) - THE way to turn a ball move into metres."""
+    ax, ay = position_m(a[0], a[1], length_m, width_m)
+    bx, by = position_m(b[0], b[1], length_m, width_m)
+    return hypot(ax - bx, ay - by)
