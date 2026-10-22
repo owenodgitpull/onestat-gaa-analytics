@@ -873,7 +873,7 @@ class LeaderboardService:
         # any match without an override. Used by the Orchestrator carry
         # distance calc below.
         pitch_dims_by_match = {
-            m.id: (m.pitch_length_m or _PITCH_LENGTH_M, m.pitch_width_m or _PITCH_WIDTH_M)
+            m.id: (m.pitch_length_m, m.pitch_width_m)   # None = use the calibration default
             for m in matches
         }
 
@@ -1232,10 +1232,12 @@ class LeaderboardService:
             per_match = orch_by_player.setdefault(pid, {})
             d = per_match.setdefault(mid, {"carry_m": 0.0, "passes": 0})
             if start_x is not None and end_x is not None:
-                match_length_m, match_width_m = pitch_dims_by_match.get(mid_raw, (_PITCH_LENGTH_M, _PITCH_WIDTH_M))
-                dx_m = (end_x - start_x) / 100 * match_length_m
-                dy_m = (end_y - start_y) / 100 * match_width_m if start_y is not None and end_y is not None else 0.0
-                d["carry_m"] += (dx_m ** 2 + dy_m ** 2) ** 0.5
+                from app.utils.pitch_calibration import DEFAULT_LENGTH_M, DEFAULT_WIDTH_M, distance_m
+                match_length_m, match_width_m = pitch_dims_by_match.get(mid_raw, (None, None))
+                _sy = start_y if start_y is not None else 50.0
+                _ey = end_y if (end_y is not None and start_y is not None) else _sy   # no y: along-the-pitch distance only
+                d["carry_m"] += distance_m((start_x, _sy), (end_x, _ey),
+                                           match_length_m or DEFAULT_LENGTH_M, match_width_m or DEFAULT_WIDTH_M)
             if ended_by == "pass":
                 d["passes"] += 1
 

@@ -493,11 +493,12 @@ async def get_team_volume_intervals(db: AsyncSession, match_id: UUID, club_id: U
     the chart never goes blank.
     """
     match_result = await db.execute(
-        select(Match.half_duration_mins, Match.pitch_length_m).where(and_(Match.id == match_id, Match.club_id == club_id))
+        select(Match.half_duration_mins, Match.pitch_length_m, Match.pitch_width_m).where(and_(Match.id == match_id, Match.club_id == club_id))
     )
     match_row = match_result.first()
     half_duration = match_row[0] if match_row else 30
     pitch_length_m = (match_row[1] if match_row else None) or _TEAM_VOLUME_PITCH_LENGTH_M
+    pitch_width_m = (match_row[2] if match_row else None) or None   # None = calibration default
     total_minutes = max(half_duration * 2, 60)
     num_intervals = (total_minutes // 5) + (1 if total_minutes % 5 else 0)
     num_intervals = max(num_intervals, 12)
@@ -540,15 +541,20 @@ async def get_team_volume_intervals(db: AsyncSession, match_id: UUID, club_id: U
     carry_count = [0] * num_intervals
 
     segments_result = await db.execute(
-        select(BallCarrierSegment.minute, BallCarrierSegment.start_x, BallCarrierSegment.end_x)
+        select(BallCarrierSegment.minute, BallCarrierSegment.start_x, BallCarrierSegment.end_x,
+               BallCarrierSegment.start_y, BallCarrierSegment.end_y)
         .where(and_(BallCarrierSegment.match_id == match_id, BallCarrierSegment.team == 'own'))
     )
     segments = segments_result.all()
-    for minute, start_x, end_x in segments:
+    from app.utils.pitch_calibration import DEFAULT_WIDTH_M, distance_m
+    for minute, start_x, end_x, start_y, end_y in segments:
         if start_x is None or end_x is None:
             continue
         idx = _bucket_for_minute(minute)
-        carried_m = abs(end_x - start_x) / 100.0 * pitch_length_m
+        # real metres on the pitch calibration (along AND across the pitch), not x% * length
+        _sy = start_y if start_y is not None else 50.0
+        _ey = end_y if (end_y is not None and start_y is not None) else _sy
+        carried_m = distance_m((start_x, _sy), (end_x, _ey), pitch_length_m, pitch_width_m or DEFAULT_WIDTH_M)
         carry_weight[idx] += carried_m
         carry_count[idx] += 1
 

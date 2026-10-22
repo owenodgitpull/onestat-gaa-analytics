@@ -1920,12 +1920,14 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
     match_info = {}
     match_attacking_right = {}
     match_dir = {}   # match id -> (attacking_right_first_half or None, half_duration_mins)
+    match_dims = {}  # match id -> (pitch_length_m or None, pitch_width_m or None): None = calibration default
     if match_ids_in_events:
         mr = await db.execute(select(Match).where(Match.id.in_(match_ids_in_events)))
         for m in mr.scalars().all():
             match_info[str(m.id)] = m.opponent
             _atk = getattr(m, 'attacking_right_first_half', None)
             match_dir[str(m.id)] = (_atk, getattr(m, 'half_duration_mins', None) or 30)
+            match_dims[str(m.id)] = (getattr(m, 'pitch_length_m', None), getattr(m, 'pitch_width_m', None))
             # None = not recorded: every other part of the app assumes "attacked right in the 1st half"
             match_attacking_right[str(m.id)] = True if _atk is None else bool(_atk)
 
@@ -1983,10 +1985,14 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         atk_first, hdm = match_dir.get(mid, (None, 30))
         right = _own_right_p(atk_first, half, minute, hdm)
         fr = [_to_frame_p(float(pt["x"]), float(pt["y"]), right) for pt in points]
+        # real metres on the pitch calibration (the drawing's lines are not at linear distances)
+        from app.utils.pitch_calibration import DEFAULT_LENGTH_M, DEFAULT_WIDTH_M, along_m as _along_m, distance_m as _dist_m
+        _L, _W = match_dims.get(mid, (None, None))
+        _L, _W = _L or DEFAULT_LENGTH_M, _W or DEFAULT_WIDTH_M
         total = 0.0
-        for (x1, y1), (x2, y2) in zip(fr, fr[1:]):
-            total += _math.hypot((x2 - x1) * 1.45, (y2 - y1) * 0.90)
-        gained = (fr[-1][0] - fr[0][0]) * 1.45
+        for a_, b_ in zip(fr, fr[1:]):
+            total += _dist_m(a_, b_, _L, _W)
+        gained = _along_m(fr[-1][0], _L) - _along_m(fr[0][0], _L)
 
         def third(x):
             return "defensive third" if x <= 31 else ("middle third" if x <= 69 else "attacking third")
@@ -2439,9 +2445,11 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
                 if _kloc:
                     event_dict["ball_ended_location"] = _kloc
                 if _frame[e.id][0] is not None:
-                    # real-world length of the pass (145m x 90m pitch)
-                    event_dict["distance_m"] = round((((_kx - _frame[e.id][0]) / 100 * 145) ** 2
-                                                       + ((_ky - _frame[e.id][1]) / 100 * 90) ** 2) ** 0.5, 1)
+                    # real-world length of the pass, on the pitch calibration
+                    from app.utils.pitch_calibration import DEFAULT_LENGTH_M, DEFAULT_WIDTH_M, distance_m as _dist_m
+                    _L, _W = match_dims.get(str(e.match_id), (None, None))
+                    event_dict["distance_m"] = round(_dist_m((_kx, _ky), (_frame[e.id][0], _frame[e.id][1]),
+                                                              _L or DEFAULT_LENGTH_M, _W or DEFAULT_WIDTH_M), 1)
             except Exception:
                 pass
         events_data.append(event_dict)

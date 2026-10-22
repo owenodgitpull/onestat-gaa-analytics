@@ -85,6 +85,7 @@ PLAYER_TOOLS = [
     "get_performance_correlations",
     "get_workload_risk_assessment",
     "get_sleep_data",
+    "search_knowledge_base",   # the prompt tells every season task to ground advice in the knowledge base
 ]
 
 # Tools for training session tasks
@@ -94,6 +95,7 @@ TRAINING_TOOLS = [
     "get_attendance_data",
     "search_players",
     "get_sleep_data",
+    "search_knowledge_base",   # the prompt tells every season task to ground advice in the knowledge base
 ]
 
 MAX_SEASON_TURNS = 5
