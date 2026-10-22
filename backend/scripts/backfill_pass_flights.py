@@ -71,16 +71,25 @@ async def main():
                 if nxt.team != seg.team or nxt.video_timestamp_ms is None:
                     continue
                 t_end = seg.end_video_ms or nxt.video_timestamp_ms
-                j = find_jump(ticks, t_end - 2500, nxt.video_timestamp_ms + 700, L, W)
-                if not j:
-                    continue
-                d, origin, dest = j
                 pe = vm._pick_pass(events, seg, nxt)
+                # the window starts AFTER this carry began: a jump before that is the pass that gave this carrier the ball
+                j = find_jump(ticks, max(t_end - 2500, seg.video_timestamp_ms + 300), nxt.video_timestamp_ms + 700, L, W)
+                if pe is not None and pe.end_x is not None and pe.pitch_x is not None:
+                    # the app already saved this pass's from/to at tagging time: that is the truth, no guessing
+                    origin, dest = (pe.pitch_x, pe.pitch_y), (pe.end_x, pe.end_y)
+                    if nxt.start_x is None or distance_m(dest, (nxt.start_x, nxt.start_y), L, W) > 3.0:
+                        continue   # not clearly this carry's pass: leave it
+                    d = distance_m(origin, dest, L, W)
+                    if j:
+                        e_o.append(distance_m(origin, j[1], L, W)); e_d.append(distance_m(dest, j[2], L, W))
+                elif j:
+                    d, origin, dest = j
+                    # a real pass lands where the next carrier picks it up
+                    if nxt.start_x is None or distance_m(dest, (nxt.start_x, nxt.start_y), L, W) > 3.0:
+                        continue
+                else:
+                    continue
                 at_origin = distance_m((seg.end_x, seg.end_y), origin, L, W) <= 2.0
-                if pe is not None and pe.end_x is not None:
-                    if pe.pitch_x is not None:
-                        e_o.append(distance_m((pe.pitch_x, pe.pitch_y), origin, L, W))
-                    e_d.append(distance_m((pe.end_x, pe.end_y), dest, L, W))
                 if at_origin:
                     ends_ok += 1
                     continue
