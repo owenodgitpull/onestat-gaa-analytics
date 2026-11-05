@@ -553,10 +553,10 @@ export default function VideoQuickActions({
           <button
             key={id}
             onClick={() => { onTabChange(id); setShowFreePanel(false); setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false); setTurnoverPanel(null) }}
-            className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-all ${
+            className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium transition-all ${
               activeTab === id
                 ? 'text-emerald-400 bg-emerald-500/10 border-b-2 border-emerald-400'
-                : 'text-white/35 hover:text-white/55 hover:bg-white/[0.03]'
+                : 'text-white/60 hover:text-white/55 hover:bg-white/[0.03]'
             }`}
           >
             <Icon size={14} />
@@ -592,7 +592,7 @@ export default function VideoQuickActions({
                 ))}
                 <button
                   onClick={() => onFoulSubtypeSelect?.(undefined)}
-                  className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 transition-all"
+                  className="w-full py-2 px-2 rounded-xl text-xs text-white/60 hover:text-white/55 border border-white/[0.05] hover:border-white/10 transition-all"
                 >
                   Skip — log without type
                 </button>
@@ -612,7 +612,7 @@ export default function VideoQuickActions({
                 </div>
                 <button
                   onClick={() => setShowFoulTeamPanel(false)}
-                  className="text-[10px] text-white/40 hover:text-white/70 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
+                  className="text-[11px] text-white/60 hover:text-white/70 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
                 >
                   Cancel
                 </button>
@@ -624,7 +624,7 @@ export default function VideoQuickActions({
                   className="w-full py-3 rounded-xl border-2 font-semibold flex flex-col items-center gap-0.5 transition-all active:scale-[0.96] bg-emerald-500/20 border-emerald-400/40 text-emerald-200 hover:bg-emerald-500/30 disabled:opacity-30"
                 >
                   <span className="text-xs font-bold">Our Foul</span>
-                  <span className="text-[10px] text-white/40">Select who fouled</span>
+                  <span className="text-[11px] text-white/60">Select who fouled</span>
                 </button>
                 <button
                   onClick={() => handleFoulTeamSelect('opponent')}
@@ -632,7 +632,7 @@ export default function VideoQuickActions({
                   className="w-full py-3 rounded-xl border-2 font-semibold flex flex-col items-center gap-0.5 transition-all active:scale-[0.96] bg-rose-500/20 border-rose-400/40 text-rose-200 hover:bg-rose-500/30 disabled:opacity-30"
                 >
                   <span className="text-xs font-bold">Opp Foul</span>
-                  <span className="text-[10px] text-white/40">We win free</span>
+                  <span className="text-[11px] text-white/60">We win free</span>
                 </button>
               </div>
             </div>
@@ -652,7 +652,7 @@ export default function VideoQuickActions({
                 </div>
                 <button
                   onClick={onFreeKickCancel}
-                  className="text-[10px] text-white/40 hover:text-white/70 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
+                  className="text-[11px] text-white/60 hover:text-white/70 px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 transition-colors"
                 >
                   Cancel
                 </button>
@@ -679,14 +679,14 @@ export default function VideoQuickActions({
                       {(isPoint || is2pt) && <Target size={16} />}
                       {isWide && <XCircle size={16} />}
                       {isShort && <ArrowDownCircle size={16} />}
-                      <span className="text-[10px] leading-tight text-center">{action.label}</span>
+                      <span className="text-[11px] leading-tight text-center">{action.label}</span>
                     </button>
                   )
                 })}
                 <button
                   onClick={() => { onFreeKickCancel?.(); }}
                   disabled={disabled}
-                  className="py-2 rounded-xl border-2 font-semibold text-[10px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.96] bg-teal-500/20 border-teal-400/40 text-teal-200 hover:bg-teal-500/30 disabled:opacity-30"
+                  className="py-2 rounded-xl border-2 font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.96] bg-teal-500/20 border-teal-400/40 text-teal-200 hover:bg-teal-500/30 disabled:opacity-30"
                 >
                   <ArrowLeftRight size={14} />
                   Short Pass
@@ -694,7 +694,7 @@ export default function VideoQuickActions({
                 <button
                   onClick={() => { onFreeKickCancel?.(); }}
                   disabled={disabled}
-                  className="py-2 rounded-xl border-2 font-semibold text-[10px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.96] bg-teal-500/20 border-teal-400/40 text-teal-200 hover:bg-teal-500/30 disabled:opacity-30"
+                  className="py-2 rounded-xl border-2 font-semibold text-[11px] flex items-center justify-center gap-1.5 transition-all active:scale-[0.96] bg-teal-500/20 border-teal-400/40 text-teal-200 hover:bg-teal-500/30 disabled:opacity-30"
                 >
                   <ArrowUpCircle size={14} />
                   High Ball
@@ -704,7 +704,7 @@ export default function VideoQuickActions({
           </>
         ) : showFreePanel ? (
           <>
-            <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
+            <div className="text-[11px] text-white/60 uppercase tracking-widest mb-1 text-center font-semibold">
               Free Kick Outcome
             </div>
             {FREE_KICK_ACTIONS.map((action) => (
@@ -734,7 +734,7 @@ export default function VideoQuickActions({
             </button>
             <button
               onClick={() => setShowFreePanel(false)}
-              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
+              className="w-full py-2 px-2 rounded-xl text-xs text-white/60 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
             >
               <ChevronLeft size={12} />
               Back
@@ -742,7 +742,7 @@ export default function VideoQuickActions({
           </>
         ) : showFortyFivePanel ? (
           <>
-            <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
+            <div className="text-[11px] text-white/60 uppercase tracking-widest mb-1 text-center font-semibold">
               45m Free Outcome
             </div>
             <button
@@ -775,7 +775,7 @@ export default function VideoQuickActions({
             </button>
             <button
               onClick={() => { setShowFortyFivePanel(false); onFortyFivePanelToggle?.(false) }}
-              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
+              className="w-full py-2 px-2 rounded-xl text-xs text-white/60 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
             >
               <ChevronLeft size={12} />
               Back
@@ -783,7 +783,7 @@ export default function VideoQuickActions({
           </>
         ) : turnoverPanel ? (
           <>
-            <div className="text-[10px] text-white/30 uppercase tracking-widest mb-1 text-center font-semibold">
+            <div className="text-[11px] text-white/60 uppercase tracking-widest mb-1 text-center font-semibold">
               {turnoverPanel.onlyReason ? TURNOVER_REASON_CONFIG[turnoverPanel.onlyReason].label : 'Turnover'}
             </div>
             {(turnoverPanel.onlyReason ? [turnoverPanel.onlyReason] : (Object.keys(TURNOVER_REASON_CONFIG) as TurnoverReason[])).map((reason) => (
@@ -812,7 +812,7 @@ export default function VideoQuickActions({
             ))}
             <button
               onClick={() => setTurnoverPanel(null)}
-              className="w-full py-2 px-2 rounded-xl text-xs text-white/35 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
+              className="w-full py-2 px-2 rounded-xl text-xs text-white/60 hover:text-white/55 border border-white/[0.05] hover:border-white/10 flex items-center justify-center gap-1 transition-all"
             >
               <ChevronLeft size={12} />
               Cancel
@@ -830,7 +830,7 @@ export default function VideoQuickActions({
                   ${flashButton === action.id
                     ? 'bg-emerald-500/50 text-white border-emerald-400/40 shadow-md shadow-emerald-500/20'
                     : isDisabled
-                      ? 'text-white/15 cursor-not-allowed border-white/[0.03]'
+                      ? 'text-white/60 cursor-not-allowed border-white/[0.03]'
                       : 'text-white/70 border-white/[0.08] hover:border-white/15 hover:text-white/90 hover:shadow-sm hover:shadow-white/5'
                   }
                 `}
@@ -860,7 +860,7 @@ export default function VideoQuickActions({
         <button
           onClick={() => handleDiscipline('YELLOW_CARD')}
           disabled={disabled}
-          className="flex-1 py-1.5 rounded-lg text-[10px] font-medium border border-yellow-400/20 text-yellow-300 hover:border-yellow-400/35 disabled:opacity-30 transition-all active:scale-[0.95]"
+          className="flex-1 py-1.5 rounded-lg text-[11px] font-medium border border-yellow-400/20 text-yellow-300 hover:border-yellow-400/35 disabled:opacity-30 transition-all active:scale-[0.95]"
           style={{ background: 'linear-gradient(135deg, rgba(234,179,8,0.2) 0%, rgba(234,179,8,0.08) 100%)' }}
           title="Yellow Card"
         >
@@ -869,7 +869,7 @@ export default function VideoQuickActions({
         <button
           onClick={() => handleDiscipline('BLACK_CARD')}
           disabled={disabled}
-          className="flex-1 py-1.5 rounded-lg text-[10px] font-medium border border-slate-400/20 text-slate-300 hover:border-slate-400/35 disabled:opacity-30 transition-all active:scale-[0.95]"
+          className="flex-1 py-1.5 rounded-lg text-[11px] font-medium border border-slate-400/20 text-slate-300 hover:border-slate-400/35 disabled:opacity-30 transition-all active:scale-[0.95]"
           style={{ background: 'linear-gradient(135deg, rgba(30,41,59,0.6) 0%, rgba(30,41,59,0.3) 100%)' }}
           title="Black Card (10 min sin bin)"
         >
@@ -878,7 +878,7 @@ export default function VideoQuickActions({
         <button
           onClick={() => handleDiscipline('RED_CARD')}
           disabled={disabled}
-          className="flex-1 py-1.5 rounded-lg text-[10px] font-medium border border-red-400/20 text-red-300 hover:border-red-400/35 disabled:opacity-30 transition-all active:scale-[0.95]"
+          className="flex-1 py-1.5 rounded-lg text-[11px] font-medium border border-red-400/20 text-red-300 hover:border-red-400/35 disabled:opacity-30 transition-all active:scale-[0.95]"
           style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.2) 0%, rgba(239,68,68,0.08) 100%)' }}
           title="Red Card"
         >
@@ -892,7 +892,7 @@ export default function VideoQuickActions({
           title="Substitution"
         >
           <ArrowLeftRight size={13} className="shrink-0" />
-          <span className="text-[9px] font-semibold">Sub</span>
+          <span className="text-[11px] font-semibold">Sub</span>
         </button>
       </div>
 

@@ -3,6 +3,7 @@
  * The tagger either resumes the clock, cancels the stop (it was pressed by mistake) or keeps it stopped.
  */
 import { Timer } from 'lucide-react'
+import { useModalA11y } from '../ui/useModalA11y'
 
 interface Props {
   open: boolean
@@ -13,21 +14,22 @@ interface Props {
 }
 
 export default function ClockStoppedModal({ open, stoppedForSeconds, onResume, onCancelStop, onKeepStopped }: Props) {
+  const dlgRef = useModalA11y<HTMLDivElement>(undefined, open)
   if (!open) return null
   const mins = Math.floor(stoppedForSeconds / 60)
   const secs = Math.round(stoppedForSeconds % 60)
   const length = mins > 0 ? `${mins}m ${String(secs).padStart(2, '0')}s` : `${secs}s`
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-md glass-card p-5">
+      <div ref={dlgRef} role="dialog" aria-modal="true" aria-labelledby="clock-stopped-title" className="w-full max-w-md glass-card p-5">
         <div className="flex items-start gap-3">
           <Timer className="text-amber-400 flex-shrink-0 mt-0.5" size={22} />
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-white">The match clock is stopped</h2>
+            <h2 id="clock-stopped-title" className="text-lg font-bold text-white">The match clock is stopped</h2>
             <p className="mt-1 text-sm text-white/70">
               It has been stopped for {length} of video time. Do you want to start it again?
             </p>
-            <p className="mt-2 text-xs text-white/45">
+            <p className="mt-2 text-xs text-white/60">
               Time while the clock is stopped doesn't count towards the match minutes. If you stopped it by mistake, cancel the stop
               and nothing is lost.
             </p>

@@ -17,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext'
 import LoadingSkeleton from '../components/LoadingSkeleton'
 import { api } from '../services/api'
 import type { Match } from '../types'
+import { ModalA11y } from '../components/ui/ModalA11y'
 
 const PAGE_SIZE = 12
 
@@ -64,7 +65,7 @@ function DataBadge({ icon: Icon, label, color }: { icon: typeof Activity; label:
     >
       <Icon size={14} className={color} />
       {showTooltip && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-[10px] rounded bg-black/90 text-white whitespace-nowrap z-10">
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-[11px] rounded bg-black/90 text-white whitespace-nowrap z-10">
           {label}
         </span>
       )}
@@ -95,6 +96,7 @@ function DeleteMatchModal({ match, onClose, onDeleted }: { match: Match; onClose
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => !busy && onClose()}>
       <div className="w-full max-w-md glass-card p-6" onClick={(e) => e.stopPropagation()}>
+        <ModalA11y label="Delete this match" onEscape={() => { if (!busy) onClose() }} />
         <div className="flex items-center gap-3 mb-3">
           <div className="p-2 rounded-full bg-red-500/20"><Trash2 size={18} className="text-red-400" /></div>
           <h2 className="text-lg font-bold text-white">Delete this match?</h2>
@@ -279,10 +281,10 @@ export default function Results() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
                   </span>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-red-400">Live</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest text-red-400">Live</span>
                 </div>
                 <span className="text-sm font-bold text-white whitespace-nowrap">vs {liveMatch.opponent}</span>
-                <ChevronRight size={16} className="text-white/40" />
+                <ChevronRight size={16} className="text-white/60" />
               </div>
             </div>
           ) : nextMatch ? (
@@ -298,7 +300,7 @@ export default function Results() {
               <ChevronRight size={16} className="text-emerald-400/60 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-all" />
             </div>
           ) : null}
-          <button onClick={() => refetch()} className="btn-glass p-2" title="Refresh">
+          <button aria-label="Refresh" onClick={() => refetch()} className="btn-glass p-2 hit-44" title="Refresh">
             <RefreshCw size={16} />
           </button>
         </div>
@@ -310,7 +312,7 @@ export default function Results() {
           {/* Search Row */}
           <div className="flex gap-2">
             <div className="relative flex-1">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60" />
               <input
                 type="text"
                 value={search}
@@ -321,7 +323,8 @@ export default function Results() {
               {search && (
                 <button
                   onClick={() => { setSearch(''); setVisibleCount(PAGE_SIZE) }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70"
+                  aria-label="Clear search"
+                  className="hit-44 absolute right-2.5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white/70"
                 >
                   <X size={14} />
                 </button>
@@ -337,7 +340,7 @@ export default function Results() {
             >
               <Filter size={14} />
               {activeFilterCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-orange-500 text-black text-[10px] font-bold flex items-center justify-center">
+                <span className="w-4 h-4 rounded-full bg-orange-500 text-black text-[11px] font-bold flex items-center justify-center">
                   {activeFilterCount}
                 </span>
               )}
@@ -411,7 +414,7 @@ export default function Results() {
 
           {/* Results count when filtered */}
           {(search || activeFilterCount > 0) && (
-            <p className="text-white/40 text-xs">
+            <p className="text-white/60 text-xs">
               {filteredMatches.length} match{filteredMatches.length !== 1 ? 'es' : ''} found
               {search && <> matching "{search}"</>}
             </p>
@@ -422,7 +425,7 @@ export default function Results() {
       {/* Match Cards Grid */}
       {completedMatches.length === 0 ? (
         <div className="glass-card p-12 text-center">
-          <Trophy size={48} className="mx-auto text-white/20 mb-4" />
+          <Trophy size={48} className="mx-auto text-white/60 mb-4" />
           <h3 className="text-xl font-semibold text-white mb-2">No Results Yet</h3>
           <p className="text-white/60">
             Complete a match to see results here
@@ -430,7 +433,7 @@ export default function Results() {
         </div>
       ) : filteredMatches.length === 0 ? (
         <div className="glass-card p-8 text-center">
-          <Search size={32} className="mx-auto text-white/20 mb-3" />
+          <Search size={32} className="mx-auto text-white/60 mb-3" />
           <p className="text-white/60 text-sm">No matches found</p>
           <button onClick={clearFilters} className="mt-3 text-orange-400 text-sm hover:text-orange-300 transition-colors">
             Clear filters
@@ -464,7 +467,7 @@ export default function Results() {
                         <div className="relative">
                           <button
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuFor(menuFor === match.id ? null : match.id) }}
-                            className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors"
+                            className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-colors"
                             aria-label="Match options"
                             title="Options"
                           >
@@ -490,7 +493,7 @@ export default function Results() {
                       )}
                       <ChevronRight
                         size={20}
-                        className="text-white/40 group-hover:text-white group-hover:translate-x-1 transition-all"
+                        className="text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all"
                       />
                     </div>
                   </div>
@@ -502,15 +505,15 @@ export default function Results() {
                         {formatGAAScore(match.team_goals, match.team_points)}
                       </div>
                       <div className="text-xs text-white/60">{clubName}</div>
-                      <div className="text-xs text-white/40">({teamTotal} pts)</div>
+                      <div className="text-xs text-white/60">({teamTotal} pts)</div>
                     </div>
-                    <div className="text-white/40">-</div>
+                    <div className="text-white/60">-</div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-white/80">
                         {formatGAAScore(match.opponent_goals, match.opponent_points)}
                       </div>
                       <div className="text-xs text-white/60">{match.opponent}</div>
-                      <div className="text-xs text-white/40">({oppTotal} pts)</div>
+                      <div className="text-xs text-white/60">({oppTotal} pts)</div>
                     </div>
                   </div>
 
@@ -538,7 +541,7 @@ export default function Results() {
                   {/* Competition tag */}
                   {match.competition && (
                     <div className="mt-3 pt-3 border-t border-white/5">
-                      <span className="text-[10px] text-white/40 bg-white/5 px-2 py-0.5 rounded">
+                      <span className="text-[11px] text-white/60 bg-white/5 px-2 py-0.5 rounded">
                         {match.competition}{match.stage ? ` · ${match.stage}` : ''}
                       </span>
                     </div>

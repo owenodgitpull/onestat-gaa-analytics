@@ -62,11 +62,11 @@ function Block({ title, scorers, tone }: { title: string; scorers: Scorer[]; ton
   return (
     <div className="min-w-0">
       <div className="flex items-baseline gap-2 mb-1">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-white/40 truncate">{title}</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-white/60 truncate">{title}</span>
         <span className="text-xs font-bold text-white/80 tabular-nums">{goals}-{String(pts).padStart(2, '0')}</span>
       </div>
       {named.length === 0 ? (
-        scorers.length === 0 ? <p className="text-[11px] text-white/25 italic">No scores yet</p> : null
+        scorers.length === 0 ? <p className="text-[11px] text-white/60 italic">No scores yet</p> : null
       ) : (
         <div className="flex flex-wrap gap-x-3 gap-y-0.5">
           {named.map(s => (
@@ -74,7 +74,7 @@ function Block({ title, scorers, tone }: { title: string; scorers: Scorer[]; ton
               <span className={`font-medium ${tone === 'own' ? 'text-white' : 'text-orange-100'}`}>{s.name}</span>
               {' '}
               {s.goals}-{String(s.pointsValue).padStart(2, '0')}
-              {s.twoPointers > 0 && <span className="text-cyan-400/80 text-[10px]"> (+{s.twoPointers}x2pt)</span>}
+              {s.twoPointers > 0 && <span className="text-cyan-400/80 text-[11px]"> (+{s.twoPointers}x2pt)</span>}
             </span>
           ))}
         </div>

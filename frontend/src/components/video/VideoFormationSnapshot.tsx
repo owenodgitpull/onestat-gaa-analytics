@@ -197,9 +197,9 @@ export default function VideoFormationSnapshot({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <button aria-label="Reset all"
             onClick={handleReset}
-            className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20"
+            className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 hit-44"
             title="Reset all"
           >
             <RotateCcw size={14} />
@@ -210,14 +210,14 @@ export default function VideoFormationSnapshot({
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1 ${
               positions.length >= 2
                 ? 'bg-purple-500 text-white hover:bg-purple-600'
-                : 'bg-white/10 text-white/30 cursor-not-allowed'
+                : 'bg-white/10 text-white/60 cursor-not-allowed'
             }`}
           >
             <Check size={14} /> Save
           </button>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20"
+            className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 hit-44"
           >
             <X size={14} />
           </button>

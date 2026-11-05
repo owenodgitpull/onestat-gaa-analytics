@@ -281,7 +281,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               )}
             </>
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-white/30">
+            <div className="w-full h-full flex items-center justify-center text-white/60">
               <span>No video loaded</span>
             </div>
           )}
@@ -292,9 +292,9 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           disabled ? 'opacity-30 pointer-events-none' : ''
         }`}>
           {/* Skip back */}
-          <button
+          <button aria-label="Back 5s"
             onClick={() => skip(-5)}
-            className="p-1.5 text-white/60 hover:text-white transition-colors"
+            className="p-1.5 text-white/60 hover:text-white transition-colors hit-44"
             title="Back 5s (Left Arrow)"
           >
             <SkipBack size={18} />
@@ -310,9 +310,9 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           </button>
 
           {/* Skip forward */}
-          <button
+          <button aria-label="Forward 5s"
             onClick={() => skip(5)}
-            className="p-1.5 text-white/60 hover:text-white transition-colors"
+            className="p-1.5 text-white/60 hover:text-white transition-colors hit-44"
             title="Forward 5s (Right Arrow)"
           >
             <SkipForward size={18} />
@@ -335,7 +335,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           >
             {hoverPercent != null && duration > 0 && (
               <div
-                className="absolute bottom-full mb-1.5 -translate-x-1/2 px-1.5 py-0.5 rounded bg-black/85 text-[10px] font-mono text-white pointer-events-none whitespace-nowrap z-20"
+                className="absolute bottom-full mb-1.5 -translate-x-1/2 px-1.5 py-0.5 rounded bg-black/85 text-[11px] font-mono text-white pointer-events-none whitespace-nowrap z-20"
                 style={{ left: `${hoverPercent * 100}%` }}
               >
                 {formatTime(hoverPercent * duration)}
@@ -423,7 +423,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   style={{ left: `${m.pct}%` }}
                 >
                   <span
-                    className="text-[9px] font-bold select-none whitespace-nowrap"
+                    className="text-[11px] font-bold select-none whitespace-nowrap"
                     style={{ color: COLORS[m.color], transform: `translateY(${-14 - m.level * 11}px)` }}
                     title={`${m.name} - ${fmt(m.ms)}`}
                   >
@@ -442,7 +442,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               <button
                 key={rate}
                 onClick={() => changeRate(rate)}
-                className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+                className={`px-2 py-1 text-[11px] font-medium rounded transition-colors ${
                   playbackRate === rate
                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                     : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
@@ -455,7 +455,7 @@ const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
             {/* Full menu for all speeds */}
             <div className="relative">
-              <button
+              <button aria-label="More speeds"
                 onClick={() => setShowRateMenu(!showRateMenu)}
                 className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
                   [0.5, 0.75, 1].includes(playbackRate)

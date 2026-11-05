@@ -6,6 +6,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { X, Trash2, Plus, Loader2 } from 'lucide-react'
 import { videoMovesAPI, type MoveResponse, type MoveStep } from '../../services/videoMovesApi'
+import { useModalA11y } from '../ui/useModalA11y'
 
 export interface PickablePlayer {
   id: string
@@ -95,6 +96,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
     setDirty(false)
     load()
   }, [isOpen, load, sessionId, eventId])
+  const dlgRef = useModalA11y<HTMLDivElement>(() => { if (dirty) onChanged(); onClose() }, isOpen)
   if (!isOpen) return null
 
   const close = () => {
@@ -143,7 +145,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
 
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto" onClick={close}>
-      <div className="relative w-full max-w-xl my-8 glass-card p-5" onClick={e => e.stopPropagation()}>
+      <div ref={dlgRef} role="dialog" aria-modal="true" aria-label="Edit move" className="relative w-full max-w-xl my-8 glass-card p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-1">
           <div>
             <h2 className="text-lg font-bold text-white">Edit this move</h2>
@@ -181,8 +183,8 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
               <Fragment key={s.segment_id}>
               <li className={`rounded-xl border border-white/10 bg-white/[0.04] p-2.5 transition-opacity ${busy === `set-${s.segment_id}` || busy === `del-${s.segment_id}` ? 'opacity-60' : ''}`}>
                 <div className="flex items-center gap-2">
-                  <span className="w-6 text-center text-[11px] font-bold text-white/40">{i + 1}</span>
-                  <select
+                  <span className="w-6 text-center text-[11px] font-bold text-white/60">{i + 1}</span>
+                  <select aria-label="Player for this step"
                     value={current ?? ''}
                     disabled={busy !== null}
                     onChange={e => {
@@ -203,25 +205,25 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
                     <PlayerOptions players={opts} />
                   </select>
                   {busy === `set-${s.segment_id}` && <Loader2 size={14} className="animate-spin text-emerald-300 flex-shrink-0" aria-label="Saving" />}
-                  <span className="text-[11px] text-white/40 whitespace-nowrap">{clock(s.match_clock_s)}</span>
+                  <span className="text-[11px] text-white/60 whitespace-nowrap">{clock(s.match_clock_s)}</span>
                   <button
                     onClick={() => run(`del-${s.segment_id}`, () => videoMovesAPI.deleteStep(sessionId, s.segment_id), () => {
                       if (isLast) return false   // the step before it takes over how the move ended: reload to show that
                       patch(list => list.filter(x => x.segment_id !== s.segment_id))
                     })}
                     disabled={busy !== null}
-                    className="p-1.5 rounded-lg text-white/40 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+                    className="p-1.5 rounded-lg text-white/60 hover:text-red-300 hover:bg-red-500/10 disabled:opacity-40"
                     title="Remove this step"
                   >
                     {busy === `del-${s.segment_id}` ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
                   </button>
                 </div>
                 <div className="flex items-center justify-between mt-1.5 pl-8">
-                  <span className="text-[11px] text-white/45">
+                  <span className="text-[11px] text-white/60">
                     {isLast ? (ENDED_LABEL[s.ended_by || ''] || s.ended_by || 'ends the move') : 'carries, then passes'}
                   </span>
                   {adding === s.segment_id ? (
-                    <select
+                    <select aria-label="Player for the new step"
                       autoFocus
                       defaultValue=""
                       onBlur={() => setAdding(null)}
@@ -265,7 +267,7 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
           })}
         </ol>
 
-        <p className="text-[11px] text-white/35 mt-4">
+        <p className="text-[11px] text-white/60 mt-4">
           Changes save as you make them. The scorer, the assist and the other details of the event itself are edited from
           that event's own Edit button.
         </p>

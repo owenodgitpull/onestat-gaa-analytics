@@ -166,7 +166,7 @@ export default function SetupFlowModal({
               <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 space-y-2.5">
                 <label className="block">
                   <span className="text-[11px] text-white/60">Match clock at this moment (mm:ss)</span>
-                  <input
+                  <input aria-label="Match clock at this moment (mm:ss)"
                     value={clockText}
                     onChange={e => setClockText(e.target.value)}
                     placeholder="e.g. 2:05"
@@ -191,7 +191,7 @@ export default function SetupFlowModal({
                     <span className="text-emerald-300">Footage starts at the throw-in or earlier</span>{' '}
                     (warm-up, team walk-out): you don't need this. Switch back and mark the throw-in as normal.
                   </p>
-                  <p className="text-white/40">
+                  <p className="text-white/60">
                     Anything before this moment has no events, as it isn't in the video.
                   </p>
                 </div>
@@ -439,7 +439,7 @@ export default function SetupFlowModal({
               recorded only while the video is playing — pause any time and nothing is counted until you press
               play again.
             </p>
-            <p className="text-xs text-white/40 mb-3">
+            <p className="text-xs text-white/60 mb-3">
               Possession also pauses automatically during frees, kickouts and 45s while you pick the outcome.
             </p>
             <button
@@ -464,7 +464,7 @@ function VideoTimeReadout({ ms }: { ms: number }) {
   return (
     <div className="text-center mb-3">
       <span className="text-lg font-mono text-emerald-400">{formatVideoTime(ms)}</span>
-      <span className="text-xs text-white/30 ml-2">video time</span>
+      <span className="text-xs text-white/60 ml-2">video time</span>
     </div>
   )
 }

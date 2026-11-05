@@ -176,16 +176,16 @@ export default function VideoEventLog({
             <span className="text-sm font-bold text-white">
               {currentScore.team_a_goals}-{String(currentScore.team_a_points).padStart(2, '0')}
             </span>
-            <span className="text-xs text-white/30">({teamATotal})</span>
-            <span className="text-white/30 text-xs">vs</span>
+            <span className="text-xs text-white/60">({teamATotal})</span>
+            <span className="text-white/60 text-xs">vs</span>
             <span className="text-sm font-bold text-white">
               {currentScore.team_b_goals}-{String(currentScore.team_b_points).padStart(2, '0')}
             </span>
-            <span className="text-xs text-white/30">({teamBTotal})</span>
+            <span className="text-xs text-white/60">({teamBTotal})</span>
           </div>
 
           {/* Event count */}
-          <span className="text-xs text-white/40">
+          <span className="text-xs text-white/60">
             Events ({eventsWithScore.length})
           </span>
         </div>
@@ -204,8 +204,8 @@ export default function VideoEventLog({
           {/* Toggle chevron */}
           {onToggle && (
             collapsed
-              ? <ChevronDown size={16} className="text-white/40" />
-              : <ChevronUp size={16} className="text-white/40" />
+              ? <ChevronDown size={16} className="text-white/60" />
+              : <ChevronUp size={16} className="text-white/60" />
           )}
         </div>
       </button>
@@ -214,7 +214,7 @@ export default function VideoEventLog({
         <div className="flex justify-end px-3 py-1 border-b border-white/5">
           <button
             onClick={() => setShowPasses(v => !v)}
-            className="text-[10px] text-white/35 hover:text-white/70 transition-colors"
+            className="text-[11px] text-white/60 hover:text-white/70 transition-colors"
             title="Hand passes and kick passes are recorded for the analysis but kept out of the list"
           >
             {showPasses ? 'Hide passes' : `Show ${passCount} passes`}
@@ -231,7 +231,7 @@ export default function VideoEventLog({
       >
         <div className="space-y-1 p-2">
           {eventsWithScore.length === 0 ? (
-            <p className="text-center text-white/30 text-sm py-8">
+            <p className="text-center text-white/60 text-sm py-8">
               No events tagged yet. Use the quick actions or auto-analyse.
             </p>
           ) : (
@@ -250,7 +250,7 @@ export default function VideoEventLog({
                   onClick={() => event.video_timestamp_ms != null && onSeek(seekTimeForEvent(event.video_timestamp_ms))}
                 >
                   {/* Time */}
-                  <span className="text-xs text-white/40 w-10 shrink-0 font-mono">
+                  <span className="text-xs text-white/60 w-10 shrink-0 font-mono">
                     {event.match_minute}:{String(event.match_second).padStart(2, '0')}
                   </span>
 
@@ -266,7 +266,7 @@ export default function VideoEventLog({
 
                   {/* AI badge */}
                   {isAI && (
-                    <span className="text-[9px] bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded-full font-bold shrink-0 flex items-center gap-0.5">
+                    <span className="text-[11px] bg-purple-500/30 text-purple-300 px-1.5 py-0.5 rounded-full font-bold shrink-0 flex items-center gap-0.5">
                       <Bot size={9} />
                       AI
                     </span>
@@ -274,7 +274,7 @@ export default function VideoEventLog({
 
                   {/* Two-pointer badge */}
                   {isTwoPointer && (
-                    <span className="text-[10px] bg-cyan-500/30 text-cyan-300 px-1.5 py-0.5 rounded-full font-bold shrink-0">
+                    <span className="text-[11px] bg-cyan-500/30 text-cyan-300 px-1.5 py-0.5 rounded-full font-bold shrink-0">
                       2pt
                     </span>
                   )}
@@ -291,12 +291,12 @@ export default function VideoEventLog({
                   {/* Reason / outcome (never a raw code) */}
                   {(() => {
                     const detail = videoEventDetail(event)
-                    return detail ? <span className="text-[10px] text-white/35 truncate max-w-[40%] shrink">{detail}</span> : null
+                    return detail ? <span className="text-[11px] text-white/60 truncate max-w-[40%] shrink">{detail}</span> : null
                   })()}
 
                   {/* Score change indicator */}
                   {scoreChange && (
-                    <span className="text-[10px] text-emerald-400 font-bold shrink-0">
+                    <span className="text-[11px] text-emerald-400 font-bold shrink-0">
                       +{scoreChange}
                     </span>
                   )}
@@ -309,7 +309,7 @@ export default function VideoEventLog({
                       (event.event_type === 'FREE_KICK' && event.scoring_context?.scored)) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); onToggleTwoPointer(event.id, !isTwoPointer) }}
-                        className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                        className="px-1.5 py-0.5 rounded text-[11px] font-bold text-white/60 hover:text-cyan-300 hover:bg-cyan-500/10 transition-colors"
                         title={isTwoPointer ? 'Change to a 1-point score' : 'Change to a 2-point score'}
                       >
                         {isTwoPointer ? '→1pt' : '→2pt'}
@@ -319,7 +319,7 @@ export default function VideoEventLog({
                     {onDisallow && (event.event_type === 'POINT_SCORED' || event.event_type === 'GOAL_SCORED' ||
                       (event.event_type === 'FREE_KICK' && event.scoring_context?.scored)) && (
                       disallowFor === event.id ? (
-                        <select
+                        <select aria-label="Reason for disallowing this score"
                           autoFocus
                           defaultValue=""
                           onClick={(e) => e.stopPropagation()}
@@ -329,7 +329,7 @@ export default function VideoEventLog({
                             if (opt) onDisallow(event.id, opt.value, opt.label)
                             setDisallowFor(null)
                           }}
-                          className="bg-slate-800 text-white text-[10px] rounded border border-white/20 px-1 py-0.5"
+                          className="bg-slate-800 text-white text-[11px] rounded border border-white/20 px-1 py-0.5"
                         >
                           <option value="" disabled>Why?</option>
                           {DISALLOW_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -337,7 +337,7 @@ export default function VideoEventLog({
                       ) : (
                         <button
                           onClick={(e) => { e.stopPropagation(); setDisallowFor(event.id) }}
-                          className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+                          className="px-1.5 py-0.5 rounded text-[11px] font-bold text-white/60 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
                           title="Ruled out by the referee (square ball, overcarrying...) - removes it from the score and keeps a note"
                         >
                           Disallowed
@@ -351,7 +351,7 @@ export default function VideoEventLog({
                         onClick={(e) => { e.stopPropagation(); onEditMove(event.id) }}
                         onPointerEnter={() => onPrefetchMove?.(event.id)}
                         onFocus={() => onPrefetchMove?.(event.id)}
-                        className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
+                        className="px-1.5 py-0.5 rounded text-[11px] font-bold text-white/60 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors"
                         title="Fix the move: who carried, missing or extra steps"
                       >
                         Move
@@ -360,25 +360,25 @@ export default function VideoEventLog({
                     {onEditEvent && (
                       <button
                         onClick={(e) => { e.stopPropagation(); onEditEvent(event.id) }}
-                        className="px-1.5 py-0.5 rounded text-[10px] font-bold text-white/40 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
+                        className="px-1.5 py-0.5 rounded text-[11px] font-bold text-white/60 hover:text-blue-300 hover:bg-blue-500/10 transition-colors"
                         title="Fix this event: players, type, outcome, time"
                       >
                         Fix
                       </button>
                     )}
                     {onMovePosition && (
-                      <button
+                      <button aria-label="Move on the pitch"
                         onClick={(e) => { e.stopPropagation(); onMovePosition(event.id) }}
-                        className="p-1 text-white/20 hover:text-purple-300 transition-colors"
+                        className="p-1 text-white/60 hover:text-purple-300 transition-colors hit-44-box"
                         title="Move on the pitch"
                       >
                         <MapPin size={14} />
                       </button>
                     )}
                     {!event.is_verified && event.source !== 'human_tag' && (
-                      <button
+                      <button aria-label="Verify"
                         onClick={(e) => { e.stopPropagation(); onVerify(event.id) }}
-                        className="p-1 text-white/20 hover:text-emerald-400 transition-colors"
+                        className="p-1 text-white/60 hover:text-emerald-400 transition-colors hit-44-box"
                         title="Verify"
                       >
                         <CheckCircle size={14} />
@@ -388,9 +388,9 @@ export default function VideoEventLog({
                         edit. Team swap first (the common mistake: wrong-team
                         score), plain player re-attribution as a second tap. */}
                     {onEditTeam && (
-                      <button
+                      <button aria-label="Edit team"
                         onClick={(e) => { e.stopPropagation(); onEditTeam(event.id) }}
-                        className="p-1 text-white/20 hover:text-blue-400 transition-colors"
+                        className="p-1 text-white/60 hover:text-blue-400 transition-colors hit-44-box"
                         title="Edit team"
                       >
                         <Pencil size={14} />
@@ -399,15 +399,15 @@ export default function VideoEventLog({
                     {onEditPlayer && (
                       <button
                         onClick={(e) => { e.stopPropagation(); onEditPlayer(event.id) }}
-                        className="p-1 text-[9px] font-bold text-white/20 hover:text-blue-400 transition-colors w-[14px] h-[14px] flex items-center justify-center"
+                        className="p-1 text-[11px] font-bold text-white/60 hover:text-blue-400 transition-colors w-[14px] h-[14px] flex items-center justify-center"
                         title="Edit player"
                       >
                         P
                       </button>
                     )}
-                    <button
+                    <button aria-label="Delete"
                       onClick={(e) => { e.stopPropagation(); onDelete(event.id) }}
-                      className="p-1 text-white/20 hover:text-red-400 transition-colors"
+                      className="p-1 text-white/60 hover:text-red-400 transition-colors hit-44-box"
                       title="Delete"
                     >
                       <Trash2 size={14} />

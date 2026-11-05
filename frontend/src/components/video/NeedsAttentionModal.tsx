@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react'
 import { X, Loader2 } from 'lucide-react'
 import { videoMovesAPI, type HealthIssue } from '../../services/videoMovesApi'
+import { useModalA11y } from '../ui/useModalA11y'
 
 interface Props {
   isOpen: boolean
@@ -44,16 +45,17 @@ export default function NeedsAttentionModal({ isOpen, sessionId, onClose, onSeek
     return () => { live = false }
   }, [isOpen, sessionId])
 
+  const dlgRef = useModalA11y<HTMLDivElement>(onClose, isOpen)
   if (!isOpen) return null
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-      <div className="w-full max-w-xl my-8 glass-card p-5" onClick={e => e.stopPropagation()}>
+      <div ref={dlgRef} role="dialog" aria-modal="true" aria-label="Needs attention" className="w-full max-w-xl my-8 glass-card p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-2">
           <h2 className="text-lg font-bold text-white">Needs attention</h2>
           <button onClick={onClose} className="text-white/60 hover:text-white p-1" aria-label="Close"><X size={18} /></button>
         </div>
         {!issues && !error && <div className="flex items-center gap-2 text-sm text-white/60 py-6"><Loader2 size={16} className="animate-spin" /> Checking…</div>}
-        {issues && refreshing && <div className="flex items-center gap-1.5 text-[11px] text-white/40 mb-2"><Loader2 size={11} className="animate-spin" /> Re-checking…</div>}
+        {issues && refreshing && <div className="flex items-center gap-1.5 text-[11px] text-white/60 mb-2"><Loader2 size={11} className="animate-spin" /> Re-checking…</div>}
         {error && <p className="text-xs text-red-300">{error}</p>}
         {issues && issues.length === 0 && <p className="text-sm text-emerald-300 py-4">Nothing to fix — all clear.</p>}
         <ul className="space-y-2">
@@ -61,7 +63,7 @@ export default function NeedsAttentionModal({ isOpen, sessionId, onClose, onSeek
             <li key={`${it.kind}-${it.event_id}-${it.segment_id}-${i}`} className="rounded-xl border border-white/10 bg-white/[0.04] p-2.5 flex items-center gap-2">
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-white">{it.message}</p>
-                <p className="text-[11px] text-white/40">
+                <p className="text-[11px] text-white/60">
                   {it.match_minute != null ? `${it.match_minute}:${String(it.match_second ?? 0).padStart(2, '0')}` : ''}
                   {it.team ? ` · ${it.team === 'team_a' ? 'ours' : 'opposition'}` : ''}
                 </p>
