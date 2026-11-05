@@ -27,6 +27,9 @@ PLUMBING = (
     "routes/possession_events.py",
     # Edits a move's carriers / passes: copies the stored positions between steps, never interprets them.
     "routes/video_moves.py",
+    # GPS time series: compares tagged raw coordinates with raw GPS positions in the SAME screen frame (a sync, not an
+    # analytic) and returns raw screen positions for callers to frame with the helpers (documented on the endpoint).
+    "services/gps_timeseries/", "routes/match_gps_timeseries.py",
 )
 
 HELPER_MARKERS = (

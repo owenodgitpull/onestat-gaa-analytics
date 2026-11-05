@@ -28,6 +28,7 @@ from app.models.player_health import (
     AlertSeverity, AlertType
 )
 from app.models.match_gps import MatchGPSData
+from app.models.match_gps_track import MatchGPSTrack, MatchGPSSync
 from app.models.insight_alert import InsightAlert, AlertCategory, AlertSource
 from app.models.chat_session import ChatSession, ChatSessionMessage
 from app.models.user import User
@@ -99,6 +100,8 @@ __all__ = [
     "AlertSeverity",
     "AlertType",
     "MatchGPSData",
+    "MatchGPSTrack",
+    "MatchGPSSync",
     "InsightAlert",
     "AlertCategory",
     "AlertSource",

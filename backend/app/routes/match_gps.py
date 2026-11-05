@@ -201,6 +201,12 @@ async def preview_match_gps(
     if filename.lower().endswith('.pdf'):
         extracted_data = await extract_gps_from_pdf(content, filename)
     elif filename.lower().endswith('.csv'):
+        # A raw time series (one file per player, Time/Lat/Lon rows) is not a summary: say so instead of
+        # feeding 130 MB to the summary parser. The time-series uploader handles those files.
+        from app.services.gps_timeseries.parser import detect_file_kind
+        kind = detect_file_kind(content[:65536])
+        if kind.kind in ("timeseries", "timeseries_sparse"):
+            raise HTTPException(status_code=422, detail=f"{kind.message}. This button is for the per-player summary export.")
         extracted_data = await parse_gps_csv(content)
     else:
         raise HTTPException(status_code=400, detail="Unsupported file type. Use PDF or CSV.")

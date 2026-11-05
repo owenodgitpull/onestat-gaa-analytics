@@ -2817,6 +2817,105 @@ const matchGpsAPI = {
 };
 
 // ============================================================================
+// Match GPS time series API (raw 10 Hz positions synced to the video)
+// ============================================================================
+
+import type { TrackUpload } from '../utils/gpsTimeseriesParser'
+import type { GpsPeriod } from '../utils/gpsClock'
+
+export interface GpsTrackSummary {
+  id: string
+  player_id: string
+  player_name: string
+  device_name: string | null
+  hz: number
+  t0_ms: number
+  end_ms: number
+  n_samples: number
+  stats: Record<string, unknown> | null
+  quality: { coverage: number; on_pitch_share: number; in_match: boolean; match_distance_m: number; bad_fix_share: number; interpolated_share: number } | null
+}
+
+export interface GpsSyncSummary {
+  status: 'pending' | 'auto' | 'confirmed' | 'failed'
+  calibration: Record<string, unknown> | null
+  periods: (GpsPeriod & { n_anchors?: number; bias_u_m?: number; bias_v_m?: number; implied_offset_spread_s?: number | null })[] | null
+  tag_lag: Record<string, { n: number; median_s: number; p25_s: number; p75_s: number }> | null
+  error: string | null
+  computed_at: string | null
+  confirmed_at: string | null
+}
+
+export interface GpsTimeseriesSummary {
+  match_id: string
+  tracks: GpsTrackSummary[]
+  sync: GpsSyncSummary | null
+}
+
+export interface GpsTrackUploadResult {
+  track_id: string
+  player_id: string | null
+  player_name: string | null
+  match_type: string
+  n_samples: number
+  start_utc: string
+  end_utc: string
+  duration_min: number
+}
+
+export interface GpsPlayerWindow {
+  player_id: string
+  t0_video_ms: number
+  hz: number
+  x: (number | null)[]      // raw screen 0-100: frame with pointInSideFrame before reading meaning into it
+  y: (number | null)[]
+  speed: (number | null)[]  // m/s
+}
+
+export interface GpsWindow {
+  match_id: string
+  from_video_ms: number
+  to_video_ms: number
+  hz: number
+  half: number | null
+  pitch_length_m: number
+  pitch_width_m: number
+  players: Record<string, GpsPlayerWindow>
+}
+
+export interface GpsAnchors {
+  periods: { half: number; offset_ms: number; rate: number; anchors: { video_ms: number; gps_ms: number; implied_offset_ms: number; dist_m: number }[] }[]
+}
+
+const matchGpsTimeseriesAPI = {
+  /** One request per player; the browser parses the raw file first (utils/gpsTimeseriesParser.ts). */
+  uploadTrack: (matchId: string, track: TrackUpload): Promise<GpsTrackUploadResult> =>
+    fetchAPI(`/matches/${matchId}/gps/timeseries/tracks`, { method: 'POST', body: JSON.stringify(track) }),
+
+  /** Calibrate the pitch and find each period's video offset from the tagged carries (10-60 s). */
+  runSync: (matchId: string): Promise<GpsSyncSummary> =>
+    fetchAPI(`/matches/${matchId}/gps/timeseries/sync`, { method: 'POST' }),
+
+  /** Manual nudge of a period's offset; marks the sync confirmed. */
+  overrideSync: (matchId: string, periods: { half: number; offset_ms: number; rate?: number }[], confirm = true): Promise<GpsSyncSummary> =>
+    fetchAPI(`/matches/${matchId}/gps/timeseries/sync`, { method: 'PATCH', body: JSON.stringify({ periods, confirm }) }),
+
+  getSummary: (matchId: string): Promise<GpsTimeseriesSummary> => fetchAPI(`/matches/${matchId}/gps/timeseries`),
+
+  getAnchors: (matchId: string): Promise<GpsAnchors> => fetchAPI(`/matches/${matchId}/gps/timeseries/anchors`),
+
+  /** Positions of every tracked player between two video times. At most 6000 samples per player per call. */
+  getWindow: (matchId: string, fromMs: number, toMs: number, hz = 5, playerIds?: string[]): Promise<GpsWindow> => {
+    const q = new URLSearchParams({ from_ms: String(Math.round(fromMs)), to_ms: String(Math.round(toMs)), hz: String(hz) })
+    if (playerIds?.length) q.set('players', playerIds.join(','))
+    return fetchAPI(`/matches/${matchId}/gps/timeseries/window?${q.toString()}`)
+  },
+
+  deleteAll: (matchId: string): Promise<{ deleted_tracks: number }> =>
+    fetchAPI(`/matches/${matchId}/gps/timeseries`, { method: 'DELETE' }),
+}
+
+// ============================================================================
 // Onboarding API
 // ============================================================================
 
@@ -3501,6 +3600,7 @@ export const api = {
   squadHealth: squadHealthAPI,
   fitnessTests: fitnessTestsAPI,
   matchGps: matchGpsAPI,
+  matchGpsTimeseries: matchGpsTimeseriesAPI,
   onboarding: onboardingAPI,
   fixtures: fixturesAPI,
   knowledgeBase: knowledgeBaseAPI,
