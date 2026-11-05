@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, X } from 'lucide-react'
 import SearchablePlayerSelect from '../SearchablePlayerSelect'
+import { useModalA11y } from '../ui/useModalA11y'
 
 interface RosterPlayer {
   id: string
@@ -169,6 +170,7 @@ export default function VideoManualEventModal({
     }
   }, [isOpen, initialEventType])
 
+  const dlgRef = useModalA11y<HTMLDivElement>(onClose, isOpen)
   if (!isOpen) return null
 
   const selected = EVENT_OPTIONS.find(o => optionKey(o) === selectedKey) ?? EVENT_OPTIONS[1]
@@ -215,7 +217,7 @@ export default function VideoManualEventModal({
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 animate-fade-in">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-lg glass-card p-6 max-h-[85vh] overflow-y-auto">
+      <div ref={dlgRef} role="dialog" aria-modal="true" aria-label="Add event" className="relative w-full max-w-lg glass-card p-6 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-full bg-blue-500/20">
@@ -223,10 +225,10 @@ export default function VideoManualEventModal({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white">{subOnly ? 'Substitution' : 'Manual Event'}</h2>
-              <p className="text-white/40 text-xs">{currentHalf === 2 ? currentMinute + halfMins : currentMinute}' (Half {currentHalf})</p>
+              <p className="text-white/60 text-xs">{currentHalf === 2 ? currentMinute + halfMins : currentMinute}' (Half {currentHalf})</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-white/60 hover:text-white transition-colors">
+          <button aria-label="Close" onClick={onClose} className="text-white/60 hover:text-white transition-colors hit-44">
             <X size={20} />
           </button>
         </div>
@@ -241,7 +243,7 @@ export default function VideoManualEventModal({
                   className={`p-3 rounded-xl text-sm font-semibold transition-all border-2 ${
                     team === 'team_a'
                       ? 'bg-emerald-600 text-white border-emerald-400 ring-2 ring-emerald-400/30'
-                      : 'bg-white/5 text-white/40 border-white/10'
+                      : 'bg-white/5 text-white/60 border-white/10'
                   }`}
                 >
                   {clubName}
@@ -251,7 +253,7 @@ export default function VideoManualEventModal({
                   className={`p-3 rounded-xl text-sm font-semibold transition-all border-2 ${
                     team === 'team_b'
                       ? 'bg-red-600 text-white border-red-400 ring-2 ring-red-400/30'
-                      : 'bg-white/5 text-white/40 border-white/10'
+                      : 'bg-white/5 text-white/60 border-white/10'
                   }`}
                 >
                   {opponentName}
@@ -263,7 +265,7 @@ export default function VideoManualEventModal({
           {!subOnly && (
           <div>
             <label className="block text-white/80 text-sm font-semibold mb-2">Event Type</label>
-            <select
+            <select aria-label="Event type"
               value={selectedKey}
               onChange={(e) => { setSelectedKey(e.target.value); setPlayerId(''); setPlayerComingOn('') }}
               className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -306,7 +308,7 @@ export default function VideoManualEventModal({
           ) : (team === 'team_a' || kickout) && (
             <div>
               <label className="block text-white/80 text-sm font-semibold mb-2">
-                Player {kickout && <span className="font-normal text-white/40">(optional)</span>}
+                Player {kickout && <span className="font-normal text-white/60">(optional)</span>}
               </label>
               <SearchablePlayerSelect value={playerId} onChange={setPlayerId} players={rosterOptions} />
             </div>
@@ -314,8 +316,8 @@ export default function VideoManualEventModal({
 
           {isSub && (
             <div className="space-y-2">
-              <label className="block text-white/80 text-sm font-semibold">Reason <span className="font-normal text-white/40">(optional)</span></label>
-              <select
+              <label className="block text-white/80 text-sm font-semibold">Reason <span className="font-normal text-white/60">(optional)</span></label>
+              <select aria-label="Substitution reason"
                 value={subReason}
                 onChange={e => setSubReason(e.target.value)}
                 className="w-full bg-slate-800 text-white text-sm rounded-xl border border-white/15 px-3 py-2.5"
@@ -323,7 +325,7 @@ export default function VideoManualEventModal({
                 <option value="">No reason given</option>
                 {SUB_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
-              <input
+              <input aria-label="Substitution note"
                 value={subNote}
                 onChange={e => setSubNote(e.target.value)}
                 maxLength={200}

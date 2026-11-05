@@ -9,6 +9,7 @@
 import { Fragment } from 'react'
 import { X } from 'lucide-react'
 import type { VideoEvent } from '../../services/videoApi'
+import { useModalA11y } from '../ui/useModalA11y'
 
 interface TrackingStatsPanelProps {
   events: VideoEvent[]
@@ -32,21 +33,23 @@ const ROWS: { label: string; test: (e: VideoEvent) => boolean }[] = [
 ]
 
 export default function TrackingStatsPanel({ events, homeTeamName, opponentName, onClose }: TrackingStatsPanelProps) {
+  const dlgRef = useModalA11y<HTMLDivElement>(onClose)
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60" />
       <div
+        ref={dlgRef} role="dialog" aria-modal="true" aria-label="Stats so far"
         className="relative bg-slate-900 border border-white/10 rounded-xl p-4 w-full max-w-sm shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-semibold text-white">Stats So Far</span>
-          <button onClick={onClose} className="p-1 text-white/40 hover:text-white transition-colors">
+          <button aria-label="Close" onClick={onClose} className="p-1 text-white/60 hover:text-white transition-colors hit-44">
             <X size={16} />
           </button>
         </div>
         <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1.5 text-sm">
-          <span className="text-white/30 text-xs uppercase tracking-wide" />
+          <span className="text-white/60 text-xs uppercase tracking-wide" />
           <span className="text-emerald-400 text-xs font-semibold text-center truncate max-w-[80px]">{homeTeamName}</span>
           <span className="text-orange-400 text-xs font-semibold text-center truncate max-w-[80px]">{opponentName}</span>
           {ROWS.map(row => (
@@ -61,7 +64,7 @@ export default function TrackingStatsPanel({ events, homeTeamName, opponentName,
             </Fragment>
           ))}
         </div>
-        <p className="text-[11px] text-white/30 mt-3">{events.length} events tagged so far.</p>
+        <p className="text-[11px] text-white/60 mt-3">{events.length} events tagged so far.</p>
       </div>
     </div>
   )

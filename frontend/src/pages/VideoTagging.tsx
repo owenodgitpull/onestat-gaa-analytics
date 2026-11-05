@@ -134,6 +134,7 @@ import { PossessionTeam, EventType } from '../types'
 import type { Player, BallPosition } from '../types'
 import { confirmDialog } from '../utils/dialog'
 import { playerInitials, displaySurname } from '../utils/playerName'
+import { ModalA11y } from '../components/ui/ModalA11y'
 
 type OverlayState = 'none' | 'player' | 'pitch'
 type Category = 'scoring' | 'turnovers' | 'our_kickouts' | 'opp_kickouts'
@@ -4292,7 +4293,7 @@ export default function VideoTagging() {
 
   /** Scoreboard widget — used in both normal and fullscreen headers */
   const scoreboard = (compact = false) => (
-    <div className="flex items-center rounded-2xl border border-white/[0.12] overflow-hidden backdrop-blur-xl shadow-lg shadow-black/20"
+    <div className="flex items-center max-w-full overflow-x-auto scrollbar-hide rounded-2xl border border-white/[0.12] backdrop-blur-xl shadow-lg shadow-black/20"
       style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 50%, rgba(255,255,255,0.06) 100%)' }}
     >
       {/* Team A */}
@@ -4302,24 +4303,24 @@ export default function VideoTagging() {
           : ''
       }`}>
         <div className={`${compact ? 'w-2 h-2' : 'w-3 h-3'} rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50 flex-shrink-0`} />
-        <span className={`${compact ? 'text-[10px]' : 'text-xs'} font-semibold text-white/60 uppercase tracking-wide whitespace-nowrap`}>{clubName}</span>
+        <span className={`${compact ? 'text-[11px]' : 'text-xs'} font-semibold text-white/60 uppercase tracking-wide whitespace-nowrap`}>{clubName}</span>
         <span className={`${compact ? 'text-lg' : 'text-2xl'} font-black text-white tabular-nums ${compact ? 'min-w-[40px]' : 'min-w-[52px]'} text-center drop-shadow-sm`}>
           {currentScore.team_a_goals}-{String(currentScore.team_a_points).padStart(2, '0')}
         </span>
-        <span className={`${compact ? 'text-[9px]' : 'text-[11px]'} text-white/25 font-semibold tabular-nums`}>({teamATotal})</span>
+        <span className={`${compact ? 'text-[11px]' : 'text-[11px]'} text-white/60 font-semibold tabular-nums`}>({teamATotal})</span>
       </div>
-      <div className={`${compact ? 'px-1' : 'px-2'} text-[10px] text-white/20 font-bold`}>v</div>
+      <div className={`${compact ? 'px-1' : 'px-2'} text-[11px] text-white/20 font-bold`}>v</div>
       {/* Team B */}
       <div className={`flex items-center ${compact ? 'gap-1.5 px-2.5 py-1.5' : 'gap-2.5 px-5 py-2.5'} transition-all ${
         possession === 'team_b'
           ? 'bg-gradient-to-l from-orange-500/20 to-orange-500/5'
           : ''
       }`}>
-        <span className={`${compact ? 'text-[9px]' : 'text-[11px]'} text-white/25 font-semibold tabular-nums`}>({teamBTotal})</span>
+        <span className={`${compact ? 'text-[11px]' : 'text-[11px]'} text-white/60 font-semibold tabular-nums`}>({teamBTotal})</span>
         <span className={`${compact ? 'text-lg' : 'text-2xl'} font-black text-white tabular-nums ${compact ? 'min-w-[40px]' : 'min-w-[52px]'} text-center drop-shadow-sm`}>
           {currentScore.team_b_goals}-{String(currentScore.team_b_points).padStart(2, '0')}
         </span>
-        <span className={`${compact ? 'text-[10px]' : 'text-xs'} font-semibold text-white/60 uppercase tracking-wide whitespace-nowrap`}>{opponentName}</span>
+        <span className={`${compact ? 'text-[11px]' : 'text-xs'} font-semibold text-white/60 uppercase tracking-wide whitespace-nowrap`}>{opponentName}</span>
         <div className={`${compact ? 'w-2 h-2' : 'w-3 h-3'} rounded-full bg-orange-500 shadow-sm shadow-orange-500/50 flex-shrink-0`} />
       </div>
     </div>
@@ -4383,7 +4384,7 @@ export default function VideoTagging() {
   const clockControls = (compact = false) => trackingClock ? (
     <div className="flex items-center gap-1.5 bg-emerald-500/10 rounded-lg px-2 py-1">
       <div className="flex flex-col">
-        <span className={`${compact ? 'text-[8px]' : 'text-[9px]'} text-white/40 font-semibold uppercase tracking-wide`}>
+        <span className={`text-[11px] text-white/60 font-semibold uppercase tracking-wide`}>
           Match Clock
         </span>
         <span className={`font-mono font-bold text-emerald-400 tabular-nums ${compact ? 'text-xs' : 'text-sm'} leading-tight`}>
@@ -4393,14 +4394,14 @@ export default function VideoTagging() {
       {halfTimeBreak ? (
         <button
           onClick={() => startSecondHalfRef.current()}
-          className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-200 border border-emerald-400/50 font-bold transition-colors whitespace-nowrap`}
+          className={`hit-44 ${compact ? 'px-2 py-1 text-[11px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-emerald-500/25 hover:bg-emerald-500/35 text-emerald-200 border border-emerald-400/50 font-bold transition-colors whitespace-nowrap`}
         >
           Start 2nd Half
         </button>
       ) : (
       <button
         onClick={handleRequestEndTracking}
-        className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md ${
+        className={`hit-44 ${compact ? 'px-2 py-1 text-[11px]' : 'px-2.5 py-1.5 text-xs'} rounded-md ${
           (trackingClock.half === 1 && trackingClock.minute >= (matchHalfMins)) ||
           (trackingClock.half === 2 && trackingClock.minute >= (matchHalfMins) * 2)
             ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/40'
@@ -4413,7 +4414,7 @@ export default function VideoTagging() {
       {(events && events.length > 0) && (
         <button
           onClick={() => setShowUndoModal(true)}
-          className={`${compact ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 font-medium transition-colors whitespace-nowrap flex items-center gap-1`}
+          className={`hit-44 ${compact ? 'px-2 py-1 text-[11px]' : 'px-2.5 py-1.5 text-xs'} rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 font-medium transition-colors whitespace-nowrap flex items-center gap-1`}
         >
           <Undo2 size={compact ? 10 : 12} />
           Undo
@@ -4447,9 +4448,10 @@ export default function VideoTagging() {
             onClick={t.onClick}
             onPointerEnter={() => { if (t.key === 'attention') prefetchHealth(sessionId || '') }}
             title={t.label}
-            className={t.key === 'stopclock' && clockStopStartMs != null
+            aria-label={t.label}
+            className={`hit-44 ${t.key === 'stopclock' && clockStopStartMs != null
               ? 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500/25 border border-amber-400/70 text-amber-100 text-xs font-bold animate-pulse whitespace-nowrap'
-              : 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-xs font-medium transition-colors whitespace-nowrap'}
+              : 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-md hover:bg-white/10 text-white/70 hover:text-white text-xs font-medium transition-colors whitespace-nowrap'}`}
           >
             {t.icon}
             <span className={t.key === 'stopclock' && clockStopStartMs != null ? 'inline' : 'hidden lg:inline'}>{t.key === 'stopclock' && clockStopStartMs != null ? 'Clock stopped - Resume' : t.label}</span>
@@ -4481,10 +4483,10 @@ export default function VideoTagging() {
           {taggingFinished ? 'Finished' : 'Tagging in progress · Finish'}
         </button>
       )}
-      <button
+      <button aria-label="More"
         onClick={() => setShowMoreMenu(v => !v)}
         title="More"
-        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+        className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors hit-44"
       >
         <MoreHorizontal size={18} />
       </button>
@@ -4509,7 +4511,7 @@ export default function VideoTagging() {
               {syncPreview.isPending ? <Loader2 size={15} className="animate-spin text-emerald-300" /> : <Download size={15} className="text-emerald-300" />}
               <span className="flex flex-col">
                 <span className="font-semibold">Finish &amp; Generate Report</span>
-                <span className="text-[11px] text-white/45">Add to season stats + AI match report</span>
+                <span className="text-[11px] text-white/60">Add to season stats + AI match report</span>
               </span>
             </button>
             <button
@@ -4520,7 +4522,7 @@ export default function VideoTagging() {
               {isEnriching ? <Loader2 size={15} className="animate-spin text-violet-300" /> : <FileText size={15} className="text-violet-300" />}
               <span className="flex flex-col">
                 <span className="font-semibold">Tactical Report</span>
-                <span className="text-[11px] text-white/45">AI write-up of tagged events</span>
+                <span className="text-[11px] text-white/60">AI write-up of tagged events</span>
               </span>
             </button>
             <div className="my-1 h-px bg-white/10" />
@@ -4545,7 +4547,7 @@ export default function VideoTagging() {
               <Target size={15} className="text-sky-300" />
               <span className="flex flex-col">
                 <span className="font-semibold">Re-mark Throw-In / Clock</span>
-                <span className="text-[11px] text-white/45">Change the start mark or match clock</span>
+                <span className="text-[11px] text-white/60">Change the start mark or match clock</span>
               </span>
             </button>
             <button
@@ -4788,7 +4790,7 @@ export default function VideoTagging() {
                 {opponentName} won it
               </button>
             </div>
-            <div className="text-[10px] text-white/45 mt-2">
+            <div className="text-[11px] text-white/60 mt-2">
               When you choose, the video jumps back to the throw-in and tracking starts straight away.
             </div>
           </div>
@@ -4961,9 +4963,9 @@ export default function VideoTagging() {
               >
                 <AlertTriangle size={13} /> Free outcome missing — add it
               </button>
-              <button
+              <button aria-label="No free outcome needed for this foul"
                 onClick={() => setDismissedFreeFoulId(orphanFoul.id)}
-                className="px-2 py-2 rounded-xl text-xs text-white/50 hover:text-white bg-black/50 border border-white/15 backdrop-blur-md"
+                className="px-2 py-2 rounded-xl text-xs text-white/50 hover:text-white bg-black/50 border border-white/15 backdrop-blur-md hit-44"
                 title="No free outcome needed for this foul"
               >
                 <X size={12} />
@@ -4985,9 +4987,9 @@ export default function VideoTagging() {
 
       {overlayState === 'none' && (
         <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 opacity-70 sm:opacity-0 sm:group-hover/video:opacity-100 transition-all">
-          <button
+          <button aria-label={isFullscreen ? 'Exit fullscreen ' : 'Fullscreen '}
             onClick={() => setIsFullscreen(prev => !prev)}
-            className="p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg transition-colors"
+            className="p-2 bg-black/50 hover:bg-black/80 text-white/70 hover:text-white rounded-lg transition-colors hit-44"
             title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen (F)'}
           >
             <Maximize size={18} />
@@ -5135,7 +5137,7 @@ export default function VideoTagging() {
               {label}
             </button>
           ))}
-          <button onClick={() => setFootChipEventId(null)} className="text-white/40 hover:text-white p-0.5" aria-label="Skip">✕</button>
+          <button onClick={() => setFootChipEventId(null)} className="text-white/60 hover:text-white p-0.5" aria-label="Skip">✕</button>
         </div>
       )}
       {assistPromptEventId && !pendingOppPlayer && assistSquad.enabled && (
@@ -5743,18 +5745,18 @@ export default function VideoTagging() {
               <div className="flex items-center gap-1 rounded-full bg-slate-900/90 border border-white/15 px-1 py-1 shadow-xl">
                 <button
                   onClick={flip}
-                  className="w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  className="hit-44 w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
                   aria-label="Previous lineup"
                 >
                   ‹
                 </button>
                 <span className="px-3 text-xs font-bold text-white min-w-[150px] text-center">
                   {side === 'own' ? `${clubName} lineup` : `${opponentName} lineup`}
-                  <span className="ml-2 text-[10px] font-semibold text-white/40">{side === 'own' ? '1 / 2' : '2 / 2'}</span>
+                  <span className="ml-2 text-[11px] font-semibold text-white/60">{side === 'own' ? '1 / 2' : '2 / 2'}</span>
                 </span>
                 <button
                   onClick={flip}
-                  className="w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                  className="hit-44 w-8 h-8 flex items-center justify-center rounded-full text-white/70 hover:text-white hover:bg-white/10 transition-colors"
                   aria-label="Next lineup"
                 >
                   ›
@@ -5909,7 +5911,7 @@ export default function VideoTagging() {
             </button>
             <button
               onClick={() => setPendingPressure(null)}
-              className="flex-shrink-0 text-white/40 hover:text-white text-xs px-1.5"
+              className="flex-shrink-0 text-white/60 hover:text-white text-xs px-1.5"
             >
               ✕
             </button>
@@ -5920,6 +5922,7 @@ export default function VideoTagging() {
         <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => { if (!resetSession.isPending) setShowResetConfirm(false) }}>
           <div className="absolute inset-0 bg-black/60" />
           <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <ModalA11y label="Reset match" onEscape={() => { if (!resetSession.isPending) setShowResetConfirm(false) }} />
             <h3 className="text-sm font-bold text-white mb-2">{resetSession.isPending ? 'Resetting match…' : 'Reset Match?'}</h3>
             <p className="text-xs text-white/60 mb-4">
               {resetSession.isPending
@@ -6107,6 +6110,7 @@ export default function VideoTagging() {
         <div className="fixed inset-0 z-[140] flex items-center justify-center p-4" onClick={() => setShowFullTimeConfirm(false)}>
           <div className="absolute inset-0 bg-black/60" />
           <div className="relative bg-slate-900 border border-white/10 rounded-xl p-5 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <ModalA11y label="End tracking" onEscape={() => setShowFullTimeConfirm(false)} />
             <h3 className="text-sm font-bold text-white mb-2">
               {session.full_time_ms != null && currentTimeMs >= session.full_time_ms ? 'Full-Time Reached' : 'End Tracking?'}
             </h3>
@@ -6150,9 +6154,9 @@ export default function VideoTagging() {
         {/* Compact top bar */}
         <div className="flex flex-wrap items-center justify-between px-2 py-1.5 bg-slate-900/90 border-b border-white/10 flex-shrink-0 gap-x-2 gap-y-1">
           <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
-            <button
+            <button aria-label="Exit fullscreen"
               onClick={() => setIsFullscreen(false)}
-              className="p-1 text-white/50 hover:text-white transition-colors flex-shrink-0"
+              className="p-1 text-white/50 hover:text-white transition-colors flex-shrink-0 hit-44"
               title="Exit fullscreen (Esc)"
             >
               <X size={16} />
@@ -6271,10 +6275,10 @@ export default function VideoTagging() {
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 pt-2">
         {/* Left: back + scoreline */}
         <div className="flex items-center gap-2 justify-self-start min-w-0">
-          <button onClick={() => navigate(-1)} className="p-2 text-white/50 hover:text-white transition-colors flex-shrink-0">
+          <button onClick={() => navigate(-1)} aria-label="Back" className="hit-44 p-2 text-white/70 hover:text-white transition-colors flex-shrink-0">
             <ArrowLeft size={20} />
           </button>
-          <div className="flex-shrink-0" data-tour="video-scoreboard">{scoreboard(true)}</div>
+          <div className="flex-shrink min-w-0 max-w-full" data-tour="video-scoreboard">{scoreboard(true)}</div>
         </div>
         {/* Centre: match clock */}
         <div className="justify-self-center flex-shrink-0 relative z-10">{clockControls()}</div>
@@ -6360,7 +6364,8 @@ export default function VideoTagging() {
             )}
             <button
               onClick={() => setAiDismissed(true)}
-              className="p-1 text-purple-400 hover:text-white transition-colors"
+              aria-label="Dismiss"
+              className="hit-44 p-1 text-purple-400 hover:text-white transition-colors"
             >
               <X size={16} />
             </button>
@@ -6465,13 +6470,13 @@ export default function VideoTagging() {
                   key={h}
                   onClick={() => setEventMapHalfFilter(h)}
                   className={`px-2.5 py-1 rounded-lg font-medium text-xs transition-all ${
-                    eventMapHalfFilter === h ? 'bg-white/25 text-white' : 'bg-white/8 text-white/40 hover:bg-white/15'
+                    eventMapHalfFilter === h ? 'bg-white/25 text-white' : 'bg-white/8 text-white/60 hover:bg-white/15'
                   }`}
                 >
                   {h === 'all' ? 'All' : h === 1 ? '1st' : '2nd'}
                 </button>
               ))}
-              <span className="text-white/20 text-xs">·</span>
+              <span className="text-white/60 text-xs">·</span>
               <button
                 onClick={() => setEventMapTeamFilter('all')}
                 className={`px-3 py-1 rounded-lg font-medium text-xs transition-all ${
@@ -6498,7 +6503,7 @@ export default function VideoTagging() {
               </button>
             </div>
           </div>
-          <div className="mb-1 text-xs text-white/40 text-center">
+          <div className="mb-1 text-xs text-white/60 text-center">
             {filteredMapEvents.length} event{filteredMapEvents.length !== 1 ? 's' : ''} shown
           </div>
           <GAAPitch readonly={true} events={filteredMapEvents} showZones={true} />
@@ -6668,9 +6673,10 @@ export default function VideoTagging() {
             className="relative bg-slate-900 border border-white/10 rounded-xl p-4 w-full max-w-sm shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
+            <ModalA11y label="Edit this event" onEscape={() => setEditTeamChoice(null)} />
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-white">Edit This Event</span>
-              <button onClick={() => setEditTeamChoice(null)} className="p-1 text-white/40 hover:text-white transition-colors">
+              <button onClick={() => setEditTeamChoice(null)} aria-label="Close" className="hit-44 p-1 text-white/60 hover:text-white transition-colors">
                 <X size={16} />
               </button>
             </div>
@@ -6711,6 +6717,7 @@ export default function VideoTagging() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70" onClick={() => setPrereqModal(null)} />
           <div className="relative bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <ModalA11y label="Before you start tracking" onEscape={() => setPrereqModal(null)} />
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-amber-500/20 rounded-full">
                 <AlertTriangle size={20} className="text-amber-400" />
@@ -6728,7 +6735,7 @@ export default function VideoTagging() {
                   <Users size={18} className="text-orange-400 shrink-0" />
                   <div>
                     <p className="text-sm font-medium text-white">Starting Lineup</p>
-                    <p className="text-xs text-white/40">Jersey numbers help identify players in the video</p>
+                    <p className="text-xs text-white/60">Jersey numbers help identify players in the video</p>
                   </div>
                 </div>
               )}
@@ -6737,7 +6744,7 @@ export default function VideoTagging() {
                   <Palette size={18} className="text-blue-400 shrink-0" />
                   <div>
                     <p className="text-sm font-medium text-white">Strip Colours</p>
-                    <p className="text-xs text-white/40">Team colours help distinguish sides in the video</p>
+                    <p className="text-xs text-white/60">Team colours help distinguish sides in the video</p>
                   </div>
                 </div>
               )}

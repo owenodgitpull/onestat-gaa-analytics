@@ -7,7 +7,8 @@
 
 import { videoEventLabel, videoEventDetail, isBackgroundVideoEvent } from '../../utils/videoEventDisplay'
 import { X, Plus, RefreshCw, SkipForward, FileText, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
-import type { VideoSyncPreview, VideoSyncStatus, SyncPreviewEvent } from '../../services/videoApi'
+import type { VideoSyncPreview, VideoSyncStatus, SyncPreviewEvent } from '../../services/videoApi'
+import { useModalA11y } from '../ui/useModalA11y'
 
 interface SyncPreviewModalProps {
   isOpen: boolean
@@ -26,12 +27,12 @@ function EventRow({ event, icon: Icon, color }: { event: SyncPreviewEvent; icon:
     <div className="flex items-center gap-2 py-1.5 px-2 rounded bg-white/5 text-sm">
       <Icon size={14} className={color} />
       <span className="text-white/80 font-medium">{videoEventLabel(event.event_type)}</span>
-      <span className="text-white/40">
+      <span className="text-white/60">
         {event.team === 'team_a' ? 'Us' : 'Them'} &bull; {event.minute}'
       </span>
       {(() => {
         const detail = videoEventDetail({ event_type: event.event_type, description: event.description })
-        return detail ? <span className="text-white/30 text-xs truncate">{detail}</span> : null
+        return detail ? <span className="text-white/60 text-xs truncate">{detail}</span> : null
       })()}
     </div>
   )
@@ -46,6 +47,7 @@ export default function SyncPreviewModal({
   syncStatus,
   onViewResult,
 }: SyncPreviewModalProps) {
+  const dlgRef = useModalA11y<HTMLDivElement>(() => { if (!(syncStatus && ['processing', 'syncing', 'analyzing'].includes(syncStatus.status))) onClose() }, isOpen)
   if (!isOpen) return null
 
   // Passes are recorded for the analysis but are not events a person reviews: keep them out of the lists and say so
@@ -63,14 +65,14 @@ export default function SyncPreviewModal({
 
   return (
     <div className="fixed inset-0 z-[160] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[#1a1d23] border border-white/10 rounded-xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col">
+      <div ref={dlgRef} role="dialog" aria-modal="true" aria-label="Finish and generate report" className="bg-[#1a1d23] border border-white/10 rounded-xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <h2 className="text-lg font-semibold text-white">
             {isComplete ? 'Tagging Finished' : isProcessing ? 'Finishing...' : 'Finish & Generate Report'}
           </h2>
           {!isProcessing && (
-            <button onClick={onClose} className="p-1 text-white/40 hover:text-white transition-colors">
+            <button onClick={onClose} aria-label="Close" className="p-1 text-white/60 hover:text-white transition-colors hit-44">
               <X size={18} />
             </button>
           )}
@@ -101,12 +103,12 @@ export default function SyncPreviewModal({
                 </div>
                 <div className="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
                   <div className="text-2xl font-bold text-white/50">{vSkipped.length}</div>
-                  <div className="text-xs text-white/30 mt-1">Already in match</div>
+                  <div className="text-xs text-white/60 mt-1">Already in match</div>
                 </div>
               </div>
 
               {passesHidden > 0 && (
-                <p className="text-xs text-white/40">
+                <p className="text-xs text-white/60">
                   {passesHidden} hand and kick passes are also in the match for the analysis (not listed here).
                 </p>
               )}
@@ -148,12 +150,12 @@ export default function SyncPreviewModal({
               {/* Skipped */}
               {vSkipped.length > 0 && (
                 <div>
-                  <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-2">
+                  <h3 className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">
                     Already in the match ({vSkipped.length})
                   </h3>
                   <div className="space-y-1 max-h-24 overflow-y-auto">
                     {vSkipped.map((e) => (
-                      <EventRow key={e.video_event_id} event={e} icon={SkipForward} color="text-white/30" />
+                      <EventRow key={e.video_event_id} event={e} icon={SkipForward} color="text-white/60" />
                     ))}
                   </div>
                 </div>
@@ -182,7 +184,7 @@ export default function SyncPreviewModal({
                 <p className="text-white font-medium">
                   {syncStatus?.status === 'analyzing' ? 'Generating AI Report...' : 'Finishing up...'}
                 </p>
-                <p className="text-sm text-white/40 mt-1">
+                <p className="text-sm text-white/60 mt-1">
                   {syncStatus?.status === 'analyzing'
                     ? 'The AI is analyzing all match events to create a comprehensive report.'
                     : 'Adding the match to your season stats...'}

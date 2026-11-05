@@ -150,7 +150,7 @@ export default function VideoStatsPanel({
               <div className={`text-center text-base font-bold ${leftWins ? 'text-emerald-400' : 'text-white/80'}`}>
                 {row.left}
               </div>
-              <div className="text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider min-w-[90px]">
+              <div className="text-center text-[11px] font-semibold text-white/60 uppercase tracking-wider min-w-[90px]">
                 {row.label}
               </div>
               <div className={`text-center text-base font-bold ${rightWins ? 'text-emerald-400' : 'text-white/80'}`}>

@@ -467,3 +467,42 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.22);
 }
+
+/* ─── Accessibility: keyboard focus ring ─── */
+:where(button, a[href], [role='button'], [role='tab'], select, textarea, summary, input[type='checkbox'], input[type='radio'], input[type='range']):focus-visible {
+  outline: 2px solid #34d399;
+  outline-offset: 2px;
+}
+.input-glass:focus-visible { outline: none; }
+
+/* ─── Accessibility: touch targets ───
+   .hit-44 grows the tappable area to 44x44 on touch devices without changing
+   the visual size (invisible pseudo-element). Parent must not clip overflow. */
+@media (pointer: coarse) {
+  .hit-44:not(.absolute):not(.fixed):not(.sticky) { position: relative; }
+  /* .hit-44-box: for tightly packed neighbours, grow the box itself (no overlapping hit areas) */
+  .hit-44-box { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .hit-44::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* ─── Accessibility: reduced motion ───
+   Stops decorative looping motion; state changes stay visible (no blanket kill). */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse, .animate-ping, .animate-bounce, .animate-shimmer,
+  .glass-card-live, .kpi-flash-ring {
+    animation: none !important;
+  }
+  .animate-ping { opacity: 0 !important; }
+  /* Loading spinners keep turning, slowly, so "busy" stays visible */
+  .animate-spin { animation-duration: 2.5s !important; }
+  html { scroll-behavior: auto !important; }
+  .transition, [class*='transition-'] { transition-duration: 0.01ms !important; }
+}

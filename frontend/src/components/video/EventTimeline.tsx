@@ -222,18 +222,18 @@ export default function EventTimeline({
   const marker = (ms: number | null | undefined, cls: string, text: string, title: string) => (
     ms != null && ms >= vs && ms <= ve ? (
       <div key={text} className={`absolute top-0 h-full w-0.5 z-10 pointer-events-none ${cls}`} style={{ left: msToX(ms) }} title={title}>
-        <span className="absolute -top-3.5 -translate-x-1/2 text-[8px] font-bold whitespace-nowrap opacity-90">{text}</span>
+        <span className="absolute -top-3.5 -translate-x-1/2 text-[11px] font-bold whitespace-nowrap opacity-90">{text}</span>
       </div>
     ) : null
   )
 
-  const presetBtn = 'px-2 py-1 rounded text-[10px] font-semibold bg-white/10 text-white/70 hover:bg-white/20 hover:text-white active:scale-95 transition'
+  const presetBtn = 'px-2 py-1 rounded text-[11px] font-semibold bg-white/10 text-white/70 hover:bg-white/20 hover:text-white active:scale-95 transition'
 
   return (
     <div className="relative bg-white/5 rounded-lg border border-white/10 p-2 select-none">
       <div className="flex flex-wrap items-center gap-2 mb-2">
-        <span className="text-[10px] text-white/40 uppercase tracking-wider">Timeline</span>
-        <span className="text-[10px] text-white/30">{shown.length} events</span>
+        <span className="text-[11px] text-white/60 uppercase tracking-wider">Timeline</span>
+        <span className="text-[11px] text-white/60">{shown.length} events</span>
         <div className="flex items-center gap-1 ml-2">
           <button className={presetBtn} onClick={() => { zoomAbout(1.6, (vs + ve) / 2); setFollow(false) }} title="Zoom out" aria-label="Zoom out"><Minus size={12} /></button>
           <button className={presetBtn} onClick={() => { zoomAbout(0.6, (vs + ve) / 2); setFollow(false) }} title="Zoom in" aria-label="Zoom in"><Plus size={12} /></button>
@@ -287,7 +287,7 @@ export default function EventTimeline({
           return (
             <button
               key={e.id}
-              className="absolute z-10 flex items-center justify-center text-[10px] font-semibold text-slate-950 overflow-hidden whitespace-nowrap hover:brightness-125 active:scale-95 transition"
+              className="absolute z-10 flex items-center justify-center text-[11px] font-semibold text-slate-950 overflow-hidden whitespace-nowrap hover:brightness-125 active:scale-95 transition"
               style={{
                 left: x - w / 2, top: 6 + lane * LANE_H, width: w, height: pillMode ? LANE_H - 4 : 12,
                 backgroundColor: colorFor(e.event_type),
@@ -308,12 +308,12 @@ export default function EventTimeline({
       {/* Axis (match clock) */}
       <div className="relative h-4 mt-1">
         {ticks.map(t => (
-          <span key={t} className="absolute -translate-x-1/2 text-[10px] text-white/35 tabular-nums" style={{ left: msToX(t) }}>
+          <span key={t} className="absolute -translate-x-1/2 text-[11px] text-white/60 tabular-nums" style={{ left: msToX(t) }}>
             {matchClockAt ? matchClockAt(t) : formatMs(t)}
           </span>
         ))}
       </div>
-      <p className="text-[10px] text-white/25 mt-0.5">
+      <p className="text-[11px] text-white/60 mt-0.5">
         Drag to move · pinch or +/- to zoom (mouse: Ctrl + wheel) · tap an event to jump to it
       </p>
     </div>

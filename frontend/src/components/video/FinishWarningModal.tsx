@@ -3,6 +3,7 @@
  * need attention). It never blocks: "Finish anyway" goes on to the normal finish step.
  */
 import { AlertTriangle } from 'lucide-react'
+import { useModalA11y } from '../ui/useModalA11y'
 
 interface Props {
   open: boolean
@@ -14,10 +15,11 @@ interface Props {
 }
 
 export default function FinishWarningModal({ open, lines, issueCount, onKeepTagging, onReviewIssues, onFinishAnyway }: Props) {
+  const dlgRef = useModalA11y<HTMLDivElement>(onKeepTagging, open)
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onKeepTagging}>
-      <div className="w-full max-w-md glass-card p-5" onClick={e => e.stopPropagation()}>
+      <div ref={dlgRef} role="dialog" aria-modal="true" aria-label="Finish warning" className="w-full max-w-md glass-card p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-start gap-3">
           <AlertTriangle className="text-amber-400 flex-shrink-0 mt-0.5" size={22} />
           <div className="min-w-0">
@@ -25,7 +27,7 @@ export default function FinishWarningModal({ open, lines, issueCount, onKeepTagg
             <ul className="mt-2 space-y-1.5 text-sm text-white/70 list-disc pl-4">
               {lines.map((l, i) => <li key={i}>{l}</li>)}
             </ul>
-            <p className="mt-3 text-xs text-white/45">
+            <p className="mt-3 text-xs text-white/60">
               Finishing adds the match to your season stats and generates the report from the data tagged so far.
             </p>
           </div>

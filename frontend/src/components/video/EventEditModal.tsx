@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import type { VideoEvent, VideoEventUpdateData } from '../../services/videoApi'
 import { PlayerOptions, type PickablePlayer } from './MoveEditorModal'
+import { useModalA11y } from '../ui/useModalA11y'
 
 interface Props {
   event: VideoEvent | null
@@ -42,6 +43,7 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
     setFromFree(event.scoring_context?.source === 'free')
   }, [event, oppPlayers])
 
+  const dlgRef = useModalA11y<HTMLDivElement>(onClose, !!event)
   if (!event) return null
   const isScore = SCORING.includes(event.event_type)
   const ours = event.team === 'team_a'
@@ -76,7 +78,7 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
 
   return (
     <div className="fixed inset-0 z-[120] flex items-start justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
-      <div className="relative w-full max-w-md my-8 glass-card p-5" onClick={e => e.stopPropagation()}>
+      <div ref={dlgRef} role="dialog" aria-modal="true" aria-label="Edit event" className="relative w-full max-w-md my-8 glass-card p-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold text-white">Fix this event</h2>
@@ -88,7 +90,7 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
         {ours ? (
           <>
             <label className={lab}>Our player</label>
-            <select className={sel} value={ownId} onChange={e => setOwnId(e.target.value)}>
+            <select aria-label="Our player" className={sel} value={ownId} onChange={e => setOwnId(e.target.value)}>
               <option value="">— none —</option>
               <PlayerOptions players={ownPlayers} />
             </select>
@@ -96,7 +98,7 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
         ) : (
           <>
             <label className={lab}>Opposition player</label>
-            <select className={sel} value={oppId} onChange={e => setOppId(e.target.value)}>
+            <select aria-label="Opposition player" className={sel} value={oppId} onChange={e => setOppId(e.target.value)}>
               <option value="">— none —</option>
               <PlayerOptions players={oppPlayers} />
             </select>
@@ -106,7 +108,7 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
         {isScore && (
           <>
             <label className={lab}>Assist (our player)</label>
-            <select className={sel} value={assistId} onChange={e => setAssistId(e.target.value)}>
+            <select aria-label="Assist (our player)" className={sel} value={assistId} onChange={e => setAssistId(e.target.value)}>
               <option value="">— none —</option>
               <PlayerOptions players={ownPlayers} />
             </select>
@@ -118,21 +120,21 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
         )}
 
         <label className={lab}>Type / outcome (sub type)</label>
-        <input className={sel} value={subType} onChange={e => setSubType(e.target.value)} placeholder="e.g. clean_catch, handpass_error" />
+        <input aria-label="Type or outcome" className={sel} value={subType} onChange={e => setSubType(e.target.value)} placeholder="e.g. clean_catch, handpass_error" />
 
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={lab}>Minute</label>
-            <input className={sel} inputMode="numeric" value={minute} onChange={e => setMinute(e.target.value)} />
+            <input aria-label="Minute" className={sel} inputMode="numeric" value={minute} onChange={e => setMinute(e.target.value)} />
           </div>
           <div>
             <label className={lab}>Second</label>
-            <input className={sel} inputMode="numeric" value={second} onChange={e => setSecond(e.target.value)} />
+            <input aria-label="Second" className={sel} inputMode="numeric" value={second} onChange={e => setSecond(e.target.value)} />
           </div>
         </div>
 
         <label className={lab}>Note</label>
-        <textarea className={sel} rows={2} value={desc} onChange={e => setDesc(e.target.value)} />
+        <textarea aria-label="Note" className={sel} rows={2} value={desc} onChange={e => setDesc(e.target.value)} />
 
         <div className="flex justify-end gap-2 mt-5">
           <button onClick={onClose} className="px-4 py-2 rounded-xl bg-white/10 text-white/80 text-sm font-semibold">Cancel</button>

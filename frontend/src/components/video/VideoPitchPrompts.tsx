@@ -54,7 +54,7 @@ export function SubtypePrompt({ title, playerName, options, tactical, onTactical
             </label>
           )}
         </div>
-        <p className="text-xs text-white/40 mb-4">{playerName ?? 'Player'} — tap to categorise or skip</p>
+        <p className="text-xs text-white/60 mb-4">{playerName ?? 'Player'} — tap to categorise or skip</p>
         <div className="flex flex-wrap gap-2 mb-4">
           {options.map(({ value, label }) => (
             <button
@@ -68,7 +68,7 @@ export function SubtypePrompt({ title, playerName, options, tactical, onTactical
         </div>
         <button
           onClick={() => onSelect(undefined)}
-          className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+          className="w-full py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white/70 text-xs transition-colors"
         >
           Skip categorisation
         </button>
@@ -112,7 +112,7 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip, onCancel }:
     <Scrim>
       <div className="w-full max-w-md bg-[#0f1a1a] border border-white/10 rounded-2xl shadow-2xl p-4 max-h-full overflow-y-auto">
         <p className="text-sm font-bold text-white mb-1">How was possession lost?</p>
-        <p className="text-xs text-white/40 mb-3">{playerName ?? 'Player'}</p>
+        <p className="text-xs text-white/60 mb-3">{playerName ?? 'Player'}</p>
 
         <div className="grid grid-cols-3 gap-2 mb-3">
           {QUICK.map(q => (
@@ -130,7 +130,7 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip, onCancel }:
           <summary className="text-xs text-white/50 hover:text-white/70 cursor-pointer mb-2 select-none">Advanced ▾</summary>
           <div className="flex flex-col gap-2 pl-2">
             <div>
-              <p className="text-[10px] font-semibold text-red-400/60 uppercase tracking-wide mb-1">Active Dispossession</p>
+              <p className="text-[11px] font-semibold text-red-400/60 uppercase tracking-wide mb-1">Active Dispossession</p>
               <div className="flex flex-wrap gap-1.5">
                 {DISPOSSESSION_SUBTYPES.filter(s => !['tackle', 'strip', 'forced_interception'].includes(s.value)).map(({ value, label }) => (
                   <button key={value} onClick={() => onSelect('dispossession', value)} className={`${chip} hover:bg-red-600/20 hover:border-red-500/30`}>{label}</button>
@@ -138,7 +138,7 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip, onCancel }:
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-amber-400/60 uppercase tracking-wide mb-1">Unforced Error</p>
+              <p className="text-[11px] font-semibold text-amber-400/60 uppercase tracking-wide mb-1">Unforced Error</p>
               <div className="flex flex-wrap gap-1.5">
                 {UNFORCED_ERROR_PICKER_SUBTYPES.filter(s => !['dropped_ball', 'kick_over_sideline', 'square_ball', 'stray_pass', 'ran_out_of_play'].includes(s.value)).map(({ value, label }) => (
                   <button key={value} onClick={() => onSelect('unforced', value)} className={`${chip} hover:bg-amber-600/20 hover:border-amber-500/30`}>{label}</button>
@@ -146,7 +146,7 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip, onCancel }:
               </div>
             </div>
             <div>
-              <p className="text-[10px] font-semibold text-orange-400/60 uppercase tracking-wide mb-1">Offensive Foul</p>
+              <p className="text-[11px] font-semibold text-orange-400/60 uppercase tracking-wide mb-1">Offensive Foul</p>
               <div className="flex flex-wrap gap-1.5">
                 {OFFENSIVE_FOUL_SUBTYPES.filter(s => s.value !== 'overcarrying').map(({ value, label }) => (
                   <button key={value} onClick={() => onSelect('offensive_foul', value)} className={`${chip} hover:bg-orange-600/20 hover:border-orange-500/30`}>{label}</button>
@@ -161,7 +161,7 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip, onCancel }:
 
         <button
           onClick={onSkip}
-          className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs font-medium transition-colors"
+          className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white/70 text-xs font-medium transition-colors"
         >
           Skip: log it without a reason
         </button>
@@ -189,7 +189,7 @@ export function AimedForChips({ players, selectedId, onToggle }: {
   if (players.length === 0) return null
   return (
     <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 overflow-x-auto bg-black/30">
-      <span className="text-white/50 text-[10px] font-semibold flex-shrink-0 pr-0.5">Aimed for (optional):</span>
+      <span className="text-white/50 text-[11px] font-semibold flex-shrink-0 pr-0.5">Aimed for (optional):</span>
       {players.map(p => (
         <button
           key={p.playerId}
@@ -261,7 +261,7 @@ export function HighBallChips({
           Stray
         </button>
       )}
-      <button onClick={onDismiss} className="text-white/40 hover:text-white text-xs px-1" title="Skip">✕</button>
+      <button onClick={onDismiss} className="text-white/60 hover:text-white text-xs px-1" title="Skip">✕</button>
     </div>
   )
 }

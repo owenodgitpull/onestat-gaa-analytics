@@ -8,6 +8,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { X, AlertTriangle, Undo2, Clock } from 'lucide-react'
 import type { VideoEvent } from '@/services/videoApi'
 import type { BallCarrierSegment } from '@/services/api'
+import { useModalA11y } from '../ui/useModalA11y'
 
 // Simple time formatter: milliseconds -> MM:SS
 function formatTime(ms: number): string {
@@ -85,6 +86,7 @@ export default function UndoToPointModal({
     }
   }
 
+  const dlgRef = useModalA11y<HTMLDivElement>(() => { if (!isConfirming) onClose() }, isOpen)
   if (!isOpen) return null
 
   // Possession and ball tracking after the point are cleared too, so any rollback with footage after it is valid
@@ -92,7 +94,7 @@ export default function UndoToPointModal({
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-white/10 rounded-2xl shadow-2xl">
+      <div ref={dlgRef} role="dialog" aria-modal="true" aria-label="Undo to a point in the video" className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 border border-white/10 rounded-2xl shadow-2xl">
         {/* Header */}
         <div className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur-sm border-b border-white/10 p-6">
           <div className="flex items-center justify-between">
@@ -105,10 +107,10 @@ export default function UndoToPointModal({
                 <p className="text-sm text-white/60">Scrub back and delete events after a timestamp</p>
               </div>
             </div>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               disabled={isConfirming}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50"
+              className="p-2 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50 hit-44"
             >
               <X size={20} className="text-white/60" />
             </button>
@@ -129,7 +131,7 @@ export default function UndoToPointModal({
               </span>
             </div>
 
-            <input
+            <input aria-label="Undo back to this point in the video"
               type="range"
               min={minUndoTimeMs}
               max={currentTimeMs}
@@ -139,7 +141,7 @@ export default function UndoToPointModal({
               className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-500 [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-emerald-500 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:cursor-pointer"
             />
 
-            <div className="flex items-center justify-between text-xs text-white/40">
+            <div className="flex items-center justify-between text-xs text-white/60">
               <span>{formatTime(minUndoTimeMs)}</span>
               <span>Current: {formatTime(currentTimeMs)}</span>
             </div>
