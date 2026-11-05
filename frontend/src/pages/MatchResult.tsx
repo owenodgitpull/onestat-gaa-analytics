@@ -743,7 +743,17 @@ export default function MatchResult() {
                           })()
                       }
                     </div>
-                    {bestOwnPlayer && (
+                    {bestOwnPlayer && (() => {
+                      // Only needed when the Man of the Match is an opposition player;
+                      // if he is one of ours (or the same name) the line just repeats him.
+                      const norm = (s: string) => s.toLowerCase().replace(/[^a-z]/g, '')
+                      const motm = norm(manOfMatch.playerName || '')
+                      const motmIsOurs = (players || []).some((p: any) => {
+                        const n = norm(p.name || '')
+                        return n && (n === motm || (motm && (n.includes(motm) || motm.includes(n))))
+                      })
+                      return !motmIsOurs && motm !== norm(bestOwnPlayer)
+                    })() && (
                       <div className="text-xs text-white/60 mt-1.5">
                         Best {clubName || 'our'} player: <span className="font-semibold text-white/80">{bestOwnPlayer}</span>
                       </div>
