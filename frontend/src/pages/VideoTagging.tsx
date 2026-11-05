@@ -101,7 +101,7 @@ import {
   useResetVideoSession,
 } from '../hooks/useVideoSessions'
 import FinishWarningModal from '../components/video/FinishWarningModal'
-import ClockStoppedModal from '../components/video/ClockStoppedModal'
+import ClockStoppedModal, { CLOCK_REMIND_OPTIONS_S } from '../components/video/ClockStoppedModal'
 import { videoMovesAPI } from '../services/videoMovesApi'
 import { FOUL_SUBTYPES, OFFENSIVE_FOUL_SUBTYPES, UNFORCED_ERROR_PICKER_SUBTYPES, TURNOVER_REASON_CONFIG, isFoulLikeError, type TurnoverReason } from '../constants/turnoverSubtypes'
 import PitchActionOverlay from '../components/PitchActionOverlay'
@@ -209,6 +209,7 @@ const EVENT_TYPE_CONFIG: Partial<Record<EventType, EventConfig>> = {
   [EventType.WIDE_FREE]: { videoType: 'FREE_KICK', wideFree: true, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
   [EventType.FORTY_FIVE]: { videoType: 'FORTY_FIVE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'point' },
   [EventType.FORTY_FIVE_MISSED]: { videoType: 'FORTY_FIVE', needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
+  [EventType.FORTY_FIVE_SHORT_PASS]: { videoType: 'PASS_HAND', needsPlayer: false, autoSwitchTab: 'scoring', description: '45 short pass' },  // taker isn't useful: possession is picked next
   [EventType.PENALTY_GOAL]: { videoType: 'PENALTY', scored: true, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'goal' },
   [EventType.PENALTY_MISS]: { videoType: 'PENALTY', scored: false, needsPlayer: true, autoFlipTo: 'them', autoSwitchTab: 'opp_kickouts', playerModalTitle: 'Who Took?', playerModalEventType: 'wide' },
   [EventType.TURNOVER_WON]: { videoType: 'TURNOVER_WON', needsPlayer: true, autoFlipTo: 'us', playerModalTitle: 'Who Won Turnover?', playerModalEventType: 'turnover_won' },
@@ -573,9 +574,13 @@ export default function VideoTagging() {
     targetPlayerId?: string
     contact?: 'clean' | 'break' | 'stray'
     sent?: string
+    kickMs?: number
+    winTeam?: 'team_a' | 'team_b'
+    resolvedAtMs?: number
   }
   const ballOutcomeRef = useRef<BallOutcomeCtx | null>(null)
   const [showHighBallChips, setShowHighBallChips] = useState(false)
+  const [, setHighBallTick] = useState(0)   // re-render when the winner is filled in after the prompt is already up
   const persistBallOutcomeRef = useRef<() => void>(() => {})
   persistBallOutcomeRef.current = () => {
     const ctx = ballOutcomeRef.current
@@ -593,16 +598,57 @@ export default function VideoTagging() {
   const resolveBallOutcomeRef = useRef<(team: 'team_a' | 'team_b', playerId?: string) => void>(() => {})
   resolveBallOutcomeRef.current = (team, playerId) => {
     const ctx = ballOutcomeRef.current
-    if (!ctx || ctx.outcome) return
+    if (!ctx) return
+    if (ctx.outcome) {
+      // Already settled by the possession change (e.g. the interception was logged as a turnover): a winner named within
+      // 20s of video fills in who came away with it, so the high ball itself says who won it.
+      if (team === 'team_a' && playerId && !ctx.targetPlayerId && ctx.winTeam === 'team_a' && ctx.resolvedAtMs != null &&
+          Math.abs(currentTimeMsRef.current - ctx.resolvedAtMs) <= 20000) {
+        ctx.targetPlayerId = playerId
+        persistBallOutcomeRef.current()
+        setHighBallTick(n => n + 1)
+      }
+      return
+    }
     const same = team === ctx.kickTeam
     ctx.outcome = ctx.kind === 'long_kick_pass' ? (same ? 'completed' : 'intercepted') : (same ? 'won' : 'lost')
+    ctx.winTeam = team
+    ctx.resolvedAtMs = currentTimeMsRef.current
     if (team === 'team_a' && playerId) ctx.targetPlayerId = playerId
     persistBallOutcomeRef.current()
+    // High ball: now the winner is known, ask how they came away with it (clean catch / break)
+    if (ctx.kind === 'high_ball' && !ctx.contact) setShowHighBallChips(true)
+  }
+  /** "Donegal #1 Murphy" / "Kerry" - who came away with the high ball, for the clean / break question */
+  const highBallWinnerLabel = () => {
+    const c = ballOutcomeRef.current
+    if (!c || !c.winTeam) return ''
+    if (c.winTeam === 'team_b') return opponentName || 'the opposition'
+    const p: any = c.targetPlayerId ? (players || []).find((x: any) => x.id === c.targetPlayerId) : null
+    const team = (clubName || 'Our team').replace(/\s+(GAA|GFC|CLG)$/i, '')
+    return p ? `${team} ${displaySurname(p.name)}` : team
   }
   // Possession going to the other side after a long ball = they won / intercepted it
+  // BUT only when nothing else happened for the kicking team first. If one of their players already logged an event
+  // after the kick (a wide, a shot, a foul...) the kick found him, so it is completed to that player, and the
+  // possession flip that follows (the restart going the other way) is not an interception. Without this, a kick
+  // whose receiver was never tapped as carrier was marked "intercepted" by the next dead ball, inventing a turnover.
   useEffect(() => {
     const c = ballOutcomeRef.current
-    if (c && !c.outcome && possession !== c.kickTeam) resolveBallOutcomeRef.current(possession)
+    if (!c || c.outcome || possession === c.kickTeam) return
+    const kick = c.eventId ? eventsRef.current.find((e: any) => e.id === c.eventId) : null
+    if (kick && kick.video_timestamp_ms != null) {
+      const kickMs = kick.video_timestamp_ms
+      const later = eventsRef.current
+        .filter((e: any) => e.id !== kick.id && e.team === c.kickTeam && e.video_timestamp_ms >= kickMs
+          && (c.kickTeam === 'team_b' ? true : !!e.player_id))
+        .sort((a: any, b: any) => a.video_timestamp_ms - b.video_timestamp_ms)[0]
+      if (later) {
+        resolveBallOutcomeRef.current(c.kickTeam, c.kickTeam === 'team_a' ? (later.player_id ?? undefined) : undefined)
+        return
+      }
+    }
+    resolveBallOutcomeRef.current(possession)
   }, [possession])
 
   // ── Move an existing event on the pitch (from the event log) ──
@@ -1768,14 +1814,16 @@ export default function VideoTagging() {
         ...(!kickPlayerId && kickTeam === 'team_a' && activeCarrierIdRef.current ? { player_id: activeCarrierIdRef.current } : {}),
         ...(kickTeam === 'team_b' && activeOppCarrierIdRef.current ? { opposition_player_id: activeOppCarrierIdRef.current } : {}),
       }
-      ballOutcomeRef.current = { eventId: null, kind, kickTeam }
+      ballOutcomeRef.current = { eventId: null, kind, kickTeam, kickMs: currentTimeMs }
       createEvent.mutate({ sessionId, data }, {
         onSuccess: (created: any) => {
           const c = ballOutcomeRef.current
           if (c && created?.id && !c.eventId) { c.eventId = created.id; persistBallOutcomeRef.current() }
         },
       })
-      setShowHighBallChips(kind === 'high_ball')
+      // The clean catch / break question is asked once someone has won the ball (resolveBallOutcomeRef), naming who won it -
+      // asking at the kick, before there was a winner, left "clean" ambiguous and faded away unanswered.
+      setShowHighBallChips(false)
       // A long ball isn't in onCarrierTerminalEvent's terminalMap (that call
       // was a silent no-op) — the launching carrier is NOT who the high
       // ball lands with, so their segment must actually end here, not stay
@@ -1925,6 +1973,31 @@ export default function VideoTagging() {
       }
     } catch { /* storage unavailable or corrupt — start clean */ }
   }, [sessionId, session])
+
+  // Who has the ball also survives a refresh. Possession used to come back only from an open prompt's snapshot, so a plain
+  // reload (or a power cut) fell back to the default and showed Donegal with the ball while Kerry were in possession. It is
+  // saved on every change, with the time; a prompt snapshot older than it (e.g. a free that was taken after the snapshot was
+  // written) no longer wins. Declared after the prompt restore so it applies last. Local to this browser only.
+  const possRestoredRef = useRef(false)
+  const possSaveOnRef = useRef(false)
+  useEffect(() => {
+    if (possRestoredRef.current || !sessionId || !session) return
+    possRestoredRef.current = true
+    // saving starts only after the restored value has been applied, so the default can never overwrite the saved one
+    window.setTimeout(() => { possSaveOnRef.current = true }, 0)
+    if (session.tracking_progress_ms == null) return
+    try {
+      const raw = localStorage.getItem(`vt-poss-${sessionId}`)
+      if (!raw) return
+      const p = JSON.parse(raw)
+      if (!p || (p.team !== 'team_a' && p.team !== 'team_b') || Date.now() - (p.at || 0) > 6 * 3600 * 1000) return
+      setPossession(p.team)
+    } catch { /* storage unavailable or corrupt - keep the default */ }
+  }, [sessionId, session])
+  useEffect(() => {
+    if (!possSaveOnRef.current || !sessionId) return
+    try { localStorage.setItem(`vt-poss-${sessionId}`, JSON.stringify({ team: possession, at: Date.now() })) } catch { /* storage unavailable */ }
+  }, [sessionId, possession])
 
   // Recovery from the SAVED events (not browser storage): if the very last event logged was a score/wide/45/penalty and
   // nothing has happened since, the restart kickout is still owed - bring the kickout prompt back after a reload even
@@ -2156,6 +2229,16 @@ export default function VideoTagging() {
     if (data.event_type === 'SIDELINE_BALL') {
       setPendingSidelineDecision(true)
     }
+    // Their high ball, then OUR player wins it as an interception / turnover within 20s: that is who won the high ball, so
+    // the high-ball event says so itself (winner + its outcome) instead of leaving two unlinked events.
+    {
+      const hb = ballOutcomeRef.current
+      if (hb && hb.kind === 'high_ball' && hb.kickTeam === 'team_b' && data.team === 'team_a' && data.player_id &&
+          (data.event_type === 'INTERCEPTION' || data.event_type === 'TURNOVER_WON') &&
+          hb.kickMs != null && Math.abs(currentTimeMsRef.current - hb.kickMs) <= 20000) {
+        resolveBallOutcomeRef.current('team_a', data.player_id)
+      }
+    }
     // Auto-end carrier on terminal events (scores, turnovers, wides, etc.)
     onCarrierTerminalEvent(data.event_type)
     // We won a kickout and the winner was picked: they're the ball carrier from the landing spot
@@ -2374,15 +2457,27 @@ export default function VideoTagging() {
     commitEventRef.current({ ...stash.pending, action: { ...stash.pending.action, autoFlipTo: 'them' } }, data)
   }, [pendingTurnoverReason, sessionId, createEvent, beginOppositionFree])
 
-  /** "Skip" on the turnover-reason picker cancels it (live recording drops
-   *  the event too) — just resume the video. */
-  const handleTurnoverReasonSkip = useCallback(() => {
+  /** "Cancel" on the turnover-reason picker: a mis-tap, log nothing - just resume the video. */
+  const handleTurnoverReasonCancel = useCallback(() => {
     setPendingTurnoverReason(null)
     if (wasPlayingRef.current) {
       wasPlayingRef.current = false
       setTimeout(() => playerRef.current?.play(), 100)
     }
   }, [])
+
+  /** "Skip" on the turnover-reason picker: log the turnover WITHOUT a reason, exactly as the button's own event
+   *  (previously Skip silently dropped the event, so a turnover with no fitting reason was lost altogether). */
+  const handleTurnoverReasonSkip = useCallback(() => {
+    const stash = pendingTurnoverReason
+    setPendingTurnoverReason(null)
+    if (stash && sessionId) {
+      commitEventRef.current({ ...stash.pending, action: { ...stash.pending.action, autoFlipTo: 'them' } }, stash.data)
+    } else if (wasPlayingRef.current) {
+      wasPlayingRef.current = false
+      setTimeout(() => playerRef.current?.play(), 100)
+    }
+  }, [pendingTurnoverReason, sessionId])
 
   /** Unforced-error type chosen (or skipped) */
   const handleErrorSubtypeSelect = useCallback((subtype?: string) => {
@@ -2412,6 +2507,8 @@ export default function VideoTagging() {
     const isFreeResult = [EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.WIDE_FREE, EventType.FREE_SHORT_PASS, EventType.FREE_HIGH_BALL].includes(eventType) ||
       ((eventType === EventType.SHORT || eventType === EventType.HIT_POST) && !!pendingFreeKick)
     const is45Result = eventType === EventType.FORTY_FIVE || eventType === EventType.FORTY_FIVE_MISSED
+    // A 45 played short: still taken from the 45m line (line tap), but it is a pass, not a shot (no scored/missed)
+    const is45ShortPass = eventType === EventType.FORTY_FIVE_SHORT_PASS
 
     // Which team the event belongs to — decided by the event itself, same
     // rules as live recording's handleQuickAction (NOT blindly "whoever has
@@ -2511,7 +2608,7 @@ export default function VideoTagging() {
     }
     // (45: the pending45 outcome panel closes now; the 45m-line highlight
     // stays until the line is tapped — see handleTaggingBallCommit)
-    if (is45Result) {
+    if (is45Result || is45ShortPass) {
       setPending45(false)
     }
 
@@ -2533,13 +2630,13 @@ export default function VideoTagging() {
         pitchStep: 'after_player' as const,
         pitchPrompt: (isSidelineKickout ? 'kickout_sideline' : 'kickout') as PitchPrompt,
       } : {}),
-      ...(is45Result ? { pitchStep: 'before_player' as const, pitchPrompt: 'forty_five' as PitchPrompt } : {}),
+      ...((is45Result || is45ShortPass) ? { pitchStep: 'before_player' as const, pitchPrompt: 'forty_five' as PitchPrompt } : {}),
     }
     setKickoutAimedForId(undefined)
 
     handleEventTap(
       { action, eventData: data, freeKickContext: isFreeResult },
-      { keepResumeState: isFreeResult || is45Result },
+      { keepResumeState: isFreeResult || is45Result || is45ShortPass },
     )
   }, [possession, calcMatchTime, currentTimeMs, ballPosition, pendingFreeKick, handleEventTap, teamAttackingRightThisHalf, broughtForwardReason, sessionId, queryClient, updateEvent])
 
@@ -3666,7 +3763,20 @@ export default function VideoTagging() {
   // A stopped clock is easy to forget (it ran for 2 minutes of video by mistake once). After 20s of video time stopped the
   // video pauses and asks whether to start it again; "keep stopped" snoozes the ask for another 20s. The stop also
   // survives a refresh (this browser), otherwise it would silently vanish.
-  const CLOCK_REMIND_AFTER_MS = 20000
+  // How long a stopped clock waits before it asks. The tagger picks it in the reminder itself; it is remembered in this browser.
+  const [clockRemindS, setClockRemindS] = useState<number>(() => {
+    try {
+      const v = parseInt(localStorage.getItem('vt-clock-remind-s') || '', 10)
+      return CLOCK_REMIND_OPTIONS_S.includes(v) ? v : 20
+    } catch { return 20 }
+  })
+  const CLOCK_REMIND_AFTER_MS = clockRemindS * 1000
+  const changeClockRemindS = (s: number) => {
+    setClockRemindS(s)
+    // a longer wait should apply to this stop straight away, not only from the next ask
+    clockSnoozeUntilRef.current = currentTimeMsRef.current + s * 1000
+    try { localStorage.setItem('vt-clock-remind-s', String(s)) } catch { /* storage unavailable */ }
+  }
   const [clockReminderOpen, setClockReminderOpen] = useState(false)
   const clockSnoozeUntilRef = useRef(0)
   const clockStopRestoredRef = useRef(false)
@@ -4994,9 +5104,17 @@ export default function VideoTagging() {
               const ev: any = (events as any[]).find(e => e.id === footChipEventId)
               const full: string = ev?.opponent_player_name || (players as any[] | undefined)?.find(p => p.id === ev?.player_id)?.name || ''
               const surname = full.replace(/\s*\(c\)\s*$/i, '').trim().split(/\s+/).slice(-1)[0] || ''
-              const kind = ev?.event_type === 'GOAL_SCORED' ? 'goal'
-                : ev?.event_type === 'WIDE' ? 'wide'
-                : ev?.scoring_context?.is_two_pointer ? 'two-pointer' : 'point'
+              // Only a real score is called a goal / point / two-pointer. Everything else that asks for a foot (a wide, a shot off
+              // the post, one that dropped short, a save) is named for what it was: it used to fall through to "point", so a miss
+              // read "Malone's point - foot?".
+              const et = ev?.event_type
+              const kind = et === 'GOAL_SCORED' ? 'goal'
+                : et === 'POINT_SCORED' ? (ev?.scoring_context?.is_two_pointer ? 'two-pointer' : 'point')
+                : et === 'WIDE' ? 'wide'
+                : et === 'HIT_POST' ? 'shot off the post'
+                : et === 'SHORT' ? 'shot that dropped short'
+                : et === 'SAVED' ? 'saved shot'
+                : ev?.scoring_context?.wide ? 'wide' : 'shot'
               return surname ? `${surname}'s ${kind} - foot?` : 'Foot?'
             })()}
           </span>
@@ -5376,7 +5494,8 @@ export default function VideoTagging() {
               setShowHighBallChips(false)
             }}
             onDismiss={() => setShowHighBallChips(false)}
-            onStray={ballOutcomeRef.current?.kickTeam === 'team_a' ? () => {
+            wonBy={highBallWinnerLabel()}
+            onStray={ballOutcomeRef.current?.kickTeam === 'team_a' && ballOutcomeRef.current?.outcome === 'lost' ? () => {
               // Straight to the opposition, no contest: the high ball is lost ("lost_stray") AND it is the kicker's
               // unforced error - logged with the same event the "Our Error" flow writes.
               const ctx = ballOutcomeRef.current
@@ -5437,6 +5556,7 @@ export default function VideoTagging() {
           playerName={pendingTurnoverReason.playerName}
           onSelect={handleTurnoverReasonSelect}
           onSkip={handleTurnoverReasonSkip}
+          onCancel={handleTurnoverReasonCancel}
         />
       )}
 
@@ -5667,6 +5787,9 @@ export default function VideoTagging() {
         onResume={() => { setClockReminderOpen(false); toggleClockStop(); setTimeout(() => playerRef.current?.play(), 100) }}
         onCancelStop={() => { setClockReminderOpen(false); setClockStopStartMs(null); setTimeout(() => playerRef.current?.play(), 100) }}
         onKeepStopped={() => { clockSnoozeUntilRef.current = currentTimeMs + CLOCK_REMIND_AFTER_MS; setClockReminderOpen(false); setTimeout(() => playerRef.current?.play(), 100) }}
+        remindSeconds={clockRemindS}
+        remindOptions={CLOCK_REMIND_OPTIONS_S}
+        onChangeRemind={changeClockRemindS}
       />
       <FinishWarningModal
         open={!!finishWarning}

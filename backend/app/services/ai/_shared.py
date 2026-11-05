@@ -300,6 +300,10 @@ properly.
   possession), optionally with _clean or _break (clean catch vs broken/breaking ball), e.g. won_break.
   When we won it, kickout_target_player_id is the player who came away with it. Useful for "how often did
   we kick it forward" and "do we win our high balls" style questions (length only from the landing distance).
+  The _clean / _break part describes how the player who WON the high ball came away with it - the kicker's side is
+  not credited with a catch when the sub_type starts with lost (e.g. an opposition high ball with sub_type lost_clean:
+  we caught it cleanly). When the win was an interception, the player who won it is recorded on the high ball (the field above), and the
+  interception / turnover-won event logged at the same moment is the SAME moment, not a second contest: count it once.
 - Kick Pass (event_type=LONG_KICK_PASS, shown in the app as 'Kick Pass'; older events: PASS_KICK/OTHER): a kicked pass to
   a team-mate, as opposed to a contestable High Ball. It is NOT necessarily long: it may be a short kick of 10m or a long
   ball - judge the length from the distance between where it was kicked from and where it landed, never assume 'long'.
@@ -351,7 +355,7 @@ properly.
   the same sub_type, so they are inside both the foul and the unforced-error totals - do not add them on top
   of each other or describe them as two separate mistakes; pushing, pulling, charging, late_tackle, jersey_pull,
   obstruction, dissent and three_v_three (3v3 breach: more than three players of one team in a zone) are defensive/
-  conduct fouls. Unforced errors: stray_pass, dropped_ball, miscue, kick_over_sideline, square_ball, three_v_three,
+  conduct fouls. Unforced errors: stray_pass, dropped_ball, miscue, kick_over_sideline, ran_out_of_play (carried it over the sideline/end line), square_ball, three_v_three,
   time_wasting. Dispossessions: strip, tackle, forced_interception. A THROW_IN event with sub_type throw_ball is the
   referee's mid-match throw ball (both sides at fault, no free) - its winner is a contested-ball win, not a
   turnover. When fouls cluster in one sub_type for one player or team, say so and what it implies.
@@ -3228,8 +3232,19 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
 
     _opp_lineup_sum = await _opposition_lineup_block(db, match.id)
 
+    # The coach's own words about this match (team news, the tactical plan / what the opposition did, a late shuffle).
+    # Context the coach wrote, NOT computed fact: the event data still decides what actually happened. The post-match
+    # report and live insights already read these; this makes them visible to the chat and season agents too.
+    _coach_context = {
+        k: v for k, v in (
+            ("tactical_notes", (match.tactical_notes or "").strip() or None),
+            ("coach_note", (match.notes or "").strip() or None),
+        ) if v
+    }
+
     return safe_json({
         "opposition_lineup": _opp_lineup_sum,
+        **({"coach_context_in_their_words": _coach_context} if _coach_context else {}),
         "match": {
             "opponent": match.opponent,
             "date": str(match.match_date),

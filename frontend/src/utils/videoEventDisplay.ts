@@ -34,7 +34,7 @@ const VIDEO_EVENT_LABELS: Record<string, string> = {
 /** Words used by the detail line (sub types and descriptions that arrive as codes). */
 const DETAIL_LABELS: Record<string, string> = {
   tackle: 'Tackle', strip: 'Strip', forced_interception: 'Forced interception',
-  stray_pass: 'Stray pass', dropped_ball: 'Dropped ball', miscue: 'Miscue', kick_over_sideline: 'Kicked over the sideline',
+  stray_pass: 'Stray pass', dropped_ball: 'Dropped ball', miscue: 'Miscue', kick_over_sideline: 'Kicked over the sideline', ran_out_of_play: 'Ran out of play',
   square_ball: 'Square ball', three_v_three: '3v3 breach', time_wasting: 'Time wasting',
   overcarrying: 'Overcarrying', picked_off_ground: 'Picked off the ground',
   pushing: 'Pushing', pulling: 'Pulling', charging: 'Charging', late_tackle: 'Late tackle', jersey_pull: 'Jersey pull',

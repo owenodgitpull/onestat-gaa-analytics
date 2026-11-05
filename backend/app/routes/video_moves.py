@@ -207,7 +207,8 @@ async def get_move(session_id: UUID, event_id: UUID,
                    user: AuthenticatedUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
     """The chain of carries behind an event (a score, kickout won, turnover), in order."""
     session = await _session_for_club(db, session_id, user.club_id)
-    ev = (await db.execute(select(VideoEvent).where(VideoEvent.id == event_id, VideoEvent.video_session_id == session.id))).scalar_one_or_none()
+    ev = (await db.execute(select(VideoEvent).where(VideoEvent.id == event_id, VideoEvent.video_session_id == session.id)
+                           .options(lazyload("*")))).scalar_one_or_none()
     if not ev:
         raise HTTPException(status_code=404, detail="Event not found")
     segs = await _match_segments(db, session.match_id)

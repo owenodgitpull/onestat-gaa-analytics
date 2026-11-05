@@ -174,7 +174,7 @@ class VideoEventMapper:
         # A free played short / as a high ball instead of a shot: Video Tagging stores these as PASS_HAND /
         # HIGH_BALL with a description; Live Recording has dedicated types for them.
         desc_norm = (description or "").strip().lower()
-        if video_event_type == "PASS_HAND" and desc_norm == "free short pass":
+        if video_event_type == "PASS_HAND" and desc_norm in ("free short pass", "45 short pass"):
             return EventType.FREE_SHORT_PASS
         if video_event_type == "HIGH_BALL" and desc_norm == "high ball (free)":
             return EventType.FREE_HIGH_BALL

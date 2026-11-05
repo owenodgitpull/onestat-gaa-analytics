@@ -86,7 +86,10 @@ interface TurnoverReasonPromptProps {
   playerName?: string | null
   /** `tactical` only ever true for the "Tactical Foul" chip. */
   onSelect: (reason: TurnoverReason, subType?: string, tactical?: boolean) => void
+  /** Skip = log the turnover with no reason. */
   onSkip: () => void
+  /** Cancel = a mis-tap; log nothing. */
+  onCancel?: () => void
 }
 
 const QUICK: Array<{ label: string; reason: TurnoverReason; sub?: string; hover: string }> = [
@@ -98,11 +101,12 @@ const QUICK: Array<{ label: string; reason: TurnoverReason; sub?: string; hover:
   { label: 'Off Ground', reason: 'offensive_foul', sub: 'picked_off_ground', hover: 'hover:bg-orange-600/30 hover:border-orange-500/40' },
   { label: 'Foul', reason: 'offensive_foul', hover: 'hover:bg-orange-600/30 hover:border-orange-500/40' },
   { label: 'Stray Pass', reason: 'unforced', sub: 'stray_pass', hover: 'hover:bg-amber-600/30 hover:border-amber-500/40' },
+  { label: 'Ran Out', reason: 'unforced', sub: 'ran_out_of_play', hover: 'hover:bg-amber-600/30 hover:border-amber-500/40' },
   { label: 'Square', reason: 'unforced', sub: 'square_ball', hover: 'hover:bg-amber-600/30 hover:border-amber-500/40' },
   { label: 'Strip', reason: 'dispossession', sub: 'strip', hover: 'hover:bg-red-600/30 hover:border-red-500/40' },
 ]
 
-export function TurnoverReasonPrompt({ playerName, onSelect, onSkip }: TurnoverReasonPromptProps) {
+export function TurnoverReasonPrompt({ playerName, onSelect, onSkip, onCancel }: TurnoverReasonPromptProps) {
   const chip = 'px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/5 text-white/70 hover:text-white text-xs transition-all active:scale-95'
   return (
     <Scrim>
@@ -136,7 +140,7 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip }: TurnoverR
             <div>
               <p className="text-[10px] font-semibold text-amber-400/60 uppercase tracking-wide mb-1">Unforced Error</p>
               <div className="flex flex-wrap gap-1.5">
-                {UNFORCED_ERROR_PICKER_SUBTYPES.filter(s => !['dropped_ball', 'kick_over_sideline', 'square_ball', 'stray_pass'].includes(s.value)).map(({ value, label }) => (
+                {UNFORCED_ERROR_PICKER_SUBTYPES.filter(s => !['dropped_ball', 'kick_over_sideline', 'square_ball', 'stray_pass', 'ran_out_of_play'].includes(s.value)).map(({ value, label }) => (
                   <button key={value} onClick={() => onSelect('unforced', value)} className={`${chip} hover:bg-amber-600/20 hover:border-amber-500/30`}>{label}</button>
                 ))}
               </div>
@@ -159,8 +163,16 @@ export function TurnoverReasonPrompt({ playerName, onSelect, onSkip }: TurnoverR
           onClick={onSkip}
           className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/40 hover:text-white/70 text-xs font-medium transition-colors"
         >
-          Skip
+          Skip: log it without a reason
         </button>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="w-full mt-1.5 py-1.5 text-[11px] text-white/30 hover:text-white/60 transition-colors"
+          >
+            Cancel: don't log anything
+          </button>
+        )}
       </div>
     </Scrim>
   )
@@ -198,18 +210,24 @@ export function HighBallChips({
   onPick,
   onDismiss,
   onStray,
+  wonBy,
 }: {
   onPick: (contact: 'clean' | 'break') => void
   onDismiss: () => void
   /** Our high ball that went straight to the opposition with no contest (an unforced error) */
   onStray?: () => void
+  /** Who came away with it, once known (e.g. "Donegal #1 Murphy"). When given the question is about THEIR catch and stays up
+   *  until answered or skipped; without it the chips fade after 8 seconds (live recording). */
+  wonBy?: string
 }) {
   const dismissRef = useRef(onDismiss)
   dismissRef.current = onDismiss
+  const sticky = wonBy != null
   useEffect(() => {
+    if (sticky) return
     const t = setTimeout(() => dismissRef.current(), 8000)
     return () => clearTimeout(t)
-  }, [])
+  }, [sticky])
   return (
     <div
       className="flex items-center gap-1.5 rounded-2xl px-3 py-2 animate-fade-in"
@@ -221,7 +239,7 @@ export function HighBallChips({
         boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
       }}
     >
-      <span className="text-[11px] font-semibold text-amber-200/80 mr-1">High ball:</span>
+      <span className="text-[11px] font-semibold text-amber-200/80 mr-1">{wonBy != null ? `High ball won by ${wonBy}:` : 'High ball:'}</span>
       <button
         onClick={() => onPick('clean')}
         className="text-[11px] font-bold px-2.5 py-1 rounded-lg border bg-white/5 border-white/15 text-white/80 hover:bg-emerald-500/20 hover:border-emerald-400/50 hover:text-white transition-colors"

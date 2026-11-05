@@ -26,6 +26,7 @@ export const UNFORCED_ERROR_SUBTYPES: SubtypeOption[] = [
   { value: 'dropped_ball', label: 'Dropped Ball' },
   { value: 'miscue', label: 'Miscue' },
   { value: 'kick_over_sideline', label: 'Kicked Over Sideline' },
+  { value: 'ran_out_of_play', label: 'Ran Out of Play' },   // carried it over the sideline / end line (e.g. behind his own goal: a 45 to them)
   { value: 'square_ball', label: 'Square Ball' },
   { value: 'three_v_three', label: '3v3 Violation' },
   { value: 'time_wasting', label: 'Time Wasting' },

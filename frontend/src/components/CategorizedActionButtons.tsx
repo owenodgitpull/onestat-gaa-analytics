@@ -41,6 +41,8 @@ interface CategorizedActionButtonsProps {
   pendingSidelineDecision?: boolean  // Waiting for "who's in possession" after a sideline ball
   onSidelineDecision?: (weWonIt: boolean) => void
   pending45?: boolean
+  /** Offer "45 Short Pass" (the 45 played short instead of kicked at the posts). Off for Simple Scoring, which has no short-restart flow. */
+  show45ShortPass?: boolean
   pendingKickoutPosition?: boolean  // Waiting for user to click pitch for kickout position
   kickoutPositionExtra?: React.ReactNode  // Optional content shown in the kickout-position panel
   pendingFortyFivePosition?: boolean  // "45 Scored"/"45 Missed" picked, waiting for a tap on the 45m line
@@ -120,6 +122,7 @@ const freeKickOptions = [
 const fortyFiveOptions = [
   { eventType: EventType.FORTY_FIVE, label: '45 Scored', icon: CheckCircle },
   { eventType: EventType.FORTY_FIVE_MISSED, label: '45 Missed', icon: XCircle },
+  { eventType: EventType.FORTY_FIVE_SHORT_PASS, label: '45 Short Pass', icon: ArrowLeftRight },
 ]
 
 export default function CategorizedActionButtons({
@@ -141,6 +144,7 @@ export default function CategorizedActionButtons({
   pendingSidelineDecision = false,
   onSidelineDecision,
   pending45 = false,
+  show45ShortPass = true,
   pendingKickoutPosition = false,
   kickoutPositionExtra,
   pendingFortyFivePosition = false,
@@ -387,9 +391,10 @@ export default function CategorizedActionButtons({
 
         {/* 45 Action Buttons */}
         <div className="p-2 flex flex-wrap gap-1.5 justify-center min-h-[48px]">
-          {fortyFiveOptions.map((button) => {
+          {fortyFiveOptions.filter(b => show45ShortPass || b.eventType !== EventType.FORTY_FIVE_SHORT_PASS).map((button) => {
             const Icon = button.icon
             const isScored = button.eventType === EventType.FORTY_FIVE
+            const isShortPass = button.eventType === EventType.FORTY_FIVE_SHORT_PASS
 
             return (
               <button
@@ -399,6 +404,8 @@ export default function CategorizedActionButtons({
                 className={`btn-primary !py-1.5 !px-4 flex items-center space-x-1.5 text-xs ${
                   isScored
                     ? 'bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500'
+                    : isShortPass
+                    ? 'bg-gradient-to-r from-teal-600 to-sky-600 hover:from-teal-500 hover:to-sky-500'
                     : 'bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700'
                 }`}
               >

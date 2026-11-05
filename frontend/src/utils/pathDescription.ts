@@ -34,6 +34,7 @@ const LOSS_PHRASE: Record<string, string> = {
   dropped_ball: 'dropped the ball',
   miscue: 'miscued it',
   kick_over_sideline: 'kicked it over the sideline',
+  ran_out_of_play: 'carried it out of play',
   square_ball: 'was penalised for a square ball',
   three_v_three: 'was penalised for a 3v3 breach',
   time_wasting: 'was penalised for time wasting',

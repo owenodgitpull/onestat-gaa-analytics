@@ -84,9 +84,15 @@ export async function fetchAPI<T>(
       }
 
       const errorData = await response.json().catch(() => ({}));
+      // A validation failure (422) sends `detail` as a list of objects; as an Error message that printed "[object Object]"
+      // and hid the real problem. Turn a list / object into readable text.
+      const d = errorData.detail;
+      const detailText = Array.isArray(d)
+        ? d.map((x: any) => `${Array.isArray(x?.loc) ? x.loc.filter((l: any) => l !== 'body' && l !== 'query').join('.') + ': ' : ''}${x?.msg ?? JSON.stringify(x)}`).join('; ')
+        : d && typeof d === 'object' ? JSON.stringify(d) : d;
       // `status` lets callers tell a transient server failure (5xx) from a rejected request (4xx)
       throw Object.assign(
-        new Error(errorData.detail || errorData.error || `API Error: ${response.status} ${response.statusText}`),
+        new Error(detailText || errorData.error || `API Error: ${response.status} ${response.statusText}`),
         { status: response.status },
       );
     }

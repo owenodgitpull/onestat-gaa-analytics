@@ -849,6 +849,7 @@ export default function SimpleMatchRecording() {
           {/* Event logging buttons */}
           <div className="w-full">
             <CategorizedActionButtons
+              show45ShortPass={false}
               onActionSelect={handleActionSelect}
               onFoulClick={handleFoulClick}
               on45Click={handle45Click}

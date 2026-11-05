@@ -4,15 +4,22 @@
  */
 import { Timer } from 'lucide-react'
 
+/** Choices for how long a stopped clock waits before it asks. */
+export const CLOCK_REMIND_OPTIONS_S = [10, 20, 30, 60, 120]
+const optionLabel = (s: number) => (s >= 60 ? `${s / 60} min` : `${s} sec`)
+
 interface Props {
   open: boolean
   stoppedForSeconds: number
   onResume: () => void
   onCancelStop: () => void
   onKeepStopped: () => void
+  remindSeconds: number
+  remindOptions: number[]
+  onChangeRemind: (s: number) => void
 }
 
-export default function ClockStoppedModal({ open, stoppedForSeconds, onResume, onCancelStop, onKeepStopped }: Props) {
+export default function ClockStoppedModal({ open, stoppedForSeconds, onResume, onCancelStop, onKeepStopped, remindSeconds, remindOptions, onChangeRemind }: Props) {
   if (!open) return null
   const mins = Math.floor(stoppedForSeconds / 60)
   const secs = Math.round(stoppedForSeconds % 60)
@@ -41,8 +48,23 @@ export default function ClockStoppedModal({ open, stoppedForSeconds, onResume, o
             I stopped it by mistake - cancel the stop
           </button>
           <button onClick={onKeepStopped} className="w-full px-4 py-2 rounded-xl bg-transparent hover:bg-white/5 text-white/55 text-xs font-medium">
-            Keep it stopped (ask again in 20 seconds of video)
+            Keep it stopped (ask again in {optionLabel(remindSeconds)} of video)
           </button>
+        </div>
+        <div className="mt-4 pt-3 border-t border-white/10">
+          <div className="text-xs text-white/50 mb-2">Ask me when the clock has been stopped for:</div>
+          <div className="flex flex-wrap gap-1.5">
+            {remindOptions.map(s => (
+              <button
+                key={s}
+                onClick={() => onChangeRemind(s)}
+                aria-pressed={s === remindSeconds}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${s === remindSeconds ? 'bg-amber-500 text-black' : 'bg-white/10 text-white/75 hover:bg-white/15'}`}
+              >
+                {optionLabel(s)}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

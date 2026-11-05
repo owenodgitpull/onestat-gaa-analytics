@@ -2665,6 +2665,7 @@ export default function MatchRecording() {
       'two_point_free': 'two_point_free',
       'wide_free': 'wide_free',
       'free_short_pass': 'free_short_pass',
+      'forty_five_short_pass': 'free_short_pass',  // a 45 played short is stored as a short free (no new backend type)
       'free_high_ball': 'free_high_ball',
 
       // 45s (ball went wide off defender)
@@ -3000,6 +3001,14 @@ export default function MatchRecording() {
       x: compute45LineX(isHomeTeam),
       y: tappedPosition.y,
       team: isHomeTeam ? PossessionTeam.OWN : PossessionTeam.OPPONENT,
+    }
+
+    if (eventType === EventType.FORTY_FIVE_SHORT_PASS) {
+      // 45 played short: a restart, not a shot. Who took it isn't useful, the ball stays with the taking team on the
+      // 45m line and possession is picked next (same as a short free).
+      setBallPosition(snappedPosition)
+      await recordFreeKickResult(eventType, snappedPosition, isHomeTeam)
+      return
     }
 
     if (isHomeTeam) {

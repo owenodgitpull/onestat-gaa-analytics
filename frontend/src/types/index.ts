@@ -207,6 +207,7 @@ export enum EventType {
   HIGH_BALL = 'high_ball',  // Contestable high ball into a crowd (end_x/end_y = where it landed)
   FORTY_FIVE = 'forty_five',  // 45m free scored - always 1 point
   FORTY_FIVE_MISSED = 'forty_five_missed',  // 45m free missed
+  FORTY_FIVE_SHORT_PASS = 'forty_five_short_pass',  // 45m free played short/quick instead of a kick at the posts
   // Penalty
   PENALTY_GOAL = 'penalty_goal',  // Penalty scored (counts as goal)
   PENALTY_MISS = 'penalty_miss',  // Penalty missed (wide/saved)

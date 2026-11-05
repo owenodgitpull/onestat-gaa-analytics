@@ -238,6 +238,14 @@ async def update_video_event(
     # Handle nested schemas
     if "scoring_context" in update_data and update_data["scoring_context"] is not None:
         update_data["scoring_context"] = body.scoring_context.dict(exclude_unset=True)
+        # An update replaces the whole scoring_context. A caller that sends only e.g. {foot} must not lose the
+        # one-point/two-point call or the source: without is_two_pointer the zone-grid default below would
+        # re-derive it from the coarse zone rows and could turn an inside-the-arc point into a two-pointer
+        # (Kerry 69:39 on 2026-11-05).
+        _old_ctx = event.scoring_context or {}
+        for _k in ("is_two_pointer", "source"):
+            if _k not in update_data["scoring_context"] and _k in _old_ctx:
+                update_data["scoring_context"][_k] = _old_ctx[_k]
     if "kickout_context" in update_data and update_data["kickout_context"] is not None:
         update_data["kickout_context"] = body.kickout_context.dict()
 

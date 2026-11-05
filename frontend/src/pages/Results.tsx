@@ -535,6 +535,18 @@ export default function Results() {
                     </div>
                   </div>
 
+                  {match.video_tagging_in_progress && (
+                    <div className="mt-3">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-purple-300 bg-purple-500/15 border border-purple-400/30 px-2 py-0.5 rounded-full">
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75 animate-ping" />
+                          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-purple-400" />
+                        </span>
+                        <Video size={12} /> Video tagging in progress
+                      </span>
+                    </div>
+                  )}
+
                   {/* Competition tag */}
                   {match.competition && (
                     <div className="mt-3 pt-3 border-t border-white/5">

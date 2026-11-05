@@ -75,6 +75,12 @@ export default function MoveEditorModal({ isOpen, onClose, sessionId, eventId, o
 
   const load = useCallback(async () => {
     if (!eventId) return
+    // A point just tagged is shown under a temporary id until the server has saved it; the server cannot look that up
+    // (it answered with a validation error, shown as "[object Object]"). Say so instead, and ask again in a moment.
+    if (eventId.startsWith('temp-')) {
+      setError('This event is still saving. Close this and open it again in a few seconds.')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
