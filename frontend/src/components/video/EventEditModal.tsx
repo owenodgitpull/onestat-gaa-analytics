@@ -7,6 +7,7 @@ import { X } from 'lucide-react'
 import type { VideoEvent, VideoEventUpdateData } from '../../services/videoApi'
 import { PlayerOptions, type PickablePlayer } from './MoveEditorModal'
 import { useModalA11y } from '../ui/useModalA11y'
+import { FOUL_SUBTYPES, UNFORCED_ERROR_PICKER_SUBTYPES } from '../../constants/turnoverSubtypes'
 
 interface Props {
   event: VideoEvent | null
@@ -17,6 +18,11 @@ interface Props {
 }
 
 const SCORING = ['POINT_SCORED', 'GOAL_SCORED', 'FREE_KICK', 'FORTY_FIVE', 'PENALTY']
+// The same type lists the tagging pickers use, as a dropdown (so a foul / error type is picked, never typed)
+const TYPE_LISTS: Record<string, { value: string; label: string }[]> = {
+  FOUL_COMMITTED: FOUL_SUBTYPES, FOUL_WON: FOUL_SUBTYPES,
+  OUR_UNFORCED_ERROR: UNFORCED_ERROR_PICKER_SUBTYPES, OPP_UNFORCED_ERROR: UNFORCED_ERROR_PICKER_SUBTYPES,
+}
 // One-tap outcomes for the events that otherwise need a typed sub type
 const OUTCOME_CHOICES: Record<string, [string, string][]> = {
   LONG_KICK_PASS: [['completed', 'Completed'], ['intercepted', 'Intercepted']],
@@ -133,7 +139,15 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
             ))}
           </div>
         )}
-        <input aria-label="Type or outcome" className={sel} value={subType} onChange={e => setSubType(e.target.value)} placeholder="e.g. clean_catch, handpass_error" />
+        {TYPE_LISTS[event.event_type] ? (
+          <select aria-label="Type" className={sel} value={subType} onChange={e => setSubType(e.target.value)}>
+            <option value="">— pick a type —</option>
+            {subType && !TYPE_LISTS[event.event_type].some(o => o.value === subType) && <option value={subType}>{subType}</option>}
+            {TYPE_LISTS[event.event_type].map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        ) : (
+          <input aria-label="Type or outcome" className={sel} value={subType} onChange={e => setSubType(e.target.value)} placeholder="e.g. clean_catch, handpass_error" />
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div>
