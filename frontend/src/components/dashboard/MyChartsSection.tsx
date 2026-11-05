@@ -116,11 +116,9 @@ export default function MyChartsSection({
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-bold flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center">
-            <LayoutGrid size={20} className="text-white" />
-          </div>
-          <span className="text-white">Core Stats</span>
+        <h2 className="text-xl font-bold flex items-center gap-2.5 text-white">
+          <LayoutGrid size={22} className="text-emerald-300" aria-hidden="true" />
+          <span>Core Stats</span>
         </h2>
         <button
           data-tour="chart-library-btn"

@@ -654,9 +654,9 @@ export default function AnalyticsDashboard() {
       {/* 1. Season Overview — KPI Cards (always at top, not draggable) */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-2xl font-bold flex items-center space-x-2">
-            <TrendingUp size={24} className="text-white" />
-            <span className="text-white">Season Overview</span>
+          <h2 className="text-xl font-bold flex items-center gap-2.5 text-white">
+            <TrendingUp size={22} className="text-emerald-300" aria-hidden="true" />
+            <span>Season Overview</span>
           </h2>
           <div className="flex items-center gap-2">
             {seasonDashboard && season_summary.matches_played > 0 && (
@@ -689,7 +689,7 @@ export default function AnalyticsDashboard() {
         </div>
         {seasonDashboard?.kpi_cards ? (
           <>
-            <p className="text-sm text-white/50 mb-4">
+            <p className="text-sm text-white/65 mb-4 tabular-nums">
               {seasonDashboard.kpi_cards.metadata.matches_played} Matches | {seasonDashboard.kpi_cards.metadata.win_rate}% Win Rate ({seasonDashboard.kpi_cards.metadata.wins}W-{seasonDashboard.kpi_cards.metadata.losses}L-{seasonDashboard.kpi_cards.metadata.draws}D)
             </p>
             <div data-tour="kpi-grid" className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -723,13 +723,14 @@ export default function AnalyticsDashboard() {
                       className="glass-card p-5 absolute inset-0 flex flex-col justify-center"
                     >
                       <button
-                        className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors z-10"
+                        aria-label={`About ${card.label}`}
+                        className="absolute top-1.5 right-1.5 w-8 h-8 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center transition-colors z-10"
                         onClick={(e) => {
                           e.stopPropagation()
                           setActiveTooltip(prev => prev === card.key ? null : card.key)
                         }}
                       >
-                        <Info size={11} className="text-white/50" />
+                        <Info size={14} className="text-white/70" />
                       </button>
                       {activeTooltip === card.key && createPortal(
                         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -769,10 +770,10 @@ export default function AnalyticsDashboard() {
                         document.body
                       )}
 
-                      <div className="text-white/60 text-xs font-semibold uppercase tracking-wide mb-1.5 pr-6">{card.label}</div>
-                      <div className={`text-3xl font-bold ${valueColor}`}>{displayValue}</div>
+                      <div className="text-white/75 text-xs font-semibold uppercase tracking-wide mb-2 pr-8">{card.label}</div>
+                      <div className={`text-4xl font-bold leading-none tabular-nums ${valueColor}`}>{displayValue}</div>
                       {card.trend && card.trend.direction !== 'stable' && (
-                        <div className={`flex items-center gap-1 mt-1 text-xs font-medium ${card.trend.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${card.trend.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
                           {card.trend.direction === 'up'
                             ? <TrendingUp size={12} />
                             : <TrendingDown size={12} />}
@@ -780,15 +781,15 @@ export default function AnalyticsDashboard() {
                         </div>
                       )}
                       {card.trend && card.trend.direction === 'stable' && (
-                        <div className="flex items-center gap-1 mt-1 text-xs font-medium text-white/25">
+                        <div className="flex items-center gap-1 mt-2 text-xs font-medium text-white/55">
                           <Minus size={12} />
                           <span>Stable</span>
                         </div>
                       )}
 
                       {isPair && (
-                        <div className="absolute bottom-2 right-3 text-[9px] text-white/20 flex items-center gap-0.5">
-                          <RefreshCw size={8} />
+                        <div className="absolute bottom-2 right-3 text-[11px] text-white/50 flex items-center gap-1">
+                          <RefreshCw size={10} />
                           Flip
                         </div>
                       )}

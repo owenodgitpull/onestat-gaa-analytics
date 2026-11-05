@@ -84,7 +84,7 @@ function AdminMain({ children }: { children: React.ReactNode }) {
   const isVideo = loc.pathname.startsWith('/video/')
   return (
     <main className={`${isVideo ? '' : 'md:ml-14 px-4 py-6'} overflow-x-hidden`}>
-      <div className={isVideo ? '' : 'max-w-7xl mx-auto'}>
+      <div className={isVideo ? '' : 'max-w-[1440px] mx-auto'}>
         {children}
       </div>
     </main>
