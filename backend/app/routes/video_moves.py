@@ -373,7 +373,14 @@ async def data_health(session_id: UUID,
     for ev in events:
         et = ev.event_type or ""
         if "KICKOUT" in et and not ev.player_id and not ev.opposition_player_id and not et.endswith("SIDELINE") and et != "SIDELINE_KICK":
-            add("kickout_no_player", ev, "Kickout with no player named")
+            # Who won it is the first carrier right after the kickout (the move names them), so a kickout whose
+            # winner is named by that carry is not missing anything.
+            t0 = ev.video_timestamp_ms
+            first = next((sg for sg in segs if t0 is not None and sg.video_timestamp_ms is not None
+                          and t0 - 1500 <= sg.video_timestamp_ms <= t0 + 10000), None)
+            named = first is not None and (first.player_id or first.opposition_player_id)
+            if not named:
+                add("kickout_no_player", ev, "Kickout with no player named")
         if et in SCORE_EVENT_TYPES or et == "FREE_KICK" and (ev.scoring_context or {}).get("scored"):
             src = str((ev.scoring_context or {}).get("source") or "").lower()
             dead_ball = src in ("free", "from_free", "forty_five", "from_45", "from_forty_five", "penalty")

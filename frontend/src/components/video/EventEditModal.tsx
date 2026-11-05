@@ -17,6 +17,11 @@ interface Props {
 }
 
 const SCORING = ['POINT_SCORED', 'GOAL_SCORED', 'FREE_KICK', 'FORTY_FIVE', 'PENALTY']
+// One-tap outcomes for the events that otherwise need a typed sub type
+const OUTCOME_CHOICES: Record<string, [string, string][]> = {
+  LONG_KICK_PASS: [['completed', 'Completed'], ['intercepted', 'Intercepted']],
+  HIGH_BALL: [['won', 'Won'], ['lost_clean', 'Lost']],
+}
 
 export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose, onSave }: Props) {
   const [ownId, setOwnId] = useState('')
@@ -120,6 +125,14 @@ export default function EventEditModal({ event, ownPlayers, oppPlayers, onClose,
         )}
 
         <label className={lab}>Type / outcome (sub type)</label>
+        {OUTCOME_CHOICES[event.event_type] && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {OUTCOME_CHOICES[event.event_type].map(([val, label]) => (
+              <button key={val} type="button" onClick={() => setSubType(val)} aria-pressed={subType === val}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold hit-44 ${subType === val ? 'bg-emerald-600 text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'}`}>{label}</button>
+            ))}
+          </div>
+        )}
         <input aria-label="Type or outcome" className={sel} value={subType} onChange={e => setSubType(e.target.value)} placeholder="e.g. clean_catch, handpass_error" />
 
         <div className="grid grid-cols-2 gap-3">
