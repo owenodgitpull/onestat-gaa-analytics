@@ -25,6 +25,8 @@ export function prefetchHealth(sessionId: string) {
   videoMovesAPI.health(sessionId).then(r => healthCache.set(sessionId, r.issues)).catch(() => {})
 }
 
+/** Position in the video, m:ss (h:mm:ss past an hour) - what you scrub to */
+const fmtVideo = (ms: number) => { const t = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}` }
 const MOVE_KINDS = new Set(['score_no_carry', 'score_carrier_mismatch', 'duplicate_step', 'kickout_no_player'])
 
 export default function NeedsAttentionModal({ isOpen, sessionId, onClose, onSeek, onFixEvent, onFixMove }: Props) {
@@ -64,7 +66,8 @@ export default function NeedsAttentionModal({ isOpen, sessionId, onClose, onSeek
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-white">{it.message}</p>
                 <p className="text-[11px] text-white/60">
-                  {it.match_minute != null ? `${it.match_minute}:${String(it.match_second ?? 0).padStart(2, '0')}` : ''}
+                  {it.video_timestamp_ms != null ? `Video ${fmtVideo(it.video_timestamp_ms)}` : ''}
+                  {it.match_minute != null ? `${it.video_timestamp_ms != null ? ' · ' : ''}match clock ${it.match_minute}:${String(it.match_second ?? 0).padStart(2, '0')}` : ''}
                   {it.team ? ` · ${it.team === 'team_a' ? 'ours' : 'opposition'}` : ''}
                 </p>
               </div>
