@@ -1278,6 +1278,10 @@ def get_cached_tools() -> list:
     return cached
 
 
+from app.services.ai.gps_tools import TOOL_DEFS as _GPS_TOOL_DEFS  # noqa: E402
+TOOLS.extend(_GPS_TOOL_DEFS)
+
+
 def get_tools_subset(tool_names: list[str]) -> list[dict]:
     """Return only the tool definitions matching the given names."""
     return [t for t in TOOLS if t["name"] in tool_names]
@@ -1378,6 +1382,12 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_sleep_data(db, **tool_input, club_id=club_id)
     elif tool_name == "get_ball_recovery_time":
         return await get_ball_recovery_time(db, **tool_input, club_id=club_id)
+    elif tool_name == "get_gps_match_analysis":
+        from app.services.ai.gps_tools import get_gps_match_analysis
+        return await get_gps_match_analysis(db, tool_input.get("match_id"), tool_input.get("sections"), tool_input.get("limit", 8), club_id=club_id)
+    elif tool_name == "get_gps_season_trends":
+        from app.services.ai.gps_tools import get_gps_season_trends
+        return await get_gps_season_trends(db, club_id=club_id)
     elif tool_name == "get_turnover_to_shot_time":
         return await get_turnover_to_shot_time(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_expected_points":

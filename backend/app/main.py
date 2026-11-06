@@ -28,7 +28,7 @@ from app.database import engine, Base, get_db
 
 # Import routes
 from app.routes import players
-from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, match_gps_timeseries, fitness_tests, club, onboarding, player_portal, notifications
+from app.routes import matches, match_events, possession_events, match_lineups, analytics, ai, attendance, knowledge_base, training_performance, live_insights, rag, squad_health, match_gps, match_gps_timeseries, match_gps_analysis, fitness_tests, club, onboarding, player_portal, notifications
 from app.routes import auth as auth_routes
 from app.routes import video_analysis, video_events, video_moves, fixtures, club_members, player_movement, match_prep, organizations, invitations, playbook_push, tactical_analysis, audit_log, match_voice_notes
 from app.routes import match_analytics
@@ -248,6 +248,8 @@ app.include_router(rag.router, prefix="/api/v1/rag", tags=["RAG Knowledge Base"]
 app.include_router(squad_health.router, prefix="/api/v1/squad-health", tags=["Squad Health"])
 app.include_router(match_gps.router, prefix="/api/v1/matches", tags=["Match GPS Data"])
 app.include_router(match_gps_timeseries.router, prefix="/api/v1/matches", tags=["Match GPS Time Series"])
+app.include_router(match_gps_analysis.router, prefix="/api/v1/matches", tags=["Match GPS Analysis"])
+app.include_router(match_gps_analysis.season_router, prefix="/api/v1/gps-analysis", tags=["Match GPS Analysis"])
 app.include_router(fitness_tests.router, prefix="/api/v1/fitness-tests", tags=["Fitness Tests"])
 app.include_router(club.router, prefix="/api/v1/club", tags=["Club"])
 app.include_router(onboarding.router, prefix="/api/v1/onboarding", tags=["Onboarding"])

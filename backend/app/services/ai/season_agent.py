@@ -70,6 +70,8 @@ SEASON_TOOLS = [
     "create_video_compilation",
     "get_phase_summary",
     "get_season_phase_profile",
+    "get_gps_match_analysis",
+    "get_gps_season_trends",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)

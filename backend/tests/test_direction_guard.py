@@ -30,6 +30,8 @@ PLUMBING = (
     # GPS time series: compares tagged raw coordinates with raw GPS positions in the SAME screen frame (a sync, not an
     # analytic) and returns raw screen positions for callers to frame with the helpers (documented on the endpoint).
     "services/gps_timeseries/", "routes/match_gps_timeseries.py",
+    # GPS analysis loader: reads the tagged carries / events into dataclasses, raw; frame.py / metrics.py frame them.
+    "services/gps_analysis/loader.py",
 )
 
 HELPER_MARKERS = (
