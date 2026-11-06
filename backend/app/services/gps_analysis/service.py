@@ -63,7 +63,7 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
     }
     out = {
         "match_id": inp.match_id, "opponent": inp.opponent, "match_date": inp.match_date, "result": inp.result,
-        "frame": "ours: Donegal attack towards x = pitch length (right) in every period; y small = our left",
+        "frame": "ours: the logged-in club attacks towards x = pitch length (right) in every period; y small = our left",
         "pitch_length_m": inp.pitch_length_m, "pitch_width_m": inp.pitch_width_m,
         "sync_status": inp.sync["status"], "summary": summary,
         "transitions": tr, "kickouts": ko, "intensity": it, "tag_health": th, "support": sp, "marking": mk, "moments": mo,

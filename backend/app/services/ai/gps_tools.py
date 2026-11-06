@@ -10,7 +10,7 @@ def safe_json(data) -> str:
     return _sj(data)
 
 FRAME_NOTE = (
-    "Frame: positions are in OUR attack frame - Donegal (our team) always attack towards x = pitch length, x = 0 is our own "
+    "Frame: positions are in OUR attack frame - our team (the club asking) always attacks towards x = pitch length, x = 0 is our own "
     "goal line, small y = our LEFT. Distances in metres, times in seconds. Only our outfielders are tracked (no goalkeeper, "
     "no opposition GPS); in/out of possession comes from the tagged carries. video_ms values can be passed to "
     "create_video_compilation / clip tools. Few matches have GPS: describe what happened, not statistics."
@@ -99,7 +99,7 @@ TOOL_DEFS = [
             "lost: seconds to get players goal-side, retreat, who sprinted; every turnover won: who broke forward), kickouts (team "
             "shape at each kick, push-up, outcome groups), intensity (per player distance, high-speed metres, sprints, accels, "
             "5-minute blocks, drop-off), tag_health (probable mis-tags where the tagged spot disagrees with the player's GPS), "
-            "support (team-mates within 15 m at each pass), marking (nearest Donegal player to each opposition shot, assigned "
+            "support (team-mates within 15 m at each pass), marking (nearest of our players to each opposition shot, assigned "
             "marker), moments (key clips with video_ms). Use for 'how compact were we', 'how fast did we get back after turnovers', "
             "'who covered the most ground', 'did we push up on their kickouts'."
         ),

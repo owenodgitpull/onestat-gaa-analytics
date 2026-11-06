@@ -3,7 +3,7 @@
  * itself (reaction time + picking the player). Jumping to an event starts a few seconds earlier so
  * the action is on screen and plays into the tap.
  *
- * The lead is per event type, measured with the GPS sync on five Donegal 2026 matches (how long after the action the
+ * The lead is per event type, measured with the GPS sync on the first five synced inter-county matches (how long after the action the
  * tap landed; the p25 is used so the action is on screen for three taps in four): see docs/gps-build-handover.md.
  * Kickouts are tapped at the kick, so they only need a short lead. Unknown types keep the old 4 s.
  */

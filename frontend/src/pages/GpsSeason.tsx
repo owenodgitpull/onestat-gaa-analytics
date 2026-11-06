@@ -136,7 +136,7 @@ export default function GpsSeason() {
                 </table>
               </div>
             )}
-            <p className="flex items-start gap-1.5 text-xs text-white/45"><AlertTriangle size={12} className="mt-0.5 shrink-0" /> Five matches is a small sample, and the opponent and the score change how much anyone runs. Use these as prompts to ask the player and the physio, not as a verdict.</p>
+            <p className="flex items-start gap-1.5 text-xs text-white/45"><AlertTriangle size={12} className="mt-0.5 shrink-0" /> {rows.length} match{rows.length === 1 ? "" : "es"} is a small sample, and the opponent and the score change how much anyone runs. Use these as prompts to ask the player and the physio, not as a verdict.</p>
           </section>
         </>
       )}
