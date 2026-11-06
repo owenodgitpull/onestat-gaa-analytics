@@ -61,6 +61,7 @@ import AttackEfficiencyCard from '../components/charts/AttackEfficiencyCard'
 import SeasonBenchmarkCard from '../components/charts/SeasonBenchmarkCard'
 import MatchStatsPanel from '../components/MatchStatsPanel'
 import GPSConfirmModal from '../components/GPSConfirmModal'
+import GpsTracksModal from '../components/gps/GpsTracksModal'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
 import { useVideoSessions } from '../hooks/useVideoSessions'
@@ -265,6 +266,7 @@ export default function MatchResult() {
 
   // GPS upload state
   const [showGpsUpload, setShowGpsUpload] = useState(false)
+  const [showGpsTracks, setShowGpsTracks] = useState(false)
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'success' | 'error'>('idle')
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [,] = useState<string | null>(null)
@@ -890,6 +892,16 @@ export default function MatchResult() {
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
+            {canEdit && hasProAccess && (
+              <button
+                onClick={() => setShowGpsTracks(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition-colors border border-white/15"
+                title="Raw GPS positions (one file per player), synced to the video"
+              >
+                <Activity size={14} />
+                GPS tracks
+              </button>
+            )}
             {gpsBusy ? (
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600/30 text-emerald-200 text-xs font-medium cursor-wait">
                 <Loader2 size={14} className="animate-spin" />
@@ -953,6 +965,10 @@ export default function MatchResult() {
           </div>
         </div>
       </div>
+
+      {showGpsTracks && matchId && match && (
+        <GpsTracksModal matchId={matchId} matchDate={match.match_date} onClose={() => setShowGpsTracks(false)} />
+      )}
 
       {/* GPS Upload Modal */}
       {showGpsUpload && (
