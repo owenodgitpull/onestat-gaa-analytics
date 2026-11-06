@@ -77,7 +77,7 @@ export function OverviewView({ a, periods, onOpen }: { a: GpsMatchAnalysis; peri
         <Tile label="Team distance" value={n1(s.team_distance_m / 1000, ' km')} sub={`${s.players_tracked} players tracked`} />
         <Tile label="High-speed running" value={n1(s.team_hsr_m / 1000, ' km')} sub="over 5.5 m/s" />
         <Tile label="Compact without ball" value={n1(s.shape.out.compactness, ' m')} sub={`vs ${n1(s.shape.in.compactness, ' m')} with it · avg distance to team centre`} />
-        <Tile label="Back behind the ball" value={n1(s.transitions.median_recovery_s, ' s')} sub={`median after ${s.transitions.n_lost} turnovers lost`} />
+        <Tile label="Back behind the ball" value={n1(s.transitions.median_recovery_s, ' s')} sub={`median when caught short (${s.transitions.caught_short} of ${s.transitions.n_lost} turnovers lost; ${s.transitions.already_back} already back)`} />
       </div>
       <Section title="By half">
         <Table head={['Period', 'Distance', 'High-speed', 'Compact (no ball)', 'Compact (ball)', 'Length (no ball)']} align={['l', 'r', 'r', 'r', 'r', 'r']}
@@ -192,15 +192,15 @@ export function TransitionsView({ a, periods, onOpen, team }: { a: GpsMatchAnaly
     <div className="space-y-5">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Tile label="Turnovers lost" value={t.summary.n_lost} sub={`${t.summary.lost_led_to_score} led to a score against`} />
-        <Tile label="Back behind the ball" value={n1(t.summary.median_recovery_s, ' s')} sub={`median · ${t.summary.not_recovered_in_15s} not back within 15 s`} />
+        <Tile label="Back behind the ball" value={n1(t.summary.median_recovery_s, ' s')} sub={`median when caught short (${t.summary.caught_short}) · ${t.summary.already_back} already back · ${t.summary.not_recovered_in_15s} not back in 15 s`} />
         <Tile label="Retreat in 10 s" value={n1(t.summary.median_retreat_10s_m, ' m')} sub="team centre towards our goal" />
         <Tile label="Turnovers won" value={t.summary.n_won} sub={`median ${n1(t.summary.median_forward_runners)} broke forward · ${t.summary.won_led_to_score} led to a score`} />
       </div>
-      <Section title="After we lost the ball" note={`"Back in" = seconds until the target number of our tracked outfielders (all but three, at most 11) were between the ball and our goal. 0 s means they already were.`}>
+      <Section title="After we lost the ball" note={`"Back in" = seconds until the target number of our tracked outfielders (all but three, at most 11) were between the ball and our goal. "Already back" = that many were goal-side when it was lost.`}>
         <Table head={['When', 'Lost by', 'How', 'Goal-side at once', 'Back in', 'Retreat 10 s', 'Sprinted (>5.5 m/s)', 'Then']} align={['l', 'l', 'l', 'r', 'r', 'r', 'l', 'l']}
           rows={t.lost.map((x, i) => [
             <PlayAt key="p" ms={x.video_ms} periods={periods} onOpen={onOpen} />, x.lost_by || '–', x.how, `${x.goal_side_at_0} of ${x.players_on}`,
-            x.recovery_s == null ? <span className="text-amber-300">not in 15 s</span> : `${x.recovery_s} s`, n1(x.retreat_10s_m, ' m'),
+            x.already_back ? <span className="text-white/50">already back</span> : x.recovery_s == null ? <span className="text-amber-300">not in 15 s</span> : `${x.recovery_s} s`, n1(x.retreat_10s_m, ' m'),
             <button key="s" className="text-left text-white/80 hover:text-white underline decoration-white/20" onClick={() => setOpen(open === i ? null : i)}>
               {x.sprinted.length} players{open === i ? '' : ' ▾'}
               {open === i && <div className="mt-1 text-xs text-white/60 no-underline">Sprinted: {x.sprinted.map(r => `${r.name} ${r.max_speed}`).join(', ') || 'nobody'}<br />Did not: {x.did_not_sprint.map(r => r.name).join(', ') || 'nobody'}</div>}
@@ -377,7 +377,7 @@ export function HeatmapView({ matchId, ctx, team }: { matchId: string; ctx: GpsR
         <div className="grid grid-cols-1 md:grid-cols-[3fr_1fr] gap-4">
           <div>
             <div className="rounded-xl overflow-hidden border border-white/10">
-              <GpsPitch lengthM={q.data.pitch_length_m} widthM={q.data.pitch_width_m} label="Heat map">
+              <GpsPitch lengthM={q.data.pitch_length_m} widthM={q.data.pitch_width_m} label="Heat map" dim>
                 {(s) => q.data!.seconds.map((col, i) => col.map((v, j) => {
                   const c = heatColor(v, max)
                   if (!c) return null

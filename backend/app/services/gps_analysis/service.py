@@ -38,7 +38,7 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
     mk = M.marking(inp, g10)
     mo = M.moments(tr, ko, th, sh, g1)
     shape_sum = M.shape_summary(g1, sh)
-    fastest = sorted([t for t in tr["lost"] if t["recovery_s"] is not None], key=lambda t: t["recovery_s"])[:3]
+    fastest = sorted([t for t in tr["lost"] if t["recovery_s"] is not None and not t["already_back"]], key=lambda t: t["recovery_s"])[:3]
     drop = sorted([p for p in it["players"] if p.get("drop_off_pct") is not None], key=lambda p: p["drop_off_pct"])[:5]
     in_poss = float((g1.poss == 1).mean()) if len(g1.poss) else 0.0
     summary = {

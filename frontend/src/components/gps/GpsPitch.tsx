@@ -20,14 +20,17 @@ export function makeScale(lengthM: number, widthM: number) {
 
 export type PitchScale = ReturnType<typeof makeScale>
 
-export default function GpsPitch({ lengthM, widthM, children, className = '', label, onPointerDown }: {
+export default function GpsPitch({ lengthM, widthM, children, className = '', label, onPointerDown, dim = false }: {
   lengthM: number; widthM: number; children?: (s: PitchScale) => ReactNode; className?: string; label?: string
+  /** darken the grass so a colour scale on top (heat map) keeps its low end visible */
+  dim?: boolean
   onPointerDown?: (e: React.PointerEvent<SVGSVGElement>) => void
 }) {
   const s = makeScale(lengthM, widthM)
   return (
     <svg viewBox={`0 0 ${PITCH.svgW} ${PITCH.svgH}`} className={`w-full h-auto block select-none ${className}`} role="img" aria-label={label || 'Pitch'} onPointerDown={onPointerDown}>
       <image href="/pitch-svg.svg" x={0} y={0} width={PITCH.svgW} height={PITCH.svgH} preserveAspectRatio="none" />
+      {dim && <rect x={0} y={0} width={PITCH.svgW} height={PITCH.svgH} fill="#060a14" opacity={0.72} />}
       {children?.(s)}
     </svg>
   )

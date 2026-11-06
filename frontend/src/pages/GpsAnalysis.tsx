@@ -74,7 +74,7 @@ export default function GpsAnalysis() {
         <div className="min-w-0">
           <Link to={`/results/${matchId}`} className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ChevronLeft size={16} /> Back to the match</Link>
           <h1 className="text-xl md:text-2xl font-bold text-white mt-1">GPS · {team} v {opponent}</h1>
-          {ctx && <div className="flex flex-wrap items-center gap-2 text-xs text-white/55 mt-1">Sync <SyncBadge status={ctx.sync.status} /> <span>{ctx.tracked.length} players tracked · no goalkeeper or opposition units</span></div>}
+          {ctx && <div className="flex flex-wrap items-center gap-2 text-xs text-white/55 mt-1">Sync <SyncBadge status={ctx.sync.status} /> <span>{ctx.tracked.filter(pid => ctx.on_pitch[pid]).length} players with a unit played · no goalkeeper or opposition units</span></div>}
         </div>
         <Link to="/gps-season" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-sm text-white"><LineChart size={15} /> All GPS matches</Link>
       </div>

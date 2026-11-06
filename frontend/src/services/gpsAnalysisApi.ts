@@ -31,7 +31,7 @@ export interface ShapeStats { length: number | null; width: number | null; compa
 
 export interface GpsTransitionLost {
   video_ms: number; half: number | null; lost_by: string | null; spot_x: number | null; spot_y: number | null; how: string
-  players_on: number; target: number; goal_side_at_0: number; goal_side: number[]; recovery_s: number | null
+  players_on: number; target: number; goal_side_at_0: number; goal_side: number[]; recovery_s: number | null; already_back: boolean
   retreat_5s_m: number | null; retreat_10s_m: number | null
   sprinted: { player_id: string; name: string | null; max_speed: number | null }[]
   did_not_sprint: { player_id: string; name: string | null; max_speed: number | null }[]
@@ -67,7 +67,7 @@ export interface GpsMatchAnalysis {
     by_half: Record<string, { team_distance_m: number; team_hsr_m: number; compactness_in: number | null; compactness_out: number | null; length_out: number | null }>
     shape: { in: ShapeStats; out: ShapeStats }
     shape_by_half: Record<string, { in: ShapeStats; out: ShapeStats }>
-    transitions: { n_lost: number; n_won: number; median_recovery_s: number | null; not_recovered_in_15s: number; median_retreat_10s_m: number | null; median_forward_runners: number | null; lost_led_to_score: number; won_led_to_score: number }
+    transitions: { n_lost: number; n_won: number; already_back: number; caught_short: number; median_recovery_s: number | null; not_recovered_in_15s: number; median_retreat_10s_m: number | null; median_forward_runners: number | null; lost_led_to_score: number; won_led_to_score: number }
     fastest_recoveries: { video_ms: number; half: number | null; recovery_s: number; lost_by: string | null; outcome: string }[]
     drop_off: { player_id: string; name: string | null; minutes: number | null; hsr_per_min_first10: number | null; hsr_per_min_last10: number | null; drop_off_pct: number | null }[]
     team_distance_m: number; team_hsr_m: number; players_tracked: number

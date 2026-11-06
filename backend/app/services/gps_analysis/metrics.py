@@ -167,6 +167,7 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
                 "video_ms": t0, "half": b.half, "lost_by": name_of(inp, a.player_id), "spot_x": r1(spot[0]), "spot_y": r1(spot[1]),
                 "how": (tev.event_type.replace("_", " ").lower() if tev is not None else "pass intercepted / lost" if a.ended_by == "pass" else "turnover"),
                 "players_on": n_on, "target": target, "goal_side_at_0": goal_side[0], "goal_side": goal_side, "recovery_s": rec,
+                "already_back": goal_side[0] >= target,
                 "retreat_5s_m": r1(cxs[0] - cxs[5]), "retreat_10s_m": r1(cxs[0] - cxs[10]),
                 "sprinted": [r for r in runners if (r["max_speed"] or 0) > HSR], "did_not_sprint": [r for r in runners if (r["max_speed"] or 0) <= HSR],
                 "outcome": ("score" if shot and shot.event_type in ("POINT_SCORED", "GOAL_SCORED") else "shot") if shot else "no shot",
@@ -183,11 +184,14 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
                 "players_on": n_on, "advance_10s_m": r1(cxs[10] - cxs[0]), "forward_runners": fwd, "n_forward_runners": len(fwd),
                 "outcome": ("score" if shot and shot.event_type in ("POINT_SCORED", "GOAL_SCORED") else "shot") if shot else "no shot",
             })
-    recs = [t["recovery_s"] for t in lost if t["recovery_s"] is not None]
+    # recovery time only means something when we were caught short: leave out turnovers where enough were already back
+    recs = [t["recovery_s"] for t in lost if t["recovery_s"] is not None and not t["already_back"]]
     return {
         "lost": lost, "won": won,
         "summary": {
             "n_lost": len(lost), "n_won": len(won),
+            "already_back": sum(1 for t in lost if t["already_back"]),
+            "caught_short": sum(1 for t in lost if not t["already_back"]),
             "median_recovery_s": r1(np.median(recs)) if recs else None,
             "not_recovered_in_15s": sum(1 for t in lost if t["recovery_s"] is None),
             "median_retreat_10s_m": r1(np.median([t["retreat_10s_m"] for t in lost if t["retreat_10s_m"] is not None])) if lost else None,
@@ -509,11 +513,11 @@ def marking(inp: MatchInputs, g: Grid) -> dict:
 
 def moments(tr: dict, ko: dict, th: dict, sh_series, g1: Grid) -> List[dict]:
     out = []
-    lost = [t for t in tr["lost"] if t["recovery_s"] is not None]
+    lost = [t for t in tr["lost"] if t["recovery_s"] is not None and not t["already_back"]]
     for t in sorted(lost, key=lambda t: t["recovery_s"])[:2]:
         out.append({"kind": "fast_recovery", "video_ms": t["video_ms"], "title": f"Back behind the ball in {t['recovery_s']} s",
                     "detail": f"{t['target']} players goal-side after the ball was lost{' by ' + t['lost_by'] if t['lost_by'] else ''}"})
-    slow = sorted(tr["lost"], key=lambda t: -(t["recovery_s"] if t["recovery_s"] is not None else 99))[:3]
+    slow = sorted([t for t in tr["lost"] if not t["already_back"]], key=lambda t: -(t["recovery_s"] if t["recovery_s"] is not None else 99))[:3]
     for t in slow:
         out.append({"kind": "slow_recovery", "video_ms": t["video_ms"],
                     "title": "Not back within 15 s" if t["recovery_s"] is None else f"Slow to get back: {t['recovery_s']} s",
