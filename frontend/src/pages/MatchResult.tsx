@@ -62,6 +62,7 @@ import SeasonBenchmarkCard from '../components/charts/SeasonBenchmarkCard'
 import MatchStatsPanel from '../components/MatchStatsPanel'
 import GPSConfirmModal from '../components/GPSConfirmModal'
 import GpsTracksModal from '../components/gps/GpsTracksModal'
+import GpsMatchCard from '../components/gps/GpsMatchCard'
 import { useMatch, useMatchStats } from '../hooks/useMatches'
 import { useMatchEvents } from '../hooks/useMatchEvents'
 import { useVideoSessions } from '../hooks/useVideoSessions'
@@ -1122,6 +1123,7 @@ export default function MatchResult() {
       <div className="flex flex-col md:flex-row md:items-start gap-6">
         {/* Left column — event map, filters, first charts */}
         <div className="flex-[2] min-w-0 space-y-6">
+          {matchId && <GpsMatchCard matchId={matchId} />}
           {/* Event Map */}
           <div className="space-y-3">
             <div className="glass-card p-4">

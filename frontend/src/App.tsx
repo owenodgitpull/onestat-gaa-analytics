@@ -49,6 +49,8 @@ const PresentationEditor = lazyWithRetry(() => import('./pages/PresentationEdito
 const FixturePreview = lazyWithRetry(() => import('./pages/FixturePreview'))
 const PlayerComparison = lazyWithRetry(() => import('./pages/PlayerComparison'))
 const MatchResult = lazyWithRetry(() => import('./pages/MatchResult'))
+const GpsAnalysis = lazyWithRetry(() => import('./pages/GpsAnalysis'))
+const GpsSeason = lazyWithRetry(() => import('./pages/GpsSeason'))
 const PlayerView = lazyWithRetry(() => import('./pages/PlayerView'))
 const MatchRecordingRouter = lazyWithRetry(() => import('./pages/MatchRecordingRouter'))
 const VideoTagging = lazyWithRetry(() => import('./pages/VideoTagging'))
@@ -171,6 +173,8 @@ function App() {
                           <Route path="/results" element={<Results />} />
                           <Route path="/results/:matchId" element={<MatchResult />} />
                           <Route path="/results/:matchId/video" element={<VideoSessionList />} />
+                          <Route path="/results/:matchId/gps" element={<GpsAnalysis />} />
+                          <Route path="/gps-season" element={<GpsSeason />} />
                           <Route path="/video/:sessionId" element={<VideoTagging />} />
                           <Route path="/players" element={<Players />} />
                           <Route path="/players/compare" element={<PlayerComparison />} />

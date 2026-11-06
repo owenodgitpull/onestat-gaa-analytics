@@ -230,6 +230,22 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
                 )}
               </div>
 
+              {storedTracks.length > 0 && (
+                <details className="rounded-xl border border-white/10 bg-white/[0.02]">
+                  <summary className="cursor-pointer px-3 py-2 text-sm text-white/75">Stored tracks ({storedTracks.length}): one per player, a new file for the same player replaces it</summary>
+                  <ul className="px-3 pb-2 text-sm divide-y divide-white/5">
+                    {storedTracks.map(t => (
+                      <li key={t.id} className="py-1.5 flex flex-wrap items-baseline justify-between gap-x-3">
+                        <span className="text-white">{t.player_name} <span className="text-white/40 text-xs">{t.device_name}</span></span>
+                        <span className={`text-xs ${t.quality && !t.quality.in_match ? 'text-amber-300' : 'text-white/50'}`}>
+                          {t.quality ? (t.quality.in_match ? `${Math.round(t.quality.coverage * 100)}% of the match` : 'not in the match window') : 'not synced yet'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+
               {/* File picker */}
               <label className={`flex flex-col items-center justify-center w-full py-6 border-2 border-dashed border-white/20 rounded-xl transition-colors ${busy ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-500/50'}`}>
                 <Upload size={28} className="text-white/40 mb-2" />
@@ -239,6 +255,12 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
                   onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
               </label>
 
+              {rows.length > 0 && (
+                <div className="flex items-baseline justify-between gap-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-white/50">Files in this upload</h4>
+                  {!busy && <button onClick={() => setRows([])} className="text-xs text-white/50 hover:text-white">Clear list</button>}
+                </div>
+              )}
               {rows.length > 0 && (
                 <ul className="divide-y divide-white/5 rounded-xl border border-white/10 overflow-hidden">
                   {rows.map(r => (
@@ -315,7 +337,7 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
                     </div>
                   )}
                   {sync.status !== 'failed' && (
-                    <p className="text-xs text-white/45">A typical gap of 6 to 12 m in every period means the sync worked.</p>
+                    <p className="text-xs text-white/45">A typical gap of 6 to 12 m in every period means the sync worked. <a className="underline text-white/70 hover:text-white" href={`/results/${matchId}/gps?tab=sync`}>Check it by eye and open the replay</a>.</p>
                   )}
                 </div>
               )}
