@@ -71,7 +71,15 @@ class MatchInputs:
     @property
     def cache_key(self) -> str:
         offs = ",".join(f"{p['half']}:{p['offset_ms']}:{p.get('rate', 1)}" for p in (self.sync.get("periods") or []))
-        return f"{self.match_id}|{self.sync.get('computed_at')}|{self.sync.get('confirmed_at')}|{offs}|{len(self.carries)}|{len(self.events)}"
+        # any edit to a carry, an event, the lineup or the man-marking changes the key, so a fixed tag shows up at once
+        import hashlib
+        h = hashlib.sha1()
+        for c in self.carries:
+            h.update(repr((c.id, c.team, c.player_id, c.half, c.start_x, c.start_y, c.end_x, c.end_y, c.video_ms, c.end_video_ms, c.ended_by)).encode())
+        for e in self.events:
+            h.update(repr((e.id, e.team, e.event_type, e.sub_type, e.half, e.video_ms, e.pitch_x, e.pitch_y, e.player_id, e.sub_in_player_id, e.opposition_player_id)).encode())
+        h.update(repr((sorted(self.starters), sorted(self.bench), self.man_marking, self.attacking_right_first_half)).encode())
+        return f"{self.match_id}|{self.sync.get('computed_at')}|{self.sync.get('confirmed_at')}|{offs}|{h.hexdigest()}"
 
 
 class NotReady(Exception):

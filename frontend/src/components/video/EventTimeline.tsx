@@ -296,7 +296,7 @@ export default function EventTimeline({
                 outline: isTwo ? '2px solid #06b6d4' : 'none',
                 minWidth: 12,
               }}
-              onClick={(ev) => { ev.stopPropagation(); if (!movedRef.current) onSeek(seekTimeForEvent(e.video_timestamp_ms!)) }}
+              onClick={(ev) => { ev.stopPropagation(); if (!movedRef.current) onSeek(seekTimeForEvent(e.video_timestamp_ms!, e.event_type)) }}
               title={`${clock} - ${label}${e.player_name || e.opponent_player_name ? ` - ${e.player_name || e.opponent_player_name}` : ''}${isTwo ? ' (2pt)' : ''}`}
             >
               {pillMode ? `${label}${isTwo ? ' 2pt' : ''}` : ''}

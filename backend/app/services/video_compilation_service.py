@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 # Same clip window Presentations uses (DEFAULT_CLIP_LEAD_MS/TAIL_MS in
 # presentationsApi.ts) — a wide needs the buildup, not just the miss.
 CLIP_LEAD_MS = 6000
+# Per event type, from the GPS-measured tap lag (docs/gps-build-handover.md): only types that need more than 6 s.
+CLIP_LEAD_BY_TYPE_MS = {"FOUL_COMMITTED": 10000}
 CLIP_TAIL_MS = 4000
 
 # Cost/scope guard. Empirically measured against real production video
@@ -111,8 +113,10 @@ async def run_compilation(compilation_id: UUID) -> None:
                         logger.warning(f"Compilation {compilation_id}: no download URL for clip {i}, skipping")
                         continue
 
-                    start_sec = max(0, event.video_timestamp_ms - CLIP_LEAD_MS) / 1000
-                    duration_sec = (CLIP_LEAD_MS + CLIP_TAIL_MS) / 1000
+                    # taps land after the action; fouls are tapped 5-8 s late (GPS-measured), so they get a longer lead
+                    lead_ms = max(CLIP_LEAD_MS, CLIP_LEAD_BY_TYPE_MS.get(event.event_type or "", 0))
+                    start_sec = max(0, event.video_timestamp_ms - lead_ms) / 1000
+                    duration_sec = (lead_ms + CLIP_TAIL_MS) / 1000
                     clip_path = str(Path(tmpdir) / f"clip_{i:03d}.mp4")
 
                     ok = await asyncio.to_thread(
