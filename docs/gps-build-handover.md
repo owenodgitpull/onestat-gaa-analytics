@@ -153,3 +153,15 @@ hand pass, 5 s for a score, 8 s for a foul. Other matches agree within a second.
   200 in 1.6 s (26 players x 301 samples, 7.7% nulls = bench/bad fixes, every non-null x inside 0-100);
   the second-half window and `GET .../anchors` 200; a 7000 s window at 10 Hz is refused with 422 as designed.
   The direct `onestat-api.fly.dev` host returns 401 from the browser (cookies are same-origin): always call through the proxy.
+
+## Stage 2 built (2026-11-06)
+
+Everything below is deployed and read-only except the sync nudge (admins, GPS sync only).
+
+- **Upload:** Match Result -> "GPS tracks" (`components/gps/GpsTracksModal.tsx`, worker `workers/gpsParse.worker.ts`). Rounds lat/lon to 1e-7 and speed to 0.01 before sending (2.8 MB per player instead of 4.3 MB).
+- **Backend analysis:** `services/gps_analysis/` (loader = plain SQL, frame = framed grid in OUR attack frame in metres, metrics = shape, transitions, kickouts, intensity, heat maps, tag health, support, marking, moments; service = in-process cache keyed on the sync + a hash of the tagged carries/events/lineup). Routes `routes/match_gps_analysis.py`: `GET /matches/{id}/gps/analysis[/context|/shape-series|/heatmap]`, `GET /gps-analysis/season`. Tests `tests/test_gps_analysis.py` (mirror test included).
+- **Screens:** `/results/:matchId/gps?tab=...` (`pages/GpsAnalysis.tsx`: replay, overview, shape, transitions, kickouts, running, heat maps, passing support, shots against, key moments, tag check, sync check), `/gps-season` (`pages/GpsSeason.tsx`: cross-match rows + running-load alerts), Match Result GPS card (`components/gps/GpsMatchCard.tsx`).
+- **AI:** `services/ai/gps_tools.py` -> `get_gps_match_analysis`, `get_gps_season_trends` (ChatAgent gets all tools; added to SEASON_TOOLS).
+- **Seek lead:** `utils/videoSeek.ts` per event type; fouls get a 10 s lead in clip compilations.
+- **Definitions to know:** turnover = carry team change with a tagged turnover event (60 s) or within 25 s with no dead ball; "back behind the ball" = seconds until min(11, on-pitch tracked - 3) players are goal-side, reported only when caught short; possession = latest tagged carry's team (20 s timeout, score/wide ends it).
+- **Not done:** summary rows (MatchGPSData) are not derived from the time series; the support "further option" cannot know if the option was marked (no opposition GPS).

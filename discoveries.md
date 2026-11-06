@@ -40,3 +40,17 @@ Entry format:
 - **Why it matters:** Anything keyed on jersey number (video tagging pickers, lineup views) can show the wrong man.
 - **Suggested fix:** Owen to check the panel numbers against the match programmes.
 - **Found while:** GPS time-series ingestion (matching unit names to players).
+
+## 2026-11-06 - Match Result header says "No GPS" on matches that have the raw GPS time series
+- **Where:** `frontend/src/pages/MatchResult.tsx`, the GPS status pill beside Lineup (reads `gpsData`, the per-player summary rows)
+- **What:** The pill only knows about the summary upload (MatchGPSData). On the five Donegal matches it says "No GPS" while the new GPS card right below shows the time-series numbers.
+- **Why it matters:** Contradictory on the same screen.
+- **Suggested fix:** Show "GPS tracks" when `api.matchGpsTimeseries.getSummary` has a synced sync, or derive the summary rows from the time series (proposal idea 5).
+- **Found while:** GPS Stage 2, checking the Match Result GPS card.
+
+## 2026-11-06 - Opposition-kickout event labels read badly
+- **Where:** `frontend/src/utils/eventLabels.ts` (`humanEventType`) for `OPP_KICKOUT_OPPOSITION_WON`, `OWN_KICKOUT_OPPOSITION_WON_BREAK` etc.
+- **What:** They render as "Opp Kickout Opposition Won" (seen in the GPS replay overlay and jump list).
+- **Why it matters:** Hard to read at a glance; the GPS kickout tab uses "their kickout, lost clean" style instead.
+- **Suggested fix:** Add overrides: "Their kickout: they kept it (clean)" / "Our kickout: lost on the break".
+- **Found while:** GPS Stage 2 replay.
