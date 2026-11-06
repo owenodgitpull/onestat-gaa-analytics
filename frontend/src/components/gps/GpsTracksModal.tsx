@@ -162,8 +162,10 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
 
   const resendWithPlayer = async (row: FileRow) => {
     if (!row.track || !row.pickedPlayerId) return
+    setBusy('upload')
     setStatus({ tone: 'info', text: `Storing ${row.track.device_name}…` })
     const ok = (await send(row, row.track, row.pickedPlayerId)) === 'stored'
+    setBusy(null)
     setStatus(ok ? { tone: 'ok', text: `${row.track.device_name} stored.` } : { tone: 'error', text: `${row.track.device_name} was not stored: see the row.` })
     queryClient.invalidateQueries({ queryKey: ['gps-timeseries', matchId] })
   }
@@ -222,7 +224,7 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
                 ) : (
                   <span className="text-white/80">
                     <b className="text-white">{storedTracks.length}</b> tracks stored
-                    {storedTracks.length - outOfWindow.length - notChecked.length > 0 && sync && <> · <b className="text-white">{storedTracks.length - outOfWindow.length - notChecked.length}</b> in the match</>}
+                    {storedTracks.length - outOfWindow.length - notChecked.length > 0 && sync && sync.status !== 'pending' && <> · <b className="text-white">{storedTracks.length - outOfWindow.length - notChecked.length}</b> in the match</>}
                     {' · '}sync <SyncBadge status={sync?.status ?? 'pending'} />
                   </span>
                 )}
