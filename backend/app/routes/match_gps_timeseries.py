@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,8 @@ from app.models.match import Match
 from app.schemas.match_gps_timeseries import (
     TrackUpload, TrackUploadResult, TimeseriesSummary, SyncOverride, WindowResponse,
 )
-from app.services.gps_timeseries import service
+from app.services.gps_timeseries import service, motion as motion_mod, summary as summary_mod
+from app.schemas.match_gps_timeseries import RawFileUrlRequest
 from app.services.gps_timeseries.names import match_device_name
 from app.services.gps_timeseries.parser import track_from_arrays
 
@@ -62,22 +63,71 @@ async def upload_track(match_id: UUID, body: TrackUpload, user: AuthenticatedUse
         if player is None:
             raise HTTPException(status_code=422, detail=f"Could not match '{body.device_name}' to a player ({how}). Pick the player and resend with player_id.")
     stats = service.track_stats(track, body.n_rows, body.n_fixes, body.n_bad)
-    row = await service.upsert_track(db, match, player.id, track, body.device_name, body.source_filename, stats)
+    aux = None
+    if body.motion_pl is not None and body.motion_gmax is not None and body.motion_imp is not None:
+        try:
+            aux = motion_mod.encode(motion_mod.from_arrays(body.motion_pl, body.motion_gmax, body.motion_imp, track.n))
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    if body.raw_file_key and not body.raw_file_key.startswith(f"{match.club_id}/"):
+        raise HTTPException(status_code=422, detail="raw file key is not in this club's storage")
+    row = await service.upsert_track(db, match, player.id, track, body.device_name, body.source_filename, stats,
+                                     aux=aux, raw_file_key=body.raw_file_key, raw_file_bytes=body.raw_file_bytes)
     await db.commit()
     return TrackUploadResult(track_id=row.id, player_id=player.id, player_name=player.name, match_type=how, n_samples=track.n,
                              start_utc=_utc(track.t0_ms), end_utc=_utc(track.end_ms), duration_min=round(track.n / track.hz / 60, 1))
 
 
+@router.post("/{match_id}/gps/timeseries/raw-file-url")
+async def raw_file_url(match_id: UUID, body: RawFileUrlRequest, user: AuthenticatedUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Presigned PUT for the original raw file (gzipped by the browser), so nothing in it is ever lost."""
+    match = await _verify_match_club(db, match_id, user)
+    from app.services.storage_service import storage
+    name = body.filename if body.filename.endswith(".gz") else body.filename + ".gz"
+    out = storage.generate_presigned_upload_url(f"gps-raw/{match.id}", name, content_type="application/gzip", club_id=str(match.club_id))
+    if not out:
+        raise HTTPException(status_code=503, detail="File storage is not available")
+    return out
+
+
+async def _derive_summary(db: AsyncSession, match: Match, background_tasks: Optional[BackgroundTasks]) -> dict:
+    """Per-player summary rows (match_gps_data) from the raw tracks. Official summary uploads win field by field."""
+    try:
+        out = await summary_mod.derive(db, match)
+        await db.commit()
+    except Exception as e:  # never fail the sync because of the summary
+        await db.rollback()
+        logger.exception("GPS summary from raw failed for %s", match.id)
+        return {"written": 0, "error": str(e)[:300]}
+    if out["written"] and background_tasks is not None:
+        from app.routes.match_gps import _run_reanalysis_background
+        background_tasks.add_task(_run_reanalysis_background, match.id)
+    return {"written": out["written"], "official_kept": out["official_kept"]}
+
+
 @router.post("/{match_id}/gps/timeseries/sync")
-async def run_sync(match_id: UUID, user: AuthenticatedUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
-    """Find the pitch calibration and the per-period video offsets from the tagged carries. Takes 10-60 s."""
+async def run_sync(match_id: UUID, background_tasks: BackgroundTasks, user: AuthenticatedUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Find the pitch calibration and the per-period video offsets from the tagged carries (10-60 s), then fill the
+    per-player summary rows from the tracks."""
     match = await _verify_match_club(db, match_id, user)
     row = await service.run_sync(db, match)
     await db.commit()
     out = await service.summary(db, match)
     if row.status == "failed":
         raise HTTPException(status_code=422, detail=row.error or "sync failed")
-    return out["sync"]
+    res = dict(out["sync"])
+    res["player_summary"] = await _derive_summary(db, match, background_tasks)
+    return res
+
+
+@router.post("/{match_id}/gps/timeseries/summary")
+async def derive_summary(match_id: UUID, background_tasks: BackgroundTasks, user: AuthenticatedUser = Depends(require_admin), db: AsyncSession = Depends(get_db)):
+    """Recompute the per-player summary rows from the tracks (needs the sync)."""
+    match = await _verify_match_club(db, match_id, user)
+    res = await _derive_summary(db, match, background_tasks)
+    if res.get("error"):
+        raise HTTPException(status_code=409, detail=res["error"])
+    return res
 
 
 @router.patch("/{match_id}/gps/timeseries/sync")

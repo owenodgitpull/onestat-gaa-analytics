@@ -7,7 +7,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, String, Integer, SmallInteger, BigInteger, DateTime, ForeignKey, Text, JSON, LargeBinary, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
 
 from app.database import Base
 
@@ -27,6 +27,9 @@ class MatchGPSTrack(Base):
     n_samples = Column(Integer, nullable=False)
     blob = Column(LargeBinary, nullable=False)        # codec.encode()
     stats = Column(JSON, nullable=True)               # parse + in-match figures (filled by the sync)
+    aux = deferred(Column(LargeBinary, nullable=True))  # loaded only when asked for          # motion.encode(): per-sample motion-sensor channels (player load, peak g, impulse)
+    raw_file_key = Column(String(500), nullable=True) # the original file as uploaded (gzip) in R2: nothing is ever dropped
+    raw_file_bytes = Column(BigInteger, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

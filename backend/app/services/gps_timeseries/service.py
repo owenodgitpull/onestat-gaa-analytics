@@ -43,17 +43,29 @@ async def club_players(db: AsyncSession, club_id) -> List[Player]:
 
 
 async def upsert_track(db: AsyncSession, match: Match, player_id: UUID, track: Track, device_name: str,
-                       source_filename: Optional[str], stats: Optional[dict] = None) -> MatchGPSTrack:
-    """Insert or replace the player's track for this match. Caller commits."""
+                       source_filename: Optional[str], stats: Optional[dict] = None, aux: Optional[bytes] = None,
+                       raw_file_key: Optional[str] = None, raw_file_bytes: Optional[int] = None) -> MatchGPSTrack:
+    """Insert or replace the player's track for this match. Caller commits. Motion channels (aux) and the archived raw
+    file key are kept when a resend does not include them. Resending identical positions (e.g. to add the motion
+    data) is not a change: the sync and its in-match figures stay."""
     existing = (await db.execute(select(MatchGPSTrack).where(MatchGPSTrack.match_id == match.id, MatchGPSTrack.player_id == player_id))).scalar_one_or_none()
     blob = codec.encode(track)
+    unchanged = existing is not None and existing.blob == blob and existing.t0_ms == track.t0_ms
     row = existing or MatchGPSTrack(match_id=match.id, club_id=match.club_id, player_id=player_id)
     row.device_name = device_name[:120] if device_name else None
     row.source_filename = (source_filename or "")[:300] or None
     row.hz = track.hz; row.t0_ms = track.t0_ms; row.n_samples = track.n; row.blob = blob
-    row.stats = stats or track_stats(track)
+    new_stats = stats or track_stats(track)
+    row.stats = {**(existing.stats or {}), **new_stats} if unchanged else new_stats
+    if aux is not None:
+        row.aux = aux
+    if raw_file_key:
+        row.raw_file_key = raw_file_key[:500]; row.raw_file_bytes = raw_file_bytes
     if existing is None:
         db.add(row)
+    if unchanged:
+        await db.flush()
+        return row
     # any stored sync is stale once a track changes
     s = await db.get(MatchGPSSync, match.id)
     if s is not None and s.status != "confirmed":

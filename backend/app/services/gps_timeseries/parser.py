@@ -110,9 +110,10 @@ class ParsedFile:
     n_fixes: int
     n_bad: int
     columns: list
+    motion: Optional["Motion"] = None
 
 
-def parse_timeseries(fh: IO[str], match_date: date, hz: int = HZ) -> ParsedFile:
+def parse_timeseries(fh: IO[str], match_date: date, hz: int = HZ, with_motion: bool = False) -> ParsedFile:
     """Stream a raw file into a dense track. Only rows whose Time differs from the previous row are parsed, which
     collapses the 100 Hz accelerometer rows to the 10 Hz GPS fixes without reading every field."""
     header = fh.readline()
@@ -121,14 +122,26 @@ def parse_timeseries(fh: IO[str], match_date: date, hz: int = HZ) -> ParsedFile:
     if ti is None or lai is None or loi is None:
         raise ValueError("not a GPS time series: needs Time, Lat and Lon columns")
     si, hi, hdi, sati, ni = _find(cols, SPEED_COLS), _find(cols, HR_COLS), _find(cols, HDOP_COLS), _find(cols, SAT_COLS), _find(cols, NAME_COLS)
+    from app.services.gps_timeseries import motion as motion_mod
+    axi, ayi, azi, ipi = (_find(cols, motion_mod.ACC_X_COLS), _find(cols, motion_mod.ACC_Y_COLS),
+                          _find(cols, motion_mod.ACC_Z_COLS), _find(cols, motion_mod.IMPULSE_COLS))
+    binner = motion_mod.Binner() if with_motion and None not in (axi, ayi, azi) else None
     t = []; lat = []; lon = []; spd = []; hr = []; bad = []
     last = None; name = None; n_rows = 0
+    last_motion_t = None; last_motion_s = 0.0
     reader = csv.reader(fh)
     for row in reader:
         n_rows += 1
         if len(row) <= max(ti, lai, loi):
             continue
         tt = row[ti]
+        if binner is not None:
+            try:
+                if tt != last_motion_t:
+                    last_motion_t = tt; last_motion_s = _parse_hms(tt)
+                binner.add(last_motion_s, float(row[axi]), float(row[ayi]), float(row[azi]), float(row[ipi]) if ipi is not None and row[ipi] else 0.0)
+            except (ValueError, IndexError):
+                pass
         if tt == last:
             continue
         last = tt
@@ -174,7 +187,8 @@ def parse_timeseries(fh: IO[str], match_date: date, hz: int = HZ) -> ParsedFile:
         raise ValueError("every fix is empty (no satellite lock)")
     date_epoch_s = int(datetime(match_date.year, match_date.month, match_date.day, tzinfo=timezone.utc).timestamp())
     track = densify(t[usable], lat[usable], lon[usable], spd[usable], hr[usable], bad[usable], hz, date_epoch_s)
-    return ParsedFile(device_name=name or "", track=track, n_rows=n_rows, n_fixes=int(len(t)), n_bad=n_bad, columns=cols)
+    mot = binner.finish(track.t0_ms / 1000.0 - date_epoch_s, hz, track.n) if binner is not None else None
+    return ParsedFile(device_name=name or "", track=track, n_rows=n_rows, n_fixes=int(len(t)), n_bad=n_bad, columns=cols, motion=mot)
 
 
 def parse_timeseries_bytes(data: bytes, match_date: date, hz: int = HZ) -> ParsedFile:

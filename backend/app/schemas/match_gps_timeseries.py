@@ -22,6 +22,17 @@ class TrackUpload(BaseModel):
     n_rows: Optional[int] = None              # raw rows in the file (for the stats)
     n_fixes: Optional[int] = None
     n_bad: Optional[int] = None
+    # motion-sensor channels on the same grid (see services/gps_timeseries/motion.py); absent for files without them
+    motion_pl: Optional[List[float]] = None
+    motion_gmax: Optional[List[float]] = None
+    motion_imp: Optional[List[float]] = None
+    # the original file, gzipped, already PUT to storage via /raw-file-url
+    raw_file_key: Optional[str] = Field(None, max_length=500)
+    raw_file_bytes: Optional[int] = None
+
+
+class RawFileUrlRequest(BaseModel):
+    filename: str = Field(..., max_length=300)
 
 
 class TrackUploadResult(BaseModel):
