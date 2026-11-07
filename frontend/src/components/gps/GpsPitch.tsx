@@ -37,10 +37,13 @@ export default function GpsPitch({ lengthM, widthM, children, className = '', la
 }
 
 /** "Our goal" / "attacking ->" captions under a pitch, so the frame is never ambiguous. */
-export function PitchFrameCaption({ raw = false, team = 'We' }: { raw?: boolean; team?: string }) {
+export function PitchFrameCaption({ raw = false, team = 'We', ownRight }: { raw?: boolean; team?: string; ownRight?: boolean }) {
   return (
     <div className="flex justify-between text-[11px] text-white/45 px-1 mt-1">
-      {raw ? <span>Camera view: as filmed (ends swap at half-time)</span> : <><span>Our goal</span><span>{team} attacking →</span></>}
+      {!raw ? <><span>Our goal</span><span>{team} attacking →</span></>
+        : ownRight == null ? <span>As filmed (ends swap at half-time)</span>
+        : ownRight ? <><span>Our goal · as filmed</span><span>{team} attacking →</span></>
+        : <><span>← {team} attacking</span><span>as filmed · Our goal</span></>}
     </div>
   )
 }

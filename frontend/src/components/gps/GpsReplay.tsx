@@ -3,7 +3,8 @@
  *
  * Positions come from GET .../gps/timeseries/window in 2-minute windows at 5 Hz around the playhead (the next one is
  * prefetched). They are RAW screen 0-100, so every point is framed with pointInSideFrame(..., 'own', ...) using the
- * period at that video time: our team always attacks right on screen. "Camera view" switches the framing off.
+ * period at that video time when "Always attacking right" is on. By default the pitch is shown as filmed (camera view),
+ * so the dots run the same way as the video and swap ends at half-time. The choice is remembered per browser.
  * The ball carrier comes from the tagged carries (ours: ring on his dot; theirs: an orange marker on the tagged line,
  * there is no opposition GPS). Tagged events pop up where they were tagged, for 3 s.
  */
@@ -12,7 +13,7 @@ import { Loader2, AlertCircle, Tag, Users, Camera } from 'lucide-react'
 import VideoPlayer, { type VideoPlayerHandle } from '../video/VideoPlayer'
 import { useVideoSession } from '../../hooks/useVideoSessions'
 import { api, type GpsWindow } from '../../services/api'
-import { pointInSideFrame } from '../../utils/attackDirection'
+import { pointInSideFrame, ownAttacksRight } from '../../utils/attackDirection'
 import { humanEventType } from '../../utils/eventLabels'
 import { seekTimeForEvent } from '../../utils/videoSeek'
 import { type GpsReplayContext, periodClock, COLOR_OURS, COLOR_THEIRS } from '../../services/gpsAnalysisApi'
@@ -54,7 +55,8 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const player = useRef<VideoPlayerHandle>(null)
   const [now, setNow] = useState<number>(initialMs ?? ctx.periods[0]?.video_start_ms ?? 0)
   const [windows, setWindows] = useState<Record<number, WinState>>({})
-  const [raw, setRaw] = useState(false)
+  const [raw, setRawState] = useState(() => { try { return localStorage.getItem('gpsReplayFrame') !== 'attack' } catch { return true } })
+  const setRaw = (f: (v: boolean) => boolean) => setRawState(v => { const n = f(v); try { localStorage.setItem('gpsReplayFrame', n ? 'camera' : 'attack') } catch { /* private mode */ } return n })
   const [showNames, setShowNames] = useState(false)
   const L = ctx.pitch_length_m, W = ctx.pitch_width_m
 
@@ -205,9 +207,9 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             <button onClick={() => setShowNames(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showNames ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showNames}>
               <Users size={13} /> Names
             </button>
-            <button onClick={() => setRaw(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${raw ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={raw}
-              title="Show the pitch as the camera filmed it instead of always attacking right">
-              <Camera size={13} /> Camera view
+            <button onClick={() => setRaw(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${!raw ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={!raw}
+              title={raw ? 'Showing the pitch as filmed. Switch so we always attack left to right' : 'Showing us always attacking left to right. Switch back to the pitch as filmed'}>
+              <Camera size={13} /> Always attacking right
             </button>
           </div>
         </div>
@@ -252,7 +254,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             )}
           </GpsPitch>
         </div>
-        <PitchFrameCaption raw={raw} team={team} />
+        <PitchFrameCaption raw={raw} team={team} ownRight={ctx.attacking_right_first_half == null ? undefined : ownAttacksRight(arfh, half)} />
         <div role="status" className={`mt-2 flex items-start gap-2 text-xs ${status.error ? 'text-red-300' : 'text-white/60'}`}>
           {status.busy ? <Loader2 size={13} className="animate-spin mt-0.5 shrink-0" /> : status.error ? <AlertCircle size={13} className="mt-0.5 shrink-0" /> : null}
           <span>{status.text}</span>
