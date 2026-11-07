@@ -25,12 +25,16 @@ def _trim_transitions(tr: dict, limit: int) -> dict:
         x = dict(x)
         for k in ("sprinted", "did_not_sprint", "forward_runners"):
             if k in x:
+                x[f"n_{k}"] = len(x[k])
                 x[k] = [r["name"] for r in x[k]][:14]
+        if "target" in x:
+            x["goal_side_needed"] = x.pop("target")     # how many had to get goal-side to count as recovered - not a count of runners
         return x
     lost = sorted(tr["lost"], key=lambda x: (x["recovery_s"] is None, x["recovery_s"] or 0), reverse=True)
     return {"summary": tr["summary"], "lost_slowest_first": [t(x) for x in lost[:limit]],
             "won_most_runners_first": [t(x) for x in sorted(tr["won"], key=lambda x: -x["n_forward_runners"])[:limit]],
-            "how_to_read": "recovery_s = seconds until `target` of our tracked outfielders were goal-side of the ball (null = not within 15 s); "
+            "how_to_read": "recovery_s = seconds until `goal_side_needed` of our tracked outfielders were goal-side of the ball (null = not within 15 s); "
+                           "players_on = our tracked outfielders on the pitch; n_sprinted + n_did_not_sprint = players_on (sprinted = went above 5.5 m/s in the 10 s after); "
                            "retreat_10s_m = how far the team's centre moved back towards our goal in 10 s."}
 
 
