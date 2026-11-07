@@ -449,7 +449,14 @@ export default function MatchResult() {
       if (motmMatch) {
         // Name only: the header line can carry trailing words ("... He scored 1-3"), so keep the leading capitalised names
         // a full stop after an initial ("C. Basquel") is part of the name, not the end of it
-        const raw = motmMatch[1].split(/\s+[—–-]\s+|(?<![A-ZÁÉÍÓÚ])\.|[,(]/)[0].trim()
+        let raw = motmMatch[1].split(/\s+[—–-]\s+|[,(]/)[0]
+        // cut at the first full stop that is not an initial ("C. Basquel" keeps its initial)
+        for (let k = 0; k < raw.length; k++) {
+          if (raw[k] !== '.') continue
+          const initial = k >= 1 && /[A-ZÁÉÍÓÚ]/.test(raw[k - 1]) && (k === 1 || raw[k - 2] === ' ')
+          if (!initial) { raw = raw.slice(0, k); break }
+        }
+        raw = raw.trim()
         const words = raw.split(/\s+/)
         const nameWords: string[] = []
         for (const w of words) { if (/^[A-ZÁÉÍÓÚ]/.test(w) && nameWords.length < 4) nameWords.push(w); else break }
@@ -2460,11 +2467,16 @@ function TeamIntensityGauge({ gpsData }: { gpsData: GPSData[] }) {
   )
 }
 
-function gpsDisplayName(playerName: string | null | undefined, allNames: string[]): string {
-  const parts = (playerName || '').split(' ')
+/** "Peadar Mogan (c)" -> "Peadar M", "Conor O'Donnell" -> "Conor O'D", "Caolan McColgan" -> "Caolan McC": first name + surname initial */
+function gpsDisplayName(playerName: string | null | undefined, _allNames?: string[]): string {
+  const parts = (playerName || '').replace(/\([^)]*\)/g, ' ').trim().split(/\s+/).filter(Boolean)
   const first = parts[0] || 'Unknown'
-  const hasDup = allNames.filter(n => n.split(' ')[0] === first).length > 1
-  return hasDup && parts.length > 1 ? `${first} ${parts[1][0]}` : first
+  if (parts.length < 2) return first
+  const last = parts[parts.length - 1]
+  const m = /^(O['’]|Mac|Mc|Ó\s?)/.exec(last)
+  const initial = m && last.length > m[0].length ? last.slice(0, m[0].length + 1) : last[0]
+  const particle = parts.length > 2 && /^(Ó|O|Ní|Nic|Mac|Mhic|Uí|De|Di)$/i.test(parts[parts.length - 2]) ? `${parts[parts.length - 2]} ` : ''
+  return `${first} ${particle}${initial}`
 }
 
 // Which players actually featured (started, or came on as a sub) — vs. players
@@ -2516,7 +2528,7 @@ function PlayerDistanceChart({ gpsData, lineupData }: { gpsData: GPSData[]; line
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout="vertical" margin={{ left: 60, right: 20 }}>
             <XAxis type="number" domain={[0, Math.ceil(maxDistance)]} stroke="#9ca3af" fontSize={10} unit="km" />
-            <YAxis type="category" dataKey="name" stroke="#9ca3af" fontSize={10} width={55} />
+            <YAxis type="category" dataKey="name" stroke="#9ca3af" fontSize={10} width={72} />
             <Tooltip
               trigger="click"
               contentStyle={{
@@ -2648,7 +2660,7 @@ function PlayerWorkloadChart({ gpsData, lineupData }: { gpsData: GPSData[]; line
           return (
             <div key={idx}>
               <div className="flex items-center gap-2">
-                <div className="w-16 text-xs text-white/60 truncate">{player.name}</div>
+                <div className="w-20 shrink-0 text-xs text-white/60 truncate" title={player.name}>{player.name}</div>
                 <div className="flex-1 h-5 bg-white/10 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full flex items-center justify-end pr-2 text-xs font-bold text-white"
