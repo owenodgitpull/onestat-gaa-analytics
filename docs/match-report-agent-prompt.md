@@ -383,7 +383,7 @@ INSTRUCTIONS:
 1. You MUST use tools to gather match data BEFORE providing any analysis.
 2. ALWAYS call get_match_summary and get_match_events first with the match ID provided. Then call get_ball_carrier_data with the same match ID to retrieve ball carrying, passing network, and possession chain data — this is REQUIRED, not optional.
 3. Do NOT ask the user for match IDs or clarification — you already have the match ID.
-4. Structure your analysis as: Summary (opening with "What mattered most") → How the Game Was Won / Lost (see 7j) → Key Stats → Top Performers (rated 1-10) → Tactical Analysis → Phase Analysis → Off the Ball → Areas for Improvement → Training Recommendations. Every existing section stays; the new one is added near the top.
+4. Structure: follow the numbered section list in the request exactly - it is the one list of sections and their order. Phase Analysis and How the Game Was Won / Lost are always in it, and so is Off the Ball.
 5. Reference knowledge base context: compare to tactical documents, GPS benchmarks, and rules when available.
 6. Be specific — cite player names, minutes, and events from the tool results.
 7. Be constructive but honest about weaknesses.
@@ -512,7 +512,9 @@ INSTRUCTIONS:
     - RATINGS (1-10) follow one rubric: 6 = did his job for his position. Scores, assists, turnovers won, kickouts won and goal-saving
       blocks raise it; turnovers lost, stray passes and fouls lower it, and a yellow, black or red card costs at least one point. 8 or
       more only for match-deciding impact. Two players with clearly different error counts do not get the same rating without a reason.
-    - How the Game Was Won/Lost is short paragraphs, never bullets.
+    - How the Game Was Won/Lost is short paragraphs, never bullets - "What to fix" too: two or three short paragraphs, no list.
+    - Two-pointers: a score is either from play or from a free, never both. List each scorer once under the right one, and the
+      total is the count of names you listed.
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>
@@ -526,10 +528,13 @@ INSTRUCTIONS:
 First, use get_match_summary and get_match_events tools with match_id '00a71188-edd0-4abe-8cba-68f3ca4abf7e' to retrieve all match data. This match has GPS tracking of our players: also call get_gps_match_analysis with match_id '00a71188-edd0-4abe-8cba-68f3ca4abf7e', sections ['summary', 'situations', 'positions', 'pressure', 'transitions', 'kickouts', 'support'] and limit 10, and write the Off the Ball section from it.
 
 Then answer this: Generate a detailed post-match report including, IN THIS EXACT ORDER — always start with Match Summary, never lead with any other section:
-            1. Match Summary (2-3 sentences)
+            1. Match Summary (2-3 sentences, opening with "What mattered most": three points a manager takes in within 20 seconds)
+            1b. How the Game Was Won / Lost (see 7j)
             2. Top Performers (with ratings 1-10; after our players, name the opposition's one or two standout performers using get_match_player_impact, with the numbers that earned it) — include each key player's carries, passes made/received, and primary carry zones from ball carrier data. For players who lost possession, state how many turnovers led to opposition scores and in which zone. Goals/points from get_match_events may include an "assist" field — when present, credit the assisting player by name (e.g. "Bonner's goal, set up by Greene's fisted knockdown"). GPS IS REQUIRED HERE, NOT OPTIONAL: call get_match_gps and, for every single player written up in this section, work their GPS figures (distance covered, and sprint count or max speed where notable) directly into their own write-up — never leave it for the separate GPS section to cover instead. A player profiled here with no GPS line is a mistake, not a stylistic choice, unless get_match_gps genuinely has no record for them (e.g. they were an unused substitute, which shouldn't be in Top Performers anyway).
             3. Tactical Analysis — include ball carry chain effectiveness, territory progression, and possession tempo from ball carrier data. Mention the most productive passing connection (the pair who linked up most/best) in a sentence or two of prose — e.g. "Sweeney and Bonner linked up well down the right, combining for three scoring chains." Do NOT render passing connections as a table.
             KNOWLEDGE-BASE GROUNDING FOR THIS SECTION (required): run search_knowledge_base two to four times on the match's main tactical themes as the data shows them (e.g. where the forwards picked the ball up and whether they dropped deep to link play, kickout strategy and where kickouts were won, how possession was lost and how it was won back, shot selection). Then write each tactical point as: what the data shows, followed by the principle from the retrieved passage, cited inline as (Source name, p.N). Use only passages that genuinely fit; if a search returns nothing relevant, say nothing about it rather than forcing a citation. Never let a passage change a number.
+            3b. Phase Analysis (see 7g: the scorecard table pasted unchanged, then at most four short paragraphs)
+            3c. Off the Ball (see OFF THE BALL)
             4. GPS & Physical Performance Analysis
             5. Ball Carrying & Possession Patterns — detail which players drove play forward, who recycled possession, and whether scoring chains were direct or buildup.
             6. Areas for Improvement
