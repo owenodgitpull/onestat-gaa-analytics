@@ -95,10 +95,11 @@ def _won_lost_paragraphs(text: str) -> str:
     for ln in lines:
         if ln.startswith("## "):
             inside = "How the Game Was" in ln
-        if inside and (ln.startswith("- ") or ln.startswith("* ")):
+        num = re.match(r"^\d+[.)] ", ln) if inside else None
+        if inside and (ln.startswith("- ") or ln.startswith("* ") or num):
             if out and out[-1].strip():
                 out.append("")
-            out.append(ln[2:])
+            out.append(ln[num.end():] if num else ln[2:])
             continue
         out.append(ln)
     return "\n".join(out)
