@@ -18,6 +18,7 @@ import { humanEventType } from '../../utils/eventLabels'
 import { seekTimeForEvent } from '../../utils/videoSeek'
 import { type GpsReplayContext, periodClock, COLOR_OURS, COLOR_THEIRS } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption } from './GpsPitch'
+import { insideArc, pullOutOfArc } from '../../utils/gpsKickoutArc'
 
 const WINDOW_MS = 120000
 const HZ = 5
@@ -155,10 +156,34 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     return now < end ? { ...c, end } : null
   }, [ownCarries, now])
 
+  // a kickout being taken now: nobody may be inside the arc at the kicking end (display only, see gpsKickoutArc)
+  const kickout = useMemo(() => {
+    const evs = ctx.events
+    for (let i = 0; i < evs.length; i++) {
+      const e = evs[i]
+      if (!e.event_type.includes('KICKOUT')) continue
+      const t = e.video_ms
+      if (now < t - 15000 || now > t + 1500) continue
+      // players line up after the play that stopped the ball: start no earlier than just after it
+      let prev = t - 12000
+      for (let k = i - 1; k >= 0; k--) {
+        if (evs[k].video_ms < t - 60000) break
+        if (!evs[k].event_type.includes('KICKOUT') && evs[k].event_type !== 'PASS_HAND' && evs[k].video_ms < t) { prev = Math.max(prev, evs[k].video_ms + 1500); break }
+      }
+      if (now < prev) continue
+      const weight = now < prev + 800 ? (now - prev) / 800 : now <= t + 500 ? 1 : Math.max(0, 1 - (now - t - 500) / 1000)
+      const ownKick = e.event_type.startsWith('OWN_')
+      const h = e.half ?? half
+      const right = raw ? (ownKick ? !ownAttacksRight(arfh, h) : ownAttacksRight(arfh, h)) : !ownKick
+      return { weight, right }
+    }
+    return null
+  }, [ctx.events, now, raw, arfh, half])
+
   // dots
   const dots = useMemo(() => {
     if (!cur || cur === 'loading' || 'error' in cur) return []
-    const out: { pid: string; x: number; y: number; speed: number | null }[] = []
+    const out: { pid: string; x: number; y: number; speed: number | null; pulled?: boolean }[] = []
     for (const [pid, pw] of Object.entries(cur.players)) {
       if (!onPitchNow(pid)) continue
       const f = (now - pw.t0_video_ms) / 1000 * pw.hz
@@ -169,11 +194,17 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
       else if (xa != null && ya != null) { x = xa; y = ya }
       else if (xb != null && yb != null) { x = xb; y = yb }
       if (x == null || y == null) continue
-      const m = toM(x, y, half)
-      out.push({ pid, x: m.x, y: m.y, speed: pw.speed[i] ?? null })
+      let m = toM(x, y, half)
+      let pulled = false
+      if (kickout && kickout.weight > 0 && insideArc(m.x, m.y, kickout.right, L, W)) {
+        const p = pullOutOfArc(m.x, m.y, kickout.right, L, W)
+        m = { x: m.x + (p.x - m.x) * kickout.weight, y: m.y + (p.y - m.y) * kickout.weight }
+        pulled = true
+      }
+      out.push({ pid, x: m.x, y: m.y, speed: pw.speed[i] ?? null, pulled })
     }
     return out
-  }, [cur, now, onPitchNow, toM, half])
+  }, [cur, now, onPitchNow, toM, half, kickout, L, W])
 
   const missing = useMemo(() => {
     const have = new Set(dots.map(d => d.pid))
@@ -215,7 +246,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const status: { busy: boolean; error?: boolean; text: string } = !cur || cur === 'loading'
     ? { busy: true, text: 'Loading player positions for this part of the match…' }
     : 'error' in cur ? { busy: false, error: true, text: `Could not load positions: ${cur.error}` }
-    : { busy: false, text: `${dots.length} players on screen${missing.length ? ` · no GPS fix right now: ${missing.map(name).join(', ')}` : ''}${untrackedOnPitch.length ? ` · no unit: ${untrackedOnPitch.map(name).join(', ')}` : ''}` }
+    : { busy: false, text: `${dots.length} players on screen${dots.some(d => d.pulled) ? ` · kickout: ${dots.filter(d => d.pulled).map(d => jersey(d.pid) ?? '?').join(', ')} drawn just inside the arc, shown on it (nobody may be inside at a kickout)` : ''}${missing.length ? ` · no GPS fix right now: ${missing.map(name).join(', ')}` : ''}${untrackedOnPitch.length ? ` · no unit: ${untrackedOnPitch.map(name).join(', ')}` : ''}` }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

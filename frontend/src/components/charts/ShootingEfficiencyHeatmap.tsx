@@ -43,7 +43,7 @@ const GOAL_SVG_X = PITCH.left + PITCH.playW
 // meets the flat sideways run — local (410,48) and (410,1106) inside the
 // translate(1461,129) path) guarantees this chart's boundary sits exactly
 // on top of the line the user is looking at, with zero gap by construction.
-const PITCH_ARC_POINTS: { x: number; y: number }[] = [
+export const PITCH_ARC_POINTS: { x: number; y: number }[] = [
   { x: 1871.00, y: 177.00 },
   { x: 1844.46, y: 191.47 },
   { x: 1811.06, y: 210.01 },
