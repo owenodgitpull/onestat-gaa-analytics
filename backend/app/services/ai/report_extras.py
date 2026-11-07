@@ -48,7 +48,7 @@ def _kept_line(kept: int, n: int) -> dict:
 
 def kickouts_by_half(rows: list, evs: list, atk_first, hdm) -> dict:
     out = {}
-    for h in (1, 2):
+    for h in (1, 2, 3, 4):        # 3 and 4 = the two periods of extra time, so the halves add up to the match total
         own = [(rows[e.idx], e) for e in evs if e.half == h and (e.type in OWN_KO_KEPT or e.type in OWN_KO_LOST)]
         theirs = [e for e in evs if e.half == h and e.type in KICKOUTS and e.type not in OWN_KO_KEPT and e.type not in OWN_KO_LOST]
         if not own and not theirs:
@@ -71,7 +71,7 @@ def kickouts_by_half(rows: list, evs: list, atk_first, hdm) -> dict:
                 entry["by_channel"] = {k: _kept_line(sum(1 for e in v if e.type in OWN_KO_KEPT), len(v)) for k, v in by_ch.items()}
         if theirs:
             entry["their_kickouts"] = {"won_by_us": sum(1 for e in theirs if e.type in OPP_KO_WON), "of": len(theirs)}
-        out[f"half_{h}"] = entry
+        out[{1: "half_1", 2: "half_2", 3: "extra_time_1", 4: "extra_time_2"}[h]] = entry
     return out
 
 

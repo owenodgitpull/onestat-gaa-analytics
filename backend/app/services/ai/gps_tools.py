@@ -20,6 +20,30 @@ SECTIONS = ("summary", "situations", "positions", "pressure", "transitions", "ki
 SITUATIONS = ("their_scores", "their_missed_shots", "our_shots", "our_turnovers", "fouls_we_conceded")
 
 
+def _band(d):
+    if d is None:
+        return None
+    return "within 5 m" if d <= 5 else "5-10 m" if d <= 10 else "10-15 m" if d <= 15 else "over 15 m"
+
+
+def _opp_summary(summ: dict) -> dict:
+    """Opposition moments rest on a tagged spot a few metres out: give the median as a band, never a decimal."""
+    out = dict(summ or {})
+    if "median_nearest_of_ours_m" in out:
+        out["median_nearest_of_ours"] = _band(out.pop("median_nearest_of_ours_m"))
+    out.pop("no_of_ours_within_3m", None)
+    return out
+
+
+def _opp_moment(r: dict, full_positions: bool) -> dict:
+    """One opposition moment without decimal distances to the (approximate) ball spot: bands only."""
+    r = {k: v for k, v in r.items() if k not in ("within_3m",)}
+    r["nearest"] = [{k: v for k, v in n.items() if k != "dist_m"} for n in r.get("nearest", [])]
+    pos = r.get("positions", [])
+    r["positions"] = [{**{k: v for k, v in p.items() if k != "dist_m"}, "band": _band(p.get("dist_m"))} for p in (pos if full_positions else pos[:6])]
+    return r
+
+
 def _trim_transitions(tr: dict, limit: int) -> dict:
     def t(x):
         x = dict(x)
@@ -35,7 +59,10 @@ def _trim_transitions(tr: dict, limit: int) -> dict:
             "won_most_runners_first": [t(x) for x in sorted(tr["won"], key=lambda x: -x["n_forward_runners"])[:limit]],
             "how_to_read": "recovery_s = seconds until `goal_side_needed` of our tracked outfielders were goal-side of the ball (null = not within 15 s); "
                            "players_on = our tracked outfielders on the pitch; n_sprinted + n_did_not_sprint = players_on (sprinted = went above 5.5 m/s in the 10 s after); "
-                           "retreat_10s_m = how far the team's centre moved back towards our goal in 10 s."}
+                           "retreat_10s_m = how far the team's centre moved back towards our goal in 10 s. "
+                           "outcome / lost_led_to_score = what THEIR possession from that turnover became before we next had the ball "
+                           "(GPS-tracked turnovers only, a different count from the phase table's 'Turnovers we lost' row and from any "
+                           "'score within 3 minutes' figure - name which one you quote)."}
 
 
 def _section(res: dict, section: str, limit: int, situation=None, full_positions: bool = False):
@@ -47,8 +74,12 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
         out = {}
         for g in want:
             rows = si["groups"].get(g, [])
-            out[g] = {"summary": si["summary"].get(g), "moments": [
-                r if full_positions else {k: v for k, v in r.items() if k != "positions"} | {"positions": r["positions"][:6]}
+            summ = si["summary"].get(g)
+            if g.startswith("their_"):
+                summ = _opp_summary(summ)
+            out[g] = {"summary": summ, "moments": [
+                _opp_moment(r, full_positions) if g.startswith("their_") else
+                (r if full_positions else {k: v for k, v in r.items() if k != "positions"} | {"positions": r["positions"][:6]})
                 for r in rows[:limit * 3]]}
         out["tag_accuracy"] = si.get("tag_accuracy")
         out["how_to_read"] = (
@@ -68,7 +99,21 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
     if section == "positions":
         return res.get("positions")
     if section == "pressure":
-        return res.get("pressure")
+        pr = res.get("pressure") or {}
+        def clean(x):     # the tagged reception spot is a few metres out: no 3 m share, median as a band
+            if not isinstance(x, dict) or "receptions" not in x:
+                return x
+            x = dict(x); x.pop("pct_within_3m", None)
+            if "median_nearest_m" in x:
+                x["median_nearest"] = _band(x.pop("median_nearest_m"))
+            return x
+        out = {}
+        for k, v in pr.items():
+            if isinstance(v, dict) and "receptions" not in v and k not in ("tag_accuracy",):
+                out[k] = {kk: clean(vv) for kk, vv in v.items()}
+            else:
+                out[k] = clean(v)
+        return out
     if section == "transitions":
         return _trim_transitions(res["transitions"], limit)
     if section == "kickouts":

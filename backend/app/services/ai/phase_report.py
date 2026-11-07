@@ -104,15 +104,17 @@ def _half_cell(r: dict) -> str:
 def scorecard_table(phases: dict) -> str:
     """One scannable table of what each way of getting the ball became. Every cell is copied from the rows already
     computed (never re-derived), so the report can paste it unchanged."""
-    lines = ["| Phase | Possessions | Finished | Became a shot | Scored | Points | 1st half | 2nd half |",
-             "|---|---|---|---|---|---|---|---|"]
+    et = any(p.get("extra_time") for p in phases.values())   # extra-time column only when the match went to extra time
+    lines = ["| Phase | Possessions | Finished | Became a shot | Scored | Points | 1st half | 2nd half |" + (" Extra time |" if et else ""),
+             "|---|---|---|---|---|---|---|---|" + ("---|" if et else "")]
     for g in SCORECARD_ORDER:
         p = phases.get(g)
         if not p:
             continue
         m = p["match"]
         lines.append(f"| {SCORECARD_NAME[g]} | {m['possessions']} | {m['finished']} | {m['became_a_shot']} | "
-                     f"{m['scored']} | {m['points']} | {_half_cell(p['first_half'])} | {_half_cell(p['second_half'])} |")
+                     f"{m['scored']} | {m['points']} | {_half_cell(p['first_half'])} | {_half_cell(p['second_half'])} |"
+                     + (f" {_half_cell(p.get('extra_time') or {})} |" if et else ""))
     return "\n".join(lines)
 
 
@@ -152,6 +154,9 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         phases[g] = {"phase": name, "meaning": meaning, "match": _stats_row(sel),
                      "first_half": _stats_row([p for p in sel if p.half == 1]),
                      "second_half": _stats_row([p for p in sel if p.half == 2])}
+        et_sel = [p for p in sel if (p.half or 0) >= 3]
+        if et_sel:
+            phases[g]["extra_time"] = _stats_row(et_sel)   # both periods of extra time together; first+second+extra = match
 
     # margin movement per 10-minute block (computed so the report never has to add scores up itself)
     blocks = []

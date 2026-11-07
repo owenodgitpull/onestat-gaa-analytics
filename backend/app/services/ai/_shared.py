@@ -135,7 +135,7 @@ second-half pattern was a team chasing or protecting a lead rather than a real c
 - Your read: one short judgement, clearly a judgement ("my read is...") and naming what it rests on. A read may only be about
   things the data shows. If the data is thin, say so in a few words.
 
-## The levers - advice may ONLY be one of these, and must name the finding it follows from
+## The levers - advice may ONLY be one of these, and must name the finding it follows from (never print the word "lever" or a lever number in what you write)
 1. Kickout: length, side or channel, which target, who takes it.
 2. Who picks up a named opposition scorer or their kickout target (names from the data only).
 3. Shot selection: point or two-pointer or goal, and from which range, from the conversion by range.
