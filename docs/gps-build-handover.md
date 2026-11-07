@@ -165,3 +165,21 @@ Everything below is deployed and read-only except the sync nudge (admins, GPS sy
 - **Seek lead:** `utils/videoSeek.ts` per event type; fouls get a 10 s lead in clip compilations.
 - **Definitions to know:** turnover = carry team change with a tagged turnover event (60 s) or within 25 s with no dead ball; "back behind the ball" = seconds until min(11, on-pitch tracked - 3) players are goal-side, reported only when caught short; possession = latest tagged carry's team (20 s timeout, score/wide ends it).
 - **Not done:** summary rows (MatchGPSData) are not derived from the time series; the support "further option" cannot know if the option was marked (no opposition GPS).
+
+## One GPS upload, nothing dropped (2026-11-07)
+
+- **One button** on Match Result ("Upload GPS", `components/gps/GpsTracksModal.tsx`). Raw files: track + motion
+  channels + the original file archived; a summary file (CSV / PDF / Excel) goes to the old preview / confirm flow.
+- **Nothing dropped.** `match_gps_tracks.aux` (b078) holds per-0.1 s motion channels on the track grid
+  (`services/gps_timeseries/motion.py`: `pl` = sum of |dA| in g, `gmax` = peak resultant g, `imp` = sum of the file's
+  Instantaneous Acceleration Impulse). `raw_file_key` = the original CSV gzipped in R2 (`{club}/gps-raw/{match}/...`),
+  uploaded by the browser through `POST .../gps/timeseries/raw-file-url`. Anything else can be recomputed from it.
+  Browser and backfill binning are mirrors (checked on a real file).
+- **Summary rows from the time series.** `services/gps_timeseries/summary.py` `derive()` writes `match_gps_data`
+  after every sync (`POST .../sync` returns `player_summary`) or on `POST .../gps/timeseries/summary`. On-pitch time
+  only. Definitions are in the module docstring (HML = metabolic power > 25.5 W/kg; DSL = impacts over 2 g weighted
+  (g/2)^3, an estimate; PlayerLoad = sum |dA| / 100; accels/decels 3 m/s^2 over 0.3 s; sprints 7 m/s for 1 s).
+  Heart rate is ignored when it never changes (no strap: STATSports writes a constant 82).
+- **Official summaries win.** A summary upload overwrites the fields it has; `derive()` only fills empty fields on a
+  row whose `raw_data.source` is not `raw_gps`. Rows from raw files carry `raw_data.source = "raw_gps"`.
+- **Not yet:** step balance; summaries for clubs with raw files but no video sync (needs the match window).

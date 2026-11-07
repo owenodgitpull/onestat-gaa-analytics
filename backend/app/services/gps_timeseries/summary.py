@@ -13,7 +13,7 @@ Definitions (STATSports defaults where they publish one):
   HML distance    distance while metabolic power is above 25.5 W/kg (di Prampero / Osgnach energy cost of
                   accelerated running, the published model STATSports uses). Close to their figure, not identical:
                   their speed smoothing is not published
-  DSL (estimate)  sum of weighted impacts: peaks of the resultant acceleration above 2 g, weight (g / 2)^3, scaled.
+  DSL (estimate)  sum of weighted impacts: peaks of the resultant acceleration above 2 g, weight (g / 2)^3, scaled so a full inter-county game is about 450.
                   STATSports publishes the method (impacts over 2 g, weighted by size) but not the exact weighting,
                   so this is consistent match to match, not identical to their number
   player load     sum of sqrt(dAx^2 + dAy^2 + dAz^2) / 100 at 100 Hz (the public PlayerLoad formula)
@@ -44,7 +44,7 @@ SPRINT = 7.0
 ACCEL = 3.0
 HML_W_KG = 25.5
 DSL_G = 2.0
-DSL_SCALE = 0.1          # brings the estimate to the range of STATSports DSL for a full match (hundreds)
+DSL_SCALE = 0.0046       # every hard footstrike counts at 100 Hz: scaled so a full inter-county game lands near 450, the usual STATSports range (Kerry, Down, Kerry, Cork, Dublin 2026: raw median 9,700)
 MAX_SPEED_CAP = 11.5
 KT = 1.29                # terrain constant of the energy-cost model (grass)
 G = 9.81
