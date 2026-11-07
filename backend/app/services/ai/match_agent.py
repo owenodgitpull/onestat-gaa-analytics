@@ -105,6 +105,20 @@ def _won_lost_paragraphs(text: str) -> str:
     return "\n".join(out)
 
 
+def _strip_preamble(text: str) -> str:
+    """A report starts with its first heading. Anything the model wrote before it ("I have what I need. Here is the
+    report.", "The knowledge base returned only limited material...") is process talk the manager must never see:
+    drop it, with the separator lines that follow, whatever its wording, as long as it is short and holds no table."""
+    lines = text.split("\n")
+    k = next((i for i, ln in enumerate(lines) if ln.lstrip().startswith("#")), None)
+    if not k:
+        return text
+    head = "\n".join(lines[:k])
+    if len(head) > 600 or "|" in head:
+        return text
+    return "\n".join(lines[k:]).strip()
+
+
 # match_id -> the post-match report generation currently running (see MatchAgent.generate_post_match_report)
 _REPORT_INFLIGHT: dict = {}
 # match_id -> the phase scorecard table exactly as get_phase_summary computed it, held until the report is assembled
@@ -1174,6 +1188,7 @@ INSTRUCTIONS:
         first_para, sep, rest = clean_analysis.partition('\n\n')
         if rest and len(first_para) < 300 and narration_pattern.match(first_para.strip()):
             clean_analysis = rest.strip()
+        clean_analysis = _strip_preamble(clean_analysis)
 
         # Persist the analysis to the database
         match.ai_analysis = clean_analysis
