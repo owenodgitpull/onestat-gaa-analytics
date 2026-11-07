@@ -30,6 +30,24 @@ function halfAt(periods: GpsReplayContext['periods'], ms: number): number {
   return h
 }
 
+/**
+ * Tagging lag: taps land a second or more after the action (watch, decide, tap). The sync measures it per event type
+ * from our own players' GPS (`tag_lag`, negative median = tapped after the action). The replay draws tag-based things
+ * (the carrier ring, the opposition ball, event pop-ups) that much earlier so they keep up with the video.
+ * Display only: the stored tags are never changed. Defaults are the Down-match measurements, used when a type has
+ * fewer than 4 samples in this match.
+ */
+const DEFAULT_LAG_MS: Record<string, number> = { PASS_HAND: 1200, LONG_KICK_PASS: 1200, POINT_SCORED: 2200, GOAL_SCORED: 2200, TWO_POINT_SCORED: 2200, WIDE: 3400, TURNOVER_LOST: 1600, TURNOVER_WON: 1600, FOUL_COMMITTED: 5600, FREE_WON: 5600 }
+const END_TYPE: Record<string, string> = { score: 'POINT_SCORED', wide: 'WIDE', free: 'FOUL_COMMITTED', turnover: 'TURNOVER_LOST', pass: 'PASS_HAND' }
+function makeLag(tagLag: GpsReplayContext['sync']['tag_lag'] | undefined) {
+  return (type: string | null | undefined): number => {
+    if (!type) return 0
+    const m = tagLag?.[type]
+    const ms = m && m.n >= 4 ? -m.median_s * 1000 : (DEFAULT_LAG_MS[type] ?? 0)
+    return Math.min(6000, Math.max(0, ms))
+  }
+}
+
 function lastIndexAtOrBefore<T extends { video_ms: number }>(arr: T[], t: number): number {
   let lo = 0, hi = arr.length - 1, ans = -1
   while (lo <= hi) { const mid = (lo + hi) >> 1; if (arr[mid].video_ms <= t) { ans = mid; lo = mid + 1 } else hi = mid - 1 }
@@ -92,7 +110,28 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const half = halfAt(ctx.periods, now)
   const arfh = ctx.attacking_right_first_half
 
-  const ownCarries = useMemo(() => ctx.carries.filter(c => c.team === 'own' || c.team === 'opponent'), [ctx.carries])
+  const [lagOn, setLagOn] = useState(true)
+  const lagRaw = useMemo(() => makeLag(ctx.sync?.tag_lag), [ctx.sync])
+  const lag = useCallback((t: string | null | undefined) => (lagOn ? lagRaw(t) : 0), [lagOn, lagRaw])
+
+  // carries on the video clock, pulled earlier by the tap lag: starts by the pass lag, ends by the lag of what ended them
+  const ownCarries = useMemo(() => {
+    const cs = ctx.carries.filter(c => c.team === 'own' || c.team === 'opponent')
+    const scoring = ctx.events.filter(e => /POINT_SCORED|GOAL_SCORED|WIDE/.test(e.event_type))
+    return cs.map((c, i) => {
+      const start = c.video_ms - lag('PASS_HAND')
+      let endRaw = c.end_video_ms
+      let endType = END_TYPE[c.ended_by ?? ''] ?? 'PASS_HAND'
+      if (endRaw == null && (c.ended_by === 'score' || c.ended_by === 'wide')) {
+        const want = c.team === 'own' ? 'team_a' : 'team_b'
+        const ev = scoring.find(e => e.team === want && e.video_ms >= c.video_ms && e.video_ms <= c.video_ms + 20000)
+        if (ev) { endRaw = ev.video_ms; endType = ev.event_type }
+      }
+      const nextStart = cs[i + 1] ? cs[i + 1].video_ms - lag('PASS_HAND') : Infinity
+      const end = endRaw != null ? endRaw - lag(endType) : null
+      return { ...c, video_ms: start, end_video_ms: end != null ? Math.max(start + 300, end) : null, next_ms: nextStart }
+    })
+  }, [ctx.carries, ctx.events, lag])
 
   /** raw 0-100 -> svg-ready metres in the chosen frame */
   const toM = useCallback((x: number, y: number, h: number) => {
@@ -111,8 +150,8 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     const k = lastIndexAtOrBefore(ownCarries, now)
     if (k < 0) return null
     const c = ownCarries[k]
-    const nxt = ownCarries[k + 1]?.video_ms ?? Infinity
-    const end = Math.min(nxt, c.video_ms + 20000, c.ended_by === 'score' || c.ended_by === 'wide' ? (c.end_video_ms ?? c.video_ms + 4000) : Infinity)
+    const nxt = c.next_ms
+    const end = Math.min(nxt, c.video_ms + 20000, c.ended_by === 'score' || c.ended_by === 'wide' ? (c.end_video_ms ?? c.video_ms + 4000) + 1500 : Infinity)
     return now < end ? { ...c, end } : null
   }, [ownCarries, now])
 
@@ -153,7 +192,9 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     return { x: a.x + (b.x - a.x) * w, y: a.y + (b.y - a.y) * w }
   }, [carry, toM, now, half])
 
-  const recentEvents = useMemo(() => ctx.events.filter(e => e.video_ms <= now + 300 && e.video_ms > now - 3000 && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, now])
+  const recentEvents = useMemo(() => ctx.events
+    .map(e => ({ ...e, video_ms: e.video_ms - lag(e.event_type) }))
+    .filter(e => e.video_ms <= now + 300 && e.video_ms > now - 3000 && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, now, lag])
 
   const jumpList = useMemo(() => ctx.events.filter(e => /KICKOUT|POINT_SCORED|GOAL_SCORED|TURNOVER|WIDE/.test(e.event_type)), [ctx.events])
   const name = (pid: string | null | undefined) => (pid && ctx.players[pid]?.name) || 'Unknown'
@@ -206,6 +247,10 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
           <div className="flex gap-1.5">
             <button onClick={() => setShowNames(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showNames ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showNames}>
               <Users size={13} /> Names
+            </button>
+            <button onClick={() => setLagOn(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${lagOn ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={lagOn}
+              title={lagOn ? 'Tagged ball and events are drawn earlier by your usual tap delay (about 2 s for a score) so they keep up with the video. Click to show them at the exact tap time.' : 'Showing tags at the exact tap time. Click to correct for your usual tap delay.'}>
+              <Tag size={13} /> Tap delay fixed
             </button>
             <button onClick={() => setRaw(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${!raw ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={!raw}
               title={raw ? 'Showing the pitch as filmed. Switch so we always attack left to right' : 'Showing us always attacking left to right. Switch back to the pitch as filmed'}>
