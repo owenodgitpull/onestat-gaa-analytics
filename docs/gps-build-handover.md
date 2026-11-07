@@ -183,3 +183,18 @@ Everything below is deployed and read-only except the sync nudge (admins, GPS sy
 - **Official summaries win.** A summary upload overwrites the fields it has; `derive()` only fills empty fields on a
   row whose `raw_data.source` is not `raw_gps`. Rows from raw files carry `raw_data.source = "raw_gps"`.
 - **Not yet:** step balance; summaries for clubs with raw files but no video sync (needs the match window).
+
+## Off-the-ball analysis for the report agent + pitch drawing fix (2026-11-07)
+- `backend/app/services/gps_analysis/situations.py`: `situations` (their scores / missed shots, our shots, our turnovers,
+  fouls we conceded: nearest 3 of ours, within 3/5/10 m, goal-side, in line ball-to-goal, inside the 45, shape now and 5 s
+  before, every position), `average_positions` (with/without the ball per half), `carrier_pressure` (nearest of ours at each
+  of their receptions). Our moments are anchored on the tagged player's own GPS (closest instant to the tag, -6..+1 s);
+  opposition moments use the tagged spot at tap minus measured tap delay, banded, with `tag_accuracy` (median distance of our
+  receivers from their own tagged spots: 4.9 m Down). Frees / 45s / marks (scoring_context.source) left out of shot moments.
+- Tool: `get_gps_match_analysis` sections `situations` (`situation` filter, `full_positions`), `positions`, `pressure`.
+- Prompt: lever 10 + softened "not recorded" in `_shared.py`; `OFF_BALL_BLOCK` + required "Off the Ball" section in
+  `match_agent.py`, only when match_gps_sync is auto/confirmed. Exact rendered prompt: `docs/match-report-agent-prompt.md`.
+- Pitch: `GpsPitch.tsx` draws markings in metres (the shared artwork's arc is ~44.5 m at 145 m, which put players standing on
+  the real 40 m arc ~4 m inside it). Sync: `gps_timeseries/pitch_fit.py` centres the pitch between the goals from the arc at
+  THEIR kickouts (own kickouts: our players come in early). Length is not fitted (stand-off varies); only Kerry 29 Mar moved
+  (-3.6 m). Venue pitch sizes (match.pitch_length_m / width) are the next step for length.
