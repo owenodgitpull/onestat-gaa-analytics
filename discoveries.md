@@ -54,3 +54,21 @@ Entry format:
 - **Why it matters:** Hard to read at a glance; the GPS kickout tab uses "their kickout, lost clean" style instead.
 - **Suggested fix:** Add overrides: "Their kickout: they kept it (clean)" / "Our kickout: lost on the break".
 - **Found while:** GPS Stage 2 replay.
+
+## The shared pitch artwork's arc is ~44.5 m, not the 40 m arc (tagging screens)
+- **Where:** `frontend/public/pitch-svg.svg`, used by Video Tagging, live recording and the charts (not the GPS screens any more: `GpsPitch.tsx` now draws its own markings in metres).
+- **What:** At 145 m the drawn arc reaches ~44 m from the end line (also noted in `docs/pitch-svg-geometry.md`). On the GPS replay every player standing on the real 40 m arc at a kickout was drawn ~4 m inside it.
+- **Why it matters:** Tags placed "on the arc" by eye land ~4 m too far out; anything that reads "inside the 40 m arc" from a tag is off near the arc.
+- **Suggested fix:** Redraw the arc at 40 m in the artwork (or draw markings in metres like GpsPitch). Do not touch stored tags.
+- **Found while:** GPS off-the-ball tool (2026-11-07).
+
+## Shots-against tab: frees included and single decimal distances from a tag
+- **Where:** `backend/app/services/gps_analysis/metrics.py` `marking()` -> GPS "Shots against" tab.
+- **What:** Includes scores from frees/45s (players stand off by rule) and shows e.g. "3.2 m" from the tagged shot spot, which is itself ~5 m out (measured on our own receptions: tag_accuracy median 4.9 m, Down).
+- **Suggested fix:** Skip non-FROM_PLAY shots (loader now has `score_source`), show bands ("within 5 m") like `situations.py`.
+- **Found while:** GPS off-the-ball tool (2026-11-07).
+
+## Tagged spots sit nearer the middle of the pitch than the GPS
+- **What:** Fitting tagged carry spots against the receiver's GPS gives a scale of 0.80-0.94 along the length on all 5 matches (tags compressed towards halfway), offsets under 2 m.
+- **Why it matters:** Not a calibration fault (the kickout arc check puts the GPS right); it is how spots get placed by eye from the broadcast angle. Worth knowing for anything that reads distances from tags.
+- **Found while:** GPS off-the-ball tool (2026-11-07).
