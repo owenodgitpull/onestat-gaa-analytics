@@ -43,7 +43,7 @@ export default function GpsSeason() {
       <div>
         <Link to="/results" className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ChevronLeft size={16} /> Results</Link>
         <h1 className="text-xl md:text-2xl font-bold text-white mt-1">GPS across matches</h1>
-        <p className="text-sm text-white/55">{q.data?.note || `${team} matches with raw GPS synced to the video.`}</p>
+        <p className="text-sm text-white/55">{q.data?.note || `${team} matches with raw GPS files synced to the video.`}</p>
       </div>
       {q.isLoading ? <Loading text="Working out every GPS match (up to half a minute the first time)…" /> : q.isError ? <Failed e={q.error} /> : (
         <>

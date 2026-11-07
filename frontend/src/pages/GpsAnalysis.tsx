@@ -95,7 +95,7 @@ export default function GpsAnalysis() {
           <AlertCircle size={16} className="text-amber-300 mt-0.5 shrink-0" />
           <div>
             <div>{(ctxQ.error as Error)?.message || 'GPS is not available for this match.'}</div>
-            <div className="text-white/55 mt-1">Upload the player files and run the sync with the GPS tracks button on the match page.</div>
+            <div className="text-white/55 mt-1">On the match page, press Upload GPS, add the raw player files and run the sync. (A summary file alone fills the figures but has no positions to replay.)</div>
           </div>
         </div>
       ) : ctx && (

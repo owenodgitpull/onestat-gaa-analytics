@@ -55,7 +55,7 @@ export default function GpsSyncCheck({ matchId, ctx, canEdit, onOpenReplay }: {
 
   if (summaryQ.isLoading) return <p className="flex items-center gap-2 text-sm text-white/60"><Loader2 size={14} className="animate-spin" /> Loading the sync…</p>
   if (summaryQ.isError) return <p className="flex items-center gap-2 text-sm text-red-300"><AlertCircle size={14} /> Could not load the sync: {(summaryQ.error as Error)?.message}</p>
-  if (!sync || sync.status === 'pending') return <p className="text-sm text-white/60">The GPS has not been synced to the video yet. Run the sync from the GPS tracks button on the match page.</p>
+  if (!sync || sync.status === 'pending') return <p className="text-sm text-white/60">The GPS has not been synced to the video yet. Open Upload GPS on the match page and run the sync there.</p>
   if (sync.status === 'failed') return <p className="text-sm text-red-300">The last sync failed: {sync.error}</p>
 
   return (
