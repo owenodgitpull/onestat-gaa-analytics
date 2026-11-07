@@ -448,7 +448,8 @@ export default function MatchResult() {
       const motmMatch = postMatchReport.analysis.match(/Man of the Match[ \t]*[:—–-][ \t]*\**[ \t]*([^\n*]+)/i)
       if (motmMatch) {
         // Name only: the header line can carry trailing words ("... He scored 1-3"), so keep the leading capitalised names
-        const raw = motmMatch[1].split(/\s+[—–-]\s+|[.,(]/)[0].trim()
+        // a full stop after an initial ("C. Basquel") is part of the name, not the end of it
+        const raw = motmMatch[1].split(/\s+[—–-]\s+|(?<![A-ZÁÉÍÓÚ])\.|[,(]/)[0].trim()
         const words = raw.split(/\s+/)
         const nameWords: string[] = []
         for (const w of words) { if (/^[A-ZÁÉÍÓÚ]/.test(w) && nameWords.length < 4) nameWords.push(w); else break }
@@ -615,8 +616,8 @@ export default function MatchResult() {
             to={`/results/${matchId}/video`}
             className="btn-glass inline-flex items-center gap-2 !px-4 !py-2 text-sm"
           >
-            <Video size={16} />
-            <span>{(videoSessionsData?.sessions?.length ?? 0) > 0 ? 'Open Video Tagging' : 'Attach Video'}</span>
+            {videoSessionsLoading ? <Loader2 size={16} className="animate-spin" /> : <Video size={16} />}
+            <span>{videoSessionsLoading ? 'Checking video…' : (videoSessionsData?.sessions?.length ?? 0) > 0 ? 'Open Video Tagging' : 'Attach Video'}</span>
           </Link>
         )}
       </div>
@@ -851,6 +852,11 @@ export default function MatchResult() {
                 <Loader2 size={14} className="flex-shrink-0 animate-spin" />
                 <span className="text-xs font-medium">Updating GPS…</span>
               </div>
+            ) : gpsData === undefined && gpsFetching ? (
+              <div className="flex items-center gap-1.5 text-white/50">
+                <Loader2 size={14} className="flex-shrink-0 animate-spin" />
+                <span className="text-xs">Loading GPS…</span>
+              </div>
             ) : gpsData && gpsData.length > 0 ? (
               <div className="flex items-center gap-1.5 text-emerald-400">
                 <CheckCircle size={14} className="flex-shrink-0" />
@@ -898,7 +904,7 @@ export default function MatchResult() {
                 <Loader2 size={14} className="animate-spin" />
                 <span>Updating…</span>
               </div>
-            ) : gpsData && gpsData.length > 0 ? (
+            ) : gpsData === undefined && gpsFetching ? null : gpsData && gpsData.length > 0 ? (
               <>
                 {showDeleteConfirm ? (
                   <div className="flex items-center gap-1.5">
