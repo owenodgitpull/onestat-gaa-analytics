@@ -893,16 +893,6 @@ export default function MatchResult() {
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap">
-            {canEdit && hasProAccess && (
-              <button
-                onClick={() => setShowGpsTracks(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-medium transition-colors border border-white/15"
-                title="Raw GPS positions (one file per player), synced to the video"
-              >
-                <Activity size={14} />
-                GPS tracks
-              </button>
-            )}
             {gpsBusy ? (
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600/30 text-emerald-200 text-xs font-medium cursor-wait">
                 <Loader2 size={14} className="animate-spin" />
@@ -940,19 +930,19 @@ export default function MatchResult() {
                       <span className="hidden sm:inline">Remove GPS</span>
                     </button>
                     <button
-                      onClick={() => setShowGpsUpload(true)}
+                      onClick={() => setShowGpsTracks(true)}
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
-                      title="Replace GPS Data"
+                      title="Upload raw GPS files or a summary (a summary replaces the worked-out figures)"
                     >
                       <Upload size={14} />
-                      <span className="hidden sm:inline">Replace GPS</span>
+                      <span className="hidden sm:inline">Upload GPS</span>
                     </button>
                   </>
                 )}
               </>
             ) : hasProAccess ? (
               <button
-                onClick={() => setShowGpsUpload(true)}
+                onClick={() => setShowGpsTracks(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors"
               >
                 <Upload size={14} />
@@ -968,7 +958,9 @@ export default function MatchResult() {
       </div>
 
       {showGpsTracks && matchId && match && (
-        <GpsTracksModal matchId={matchId} matchDate={match.match_date} onClose={() => setShowGpsTracks(false)} />
+        <GpsTracksModal matchId={matchId} matchDate={match.match_date} onClose={() => setShowGpsTracks(false)}
+          onSummaryFile={file => { setShowGpsUpload(true); handleGpsFileSelected(file) }}
+          onChanged={() => { refetchGps(); refetchReport(); queryClient.invalidateQueries({ queryKey: ['team-volume', matchId] }) }} />
       )}
 
       {/* GPS Upload Modal */}

@@ -1,5 +1,9 @@
 /**
- * GPS tracks (raw time series) for one match: upload the per-player STATSports CSVs, then sync them to the video.
+ * The one GPS upload for a match. Raw STATSports files (one CSV per player) are parsed here, the original file is
+ * archived (gzipped) in storage, and the track + motion-sensor channels are stored; the sync then lines them up with
+ * the video and fills the per-player summary rows (the Match Result GPS section, leaderboards, charts). A per-player
+ * summary file (CSV / PDF / Excel) is handed to the existing summary flow (onSummaryFile) and overwrites the calculated
+ * figures it contains.
  *
  * Flow: pick the files -> each is sniffed (detectGpsFile) -> "Upload" parses them one at a time in a Web Worker
  * and sends each compact track to POST .../gps/timeseries/tracks -> a device name the server cannot match gets a
@@ -15,7 +19,7 @@ import type { GpsParseResponse } from '../../workers/gpsParse.worker'
 import { formatUtc, videoToGpsMs } from '../../utils/gpsClock'
 import { usePlayers } from '../../hooks/usePlayers'
 
-type RowStatus = 'checking' | 'ready' | 'skipped' | 'parsing' | 'uploading' | 'stored' | 'needs_player' | 'error'
+type RowStatus = 'checking' | 'ready' | 'skipped' | 'summary' | 'parsing' | 'archiving' | 'uploading' | 'stored' | 'needs_player' | 'error'
 
 interface FileRow {
   id: string
@@ -31,6 +35,7 @@ interface FileRow {
 export const PERIOD_LABEL: Record<number, string> = { 1: '1st half', 2: '2nd half', 3: 'Extra time 1', 4: 'Extra time 2' }
 
 const mb = (n: number) => `${(n / 1e6).toFixed(0)} MB`
+const SUMMARY_MSG = 'Per-player summary (one row per player): its figures replace the ones worked out from raw files'
 
 /** Round to what the server stores (degrees x 1e7, cm/s) so the request is about half the size. */
 function compact(t: TrackUpload): TrackUpload {
@@ -42,7 +47,28 @@ function compact(t: TrackUpload): TrackUpload {
   }
 }
 
-export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchId: string; matchDate: string; onClose: () => void }) {
+/** PUT a blob to a presigned URL with upload progress (fetch has none). */
+function putWithProgress(url: string, body: Blob, contentType: string, onProgress: (sent: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', url)
+    xhr.setRequestHeader('Content-Type', contentType)
+    xhr.upload.onprogress = e => onProgress(e.loaded)
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`storage said ${xhr.status}`)))
+    xhr.onerror = () => reject(new Error('network error'))
+    xhr.send(body)
+  })
+}
+
+const isSummaryName = (f: File) => /\.(pdf|xlsx?)$/i.test(f.name)
+
+export default function GpsTracksModal({ matchId, matchDate, onClose, onSummaryFile, onChanged }: {
+  matchId: string; matchDate: string; onClose: () => void
+  /** a per-player summary file goes to the existing summary preview / confirm flow */
+  onSummaryFile?: (file: File) => void
+  /** tracks or summary rows changed: refresh the match page */
+  onChanged?: () => void
+}) {
   const queryClient = useQueryClient()
   const { data: players } = usePlayers()
   const [rows, setRows] = useState<FileRow[]>([])
@@ -77,11 +103,16 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
     setStatus({ tone: 'info', text: `Checking ${added.length} file${added.length === 1 ? '' : 's'}…` })
     for (const r of added) {
       try {
+        if (isSummaryName(r.file)) {
+          patch(r.id, { status: 'summary', message: SUMMARY_MSG })
+          continue
+        }
         const d = await detectGpsFile(r.file)
         const fileDay = fileDateFromName(r.file.name)
-        if (d.kind !== 'timeseries') {
-          const why = d.kind === 'summary' ? 'Per-player summary: use the Upload GPS button for this one'
-            : d.kind === 'timeseries_sparse' ? d.message : 'Not a GPS time series (needs Time, Lat and Lon columns)'
+        if (d.kind === 'summary') {
+          patch(r.id, { detection: d, status: 'summary', message: SUMMARY_MSG })
+        } else if (d.kind !== 'timeseries') {
+          const why = d.kind === 'timeseries_sparse' ? d.message : 'Not a GPS file we recognise (a raw file needs Time, Lat and Lon columns; a summary needs distance columns)'
           patch(r.id, { detection: d, status: 'skipped', message: why })
         } else if (fileDay && matchDay && fileDay !== matchDay) {
           patch(r.id, { detection: d, status: 'ready', message: `File is dated ${fileDay}, the match is ${matchDay}: it will be read as the match date` })
@@ -92,7 +123,7 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
         patch(r.id, { status: 'error', message: e instanceof Error ? e.message : 'Could not read the file' })
       }
     }
-    setStatus({ tone: 'info', text: 'Files checked. Press Upload to read and store them.' })
+    setStatus({ tone: 'info', text: 'Files checked. Raw files: press Upload. A summary file: press Use this summary.' })
   }
 
   const parseInWorker = (row: FileRow): Promise<TrackUpload> => {
@@ -110,12 +141,30 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
     })
   }
 
+  /** gzip the original file in the browser and PUT it to storage: the raw file is kept whole, nothing dropped. */
+  const archive = async (row: FileRow, label: string): Promise<{ key: string; bytes: number } | null> => {
+    try {
+      patch(row.id, { status: 'archiving', message: 'Compressing the original file…' })
+      const gz = await new Response(row.file.stream().pipeThrough(new CompressionStream('gzip'))).blob()
+      const { upload_url, key } = await api.matchGpsTimeseries.rawFileUrl(matchId, row.file.name)
+      await putWithProgress(upload_url, gz, 'application/gzip', sent => {
+        patch(row.id, { message: `Saving the original file: ${mb(sent)} of ${mb(gz.size)}` })
+        setStatus({ tone: 'info', text: `${label}: saving the original file (${mb(sent)} of ${mb(gz.size)})…` })
+      })
+      return { key, bytes: gz.size }
+    } catch (e) {
+      console.warn('raw file archive failed', e)
+      return null
+    }
+  }
+
   const send = async (row: FileRow, track: TrackUpload, playerId?: string): Promise<'stored' | 'needs_player' | 'error'> => {
     patch(row.id, { status: 'uploading', message: 'Storing…', track })
     try {
       const res = await api.matchGpsTimeseries.uploadTrack(matchId, playerId ? { ...track, player_id: playerId } : track)
+      const extras = [track.motion_pl ? 'motion data' : 'no motion data in this file', track.raw_file_key ? 'original file kept' : 'original file NOT kept (storage failed)']
       patch(row.id, { status: 'stored', track: undefined, playerName: res.player_name ?? undefined,
-        message: `${res.player_name} · ${res.start_utc}-${res.end_utc} UTC · ${res.duration_min} min${res.match_type === 'fuzzy_surname' ? ' · matched on surname only: check it is the right man' : ''}` })
+        message: `${res.player_name} · ${res.start_utc}-${res.end_utc} UTC · ${res.duration_min} min · ${extras.join(' · ')}${res.match_type === 'fuzzy_surname' ? ' · matched on surname only: check it is the right man' : ''}` })
       return 'stored'
     } catch (e: any) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -146,16 +195,32 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
         patch(r.id, { status: 'error', message: e instanceof Error ? e.message : 'Could not read the file' })
         continue
       }
+      if (!track.raw_file_key) {
+        const arch = await archive(r, `File ${i + 1} of ${todo.length}: ${who}`)
+        if (arch) track = { ...track, raw_file_key: arch.key, raw_file_bytes: arch.bytes }
+      }
       setStatus({ tone: 'info', text: `Storing file ${i + 1} of ${todo.length}: ${who}…` })
       const outcome = await send(r, track)
       if (outcome === 'stored') stored++
       else if (outcome === 'needs_player') needPick++
       else failed++
     }
-    setStatus({
-      tone: failed ? 'error' : needPick ? 'info' : 'ok',
-      text: `${stored} track${stored === 1 ? '' : 's'} stored${needPick ? `, ${needPick} need a player picked` : ''}${failed ? `, ${failed} failed` : ''}. ${needPick || failed ? 'Sort those out, then run the sync.' : 'Now run the sync.'}`,
-    })
+    const head = `${stored} track${stored === 1 ? '' : 's'} stored${needPick ? `, ${needPick} need a player picked` : ''}${failed ? `, ${failed} failed` : ''}.`
+    // positions unchanged and the sync still stands (e.g. a re-upload to add motion data): refresh the summary rows now
+    const fresh = await queryClient.fetchQuery({ queryKey: ['gps-timeseries', matchId], queryFn: () => api.matchGpsTimeseries.getSummary(matchId) })
+    const synced = fresh?.sync && (fresh.sync.status === 'auto' || fresh.sync.status === 'confirmed')
+    if (stored && synced) {
+      setStatus({ tone: 'info', text: `${head} Working out the player summaries…` })
+      try {
+        const ps = await api.matchGpsTimeseries.deriveSummary(matchId)
+        setStatus({ tone: 'ok', text: `${head} ${summaryLine(ps)}` })
+        onChanged?.()
+      } catch (e) {
+        setStatus({ tone: 'error', text: `${head} The player summaries were not worked out: ${e instanceof Error ? e.message : String(e)}` })
+      }
+    } else {
+      setStatus({ tone: failed ? 'error' : needPick ? 'info' : 'ok', text: `${head} ${needPick || failed ? 'Sort those out, then run the sync.' : 'Now run the sync: it lines the GPS up with the video and fills the player summaries.'}` })
+    }
     setBusy(null)
     queryClient.invalidateQueries({ queryKey: ['gps-timeseries', matchId] })
   }
@@ -178,7 +243,9 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
     try {
       const res = await api.matchGpsTimeseries.runSync(matchId)
       setSyncResult(res)
-      setStatus({ tone: 'ok', text: `Synced: ${res.periods?.length ?? 0} period${res.periods?.length === 1 ? '' : 's'} matched to the video.` })
+      const ps = res.player_summary
+      setStatus({ tone: ps?.error ? 'error' : 'ok', text: `Synced: ${res.periods?.length ?? 0} period${res.periods?.length === 1 ? '' : 's'} matched to the video. ${ps ? summaryLine(ps) : ''}` })
+      onChanged?.()
     } catch (e) {
       setStatus({ tone: 'error', text: `Sync failed: ${e instanceof Error ? e.message : String(e)}` })
     } finally {
@@ -202,8 +269,8 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
       <div className="glass-card w-full md:max-w-3xl md:mx-4 max-h-[92vh] flex flex-col rounded-b-none md:rounded-2xl">
         <div className="flex items-center justify-between px-4 md:px-6 pt-4 md:pt-5 pb-3 border-b border-white/10">
           <div>
-            <h3 className="text-lg font-bold text-white">GPS tracks</h3>
-            <p className="text-xs text-white/50">Raw STATSports positions (one CSV per player), synced to the match video</p>
+            <h3 className="text-lg font-bold text-white">Upload GPS</h3>
+            <p className="text-xs text-white/50">Raw STATSports files (one CSV per player) or a per-player summary (CSV, PDF, Excel)</p>
           </div>
           <button onClick={onClose} disabled={busy !== null} className="p-2 -mr-2 text-white/60 hover:text-white disabled:opacity-30" aria-label="Close" title={busy ? 'Wait for the current step to finish' : 'Close'}>
             <X size={20} />
@@ -249,9 +316,9 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
               {/* File picker */}
               <label className={`flex flex-col items-center justify-center w-full py-6 border-2 border-dashed border-white/20 rounded-xl transition-colors ${busy ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-emerald-500/50'}`}>
                 <Upload size={28} className="text-white/40 mb-2" />
-                <span className="text-sm text-white/80">Choose the player CSVs</span>
-                <span className="text-xs text-white/40 mt-1 text-center px-4">Select all of them at once (one file per player, 100-170 MB each). They are read on this device; only the positions are sent.</span>
-                <input type="file" multiple accept=".csv,text/csv" className="hidden" disabled={busy !== null}
+                <span className="text-sm text-white/80">Choose the GPS files</span>
+                <span className="text-xs text-white/40 mt-1 text-center px-4">Raw files: select all the players at once (100-170 MB each). Positions, speed, heart rate and the motion sensor are read here and the original file is kept in storage. A summary file fills the per-player figures only.</span>
+                <input type="file" multiple accept=".csv,.pdf,.xlsx,.xls,text/csv,application/pdf" className="hidden" disabled={busy !== null}
                   onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
               </label>
 
@@ -273,6 +340,12 @@ export default function GpsTracksModal({ matchId, matchDate, onClose }: { matchI
                             {r.detection?.deviceName && <span className="text-xs text-white/40 truncate">{r.file.name}</span>}
                           </div>
                           <div className={`text-xs mt-0.5 ${r.status === 'error' ? 'text-red-300' : r.status === 'needs_player' ? 'text-amber-300' : 'text-white/55'}`}>{r.message}</div>
+                          {r.status === 'summary' && (
+                            <div className="mt-2">
+                              <button onClick={() => { onSummaryFile?.(r.file); onClose() }} disabled={busy !== null || !onSummaryFile}
+                                className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium disabled:opacity-40">Use this summary</button>
+                            </div>
+                          )}
                           {r.status === 'needs_player' && (
                             <div className="flex flex-wrap items-center gap-2 mt-2">
                               <select value={r.pickedPlayerId || ''} onChange={e => patch(r.id, { pickedPlayerId: e.target.value || undefined })}
@@ -397,10 +470,16 @@ function residualTone(m?: number) {
 
 function RowIcon({ status }: { status: RowStatus }) {
   const cls = 'mt-0.5 shrink-0'
-  if (status === 'checking' || status === 'parsing' || status === 'uploading') return <Loader2 size={16} className={`${cls} animate-spin text-emerald-300`} />
+  if (status === 'checking' || status === 'parsing' || status === 'archiving' || status === 'uploading') return <Loader2 size={16} className={`${cls} animate-spin text-emerald-300`} />
   if (status === 'stored') return <CheckCircle size={16} className={`${cls} text-emerald-400`} />
   if (status === 'error') return <AlertCircle size={16} className={`${cls} text-red-400`} />
   if (status === 'needs_player') return <AlertCircle size={16} className={`${cls} text-amber-400`} />
   if (status === 'skipped') return <MinusCircle size={16} className={`${cls} text-white/30`} />
   return <FileText size={16} className={`${cls} text-white/50`} />
+}
+
+function summaryLine(ps: { written: number; official_kept?: number; error?: string }): string {
+  if (ps.error) return `Player summaries not worked out: ${ps.error}`
+  if (!ps.written) return 'No player summaries written (nobody tracked was on the pitch).'
+  return `Player summaries filled for ${ps.written} player${ps.written === 1 ? '' : 's'} (Match Result GPS section, leaderboards, charts)${ps.official_kept ? `; ${ps.official_kept} kept the figures from an uploaded summary file` : ''}.`
 }

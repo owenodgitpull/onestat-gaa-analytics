@@ -35,6 +35,15 @@ export interface TrackUpload {
   n_rows?: number
   n_fixes?: number
   n_bad?: number
+  /** Motion-sensor channels on the same 10 Hz grid (mirror of backend services/gps_timeseries/motion.py):
+   *  pl = sum of |change in acceleration| (g) over the 100 Hz rows, gmax = peak resultant g, imp = sum of the file's
+   *  Instantaneous Acceleration Impulse. Absent when the file has no accelerometer columns. */
+  motion_pl?: number[]
+  motion_gmax?: number[]
+  motion_imp?: number[]
+  /** the original file, gzipped, in storage */
+  raw_file_key?: string
+  raw_file_bytes?: number
 }
 
 export const FLAG_INTERPOLATED = 1
@@ -48,6 +57,10 @@ const HR_COLS = ['heart rate (bpm)', 'heart rate', 'hr', 'hr (bpm)']
 const HDOP_COLS = ['hdop']
 const SAT_COLS = ['no. of satellites', 'satellites', 'num satellites', 'nsat']
 const NAME_COLS = ['player display name', 'player', 'player name', 'name', 'athlete']
+const ACC_X_COLS = ['accl x', 'accel x', 'acc x', 'accelerometer x']
+const ACC_Y_COLS = ['accl y', 'accel y', 'acc y', 'accelerometer y']
+const ACC_Z_COLS = ['accl z', 'accel z', 'acc z', 'accelerometer z']
+const IMPULSE_COLS = ['instantaneous acceleration impulse']
 const SUMMARY_HINTS = ['total distance', 'distance', 'hsr', 'high speed', 'sprint', 'player load', 'max speed', 'dsl']
 const BAD_HDOP = 2.5
 const MIN_SATS = 8
@@ -137,6 +150,11 @@ export function parseGpsTimeseriesText(text: string, matchDate: string, filename
   let nRows = 0
   let pos = nl + 1
   const maxIdx = Math.max(ti, lai, loi)
+  // motion sensor: every 100 Hz row (not just the 10 Hz fixes)
+  const axi = findCol(header, ACC_X_COLS), ayi = findCol(header, ACC_Y_COLS), azi = findCol(header, ACC_Z_COLS), ipi = findCol(header, IMPULSE_COLS)
+  const withMotion = axi >= 0 && ayi >= 0 && azi >= 0
+  const mT: number[] = [], mD: number[] = [], mG: number[] = [], mI: number[] = []
+  let px = NaN, py = NaN, pz = NaN, mLastStr = '', mLastT = 0
   while (pos < text.length) {
     let end = text.indexOf('\n', pos)
     if (end < 0) end = text.length
@@ -144,6 +162,23 @@ export function parseGpsTimeseriesText(text: string, matchDate: string, filename
     pos = end + 1
     if (!line.trim()) continue
     nRows++
+    if (withMotion) {
+      let f = line.replace(/\r$/, '').split(',')
+      if (f.length !== header.length) f = splitCsvLine(line.replace(/\r$/, ''))
+      const ax = Number(f[axi]), ay = Number(f[ayi]), az = Number(f[azi])
+      const ts = f[ti]
+      if (ts !== undefined && !Number.isNaN(ax) && !Number.isNaN(ay) && !Number.isNaN(az)) {
+        if (ts !== mLastStr) { mLastStr = ts; mLastT = parseHms(ts) }
+        if (!Number.isNaN(mLastT)) {
+          mT.push(mLastT)
+          mD.push(Number.isNaN(px) ? 0 : Math.sqrt((ax - px) ** 2 + (ay - py) ** 2 + (az - pz) ** 2))
+          mG.push(Math.sqrt(ax * ax + ay * ay + az * az))
+          const imp = ipi >= 0 ? Number(f[ipi]) : 0
+          mI.push(Number.isNaN(imp) ? 0 : imp)
+          px = ax; py = ay; pz = az
+        }
+      }
+    }
     // fast path: the Time field is the second field; the name is quoted so find the second comma
     const i1 = line.indexOf(',', 1)
     const i2 = line.indexOf(',', i1 + 1)
@@ -177,7 +212,24 @@ export function parseGpsTimeseriesText(text: string, matchDate: string, filename
   const nBad = fixes.filter(f => f.bad).length
   const usable = fixes.filter(f => f.lat !== 0 && f.lon !== 0).sort((a, b) => a.t - b.t)
   if (!usable.length) throw new Error('Every fix is empty (no satellite lock)')
-  return { ...densify(usable, HZ, matchDate), device_name: name, source_filename: filename, n_rows: nRows, n_fixes: fixes.length, n_bad: nBad }
+  const dense = densify(usable, HZ, matchDate)
+  const out: TrackUpload = { ...dense, device_name: name, source_filename: filename, n_rows: nRows, n_fixes: fixes.length, n_bad: nBad }
+  if (withMotion && mT.length) {
+    // bin onto the grid exactly as densify placed it: sample i is at t0 + i / HZ (seconds of day)
+    const n = dense.lat.length
+    const t0 = Math.floor(usable[0].t / (1 / HZ)) * (1 / HZ)
+    const pl = new Float64Array(n), gm = new Float64Array(n), im = new Float64Array(n)
+    for (let k = 0; k < mT.length; k++) {
+      const i = Math.round((mT[k] - t0) * HZ)
+      if (i < 0 || i >= n) continue
+      pl[i] += mD[k]; im[i] += mI[k]
+      if (mG[k] > gm[i]) gm[i] = mG[k]
+    }
+    out.motion_pl = Array.from(pl, v => Math.round(v * 1e4) / 1e4)
+    out.motion_gmax = Array.from(gm, v => Math.round(v * 100) / 100)
+    out.motion_imp = Array.from(im, v => Math.round(v * 1e4) / 1e4)
+  }
+  return out
 }
 
 function densify(fixes: Fix[], hz: number, matchDate: string): Omit<TrackUpload, 'device_name'> {

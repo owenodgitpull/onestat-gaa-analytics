@@ -2846,6 +2846,8 @@ export interface GpsSyncSummary {
   confirmed_at: string | null
 }
 
+export interface GpsPlayerSummaryResult { written: number; official_kept?: number; error?: string }
+
 export interface GpsTimeseriesSummary {
   match_id: string
   tracks: GpsTrackSummary[]
@@ -2892,8 +2894,17 @@ const matchGpsTimeseriesAPI = {
   uploadTrack: (matchId: string, track: TrackUpload): Promise<GpsTrackUploadResult> =>
     fetchAPI(`/matches/${matchId}/gps/timeseries/tracks`, { method: 'POST', body: JSON.stringify(track) }),
 
-  /** Calibrate the pitch and find each period's video offset from the tagged carries (10-60 s). */
-  runSync: (matchId: string): Promise<GpsSyncSummary> =>
+  /** Presigned PUT for the original raw file (gzipped in the browser) so nothing in it is lost. */
+  rawFileUrl: (matchId: string, filename: string): Promise<{ upload_url: string; key: string }> =>
+    fetchAPI(`/matches/${matchId}/gps/timeseries/raw-file-url`, { method: 'POST', body: JSON.stringify({ filename }) }),
+
+  /** Recompute the per-player summary rows (the Match Result GPS section) from the tracks. */
+  deriveSummary: (matchId: string): Promise<GpsPlayerSummaryResult> =>
+    fetchAPI(`/matches/${matchId}/gps/timeseries/summary`, { method: 'POST' }),
+
+  /** Calibrate the pitch and find each period's video offset from the tagged carries (10-60 s), then fill the
+   *  per-player summary rows from the tracks. */
+  runSync: (matchId: string): Promise<GpsSyncSummary & { player_summary?: GpsPlayerSummaryResult }> =>
     fetchAPI(`/matches/${matchId}/gps/timeseries/sync`, { method: 'POST' }),
 
   /** Manual nudge of a period's offset; marks the sync confirmed. */
