@@ -145,8 +145,11 @@ second-half pattern was a team chasing or protecting a lead rather than a real c
 7. Personnel or position moves, only with the before/after figures and their sample caveat.
 8. Where and by whom frees are being given away (a discipline watch, never an automatic card).
 9. Speed of transition, only where median seconds is given.
-Nothing outside this list: no pressing, no line height, no shape, no instructions to players off the ball, no named
-set-piece routine or "specialists" the data does not show. If no lever fits the finding, state the finding and stop - no advice
+10. ONLY for a match with a synced GPS time series (get_gps_match_analysis returns data): OUR off-the-ball play - team shape
+    and distances between lines, getting players goal-side after a turnover, support around the ball carrier, cover between
+    the ball and our goal when they shoot, who closes down their receiver, running drop-off - each tied to a figure from that tool.
+Nothing outside this list: no pressing, no line height, no shape, no instructions to players off the ball unless they come
+from lever 10's GPS figures, no named set-piece routine or "specialists" the data does not show. If no lever fits the finding, state the finding and stop - no advice
 is better than advice the data cannot support.
 """
 
@@ -180,7 +183,9 @@ GAA_ESSENTIALS = """
   described, not concluded from. Say how much of the match a figure covers when it is a subset (e.g. "22 of 28 shots").
 - Everything spatial is in OUR attacking frame (our left/right as we face their goal). A team's score by half and the length
   of each half come from the tool's own figures - never add scores up or work out minutes yourself.
-- Pressing and defensive shape are not tagged: say "not recorded" rather than inventing them.
+- Pressing and defensive shape are not tagged as events. They are measured ONLY where a match has a synced GPS time series
+  (get_gps_match_analysis): that shows where OUR outfielders were (not the opposition's, not our goalkeeper). Without it, say
+  "not recorded" rather than inventing them.
 
 ## Everyday language (coaches do not talk like a data sheet)
 - Never describe a match as "a 2×30 fixture", "2x35", "a 70-minute fixture" or similar - nobody says that. Just say "lost to St Eunans by 3 points (0-18 to 1-18)". Mention half length only when it genuinely matters to a point (e.g. when a late score came), and then as "the last ten minutes" or "in the closing minutes", not as notation.
@@ -1384,7 +1389,8 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_ball_recovery_time(db, **tool_input, club_id=club_id)
     elif tool_name == "get_gps_match_analysis":
         from app.services.ai.gps_tools import get_gps_match_analysis
-        return await get_gps_match_analysis(db, tool_input.get("match_id"), tool_input.get("sections"), tool_input.get("limit", 8), club_id=club_id)
+        return await get_gps_match_analysis(db, tool_input.get("match_id"), tool_input.get("sections"), tool_input.get("limit", 8), club_id=club_id,
+                                            situation=tool_input.get("situation"), full_positions=tool_input.get("full_positions", False))
     elif tool_name == "get_gps_season_trends":
         from app.services.ai.gps_tools import get_gps_season_trends
         return await get_gps_season_trends(db, club_id=club_id)

@@ -16,7 +16,8 @@ FRAME_NOTE = (
     "create_video_compilation / clip tools. Few matches have GPS: describe what happened, not statistics."
 )
 
-SECTIONS = ("summary", "transitions", "kickouts", "intensity", "tag_health", "support", "marking", "moments")
+SECTIONS = ("summary", "situations", "positions", "pressure", "transitions", "kickouts", "intensity", "tag_health", "support", "marking", "moments")
+SITUATIONS = ("their_scores", "their_missed_shots", "our_shots", "our_turnovers", "fouls_we_conceded")
 
 
 def _trim_transitions(tr: dict, limit: int) -> dict:
@@ -33,9 +34,37 @@ def _trim_transitions(tr: dict, limit: int) -> dict:
                            "retreat_10s_m = how far the team's centre moved back towards our goal in 10 s."}
 
 
-def _section(res: dict, section: str, limit: int):
+def _section(res: dict, section: str, limit: int, situation=None, full_positions: bool = False):
     if section == "summary":
         return res["summary"]
+    if section == "situations":
+        si = res.get("situations") or {"groups": {}, "summary": {}}
+        want = [x for x in (situation or SITUATIONS) if x in SITUATIONS] or list(SITUATIONS)
+        out = {}
+        for g in want:
+            rows = si["groups"].get(g, [])
+            out[g] = {"summary": si["summary"].get(g), "moments": [
+                r if full_positions else {k: v for k, v in r.items() if k != "positions"} | {"positions": r["positions"][:6]}
+                for r in rows[:limit * 3]]}
+        out["tag_accuracy"] = si.get("tag_accuracy")
+        out["how_to_read"] = (
+            "One row per tagged moment; moment_from says how the instant and the ball spot were found. Our own moments (our_shots, "
+            "our_turnovers, fouls_we_conceded) are anchored on the tagged player's own GPS, so their distances are good to a metre or two, "
+            "and `nearest` there means the nearest TEAM-MATES (the player himself is left out). Opposition moments (their_scores, "
+            "their_missed_shots) can only use the tagged spot, which is itself out by about tag_accuracy.median_m metres: for those, "
+            "quote the band ('within 5 m', '5-10 m', '10-15 m', 'over 15 m') or counts across many moments, never a single decimal "
+            "distance, and never claim one player was 2 m closer than another. "
+            "nearest = our three closest tracked outfielders to the ball spot, with closed_in_last_2s_m (+ = he was closing the gap, "
+            "- = backing off). goal_side_of_ball = our players nearer our goal line than the ball. in_line_between_ball_and_goal = our "
+            "players within 3 m of the straight line from the ball to the middle of the goal. For our_shots the same fields count our "
+            "players ahead of the ball and inside their 45. shape = our team shape at that instant; shape_5s_before = 5 s earlier. "
+            "positions are sorted nearest first (6 unless full_positions). Opposition players other than the one on the ball are not tracked: "
+            "never say an opposition runner was free or unmarked.")
+        return out
+    if section == "positions":
+        return res.get("positions")
+    if section == "pressure":
+        return res.get("pressure")
     if section == "transitions":
         return _trim_transitions(res["transitions"], limit)
     if section == "kickouts":
@@ -64,7 +93,7 @@ def _section(res: dict, section: str, limit: int):
     return None
 
 
-async def get_gps_match_analysis(db, match_id: str, sections=None, limit: int = 8, club_id=None) -> str:
+async def get_gps_match_analysis(db, match_id: str, sections=None, limit: int = 8, club_id=None, situation=None, full_positions: bool = False) -> str:
     if not match_id:
         return safe_json({"error": "match_id is required"})
     m = await match_row(db, match_id, club_id)
@@ -78,7 +107,7 @@ async def get_gps_match_analysis(db, match_id: str, sections=None, limit: int = 
     out = {"match": {"opponent": res["opponent"], "date": res["match_date"], "result": res["result"]}, "frame_note": FRAME_NOTE,
            "pitch_length_m": res["pitch_length_m"], "pitch_width_m": res["pitch_width_m"]}
     for s in wanted:
-        out[s] = _section(res, s, max(1, min(int(limit or 8), 30)))
+        out[s] = _section(res, s, max(1, min(int(limit or 8), 30)), situation, bool(full_positions))
     return safe_json(out)
 
 
@@ -94,8 +123,14 @@ TOOL_DEFS = [
     {
         "name": "get_gps_match_analysis",
         "description": (
-            "Raw-GPS analysis of one match (only matches with a synced GPS time series). Sections: summary (team running by half, "
-            "shape in/out of possession, transition summary, drop-off, support and marking headlines), transitions (every turnover "
+            "Raw-GPS OFF-THE-BALL analysis of one match (only matches with a synced GPS time series): where our players were, not just "
+            "what the ball did. Sections: summary (team running by half, shape in/out of possession, transition summary, drop-off, support, "
+            "marking, situation and pressure headlines), situations (for each tagged moment of a kind - their_scores, their_missed_shots, "
+            "our_shots, our_turnovers, fouls_we_conceded - our nearest three players to the ball and whether they were closing, how many "
+            "within 3/5/10 m, goal-side, in line between ball and goal, inside our 45, sprinting, team shape then and 5 s before, every "
+            "player's position; pick kinds with `situation`), positions (each player's average spot with and without the ball per half: "
+            "the shape actually played), pressure (distance from our nearest player to each opposition player as he received the ball, "
+            "by half and zone, who was closest most often), transitions (every turnover "
             "lost: seconds to get players goal-side, retreat, who sprinted; every turnover won: who broke forward), kickouts (team "
             "shape at each kick, push-up, outcome groups), intensity (per player distance, high-speed metres, sprints, accels, "
             "5-minute blocks, drop-off), tag_health (probable mis-tags where the tagged spot disagrees with the player's GPS), "
@@ -109,7 +144,10 @@ TOOL_DEFS = [
                 "match_id": {"type": "string", "description": "Match UUID"},
                 "sections": {"type": "array", "items": {"type": "string", "enum": list(SECTIONS)},
                              "description": "Which sections to return (default ['summary'])"},
-                "limit": {"type": "integer", "description": "Max rows per list section (default 8, max 30)"},
+                "limit": {"type": "integer", "description": "Max rows per list section (default 8, max 30; situations returns up to 3x this per kind)"},
+                "situation": {"type": "array", "items": {"type": "string", "enum": list(SITUATIONS)},
+                              "description": "For the situations section: which kinds of moment (default all)"},
+                "full_positions": {"type": "boolean", "description": "situations: every tracked player's position instead of the nearest 6 (default false)"},
             },
             "required": ["match_id"],
         },

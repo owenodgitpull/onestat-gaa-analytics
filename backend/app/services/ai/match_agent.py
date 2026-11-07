@@ -140,6 +140,45 @@ async def _fact_check_live_insight(insight_text: str, evidence: str):
         return insight_text, report
 
 
+OFF_BALL_BLOCK = """
+## OFF THE BALL - GPS tracking for this match (REQUIRED section)
+This match has every one of OUR outfielders' GPS positions synced to the video, 10 times a second. get_gps_match_analysis
+(match_id {match_id}) turns that into what the tracking screens show: team shape with and without the ball, average
+positions (the shape actually played), getting back after turnovers, kickout push-up, support at passes, and - for every
+one of their scores and missed shots, our shots, our turnovers and the frees we gave away - where our players were.
+
+What it can and cannot see (a manager will check one claim against the video; get this wrong and the report is gone):
+- Only OUR outfielders are tracked. Not the opposition, not our goalkeeper. Their players are known only where a tag put the
+  ball (the one on the ball). NEVER say an opposition runner was free, unmarked or "left on his own": we cannot see him.
+  Say what OUR players were doing: "nobody of ours within 10 m of the shooter, 3 of ours goal-side".
+- Our own moments (our shots, turnovers, fouls) are fixed on the tagged player's own GPS: their distances are good to a
+  metre or two. Their moments (scores, missed shots, receptions) use the tagged spot, which is out by about
+  tag_accuracy.median_m metres: use the band ("within 5 m", "5-10 m", "over 15 m") or counts across many moments, never a
+  single decimal, and never rank two of our players by a 1-2 m difference there.
+- Frees, 45s and marks are left out of the shot moments (players stand off by rule). Say so if you quote a count.
+- With / without the ball comes from the tagged carries; x_m is metres from OUR goal line, y_m from our left touchline.
+  Translate into football language: "our six deepest averaged 27 m from goal without the ball", "McColgan held 16 m out
+  in the first half and was 13 m further up in the second".
+
+How to write it - section "Off the Ball", after Phase Analysis, 4-6 short headed paragraphs, figures inside sentences:
+- "Shape": with and without the ball, by half (compactness, length, width, deepest six, team height). Say what changed
+  between halves and put it in game-state context (a side protecting a lead sits deeper - not a trend).
+- "Who played where": from positions, the two or three players whose average spot differed most from their listed
+  position or moved most between halves, and the depth of our defence without the ball. Never invent a role.
+- "When they scored": from situations.their_scores / their_missed_shots - how often nobody of ours was within 5 m, the
+  usual number goal-side and in line between ball and goal, and 2-3 named moments (with their `when`) that show it.
+  Connect it to the scoreboard: were their scores coming with cover in place, or with us stretched?
+- "After we lost it": transitions (caught short vs already back, median seconds to get goal-side, turnovers that became
+  their scores) and situations.our_turnovers (team-mates around the player who lost it). Name who got back when it mattered.
+- "Pressure on the ball": pressure - share of their receptions with one of ours within 5 m, by zone and half, and who
+  closed down most. It is pressure at the moment of receiving only, and comparisons (half v half, zone v zone) are safer
+  than the single figure.
+- "Support": support around our carrier and our_shots (team-mates near the shooter, players ahead of the ball). Keep it short.
+Every figure copied from the tool. Advice from this section uses lever 10 and names the figure it follows from. If the tool
+returns an error (no GPS), leave the section out silently.
+"""
+
+
 class MatchAgent:
     """Agentic Match Intelligence — live insights and deep post-match analysis."""
 
@@ -430,6 +469,13 @@ Reference knowledge base context when relevant to a specific trigger.
         # Get knowledge base context via RAG
         kb_context = KB_TOOL_BLOCK
 
+        # Off-the-ball GPS tracking (our players' positions synced to the video) exists for this match?
+        from sqlalchemy import text as _text
+        _gps_sync = (await db.execute(_text("select status from match_gps_sync where match_id = :m"), {"m": str(_mid)})).scalar_one_or_none()
+        has_tracking = _gps_sync in ("auto", "confirmed")
+        off_ball_block = OFF_BALL_BLOCK.replace("{match_id}", str(match_id)) if has_tracking else ""
+        off_ball_heading = "Off the Ball → " if has_tracking else ""
+
         system_prompt = f"""You are an expert GAA football analyst for {club_name}.
 
 {GAA_ESSENTIALS}
@@ -438,12 +484,12 @@ Reference knowledge base context when relevant to a specific trigger.
 
 ## Knowledge Base Context (tactics, GPS benchmarks, rules, playbooks)
 {kb_context}
-
+{off_ball_block}
 INSTRUCTIONS:
 1. You MUST use tools to gather match data BEFORE providing any analysis.
 2. ALWAYS call get_match_summary and get_match_events first with the match ID provided. Then call get_ball_carrier_data with the same match ID to retrieve ball carrying, passing network, and possession chain data — this is REQUIRED, not optional.
 3. Do NOT ask the user for match IDs or clarification — you already have the match ID.
-4. Structure your analysis as: Summary (opening with "What mattered most") → How the Game Was Won / Lost (see 7j) → Key Stats → Top Performers (rated 1-10) → Tactical Analysis → Phase Analysis → Areas for Improvement → Training Recommendations. Every existing section stays; the new one is added near the top.
+4. Structure your analysis as: Summary (opening with "What mattered most") → How the Game Was Won / Lost (see 7j) → Key Stats → Top Performers (rated 1-10) → Tactical Analysis → Phase Analysis → {off_ball_heading}Areas for Improvement → Training Recommendations. Every existing section stays; the new one is added near the top.
 5. Reference knowledge base context: compare to tactical documents, GPS benchmarks, and rules when available.
 6. Be specific — cite player names, minutes, and events from the tool results.
 7. Be constructive but honest about weaknesses.
@@ -488,8 +534,8 @@ INSTRUCTIONS:
     - All locations in OUR attacking frame. A half-against-half comparison must be put in game-state context (who was ahead, whether
       a team protecting a big lead changed how it played) and must not be called a trend on a handful of events.
     - Training recommendations must each be tied to a named phase finding from this report. No generic drills.
-    - Do not claim anything about pressing or defensive shape: it is not recorded - say so, and use where the ball was won and
-      where their kickouts landed instead.
+    - Pressing and defensive shape: if this match has GPS tracking (see OFF THE BALL above), use only its figures; otherwise it is
+      not recorded - say so, and use where the ball was won and where their kickouts landed instead.
 7g. PHASE ANALYSIS — REQUIRED: call get_phase_summary(match_id) and add a "Phase Analysis" section after Tactical Analysis (do not drop or shorten any other section).
     - Cover, in this order and only where there are observations: Own Kick-Out, Opposition Kick-Out, Transition to Attack, Transition to Defence, Possession/Attack, Defensive Phase. For each say what the possessions BECAME ("of our 9 kept kickouts, 3 became a shot and 1 a score") — not just how many there were.
     - Quote counts and rates exactly as the tool gives them; never recompute them. A phase marked "describe, do not conclude" (under 3 finished) is mentioned plainly with its small number, never as a trend.
@@ -517,7 +563,7 @@ INSTRUCTIONS:
     - Paragraph 3, "What to fix" (a win: "What to protect and what still needs work"): two or three specific things, each tied to a named finding in this report and each one of THE LEVERS. If the data does not support a lever, say what the data shows and stop.
     - Each paragraph carries only the 3-5 figures that make its argument; everything else stays in the sections below. Every figure is copied from a tool result and every name and minute exactly as given.
     - Separate fact from read: give the figures, then at most one clearly marked judgement ("my read is...") that says what it rests on. Never state a cause the data does not show.
-    - No pressing or defensive-shape claims, no advice outside THE LEVERS, nothing about players who did not play.
+    - No pressing or defensive-shape claims beyond the GPS figures, no advice outside THE LEVERS, nothing about players who did not play.
 7k. NUMBER AND WORDING DISCIPLINE — REQUIRED (a manager checks the arithmetic; one wrong figure costs the whole report):
     - A phase's shots and scores come from its own row (became_a_shot, scored; "did not score" = became_a_shot minus scored). NEVER count the rows of get_phase_sequences to get a figure - that list is a sample of examples, not the total.
     - State a percentage only if a tool result gives it. Do not turn three outcome counts into a new percentage ("ended without a score") - give the counts and the total as the tool gives them.
@@ -555,6 +601,10 @@ INSTRUCTIONS:
 
         # Always include tool instruction with the match_id
         tool_instruction = f"First, use get_match_summary and get_match_events tools with match_id '{match_id}' to retrieve all match data."
+        if has_tracking:
+            tool_instruction += (f" This match has GPS tracking of our players: also call get_gps_match_analysis with match_id '{match_id}', "
+                                 "sections ['summary', 'situations', 'positions', 'pressure', 'transitions', 'kickouts', 'support'] and limit 10, "
+                                 "and write the Off the Ball section from it.")
 
         if question:
             user_message = f"{tool_instruction}\n\nThen answer this: {question}"

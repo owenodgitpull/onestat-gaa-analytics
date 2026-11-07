@@ -108,6 +108,26 @@ async def _tagged_inputs(db: AsyncSession, match: Match):
     return session, carries, events, starters, starts, ends
 
 
+async def their_kickouts(db: AsyncSession, match_id, arfh) -> list:
+    """Their kickouts with the raw-screen end they kicked from: their goal is the one we attack."""
+    from app.utils.attack_direction import own_attacks_right
+    if arfh is None:
+        return []
+    return [{"video_ms": int(r[0]), "half": r[1], "end": "R" if own_attacks_right(arfh, r[1] or 1) else "L"} for r in (await db.execute(text(
+        "select video_timestamp_ms, half from video_events where match_id = :m and event_type like 'OPP_KICKOUT%' "
+        "and event_type <> 'OPP_KICKOUT_SIDELINE' and video_timestamp_ms is not null"), {"m": match_id})).all()]
+
+
+async def refit_pitch_ends(db: AsyncSession, match, tracks, cal: dict, periods: list, log=logger.info):
+    """Centre the picture between the two goals from the 40 m arc at their kickouts (pitch_fit)."""
+    from . import pitch_fit
+    try:
+        return pitch_fit.fit_ends(tracks, cal, periods, await their_kickouts(db, match.id, match.attacking_right_first_half), log=log)
+    except Exception:
+        logger.exception("pitch end fit failed for %s", match.id)
+        return None
+
+
 async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSSync:
     """Compute (or recompute) the calibration and offsets and store them. Caller commits."""
     row = await db.get(MatchGPSSync, match.id)
@@ -128,6 +148,7 @@ async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSS
     for p in out["periods"]:
         if p["half"] in old:
             p["offset_ms"] = old[p["half"]]["offset_ms"]; p["rate"] = old[p["half"]].get("rate", 1.0); p["source"] = "manual"
+    out["calibration"] = await refit_pitch_ends(db, match, tracks, out["calibration"], out["periods"], log) or out["calibration"]
     row.calibration = out["calibration"]; row.periods = out["periods"]; row.tag_lag = out["tag_lag"]; row.quality = out["quality"]
     row.status = "confirmed" if row.status == "confirmed" else "auto"; row.error = None; row.computed_at = datetime.utcnow()
     for r, _ in loaded:

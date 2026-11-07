@@ -45,6 +45,7 @@ class Event:
     opposition_player_id: Optional[str]
     match_minute: Optional[int]
     match_second: Optional[int]
+    score_source: Optional[str] = None   # scoring_context.source on shots: FROM_PLAY, FROM_FREE, FROM_45, ...
 
 
 @dataclass
@@ -126,9 +127,9 @@ async def load_match(db: AsyncSession, match, with_tracks: bool = True) -> Match
             tracks[str(row.player_id)] = t
 
     lineup = (await db.execute(text(
-        "select l.player_id, l.is_substitute, coalesce(l.jersey_number, p.jersey_number), p.name "
+        "select l.player_id, l.is_substitute, coalesce(l.jersey_number, p.jersey_number), p.name, l.position_id "
         "from match_lineups l join players p on p.id = l.player_id where l.match_id = :m"), {"m": match.id})).all()
-    players = {str(r[0]): {"name": r[3], "jersey": r[2]} for r in lineup}
+    players = {str(r[0]): {"name": r[3], "jersey": r[2], "position": r[4]} for r in lineup}
     starters = [str(r[0]) for r in lineup if not r[1]]
     bench = [str(r[0]) for r in lineup if r[1]]
     # tracked players missing from the lineup still get a name
@@ -140,9 +141,9 @@ async def load_match(db: AsyncSession, match, with_tracks: bool = True) -> Match
     carries = [Carry(_s(r[0]), r[1], _s(r[2]), _s(r[3]), r[4], r[5], r[6], r[7], r[8], int(r[9]), r[10], r[11]) for r in (await db.execute(text(
         "select id, team, player_id, opposition_player_id, half, start_x, start_y, end_x, end_y, video_timestamp_ms, end_video_ms, ended_by "
         "from ball_carrier_segments where match_id = :m and video_timestamp_ms is not null order by video_timestamp_ms"), {"m": match.id})).all()]
-    events = [Event(_s(r[0]), r[1], r[2], r[3], r[4], int(r[5]), r[6], r[7], r[8], r[9], _s(r[10]), _s(r[11]), _s(r[12]), r[13], r[14]) for r in (await db.execute(text(
+    events = [Event(_s(r[0]), r[1], r[2], r[3], r[4], int(r[5]), r[6], r[7], r[8], r[9], _s(r[10]), _s(r[11]), _s(r[12]), r[13], r[14], r[15]) for r in (await db.execute(text(
         "select id, team, event_type, sub_type, half, video_timestamp_ms, pitch_x, pitch_y, end_x, end_y, player_id, sub_in_player_id, "
-        "opposition_player_id, match_minute, match_second from video_events "
+        "opposition_player_id, match_minute, match_second, scoring_context->>'source' from video_events "
         "where match_id = :m and video_session_id = :s and video_timestamp_ms is not null order by video_timestamp_ms"),
         {"m": match.id, "s": session.id})).all()]
     for e in events:          # substitutes who came on are named too

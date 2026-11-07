@@ -11,6 +11,7 @@ import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import metrics as M
+from . import situations as SI
 from .frame import Grid, build_grid, on_pitch_intervals, period_bounds
 from .loader import MatchInputs, NotReady, load_match, synced_matches
 
@@ -37,6 +38,9 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
     sp = M.support(inp, g10)
     mk = M.marking(inp, g10)
     mo = M.moments(tr, ko, th, sh, g1)
+    si = SI.situations(inp, g10)
+    ap = SI.average_positions(inp, g1)
+    pr = SI.carrier_pressure(inp, g10)
     shape_sum = M.shape_summary(g1, sh)
     fastest = sorted([t for t in tr["lost"] if t["recovery_s"] is not None and not t["already_back"]], key=lambda t: t["recovery_s"])[:3]
     drop = sorted([p for p in it["players"] if p.get("drop_off_pct") is not None], key=lambda p: p["drop_off_pct"])[:5]
@@ -60,6 +64,8 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
         "tag_health": {"checked": th["checked"], "flagged": th["n_flagged"]},
         "support": {k: sp[k] for k in ("n_passes", "mean_within_15m", "isolated_share_pct", "further_option_share_pct")},
         "marking": {k: mk[k] for k in ("n_shots", "median_nearest_m", "median_nearest_m_scores", "unpressured_share_pct")},
+        "situations": {**si["summary"], "tag_accuracy": si["tag_accuracy"]},
+        "pressure_on_their_receiver": pr["all"],
     }
     out = {
         "match_id": inp.match_id, "opponent": inp.opponent, "match_date": inp.match_date, "result": inp.result,
@@ -67,6 +73,7 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
         "pitch_length_m": inp.pitch_length_m, "pitch_width_m": inp.pitch_width_m,
         "sync_status": inp.sync["status"], "summary": summary,
         "transitions": tr, "kickouts": ko, "intensity": it, "tag_health": th, "support": sp, "marking": mk, "moments": mo,
+        "situations": si, "positions": ap, "pressure": pr,
         "computed_in_s": round(time.time() - t0, 1),
     }
     return out, g1
@@ -144,6 +151,8 @@ async def season(db: AsyncSession, club_id) -> dict:
             "push_up_mean_x_m": _mean([v["team_mean_x"] for v in s["kickout_push_up"].values()]),
             "support_within_15m": s["support"]["mean_within_15m"],
             "shots_against_nearest_m": s["marking"]["median_nearest_m"],
+            "their_receiver_nearest_m": (s.get("pressure_on_their_receiver") or {}).get("median_nearest_m"),
+            "their_receptions_within_5m_pct": (s.get("pressure_on_their_receiver") or {}).get("pct_within_5m"),
             "tag_flags": s["tag_health"]["flagged"],
         })
         for p in res["intensity"]["players"]:
