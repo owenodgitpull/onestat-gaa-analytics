@@ -86,6 +86,24 @@ def _apply_scorecard(text: str, table_md: str) -> str:
     return "\n".join(cleaned)
 
 
+def _won_lost_paragraphs(text: str) -> str:
+    """How the Game Was Won/Lost is written as paragraphs (managers read it as a story); the model kept turning "What to
+    fix" into a bullet list despite the prompt, so bullets inside that one section become paragraphs."""
+    lines = text.split("\n")
+    inside = False
+    out = []
+    for ln in lines:
+        if ln.startswith("## "):
+            inside = "How the Game Was" in ln
+        if inside and (ln.startswith("- ") or ln.startswith("* ")):
+            if out and out[-1].strip():
+                out.append("")
+            out.append(ln[2:])
+            continue
+        out.append(ln)
+    return "\n".join(out)
+
+
 # match_id -> the post-match report generation currently running (see MatchAgent.generate_post_match_report)
 _REPORT_INFLIGHT: dict = {}
 # match_id -> the phase scorecard table exactly as get_phase_summary computed it, held until the report is assembled
@@ -1137,6 +1155,7 @@ INSTRUCTIONS:
         # Strip the <chart_insights> block from the displayed analysis
         clean_analysis = re.sub(r'\s*<chart_insights>[\s\S]*?</chart_insights>\s*', '', analysis).strip()
         clean_analysis = _apply_scorecard(clean_analysis, _SCORECARD_BY_MATCH.pop(str(match_id), ""))
+        clean_analysis = _won_lost_paragraphs(clean_analysis)
         kb_note = format_sources_used(kb_sources)
         if kb_note:
             clean_analysis += f"\n\n*Knowledge base passages consulted: {kb_note}.*"

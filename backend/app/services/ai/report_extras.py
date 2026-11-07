@@ -184,7 +184,7 @@ def saved_chances(rows: list, evs: list, atk_first, hdm, name_of=None, length_m=
             continue
         who = name_of(row) if name_of else None
         side["from_inside_the_13m"].append({
-            "when": f"{'1st half' if e.half == 1 else '2nd half'} {e.minute}'",
+            "when": f"{ {1: '1st half', 2: '2nd half', 3: 'extra time 1', 4: 'extra time 2'}.get(e.half, '2nd half') } {e.minute}'",
             "shot_by": who or ("our player" if e.own else "their player"),
             "metres_from_goal": round(distance_to_goal_m(fx, fy, True, LEN, WID)),
             "saved_by": "their goalkeeper" if e.own else "our goalkeeper",

@@ -22,6 +22,7 @@ from app.services.ai.insight_findings import (
     PHASES, build_findings, margin, margin_phrase, tally, top_findings,
 )
 from app.services.ai.report_extras import build_extras
+from app.services.ai.phase_facts import SCORE_TYPES as _SCORE_TYPES, points_for as _points_for
 from app.utils.names import their_player_label
 from app.services.ai.phase_facts import (
     GROUPS, MAX_TRUSTED_SECONDS, MIN_N, SCORE_TYPES, group_stats, normalise, order_key, possessions,
@@ -199,7 +200,7 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         row["points"] += p.points
 
     hdm = getattr(match, "half_duration_mins", None) or 30
-    _pids = {getattr(r, "player_id", None) for r, e in ((rows[x.idx], x) for x in evs) if e.type == "saved"}
+    _pids = {getattr(r, "player_id", None) for r, e in ((rows[x.idx], x) for x in evs) if e.type == "saved" or e.type in _SCORE_TYPES}
     _pids.discard(None)
     _full = {}
     if _pids:
@@ -209,6 +210,20 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
     def _shooter(r):
         return _full.get(getattr(r, "player_id", None)) or their_player_label(
             getattr(r, "opponent_player_name", None), _full.values())
+
+    # every score that levelled the match or changed who led: the moments a "how did it come back" story needs
+    turning, m_run = [], 0
+    for e in evs:
+        if e.type not in _SCORE_TYPES:
+            continue
+        before = m_run
+        m_run += _points_for(e.type) if e.own else -_points_for(e.type)
+        if m_run == 0 or (before <= 0 < m_run) or (before >= 0 > m_run):
+            turning.append({
+                "when": f"{ {1: '1st half', 2: '2nd half', 3: 'extra time 1', 4: 'extra time 2'}.get(e.half, '2nd half') } {e.minute}'",
+                "team": "us" if e.own else "them", "score": e.type.replace("_", " "), "by": _shooter(rows[e.idx]),
+                "what_it_did": "levelled it" if m_run == 0 else ("put us ahead" if m_run > 0 else "put them ahead"),
+                "margin_after": margin_phrase(m_run)})
 
     extras = build_extras(rows, evs, getattr(match, "attacking_right_first_half", None), hdm,
                           getattr(match, "pitch_length_m", None), getattr(match, "pitch_width_m", None), _shooter)
@@ -255,6 +270,8 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         "scorecard_table_markdown": scorecard_md,
         **extras,
         "margin_by_ten_minutes": blocks,
+        "turning_scores": {"scores": turning, "note": "Every score that levelled the match or changed who led, in order. When the "
+                           "margin moved and came back, name the score(s) that brought it back from here."},
         "ranked_findings": [{"theme": f.theme, "phase": PHASES.get(f.phase, f.phase), "text": f.text, "n": f.n,
                              "direction": f.direction} for f in findings],
     }, default=str)
@@ -290,7 +307,7 @@ async def get_phase_sequences(db, match_id: str, club_id=None, phase: Optional[s
         # came on, and second-half minutes start at the half length so 30'-34' exist in both halves)
         end_minute = getattr(end, "minute", None) if end is not None else p.minute
         end_half = (getattr(end, "half", None) if end is not None else None) or p.half
-        half_word = "1st half" if end_half == 1 else "2nd half"
+        half_word = {1: "1st half", 2: "2nd half", 3: "extra time 1", 4: "extra time 2"}.get(end_half, "2nd half")
         out.append({
             "when": f"{half_word} {end_minute}'",
             "minute": end_minute, "half": end_half,
