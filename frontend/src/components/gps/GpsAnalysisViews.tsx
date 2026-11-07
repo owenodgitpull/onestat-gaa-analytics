@@ -30,9 +30,11 @@ export function Tile({ label, value, sub }: { label: string; value: ReactNode; s
   )
 }
 
-export function PlayAt({ ms, periods, onOpen }: { ms: number; periods: Periods; onOpen: (ms: number) => void }) {
+/** Label = the match clock of the moment itself; the replay opens `lead` ms earlier so the build-up is on screen. */
+export function PlayAt({ ms, periods, onOpen, lead = 0 }: { ms: number; periods: Periods; onOpen: (ms: number) => void; lead?: number }) {
   return (
-    <button onClick={() => onOpen(ms)} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/12 border border-white/10 text-xs text-white/85 tabular-nums whitespace-nowrap" title="Open the replay here">
+    <button onClick={() => onOpen(Math.max(0, ms - lead))} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/5 hover:bg-white/12 border border-white/10 text-xs text-white/85 tabular-nums whitespace-nowrap"
+      title={lead ? `Match clock ${periodClock(ms, periods)}. Opens the replay ${Math.round(lead / 1000)} s earlier so you see the build-up` : `Match clock ${periodClock(ms, periods)}. Open the replay here`}>
       <Play size={11} /> {periodClock(ms, periods)}
     </button>
   )
@@ -290,7 +292,7 @@ export function KickoutsView({ a, periods, onOpen, team }: { a: GpsMatchAnalysis
               <button disabled={sel >= list.length - 1} onClick={() => setSel(sel + 1)} className="px-3 py-1.5 rounded-lg bg-white/10 text-sm text-white disabled:opacity-30">Next ›</button>
             </div>
             <div className="rounded-xl bg-white/5 border border-white/10 p-3 text-sm space-y-1">
-              <div className="flex items-center justify-between"><span className="text-white font-medium capitalize">{k.outcome}</span><PlayAt ms={Math.max(0, k.video_ms - 2000)} periods={periods} onOpen={onOpen} /></div>
+              <div className="flex items-center justify-between"><span className="text-white font-medium capitalize">{k.outcome}</span><PlayAt ms={k.video_ms} lead={2000} periods={periods} onOpen={onOpen} /></div>
               {k.player && <div className="text-white/70">Won by {k.player}</div>}
               <div className="text-white/70">Team height {n1(k.team_mean_x, ' m')} · {k.players_in_their_half} in their half</div>
               <div className="text-white/70">{k.sprinting_after} sprinting in the next 6 s</div>
@@ -416,7 +418,7 @@ export function TagHealthView({ a, periods, onOpen, sessionId }: { a: GpsMatchAn
         <Tile label="Player has no unit" value={th.untracked_player} sub="could not be checked" />
       </div>
       <Table head={['When', 'What', 'Player', 'Gap at the tap', 'Nearest', 'Why']} align={['l', 'l', 'l', 'r', 'r', 'l']}
-        rows={th.flagged.map(f => [<PlayAt key="p" ms={Math.max(0, f.video_ms - 4000)} periods={periods} onOpen={onOpen} />, f.event_type === 'CARRY' ? 'carry' : f.event_type.replace(/_/g, ' ').toLowerCase(),
+        rows={th.flagged.map(f => [<PlayAt key="p" ms={f.video_ms} lead={4000} periods={periods} onOpen={onOpen} />, f.event_type === 'CARRY' ? 'carry' : f.event_type.replace(/_/g, ' ').toLowerCase(),
           f.player || '–', n0(f.dist_at_tap_m, ' m'), `${n0(f.nearest_m, ' m')} (${f.nearest_lag_s! > 0 ? '+' : ''}${n1(f.nearest_lag_s, ' s')})`, f.reason])} />
       <p className="text-xs text-white/45">
         A tag is flagged when the tagged player's own GPS unit was never within 20 m of the tagged spot in the 8 s either side (probably the wrong player or the wrong spot), or was there but more than 6 s away from the tap. Fix them in <a className="underline" href={`/video/${sessionId}`}>Video Tagging</a>; the GPS numbers update on their own.
@@ -443,7 +445,7 @@ export function SupportView({ a, periods, onOpen }: { a: GpsMatchAnalysis; perio
       </Section>
       <Section title="Passes where someone further forward was in range" note="We cannot see the opposition, so this says a team-mate was further forward and within 25 m, not that he was free. Watch the clip.">
         <Table head={['When', 'Passer', 'To', 'Gain', 'Further option', 'How much further']} align={['l', 'l', 'l', 'r', 'l', 'r']}
-          rows={sp.further_option_passes.map(p => [<PlayAt key="p" ms={Math.max(0, p.video_ms - 3000)} periods={periods} onOpen={onOpen} />, p.passer || '–', p.receiver || '–', n0(p.gain_m, ' m'), p.further_option || '–', n0(p.further_option_ahead_m, ' m')])} />
+          rows={sp.further_option_passes.map(p => [<PlayAt key="p" ms={p.video_ms} lead={3000} periods={periods} onOpen={onOpen} />, p.passer || '–', p.receiver || '–', n0(p.gain_m, ' m'), p.further_option || '–', n0(p.further_option_ahead_m, ' m')])} />
       </Section>
     </div>
   )
@@ -472,7 +474,7 @@ export function MarkingView({ a, periods, onOpen, opponent }: { a: GpsMatchAnaly
       </div>
       <p className="text-xs text-white/50">Their shots on our goal (left). Filled = scored; bigger circle = nearest defender further away. The moment of the shot is the tap moved back by the measured tagging delay for that event type.</p>
       <Table head={['When', 'Shot', 'Shooter', 'Nearest', 'Distance', 'Within 5 m', ...(mk.has_assignments ? ['Assigned marker'] : [])]} align={['l', 'l', 'l', 'l', 'r', 'r', 'l']}
-        rows={mk.shots.map(x => [<PlayAt key="p" ms={Math.max(0, x.video_ms - 5000)} periods={periods} onOpen={onOpen} />, x.event_type.replace(/_/g, ' ').toLowerCase(), x.shooter || '–', x.nearest || '–', n1(x.nearest_m, ' m'), x.within_5m,
+        rows={mk.shots.map(x => [<PlayAt key="p" ms={x.video_ms} lead={10000} periods={periods} onOpen={onOpen} />, x.event_type.replace(/_/g, ' ').toLowerCase(), x.shooter || '–', x.nearest || '–', n1(x.nearest_m, ' m'), x.within_5m,
           ...(mk.has_assignments ? [x.assigned_marker ? `${x.assigned_marker.name} ${n1(x.assigned_marker.dist_m, ' m')}${x.assigned_marker.was_nearest ? ' (nearest)' : ''}` : '–'] : [])])} />
       {!mk.has_assignments && <p className="text-xs text-white/45">No man-marking assignments in Match Prep for this match, so the assigned-marker column is hidden.</p>}
     </div>

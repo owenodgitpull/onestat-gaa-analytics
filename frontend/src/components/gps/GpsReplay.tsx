@@ -243,7 +243,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
 
       <div className="min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div className="text-sm text-white font-medium">{periodClock(now, ctx.periods)}</div>
+          <div className="text-sm text-white font-medium tabular-nums">Match clock {periodClock(now, ctx.periods)} <span className="text-white/45 font-normal text-xs">· video timer {Math.floor(now / 60000)}:{String(Math.floor(now / 1000) % 60).padStart(2, '0')}</span></div>
           <div className="flex gap-1.5">
             <button onClick={() => setShowNames(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showNames ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showNames}>
               <Users size={13} /> Names
