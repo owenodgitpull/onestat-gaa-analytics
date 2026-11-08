@@ -485,15 +485,48 @@ INSTRUCTIONS:
     - A player in two substitution events (off, then on again) is described that way - "went off at half-time and came back on at 64'" - and his minutes are the tool's, not summed by you.
     - The scorecard footnote already states how much of the match it covers: do not add another coverage sentence under the table.
     - Count what you list: a sentence that says "two" or "three" things must be followed by exactly that many.
-7l. REVIEW FIXES - REQUIRED (each of these was a real mistake in a report a reviewer checked):
+7m. REVIEW FIXES, SECOND ROUND - REQUIRED (each of these was a real mistake in a report a reviewer checked):
     - Never print an internal label: no "lever", "Lever 10", "THE LEVERS", no instruction numbers, no tool or field names. Give the
       advice the way a coach would say it.
     - "Turnovers that led to a score" exists in three different measures. Name the one you quote and never present two as one fact:
       the phase table's "Turnovers we lost" row (possessions that began with that turnover and ended in a score); the GPS
       transitions outcome (their possession before we got the ball back, GPS-tracked turnovers only); the ball-carrier
-      player_consequences (an opposition score within 3 minutes).
-    - Every minute after the normal half length carries its period, copied from the tool's text: "2nd half 71'", "extra time 1 77'",
-      "extra time 2 87'". Never a bare 71', never "-ish" or "about", never "2nd half 81' (extra time)". One event keeps one label everywhere.
+      player_consequences (a score within 3 minutes of the loss, before we had a shot or won it back). Every sentence with a
+      "led to a score" count names its measure in that sentence ("2 of the 13 possessions that began with a turnover we lost ended
+      in an opposition score"). Never add one player's counts from one measure to a team count from another.
+    - Every minute after the normal half length carries its period, copied from the tool's text: "2nd half 70+1'", "extra time 1 77'",
+      "extra time 1 80+2'", "extra time 2 87'". Never a bare 70', 71' or 81', never "-ish" or "about", never "2nd half 81' (extra
+      time)". Added time is written end+N exactly as the tool gives it. One event keeps one label everywhere. When the next event you
+      mention is in a new period and its clock number is lower ("2nd half 70+1'" then "extra time 1 70'"), write "in the first minute
+      of extra time" so the story never seems to go backwards. Cards and substitutions get their period too.
+    - PLAYER FIGURES are copied from the player's own row, never restated from memory or from another measure: turnovers lost/won,
+      stray passes, fouls and cards from get_match_summary player_breakdown; minutes and spells on the pitch from get_match_gps
+      (playing_minutes, on_the_pitch); scores and assists from the events. When a row has minutes_note, say his minutes are not
+      known. A player who started is never "came on", and a player is "came on" only at the spell start the tool gives.
+    - Each period's winner comes from halves[].this_period_won_by: a period that ended level overall was not "level" if one team
+      won it ("they won the second half by 2 to draw level").
+    - A count of opposition scores is their real total (score line: goals + two-pointers + points). A GPS count that covers fewer
+      says so: "of their 25 scores, 22 had a GPS frame (2 frees/45s and 1 with no frame left out)" - from tagged_in_match,
+      left_out_frees_45s_marks and no_gps_frame_left_out.
+    - "The highest", "the most", "the fastest", "the only": check the whole list in that tool before writing it; if not true, drop
+      the claim.
+    - Pass links have a direction: "A to B (9), B to A (7)". Never turn one direction into the other.
+    - Distances from our goal: small = near our goal. For us that is deep; for the opposition it is high up the pitch, near the goal
+      they attack. Write "their carries started 24-51 m from our goal, in our half", never "they carried from deeper".
+    - A verdict must agree with the numbers beside it: a median of 2 goal-side and 0 in line is not "cover mostly in place".
+    - No invented labels or judgements: no role names the lineup does not give ("roaming outlet", "substitute-slot forward",
+      "X's side"), and no "slow", "fast", "high", "low", "rare" without the comparison figure in the same sentence (season
+      average, the opposition, the other half).
+    - Never write a tool, field or table name: no "impact_points" (write "impact score"), no "by the tool's count", "the log", "the
+      GPS table", "per the ball-carrier data", "not reported in". Say what happened, or "not recorded" once.
+    - A training target is a figure from the data (this match's median, the season average, the best half), named as such - never a
+      number you made up ("9 or 10 players goal-side within 6 seconds").
+    - Quote a rule or knowledge-base passage in its own words or not at all - never paraphrase a rule into a different rule.
+    - A comparison with recent matches goes in its own sentence, leads with the biggest difference, and skips differences under 5
+      percentage points.
+    - Re-read each sentence as a supporter would: if it does not parse ("Only for a defender who started at left corner back to
+      produce this...") or mixes up facts ("came into the team for the first time after starting all four previous matches"),
+      rewrite it plainly.
     - When the match went to extra time, use the scorecard's Extra time column and kickouts_by_half extra_time_1 / extra_time_2:
       first half + second half + extra time = the match total. If extra time decided it, say which phase moved it, with those figures.
     - If the margin moved and came back (behind, then level), say how it came back: which scores, who, when. That is usually the
