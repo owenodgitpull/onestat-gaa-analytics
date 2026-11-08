@@ -157,7 +157,7 @@ GAA_ESSENTIALS = """
 # GAA Football Essentials
 
 ## Scoring
-- Goal (net) = 3 points | Point (over bar) = 1 point | 2-Pointer (outside 40m arc) = 2 points
+- Goal (net) = 3 points | Point (over bar) = 1 point | 2-Pointer = 2 points: kicked directly over the bar by a player with at least one foot on or outside the 40m arc, not touched by another player (GAA football rules, p.47)
 - Score format: Goals-Points (e.g., 2-14 = 2 goals + 14 points = 20 total)
 - Points includes: play points, frees (point_free), 45s (forty_five) — always sum ALL of these
 - When describing results use GAA margin language: "won by 4 points", "a 1-point win", "lost by 7 points". Always state the margin, not just the raw score.
@@ -2958,7 +2958,8 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             'goals': scores['goals'],
             'points': scores['points'],
             '2pts': scores['2pts'],
-            'total': total
+            'total': total,
+            'score': f"{scores['goals']}-{scores['points'] + 2 * scores['2pts']}",   # team-score notation: quote this one
         })
     top_scorers.sort(key=lambda x: x['total'], reverse=True)
 
@@ -3085,7 +3086,9 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
         if _pid in player_positions:
             _entry['position'] = player_positions[_pid]
         if _total_score:
-            _entry['score'] = f"{_pb['goals']}-{_pb['points']}"
+            # goals - points with a two-pointer counting 2, the same notation as the team score (Murphy's point, free and
+            # two-point free is 0-4, not "0-2 plus a two-pointer")
+            _entry['score'] = f"{_pb['goals']}-{_pb['points'] + 2 * _pb['two_pts']} ({_total_score} pts)"
             if _pb['two_pts']:
                 _entry['two_pts'] = _pb['two_pts']
                 # say which: a free-taker who also scores from play got listed under the wrong one ("2 from play: Murphy,
@@ -3408,7 +3411,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
         "player_breakdown_note": (
             "player_breakdown: per-player stats for OWN team. Sorted by most errors/turnovers first. "
             "Fields only present when non-zero/set: position (goalkeeper/defender/midfielder/forward — "
-            "APPLY DIFFERENT STANDARDS BY POSITION, see rule below), score (G-P), two_pts, scoring_note "
+            "APPLY DIFFERENT STANDARDS BY POSITION, see rule below), score (goals-points, a two-pointer counts 2 points, same notation as the team score; quote it as given), two_pts, scoring_note "
             "(present when every score was a free/45 — do not read this as a weakness), unforced_errors, "
             "error_subtypes, turnovers_lost, turnovers_won, wides, fouls_committed, blocks, frees_won, "
             "yellow_card, black_card, red_card, positions_played (present when the player held more than one position - their 'position' field is where they finished; judge each spell by the position held then, using personnel_changes). USE THESE TO NAME SPECIFIC PLAYERS in your insights."
@@ -6027,9 +6030,9 @@ async def get_live_match_stats(db: AsyncSession, match_id: str, club_id=None) ->
 
         parts = []
         if total_score:
-            score_str = f"{pb['goals']}-{pb['points']}"
+            score_str = f"{pb['goals']}-{pb['points'] + 2 * pb['two_pts']}"
             if pb['two_pts']:
-                score_str += f" (+{pb['two_pts']}tp)"
+                score_str += f" (incl. {pb['two_pts']} two-pointer{'s' if pb['two_pts'] > 1 else ''})"
             parts.append(f"scored {score_str}")
         if pb['unforced_errors']:
             sub = ""
@@ -6861,6 +6864,10 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
             r["avg_pickup_m_from_goal_attacked"] = round(sum(_p) / len(_p))
             r["pickups_over_60m_from_goal"] = sum(1 for d in _p if d > 60)
     for r in stats.values():
+        # the score in the same notation as the team score: goals - points, a two-pointer counting 2 (O'Callaghan's goal,
+        # two-pointer, two points and a 45 is 1-6, not "1-3 including a two-pointer")
+        if r["goals"] or r["points"] or r["two_pointers"]:
+            r["score"] = f"{r['goals']}-{r['points'] + 2 * r['two_pointers']} ({r['goals'] * 3 + r['points'] + 2 * r['two_pointers']} pts)"
         r["impact_points"] = (r["goals"] * 10 + r["two_pointers"] * 5 + r["points"] * 3 + r["assists"] * 3
                               + r["turnovers_won"] * 2 + r["kickouts_won"] * 2 + r["throw_ins_won"] * 2 - r["turnovers_lost"])
     out = {"own": [], "opposition": []}

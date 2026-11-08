@@ -169,11 +169,15 @@ def saved_chances(rows: list, evs: list, atk_first, hdm, name_of=None, length_m=
     WID = width_m or DEFAULT_WIDTH_M
     out = {"ours": {"saved_in_total": 0, "from_inside_the_13m": []},
            "theirs": {"saved_in_total": 0, "from_inside_the_13m": []}}
+    run = 0
     for e in evs:
+        if e.type in SCORE_TYPES:
+            run += points_for(e.type) if e.own else -points_for(e.type)
         if e.type != "saved":
             continue
         side = out["ours" if e.own else "theirs"]
         side["saved_in_total"] += 1
+        before = run
         row = rows[e.idx]
         x, y = getattr(row, "pitch_x", None), getattr(row, "pitch_y", None)
         if x is None or y is None:
@@ -185,7 +189,9 @@ def saved_chances(rows: list, evs: list, atk_first, hdm, name_of=None, length_m=
         who = name_of(row) if name_of else None
         side["from_inside_the_13m"].append({
             "when": when_label(e.half, e.minute, hdm),
-            "shot_by": who or ("our player" if e.own else "their player"),
+            "shot_by": who or "not recorded",
+            "our_margin_before": ("level" if before == 0 else f"{abs(before)} point{'s' if abs(before) != 1 else ''} "
+                                  f"{'up' if before > 0 else 'down'}"),
             "metres_from_goal": round(distance_to_goal_m(fx, fy, True, LEN, WID)),
             "saved_by": "their goalkeeper" if e.own else "our goalkeeper",
         })

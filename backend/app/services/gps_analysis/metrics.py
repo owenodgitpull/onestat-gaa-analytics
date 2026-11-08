@@ -326,7 +326,12 @@ def intensity(inp: MatchInputs, g: Grid) -> dict:
     by_half = {}
     for h in sorted(set(g.half.tolist())):
         m = g.half == h
-        by_half[str(h)] = {"team_distance_m": int(S[:, m].sum() / hz), "team_hsr_m": int(np.where(S[:, m] > HSR, S[:, m], 0).sum() / hz)}
+        mins = m.sum() / hz / 60.0
+        tot, hs = S[:, m].sum() / hz, np.where(S[:, m] > HSR, S[:, m], 0).sum() / hz
+        # per minute too: periods differ in length (35 v 10 minutes), so totals alone made extra time look like the legs held up
+        by_half[str(h)] = {"team_distance_m": int(tot), "team_hsr_m": int(hs), "minutes": r1(mins),
+                           "team_distance_per_min_m": int(tot / mins) if mins else None,
+                           "team_hsr_per_min_m": int(hs / mins) if mins else None}
     return {"players": players, "blocks": list(blocks.values()), "by_half": by_half,
             "thresholds": {"hsr_ms": HSR, "sprint_ms": SPRINT, "accel_ms2": ACCEL}}
 

@@ -53,7 +53,10 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
         "shape": shape_sum["all"],
         "shape_by_half": {h: v for h, v in shape_sum.items() if h != "all"},
         "transitions": tr["summary"],
-        "fastest_recoveries": [{k: t[k] for k in ("video_ms", "half", "recovery_s", "lost_by", "outcome")} for t in fastest],
+        # with how many were already goal-side and the target, so "back in 1 s" reads as "already nearly back", and a
+        # one-off best is never used as a benchmark (the median is the benchmark)
+        "fastest_recoveries": [{**{k: t[k] for k in ("video_ms", "half", "recovery_s", "lost_by", "outcome")},
+                                "goal_side_when_lost": t["goal_side_at_0"], "needed": t["target"]} for t in fastest],
         # "tracked_minutes" is real time on the pitch by GPS (added time included), not the match clock - named so it is never
         # set beside the clock's "91 minutes" as if one of them were wrong
         "drop_off": [{"tracked_minutes" if k == "minutes" else k: p.get(k) for k in ("player_id", "name", "minutes", "hsr_per_min_first10", "hsr_per_min_last10", "drop_off_pct")} for p in drop],

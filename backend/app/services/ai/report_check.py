@@ -187,7 +187,19 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             if want is not None and want != int(m.group(2)):
                 issues.append({"quote": s, "problem": f"{m.group(1)} had {want} wide(s), not {m.group(2)}", "truth": f"{m.group(1)}: {want} wide(s)"})
 
-        # 12. leaked snake_case field names
+        # 12. a player's score against the tool's score string (same notation as the team score)
+        for m in re.finditer(r"([A-Z][\w'’\-]+)\**(?: \([^)]*\))?,? (?:scored|finished with|had|kicked) (\d+)-(\d+)\b", s):
+            want = (facts.get("player_scores") or {}).get(_surname(m.group(1)))
+            got = f"{m.group(2)}-{m.group(3)}"
+            if want and want != got:
+                issues.append({"quote": s, "problem": f"{m.group(1)} scored {want}, not {got}", "truth": f"{m.group(1)}: {want}"})
+
+        # 13. a mean written as a median
+        for v in facts.get("means") or []:
+            if re.search(r"median[^.]{0,25}\b" + re.escape(str(v)) + r"\b", low):
+                issues.append({"quote": s, "problem": f"{v} is a mean (average), not a median", "truth": "write 'on average'"})
+
+        # 14. leaked snake_case field names
         for m in re.finditer(r"\b[a-z0-9]+_[a-z0-9_]+\b", s):
             issues.append({"quote": s, "problem": f"internal field name '{m.group(0)}'", "truth": "say it in plain words"})
 
@@ -255,6 +267,26 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
                 links[k] = c["count"]
         facts["pass_links"] = {k: v for k, v in links.items() if v is not None}
         facts["ambiguous_links"] = {k for k, v in links.items() if v is None}
+    except Exception:
+        pass
+    try:
+        imp = json.loads(await execute_tool("get_match_player_impact", {"match_id": match_id}, db, club_id=club_id))
+        sc, dup = {}, set()
+        for side in ("own", "opposition"):
+            for r in (imp.get(side) or []):
+                if not r.get("score"):
+                    continue
+                k = _surname(r.get("player", ""))
+                if k in sc:
+                    dup.add(k)
+                sc[k] = r["score"].split(" ")[0]
+        facts["player_scores"] = {k: v for k, v in sc.items() if k not in dup}
+    except Exception:
+        pass
+    try:
+        ga = json.loads(await execute_tool("get_gps_match_analysis", {"match_id": match_id}, db, club_id=club_id))
+        sup = ((ga.get("summary") or {}).get("support") or {})
+        facts["means"] = [v for v in (sup.get("mean_within_15m"),) if v is not None]
     except Exception:
         pass
     try:

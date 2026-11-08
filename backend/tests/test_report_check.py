@@ -55,3 +55,12 @@ def test_parts_and_player_wides_and_period_nearby():
     assert _problems("He moved to midfield in extra time 1 at 71'.") == []
     assert _problems("Guiden scored at extra time 1 71', 75' (a two-pointer) and 77'.") == []
     assert _problems("The extra time 1 changes at 71' are too early to judge.") == []
+
+
+def test_player_score_and_mean():
+    f = dict(FACTS, player_scores={"o'callaghan": "1-6", "murphy": "0-4"}, means=[1.4])
+    p = [i["problem"] for i in check_report("C. O'Callaghan (impact score 27) scored 1-3 including a two-pointer.", f)[2]]
+    assert any("scored 1-6, not 1-3" in x for x in p)
+    assert [i for i in check_report("Murphy scored 0-4 in all.", f)[2]] == []
+    p = [i["problem"] for i in check_report("From 223 passes, a median of 1.4 team-mates were within 15 m.", f)[2]]
+    assert any("mean" in x for x in p)

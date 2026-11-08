@@ -94,7 +94,10 @@ def _section(res: dict, section: str, limit: int, situation=None, full_positions
             "players within 3 m of the straight line from the ball to the middle of the goal. For our_shots the same fields count our "
             "players ahead of the ball and inside their 45. shape = our team shape at that instant; shape_5s_before = 5 s earlier. "
             "positions are sorted nearest first (6 unless full_positions). Opposition players other than the one on the ball are not tracked: "
-            "never say an opposition runner was free or unmarked.")
+            "never say an opposition runner was free or unmarked. "
+            "our_turnovers are the tagged turnover EVENTS (with the player who lost it) - a different, smaller count than the "
+            "transitions section's turnovers lost (every change of possession found in the carries). Name which one you quote. "
+            "Distances in every section are from OUR goal line (x = 0) - write 'from our goal' every time.")
         return out
     if section == "positions":
         return res.get("positions")
