@@ -43,3 +43,15 @@ def test_true_sentences_pass_and_mechanical_fixes_apply():
     assert _problems(ok) == []
     text, fixed, _ = check_report("Campbell's stray pass at extra time 1 81'. His impact_points is 27.", FACTS)
     assert "extra time 1 80+1'" in text and "impact score" in text and len(fixed) == 2
+
+
+def test_parts_and_player_wides_and_period_nearby():
+    f = dict(FACTS, player_wides={"gallen": 1, "o'donnell": 2})
+    p = [i["problem"] for i in check_report("We won only 7 of 33 contested kickouts: 4 of 13 in the first half, 1 of 10 in the "
+                                           "second, 0 of 1 in extra time 1 and 2 of 3 in extra time 2.", f)[2]]
+    assert any("parts add to 7 of 27" in x for x in p)
+    p = [i["problem"] for i in check_report("Conor O'Donnell had 2 wides, Gallen 2 wides plus a short.", f)[2]]
+    assert any("Gallen had 1" in x for x in p)
+    assert _problems("He moved to midfield in extra time 1 at 71'.") == []
+    assert _problems("Guiden scored at extra time 1 71', 75' (a two-pointer) and 77'.") == []
+    assert _problems("The extra time 1 changes at 71' are too early to judge.") == []

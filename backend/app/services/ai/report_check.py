@@ -120,8 +120,10 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             if minute < 2 * hdm:
                 continue
             before = s[max(0, m.start() - 28):m.start()].lower()
-            if re.search(r"(extra time [12]|half) \d{1,3}(?:\+\d+)?'(?:, \d{1,3}(?:\+\d+)?')*(?:,| and| or)\s*$", s[:m.start()].lower()):
-                continue                   # a list after one period label: "extra time 1 71', 75' and 77'"
+            if re.search(r"(extra time [12]|half) \d{1,3}(?:\+\d+)?'(?:[^.;]{0,30}?, \d{1,3}(?:\+\d+)?')*[^.;]{0,30}?(?:,| and| or)\s*$", s[:m.start()].lower()):
+                continue                   # a list after one period label: "extra time 1 71', 75' (a two-pointer) and 77'"
+            if re.search(r"(1st half|2nd half|extra time [12])\b[^.;']{0,25}$", s[max(0, m.start() - 45):m.start()].lower()):
+                continue                   # the period a few words before: "extra time 1 at 71'", "the extra time 1 changes at 71'"
             if not re.search(r"(half|extra time|et ?[12]|\+)\s*$", before.strip()) and not re.search(r"(1st half|2nd half|extra time [12])\s*$", before):
                 issues.append({"quote": s, "problem": f"{minute}' has no period (2nd half or extra time)",
                                "truth": "write the period from the tool's 'when' text"})
@@ -156,7 +158,7 @@ def find_issues(text: str, facts: dict) -> List[dict]:
 
         # 8. process talk about the tools
         for m in re.finditer(r"\b(the tool(?:'s)? (?:flags|says|shows|count)|by the match summary|in the match summary|"
-                             r"not in the match gps list|the match gps list)\b", low):
+                             r"not in the match gps list|the match gps list|was not returned|were not returned|not returned by)\b", low):
             issues.append({"quote": s, "problem": f"talks about the tools ('{m.group(0)}')", "truth": "say what happened, or 'not recorded'"})
 
         # 9. our two-pointer scorers under the wrong heading
@@ -171,7 +173,21 @@ def find_issues(text: str, facts: dict) -> List[dict]:
                 issues.append({"quote": s, "problem": f"{', '.join(sorted(wrong))} listed as a two-pointer from play but it was a free",
                                "truth": f"from play: {', '.join(tp.get('from_play', []))}; from frees: {', '.join(tp.get('from_frees', []))}"})
 
-        # 10. leaked snake_case field names
+        # 10. "X of Y" followed by its parts ("7 of 33 ...: 4 of 13, 1 of 10, 0 of 1 and 2 of 3"): the parts must add up
+        for m in re.finditer(r"(\d+) of (\d+)\b([^.]*?):((?:[^.]*?\b\d+ of \d+\b){2,}[^.]*)", s):
+            pairs = re.findall(r"\b(\d+) of (\d+)\b", m.group(4))
+            sa, sb = sum(int(a) for a, _ in pairs), sum(int(b) for _, b in pairs)
+            if (sa, sb) != (int(m.group(1)), int(m.group(2))):
+                issues.append({"quote": s, "problem": f"says {m.group(1)} of {m.group(2)} but its parts add to {sa} of {sb}",
+                               "truth": f"{sa} of {sb}"})
+
+        # 11. a player's wides against his own row
+        for m in re.finditer(r"([A-Z][\w'’\-]+) (?:had )?(\d+) wides?\b", s):
+            want = (facts.get("player_wides") or {}).get(_surname(m.group(1)))
+            if want is not None and want != int(m.group(2)):
+                issues.append({"quote": s, "problem": f"{m.group(1)} had {want} wide(s), not {m.group(2)}", "truth": f"{m.group(1)}: {want} wide(s)"})
+
+        # 12. leaked snake_case field names
         for m in re.finditer(r"\b[a-z0-9]+_[a-z0-9_]+\b", s):
             issues.append({"quote": s, "problem": f"internal field name '{m.group(0)}'", "truth": "say it in plain words"})
 
@@ -207,6 +223,13 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
         facts["opp_missed_parts"] = (f"{st.get('opponent_wides', 0)} wides, {st.get('opponent_shorts', 0)} shorts, "
                                      f"{st.get('opponent_hit_posts', 0)} hit posts, {st.get('opponent_saved', 0)} saved")
         facts["two_pointers"] = summ.get("two_pointers")
+        _w, _dup = {}, set()
+        for r in summ.get("player_breakdown") or []:
+            k = _surname(r.get("name", ""))
+            if k in _w:
+                _dup.add(k)          # two players share a surname: cannot check by surname
+            _w[k] = r.get("wides", 0)
+        facts["player_wides"] = {k: v for k, v in _w.items() if k not in _dup}
         tot_shots = st.get("opponent_total_shots")
         if tot_shots is not None and facts["opp_missed_total"] is not None:
             facts["opp_scores"] = tot_shots - facts["opp_missed_total"]
