@@ -68,6 +68,7 @@ class MatchInputs:
     events: List[Event] = field(default_factory=list)
     opposition_names: Dict[str, str] = field(default_factory=dict)   # opposition player id -> surname
     man_marking: List[dict] = field(default_factory=list)            # [{player_id, opponent_name}] from match prep
+    half_duration_mins: Optional[int] = None                         # for "70+1" added-time labels
 
     @property
     def cache_key(self) -> str:
@@ -99,7 +100,7 @@ class _Row:
 async def match_row(db: AsyncSession, match_id, club_id):
     """The match's own columns only (plain SQL: the ORM Match pulls in every relationship). None if not this club's."""
     r = (await db.execute(text(
-        "select id, club_id, opponent, match_date, attacking_right_first_half, pitch_length_m, pitch_width_m, "
+        "select id, club_id, opponent, match_date, attacking_right_first_half, pitch_length_m, pitch_width_m, half_duration_mins, "
         "team_goals, team_points, opponent_goals, opponent_points from matches where id = :m and club_id = :c"),
         {"m": str(match_id), "c": str(club_id)})).mappings().first()
     return _Row(dict(r)) if r else None
@@ -181,6 +182,7 @@ async def load_match(db: AsyncSession, match, with_tracks: bool = True) -> Match
               "confirmed_at": s.confirmed_at.isoformat() if s.confirmed_at else None},
         tracks=tracks, players=players, starters=starters, bench=bench, carries=carries, events=events,
         opposition_names=opposition_names, man_marking=man_marking,
+        half_duration_mins=getattr(match, "half_duration_mins", None),
     )
 
 

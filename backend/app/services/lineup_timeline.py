@@ -190,7 +190,7 @@ def _score_line(evs: list, own: bool) -> tuple:
     return pts, n
 
 
-def personnel_log(subs: list, moves: list, events: list, names: dict, window: int = WINDOW_MINUTES) -> list:
+def personnel_log(subs: list, moves: list, events: list, names: dict, window: int = WINDOW_MINUTES, hdm: Optional[int] = None) -> list:
     """Chronological list of every personnel change with the scoring either side of it (same half, `window` minutes,
     cut short by the next change or the end of the data). `events` carry own(bool), event_type, half, minute."""
     items = []
@@ -235,9 +235,12 @@ def personnel_log(subs: list, moves: list, events: list, names: dict, window: in
         bt, btn = _score_line(before, False)
         au, aun = _score_line(after, True)
         at_, atn = _score_line(after, False)
+        from app.services.ai.phase_facts import when_label, PERIOD_WORDS
+        nxt_word = PERIOD_WORDS.get(min((e.get("half") or 1) for e in later), "the next period") if at_break else None
         row = {
-            "half": half, "minute": minute, "kind": kind, "what": text,
-            **({"timing": "made at half time - 'after' is the start of the second half"} if at_break else {}),
+            "half": half, "minute": minute, "when": when_label(half, minute, hdm), "kind": kind, "what": text,
+            **({"timing": ("made at half time - 'after' is the start of the second half" if nxt_word == "2nd half" else
+                           f"made at the break before {nxt_word} - 'after' is the start of {nxt_word}")} if at_break else {}),
             "minutes_before_compared": window,
             "before": {"our_points": bu, "our_scores": bun, "their_points": bt, "their_scores": btn},
             "minutes_after_compared": after_len,
@@ -255,11 +258,16 @@ def _minute_of(t: Time) -> int:
     return t[1] // 60
 
 
-def describe_personnel(tl: "Timeline", events: list) -> dict:
+def _when(t: Time, hdm: Optional[int]) -> str:
+    from app.services.ai.phase_facts import when_label
+    return when_label(t[0], _minute_of(t), hdm)
+
+
+def describe_personnel(tl: "Timeline", events: list, hdm: Optional[int] = None) -> dict:
     """The agents' view: each player who held more than one position (with their stats in each), plus the
     chronological personnel log with before/after scoring. Empty when nothing changed."""
     moved = moved_players(tl.spells)
-    log = personnel_log(tl.subs, tl.moves, events, tl.names)
+    log = personnel_log(tl.subs, tl.moves, events, tl.names, hdm=hdm)
     if not moved and not log:
         return {}
     own_events = [e for e in events if e.get("own") and e.get("player_id")]
@@ -273,6 +281,8 @@ def describe_personnel(tl: "Timeline", events: list) -> dict:
                 "category": POSITION_CATEGORY.get(r["position_id"], "unknown"),
                 "from_minute": _minute_of(r["spell"].start),
                 "to_minute": _minute_of(r["spell"].end) if r["spell"].end else None,
+                "from": _when(r["spell"].start, hdm),
+                "to": _when(r["spell"].end, hdm) if r["spell"].end else "the end",
                 **({"stats": r["counts"]} if r["counts"] else {"stats": "no events logged in this spell"}),
             } for r in rows],
         })

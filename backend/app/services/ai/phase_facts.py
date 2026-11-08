@@ -267,3 +267,26 @@ def summarise(ps: list[Possession], now: int, window: int = 5) -> dict:
         win = [p for p in allp if p.minute > now - window]
         out[name] = {"to_date": group_stats(allp), "window": group_stats(win)}
     return out
+
+
+PERIOD_WORDS = {1: "1st half", 2: "2nd half", 3: "extra time 1", 4: "extra time 2"}
+EXTRA_TIME_PERIOD_MINS = 10
+
+
+def period_bounds(half, hdm) -> tuple:
+    """(start, nominal end) of a period on the match clock, which runs on through the periods (2nd half starts at the half
+    length, extra time 1 at full time, extra time 2 ten minutes later)."""
+    hdm = hdm or 30
+    et = EXTRA_TIME_PERIOD_MINS
+    return {1: (0, hdm), 2: (hdm, 2 * hdm), 3: (2 * hdm, 2 * hdm + et), 4: (2 * hdm + et, 2 * hdm + 2 * et)}.get(half or 1, (hdm, 2 * hdm))
+
+
+def when_label(half, minute, hdm) -> str:
+    """The one way a minute is written in the report: its period, and added time as end+N ("2nd half 70+1'", "extra time 1
+    80+2'") so a stoppage-time minute never reads as later than the start of the next period."""
+    word = PERIOD_WORDS.get(half or 1, "2nd half")
+    if minute is None:
+        return word
+    end = period_bounds(half, hdm)[1]
+    m = int(minute)
+    return f"{word} {end}+{m - end}'" if m > end else f"{word} {m}'"

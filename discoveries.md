@@ -72,3 +72,20 @@ Entry format:
 - **What:** Fitting tagged carry spots against the receiver's GPS gives a scale of 0.80-0.94 along the length on all 5 matches (tags compressed towards halfway), offsets under 2 m.
 - **Why it matters:** Not a calibration fault (the kickout arc check puts the GPS right); it is how spots get placed by eye from the broadcast angle. Worth knowing for anything that reads distances from tags.
 - **Found while:** GPS off-the-ball tool (2026-11-07).
+
+## Dublin (21 Jun): Shea Malone's exit is not logged
+- **What:** Malone started (lineup), has events up to 1st half 34', nothing after, and is brought back on at the break before extra time 2 ("on for Conor O'Donnell") with no substitution taking him off in between. His GPS shows only 1.4 km.
+- **Why it matters:** His minutes cannot be worked out. The tools now say "minutes unknown" instead of 91, but the log itself is the fix.
+- **Suggested fix:** Owen to check the video and add the missing substitution (probably at half-time). Tagged data left alone.
+- **Found while:** checking the second Dublin report review (2026-11-08).
+
+## Dublin: one opposition score is in match_events but not in video_events
+- **What:** Dublin scored 25 times (2-26 with 3 two-pointers; match_events agrees), but the GPS input (video events) has 24 Dublin scores.
+- **Suggested fix:** Find the missing score in Video Tagging (compare the two lists by minute).
+- **Found while:** second Dublin review (2026-11-08).
+
+## Dublin extra time 1, 70:46: the GPS frame looks wrong
+- **What:** At R. McGarry's point (shot from ~21 m out) all our tracked players are 40 m+ from our goal and Roarty is at y = -5 m (off the field). This produced the "97.5 m wide" shape the report quoted (now filtered: units off the field are left out of the shape).
+- **Why it matters:** The extra-time sync may have drifted, which would affect every extra-time GPS moment in this match.
+- **Suggested fix:** Check the ET1 sync offset on the GPS sync check screen against a clear extra-time moment.
+- **Found while:** second Dublin review (2026-11-08).

@@ -12,7 +12,7 @@ Everything spatial is in OUR attacking frame (utils/attack_direction.py) and dis
 from typing import Optional
 
 from app.services.ai.phase_facts import (
-    FOUL_AGAINST_OWNER, KICKOUTS, MIN_N, OPP_KO_WON, OWN_KO_KEPT, OWN_KO_LOST, SCORE_TYPES, SHOT_TYPES, points_for,
+    FOUL_AGAINST_OWNER, KICKOUTS, MIN_N, OPP_KO_WON, OWN_KO_KEPT, OWN_KO_LOST, SCORE_TYPES, SHOT_TYPES, points_for, when_label,
 )
 from app.utils.attack_direction import own_attacks_right, side_attacks_right, to_attack_frame
 from app.utils.pitch_calibration import DEFAULT_LENGTH_M, DEFAULT_WIDTH_M, along_m, distance_to_goal_m, lateral_m
@@ -184,7 +184,7 @@ def saved_chances(rows: list, evs: list, atk_first, hdm, name_of=None, length_m=
             continue
         who = name_of(row) if name_of else None
         side["from_inside_the_13m"].append({
-            "when": f"{ {1: '1st half', 2: '2nd half', 3: 'extra time 1', 4: 'extra time 2'}.get(e.half, '2nd half') } {e.minute}'",
+            "when": when_label(e.half, e.minute, hdm),
             "shot_by": who or ("our player" if e.own else "their player"),
             "metres_from_goal": round(distance_to_goal_m(fx, fy, True, LEN, WID)),
             "saved_by": "their goalkeeper" if e.own else "our goalkeeper",

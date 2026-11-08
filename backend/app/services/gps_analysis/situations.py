@@ -46,20 +46,34 @@ def lag_ms(inp: MatchInputs, event_type: Optional[str]) -> int:
     return int(min(6000, max(0, ms)))
 
 
-def _when(e) -> str:
+def _when(e, hdm=None) -> str:
     half = PERIOD_NAME.get(e.half or 1, f"period {e.half}")
     if e.match_minute is None:
         return half
+    if hdm:
+        # added time as end+N, the way the rest of the report writes it: "Extra time 1 80+1:43", never "81:43" (which reads as
+        # later than the start of extra time 2)
+        from app.services.ai.phase_facts import period_bounds
+        end = period_bounds(e.half, hdm)[1]
+        if e.match_minute >= end and (e.match_minute > end or (e.match_second or 0) > 0):
+            return f"{half} {end}+{e.match_minute - end}:{(e.match_second or 0):02d}"
     return f"{half} {e.match_minute}:{(e.match_second or 0):02d}"
 
 
-def _shape_at(g: Grid, V: np.ndarray, j: int) -> Optional[dict]:
-    m = V[:, j]
+def _shape_at(g: Grid, V: np.ndarray, j: int, L: float = None, W: float = None) -> Optional[dict]:
+    m = V[:, j].copy()
+    off = 0
+    if L and W:
+        # a unit off the field (a sin-binned or substituted player still wearing it, or a fix that wandered) is not part of
+        # the shape: one at y = -5 m made the team "97.5 m wide" on a 90 m pitch
+        on = (g.X[:, j] >= -3) & (g.X[:, j] <= L + 3) & (g.Y[:, j] >= -3) & (g.Y[:, j] <= W + 3)
+        off = int((m & ~on).sum())
+        m &= on
     if m.sum() < 8:
         return None
     x, y = g.X[m, j], g.Y[m, j]
     cx, cy = float(x.mean()), float(y.mean())
-    return {"players_tracked": int(m.sum()), "compactness_m": r1(np.hypot(x - cx, y - cy).mean()), "length_m": r1(x.max() - x.min()),
+    return {"players_tracked": int(m.sum()), **({"off_the_field_left_out": off} if off else {}), "compactness_m": r1(np.hypot(x - cx, y - cy).mean()), "length_m": r1(x.max() - x.min()),
             "width_m": r1(y.max() - y.min()), "team_height_m": r1(cx), "deepest_six_m": r1(np.sort(x)[:6].mean())}
 
 
@@ -122,10 +136,12 @@ def situations(inp: MatchInputs, g: Grid) -> dict:
     out: Dict[str, List[dict]] = {k: [] for k in SITUATION_GROUPS}
     acc = tag_accuracy(inp, g)
     set_pieces: Dict[str, int] = {}
+    tagged: Dict[str, int] = {}
     for e in inp.events:
         group = next((k for k, (team, types) in SITUATION_GROUPS.items() if e.team == team and e.event_type in types), None)
         if group is None:
             continue
+        tagged[group] = tagged.get(group, 0) + 1
         if group in ("their_scores", "their_missed_shots", "our_shots") and e.score_source not in (None, "FROM_PLAY"):
             set_pieces[group] = set_pieces.get(group, 0) + 1     # a free / 45 / mark: players stand off by rule, not a read
             continue
@@ -171,7 +187,7 @@ def situations(inp: MatchInputs, g: Grid) -> dict:
                 closing = r1(d_before[i] - d[i])     # + = got closer in the last 2 s
             nearest.append({"name": name_of(inp, g.pids[i]), "dist_m": r1(d[i]), "band": band(d[i]), "speed_ms": r1(g.S[i, j]),
                             "closed_in_last_2s_m": closing})
-        shape_now, shape_5 = _shape_at(g, V, j), _shape_at(g, V, j5)
+        shape_now, shape_5 = _shape_at(g, V, j, L, W), _shape_at(g, V, j5, L, W)
         opp = inp.opposition_names.get(e.opposition_player_id or "")
         marker = None
         if opp and e.team == "team_b":
@@ -181,7 +197,7 @@ def situations(inp: MatchInputs, g: Grid) -> dict:
                 mi = g.pids.index(mids[0])
                 marker = {"name": name_of(inp, mids[0]), "dist_m": r1(d[mi]) if np.isfinite(d[mi]) else None}
         row = {
-            "when": _when(e), "video_ms": int(g.t[j]), "event": e.event_type.replace("_", " ").lower(),
+            "when": _when(e, inp.half_duration_mins), "video_ms": int(g.t[j]), "event": e.event_type.replace("_", " ").lower(),
             "player": name_of(inp, e.player_id) if e.team == "team_a" else opp,
             **({"opposition_player": opp} if e.team == "team_a" and opp else {}),
             "moment_from": ("the player's own GPS: the instant he was closest to the tagged spot (accurate to a metre or two)" if anchored
@@ -217,6 +233,12 @@ def situations(inp: MatchInputs, g: Grid) -> dict:
     summary = {k: summ(v, SITUATION_GROUPS[k][0] == "team_a") for k, v in out.items()}
     for k, n in set_pieces.items():
         summary[k]["left_out_frees_45s_marks"] = n
+    for k, n in tagged.items():
+        # the counts must add up in the report: tagged = measured (n) + set pieces left out + moments with no usable GPS frame
+        miss = n - summary[k]["n"] - set_pieces.get(k, 0)
+        summary[k]["tagged_in_match"] = n
+        if miss:
+            summary[k]["no_gps_frame_left_out"] = miss
     return {"groups": out, "summary": summary, "tag_accuracy": acc}
 
 

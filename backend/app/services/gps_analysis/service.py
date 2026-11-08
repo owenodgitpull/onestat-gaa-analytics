@@ -54,7 +54,9 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
         "shape_by_half": {h: v for h, v in shape_sum.items() if h != "all"},
         "transitions": tr["summary"],
         "fastest_recoveries": [{k: t[k] for k in ("video_ms", "half", "recovery_s", "lost_by", "outcome")} for t in fastest],
-        "drop_off": [{k: p.get(k) for k in ("player_id", "name", "minutes", "hsr_per_min_first10", "hsr_per_min_last10", "drop_off_pct")} for p in drop],
+        # "tracked_minutes" is real time on the pitch by GPS (added time included), not the match clock - named so it is never
+        # set beside the clock's "91 minutes" as if one of them were wrong
+        "drop_off": [{"tracked_minutes" if k == "minutes" else k: p.get(k) for k in ("player_id", "name", "minutes", "hsr_per_min_first10", "hsr_per_min_last10", "drop_off_pct")} for p in drop],
         "team_distance_m": sum(p["distance_m"] for p in it["players"]),
         "team_hsr_m": sum(p["hsr_m"] for p in it["players"]),
         "players_tracked": len(it["players"]),

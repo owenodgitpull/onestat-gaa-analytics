@@ -22,7 +22,7 @@ from app.services.ai.insight_findings import (
     PHASES, build_findings, margin, margin_phrase, tally, top_findings,
 )
 from app.services.ai.report_extras import build_extras
-from app.services.ai.phase_facts import SCORE_TYPES as _SCORE_TYPES, points_for as _points_for
+from app.services.ai.phase_facts import SCORE_TYPES as _SCORE_TYPES, points_for as _points_for, when_label, period_bounds, PERIOD_WORDS
 from app.utils.names import their_player_label
 from app.services.ai.phase_facts import (
     GROUPS, MAX_TRUSTED_SECONDS, MIN_N, SCORE_TYPES, group_stats, normalise, order_key, possessions,
@@ -159,31 +159,45 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         if et_sel:
             phases[g]["extra_time"] = _stats_row(et_sel)   # both periods of extra time together; first+second+extra = match
 
-    # margin movement per 10-minute block (computed so the report never has to add scores up itself)
+    # margin movement per 10-minute block, period by period (stoppage time stays in its own period's last block), with the
+    # running score at the end of each block - the block's own scores and the running margin side by side were misread as one
+    # ("4 points up (1-02 to 0-02)")
+    hdm_b = getattr(match, "half_duration_mins", None) or 30
     blocks = []
-    edge = 0
-    while edge < now:
-        nxt = edge + 10
-        inside = [e for e in evs if edge < e.minute <= nxt]
-        if inside:
-            blocks.append({"minutes": f"{edge + 1}-{min(nxt, now)}", "us": tally(inside, True).line(),
-                           "them": tally(inside, False).line(),
-                           "margin_at_end": margin_phrase(margin([e for e in evs if e.minute <= nxt]))})
-        edge = nxt
+    for h in (1, 2, 3, 4):
+        he = [e for e in evs if (e.half or 1) == h]
+        if not he:
+            continue
+        start, end = period_bounds(h, hdm_b)
+        edge = start
+        while edge < end:
+            nxt = min(edge + 10, end)
+            last = nxt == end
+            inside = [e for e in he if (edge < e.minute <= nxt) or (last and e.minute > end) or (edge == start and e.minute <= start)]
+            upto = [e for e in evs if (e.half or 1) < h or ((e.half or 1) == h and (e.minute <= nxt or last))]
+            top = max([e.minute for e in inside] + [nxt]) if last else nxt
+            blocks.append({"period": PERIOD_WORDS[h],
+                           "minutes": f"{edge if any(e.minute <= edge for e in inside) else edge + 1}-{nxt}" + (f"+{top - end}" if top > end else ""),
+                           "scored_in_block": {"us": tally(inside, True).line(), "them": tally(inside, False).line()},
+                           "score_at_end_of_block": {"us": tally(upto, True).line(), "them": tally(upto, False).line()},
+                           "margin_at_end": margin_phrase(margin(upto))})
+            edge = nxt
 
     findings = top_findings(build_findings(evs, now, window=max(now, 5), possession_list=ps), limit=5)
 
     # Reconciliation, so the report never has to add things up itself: the score at the end of each half and how long
     # each half ran (first-half added time included), how many shots the phase counts cover, and where scores came from.
     halves = []
-    for h in (1, 2):
+    for h in (1, 2, 3, 4):
         he = [e for e in evs if (e.half or 1) == h]
         if not he:
             continue
         up_to = [e for e in evs if (e.half or 1) <= h]
+        won = margin(he)
         halves.append({
-            "half": h,
-            "played_minutes": max(e.minute for e in he) - (min(e.minute for e in he) if h == 2 else 0),
+            "half": h, "period": PERIOD_WORDS[h],
+            "this_period_won_by": ("us by " if won > 0 else "them by ") + f"{abs(won)} point{'s' if abs(won) != 1 else ''}" if won else "level (drawn period)",
+            "played_minutes": max(e.minute for e in he) - period_bounds(h, hdm_b)[0],
             "score_at_end": {"us": tally(up_to, True).line(), "them": tally(up_to, False).line(),
                              "margin": margin_phrase(margin(up_to))},
             "scored_in_this_half": {"us": tally(he, True).line(), "them": tally(he, False).line()},
@@ -220,7 +234,7 @@ async def get_phase_summary(db, match_id: str, club_id=None) -> str:
         m_run += _points_for(e.type) if e.own else -_points_for(e.type)
         if m_run == 0 or (before <= 0 < m_run) or (before >= 0 > m_run):
             turning.append({
-                "when": f"{ {1: '1st half', 2: '2nd half', 3: 'extra time 1', 4: 'extra time 2'}.get(e.half, '2nd half') } {e.minute}'",
+                "when": when_label(e.half, e.minute, hdm),
                 "team": "us" if e.own else "them", "score": e.type.replace("_", " "), "by": _shooter(rows[e.idx]),
                 "what_it_did": "levelled it" if m_run == 0 else ("put us ahead" if m_run > 0 else "put them ahead"),
                 "margin_after": margin_phrase(m_run)})
@@ -307,9 +321,8 @@ async def get_phase_sequences(db, match_id: str, club_id=None, phase: Optional[s
         # came on, and second-half minutes start at the half length so 30'-34' exist in both halves)
         end_minute = getattr(end, "minute", None) if end is not None else p.minute
         end_half = (getattr(end, "half", None) if end is not None else None) or p.half
-        half_word = {1: "1st half", 2: "2nd half", 3: "extra time 1", 4: "extra time 2"}.get(end_half, "2nd half")
         out.append({
-            "when": f"{half_word} {end_minute}'",
+            "when": when_label(end_half, end_minute, getattr(match, "half_duration_mins", None)),
             "minute": end_minute, "half": end_half,
             "began_at_minute": p.minute,
             "possession": "ours" if p.owner_is_own else "theirs",

@@ -88,7 +88,8 @@ def test_scorecard_is_put_back_exactly():
     typed = "intro\n\n| Phase | Possessions | Finished |\n|---|---|---|\n| A | 1 | 1 finished, 3 shots |\n\nafter"
     out = _apply_scorecard(typed, tool)
     assert "| A | 1 | 1 |" in out and "3 shots" not in out and out.startswith("intro") and out.endswith("after")
-    assert _apply_scorecard("no table here", tool) == "no table here"
+    # the model left the table out: the computed one goes in under its own heading
+    assert "## Phase Analysis" in _apply_scorecard("no table here", tool) and "| A | 1 | 1 |" in _apply_scorecard("no table here", tool)
 
 
 def test_saves_from_inside_the_13m_are_chances_and_distance_saves_are_not():

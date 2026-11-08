@@ -1445,63 +1445,96 @@ async def compute_playing_minutes(db: AsyncSession, match_id) -> dict:
     )
     lineup_rows = lineup_result.all()
 
-    # Real elapsed playing time INCLUDES added time. The match clock restarts at half_duration_mins for the second half,
-    # so: first half = max(half length, last first-half clock minute logged); second half = clock minutes beyond half length.
-    ev_result = await db.execute(
-        select(MatchEvent.minute, MatchEvent.half).where(MatchEvent.match_id == match_uuid, MatchEvent.minute.isnot(None))
-    )
-    first_half_end = float(half_duration_mins)
-    second_half_end = float(full_length)
-    for ev_minute, ev_half in ev_result.all():
-        in_first = (ev_half == 1) or (ev_half is None and ev_minute <= half_duration_mins)
-        if in_first:
-            first_half_end = max(first_half_end, float(ev_minute))
-        else:
-            second_half_end = max(second_half_end, float(ev_minute))
-    total_minutes = first_half_end + (second_half_end - half_duration_mins)
+    stints = await _player_stints(db, match_uuid, half_duration_mins, lineup_rows)
+    return {pid: v["minutes"] for pid, v in stints.items() if not pid.startswith("_")}
+
+
+async def _player_stints(db: AsyncSession, match_uuid, half_duration_mins: int, lineup_rows=None) -> dict:
+    """Each player's spells on the pitch, from the lineup and every substitution in order: a player can come off and go back
+    on (a blood sub, a re-entry in extra time), and extra time is two more periods. Real elapsed time, added time included.
+
+    Returns {player_id_str: {"minutes": int|None, "spells": ["1st half 0' - 2nd half 61'", ...], "note": str?,
+    "featured": bool, "on_at_end": bool}}. minutes is None when the log contradicts itself (brought on while already on with no
+    logged exit), so nobody quotes a made-up figure."""
+    from app.models.match_event import MatchEvent, EventType
+    from app.models.match_lineup import MatchLineup
+    from app.services.ai.phase_facts import period_bounds, when_label
+
+    if lineup_rows is None:
+        lineup_rows = (await db.execute(
+            select(MatchLineup.player_id, MatchLineup.is_substitute, MatchLineup.is_on_field)
+            .where(MatchLineup.match_id == match_uuid))).all()
+    hdm = half_duration_mins or 30
+
+    def half_of(minute, half):
+        if half:
+            return half
+        return 1 if minute <= hdm else 2
+
+    # each period runs from its start to the later of its nominal end and the last minute logged in it (added time)
+    actual_end = {}
+    for ev_minute, ev_half in (await db.execute(
+            select(MatchEvent.minute, MatchEvent.half).where(MatchEvent.match_id == match_uuid, MatchEvent.minute.isnot(None)))).all():
+        h = half_of(ev_minute, ev_half)
+        actual_end[h] = max(actual_end.get(h, period_bounds(h, hdm)[1]), float(ev_minute))
+    periods = sorted(actual_end) or [1, 2]
+    for h in (1, 2):
+        actual_end.setdefault(h, period_bounds(h, hdm)[1])
 
     def elapsed(minute, half):
-        """Real minutes played by the match's clock reading `minute` in `half`."""
-        in_first = (half == 1) or (half is None and minute <= half_duration_mins)
-        if in_first:
-            return min(float(minute), first_half_end)
-        return first_half_end + (min(float(minute), second_half_end) - half_duration_mins)
+        h = half_of(minute, half)
+        before = sum(actual_end[k] - period_bounds(k, hdm)[0] for k in actual_end if k < h)
+        st = period_bounds(h, hdm)[0]
+        return before + max(0.0, min(float(minute), actual_end.get(h, float(minute))) - st)
 
-    sub_result = await db.execute(
-        select(MatchEvent.player_id, MatchEvent.sub_in_player_id, MatchEvent.minute, MatchEvent.half)
-        .where(MatchEvent.match_id == match_uuid, MatchEvent.event_type == EventType.SUBSTITUTION)
-    )
-    off_minute_by_player = {}
-    on_minute_by_player = {}
-    for off_id, on_id, minute, sub_half in sub_result.all():
-        if minute is None:
+    total = sum(actual_end[k] - period_bounds(k, hdm)[0] for k in actual_end)
+    last_h = max(actual_end)
+    end_label = when_label(last_h, int(actual_end[last_h]), hdm)
+
+    subs = (await db.execute(
+        select(MatchEvent.player_id, MatchEvent.sub_in_player_id, MatchEvent.minute, MatchEvent.half, MatchEvent.match_clock_s)
+        .where(MatchEvent.match_id == match_uuid, MatchEvent.event_type == EventType.SUBSTITUTION, MatchEvent.minute.isnot(None)))).all()
+    subs = sorted(subs, key=lambda r: (elapsed(r[2], r[3]), r[4] or 0))
+
+    out = {}
+    on_since = {}
+    for pid, is_sub, _on_field in lineup_rows:
+        if not pid:
             continue
-        t = elapsed(minute, sub_half)
+        out[str(pid)] = {"minutes": 0.0, "spells": [], "featured": not is_sub, "on_at_end": False}
+        if not is_sub:
+            on_since[str(pid)] = (0.0, when_label(1, 0, hdm))
+    broken = {}
+    for off_id, on_id, minute, half, _clk in subs:
+        t, lab = elapsed(minute, half), when_label(half_of(minute, half), minute, hdm)
         if off_id:
-            off_minute_by_player[off_id] = t
-        if on_id:
-            on_minute_by_player[on_id] = t
-
-    minutes_by_player = {}
-    for player_id, is_substitute, is_on_field in lineup_rows:
-        if not player_id:
-            continue
-        pid = str(player_id)
-        if not is_substitute:
-            # Starter — the whole match (added time included) unless subbed off at a known time.
-            minutes_by_player[pid] = round(off_minute_by_player.get(player_id, total_minutes))
-        elif is_on_field:
-            entry = on_minute_by_player.get(player_id)
-            if entry is None:
-                minutes_by_player[pid] = None
+            k = str(off_id)
+            row = out.setdefault(k, {"minutes": 0.0, "spells": [], "featured": True, "on_at_end": False})
+            if k in on_since:
+                t0, l0 = on_since.pop(k)
+                row["minutes"] += t - t0
+                row["spells"].append(f"{l0} - {lab}")
             else:
-                exit_t = off_minute_by_player.get(player_id, total_minutes)
-                minutes_by_player[pid] = max(0, round(exit_t - entry))
-        else:
-            # Unused substitute — never came on.
-            minutes_by_player[pid] = 0
-
-    return minutes_by_player
+                broken[k] = f"taken off at {lab} without a logged entry before it"
+        if on_id:
+            k = str(on_id)
+            row = out.setdefault(k, {"minutes": 0.0, "spells": [], "featured": True, "on_at_end": False})
+            row["featured"] = True
+            if k in on_since:
+                broken[k] = (f"brought on at {lab} while the log still had him on the pitch from {on_since[k][1]} - his exit "
+                             f"before that was never logged, so his minutes are unknown")
+            on_since[k] = (t, lab)
+    for k, (t0, l0) in on_since.items():
+        row = out[k]
+        row["minutes"] += total - t0
+        row["spells"].append(f"{l0} - {end_label} (full time)")
+        row["on_at_end"] = True
+    for k, row in out.items():
+        row["minutes"] = None if k in broken else (round(row["minutes"]) if row["featured"] else 0)
+        if k in broken:
+            row["note"] = broken[k]
+    out["_match_minutes"] = round(total)
+    return out
 
 
 async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
@@ -1536,7 +1569,10 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
     # Real on-pitch minutes, derived from lineup + substitution data — NOT
     # from uploaded GPS duration, which includes warm-up/device-on time and
     # was confirmed unreliable as a playing-time proxy 2026-09-09.
-    computed_minutes = await compute_playing_minutes(db, match_uuid)
+    _hdm = (await db.execute(select(Match.half_duration_mins).where(Match.id == match_uuid))).scalar_one_or_none() or 30
+    stints = await _player_stints(db, match_uuid, _hdm)
+    match_minutes = stints.pop("_match_minutes", None)
+    computed_minutes = {pid: v["minutes"] for pid, v in stints.items()}
 
     # Fetch substitution events
     sub_lookup = {}
@@ -1561,8 +1597,9 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
     )
     lineup_rows = lineup_result.all()
     featured_player_ids = {
-        pid for pid, is_sub, is_on_field in lineup_rows if not is_sub or is_on_field
-    } if lineup_rows else None  # None = no lineup saved for this match — don't filter
+        pid for pid, is_sub, is_on_field in lineup_rows if not is_sub or is_on_field or (stints.get(str(pid)) or {}).get("featured")
+    } if lineup_rows else None  # None = no lineup saved for this match — don't filter. A sub who came on and went off again
+    # (is_on_field false at the end) played: he was listed as "bench, not used" before
     # Players who started on the bench and came on (is_substitute AND is_on_field)
     # — distinct from subbed_off_minute below, which only ever fires for players
     # taken OFF. Without this, a player subbed ON had no signal at all that they
@@ -1571,7 +1608,7 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
     # as "underperformed" — confirmed live 2026-09-08, three genuine substitutes
     # called out as a defensive/tactical concern for a benchmark they were never
     # on the pitch long enough to reach.
-    came_on_as_sub_ids = {pid for pid, is_sub, is_on_field in lineup_rows if is_sub and is_on_field}
+    came_on_as_sub_ids = {pid for pid, is_sub, is_on_field in lineup_rows if is_sub and (is_on_field or (stints.get(str(pid)) or {}).get("featured"))}
 
     # Calculate team totals and outfield averages
     outfield_rows = [
@@ -1595,7 +1632,9 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
     for g, player_name, player_position in gps_rows:
         pos_val = player_position.value if hasattr(player_position, 'value') else player_position if player_position else None
         is_gk = pos_val == "goalkeeper"
-        was_subbed = g.player_id and g.player_id in sub_lookup
+        st = stints.get(str(g.player_id)) or {}
+        # off at the end of the match (he can have come off and gone back on: only his last exit counts as "subbed off")
+        was_subbed = bool(g.player_id and st and not st.get("on_at_end") and st.get("featured") and st.get("spells"))
 
         player_data = {
             "name": player_name or "Unknown",
@@ -1618,9 +1657,14 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
         }
 
         if was_subbed:
-            player_data["subbed_off_minute"] = sub_lookup[g.player_id]
+            player_data["subbed_off_minute"] = st["spells"][-1].split(" - ")[-1]   # his last exit, with its period
         if g.player_id and g.player_id in came_on_as_sub_ids:
             player_data["came_on_as_sub"] = True
+        if st.get("spells"):
+            player_data["on_the_pitch"] = st["spells"]
+        if st.get("note"):
+            player_data["minutes_note"] = st["note"]
+            player_data["playing_minutes"] = None      # never the GPS unit's own duration (warm-up included)
 
         # Flag players who never left the bench, per the actual match lineup
         is_unused_sub = featured_player_ids is not None and g.player_id not in featured_player_ids
@@ -1634,7 +1678,10 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
             continue
         else:
             # Outlier flags for outfield full-match players only
-            if not is_gk and not was_subbed and g.total_distance_m and avg_distance > 0:
+            _pm = player_data.get("playing_minutes")
+            full_match = (not was_subbed and g.player_id not in came_on_as_sub_ids and _pm is not None
+                          and (not match_minutes or _pm >= 0.9 * match_minutes))
+            if not is_gk and full_match and g.total_distance_m and avg_distance > 0:
                 diff_pct = ((g.total_distance_m - avg_distance) / avg_distance) * 100
                 if diff_pct > 20:
                     player_data["workload_flag"] = "HIGH"
@@ -1656,6 +1703,11 @@ async def get_match_gps(db: AsyncSession, match_id: str, club_id=None) -> str:
             "avg_sprints": round(avg_sprints, 0),
         },
         "substitutions_count": len(sub_lookup),
+        **({"match_minutes": match_minutes,
+            "minutes_note": ("playing_minutes are real minutes on the pitch from the lineup and every substitution in order (added "
+                             "time and extra time included). on_the_pitch lists each spell. A player with minutes_note has a gap in "
+                             "the substitution log: say his minutes are not known, never quote a figure. workload_flag is only "
+                             "set for players who played the whole match.")} if match_minutes else {}),
         "players": players,
         "bench_players_not_used": sorted(bench_not_used, key=lambda p: p["total_distance_m"], reverse=True) if bench_not_used else [],
     })
@@ -3008,7 +3060,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
              'event_type': e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
              'half': getattr(e, 'half', None), 'minute': e.minute or 0, 'clock_s': getattr(e, 'match_clock_s', None)}
             for e in events
-        ])
+        ], hdm=getattr(match, 'half_duration_mins', None))
     except Exception as _exc:   # the summary must never fail because of the personnel view
         logger.warning("personnel timeline failed for %s: %s", match_id, _exc)
 
@@ -3065,10 +3117,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
         _moved = next((p for p in _personnel.get('players_who_changed_position', []) if p['player'] == _entry['name']), None)
         if _moved:
             # one position is not the whole story: these numbers span several positions (see personnel_changes)
-            _entry['positions_played'] = [
-                f"{pp['position']} {pp['from_minute']}'-{str(pp['to_minute']) + chr(39) if pp['to_minute'] is not None else 'end'}"
-                for pp in _moved['positions']
-            ]
+            _entry['positions_played'] = [f"{pp['position']} {pp.get('from')} to {pp.get('to')}" for pp in _moved['positions']]
         player_breakdown.append(_entry)
 
     # Sort: players with most concerns first (errors + turnovers), then by score
@@ -3301,12 +3350,16 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             "shorts": _n(Team.OWN, EventType.SHORT),
             "hit_posts": _n(Team.OWN, EventType.HIT_POST),
             "saved": _n(Team.OWN, EventType.SAVED),
+            **({"forty_fives_missed": _n(Team.OWN, EventType.FORTY_FIVE_MISSED)} if _n(Team.OWN, EventType.FORTY_FIVE_MISSED) else {}),
+            **({"penalties_missed": _n(Team.OWN, EventType.PENALTY_MISS)} if _n(Team.OWN, EventType.PENALTY_MISS) else {}),
             "missed_shots_total": tm_misses,
             "opponent_shorts": _n(Team.OPPONENT, EventType.SHORT),
             "opponent_hit_posts": _n(Team.OPPONENT, EventType.HIT_POST),
             "opponent_saved": _n(Team.OPPONENT, EventType.SAVED),
+            **({"opponent_forty_fives_missed": _n(Team.OPPONENT, EventType.FORTY_FIVE_MISSED)} if _n(Team.OPPONENT, EventType.FORTY_FIVE_MISSED) else {}),
+            **({"opponent_penalties_missed": _n(Team.OPPONENT, EventType.PENALTY_MISS)} if _n(Team.OPPONENT, EventType.PENALTY_MISS) else {}),
             "opponent_missed_shots_total": opp_misses,
-            "shots_note": "wides = wide + free wide only. A short, a hit post and a save are separate kinds of missed shot - never call them wides. missed_shots_total is all of them.",
+            "shots_note": "wides = wide + free wide only. A short, a hit post and a save are separate kinds of missed shot - never call them wides. missed_shots_total is all of them: wides + shorts + hit posts + saves + missed 45s + missed penalties. If you list the parts, list every one so they add up to the total.",
             "team_total_shots": tm_total_shots,
             "team_accuracy": tm_accuracy,
             "team_possession_percentage": tm_possession,
@@ -4473,10 +4526,21 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
     _all_events = list(ev_result.scalars().all())
 
     _SCORING_STR = {'goal', 'point', 'two_point_goal', 'two_point', 'penalty_goal',
-                    'point_free', 'two_point_free', 'forty_five'}
+                    'point_free', 'two_point_free', 'forty_five', 'goal_free', 'point_45', 'point_mark'}
 
     def _ev_type(e) -> str:
         return e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type)
+
+    _SHOT_MISS_STR = {'wide', 'wide_free', 'short', 'saved', 'hit_post', 'forty_five_missed', 'penalty_miss'}
+    _REGAIN_STR = {'turnover_won', 'interception', 'own_kickout_won', 'opp_kickout_won', 'opp_kickout_won_break'}
+
+    def _ev_key(half, minute, clock_s):
+        """(half, seconds) for ordering: the match clock when recorded, else the minute."""
+        if clock_s is not None:
+            return (half or 1, float(clock_s))
+        if minute is None:
+            return None
+        return (half or 1, float(minute) * 60 + 30)
 
     def _ev_team(e) -> str:
         return e.team.value if hasattr(e.team, 'value') else str(e.team)
@@ -4679,17 +4743,20 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
                 player_consequences[pid]["turnovers_lost"] += 1
                 if seg.end_x is not None:
                     player_consequences[pid]["turnover_zones"].append(_xy_zone(seg.end_x, seg.end_y))
-                m = seg.minute
-                if m is not None:
+                # the other team scored AFTER this loss (it used to count a score from the minute before), within 3 minutes
+                # and before this team had a shot or won the ball back - the same possession, not a later one
+                t_loss = _ev_key(getattr(seg, "half", None), getattr(seg, "minute", None), getattr(seg, "match_clock_s", None))
+                if t_loss is not None:
                     for ev in _all_events:
-                        ev_min = ev.minute
-                        if ev_min is None:
+                        k = _ev_key(ev.half, ev.minute, ev.match_clock_s)
+                        if k is None or k[0] != t_loss[0] or k[1] < t_loss[1] - 5:
                             continue
-                        if ev_min < m - 1:
+                        if k[1] > t_loss[1] + 180:
                             continue
-                        if ev_min > m + 3:
+                        et_, tm_ = _ev_type(ev), _ev_team(ev)
+                        if tm_ == team and (et_ in _SCORING_STR or et_ in _SHOT_MISS_STR or et_ in _REGAIN_STR) and k[1] > t_loss[1] + 5:
                             break
-                        if _ev_team(ev) == other_team and _ev_type(ev) in _SCORING_STR:
+                        if tm_ == other_team and et_ in _SCORING_STR:
                             player_consequences[pid][score_key] += 1
                             break  # at most one score per turnover
 
@@ -4871,6 +4938,12 @@ async def get_ball_carrier_data(db: AsyncSession, match_id: str, club_id=None) -
             "player_consequences": sorted(
                 side["player_consequences"].values(), key=lambda x: x["turnovers_lost"], reverse=True
             ) if side["player_consequences"] else [],
+            "player_consequences_note": (
+                "turnovers_lost here = carries that ended with the ball lost, stray passes and other errors included - NOT the "
+                "player's turnover count (that is get_match_summary player_breakdown turnovers_lost; quote that one for a player). "
+                "If you use this figure, call it 'lost the ball N times in possession'. led_to_*_score = the other team scored "
+                "within 3 minutes after the loss, before this team had a shot or won it back."),
+            "pass_network_note": "Each row is one direction: from_name passed to to_name `count` times. A to B and B to A are separate rows - quote the direction as given.",
         }
         if confidence in ("medium", "high"):
             out["pass_network"] = side["top_connections"]
