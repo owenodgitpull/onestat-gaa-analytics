@@ -649,7 +649,9 @@ INSTRUCTIONS:
     - PLAYER FIGURES are copied from the player's own row, never restated from memory or from another measure: turnovers lost/won,
       stray passes, fouls and cards from get_match_summary player_breakdown; minutes and spells on the pitch from get_match_gps
       (playing_minutes, on_the_pitch); scores and assists from the events. When a row has minutes_note, say his minutes are not
-      known. A player who started is never "came on", and a player is "came on" only at the spell start the tool gives.
+      known. A player who started is never "came on", and a player is "came on" only at the spell start the tool gives. A
+      starter whose minutes_note says his exit was never logged: "started, his substitution off was not logged, and he came
+      back on at <that label>".
     - Each period's winner comes from halves[].this_period_won_by: a period that ended level overall was not "level" if one team
       won it ("they won the second half by 2 to draw level").
     - A count of opposition scores is their real total (score line: goals + two-pointers + points). A GPS count that covers fewer
@@ -693,8 +695,9 @@ INSTRUCTIONS:
       blocks raise it; turnovers lost, stray passes and fouls lower it, and a yellow, black or red card costs at least one point. 8 or
       more only for match-deciding impact. Two players with clearly different error counts do not get the same rating without a reason.
     - How the Game Was Won/Lost is short paragraphs, never bullets - "What to fix" too: two or three short paragraphs, no list.
-    - Two-pointers: a score is either from play or from a free, never both. List each scorer once under the right one, and the
-      total is the count of names you listed.
+    - Two-pointers: copy get_match_summary two_pointers (ours and theirs, from_play and from_frees) exactly - never work the split
+      out from player counts. Each scorer appears once, under the heading the list gives. Whoever scored more two-pointers
+      gained from range; say it that way round.
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
    <chart_insights>

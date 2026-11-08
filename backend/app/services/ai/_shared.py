@@ -3064,6 +3064,19 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
     except Exception as _exc:   # the summary must never fail because of the personnel view
         logger.warning("personnel timeline failed for %s: %s", match_id, _exc)
 
+    # Every two-pointer in the match, both teams, split from play / from frees: the report lists them by name and kept
+    # getting the split wrong when it had to work it out from per-player counts
+    from app.services.ai.phase_facts import when_label as _wl
+    _tp = {"ours": {"from_play": [], "from_frees": []}, "theirs": {"from_play": [], "from_frees": []}}
+    for e in events:
+        if e.event_type not in {EventType.TWO_POINT, EventType.TWO_POINT_FREE}:
+            continue
+        _side = "ours" if e.team == Team.OWN else "theirs"
+        _who = players.get(str(e.player_id)) if e.player_id else None
+        _who = _who or getattr(e, 'opponent_player_name', None) or ("our player" if _side == "ours" else "their player")
+        _tp[_side]["from_frees" if e.event_type == EventType.TWO_POINT_FREE else "from_play"].append(
+            f"{_who} ({_wl(getattr(e, 'half', None), e.minute, getattr(match, 'half_duration_mins', None))})")
+
     # Build compact breakdown — only non-zero fields included
     player_breakdown = []
     for _pid, _pb in _player_breakdown_raw.items():
@@ -3075,6 +3088,12 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             _entry['score'] = f"{_pb['goals']}-{_pb['points']}"
             if _pb['two_pts']:
                 _entry['two_pts'] = _pb['two_pts']
+                # say which: a free-taker who also scores from play got listed under the wrong one ("2 from play: Murphy,
+                # McGee" when Murphy's was a free)
+                if _pb['two_pts'] - _pb['two_pts_dead_ball']:
+                    _entry['two_pts_from_play'] = _pb['two_pts'] - _pb['two_pts_dead_ball']
+                if _pb['two_pts_dead_ball']:
+                    _entry['two_pts_from_frees'] = _pb['two_pts_dead_ball']
             # All of this player's points/2pts came from frees/45s, not open
             # play — flag it explicitly so the report never criticises a
             # free-taker (often the goalkeeper) for lacking "scores from
@@ -3339,6 +3358,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             ),
         },
         "top_scorers": top_scorers[:5],
+        "two_pointers": {**_tp, "note": "Copy these lists exactly when you list two-pointers: each one is either from play or from a free."},
         "stats": {
             "turnovers_won": turnovers_won,
             "turnovers_lost": turnovers_lost,

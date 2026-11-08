@@ -154,8 +154,25 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             if got is not None and got != n and (b, a) not in (facts.get("ambiguous_links") or set()):
                 issues.append({"quote": s, "problem": f"{m.group(1)} to {m.group(2)} was {got} passes, not {n}", "truth": _link_truth(links, a, b)})
 
-        # 8. leaked snake_case field names
-        for m in re.finditer(r"\b[a-z]+_[a-z_]+\b", s):
+        # 8. process talk about the tools
+        for m in re.finditer(r"\b(the tool(?:'s)? (?:flags|says|shows|count)|by the match summary|in the match summary|"
+                             r"not in the match gps list|the match gps list)\b", low):
+            issues.append({"quote": s, "problem": f"talks about the tools ('{m.group(0)}')", "truth": "say what happened, or 'not recorded'"})
+
+        # 9. our two-pointer scorers under the wrong heading
+        tp = (facts.get("two_pointers") or {}).get("ours") or {}
+        mp = re.search(r"(\d+) from play \(([^)]*)\)", s)
+        if tp and mp and ("two-pointer" in low or "two pointer" in low):
+            play = {_surname(x.split(" (")[0]) for x in tp.get("from_play", [])}
+            frees = {_surname(x.split(" (")[0]) for x in tp.get("from_frees", [])}
+            named = {_surname(n) for n in re.split(r",| and ", mp.group(2)) if n.strip()}
+            wrong = (named & frees) - play
+            if wrong:
+                issues.append({"quote": s, "problem": f"{', '.join(sorted(wrong))} listed as a two-pointer from play but it was a free",
+                               "truth": f"from play: {', '.join(tp.get('from_play', []))}; from frees: {', '.join(tp.get('from_frees', []))}"})
+
+        # 10. leaked snake_case field names
+        for m in re.finditer(r"\b[a-z0-9]+_[a-z0-9_]+\b", s):
             issues.append({"quote": s, "problem": f"internal field name '{m.group(0)}'", "truth": "say it in plain words"})
 
     # one issue per quote+problem
@@ -189,7 +206,8 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
                                      + (f", {st['penalties_missed']} missed penalties" if st.get("penalties_missed") else ""))
         facts["opp_missed_parts"] = (f"{st.get('opponent_wides', 0)} wides, {st.get('opponent_shorts', 0)} shorts, "
                                      f"{st.get('opponent_hit_posts', 0)} hit posts, {st.get('opponent_saved', 0)} saved")
-        tot_shots, acc = st.get("opponent_total_shots"), st.get("opponent_accuracy")
+        facts["two_pointers"] = summ.get("two_pointers")
+        tot_shots = st.get("opponent_total_shots")
         if tot_shots is not None and facts["opp_missed_total"] is not None:
             facts["opp_scores"] = tot_shots - facts["opp_missed_total"]
     except Exception:

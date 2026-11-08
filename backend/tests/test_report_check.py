@@ -4,7 +4,16 @@ from app.services.ai.report_check import check_report
 FACTS = {"opponent": "Dublin", "half_duration_mins": 35, "our_missed_total": 14, "opp_missed_total": 17,
          "our_missed_parts": "8 wides, 3 shorts, 1 hit posts, 1 saved, 1 missed 45s", "opp_scores": 25,
          "max_speed": ("Finnbarr Roarty", 8.99), "pitch_width_m": 90.0,
-         "pass_links": {("o'donnell", "mogan"): 9, ("mogan", "o'donnell"): 7}}
+         "pass_links": {("o'donnell", "mogan"): 9, ("mogan", "o'donnell"): 7},
+         "two_pointers": {"ours": {"from_play": ["Shane O'Donnell (2nd half 53')", "Jason McGee (2nd half 61')"],
+                                   "from_frees": ["Michael Murphy (2nd half 70+1')", "Gavin Mulreany (extra time 1 80')"]}}}
+
+
+def test_two_pointer_split_and_tool_talk_are_caught():
+    p = _problems("Two-pointers: we scored 4, 2 from play (Michael Murphy, Jason McGee) and 2 from frees.")
+    assert any("murphy listed as a two-pointer from play" in x for x in p)
+    assert any("talks about the tools" in x for x in _problems("The tool flags Langan as high load."))
+    assert any("inside_45_center" in x for x in _problems("Most scoring came from there (inside_45_center: 16 scores)."))
 
 
 def test_when_label_writes_added_time():
