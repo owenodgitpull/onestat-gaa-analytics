@@ -759,8 +759,38 @@ INSTRUCTIONS:
         if cached_tools:
             cached_tools[-1] = {**cached_tools[-1], "cache_control": {"type": "ephemeral"}}
 
+        # Token use across every call of this report, logged at the end so the cost of a report is known.
+        _usage = {"calls": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
+
+        def _count(resp):
+            u = getattr(resp, "usage", None)
+            if u is None:
+                return
+            _usage["calls"] += 1
+            _usage["input"] += getattr(u, "input_tokens", 0) or 0
+            _usage["cache_write"] += getattr(u, "cache_creation_input_tokens", 0) or 0
+            _usage["cache_read"] += getattr(u, "cache_read_input_tokens", 0) or 0
+            _usage["output"] += getattr(u, "output_tokens", 0) or 0
+
+        def _cache_history(msgs):
+            """Cache the conversation so far: every turn re-sends all earlier tool results (the event list alone is ~200k
+            characters), which were billed at the full input rate on every turn. One moving breakpoint on the newest user
+            turn (the system prompt and tools hold the other two) makes the earlier turns cheap cache reads."""
+            for m in msgs:
+                if isinstance(m.get("content"), list):
+                    for b in m["content"]:
+                        if isinstance(b, dict):
+                            b.pop("cache_control", None)
+            last = msgs[-1]
+            if last.get("role") == "user":
+                if isinstance(last.get("content"), str):
+                    last["content"] = [{"type": "text", "text": last["content"]}]
+                if last["content"] and isinstance(last["content"][-1], dict):
+                    last["content"][-1]["cache_control"] = {"type": "ephemeral"}
+
         # Initial call with tools
         logger.info(f"Calling Claude with match_id={match_id}, user_message={user_message[:100]}...")
+        _cache_history(messages)
         response = await asyncio.to_thread(
             client.messages.create,
             model="claude-sonnet-5-5",
@@ -769,6 +799,7 @@ INSTRUCTIONS:
             tools=cached_tools,
             messages=messages,
         )
+        _count(response)
         logger.info(f"Response stop_reason: {response.stop_reason}")
         logger.info(f"Response content types: {[block.type for block in response.content]}")
 
@@ -807,6 +838,7 @@ INSTRUCTIONS:
 
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
+            _cache_history(messages)
 
             response = await asyncio.to_thread(
                 client.messages.create,
@@ -816,6 +848,7 @@ INSTRUCTIONS:
                 tools=cached_tools,
                 messages=messages,
             )
+            _count(response)
 
         # Extract final text response
         final_text = "".join(block.text for block in response.content if hasattr(block, "text"))
@@ -831,6 +864,7 @@ INSTRUCTIONS:
                 "role": "user",
                 "content": "Continue exactly where you left off. Do not repeat any text already written, do not restart the report, and do not add any preamble — just continue the sentence or section that was cut off.",
             })
+            _cache_history(messages)
             response = await asyncio.to_thread(
                 client.messages.create,
                 model="claude-sonnet-5-5",
@@ -839,9 +873,14 @@ INSTRUCTIONS:
                 tools=cached_tools,
                 messages=messages,
             )
+            _count(response)
             final_text += "".join(block.text for block in response.content if hasattr(block, "text"))
             continuation_rounds += 1
 
+        # Claude Sonnet 5.5 list prices per million tokens: input $2, output $10, cache write (5 min) $2.50, cache read $0.20
+        _cost = (_usage["input"] * 2.0 + _usage["cache_write"] * 2.5 + _usage["cache_read"] * 0.2 + _usage["output"] * 10.0) / 1e6
+        logger.info(f"report tokens {match_id}: {_usage['calls']} calls, input {_usage['input']}, cache write "
+                    f"{_usage['cache_write']}, cache read {_usage['cache_read']}, output {_usage['output']}, cost ${_cost:.2f}")
         return final_text
 
     # -------------------------------------------------------------------------
