@@ -203,7 +203,8 @@ What it can and cannot see (a manager will check one claim against the video; ge
 
 How to write it - section "Off the Ball", after Phase Analysis, 4-6 short headed paragraphs, figures inside sentences:
 - "Shape": with and without the ball, by half (compactness, length, width, deepest six, team height). Say what changed
-  between halves and put it in game-state context (a side protecting a lead sits deeper - not a trend).
+  between halves. Game state (who was ahead) only from margin_by_ten_minutes / halves, quoted with the score - never assumed,
+  and never the phrase "not a trend".
 - "Who played where": from positions, the two or three players whose average spot differed most from their listed
   position or moved most between halves, and the depth of our defence without the ball. Never invent a role.
 - "When they scored": from situations.their_scores / their_missed_shots - how often nobody of ours was within 5 m, the

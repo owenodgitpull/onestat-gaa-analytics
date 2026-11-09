@@ -135,6 +135,13 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             if best and v < best[1] - 1e-6:
                 issues.append({"quote": s, "problem": f"{v} m/s is not the highest", "truth": f"{best[0]} had the highest top speed ({best[1]} m/s)"})
 
+        # 5b. superlatives on distance covered
+        for m in re.finditer(r"(\d+(?:\.\d)?) ?km[^.]{0,40}\b(the most|the highest|most of any|furthest)\b", low):
+            v = float(m.group(1))
+            best = facts.get("max_distance")
+            if best and v < best[1] - 0.05:
+                issues.append({"quote": s, "problem": f"{v} km is not the most", "truth": f"{best[0]} covered the most ({best[1]} km)"})
+
         # 6. widths wider than the pitch
         W = facts.get("pitch_width_m")
         for m in re.finditer(r"(?:width|wide)[^.\d]{0,12}(\d{2,3}(?:\.\d)?) ?m|(\d{2,3}(?:\.\d)?) ?m wide", low):
@@ -264,6 +271,9 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
         sp = [(p["name"], p.get("max_speed_ms") or 0) for p in gps.get("players", [])]
         if sp:
             facts["max_speed"] = max(sp, key=lambda r: r[1])
+        dk = [(p["name"], p.get("distance_km") or 0) for p in gps.get("players", [])]
+        if dk:
+            facts["max_distance"] = max(dk, key=lambda r: r[1])
     except Exception:
         pass
     try:
@@ -310,11 +320,25 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
     return facts
 
 
+def drop_empty_headings(text: str) -> Tuple[str, List[str]]:
+    """A heading with nothing under it before the next heading, the footnote or the end ("## Match Charts")."""
+    lines, out, fixed = text.split("\n"), [], []
+    for i, ln in enumerate(lines):
+        if ln.startswith("#"):
+            rest = next((x for x in lines[i + 1:] if x.strip()), "")
+            if not rest or rest.startswith("#") or (rest.startswith("*Knowledge base") and ln.startswith("## ")):
+                fixed.append(f"empty heading removed: {ln.strip()}")
+                continue
+        out.append(ln)
+    return "\n".join(out), fixed
+
+
 def check_report(text: str, facts: dict) -> Tuple[str, List[str], List[dict]]:
     hdm = facts.get("half_duration_mins") or 30
     text, f1 = fix_added_time(text, hdm)
     text, f2 = fix_field_names(text)
-    return text, f1 + f2, find_issues(text, facts)
+    text, f3 = drop_empty_headings(text)
+    return text, f1 + f2 + f3, find_issues(text, facts)
 
 
 REPAIR_SYSTEM = """You correct specific factual errors in a finished GAA match report. You get the report and a list of problems,

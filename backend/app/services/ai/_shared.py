@@ -2458,11 +2458,14 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
 
     _frame = {ev.id: _own_frame(ev) for ev in events}
 
+    from app.services.ai.phase_facts import when_label as _when_lbl
     events_data = []
     for e in events:
         event_dict = {
             "minute": e.minute,
             "half": getattr(e, "half", None) or (1 if e.minute <= hdm else 2),
+            # the label to quote: half 3 at 70' is "extra time 1 70'" (the model turned it into "2nd half 70+0'")
+            "when": _when_lbl(getattr(e, "half", None) or (1 if e.minute <= hdm else 2), e.minute, hdm),
             "event_type": e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type),
             "team": e.team.value if hasattr(e.team, 'value') else str(e.team) if e.team else None,
             "player": players.get(str(e.player_id), "Unknown") if e.player_id else None,
