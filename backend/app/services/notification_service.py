@@ -21,7 +21,23 @@ from app.models.match import Match
 
 logger = logging.getLogger(__name__)
 
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+def _normalise_pem(key: str) -> str:
+    """A PEM key needs its line breaks. Stored as a one-line secret (breaks lost, or written as literal \n) it could
+    not be read - "Could not deserialize key data" - and every push failed. Rebuild header / 64-char body / footer."""
+    import re
+    nl = chr(10)
+    k = (key or "").strip().strip('"').strip("'").replace(chr(92) + "n", nl)   # literal backslash-n -> newline
+    if not k.startswith("-----BEGIN") or nl in k:
+        return k
+    m = re.match(r"^(-----BEGIN [A-Z ]+-----)(.*?)(-----END [A-Z ]+-----)$", k, re.S)
+    if not m:
+        return k
+    body = re.sub(r"\s+", "", m.group(2))
+    lines = [body[i:i + 64] for i in range(0, len(body), 64)]
+    return nl.join([m.group(1), *lines, m.group(3)]) + nl
+
+
+VAPID_PRIVATE_KEY = _normalise_pem(os.getenv("VAPID_PRIVATE_KEY", ""))
 VAPID_CLAIMS = {"sub": os.getenv("VAPID_MAILTO", "mailto:admin@onestat.app")}
 
 
