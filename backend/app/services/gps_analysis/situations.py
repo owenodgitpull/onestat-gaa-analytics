@@ -250,7 +250,10 @@ def average_positions(inp: MatchInputs, g: Grid) -> dict:
     V = g.valid()
     rows = []
     for i, pid in enumerate(g.pids):
-        p = {"name": name_of(inp, pid), "listed_position": (inp.players.get(pid) or {}).get("position"), "halves": {}}
+        # the position's name ("left corner back"), not its code: "fb-left" was written as "full back"
+        from app.services.lineup_timeline import label as _pos_label
+        _pid_pos = (inp.players.get(pid) or {}).get("position")
+        p = {"name": name_of(inp, pid), "listed_position": _pos_label(_pid_pos) if _pid_pos else None, "halves": {}}
         for h in sorted(set(g.half.tolist())):
             hm = g.half == h
             cell = {}

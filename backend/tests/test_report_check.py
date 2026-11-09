@@ -87,3 +87,10 @@ def test_impact_number_flagged():
     assert any("impact-score" in x for x in _problems("Mogan had the highest impact score on our side (23) with 1-1."))
     assert any("impact-score" in x for x in _problems("C. O'Callaghan (impact score 27) scored 1-5."))
     assert not any("impact-score" in x for x in _problems("Mogan made the biggest all-round contribution on our side: 1-1 and two assists."))
+
+
+def test_side_and_sprint_superlative_false_alarms():
+    f = dict(FACTS, max_distance=("Caolan McGonagle", 12.8))
+    assert _problems("Of 17 missed shots, nobody of ours was within 5 m on 7.") == []
+    assert [i for i in check_report("Roarty: 10.9 km over 84 minutes, 15 sprints (the most on the team).", f)[2]] == []
+    assert any("14 missed shots" in x or "13" in x for x in _problems("We had 13 missed shots in all."))

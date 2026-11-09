@@ -87,7 +87,12 @@ def find_issues(text: str, facts: dict) -> List[dict]:
         # 1. missed shots total and its parts
         for m in re.finditer(r"(\d+) missed shots", low):
             n = int(m.group(1))
-            theirs = any(w in low[:m.start()] for w in opp_words) and "we " not in low[:m.start()]
+            head = low[:m.start()]
+            # whose shots: "of ours" (our players near THEIR shot) means theirs; only check when the sentence is clear
+            theirs = "of ours" in low or (any(w in head for w in opp_words) and "we " not in head)
+            ours = not theirs and bool(re.search(r"\b(we|our)\b", head.replace("of ours", "")))
+            if not (theirs or ours):
+                continue
             truth = facts.get("opp_missed_total" if theirs else "our_missed_total")
             if truth is not None and n != truth:
                 issues.append({"quote": s, "problem": f"says {n} missed shots", "truth": f"{truth} missed shots in all ({facts.get('opp_missed_parts' if theirs else 'our_missed_parts')})"})
@@ -136,8 +141,10 @@ def find_issues(text: str, facts: dict) -> List[dict]:
                 issues.append({"quote": s, "problem": f"{v} m/s is not the highest", "truth": f"{best[0]} had the highest top speed ({best[1]} m/s)"})
 
         # 5b. superlatives on distance covered
-        for m in re.finditer(r"(\d+(?:\.\d)?) ?km[^.]{0,40}\b(the most|the highest|most of any|furthest)\b", low):
+        for m in re.finditer(r"(\d+(?:\.\d)?) ?km[^.]{0,40}\b(the most|the highest|most of any|furthest)\b(?![^.;)]{0,30}(sprint|high-speed|carr|pass|speed))", low):
             v = float(m.group(1))
+            if re.search(r"sprint|high-speed|carr|pass|speed", low[m.start():m.start(2)]):
+                continue                   # "10.9 km ... 15 sprints (the most ...)": the superlative is about something else
             best = facts.get("max_distance")
             if best and v < best[1] - 0.05 and f"{best[1]} km" not in low and f"{best[1]}km" not in low:
                 issues.append({"quote": s, "problem": f"{v} km is not the most", "truth": f"{best[0]} covered the most ({best[1]} km)"})
@@ -349,7 +356,9 @@ def check_report(text: str, facts: dict) -> Tuple[str, List[str], List[dict]]:
 REPAIR_SYSTEM = """You correct specific factual errors in a finished GAA match report. You get the report and a list of problems,
 each with the exact sentence it is in and the right figure. For each problem, rewrite ONLY that sentence so it is true, using
 the right figure given (or removing the wrong claim if no figure is given). Keep the writer's style; change as little as
-possible; never add new claims. Reply with JSON only: a list of {"old": "<the exact sentence as given>", "new": "<the corrected
+possible; never add new claims, never add a bracketed explanation, and keep the sentence about the same subject (if the right
+figure is about a different team or player than the sentence, remove the wrong claim instead of swapping the figure in). Often the
+best fix is to delete the false clause ("the most", "the highest") and keep the rest. Reply with JSON only: a list of {"old": "<the exact sentence as given>", "new": "<the corrected
 sentence>"}."""
 
 
