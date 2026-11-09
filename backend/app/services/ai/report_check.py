@@ -158,7 +158,9 @@ def find_issues(text: str, facts: dict) -> List[dict]:
 
         # 8. process talk about the tools
         for m in re.finditer(r"\b(the tool(?:'s)? (?:flags|says|shows|count)|by the match summary|in the match summary|"
-                             r"not in the match gps list|the match gps list|was not returned|were not returned|not returned by)\b", low):
+                             r"not in the match gps list|the match gps list|was not returned|were not returned|not returned by|"
+                             r"(?:in|from) the (?:impact|gps|passing|ball-carrier|carrier|lineup) data|the list returned|"
+                             r"not matched to|the unit is shown)\b", low):
             issues.append({"quote": s, "problem": f"talks about the tools ('{m.group(0)}')", "truth": "say what happened, or 'not recorded'"})
 
         # 9. our two-pointer scorers under the wrong heading
@@ -194,7 +196,15 @@ def find_issues(text: str, facts: dict) -> List[dict]:
             if want and want != got:
                 issues.append({"quote": s, "problem": f"{m.group(1)} scored {want}, not {got}", "truth": f"{m.group(1)}: {want}"})
 
-        # 13. a mean written as a median
+        # 13. our overall return: "N points from M shots" must be the match totals when it claims to be overall
+        for m in re.finditer(r"(\d+) points from (\d+) shots", low):
+            p_, s_ = int(m.group(1)), int(m.group(2))
+            tp, ts = facts.get("our_points_total"), facts.get("our_shots_total")
+            if tp and ts and s_ == ts and p_ != tp:
+                issues.append({"quote": s, "problem": f"{p_} points from {s_} shots, but we scored {tp} points from {ts} shots",
+                               "truth": f"{tp} points from {ts} shots ({tp / ts:.2f} per shot)"})
+
+        # 14. a mean written as a median
         for v in facts.get("means") or []:
             if re.search(r"median[^.]{0,25}\b" + re.escape(str(v)) + r"\b", low):
                 issues.append({"quote": s, "problem": f"{v} is a mean (average), not a median", "truth": "write 'on average'"})
@@ -235,6 +245,8 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
         facts["opp_missed_parts"] = (f"{st.get('opponent_wides', 0)} wides, {st.get('opponent_shorts', 0)} shorts, "
                                      f"{st.get('opponent_hit_posts', 0)} hit posts, {st.get('opponent_saved', 0)} saved")
         facts["two_pointers"] = summ.get("two_pointers")
+        facts["our_points_total"] = (summ.get("score") or {}).get("team_total")
+        facts["our_shots_total"] = st.get("team_total_shots")
         _w, _dup = {}, set()
         for r in summ.get("player_breakdown") or []:
             k = _surname(r.get("name", ""))

@@ -64,3 +64,12 @@ def test_player_score_and_mean():
     assert [i for i in check_report("Murphy scored 0-4 in all.", f)[2]] == []
     p = [i["problem"] for i in check_report("From 223 passes, a median of 1.4 team-mates were within 15 m.", f)[2]]
     assert any("mean" in x for x in p)
+
+
+def test_overall_return_and_more_tool_talk():
+    f = dict(FACTS, our_points_total=28, our_shots_total=34)
+    p = [i["problem"] for i in check_report("Our overall return was 24 points from 34 shots, about 0.71 per shot.", f)[2]]
+    assert any("we scored 28 points" in x for x in p)
+    assert any("talks about the tools" in x for x in _problems("He lost no turnovers in the impact data."))
+    assert any("talks about the tools" in x for x in _problems("GPS data was not matched to him in the list returned."))
+    assert _problems("From the logged carries, Mogan gained 10.0 m per carry.") == []

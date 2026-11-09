@@ -695,6 +695,8 @@ INSTRUCTIONS:
       ("listed at midfield; GPS puts him 106 m from our goal in extra time 2, an inside-forward's spot"). Opposition players'
       positions come only from the opposition lineup - one position per player throughout the report.
     - One verdict per thing: if Personnel says a change is "a small sample", the Summary cannot say it "paid off".
+    - Man of the Match is the player with the highest impact score; when two are level, pick the one with more scores. Never
+      overrule the impact score with your own reasons.
     - Scores: copy each player's score string as given (goals-points, a two-pointer counting 2, the same notation as the team
       score: "1-6", never "1-3 including a two-pointer").
     - Time words: "and then" / "then" only for events that follow closely; otherwise give each event its own time.
@@ -1178,15 +1180,17 @@ INSTRUCTIONS:
                         if first_goals_starts:
                             lines.append("First start IN GOALS this season (has started before, but never as goalkeeper): " + "; ".join(first_goals_starts))
                         if left_out:
-                            lines.append("Ever-present all season until today, not in the starting team: " + "; ".join(
-                                f"{name} — started all {n} prior completed matches" for name, n in left_out
+                            # written as the sentence to use: "Ever-present ..., not in the starting team" came out three
+                            # times as "came into the team for the first time after starting all four previous matches"
+                            lines.append("Left out of the starting team for the first time this season: " + "; ".join(
+                                f"{name} (started all {n} earlier matches; today he began on the bench)" for name, n in left_out
                             ))
                         lineup_hint = (
                             "\n\nLINEUP CONTEXT (computed from lineup history, trust this over any other read):\n"
                             + "\n".join(lines)
                             + "\nMention this where it fits naturally (Match Summary or Top Performers) — name the change in one clause, "
-                            "then give a one-sentence verdict on whether it looks like it paid off, based on how that player (or whoever "
-                            "took their place) actually performed today and the final result. Do not speculate on WHY a player was left "
+                            "then say what that player (or whoever took their place) did today. Call a change a success only if its "
+                            "personnel_log before/after figures clearly moved, and say the same thing in every section. Do not speculate on WHY a player was left "
                             "out or moved position (injury, rest, tactical) — you don't have that information, only the fact and today's evidence."
                         )
         except Exception as e:
