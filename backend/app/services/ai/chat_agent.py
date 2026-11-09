@@ -391,7 +391,7 @@ async def _maybe_summarize_and_trim(
         )
 
         response = await _create_with_timeout(
-            model="claude-haiku-4-5",
+            model="claude-haiku-5-5",
             max_tokens=300,
             messages=[{
                 "role": "user",

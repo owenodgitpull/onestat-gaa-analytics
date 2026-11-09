@@ -760,7 +760,7 @@ class SeasonAgent:
             result = await SeasonAgent.analyze_season(
                 db, "season_story", context,
                 club_id=club_id,
-                model="claude-haiku-4-5",
+                model="claude-haiku-5-5",
                 max_turns=3,
                 tool_names=PLAYER_TOOLS,
             )
@@ -793,7 +793,7 @@ class SeasonAgent:
             result = await SeasonAgent.analyze_season(
                 db, "player_insights", context,
                 club_id=club_id,
-                model="claude-haiku-4-5",
+                model="claude-haiku-5-5",
                 max_turns=3,
                 tool_names=PLAYER_TOOLS,
             )
@@ -835,7 +835,7 @@ class SeasonAgent:
             result = await SeasonAgent.analyze_season(
                 db, "player_challenges", context,
                 club_id=club_id,
-                model="claude-haiku-4-5",
+                model="claude-haiku-5-5",
                 max_turns=3,
                 tool_names=PLAYER_TOOLS,
             )
@@ -879,7 +879,7 @@ class SeasonAgent:
 
             result = await SeasonAgent.analyze_season(
                 db, "training_summary", context,
-                model="claude-haiku-4-5",
+                model="claude-haiku-5-5",
                 max_turns=3,
                 tool_names=TRAINING_TOOLS,
             )

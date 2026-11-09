@@ -254,7 +254,7 @@ Rules:
 
     try:
         response = client.messages.create(
-            model="claude-haiku-4-5",
+            model="claude-haiku-5-5",
             max_tokens=600,
             messages=[{"role": "user", "content": prompt}]
         )

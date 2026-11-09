@@ -195,7 +195,7 @@ async def import_fitness_file(file_bytes: bytes, filename: str, fallback_date: O
     logger.info(f"Sending {filename} ({len(raw_text)} chars) to Haiku for fitness data extraction")
 
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-haiku-5-5",
         max_tokens=8000,
         messages=[
             {

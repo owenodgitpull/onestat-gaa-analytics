@@ -23,7 +23,7 @@ from app.services.ai._shared import client
 
 logger = logging.getLogger(__name__)
 
-HAIKU_MODEL = "claude-haiku-4-5"
+HAIKU_MODEL = "claude-haiku-5-5"
 SONNET_MODEL = "claude-sonnet-5-5"
 
 

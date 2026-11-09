@@ -113,7 +113,7 @@ async def get_squad_health_ai_summary(user: AuthenticatedUser = Depends(require_
         from app.services.ai._shared import client
 
         response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-haiku-5-5",
             max_tokens=150,
             system="You are a GAA strength & conditioning analyst. "
                    "Give a 1-2 sentence squad health summary. Be specific with numbers. "

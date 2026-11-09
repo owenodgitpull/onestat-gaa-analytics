@@ -192,7 +192,7 @@ async def _generate_session_title(first_message: str) -> str:
     """Use Haiku to generate a 3-6 word title from the first user message."""
     try:
         response = anthropic_client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-haiku-5-5",
             max_tokens=30,
             messages=[{
                 "role": "user",

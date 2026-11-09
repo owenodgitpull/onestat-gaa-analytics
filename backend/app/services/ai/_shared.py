@@ -57,6 +57,7 @@ _create_unwrapped = client.messages.create
 # List prices per million tokens: (input, output, cache write 5 min, cache read). Used only for the cost log line.
 _PRICES = {
     "claude-sonnet-5-5": (2.0, 10.0, 2.5, 0.2),
+    "claude-haiku-5-5": (0.10, 0.50, 0.125, 0.01),   # prompts up to 100K tokens
     "claude-haiku-4-5": (1.0, 5.0, 1.25, 0.1),
 }
 
@@ -115,6 +116,10 @@ def _create_with_defaults(*args, **kwargs):
     model = str(kwargs.get("model", ""))
     if not allow_thinking and "thinking" not in kwargs and model.startswith(("claude-sonnet-5", "claude-opus-5", "claude-fable-5")):
         kwargs["thinking"] = {"type": "between_tools"}
+    # Claude Haiku 5.5 thinks by default too; its callers are short jobs with small max_tokens (30-300), where thinking
+    # would be billed and could use the whole budget. Off unless asked for (allowed at its default medium effort).
+    if not allow_thinking and "thinking" not in kwargs and model.startswith("claude-haiku-5"):
+        kwargs["thinking"] = {"type": "disabled"}
     if "messages" in kwargs:
         kwargs["messages"] = _cache_conversation(kwargs["messages"])
     resp = _create_unwrapped(*args, **kwargs)
