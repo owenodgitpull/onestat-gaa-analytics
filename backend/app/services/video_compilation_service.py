@@ -227,3 +227,25 @@ async def _notify_ready(db, compilation) -> None:
         )
     except Exception as e:
         logger.warning(f"Failed to send compilation-ready notification: {e}")
+
+
+async def resume_unfinished_compilations() -> int:
+    """Restart compilations a server restart (a deploy) killed mid-way. They sat in PENDING / PROCESSING for ever and
+    the requester was never notified (Owen's Langan scores reel, 2026-11-09). Called once at startup; jobs from the
+    last 24 hours only, so nothing ancient is suddenly rebuilt."""
+    from datetime import timedelta
+    from app.models.video_compilation import VideoCompilation, VideoCompilationStatus
+    try:
+        async with async_session_maker() as db:
+            ids = (await db.execute(select(VideoCompilation.id).where(
+                VideoCompilation.status.in_([VideoCompilationStatus.PENDING, VideoCompilationStatus.PROCESSING]),
+                VideoCompilation.created_at >= datetime.utcnow() - timedelta(hours=24),
+            ))).scalars().all()
+        for cid in ids:
+            fire_and_forget(run_compilation(cid))
+        if ids:
+            logger.info(f"Resumed {len(ids)} unfinished video compilation(s) after restart")
+        return len(ids)
+    except Exception as e:
+        logger.warning(f"Could not resume unfinished video compilations: {e!r}")
+        return 0

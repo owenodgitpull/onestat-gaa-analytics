@@ -70,6 +70,13 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Production mode — skipping auto-create (use Alembic migrations)")
     
+    # a deploy restarts the server and kills any video compilation in progress: pick them back up
+    try:
+        from app.services.video_compilation_service import resume_unfinished_compilations
+        await resume_unfinished_compilations()
+    except Exception as e:  # never block startup
+        logger.warning(f"Compilation resume skipped: {e!r}")
+
     logger.info("✅ Application startup complete")
     
     yield  # Application runs here
