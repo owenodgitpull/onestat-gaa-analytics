@@ -174,7 +174,7 @@ def find_issues(text: str, facts: dict) -> List[dict]:
         for m in re.finditer(r"\b(the tool(?:'s)? (?:flags|says|shows|count)|by the match summary|in the match summary|"
                              r"not in the match gps list|the match gps list|was not returned|were not returned|not returned by|"
                              r"(?:in|from) the (?:impact|gps|passing|ball-carrier|carrier|lineup) data|the list returned|"
-                             r"not matched to|the unit is shown)\b", low):
+                             r"not matched to|the unit is shown|in the match data|isn't in the match|is not in the match)\b", low):
             issues.append({"quote": s, "problem": f"talks about the tools ('{m.group(0)}')", "truth": "say what happened, or 'not recorded'"})
 
         # 9. our two-pointer scorers under the wrong heading
