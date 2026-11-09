@@ -160,38 +160,71 @@ async def run_compilation(compilation_id: UUID) -> None:
             compilation.status = VideoCompilationStatus.FAILED
             compilation.error_message = str(e)[:1000]
             await db.commit()
+            await _notify_failed(db, compilation)
+
+
+def _ffprobe_path(ffmpeg: str) -> str:
+    """ffprobe next to ffmpeg: swap the file name only (a folder named after ffmpeg broke a whole-path replace)."""
+    d, b = os.path.split(ffmpeg)
+    return os.path.join(d, b.replace("ffmpeg", "ffprobe").replace("FFMPEG", "FFPROBE")) if d else b.replace("ffmpeg", "ffprobe")
+
+
+# Every clip is re-encoded to this one format, so the join is a plain copy and a clip can never come out empty.
+CLIP_W, CLIP_H, CLIP_FPS = 1280, 720, 25
+
+
+def _has_audio(ffmpeg: str, source: str) -> bool:
+    ffprobe = _ffprobe_path(ffmpeg)
+    try:
+        r = subprocess.run([ffprobe, "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
+                            "-of", "csv=p=0", source], capture_output=True, timeout=30)
+        return bool(r.stdout.strip())
+    except Exception:
+        return False
+
+
+def _clip_ok(ffmpeg: str, path: str) -> bool:
+    """The clip has decodable video and audio of a sensible length."""
+    if not os.path.exists(path) or os.path.getsize(path) < 10_000:
+        return False
+    d = _probe_duration_ms(ffmpeg, path)
+    return bool(d and d >= 1000)
 
 
 def _extract_clip(ffmpeg: str, source_url: str, start_sec: float, duration_sec: float, output_path: str) -> bool:
-    """Single-source stream-copy extraction — fast, no re-encoding, safe
-    since it's always one clip from one source file."""
-    cmd = [ffmpeg, "-y", "-ss", str(start_sec), "-i", source_url, "-t", str(duration_sec), "-c", "copy", output_path]
+    """Cut one clip and RE-ENCODE it to a fixed format (1280x720, 25 fps, AAC stereo; silence when the source has no
+    sound). A stream copy from a seek point starts at the previous keyframe and could leave a stream with no packets,
+    which made the join fail ("at least one of its streams received no packets") - the Langan scores reel, 2026-11-09.
+    Re-encoding cuts exactly at the requested second too."""
+    has_audio = _has_audio(ffmpeg, source_url)
+    vf = (f"[0:v:0]scale={CLIP_W}:{CLIP_H}:force_original_aspect_ratio=decrease,"
+          f"pad={CLIP_W}:{CLIP_H}:(ow-iw)/2:(oh-ih)/2,fps={CLIP_FPS},format=yuv420p,setsar=1[v]")
+    af = ("[0:a:0]aresample=48000,aformat=channel_layouts=stereo[a]" if has_audio
+          else f"[1:a]atrim=0:{duration_sec}[a]")
+    cmd = [ffmpeg, "-y", "-ss", str(start_sec), "-i", source_url]
+    if not has_audio:
+        cmd += ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"]
+    cmd += ["-t", str(duration_sec), "-filter_complex", f"{vf};{af}", "-map", "[v]", "-map", "[a]",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart", output_path]
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=60)
-        return result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0
+        result = subprocess.run(cmd, capture_output=True, timeout=180)
+        if result.returncode != 0:
+            logger.warning("clip extraction failed: %s", result.stderr.decode("utf-8", errors="replace")[-300:])
+            return False
+        return _clip_ok(ffmpeg, output_path)
     except subprocess.TimeoutExpired:
         return False
 
 
 def _concat_clips(ffmpeg: str, clip_paths: list[str], output_path: str) -> None:
-    """Concat via filter_complex (re-encodes) rather than the concat demuxer's
-    -c copy — clips can come from different source matches/devices with
-    different resolutions/codecs, which a raw stream-copy concat would
-    produce a broken or glitchy file for. Re-encoding is slower but
-    guarantees a correctly-playing single output regardless of source
-    variance."""
-    cmd = [ffmpeg, "-y"]
-    for p in clip_paths:
-        cmd += ["-i", p]
-    filter_parts = "".join(f"[{i}:v:0][{i}:a:0]" for i in range(len(clip_paths)))
-    filter_complex = f"{filter_parts}concat=n={len(clip_paths)}:v=1:a=1[outv][outa]"
-    cmd += [
-        "-filter_complex", filter_complex,
-        "-map", "[outv]", "-map", "[outa]",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
-        "-c:a", "aac", "-b:a", "128k",
-        output_path,
-    ]
+    """Join clips that all share one format (see _extract_clip): the concat demuxer, stream copy - fast, no second
+    encode, and no filter graph that fails when one input has a stream with no packets."""
+    list_path = str(Path(output_path).with_suffix(".txt"))
+    with open(list_path, "w", encoding="utf-8") as f:
+        for p in clip_paths:
+            f.write("file '" + p.replace("'", "'\\''") + "'\n")
+    cmd = [ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", list_path, "-c", "copy", "-movflags", "+faststart", output_path]
     result = subprocess.run(cmd, capture_output=True, timeout=600)
     if result.returncode != 0:
         stderr = result.stderr.decode("utf-8", errors="replace")[-800:]
@@ -200,7 +233,7 @@ def _concat_clips(ffmpeg: str, clip_paths: list[str], output_path: str) -> None:
 
 def _probe_duration_ms(ffmpeg: str, path: str) -> int | None:
     """Best-effort duration read via ffprobe (same install as ffmpeg)."""
-    ffprobe = ffmpeg.replace("ffmpeg", "ffprobe")
+    ffprobe = _ffprobe_path(ffmpeg)
     try:
         result = subprocess.run(
             [ffprobe, "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path],
@@ -227,6 +260,25 @@ async def _notify_ready(db, compilation) -> None:
         )
     except Exception as e:
         logger.warning(f"Failed to send compilation-ready notification: {e}")
+
+
+async def _notify_failed(db, compilation) -> None:
+    """Tell the requester it did not work, so nobody waits for a video that is never coming."""
+    if not compilation.requested_by_user_id:
+        return
+    try:
+        from app.services.notification_service import NotificationService
+        from app.models.notification import NotificationType
+        await NotificationService.send_push(
+            db=db,
+            user_id=compilation.requested_by_user_id,
+            notification_type=NotificationType.VIDEO_COMPILATION_READY,
+            title="Video could not be made",
+            body=f'"{compilation.title}" failed to build. Ask again in the chat to retry.',
+            data={"compilation_id": str(compilation.id), "failed": True},
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send compilation-failed notification: {e}")
 
 
 async def resume_unfinished_compilations() -> int:
