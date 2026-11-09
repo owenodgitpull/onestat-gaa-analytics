@@ -23,7 +23,7 @@ export interface GpsReplayContext {
   bench: string[]
   on_pitch: Record<string, [number, number][]>
   tracked: string[]
-  carries: { team: 'own' | 'opponent'; player_id: string | null; half: number | null; start_x: number | null; start_y: number | null; end_x: number | null; end_y: number | null; video_ms: number; end_video_ms: number | null; ended_by: string | null }[]
+  carries: { team: 'own' | 'opponent'; player_id: string | null; half: number | null; start_x: number | null; start_y: number | null; end_x: number | null; end_y: number | null; video_ms: number; end_video_ms: number | null; ended_by: string | null; opposition_player?: string | null }[]
   events: { id: string; team: string; event_type: string; sub_type: string | null; half: number | null; video_ms: number; pitch_x: number | null; pitch_y: number | null; player_id: string | null; sub_in_player_id: string | null; opposition_player: string | null; match_minute: number | null; match_second: number | null }[]
 }
 

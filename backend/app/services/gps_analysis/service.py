@@ -122,7 +122,9 @@ async def replay_context(db: AsyncSession, match) -> dict:
         "on_pitch": {pid: [[int(a), int(b)] for a, b in iv] for pid, iv in on_pitch_intervals(inp, bounds).items()},
         "tracked": [pid for pid, q in (inp.sync.get("quality") or {}).items() if q.get("in_match") is not False],
         "carries": [{"team": c.team, "player_id": c.player_id, "half": c.half, "start_x": c.start_x, "start_y": c.start_y,
-                     "end_x": c.end_x, "end_y": c.end_y, "video_ms": c.video_ms, "end_video_ms": c.end_video_ms, "ended_by": c.ended_by}
+                     "end_x": c.end_x, "end_y": c.end_y, "video_ms": c.video_ms, "end_video_ms": c.end_video_ms, "ended_by": c.ended_by,
+                     # their carrier's name (the replay labels the opposition ball with it)
+                     "opposition_player": inp.opposition_names.get(c.opposition_player_id or "") if c.team == "opponent" else None}
                     for c in inp.carries],
         "events": [{"id": e.id, "team": e.team, "event_type": e.event_type, "sub_type": e.sub_type, "half": e.half, "video_ms": e.video_ms,
                     "pitch_x": e.pitch_x, "pitch_y": e.pitch_y, "player_id": e.player_id, "sub_in_player_id": e.sub_in_player_id,

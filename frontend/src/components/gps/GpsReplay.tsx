@@ -309,7 +309,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                 {theirBall && (
                   <g>
                     <circle cx={sc.x(theirBall.x)} cy={sc.y(theirBall.y)} r={22} fill={COLOR_THEIRS} stroke="#0b1226" strokeWidth={4} />
-                    <text x={sc.x(theirBall.x)} y={sc.y(theirBall.y) + 58} textAnchor="middle" fontSize={30} fill="#fff" stroke="#000" strokeWidth={5} paintOrder="stroke">{ctx.opponent || 'Opposition'} ball</text>
+                    <text x={sc.x(theirBall.x)} y={sc.y(theirBall.y) + 58} textAnchor="middle" fontSize={30} fill="#fff" stroke="#000" strokeWidth={5} paintOrder="stroke">{showNames && carry?.opposition_player ? carry.opposition_player : `${ctx.opponent || 'Opposition'} ball`}</text>
                   </g>
                 )}
                 {dots.map(d => {
