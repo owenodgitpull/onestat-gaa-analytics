@@ -26,9 +26,11 @@ FORTY_FIVE_M = 45.0                  # the 45 m line, measured from the goal lin
 
 # what a moment is, for the agent: (team, event types)
 SITUATION_GROUPS = {
-    "their_scores": ("team_b", ("POINT_SCORED", "GOAL_SCORED")),
-    "their_missed_shots": ("team_b", ("WIDE", "SHORT", "SAVED", "HIT_POST")),
-    "our_shots": ("team_a", SHOT_TYPES),
+    # 45s are counted (as set pieces, left out of the measured moments) so the tagged totals match the score: Dublin's 45 made
+    # the tool say 24 of 25 scores were tagged, which read as a missing tag
+    "their_scores": ("team_b", ("POINT_SCORED", "GOAL_SCORED", "FORTY_FIVE")),
+    "their_missed_shots": ("team_b", ("WIDE", "SHORT", "SAVED", "HIT_POST", "FORTY_FIVE_MISSED")),
+    "our_shots": ("team_a", SHOT_TYPES + ("FORTY_FIVE", "FORTY_FIVE_MISSED")),
     "our_turnovers": ("team_a", ("TURNOVER_LOST", "OUR_UNFORCED_ERROR")),
     "fouls_we_conceded": ("team_a", ("FOUL_COMMITTED",)),
 }
@@ -142,7 +144,8 @@ def situations(inp: MatchInputs, g: Grid) -> dict:
         if group is None:
             continue
         tagged[group] = tagged.get(group, 0) + 1
-        if group in ("their_scores", "their_missed_shots", "our_shots") and e.score_source not in (None, "FROM_PLAY"):
+        if group in ("their_scores", "their_missed_shots", "our_shots") and (
+                e.score_source not in (None, "FROM_PLAY") or e.event_type.startswith("FORTY_FIVE")):
             set_pieces[group] = set_pieces.get(group, 0) + 1     # a free / 45 / mark: players stand off by rule, not a read
             continue
         sx, sy = frame_point(e.pitch_x, e.pitch_y, e.half, arfh, L, W)

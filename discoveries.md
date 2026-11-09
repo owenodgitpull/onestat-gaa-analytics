@@ -79,10 +79,8 @@ Entry format:
 - **Suggested fix:** Owen to check the video and add the missing substitution (probably at half-time). Tagged data left alone.
 - **Found while:** checking the second Dublin report review (2026-11-08).
 
-## Dublin: one opposition score is in match_events but not in video_events
-- **What:** Dublin scored 25 times (2-26 with 3 two-pointers; match_events agrees), but the GPS input (video events) has 24 Dublin scores.
-- **Suggested fix:** Find the missing score in Video Tagging (compare the two lists by minute).
-- **Found while:** second Dublin review (2026-11-08).
+## Dublin: "one opposition score missing from the video tags" - WRONG, resolved 2026-11-09
+- **What:** The video tags have all 25 Dublin scores. The GPS situations tool did not count FORTY_FIVE as a score, so it said 24. Fixed in `situations.py` (45s now counted, as set pieces).
 
 ## Dublin extra time 1, 70:46: the GPS frame looks wrong
 - **What:** At R. McGarry's point (shot from ~21 m out) all our tracked players are 40 m+ from our goal and Roarty is at y = -5 m (off the field). This produced the "97.5 m wide" shape the report quoted (now filtered: units off the field are left out of the shape).
