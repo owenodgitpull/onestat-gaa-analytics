@@ -2,6 +2,7 @@
  * Match Result GPS card: shows only when the match has GPS synced to the video. Team running by half, compactness
  * with / without the ball, transition headline, and the buttons into the replay and the full GPS analysis.
  */
+import { KpiInfoButton } from './KpiInfo'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Activity, Play, Loader2 } from 'lucide-react'
@@ -38,8 +39,9 @@ export default function GpsMatchCard({ matchId }: { matchId: string }) {
               ['Compact without ball', n1(s.shape.out.compactness, ' m'), `${n1(s.shape.in.compactness, ' m')} with it`],
               ['Back behind ball', n1(s.transitions.median_recovery_s, ' s'), `when caught short · ${s.transitions.already_back} of ${s.transitions.n_lost} already back`],
             ].map(([l, v, sub]) => (
-              <div key={l} className="rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-white/50 truncate">{l}</div>
+              <div key={l} className="relative rounded-lg bg-white/5 border border-white/10 px-2.5 py-2 min-w-0">
+                <KpiInfoButton label={String(l)} />
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-white/50 truncate pr-6">{l}</div>
                 <div className="text-lg font-bold text-white tabular-nums">{v}</div>
                 <div className="text-[11px] text-white/45 truncate">{sub}</div>
               </div>

@@ -130,13 +130,17 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
         if tev is not None or a.ended_by == "turnover":
             if b.video_ms - a.video_ms > 60000:
                 continue
-        else:
-            if b.video_ms - a.video_ms > 25000:
-                continue
-            i0 = np.searchsorted(dead, a.video_ms - 500)
-            if i0 < len(dead) and dead[i0] <= b.video_ms:
-                continue
-        t0 = tev.video_ms if tev is not None else b.video_ms
+        elif b.video_ms - a.video_ms > 25000:
+            continue
+        # A foul, a sideline, a 45, a card or a kickout in between means play stopped: a restart, not a transition -
+        # nobody is "getting back" against a live ball. This was only checked for untagged changes of possession, so
+        # McHugh's foul (2nd half 56', a free to Dublin) was timed as a 1-second recovery from the free being taken.
+        i0 = np.searchsorted(dead, a.video_ms - 500)
+        if i0 < len(dead) and dead[i0] <= b.video_ms:
+            continue
+        # the moment of the loss, less the measured tap delay (taps land a second or more after the moment)
+        from .situations import lag_ms as _lag
+        t0 = (tev.video_ms - _lag(inp, tev.event_type)) if tev is not None else (b.video_ms - _lag(inp, "TURNOVER_LOST"))
         j0 = g.idx(t0)
         spot = frame_point(tev.pitch_x, tev.pitch_y, tev.half, arfh, L, W) if tev is not None and tev.pitch_x is not None else (None, None)
         if spot[0] is None:

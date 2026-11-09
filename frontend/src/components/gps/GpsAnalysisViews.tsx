@@ -3,6 +3,7 @@
  * is already in OUR attack frame in metres (x = 0 our goal line, y small = our left), so nothing here re-frames.
  * Every row with a video time has a play button that opens the replay there.
  */
+import { GPS_KPI_INFO, KpiInfoButton } from './KpiInfo'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Play } from 'lucide-react'
@@ -21,9 +22,11 @@ const n0 = (v: number | null | undefined, unit = '') => (v == null ? '–' : `${
 // ---------------------------------------------------------------- shared bits
 
 export function Tile({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
+  const hasInfo = !!GPS_KPI_INFO[label]
   return (
-    <div className="rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 min-w-0">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-white/50">{label}</div>
+    <div className="relative rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 min-w-0">
+      <KpiInfoButton label={label} />
+      <div className={`text-[11px] font-semibold uppercase tracking-wide text-white/50 ${hasInfo ? 'pr-6' : ''}`}>{label}</div>
       <div className="text-2xl font-bold text-white tabular-nums leading-tight mt-0.5">{value}</div>
       {sub && <div className="text-xs text-white/50 mt-0.5">{sub}</div>}
     </div>

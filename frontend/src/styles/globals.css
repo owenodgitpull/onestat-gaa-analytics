@@ -6,6 +6,9 @@
 @tailwind utilities;
 
 :root {
+  /* the app is dark everywhere: native controls (select dropdown lists, date pickers, scrollbars) follow it instead of
+     opening as a white list */
+  color-scheme: dark;
   --gradient-primary: linear-gradient(135deg, #00E676, #00B0FF);
   --gradient-primary-text: linear-gradient(135deg, #00E676 0%, #00C853 40%, #00B0FF 100%);
   --color-primary: #00E676;
@@ -505,4 +508,11 @@
   .animate-spin { animation-duration: 2.5s !important; }
   html { scroll-behavior: auto !important; }
   .transition, [class*='transition-'] { transition-duration: 0.01ms !important; }
+}
+
+
+/* native <select> option lists: dark background, light text (some browsers ignore color-scheme for options) */
+select option {
+  background-color: #0f172a;
+  color: #f1f5f9;
 }

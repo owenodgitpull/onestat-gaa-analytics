@@ -87,8 +87,8 @@ function AdminMain({ children }: { children: React.ReactNode }) {
   // the GPS screens carry a video and a pitch side by side: use the whole width, no 1440px cap
   const isWide = /^\/results\/[^/]+\/gps/.test(loc.pathname)
   return (
-    <main className={`${isVideo ? '' : isWide ? 'md:ml-14 px-2 md:px-3 py-3' : 'md:ml-14 px-4 py-6'} overflow-x-hidden`}>
-      <div className={isVideo || isWide ? '' : 'max-w-[1440px] mx-auto'}>
+    <main className={`${isVideo ? '' : isWide ? 'md:ml-14 px-3 md:px-6 py-4' : 'md:ml-14 px-4 py-6'} overflow-x-hidden`}>
+      <div className={isVideo ? '' : isWide ? 'max-w-[1760px] mx-auto' : 'max-w-[1440px] mx-auto'}>
         {children}
       </div>
     </main>
