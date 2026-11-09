@@ -139,7 +139,7 @@ def find_issues(text: str, facts: dict) -> List[dict]:
         for m in re.finditer(r"(\d+(?:\.\d)?) ?km[^.]{0,40}\b(the most|the highest|most of any|furthest)\b", low):
             v = float(m.group(1))
             best = facts.get("max_distance")
-            if best and v < best[1] - 0.05:
+            if best and v < best[1] - 0.05 and f"{best[1]} km" not in low and f"{best[1]}km" not in low:
                 issues.append({"quote": s, "problem": f"{v} km is not the most", "truth": f"{best[0]} covered the most ({best[1]} km)"})
 
         # 6. widths wider than the pitch
