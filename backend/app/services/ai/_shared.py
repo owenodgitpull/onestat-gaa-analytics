@@ -94,6 +94,16 @@ def _cache_conversation(messages):
     return out
 
 
+def _position_name(position_id):
+    """'hf-right' -> 'right half forward', 'sub-11' -> 'substitute': the report printed the codes ("C. Basquel (hf-right)")."""
+    if not position_id:
+        return position_id
+    if str(position_id).startswith("sub"):
+        return "substitute"
+    from app.services.lineup_timeline import label
+    return label(position_id)
+
+
 def text_of(response) -> str:
     """The reply's text, whatever blocks come first (Sonnet 5.5 can open with a thinking block, so content[0].text breaks)."""
     return "".join(getattr(b, "text", "") or "" for b in (getattr(response, "content", None) or []) if getattr(b, "type", "") == "text")
@@ -1258,7 +1268,7 @@ TOOLS = [
             "Like-for-like impact table for EVERY player on BOTH teams in one match: the logged-in club's players AND the "
             "opposition's named players, measured with identical metrics - scores (goals / points / two-pointers), assists, "
             "wides, turnovers won (turnover won / interception / tackle / block), turnovers lost, unforced errors, kickouts "
-            "won, fouls, cards, ball carries and passes made - plus one impact_points number computed the same way for both "
+            "won, fouls, cards, ball carries and passes made - plus an impact rank computed the same way for both "
             "sides. ALWAYS use this for Man of the Match, best-performer or 'who was the best player' questions so the "
             "opposition's players are judged on exactly the same evidence as ours (never pick only from the logged-in team). "
             "Opposition players only appear when their lineup was entered for the match."
@@ -2404,7 +2414,7 @@ async def _opposition_lineup_block(db: AsyncSession, match_id) -> list:
         out.append({
             "number": lu.jersey_number,
             "player": pl.surname,
-            "position": lu.position_id,
+            "position": _position_name(lu.position_id),
             "role": "bench" if lu.is_substitute and not lu.is_on_field else ("started" if not lu.is_substitute else "came on"),
             "on_field_at_end": bool(lu.is_on_field),
         })
@@ -6918,7 +6928,7 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
         _p = pickups.get(id(r)) or []
         _slot = slot_by_player.get((_side, str(_key)))
         if _slot:
-            r["starting_position"] = _slot
+            r["starting_position"] = _position_name(_slot)
         if len(_p) >= 3:
             r["pickups_measured"] = len(_p)
             r["avg_pickup_m_from_goal_attacked"] = round(sum(_p) / len(_p))
@@ -6928,24 +6938,35 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
         # two-pointer, two points and a 45 is 1-6, not "1-3 including a two-pointer")
         if r["goals"] or r["points"] or r["two_pointers"]:
             r["score"] = f"{r['goals']}-{r['points'] + 2 * r['two_pointers']} ({r['goals'] * 3 + r['points'] + 2 * r['two_pointers']} pts)"
-        r["impact_points"] = (r["goals"] * 10 + r["two_pointers"] * 5 + r["points"] * 3 + r["assists"] * 3
+        r["_impact"] = (r["goals"] * 10 + r["two_pointers"] * 5 + r["points"] * 3 + r["assists"] * 3
                               + r["turnovers_won"] * 2 + r["kickouts_won"] * 2 + r["throw_ins_won"] * 2 - r["turnovers_lost"])
     out = {"own": [], "opposition": []}
     for (side, _), r in stats.items():
         out[side].append(r)
     for side in out:
-        out[side].sort(key=lambda r: -r["impact_points"])
+        out[side].sort(key=lambda r: -r["_impact"])
+    # Ranks, not the raw figure: the report kept printing "impact score 27" / "Mogan at 23", a number that means nothing to
+    # a reader. Rank 1 on the pitch is Man of the Match; ties share a rank.
+    _all = sorted([r for side in out for r in out[side]], key=lambda r: -r["_impact"])
+    for r in _all:
+        r["impact_rank_on_pitch"] = 1 + sum(1 for x in _all if x["_impact"] > r["_impact"])
+    for side in out:
+        for i, r in enumerate(out[side]):
+            r["impact_rank_in_team"] = 1 + sum(1 for x in out[side] if x["_impact"] > r["_impact"])
+    for r in _all:
+        r.pop("_impact", None)
     return safe_json({
         "match_id": str(mid),
         "own": out["own"], "opposition": out["opposition"],
         "how_to_read": (
-            "Both lists use identical metrics. impact_points = goals x10 + two-pointers x5 + points x3 + assists x3 + "
-            "turnovers won x2 + kickouts won x2 + throw-ins won x2 - turnovers lost x1. It is a starting point, not the verdict: weigh the "
-            "quality and moment of each player's contribution. Judge the opposition's players on exactly this evidence - "
+            "Both lists use identical metrics. impact_rank_on_pitch / impact_rank_in_team rank every player by one weighting "
+            "(goals x10, two-pointers x5, points x3, assists x3, turnovers won x2, kickouts won x2, throw-ins won x2, minus turnovers "
+            "lost); rank 1 on the pitch is Man of the Match, rank 1 in our team is the best of ours. The rank is never written in the "
+            "report: justify the pick with what the player did. Judge the opposition's players on exactly this evidence - "
             "do not favour the logged-in club's players. Opposition rows exist only for players entered in their lineup. "
             "PICK-UP DEPTH: avg_pickup_m_from_goal_attacked is how far from the goal line a player's team is attacking he "
             "picked the ball up on average (pickups_over_60m_from_goal counts pick-ups that deep); starting_position is his "
-            "named slot (fb/hb/mf/hf/ff = full-back, half-back, midfield, half-forward, full-forward lines). A forward whose average "
+            "named position. A forward whose average "
             "is far deeper than a forward normally operates (roughly beyond 50-60m) is dropping deep to collect - see the "
             "'Players dropping deep' guidance."
         ),
