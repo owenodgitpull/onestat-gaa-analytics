@@ -88,7 +88,5 @@ Entry format:
 - **Suggested fix:** Check the ET1 sync offset on the GPS sync check screen against a clear extra-time moment.
 - **Found while:** second Dublin review (2026-11-08).
 
-## Dublin: opposition lineup has C. O'Callaghan on the bench, but he scored in the 1st minute
-- **What:** In the Dublin opposition lineup O'Callaghan (no. 11) is "sub-11", role bench, not on the field at the end, and P. Small is also listed bench - yet O'Callaghan scored a two-pointer at 1st half 1'. The report wrote "C. O'Callaghan (listed sub-11)".
-- **Suggested fix:** Owen to correct the opposition lineup for this match (who started, who came on). Tagged events untouched.
-- **Found while:** reading report v15 (2026-11-09).
+## Dublin: opposition lineup has C. O'Callaghan on the bench - RESOLVED 2026-11-09
+- **What:** Not a data-entry error: the opposition lineup table holds the lineup as it is NOW (each tagged substitution swaps slots, and the starter flag followed), so every reader showed the finishing XV as the starting one. Fixed by rebuilding the start from the tagged substitutions (`opposition_service.starting_slots`), used by the match API (start_position_id / started), the lineup viewer, the agents' opposition lineup and the impact tool. Dublin starting positions set to Owen's team sheet. All 5 matches had the same issue.

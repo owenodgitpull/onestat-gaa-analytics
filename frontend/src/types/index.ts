@@ -107,6 +107,9 @@ export interface Match {
     position_id: string;
     is_substitute: boolean;
     is_on_field: boolean;
+    /** where he lined up at throw-in (position_id is the slot now: substitutions swap slots) */
+    start_position_id?: string;
+    started?: boolean;
   }> | null;
   team_strip_colour?: string | null;
   team_strip_secondary_colour?: string | null;

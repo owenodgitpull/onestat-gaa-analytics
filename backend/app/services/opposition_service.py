@@ -24,23 +24,50 @@ def _key(text: str) -> str:
     return re.sub(r"\s+", " ", k).strip() or (text or "").strip().lower()
 
 
-def _serialise(rows: Iterable[OppositionLineup]) -> list[dict]:
-    return [
-        {
+def _serialise(rows: Iterable[OppositionLineup], start: dict | None = None) -> list[dict]:
+    start = start or {}
+    out = []
+    for r in rows:
+        sp = start.get(str(r.opposition_player_id), r.position_id)
+        out.append({
             "opposition_player_id": str(r.opposition_player_id),
             "surname": r.player.surname,
             "jersey_number": r.jersey_number,
+            # position_id / is_on_field are the lineup NOW (live tagging needs who is on the pitch); a substitution swaps
+            # slots. start_position_id / started are the lineup at throw-in, rebuilt from the substitutions.
             "position_id": r.position_id,
             "is_substitute": r.is_substitute,
             "is_on_field": r.is_on_field,
-        }
-        for r in rows
-    ]
+            "start_position_id": sp,
+            "started": not str(sp).startswith("sub"),
+        })
+    return out
+
+
+async def starting_slots(db: AsyncSession, match_id, rows=None) -> dict:
+    """{opposition_player_id: slot at throw-in}. The table holds the lineup as it is now (each tagged substitution swaps
+    the two players' slots), so undo the substitutions newest first. The Dublin lineup was read as its finishing XV."""
+    from app.models.match_event import MatchEvent, EventType, Team
+    if rows is None:
+        rows = (await db.execute(select(OppositionLineup).where(OppositionLineup.match_id == match_id))).scalars().all()
+    slots = {str(r.opposition_player_id): r.position_id for r in rows}
+    subs = (await db.execute(
+        select(MatchEvent.opposition_player_id, MatchEvent.opposition_sub_in_player_id, MatchEvent.half,
+               MatchEvent.match_clock_s, MatchEvent.minute, MatchEvent.created_at)
+        .where(MatchEvent.match_id == match_id, MatchEvent.event_type == EventType.SUBSTITUTION,
+               MatchEvent.team == Team.OPPONENT, MatchEvent.opposition_player_id.isnot(None),
+               MatchEvent.opposition_sub_in_player_id.isnot(None)))).all()
+    subs = sorted(subs, key=lambda r: (r[2] or 1, r[3] if r[3] is not None else (r[4] or 0) * 60, r[5]))
+    for off_id, on_id, *_ in reversed(subs):
+        a, b = str(off_id), str(on_id)
+        if a in slots and b in slots:
+            slots[a], slots[b] = slots[b], slots[a]
+    return slots
 
 
 async def lineup_for_match(db: AsyncSession, match_id) -> list[dict]:
     rows = (await db.execute(select(OppositionLineup).where(OppositionLineup.match_id == match_id))).scalars().all()
-    return _serialise(rows)
+    return _serialise(rows, await starting_slots(db, match_id, rows) if rows else None)
 
 
 async def resolve_team(db: AsyncSession, club_id, name: str) -> OppositionTeam:

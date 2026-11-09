@@ -323,15 +323,21 @@ export default function MatchResult() {
   // (paste a team sheet, link, spreadsheet) is only for before the match
   const oppSquad = useOppositionSquad(match as any, clubInfo as any)
   const matchIsTagged = (eventsData?.events?.length ?? 0) > 0 && !match?.video_tagging_in_progress
-  const oppLineupForViewer = oppSquad.players.map(p => ({
-    player_id: p.playerId,
-    position_id: p.positionId || '',
-    is_substitute: (p.positionId || '').startsWith('sub'),
-    is_on_field: p.isOnField,
-    player_name: p.playerName,
-    player_jersey_number: p.jerseyNumber,
-    match_jersey_number: p.jerseyNumber,
-  }))
+  // The lineup as it STARTED: the stored slots are the finishing ones (a substitution swaps slots), so the pitch showed
+  // the subs who came on as starters and the players they replaced on the bench. start_position_id is rebuilt from the
+  // tagged substitutions; subbed-off starters keep their slot (greyed, down arrow), subs who came on sit on the bench (up arrow).
+  const oppLineupForViewer = (match?.opposition_lineup || []).map(r => {
+    const start = r.start_position_id || r.position_id || ''
+    return {
+      player_id: r.opposition_player_id,
+      position_id: start,
+      is_substitute: r.started === undefined ? start.startsWith('sub') : !r.started,
+      is_on_field: r.is_on_field,
+      player_name: r.surname,
+      player_jersey_number: r.jersey_number,
+      match_jersey_number: r.jersey_number,
+    }
+  })
   const showOppAsViewer = matchIsTagged && oppSquad.enabled
 
   // Man marking

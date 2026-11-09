@@ -2414,13 +2414,21 @@ async def _opposition_lineup_block(db: AsyncSession, match_id) -> list:
         )).all()
     except Exception:
         return []
+    try:
+        from app.services.opposition_service import starting_slots
+        start = await starting_slots(db, match_id, [lu for lu, _ in rows])
+    except Exception:
+        start = {}
     out = []
     for lu, pl in rows:
+        sp = start.get(str(pl.id), lu.position_id)
+        started = not str(sp).startswith("sub")
         out.append({
             "number": lu.jersey_number,
             "player": pl.surname,
-            "position": _position_name(lu.position_id),
-            "role": "bench" if lu.is_substitute and not lu.is_on_field else ("started" if not lu.is_substitute else "came on"),
+            # where he started (the table itself holds the finishing slots: O'Callaghan started but read as "bench")
+            "position": _position_name(sp),
+            "role": ("started" if started else ("came on" if lu.is_on_field or not str(lu.position_id).startswith("sub") else "bench")),
             "on_field_at_end": bool(lu.is_on_field),
         })
     out.sort(key=lambda r: (r["role"] == "bench", r["number"] if r["number"] is not None else 99))
@@ -6794,13 +6802,26 @@ async def get_match_player_impact(db: AsyncSession, match_id: str, club_id=None)
     )).all()
     opp_info = {str(pl.id): {"name": pl.surname, "number": lu.jersey_number} for lu, pl in opp_rows}
     # starting slot per player ('hf-center', 'ff-left', ...) so pick-up depth can be read against the role
-    slot_by_player: dict = {("opposition", str(pl.id)): lu.position_id for lu, pl in opp_rows}
+    # (the lineup tables hold the lineup at the END - substitutions and moves change slots - so rebuild the start)
     try:
-        from app.models.match_lineup import MatchLineup as _ML
-        for _pid, _slot in (await db.execute(select(_ML.player_id, _ML.position_id).where(_ML.match_id == mid))).all():
-            slot_by_player[("own", str(_pid))] = _slot
+        from app.services.opposition_service import starting_slots as _opp_start
+        _os = await _opp_start(db, mid, [lu for lu, _ in opp_rows])
     except Exception:
-        pass
+        _os = {}
+    slot_by_player: dict = {("opposition", str(pl.id)): _os.get(str(pl.id), lu.position_id) for lu, pl in opp_rows}
+    try:
+        from app.services.lineup_timeline import load_timeline as _lt
+        _tl = await _lt(db, mid)
+        for _pid, _spells in (_tl.spells or {}).items():
+            if _spells:
+                slot_by_player[("own", str(_pid))] = sorted(_spells, key=lambda sp: sp.start)[0].position_id
+    except Exception:
+        try:
+            from app.models.match_lineup import MatchLineup as _ML
+            for _pid, _slot in (await db.execute(select(_ML.player_id, _ML.position_id).where(_ML.match_id == mid))).all():
+                slot_by_player[("own", str(_pid))] = _slot
+        except Exception:
+            pass
 
     events = (await db.execute(select(MatchEvent).where(MatchEvent.match_id == mid))).scalars().all()
     # Opposition assists are not our players: they travel in the linked video event's scoring_context
