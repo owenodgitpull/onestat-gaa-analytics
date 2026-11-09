@@ -125,7 +125,8 @@ export default function OppositionLineupEditor({ matchId, opponent }: { matchId:
   useEffect(() => {
     if (!data) return
     const next = emptyRows()
-    for (const r of data.lineup) next[r.position_id] = { jersey: r.jersey_number != null ? String(r.jersey_number) : '', surname: r.surname }
+    // the editor edits the STARTING lineup (the server replays any tagged substitutions on save)
+    for (const r of data.lineup) next[r.start_position_id || r.position_id] = { jersey: r.jersey_number != null ? String(r.jersey_number) : '', surname: r.surname }
     setRows(next)
     setDirty(data.prefill) // a prefill is not saved yet
   }, [data])

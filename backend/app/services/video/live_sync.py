@@ -206,7 +206,9 @@ async def _set_on_field(db: AsyncSession, ve: VideoEvent, on_field: bool) -> Non
     if row is None:
         return
     if on_field:
-        row.is_on_field = not bool(getattr(row, "is_substitute", False))
+        # back on unless his slot NOW is a bench slot (is_substitute only says he did not start: a substitute who came
+        # on and was sent off would have stayed off after the card was undone)
+        row.is_on_field = not str(row.position_id or "").startswith("sub")
     else:
         row.is_on_field = False
     await db.flush()

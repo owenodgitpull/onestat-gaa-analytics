@@ -47,5 +47,7 @@ class OppositionLineup(Base):
     jersey_number = Column(Integer, nullable=True)
     is_substitute = Column(Boolean, default=False, nullable=False)
     is_on_field = Column(Boolean, default=True, nullable=False)
+    # slot at throw-in: position_id is the slot NOW (each substitution swaps two players' slots); set on save only
+    start_position_id = Column(String(20), nullable=True)
 
     player = relationship("OppositionPlayer", lazy="joined")

@@ -339,6 +339,11 @@ export default function MatchResult() {
     }
   })
   const showOppAsViewer = matchIsTagged && oppSquad.enabled
+  // our lineup as it STARTED: position_id is where a player plays now (a sub takes the slot, a swap moves both)
+  const ownLineupForViewer = (lineupData || []).map((l: any) => ({
+    ...l,
+    position_id: (!l.is_substitute && l.start_position_id) || l.position_id,
+  }))
 
   // Man marking
   const { data: markingAssignments = [], refetch: refetchMarkings } = useQuery({
@@ -1102,7 +1107,7 @@ export default function MatchResult() {
       <MatchLineupViewer
         isOpen={showLineup}
         onClose={() => setShowLineup(false)}
-        lineup={lineupData || []}
+        lineup={ownLineupForViewer}
         events={eventsData?.events || []}
         opponentName={match?.opponent || ''}
         matchId={matchId!}

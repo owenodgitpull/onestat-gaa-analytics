@@ -689,6 +689,8 @@ interface MatchLineupResponse {
   match_id: string;
   player_id: string;
   position_id: string;
+  /** where he lined up at throw-in (position_id = where he plays now) */
+  start_position_id?: string | null;
   is_substitute: boolean;
   is_on_field: boolean;
   player_name: string;
@@ -3310,6 +3312,9 @@ export interface OppositionLineupRow extends OppositionLineupEntry {
   opposition_player_id: string;
   is_substitute: boolean;
   is_on_field: boolean;
+  /** slot at throw-in (position_id is the slot now: substitutions swap slots) */
+  start_position_id?: string | null;
+  started?: boolean;
 }
 
 export interface OppositionLineupResponse {

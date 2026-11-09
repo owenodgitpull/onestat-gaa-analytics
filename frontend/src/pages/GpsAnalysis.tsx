@@ -69,7 +69,7 @@ export default function GpsAnalysis() {
   const periods = useMemo(() => ctx?.periods || [], [ctx])
 
   return (
-    <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 md:py-6 space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <Link to={`/results/${matchId}`} className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ChevronLeft size={16} /> Back to the match</Link>

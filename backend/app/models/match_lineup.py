@@ -33,6 +33,9 @@ class MatchLineup(Base):
     position_id: Column[str] = Column(String, nullable=False)  # e.g. 'gk', 'fb-left', 'sub-1'
     is_substitute: Column[bool] = Column(Boolean, default=False, nullable=False)  # True if on bench
     is_on_field: Column[bool] = Column(Boolean, default=True, nullable=False)  # Current status during match
+    # Where he lined up at throw-in. position_id is where he plays NOW (a sub takes the slot of the player he replaced, a
+    # swap moves both); this is set when the lineup is saved and never changed by substitutions or swaps.
+    start_position_id: Column[Optional[str]] = Column(String, nullable=True)
     jersey_number: Column[Optional[int]] = Column(Integer, nullable=True)  # Match-day override
 
     # Timestamps

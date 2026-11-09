@@ -36,6 +36,7 @@ class MatchLineupResponse(BaseModel):
     match_id: str
     player_id: str
     position_id: str
+    start_position_id: str | None = None   # where he lined up at throw-in (position_id = where he plays now)
     is_substitute: bool
     is_on_field: bool
     player_name: str
@@ -92,6 +93,18 @@ async def set_match_lineup(
         if missing:
             raise HTTPException(status_code=404, detail=f"Player not found: {missing[0]}")
 
+    # Where each player STARTED survives a re-save once the match has substitutions or position swaps logged: the
+    # screen then shows the lineup as it is now, and saving it used to write the finishing slots over the starting ones.
+    from app.models.match_event import MatchEvent as _ME, EventType as _ET
+    from app.models.match_position_change import MatchPositionChange as _MPC
+    started_already = bool((await db.execute(select(_ME.id).where(
+        _ME.match_id == match_uuid, _ME.event_type == _ET.SUBSTITUTION).limit(1))).first()) or bool(
+        (await db.execute(select(_MPC.id).where(_MPC.match_id == match_uuid).limit(1))).first())
+    kept_start = {}
+    if started_already:
+        kept_start = {pid: sp for pid, sp in (await db.execute(
+            select(MatchLineup.player_id, MatchLineup.start_position_id).where(MatchLineup.match_id == match_uuid))).all() if sp}
+
     # One bulk delete for the existing lineup instead of select-then-loop-delete.
     from sqlalchemy import delete as sa_delete
     await db.execute(sa_delete(MatchLineup).where(MatchLineup.match_id == match_uuid))
@@ -102,6 +115,7 @@ async def set_match_lineup(
             match_id=match_uuid,
             player_id=player_uuids[lineup_entry.player_id],
             position_id=lineup_entry.position_id,
+            start_position_id=kept_start.get(player_uuids[lineup_entry.player_id], lineup_entry.position_id),
             is_substitute=lineup_entry.is_substitute,
             is_on_field=not lineup_entry.is_substitute,  # Starters on field, subs on bench
             jersey_number=lineup_entry.jersey_number,
@@ -120,6 +134,7 @@ async def set_match_lineup(
             match_id=str(lineup_entry.match_id),
             player_id=str(lineup_entry.player_id),
             position_id=lineup_entry.position_id,
+            start_position_id=lineup_entry.start_position_id,
             is_substitute=lineup_entry.is_substitute,
             is_on_field=lineup_entry.is_on_field,
             player_name=lineup_entry.player.name,
@@ -159,6 +174,7 @@ async def get_match_lineup(
             match_id=str(lineup_entry.match_id),
             player_id=str(lineup_entry.player_id),
             position_id=lineup_entry.position_id,
+            start_position_id=lineup_entry.start_position_id,
             is_substitute=lineup_entry.is_substitute,
             is_on_field=lineup_entry.is_on_field,
             player_name=lineup_entry.player.name,
@@ -205,6 +221,7 @@ async def get_last_match_lineup(
             match_id=str(lineup_entry.match_id),
             player_id=str(lineup_entry.player_id),
             position_id=lineup_entry.position_id,
+            start_position_id=lineup_entry.start_position_id,
             is_substitute=lineup_entry.is_substitute,
             is_on_field=lineup_entry.is_on_field,
             player_name=lineup_entry.player.name,

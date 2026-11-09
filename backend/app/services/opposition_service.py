@@ -50,6 +50,8 @@ async def starting_slots(db: AsyncSession, match_id, rows=None) -> dict:
     from app.models.match_event import MatchEvent, EventType, Team
     if rows is None:
         rows = (await db.execute(select(OppositionLineup).where(OppositionLineup.match_id == match_id))).scalars().all()
+    if rows and all(getattr(r, "start_position_id", None) for r in rows):
+        return {str(r.opposition_player_id): r.start_position_id for r in rows}   # stored at save (b079)
     slots = {str(r.opposition_player_id): r.position_id for r in rows}
     subs = (await db.execute(
         select(MatchEvent.opposition_player_id, MatchEvent.opposition_sub_in_player_id, MatchEvent.half,
@@ -131,8 +133,14 @@ async def save_lineup(db: AsyncSession, match: Match, entries: list[dict]) -> di
         bench = c["position_id"].startswith("sub")
         db.add(OppositionLineup(
             match_id=match.id, opposition_player_id=player.id, position_id=c["position_id"],
+            start_position_id=c["position_id"],
             jersey_number=c["jersey_number"], is_substitute=bench, is_on_field=not bench,
         ))
+    await db.flush()
+    # What is saved is the STARTING lineup. If substitutions are already tagged (a correction after the match, or mid
+    # tagging), replay them so position_id / is_on_field are the lineup now - a re-save used to write the finishing
+    # lineup over the starting one.
+    await _replay_substitutions(db, match.id)
 
     match.opposition_team_id = team.id
     # keep the older surname roster (scorer strip, live brief man-marking) in step until those are lineup-driven
@@ -173,10 +181,37 @@ async def _swap(db: AsyncSession, match_id, off_id, on_id) -> bool:
     off.position_id = on_slot
     await db.flush()
     for r in (off, on):
-        bench = r.position_id.startswith("sub")
-        r.is_substitute = bench
-        r.is_on_field = not bench
+        # on the pitch or not NOW; is_substitute (did not start) and start_position_id never change after the save
+        r.is_on_field = not r.position_id.startswith("sub")
     return True
+
+
+async def _replay_substitutions(db: AsyncSession, match_id) -> None:
+    """Set each row's slot NOW from its starting slot plus every tagged substitution, oldest first."""
+    from app.models.match_event import MatchEvent, EventType, Team
+    rows = (await db.execute(select(OppositionLineup).where(OppositionLineup.match_id == match_id))).scalars().all()
+    if not rows:
+        return
+    cur = {str(r.opposition_player_id): (r.start_position_id or r.position_id) for r in rows}
+    subs = (await db.execute(
+        select(MatchEvent.opposition_player_id, MatchEvent.opposition_sub_in_player_id, MatchEvent.half,
+               MatchEvent.match_clock_s, MatchEvent.minute, MatchEvent.created_at)
+        .where(MatchEvent.match_id == match_id, MatchEvent.event_type == EventType.SUBSTITUTION,
+               MatchEvent.team == Team.OPPONENT, MatchEvent.opposition_player_id.isnot(None),
+               MatchEvent.opposition_sub_in_player_id.isnot(None)))).all()
+    if not subs:
+        return
+    for off_id, on_id, *_ in sorted(subs, key=lambda r: (r[2] or 1, r[3] if r[3] is not None else (r[4] or 0) * 60, r[5])):
+        a, b = str(off_id), str(on_id)
+        if a in cur and b in cur:
+            cur[a], cur[b] = cur[b], cur[a]
+    for r in rows:                                   # (match, slot) is unique: park, then land
+        r.position_id = f"tmp-{str(r.id)[:8]}"
+    await db.flush()
+    for r in rows:
+        r.position_id = cur[str(r.opposition_player_id)]
+        r.is_on_field = not r.position_id.startswith("sub")
+    await db.flush()
 
 
 def _is_opposition_sub(event) -> bool:

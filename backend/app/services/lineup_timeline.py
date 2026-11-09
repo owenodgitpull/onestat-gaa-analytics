@@ -315,7 +315,8 @@ async def load_timeline(db, match_id) -> Timeline:
     from app.models.player import Player
 
     lineup_rows = (await db.execute(
-        select(MatchLineup.player_id, MatchLineup.position_id, MatchLineup.is_substitute, Player.name)
+        select(MatchLineup.player_id, MatchLineup.position_id, MatchLineup.is_substitute, Player.name,
+               MatchLineup.start_position_id)
         .join(Player, Player.id == MatchLineup.player_id)
         .where(MatchLineup.match_id == match_id)
     )).all()
@@ -331,5 +332,6 @@ async def load_timeline(db, match_id) -> Timeline:
     subs = [Sub(str(r[0]), str(r[1]), r[2] or 1, r[3] or 0, r[4]) for r in sub_rows]
     moves = [Move(str(m.player_id), m.from_position_id, m.to_position_id, m.half, m.minute, m.match_clock_s) for m in move_rows]
     tl = Timeline(subs=subs, moves=moves, names={str(r[0]): r[3] for r in lineup_rows})
-    tl.spells = build_spells([(r[0], r[1], r[2]) for r in lineup_rows], subs, moves)
+    # a starter's entry slot is where he STARTED (b079); position_id is where he plays now (a re-entry or swap rewrites it)
+    tl.spells = build_spells([(r[0], (r[4] or r[1]) if not r[2] else r[1], r[2]) for r in lineup_rows], subs, moves)
     return tl
