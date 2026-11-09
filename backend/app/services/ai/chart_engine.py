@@ -24,6 +24,7 @@ from app.models.match import MatchStatus
 from app.models.match_event import EventType, Team
 
 from app.services.ai._shared import (
+    text_of,
     client, GAA_ESSENTIALS, get_team_season_stats, STATIC_CHARTS_TEXT,
     get_club_context,
 )
@@ -142,7 +143,7 @@ a variable called `chart_output` with the final JSON dict.
         }]
     )
 
-    response_text = response.content[0].text
+    response_text = text_of(response)
 
     # Extract Python code from response
     code_match = re.search(r'```python\n(.*?)```', response_text, re.DOTALL)

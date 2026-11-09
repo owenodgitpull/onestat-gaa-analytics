@@ -54,12 +54,69 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 _create_unwrapped = client.messages.create
 
 
+# List prices per million tokens: (input, output, cache write 5 min, cache read). Used only for the cost log line.
+_PRICES = {
+    "claude-sonnet-5-5": (2.0, 10.0, 2.5, 0.2),
+    "claude-haiku-4-5": (1.0, 5.0, 1.25, 0.1),
+}
+
+
+def call_cost(model: str, usage) -> Optional[float]:
+    """Dollar cost of one call from its usage block, at list prices (None for a model not in the table)."""
+    p = next((v for k, v in _PRICES.items() if str(model).startswith(k)), None)
+    if p is None or usage is None:
+        return None
+    return ((getattr(usage, "input_tokens", 0) or 0) * p[0] + (getattr(usage, "output_tokens", 0) or 0) * p[1]
+            + (getattr(usage, "cache_creation_input_tokens", 0) or 0) * p[2]
+            + (getattr(usage, "cache_read_input_tokens", 0) or 0) * p[3]) / 1e6
+
+
+def _cache_conversation(messages):
+    """One moving cache breakpoint on the newest user turn, so every earlier turn of an agent loop (tool results above all)
+    is re-read from cache at a tenth of the price instead of re-billed in full each turn. Earlier markers in the history are
+    removed (the system prompt and tools hold their own, and a request may carry at most four). The caller's list is not
+    changed: a copy goes to the API."""
+    if not isinstance(messages, list) or not messages:
+        return messages
+    out = []
+    for m in messages:
+        c = m.get("content") if isinstance(m, dict) else None
+        if isinstance(c, list):
+            m = {**m, "content": [({k: v for k, v in b.items() if k != "cache_control"} if isinstance(b, dict) else b) for b in c]}
+        out.append(m)
+    last = out[-1]
+    if isinstance(last, dict) and last.get("role") == "user":
+        c = last.get("content")
+        if isinstance(c, str) and c:
+            out[-1] = {**last, "content": [{"type": "text", "text": c, "cache_control": {"type": "ephemeral"}}]}
+        elif isinstance(c, list) and c and isinstance(c[-1], dict):
+            out[-1] = {**last, "content": c[:-1] + [{**c[-1], "cache_control": {"type": "ephemeral"}}]}
+    return out
+
+
+def text_of(response) -> str:
+    """The reply's text, whatever blocks come first (Sonnet 5.5 can open with a thinking block, so content[0].text breaks)."""
+    return "".join(getattr(b, "text", "") or "" for b in (getattr(response, "content", None) or []) if getattr(b, "type", "") == "text")
+
+
 def _create_with_defaults(*args, **kwargs):
     allow_thinking = kwargs.pop("allow_thinking", False)
+    label = kwargs.pop("cost_label", None)
     model = str(kwargs.get("model", ""))
     if not allow_thinking and "thinking" not in kwargs and model.startswith(("claude-sonnet-5", "claude-opus-5", "claude-fable-5")):
         kwargs["thinking"] = {"type": "between_tools"}
-    return _create_unwrapped(*args, **kwargs)
+    if "messages" in kwargs:
+        kwargs["messages"] = _cache_conversation(kwargs["messages"])
+    resp = _create_unwrapped(*args, **kwargs)
+    try:
+        u = getattr(resp, "usage", None)
+        cost = call_cost(model, u)
+        logger.info(f"claude call [{label or 'unlabelled'}] {model}: in {getattr(u, 'input_tokens', 0)}, "
+                    f"cache write {getattr(u, 'cache_creation_input_tokens', 0)}, cache read {getattr(u, 'cache_read_input_tokens', 0)}, "
+                    f"out {getattr(u, 'output_tokens', 0)}" + (f", ${cost:.4f}" if cost is not None else ""))
+    except Exception:
+        pass
+    return resp
 
 
 client.messages.create = _create_with_defaults

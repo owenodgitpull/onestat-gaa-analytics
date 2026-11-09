@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.services.ai._shared import client, get_club_context
+from app.services.ai._shared import text_of, client, get_club_context
 from app.models.video_session import VideoSession
 from app.models.video_event import VideoEvent, TWO_POINTER_ZONES, SCORING_EVENT_TYPES
 from app.models.match import Match
@@ -143,7 +143,7 @@ Be specific with numbers. Use GAA terminology.""",
             }]
         )
 
-        report = response.content[0].text
+        report = text_of(response)
         logger.info(f"Generated video match report for session {session_id}")
         return report
 
@@ -195,7 +195,7 @@ Return ONLY the JSON array, no other text.""",
         )
 
         import json
-        text = response.content[0].text.strip()
+        text = text_of(response).strip()
         # Handle potential markdown code blocks
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()

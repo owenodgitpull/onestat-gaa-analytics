@@ -312,7 +312,7 @@ async def analyze_batch(
             messages=[{"role": "user", "content": content}],
         )
 
-        response_text = response.content[0].text if response.content else ""
+        response_text = "".join(getattr(b, "text", "") or "" for b in (response.content or []) if getattr(b, "type", "") == "text")
 
         # Parse JSON from response
         events, state = _parse_response(response_text, prev_state, half)

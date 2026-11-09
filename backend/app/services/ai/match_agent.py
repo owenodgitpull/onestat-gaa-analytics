@@ -20,6 +20,7 @@ from sqlalchemy import select
 
 from app.services.ai.live_brief import build_live_brief
 from app.services.ai._shared import (
+    text_of,
     KB_TOOL_BLOCK,
     begin_kb_source_tracking, format_sources_used,
     client, GAA_ESSENTIALS, PANEL_EXPERT, TOOLS, execute_tool,
@@ -772,25 +773,8 @@ INSTRUCTIONS:
             _usage["cache_read"] += getattr(u, "cache_read_input_tokens", 0) or 0
             _usage["output"] += getattr(u, "output_tokens", 0) or 0
 
-        def _cache_history(msgs):
-            """Cache the conversation so far: every turn re-sends all earlier tool results (the event list alone is ~200k
-            characters), which were billed at the full input rate on every turn. One moving breakpoint on the newest user
-            turn (the system prompt and tools hold the other two) makes the earlier turns cheap cache reads."""
-            for m in msgs:
-                if isinstance(m.get("content"), list):
-                    for b in m["content"]:
-                        if isinstance(b, dict):
-                            b.pop("cache_control", None)
-            last = msgs[-1]
-            if last.get("role") == "user":
-                if isinstance(last.get("content"), str):
-                    last["content"] = [{"type": "text", "text": last["content"]}]
-                if last["content"] and isinstance(last["content"][-1], dict):
-                    last["content"][-1]["cache_control"] = {"type": "ephemeral"}
-
         # Initial call with tools
         logger.info(f"Calling Claude with match_id={match_id}, user_message={user_message[:100]}...")
-        _cache_history(messages)
         response = await asyncio.to_thread(
             client.messages.create,
             model="claude-sonnet-5-5",
@@ -798,6 +782,7 @@ INSTRUCTIONS:
             system=cached_system,
             tools=cached_tools,
             messages=messages,
+            cost_label="post-match report",
         )
         _count(response)
         logger.info(f"Response stop_reason: {response.stop_reason}")
@@ -838,7 +823,6 @@ INSTRUCTIONS:
 
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
-            _cache_history(messages)
 
             response = await asyncio.to_thread(
                 client.messages.create,
@@ -847,6 +831,7 @@ INSTRUCTIONS:
                 system=cached_system,
                 tools=cached_tools,
                 messages=messages,
+                cost_label="post-match report",
             )
             _count(response)
 
@@ -864,7 +849,6 @@ INSTRUCTIONS:
                 "role": "user",
                 "content": "Continue exactly where you left off. Do not repeat any text already written, do not restart the report, and do not add any preamble — just continue the sentence or section that was cut off.",
             })
-            _cache_history(messages)
             response = await asyncio.to_thread(
                 client.messages.create,
                 model="claude-sonnet-5-5",
@@ -872,6 +856,7 @@ INSTRUCTIONS:
                 system=cached_system,
                 tools=cached_tools,
                 messages=messages,
+                cost_label="post-match report",
             )
             _count(response)
             final_text += "".join(block.text for block in response.content if hasattr(block, "text"))
@@ -1531,7 +1516,7 @@ Return ONLY the JSON object, no other text."""
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            response_text = response.content[0].text.strip()
+            response_text = text_of(response).strip()
 
             if "```json" in response_text:
                 response_text = response_text.split("```json")[1].split("```")[0].strip()
@@ -1606,7 +1591,7 @@ Respond in this exact JSON format (no markdown):
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            text = response.content[0].text.strip()
+            text = text_of(response).strip()
             if text.startswith("{"):
                 return json.loads(text)
             return {}

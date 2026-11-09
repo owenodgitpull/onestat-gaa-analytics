@@ -481,14 +481,14 @@ wasn't in your first pass over the obvious distance/speed columns.
 Return ONLY the JSON object, no other text."""
         })
 
-        client = anthropic.Anthropic(api_key=api_key)
+        from app.services.ai._shared import client, text_of
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-5-5", cost_label="training GPS import",
             max_tokens=4096,
             messages=[{"role": "user", "content": message_content}]
         )
 
-        response_text = response.content[0].text
+        response_text = text_of(response)
 
         # Parse JSON from response
         import re
@@ -664,12 +664,12 @@ async def parse_gps_csv(content: bytes) -> dict:
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
 
-        client = anthropic.Anthropic(api_key=api_key)
+        from app.services.ai._shared import client, text_of
         # Offloaded to a thread — synchronous Anthropic SDK call would otherwise
         # block the whole event loop for the round-trip.
         response = await asyncio.to_thread(
             client.messages.create,
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-5-5", cost_label="training GPS import",
             max_tokens=4096,
             messages=[{
                 "role": "user",
@@ -683,7 +683,7 @@ CSV:
         )
 
         import re
-        json_match = re.search(r'\{[\s\S]*\}', response.content[0].text)
+        json_match = re.search(r'\{[\s\S]*\}', text_of(response))
         if json_match:
             return json.loads(json_match.group())
 

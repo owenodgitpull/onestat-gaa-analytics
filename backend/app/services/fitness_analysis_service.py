@@ -113,17 +113,17 @@ monitoring" — framing each factor as something for coaching/S&C staff to revie
 Respond with ONLY the JSON object, no other text."""
 
         try:
-            client = anthropic.Anthropic(api_key=api_key)
+            from app.services.ai._shared import client, text_of
             # Offloaded to a thread — synchronous Anthropic SDK call would
             # otherwise block the whole event loop for the round-trip.
             response = await asyncio.to_thread(
                 client.messages.create,
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-5-5", cost_label="fitness analysis",
                 max_tokens=1000,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            response_text = response.content[0].text
+            response_text = text_of(response)
 
             # Parse JSON from response
             import re

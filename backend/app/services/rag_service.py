@@ -193,6 +193,8 @@ class RAGService:
                 try:
                     resp = await client.messages.create(
                         model=BLURB_MODEL, max_tokens=90,
+                        # one sentence: thinking would be billed and could use the whole 90-token budget
+                        **({"thinking": {"type": "disabled"}} if BLURB_MODEL.startswith("claude-haiku-5") else {}),
                         messages=[{"role": "user", "content": prompt}],
                     )
                     out = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()

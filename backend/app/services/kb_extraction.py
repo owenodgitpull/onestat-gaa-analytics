@@ -69,6 +69,8 @@ async def _vision_page(client, n: int, png: bytes, sem: asyncio.Semaphore) -> Op
             resp = await client.messages.create(
                 model=VISION_MODEL,
                 max_tokens=1500,
+                # a transcription, not a reasoning task: no thinking (it would be billed and eat the 1,500-token answer)
+                **({"thinking": {"type": "between_tools"}} if VISION_MODEL.startswith("claude-sonnet-5") else {}),
                 messages=[{"role": "user", "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/png",
                                                  "data": base64.b64encode(png).decode()}},

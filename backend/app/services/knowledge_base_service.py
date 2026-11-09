@@ -251,9 +251,9 @@ Be thorough - extract every number and metric you can see."""
             })
 
             # Call Claude Vision
-            client = anthropic.Anthropic(api_key=api_key)
+            from app.services.ai._shared import client, text_of
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-5-5", cost_label="knowledge base vision extraction",
                 max_tokens=4096,
                 messages=[{
                     "role": "user",
@@ -261,7 +261,7 @@ Be thorough - extract every number and metric you can see."""
                 }]
             )
 
-            extracted_text = response.content[0].text
+            extracted_text = text_of(response)
 
             # Cache the result
             cache_file.write_text(extracted_text, encoding='utf-8')

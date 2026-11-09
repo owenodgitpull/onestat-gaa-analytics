@@ -96,7 +96,7 @@ async def detect_players(
     try:
         import anthropic
 
-        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        from app.services.ai._shared import client, text_of
 
         # Build roster context
         roster_text = ""
@@ -139,7 +139,7 @@ Only return the JSON array, no other text."""
         # otherwise block the whole event loop for the round-trip.
         response = await asyncio.to_thread(
             client.messages.create,
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-5-5", cost_label="tactical frame analysis",
             max_tokens=2000,
             messages=[{
                 "role": "user",
@@ -160,7 +160,7 @@ Only return the JSON array, no other text."""
             }],
         )
 
-        raw_text = response.content[0].text.strip()
+        raw_text = text_of(response).strip()
 
         # Parse JSON from response
         json_match = re.search(r'\[[\s\S]*\]', raw_text)

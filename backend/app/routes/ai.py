@@ -618,7 +618,7 @@ async def ai_health_check():
     return {
         "status": "ready",
         "message": "AI service configured",
-        "model": "claude-sonnet-4-20250514"
+        "model": "claude-sonnet-5-5"
     }
 
 
