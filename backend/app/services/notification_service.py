@@ -39,6 +39,20 @@ def _normalise_pem(key: str) -> str:
 
 VAPID_PRIVATE_KEY = _normalise_pem(os.getenv("VAPID_PRIVATE_KEY", ""))
 VAPID_CLAIMS = {"sub": os.getenv("VAPID_MAILTO", "mailto:admin@onestat.app")}
+_VAPID_OBJ = None
+
+
+def _vapid_key():
+    """The key as a loaded Vapid object: given a PEM *string*, pywebpush reads it with Vapid.from_string, which only
+    takes the raw base64 form, so a PEM key never loaded. Loaded once with from_pem; the string is a fallback."""
+    global _VAPID_OBJ
+    if _VAPID_OBJ is None and VAPID_PRIVATE_KEY.startswith("-----BEGIN"):
+        try:
+            from py_vapid import Vapid
+            _VAPID_OBJ = Vapid.from_pem(VAPID_PRIVATE_KEY.encode())
+        except Exception as e:
+            logger.warning(f"VAPID key could not be loaded from PEM: {e}")
+    return _VAPID_OBJ or VAPID_PRIVATE_KEY
 
 
 class NotificationService:
@@ -140,7 +154,7 @@ class NotificationService:
                             },
                         },
                         data=payload,
-                        vapid_private_key=VAPID_PRIVATE_KEY,
+                        vapid_private_key=_vapid_key(),
                         vapid_claims=VAPID_CLAIMS,
                     )
                 except WebPushException as e:
