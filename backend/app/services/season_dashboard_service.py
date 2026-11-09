@@ -36,6 +36,8 @@ SCORE_EVENTS = [
 DEFENSIVE_EVENTS = [
     EventType.INTERCEPTION, EventType.BLOCK, EventType.TURNOVER_WON,
 ]
+# the ball-winning leaderboard also counts tackles won (13 tagged over the first five matches were left out)
+BALL_WIN_EVENTS = DEFENSIVE_EVENTS + [EventType.TACKLE_WON]
 
 # Score values for scoring event types
 SCORE_VALUE = {
@@ -187,7 +189,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v3"  # bumped: spatial charts/KPIs now direction-aware (was raw x assuming our goal at 0)
+    SEASON_DASHBOARD_CACHE_VERSION = "v4"  # bumped: ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
@@ -791,7 +793,7 @@ class SeasonDashboardService:
                 and_(
                     MatchEvent.match_id.in_(match_ids),
                     MatchEvent.team == Team.OWN,
-                    MatchEvent.event_type.in_(DEFENSIVE_EVENTS),
+                    MatchEvent.event_type.in_(BALL_WIN_EVENTS),
                     MatchEvent.player_id.isnot(None),
                 )
             )
@@ -802,7 +804,7 @@ class SeasonDashboardService:
         for e in events:
             pid = str(e.player_id)
             if pid not in player_stats:
-                player_stats[pid] = {"interceptions": 0, "blocks": 0, "turnovers_won": 0}
+                player_stats[pid] = {"interceptions": 0, "blocks": 0, "turnovers_won": 0, "tackles_won": 0}
 
             if e.event_type == EventType.INTERCEPTION:
                 player_stats[pid]["interceptions"] += 1
@@ -810,6 +812,8 @@ class SeasonDashboardService:
                 player_stats[pid]["blocks"] += 1
             elif e.event_type == EventType.TURNOVER_WON:
                 player_stats[pid]["turnovers_won"] += 1
+            elif e.event_type == EventType.TACKLE_WON:
+                player_stats[pid]["tackles_won"] += 1
 
         if not player_stats:
             return []
@@ -823,18 +827,20 @@ class SeasonDashboardService:
 
         leaderboard = []
         for pid, stats in player_stats.items():
-            total = stats["interceptions"] + stats["blocks"] + stats["turnovers_won"]
+            total = stats["interceptions"] + stats["blocks"] + stats["turnovers_won"] + stats["tackles_won"]
             leaderboard.append({
                 "player_id": pid,
                 "player_name": players_map.get(pid, "Unknown"),
                 "interceptions": stats["interceptions"],
                 "blocks": stats["blocks"],
                 "turnovers_won": stats["turnovers_won"],
+                "tackles_won": stats["tackles_won"],
                 "total": total,
             })
 
         leaderboard.sort(key=lambda x: x["total"], reverse=True)
-        return leaderboard[:10]
+        # every player (the card scrolls): cutting at 10 also cut the team total, which is the sum of the rows
+        return leaderboard
 
     @staticmethod
     async def _red_zone_players(db: AsyncSession, matches: list) -> list:

@@ -202,6 +202,7 @@ class TurnoverSourcePlayer(BaseModel):
     interceptions: int
     blocks: int
     turnovers_won: int
+    tackles_won: int = 0
     total: int
 
 class RedZonePlayer(BaseModel):

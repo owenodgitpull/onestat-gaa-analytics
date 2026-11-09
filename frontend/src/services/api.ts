@@ -880,6 +880,7 @@ export interface TurnoverSourcePlayer {
   interceptions: number;
   blocks: number;
   turnovers_won: number;
+  tackles_won?: number;
   total: number;
 }
 

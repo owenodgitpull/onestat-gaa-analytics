@@ -18,9 +18,10 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
     )
   }
 
-  // Sort by total descending (should already be, but ensure)
-  const sorted = [...data].sort((a, b) => (b.interceptions + b.blocks + b.turnovers_won) - (a.interceptions + a.blocks + a.turnovers_won))
-  const topTotal = sorted[0] ? sorted[0].interceptions + sorted[0].blocks + sorted[0].turnovers_won : 1
+  // every way of winning the ball back: interceptions, blocks, tackles won and other turnovers won
+  const tot = (p: TurnoverSourcePlayer) => p.interceptions + p.blocks + (p.tackles_won ?? 0) + p.turnovers_won
+  const sorted = [...data].sort((a, b) => tot(b) - tot(a))
+  const topTotal = sorted[0] ? tot(sorted[0]) : 1
 
   return (
     <div className="glass-card p-4 sm:p-6 h-full flex flex-col overflow-hidden">
@@ -30,28 +31,29 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
 
       {/* Horizontally scrollable on small screens */}
       <div className="overflow-x-auto sm:overflow-x-visible -mx-4 px-4 sm:mx-0 sm:px-0 flex-1 min-h-0 flex flex-col">
-        <div className="min-w-[340px]">
+        <div className="min-w-[380px]">
           {/* Table header */}
-          <div className="grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem] sm:grid-cols-[2rem_1fr_3.5rem_3.5rem_3.5rem_3.5rem] gap-x-1 text-xs text-white/40 border-b border-white/10 pb-2 mb-1 px-1">
+          <div className="grid grid-cols-[2rem_1fr_2.75rem_2.75rem_2.75rem_2.75rem_2.75rem] sm:grid-cols-[2rem_1fr_3.25rem_3.25rem_3.25rem_3.25rem_3.25rem] gap-x-1 text-xs text-white/40 border-b border-white/10 pb-2 mb-1 px-1">
             <span className="text-center">#</span>
             <span>Player</span>
             <span className="text-center text-cyan-400/70">INT</span>
             <span className="text-center text-emerald-400/70">BLK</span>
-            <span className="text-center text-emerald-400/70">T/O</span>
+            <span className="text-center text-emerald-400/70" title="Tackles won">TKL</span>
+            <span className="text-center text-emerald-400/70" title="Other turnovers won">T/O</span>
             <span className="text-center text-white/60">TOT</span>
           </div>
 
           {/* Table rows — scrollable when many players */}
           <div className="space-y-0.5 overflow-y-auto max-h-[360px]">
             {sorted.map((p, i) => {
-              const total = p.interceptions + p.blocks + p.turnovers_won
+              const total = tot(p)
               const barWidth = topTotal > 0 ? (total / topTotal) * 100 : 0
               const isTop3 = i < 3
 
               return (
                 <div
                   key={p.player_id}
-                  className="relative grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem] sm:grid-cols-[2rem_1fr_3.5rem_3.5rem_3.5rem_3.5rem] gap-x-1 items-center rounded-lg px-1 py-2 group hover:bg-white/5 transition-colors"
+                  className="relative grid grid-cols-[2rem_1fr_2.75rem_2.75rem_2.75rem_2.75rem_2.75rem] sm:grid-cols-[2rem_1fr_3.25rem_3.25rem_3.25rem_3.25rem_3.25rem] gap-x-1 items-center rounded-lg px-1 py-2 group hover:bg-white/5 transition-colors"
                 >
                   {/* Background bar */}
                   <div
@@ -84,6 +86,11 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
                     {p.blocks}
                   </span>
 
+                  {/* Tackles won */}
+                  <span className={`text-center relative text-sm ${(p.tackles_won ?? 0) > 0 ? 'text-emerald-400 font-semibold' : 'text-white/20'}`}>
+                    {p.tackles_won ?? 0}
+                  </span>
+
                   {/* Turnovers Won */}
                   <span className={`text-center relative text-sm ${p.turnovers_won > 0 ? 'text-emerald-400 font-semibold' : 'text-white/20'}`}>
                     {p.turnovers_won}
@@ -99,7 +106,7 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
           </div>
 
           {/* Summary footer */}
-          <div className="grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem] sm:grid-cols-[2rem_1fr_3.5rem_3.5rem_3.5rem_3.5rem] gap-x-1 text-xs text-white/40 border-t border-white/10 mt-2 pt-2 px-1">
+          <div className="grid grid-cols-[2rem_1fr_2.75rem_2.75rem_2.75rem_2.75rem_2.75rem] sm:grid-cols-[2rem_1fr_3.25rem_3.25rem_3.25rem_3.25rem_3.25rem] gap-x-1 text-xs text-white/40 border-t border-white/10 mt-2 pt-2 px-1">
             <span />
             <span className="font-medium">Team Total</span>
             <span className="text-center text-cyan-400/60 font-semibold">
@@ -109,10 +116,13 @@ export default function TurnoverLeaderboard({ data }: TurnoverLeaderboardProps) 
               {data.reduce((s, p) => s + p.blocks, 0)}
             </span>
             <span className="text-center text-emerald-400/60 font-semibold">
+              {data.reduce((s, p) => s + (p.tackles_won ?? 0), 0)}
+            </span>
+            <span className="text-center text-emerald-400/60 font-semibold">
               {data.reduce((s, p) => s + p.turnovers_won, 0)}
             </span>
             <span className="text-center text-white/50 font-bold">
-              {data.reduce((s, p) => s + p.interceptions + p.blocks + p.turnovers_won, 0)}
+              {data.reduce((s, p) => s + tot(p), 0)}
             </span>
           </div>
         </div>
