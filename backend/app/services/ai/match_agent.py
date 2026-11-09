@@ -698,6 +698,10 @@ INSTRUCTIONS:
     - One verdict per thing: if Personnel says a change is "a small sample", the Summary cannot say it "paid off".
     - Man of the Match is the player with the highest impact score; when two are level, pick the one with more scores. Never
       overrule the impact score with your own reasons.
+    - NEVER print an impact score number ("impact score 27", "(23)", "highest impact score on our side (23)"): it is our own
+      weighting and means nothing to a reader. Use it only to choose; justify the choice with what the player did (scores,
+      assists, kickouts and turnovers won, turnovers lost) - e.g. "the biggest all-round contribution on the pitch: 1-5, an
+      assist and 35 carries".
     - Scores: copy each player's score string as given (goals-points, a two-pointer counting 2, the same notation as the team
       score: "1-6", never "1-3 including a two-pointer").
     - Time words: "and then" / "then" only for events that follow closely; otherwise give each event its own time.

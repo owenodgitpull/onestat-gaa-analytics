@@ -211,6 +211,11 @@ def find_issues(text: str, facts: dict) -> List[dict]:
                 issues.append({"quote": s, "problem": f"{p_} points from {s_} shots, but we scored {tp} points from {ts} shots",
                                "truth": f"{tp} points from {ts} shots ({tp / ts:.2f} per shot)"})
 
+        # 13b. the internal impact-score number (means nothing to a reader)
+        if re.search(r"impact (?:score|figure)s?\b[^.]{0,40}?\(?\b\d{1,3}\b|\(\s*impact score \d+\s*\)|\(\d{1,3}\)[^.]{0,15}impact", low):
+            issues.append({"quote": s, "problem": "quotes an impact-score number, which means nothing to a reader",
+                           "truth": "drop the number; say what the player did (scores, assists, kickouts and turnovers won)"})
+
         # 14. a mean written as a median
         for v in facts.get("means") or []:
             if re.search(r"median[^.]{0,25}\b" + re.escape(str(v)) + r"\b", low):

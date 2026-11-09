@@ -81,3 +81,9 @@ def test_distance_superlative_and_empty_heading():
     assert any("not the most" in x for x in p)
     t, fixed, _ = check_report("## A\n\ntext\n\n## Match Charts\n\n*Knowledge base passages consulted: x.*", f)
     assert "Match Charts" not in t and "## A" in t
+
+
+def test_impact_number_flagged():
+    assert any("impact-score" in x for x in _problems("Mogan had the highest impact score on our side (23) with 1-1."))
+    assert any("impact-score" in x for x in _problems("C. O'Callaghan (impact score 27) scored 1-5."))
+    assert not any("impact-score" in x for x in _problems("Mogan made the biggest all-round contribution on our side: 1-1 and two assists."))
