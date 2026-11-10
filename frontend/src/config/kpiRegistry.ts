@@ -123,7 +123,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
       },
       opp_score_per_possession: {
         what: 'How efficiently opponents convert their possessions into scores against you. A low number means your defensive system is forcing opponents into unproductive possessions.',
-        formula: '(Opponent scoring possessions ÷ Opponent total possessions) × 100. Below 20% is excellent, 20–27% is solid, above 27% means opponents are finding it too easy.',
+        formula: '(Opponent scores ÷ Opponent possessions) × 100, from the tagged possessions. Below 20% is excellent, 20–27% is solid, above 27% means opponents are finding it too easy.',
       },
     },
   },
@@ -137,7 +137,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       turnover_to_score: {
         what: 'Of all turnovers your team wins, what percentage result in a score. Winning the ball back means nothing if you don\'t capitalise.',
-        formula: '(Scores from turnovers won ÷ Total turnovers won) × 100. Above 35% is excellent, 25–35% is good, below 25% needs work.',
+        formula: '(Turnovers won whose possession ended in our score ÷ Turnovers won) × 100. Turnovers won = turnovers, interceptions and tackles won; the possession ends at our next shot (a score counts), a ball we lose, their shot or turnover, a kickout or the end of the half. Above 35% is excellent, 25–35% is good, below 25% needs work.',
       },
       turnovers_conceded: {
         what: 'Average times per game your team loses possession through errors — misplaced passes, overcarrying, fumbles.',
@@ -159,7 +159,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
       },
       frees_in_scoring_range: {
         what: 'Average frees given away per game within realistic scoring range (inside 45m line). These fouls hand the opposition easy scores.',
-        formula: 'Fouls in opponent\'s 45m zone ÷ Matches played. Below 5 is disciplined, 5–8 is average, above 8 is a problem.',
+        formula: 'Fouls we gave away inside our own 45 m line ÷ Matches played. Below 5 is disciplined, 5–8 is average, above 8 is a problem.',
       },
     },
   },
@@ -191,11 +191,11 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       opp_inside_45: {
         what: 'Average times per game the opposition gets the ball into your defensive 45. A leading indicator of defensive pressure — measures threat before it becomes a score.',
-        formula: 'Opponent events in your 45m zone ÷ Matches played. Below 16 is excellent pressing, 16–22 is average, above 22 means the press is bypassed regularly.',
+        formula: 'Opponent possessions that got inside your 45 m line ÷ Matches played (one per possession, however many shots). Below 16 is excellent pressing, 16–22 is average, above 22 means the press is bypassed regularly.',
       },
       own_inside_45: {
         what: 'How often your team gets the ball into the opposition\'s 45 per game. Measures attacking penetration — are you getting into scoring range?',
-        formula: 'Team events in opponent 45m zone ÷ Matches played. Above 24 is strong, 18–24 is average, below 18 means struggling to penetrate.',
+        formula: 'Our possessions that got inside their 45 m line ÷ Matches played (one per possession, however many shots). Above 24 is strong, 18–24 is average, below 18 means struggling to penetrate.',
       },
     },
   },
@@ -249,7 +249,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
       },
       mins_14_men: {
         what: 'Average minutes per game played with a numerical disadvantage due to cards. Quantifies the actual cost of indiscipline in game time.',
-        formula: 'Total minutes at 14 men ÷ Matches played. Under 5 is disciplined, 5–15 is manageable, above 15 is critical.',
+        formula: 'Minutes a player was off: 10 per black card, the rest of the match for a red card. Total ÷ Matches played. Under 5 is disciplined, 5–15 is manageable, above 15 is critical.',
       },
     },
   },
@@ -277,7 +277,7 @@ export const KPI_REGISTRY: KPIRegistryEntry[] = [
     explanations: {
       ball_recovery_avg_min: {
         what: 'Average minutes to win back possession after a turnover or unforced error. Measures pressing intensity and transition speed — lower is better.',
-        formula: 'For each possession loss event (turnover / unforced error), find the next own-team recovery event and measure the gap in minutes (capped at 10 min to exclude half-time gaps). Average across all losses in the season. Under 2 min = strong press, over 3 min = slow transition.',
+        formula: 'For each possession loss event (turnover / unforced error), find the next own-team recovery event and measure the gap, to the second where the match clock is recorded (capped at 10 min to exclude half-time gaps). Average across all losses in the season. Under 2 min = strong press, over 3 min = slow transition.',
       },
     },
   },

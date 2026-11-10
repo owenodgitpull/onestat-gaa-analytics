@@ -90,3 +90,13 @@ Entry format:
 
 ## Dublin: opposition lineup has C. O'Callaghan on the bench - RESOLVED 2026-11-09
 - **What:** Not a data-entry error: the opposition lineup table holds the lineup as it is NOW (each tagged substitution swaps slots, and the starter flag followed), so every reader showed the finishing XV as the starting one. Fixed by rebuilding the start from the tagged substitutions (`opposition_service.starting_slots`), used by the match API (start_position_id / started), the lineup viewer, the agents' opposition lineup and the impact tool. Owen's entered positions were correct (they match the TV team graphic); a pasted team-sheet text with different positions was applied by mistake on 2026-11-09 and reverted the same day. All 5 matches had the same storage issue; no stored slots were changed for the other four.
+
+## Two guard tests fail on code that is actually fine
+- **What:** `tests/test_tenant_guard.py` flags the four `/gps/analysis/*` routes (they do check the club, through `_match` -> `match_row(db, id, user.club_id)`, which the static scan cannot see), and `tests/test_direction_guard.py` flags `services/gps_analysis/situations.py` (it frames points with `frame.frame_point`, which wraps `to_attack_frame`, not one of the listed marker names).
+- **Suggested fix:** teach both scans the helper names (`match_row`, `frame_point`) rather than changing the code.
+- **Found while:** KPI audit (2026-11-10). Failing before today's changes.
+
+## Season KPI colour thresholds are club-level
+- **What:** Card colours use club-grade bands (e.g. points conceded from play: green under 5, red over 8; opponent inside-45 entries: red over 22). Inter-county figures (19 from play, 31 entries a game) are red on every card regardless of how good they are for that level.
+- **Suggested fix:** thresholds per level (club / inter-county) or relative to the team's own season. Owen to decide.
+- **Found while:** KPI audit (2026-11-10).

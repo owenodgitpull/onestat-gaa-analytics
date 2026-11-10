@@ -189,7 +189,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v4"  # bumped: ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v5"  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
@@ -658,6 +658,7 @@ class SeasonDashboardService:
                     "opponent": m.opponent,
                     "date": m.match_date.isoformat() if m.match_date else "",
                     "possessions": dp, "attacks": da, "shots": dsh, "scores": dsc,
+                    "opp_possessions": op, "opp_scores": osc, "opp_attacks": oa,
                 })
 
         def rate(num, den): return round((num / den * 100) if den > 0 else 0, 1)
@@ -2329,10 +2330,16 @@ class SeasonDashboardService:
         total_points_scored = sum(
             (m.team_goals * 3) + m.team_points for m in matches
         )
-        total_possessions = funnel.get("season_totals", {}).get("possessions", 0)
-        productivity = round(
-            (total_points_scored / total_possessions * 10) if total_possessions > 0 else 0, 2
-        )
+        # points per 10 possessions, over the matches that have possession tracking (the funnel's matches), so the
+        # points and the possessions come from the same games
+        _pts_by_match = {str(m.id): (m.team_goals * 3) + m.team_points for m in matches}
+
+        def _productivity(ids) -> float:
+            rows = [pm for pm in funnel.get("per_match", []) if pm["match_id"] in {str(i) for i in ids}]
+            poss = sum(r["possessions"] for r in rows)
+            return round(sum(_pts_by_match.get(r["match_id"], 0) for r in rows) / poss * 10, 2) if poss else 0
+
+        productivity = _productivity(match_ids)
 
         # --- Avg scored / conceded ---
         avg_scored = round(total_points_scored / n, 1)
@@ -2346,60 +2353,82 @@ class SeasonDashboardService:
         score_per_poss = round(season_scores / season_possessions * 100, 1) if season_possessions > 0 else 0
 
         # --- Opponent score per possession % ---
-        opp_total_pts = sum((m.opponent_goals * 3) + m.opponent_points for m in matches)
-        opp_score_per_poss = round(opp_total_pts / season_possessions * 100, 1) if season_possessions > 0 else 0
+        # their scores over THEIR possessions (it was their points over OUR possessions: 61% where 45% was right)
+        opp_possessions = funnel.get("opponent_totals", {}).get("possessions", 0)
+        opp_scores = funnel.get("opponent_totals", {}).get("scores", 0)
+        opp_score_per_poss = round(opp_scores / opp_possessions * 100, 1) if opp_possessions > 0 else 0
 
-        # --- Turnover-to-score rate (proxy: from-play scores / turnovers won) ---
-        from_play_result = await db.execute(
-            select(func.count(MatchEvent.id))
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OWN,
-                    MatchEvent.event_type.in_(list(FROM_PLAY_SCORES)),
-                )
-            )
+        # --- Turnover-to-score rate: of the turnovers we won, the share whose possession ended in our score ---
+        # (It was min(all from-play scores, turnovers won) / turnovers won, which read 100% whenever we scored more
+        # from play than we won turnovers.) Walk each match's events in clock order: after a turnover we won, the
+        # possession ends at our next shot (a score counts), a ball we lose, their shot or turnover, or a kickout.
+        TO_WIN = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON}
+        OWN_LOSS = {EventType.TURNOVER_LOST, EventType.UNFORCED_ERROR}
+        OPP_ENDS = {EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON} | set(SHOT_EVENTS)
+        KO_TYPES = {e for e in EventType if "kickout" in e.value}
+
+        seq_result = await db.execute(
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.half,
+                   MatchEvent.match_clock_s, MatchEvent.minute, MatchEvent.created_at)
+            .where(and_(MatchEvent.match_id.in_(match_ids),
+                        MatchEvent.event_type.in_(list(TO_WIN | OWN_LOSS | OPP_ENDS | KO_TYPES | set(SHOT_EVENTS)))))
         )
-        from_play_scores_count = from_play_result.scalar() or 0
-        turnover_scores_est = min(from_play_scores_count, t_won)
-        turnover_to_score = round(turnover_scores_est / t_won * 100, 0) if t_won > 0 else 0
+        seq_rows = sorted(seq_result.all(), key=lambda r: (str(r.match_id), r.half or 0,
+                                                          r.match_clock_s if r.match_clock_s is not None else (r.minute or 0) * 60,
+                                                          r.created_at))
 
-        # --- Points conceded from play per game ---
-        opp_from_play_result = await db.execute(
-            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OPPONENT,
-                    MatchEvent.event_type.in_([EventType.GOAL, EventType.POINT, EventType.TWO_POINT]),
-                )
-            )
-            .group_by(MatchEvent.event_type)
-        )
-        opp_from_play_pts = 0
-        for row in opp_from_play_result:
-            opp_from_play_pts += row.cnt * SCORE_VALUE.get(row.event_type, 1)
-        pts_conceded_from_play = round(opp_from_play_pts / n, 1)
+        def _turnover_to_score(ids) -> tuple:
+            won = scored = 0
+            open_since = None    # (match_id, half) of a live turnover-won possession
+            for r in seq_rows:
+                if r.match_id not in ids:
+                    continue
+                if open_since is not None and open_since != (r.match_id, r.half):
+                    open_since = None                    # new match or period: the possession ended
+                if r.team == Team.OWN and r.event_type in TO_WIN:
+                    won += 1; open_since = (r.match_id, r.half); continue
+                if open_since is None:
+                    continue
+                if r.team == Team.OWN and r.event_type in SHOT_EVENTS:
+                    scored += 1 if r.event_type in SCORE_EVENTS else 0
+                    open_since = None
+                elif (r.team == Team.OWN and r.event_type in OWN_LOSS) or (r.team == Team.OPPONENT and r.event_type in OPP_ENDS) \
+                        or r.event_type in KO_TYPES:
+                    open_since = None
+            return won, scored
 
-        # --- Frees conceded in scoring range per game ---
-        # x measured in OUR attacking frame (our goal at 0) — raw x is only that for one half of one end
+        _tw, _ts = _turnover_to_score(set(match_ids))
+        turnover_to_score = round(_ts / _tw * 100, 0) if _tw > 0 else 0
+
+        # --- Per-game counts, each computable for any set of matches (season and the last 3 use the same rule) ---
+        # x measured in OUR attacking frame (our goal at 0) — raw x is only that for one half of one end.
+        # The 45 m line as drawn is at 35 / 65 (docs/pitch-svg-geometry.md, the same lines the possession funnel
+        # uses); frees in scoring range used 45, i.e. about 65 m out.
         from app.services.attack_frame import own_frame_x_sql
         _fxs = own_frame_x_sql(MatchEvent, Match)
-        frees_scoring_range_result = await db.execute(
-            select(func.count(MatchEvent.id))
-            .join(Match, Match.id == MatchEvent.match_id)
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OWN,
-                    MatchEvent.event_type == EventType.FOUL_COMMITTED,
-                    MatchEvent.pitch_x.isnot(None),
-                    _fxs < 45,
-                )
+        OWN_45 = 35
+
+        async def _opp_from_play_pts(ids) -> int:
+            res = await db.execute(
+                select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+                .where(and_(MatchEvent.match_id.in_(ids), MatchEvent.team == Team.OPPONENT,
+                            MatchEvent.event_type.in_([EventType.GOAL, EventType.POINT, EventType.TWO_POINT])))
+                .group_by(MatchEvent.event_type)
             )
-        )
-        frees_in_range = frees_scoring_range_result.scalar() or 0
-        frees_in_range_pg = round(frees_in_range / n, 1)
+            return sum(row.cnt * SCORE_VALUE.get(row.event_type, 1) for row in res)
+
+        async def _frees_in_range(ids) -> int:
+            res = await db.execute(
+                select(func.count(MatchEvent.id))
+                .join(Match, Match.id == MatchEvent.match_id)
+                .where(and_(MatchEvent.match_id.in_(ids), MatchEvent.team == Team.OWN,
+                            MatchEvent.event_type == EventType.FOUL_COMMITTED,
+                            MatchEvent.pitch_x.isnot(None), _fxs < OWN_45))
+            )
+            return res.scalar() or 0
+
+        pts_conceded_from_play = round(await _opp_from_play_pts(match_ids) / n, 1)
+        frees_in_range_pg = round(await _frees_in_range(match_ids) / n, 1)
 
         # --- Clean sheet rate (goals) ---
         clean_sheets = sum(1 for m in matches if m.opponent_goals == 0)
@@ -2408,37 +2437,22 @@ class SeasonDashboardService:
         # --- Goals conceded per game ---
         goals_conceded_pg = round(sum(m.opponent_goals for m in matches) / n, 1)
 
-        # --- Opponent inside-45 entries (proxy: opponent events in our defensive third) ---
-        opp_45_result = await db.execute(
-            select(func.count(MatchEvent.id))
-            .join(Match, Match.id == MatchEvent.match_id)
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OPPONENT,
-                    MatchEvent.event_type.in_(SHOT_EVENTS + [EventType.TURNOVER_LOST, EventType.FOUL_WON]),
-                    MatchEvent.pitch_x.isnot(None),
-                    _fxs < 45,
-                )
-            )
-        )
-        opp_inside_45 = round((opp_45_result.scalar() or 0) / n, 1)
+        # --- Inside-45 entries per game: possessions that got inside the 45 (the possession funnel's "attacks") ---
+        # It was a count of shots + turnovers + frees tagged beyond x=45 / 55 (about 65 m out), so one attack with two
+        # shots counted twice and play near halfway counted as "inside the 45".
+        funnel_pm = {pm["match_id"]: pm for pm in funnel.get("per_match", [])}
 
-        # --- Own inside-45 entries (proxy: own events in opponent's third) ---
-        own_45_result = await db.execute(
-            select(func.count(MatchEvent.id))
-            .join(Match, Match.id == MatchEvent.match_id)
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OWN,
-                    MatchEvent.event_type.in_(SHOT_EVENTS + [EventType.TURNOVER_WON, EventType.FOUL_WON]),
-                    MatchEvent.pitch_x.isnot(None),
-                    _fxs > 55,
-                )
-            )
-        )
-        own_inside_45 = round((own_45_result.scalar() or 0) / n, 1)
+        def _funnel_pg(ids, key):
+            rows = [funnel_pm[str(i)] for i in ids if str(i) in funnel_pm]
+            return round(sum(r.get(key, 0) for r in rows) / len(rows), 1) if rows else 0
+
+        def _funnel_rate(ids, num, den):
+            rows = [funnel_pm[str(i)] for i in ids if str(i) in funnel_pm]
+            d = sum(r.get(den, 0) for r in rows)
+            return round(sum(r.get(num, 0) for r in rows) / d * 100, 1) if d else 0
+
+        opp_inside_45 = _funnel_pg(match_ids, "opp_attacks")
+        own_inside_45 = _funnel_pg(match_ids, "attacks")
 
         # --- From-play score % ---
         from_play_detail = await db.execute(
@@ -2535,24 +2549,22 @@ class SeasonDashboardService:
         unforced_errors_pg = round(total_unforced_errors / n, 1)
 
         # --- Card rate per game + minutes with 14 men ---
-        card_result = await db.execute(
-            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
-            .where(
-                and_(
-                    MatchEvent.match_id.in_(match_ids),
-                    MatchEvent.team == Team.OWN,
-                    MatchEvent.event_type.in_([EventType.YELLOW_CARD, EventType.BLACK_CARD, EventType.RED_CARD]),
-                )
-            )
-            .group_by(MatchEvent.event_type)
-        )
-        card_counts = {row.event_type: row.cnt for row in card_result}
-        yellow_cards = card_counts.get(EventType.YELLOW_CARD, 0)
-        black_cards = card_counts.get(EventType.BLACK_CARD, 0)
-        red_cards = card_counts.get(EventType.RED_CARD, 0)
-        total_cards = yellow_cards + black_cards + red_cards
+        # a black card is 10 minutes in the sin bin; a red card is the rest of the match (it was a flat 25 minutes)
+        card_rows = (await db.execute(
+            select(MatchEvent.match_id, MatchEvent.event_type, MatchEvent.minute)
+            .where(and_(MatchEvent.match_id.in_(match_ids), MatchEvent.team == Team.OWN,
+                        MatchEvent.event_type.in_([EventType.YELLOW_CARD, EventType.BLACK_CARD, EventType.RED_CARD])))
+        )).all()
+        _match_len = {m.id: 2 * (m.half_duration_mins or 35) for m in matches}
+
+        def _cards(ids) -> tuple:
+            rows = [r for r in card_rows if r.match_id in ids]
+            mins = sum(10 if r.event_type == EventType.BLACK_CARD else max(0, _match_len.get(r.match_id, 70) - (r.minute or 0))
+                       for r in rows if r.event_type in (EventType.BLACK_CARD, EventType.RED_CARD))
+            return len(rows), mins
+
+        total_cards, mins_14_men = _cards(set(match_ids))
         card_rate = round(total_cards / n, 1)
-        mins_14_men = black_cards * 10 + red_cards * 25
         mins_14_men_pg = round(mins_14_men / n, 0)
 
         # --- Per-match trends (last 3 vs season) ---
@@ -2595,22 +2607,24 @@ class SeasonDashboardService:
         recent_conceded = sum((m.opponent_goals * 3) + m.opponent_points for m in recent_matches) / trend_window
 
         # Recent turnovers (per match)
+        # same definitions as the season figures (won = our turnover won / interception / tackle won; lost = our
+        # turnover lost + their interception / tackle won) — the recent side counted only turnover won / lost
         recent_to = await db.execute(
-            select(MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
+            select(MatchEvent.team, MatchEvent.event_type, func.count(MatchEvent.id).label("cnt"))
             .where(
                 and_(
                     MatchEvent.match_id.in_(recent_ids),
-                    MatchEvent.team == Team.OWN,
-                    MatchEvent.event_type.in_([EventType.TURNOVER_WON, EventType.TURNOVER_LOST]),
+                    MatchEvent.event_type.in_([EventType.TURNOVER_WON, EventType.TURNOVER_LOST,
+                                               EventType.INTERCEPTION, EventType.TACKLE_WON]),
                 )
             )
-            .group_by(MatchEvent.event_type)
+            .group_by(MatchEvent.team, MatchEvent.event_type)
         )
-        recent_to_counts = {row.event_type: row.cnt for row in recent_to}
-        recent_to_diff = (
-            recent_to_counts.get(EventType.TURNOVER_WON, 0)
-            - recent_to_counts.get(EventType.TURNOVER_LOST, 0)
-        ) / trend_window
+        rtc = {(row.team, row.event_type): row.cnt for row in recent_to}
+        r_won = sum(rtc.get((Team.OWN, e), 0) for e in (EventType.TURNOVER_WON, EventType.INTERCEPTION, EventType.TACKLE_WON))
+        r_lost = rtc.get((Team.OWN, EventType.TURNOVER_LOST), 0) + sum(rtc.get((Team.OPPONENT, e), 0) for e in (EventType.INTERCEPTION, EventType.TACKLE_WON))
+        recent_to_diff = (r_won - r_lost) / trend_window
+        recent_to_lost_pg = r_lost / trend_window
 
         # Recent fouls per game
         recent_foul_result = await db.execute(
@@ -2673,15 +2687,13 @@ class SeasonDashboardService:
                 r_scores += row.cnt
         recent_shot_eff = round(r_scores / r_shots * 100, 1) if r_shots > 0 else 0
 
-        # Recent productivity
-        recent_pts = sum((m.team_goals * 3) + m.team_points for m in recent_matches)
-        # Approximate recent possessions from shot count (rough proxy)
-        recent_productivity = round(recent_pts / (r_shots * 1.5) * 10, 2) if r_shots > 0 else 0
+        # Recent productivity: the same points-per-10-possessions as the season (it guessed possessions as shots x 1.5)
+        recent_productivity = _productivity(recent_ids)
 
         # --- Batch recent events query for remaining KPI trends ---
         FREE_SCORE_EVENTS = {EventType.POINT_FREE, EventType.TWO_POINT_FREE, EventType.FORTY_FIVE}
         FREE_ATTEMPT_EVENTS = FREE_SCORE_EVENTS | {EventType.WIDE_FREE, EventType.FORTY_FIVE_MISSED}
-        GOAL_CHANCE_EVENTS = {EventType.GOAL, EventType.PENALTY_GOAL, EventType.SAVED, EventType.SHORT}
+        GOAL_CHANCE_EVENTS = {EventType.GOAL, EventType.PENALTY_GOAL, EventType.SAVED, EventType.PENALTY_MISS}  # = the season card
         FROM_PLAY_SCORE_EVENTS = {EventType.GOAL, EventType.POINT, EventType.TWO_POINT}
 
         recent_events_result = await db.execute(
@@ -2692,8 +2704,7 @@ class SeasonDashboardService:
                     MatchEvent.event_type.in_(
                         list(FREE_SCORE_EVENTS | FREE_ATTEMPT_EVENTS | GOAL_CHANCE_EVENTS |
                              FROM_PLAY_SCORE_EVENTS | {EventType.POINT, EventType.TWO_POINT, EventType.GOAL} |
-                             set(opp_ko_won_types) | {EventType.OPP_KICKOUT_WON, EventType.OPP_KICKOUT_OPPOSITION_WON,
-                                                       EventType.KICKOUT_LOST, EventType.KICKOUT_WON})
+                             set(opp_ko_won_types) | set(opp_ko_lost_types))
                     ),
                 )
             )
@@ -2709,10 +2720,11 @@ class SeasonDashboardService:
             return sum(v for (e, _), v in recent_ev.items() if e == et)
 
         # Recent from-play scores
-        r_from_play = sum(_rev(et, Team.OWN) for et in FROM_PLAY_SCORE_EVENTS)
+        # in points, like the season card (it counted scores, so a goal weighed the same as a point)
+        r_from_play_pts = sum(_rev(et, Team.OWN) * SCORE_VALUE.get(et, 1) for et in FROM_PLAY_SCORE_EVENTS)
         r_free_scores = sum(_rev(et, Team.OWN) for et in FREE_SCORE_EVENTS)
-        r_total_own_scores = r_from_play + r_free_scores
-        recent_from_play_pct = round(r_from_play / r_total_own_scores * 100, 1) if r_total_own_scores > 0 else from_play_pct
+        r_total_pts = sum((m.team_goals * 3) + m.team_points for m in recent_matches)
+        recent_from_play_pct = round(r_from_play_pts / r_total_pts * 100, 1) if r_total_pts > 0 else from_play_pct
 
         # Recent free conversion
         r_free_att = sum(_rev(et, Team.OWN) for et in FREE_ATTEMPT_EVENTS)
@@ -2720,22 +2732,20 @@ class SeasonDashboardService:
 
         # Recent goal scoring rate & goal chances
         r_goals = _rev(EventType.GOAL, Team.OWN) + _rev(EventType.PENALTY_GOAL, Team.OWN)
-        r_goal_chances = r_goals + _rev(EventType.SAVED, Team.OWN) + _rev(EventType.SHORT, Team.OWN)
-        recent_goal_scoring_rate = round(r_goals / trend_window, 2)
+        r_goal_chances = sum(_rev(et, Team.OWN) for et in GOAL_CHANCE_EVENTS)
+        recent_goal_scoring_rate = round(sum(m.team_goals for m in recent_matches) / trend_window, 2)   # same source as the season
         recent_goal_chances = round(r_goal_chances / trend_window, 2)
 
         # Recent goals conceded & clean sheets
-        r_opp_goals = _rev(EventType.GOAL, Team.OPPONENT) + _rev(EventType.PENALTY_GOAL, Team.OPPONENT)
-        recent_goals_conceded_pg = round(r_opp_goals / trend_window, 2)
-        recent_clean_sheets = sum(
-            1 for m in recent_matches if (m.opponent_goals * 3 + m.opponent_points) == 0
-        )
+        recent_goals_conceded_pg = round(sum(m.opponent_goals for m in recent_matches) / trend_window, 2)
+        # a clean sheet is no goal conceded, as on the season card (the recent side wanted no score at all, so it was always 0)
+        recent_clean_sheets = sum(1 for m in recent_matches if m.opponent_goals == 0)
         recent_clean_sheet_rate = round(recent_clean_sheets / trend_window * 100, 1)
 
         # Recent opp kickout win %
-        r_opp_ko_won = sum(_rev(et, Team.OWN) for et in opp_ko_won_types)
-        r_opp_ko_won += _rev(EventType.KICKOUT_WON, Team.OWN)
-        r_opp_ko_total = r_opp_ko_won + _rev(EventType.OPP_KICKOUT_OPPOSITION_WON)
+        # same types as the season card (the recent side added our own legacy kickouts and missed the lost breaks)
+        r_opp_ko_won = sum(_rev(et) for et in opp_ko_won_types)
+        r_opp_ko_total = r_opp_ko_won + sum(_rev(et) for et in opp_ko_lost_types)
         recent_opp_kickout_win = round(r_opp_ko_won / r_opp_ko_total * 100, 1) if r_opp_ko_total > 0 else opp_kickout_win
 
         # --- Ball recovery time (avg minutes per match to win back possession) ---
@@ -2749,7 +2759,8 @@ class SeasonDashboardService:
             EventType.FORTY_FIVE, EventType.PENALTY_GOAL,
         ])
         recovery_ev_result = await db.execute(
-            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute)
+            select(MatchEvent.match_id, MatchEvent.team, MatchEvent.event_type, MatchEvent.minute, MatchEvent.match_clock_s,
+                   MatchEvent.half, MatchEvent.created_at)
             .where(
                 and_(
                     MatchEvent.match_id.in_(match_ids),
@@ -2757,9 +2768,11 @@ class SeasonDashboardService:
                     MatchEvent.event_type.in_(list(BALL_LOSS_TYPES | BALL_RECOVERY_TYPES)),
                 )
             )
-            .order_by(MatchEvent.match_id, MatchEvent.minute)
         )
-        recovery_ev_rows = recovery_ev_result.all()
+        # timed to the second where the clock is recorded (whole minutes made a quick regain read as 0 and be dropped,
+        # and a 50-second one read as a minute)
+        recovery_ev_rows = sorted(recovery_ev_result.all(), key=lambda r: (str(r.match_id), r.half or 0,
+                                  r.match_clock_s if r.match_clock_s is not None else r.minute * 60, r.created_at))
 
         def _compute_recovery_avg(rows, filter_ids=None):
             from collections import defaultdict
@@ -2772,11 +2785,12 @@ class SeasonDashboardService:
                 loss_min = None
                 gaps = []
                 for e in evs:
+                    t_s = e.match_clock_s if e.match_clock_s is not None else e.minute * 60
                     if e.team == Team.OWN and e.event_type in BALL_LOSS_TYPES:
-                        loss_min = e.minute
+                        loss_min = t_s
                     elif loss_min is not None and e.team == Team.OWN and e.event_type in BALL_RECOVERY_TYPES:
-                        diff = e.minute - loss_min
-                        if 0 < diff <= 10:
+                        diff = (t_s - loss_min) / 60.0
+                        if 0 <= diff <= 10:
                             gaps.append(diff)
                         loss_min = None
                 if gaps:
@@ -2799,6 +2813,9 @@ class SeasonDashboardService:
             "direction": _rec_dir,
             "change_pct": _rec_chg,
         }
+
+        _rw, _rs = _turnover_to_score(set(recent_ids))
+        _recent_tts = round(_rs / _rw * 100, 0) if _rw > 0 else turnover_to_score
 
         # Build cards with thresholds
         def color(val, green_test, red_test):
@@ -2875,7 +2892,7 @@ class SeasonDashboardService:
                 "value": score_per_poss,
                 "format": "percent",
                 "color": color(score_per_poss, lambda v: v >= 30, lambda v: v < 22),
-                "trend": make_trend(score_per_poss, score_per_poss),
+                "trend": make_trend(score_per_poss, _funnel_rate(recent_ids, "scores", "possessions")),
             },
             {
                 "key": "opp_score_per_possession",
@@ -2883,7 +2900,7 @@ class SeasonDashboardService:
                 "value": opp_score_per_poss,
                 "format": "percent",
                 "color": color(opp_score_per_poss, lambda v: v <= 20, lambda v: v > 27),
-                "trend": make_trend(opp_score_per_poss, opp_score_per_poss),
+                "trend": make_trend(opp_score_per_poss, _funnel_rate(recent_ids, "opp_scores", "opp_possessions")),
             },
             {
                 "key": "turnover_to_score",
@@ -2891,7 +2908,7 @@ class SeasonDashboardService:
                 "value": turnover_to_score,
                 "format": "percent",
                 "color": color(turnover_to_score, lambda v: v >= 35, lambda v: v < 25),
-                "trend": make_trend(turnover_to_score, turnover_to_score),
+                "trend": make_trend(turnover_to_score, _recent_tts),
             },
             {
                 "key": "turnovers_conceded",
@@ -2899,7 +2916,7 @@ class SeasonDashboardService:
                 "value": round(t_lost / n, 1),
                 "format": "decimal",
                 "color": color(t_lost / n if n > 0 else 0, lambda v: v <= 10, lambda v: v > 16),
-                "trend": make_trend(t_lost / n if n > 0 else 0, recent_to_counts.get(EventType.TURNOVER_LOST, 0) / trend_window),
+                "trend": make_trend(t_lost / n if n > 0 else 0, recent_to_lost_pg),
             },
             {
                 "key": "pts_conceded_from_play",
@@ -2907,7 +2924,7 @@ class SeasonDashboardService:
                 "value": pts_conceded_from_play,
                 "format": "decimal",
                 "color": color(pts_conceded_from_play, lambda v: v <= 5.0, lambda v: v > 8.0),
-                "trend": make_trend(pts_conceded_from_play, pts_conceded_from_play),
+                "trend": make_trend(pts_conceded_from_play, await _opp_from_play_pts(recent_ids) / trend_window),
             },
             {
                 "key": "frees_in_scoring_range",
@@ -2915,7 +2932,7 @@ class SeasonDashboardService:
                 "value": frees_in_range_pg,
                 "format": "decimal",
                 "color": color(frees_in_range_pg, lambda v: v <= 5.0, lambda v: v > 8.0),
-                "trend": make_trend(frees_in_range_pg, frees_in_range_pg),
+                "trend": make_trend(frees_in_range_pg, await _frees_in_range(recent_ids) / trend_window),
             },
             {
                 "key": "clean_sheet_rate",
@@ -2939,7 +2956,7 @@ class SeasonDashboardService:
                 "value": opp_inside_45,
                 "format": "decimal",
                 "color": color(opp_inside_45, lambda v: v <= 16, lambda v: v > 22),
-                "trend": make_trend(opp_inside_45, opp_inside_45),
+                "trend": make_trend(opp_inside_45, _funnel_pg(recent_ids, "opp_attacks")),
             },
             {
                 "key": "own_inside_45",
@@ -2947,7 +2964,7 @@ class SeasonDashboardService:
                 "value": own_inside_45,
                 "format": "decimal",
                 "color": color(own_inside_45, lambda v: v >= 24, lambda v: v < 18),
-                "trend": make_trend(own_inside_45, own_inside_45),
+                "trend": make_trend(own_inside_45, _funnel_pg(recent_ids, "attacks")),
             },
             {
                 "key": "from_play_score_pct",
@@ -2995,7 +3012,7 @@ class SeasonDashboardService:
                 "value": card_rate,
                 "format": "decimal",
                 "color": color(card_rate, lambda v: v <= 1.0, lambda v: v > 2.0),
-                "trend": make_trend(card_rate, card_rate),
+                "trend": make_trend(card_rate, _cards(set(recent_ids))[0] / trend_window),
             },
             {
                 "key": "mins_14_men",
@@ -3003,7 +3020,7 @@ class SeasonDashboardService:
                 "value": mins_14_men_pg,
                 "format": "decimal",
                 "color": color(mins_14_men_pg, lambda v: v <= 5, lambda v: v > 15),
-                "trend": make_trend(mins_14_men_pg, mins_14_men_pg),
+                "trend": make_trend(mins_14_men_pg, _cards(set(recent_ids))[1] / trend_window),
             },
             {
                 "key": "unforced_errors_pg",
