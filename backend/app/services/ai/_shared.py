@@ -136,6 +136,33 @@ def _create_with_defaults(*args, **kwargs):
 
 client.messages.create = _create_with_defaults
 
+
+def stream_with_defaults(on_text, **kwargs):
+    """messages.stream with the same defaults and cost log as messages.create (between-tools thinking, the moving cache
+    breakpoint), calling on_text(chunk) for each piece of answer text as it arrives. Blocking: run it in a thread.
+    Returns the final message (stop_reason, content with any tool_use blocks, usage)."""
+    label = kwargs.pop("cost_label", None)
+    allow_thinking = kwargs.pop("allow_thinking", False)
+    model = str(kwargs.get("model", ""))
+    if not allow_thinking and "thinking" not in kwargs and model.startswith(("claude-sonnet-5", "claude-opus-5", "claude-fable-5")):
+        kwargs["thinking"] = {"type": "between_tools"}
+    if "messages" in kwargs:
+        kwargs["messages"] = _cache_conversation(kwargs["messages"])
+    with client.messages.stream(**kwargs) as stream:
+        for chunk in stream.text_stream:
+            if chunk:
+                on_text(chunk)
+        resp = stream.get_final_message()
+    try:
+        u = getattr(resp, "usage", None)
+        cost = call_cost(model, u)
+        logger.info(f"claude call [{label or 'unlabelled'}] {model} (stream): in {getattr(u, 'input_tokens', 0)}, "
+                    f"cache write {getattr(u, 'cache_creation_input_tokens', 0)}, cache read {getattr(u, 'cache_read_input_tokens', 0)}, "
+                    f"out {getattr(u, 'output_tokens', 0)}, stop {getattr(resp, 'stop_reason', None)}" + (f", ${cost:.4f}" if cost is not None else ""))
+    except Exception:
+        pass
+    return resp
+
 # =============================================================================
 # GAA ESSENTIALS (Slim reference — always present in every agent prompt)
 # Domain knowledge (tactics, KPIs, patterns) comes from RAG, not here.
@@ -567,7 +594,7 @@ async def get_club_context(db: AsyncSession, club_id) -> tuple:
 TOOLS = [
     {
         "name": "get_match_events",
-        "description": "Retrieve all events from a specific match including scores, turnovers, fouls. Use this to analyze what happened in a match.",
+        "description": "Retrieve events from a specific match including scores, turnovers, fouls. Use this to analyze what happened in a match. A whole match is large (thousands of rows): filter by player_id, event_types, team or half whenever the question is narrower than the whole match.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -589,6 +616,10 @@ TOOLS = [
                     "type": "integer",
                     "enum": [1, 2],
                     "description": "Optional filter for half"
+                },
+                "player_id": {
+                    "type": "string",
+                    "description": "Optional: only this player's events (as the player or the assist). UUID from search_players."
                 }
             },
             "required": ["match_id"]
@@ -2436,7 +2467,7 @@ async def _opposition_lineup_block(db: AsyncSession, match_id) -> list:
 
 
 async def get_match_events(db: AsyncSession, match_id: str, event_types: list = None,
-                           team: str = None, half: int = None, club_id=None) -> str:
+                           team: str = None, half: int = None, club_id=None, player_id: str = None) -> str:
     """Get events from a match with optional filters."""
     # Validate UUID — AI sometimes passes "recent" or other non-UUID strings
     import uuid as uuid_mod
@@ -2466,6 +2497,13 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use get_team_season_stats for season-wide data, or provide a specific match UUID."})
 
     query = select(MatchEvent).where(MatchEvent.match_id == match_id)
+    if player_id:
+        try:
+            _pid = uuid_mod.UUID(str(player_id))
+        except ValueError:
+            return safe_json({"error": f"'{player_id}' is not a valid player UUID - call search_players first."})
+        from sqlalchemy import or_ as _or_p
+        query = query.where(_or_p(MatchEvent.player_id == _pid, MatchEvent.assist_player_id == _pid))
 
     if event_types:
         # Convert strings to EventType enums (AI sends uppercase like "GOAL", DB expects enum)

@@ -965,6 +965,8 @@ export interface KPICardItem {
     window: number;
     season: number;
     recent: number;
+    /** whether the movement helps us (lower is better for errors, fouls, conceded...) */
+    good?: boolean | null;
   };
 }
 

@@ -189,7 +189,7 @@ class SeasonDashboardService:
     # without a version signature a deploy could silently keep serving an
     # old-shaped cached payload (the leaderboard cache hit exactly this bug
     # once, see the comment in _compute_all_rankings for the story).
-    SEASON_DASHBOARD_CACHE_VERSION = "v5"  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
+    SEASON_DASHBOARD_CACHE_VERSION = "v6"  # bumped (v5): KPI audit - turnover-to-score, opp score per possession, inside-45, real trends; (v4): ball-winning leaderboard counts tackles won and every player
 
     @staticmethod
     async def get_all(db: AsyncSession, club_id=None, background_tasks=None, competition=None, last_n=None, stage=None) -> dict:
@@ -2803,7 +2803,7 @@ class SeasonDashboardService:
         # Trend for recovery time: lower is better, so invert direction semantics
         if ball_recovery_avg > 0 and recent_recovery_avg > 0:
             _rec_chg = round((recent_recovery_avg - ball_recovery_avg) / ball_recovery_avg * 100)
-            _rec_dir = "down" if _rec_chg > 5 else ("up" if _rec_chg < -5 else "stable")
+            _rec_dir = "up" if _rec_chg > 5 else ("down" if _rec_chg < -5 else "stable")   # the real movement; "good" below says if it helps
         else:
             _rec_chg, _rec_dir = 0, "stable"
         recovery_trend = {
@@ -3039,6 +3039,16 @@ class SeasonDashboardService:
                 "trend": recovery_trend,
             },
         ])
+
+        # Is the movement good? "up" was always drawn green, so more unforced errors, fouls or goals conceded over the
+        # last 3 showed as a green arrow. direction stays the real movement; good says whether it helps us.
+        LOWER_IS_BETTER = {"fouls_per_game", "avg_conceded", "opp_score_per_possession", "turnovers_conceded",
+                           "pts_conceded_from_play", "frees_in_scoring_range", "goals_conceded_pg", "opp_inside_45",
+                           "card_rate", "mins_14_men", "unforced_errors_pg", "ball_recovery_avg_min"}
+        for c in cards:
+            t = c.get("trend")
+            if t and t.get("direction") in ("up", "down"):
+                t["good"] = (t["direction"] == "up") != (c["key"] in LOWER_IS_BETTER)
 
         return {
             "metadata": {

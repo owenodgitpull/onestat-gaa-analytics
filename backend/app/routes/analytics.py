@@ -274,6 +274,7 @@ class KPICardTrend(BaseModel):
     window: int
     season: float
     recent: float
+    good: Optional[bool] = None   # whether the movement helps us (lower is better for errors, fouls, conceded...)
 
 class KPICardItem(BaseModel):
     key: str

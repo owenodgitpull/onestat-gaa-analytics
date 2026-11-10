@@ -17,13 +17,26 @@ from sqlalchemy import select
 from app.services.ai._shared import (
     KB_TOOL_BLOCK,
     client, GAA_ESSENTIALS, TOOLS, execute_tool, get_cached_tools,
-    get_fixture_context, get_weather_context, get_club_context,
+    get_fixture_context, get_weather_context, get_club_context, stream_with_defaults,
 )
 from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
 SLIDING_WINDOW_SIZE = 10
+
+# Answer length cap. 2048 cut long answers short (a season review, a team of the season); streaming means a long answer
+# no longer risks the HTTP timeout.
+CHAT_MAX_TOKENS = 8000
+
+# A tool result bigger than this is not handed to the model: it gets a short "too large, narrow it" error instead. One
+# "Langan's scores on the pitch" question pulled get_match_events for five whole matches, ~283,000 tokens in one call
+# ($0.73), and the answer never arrived. ~60k characters is ~15k tokens.
+CHAT_TOOL_RESULT_MAX_CHARS = 60000
+NARROWING_HINTS = {
+    "get_match_events": "pass player_id (from search_players), event_types (e.g. [\"POINT\", \"GOAL\", \"TWO_POINT\"]), team or half, one match at a time",
+    "get_pitch_paths": "filter by match_id and outcome",
+}
 
 # A conversation was reported hanging forever with no response and nothing
 # ever persisted to chat_session_messages — traced to a misspelled opponent
@@ -86,11 +99,22 @@ TIMEOUT_FALLBACK_MESSAGE = (
 
 
 async def _execute_tool_with_timeout(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None, user_id=None) -> str:
+    t0 = time.monotonic()
     try:
-        return await asyncio.wait_for(
+        result = await asyncio.wait_for(
             execute_tool(tool_name, tool_input, db, club_id=club_id, user_id=user_id),
             timeout=TOOL_EXECUTION_TIMEOUT_SECONDS,
         )
+        size = len(result or "")
+        logger.info(f"chat tool {tool_name}: {size} chars in {time.monotonic() - t0:.1f}s, input {json.dumps(tool_input, default=str)[:200]}")
+        if size > CHAT_TOOL_RESULT_MAX_CHARS:
+            hint = NARROWING_HINTS.get(tool_name, "use the tool's filters, or a summary tool")
+            logger.warning(f"chat tool {tool_name}: result of {size} chars withheld (cap {CHAT_TOOL_RESULT_MAX_CHARS})")
+            return json.dumps({
+                "error": f"'{tool_name}' returned too much data to read ({size:,} characters). Call it again narrowed down: {hint}. "
+                         "Prefer the summary tools (get_match_summary, get_player_season_stats, get_scoring_patterns) for totals.",
+            })
+        return result
     except asyncio.TimeoutError:
         logger.warning(f"Tool '{tool_name}' timed out after {TOOL_EXECUTION_TIMEOUT_SECONDS}s")
         return json.dumps({
@@ -182,7 +206,7 @@ INSTRUCTIONS:
 
     response = await _create_with_timeout(
         model="claude-sonnet-5-5",
-        max_tokens=2048,
+        max_tokens=CHAT_MAX_TOKENS, cost_label="chat",
         system=system_prompt,
         tools=TOOLS,
         messages=messages
@@ -244,7 +268,7 @@ INSTRUCTIONS:
                 response = await _create_with_timeout(
                     timeout_seconds=WRAPUP_CALL_TIMEOUT_SECONDS,
                     model="claude-sonnet-5-5",
-                    max_tokens=2048,
+                    max_tokens=CHAT_MAX_TOKENS, cost_label="chat",
                     system=system_prompt,
                     messages=messages,
                 )
@@ -255,7 +279,7 @@ INSTRUCTIONS:
 
         response = await _create_with_timeout(
             model="claude-sonnet-5-5",
-            max_tokens=2048,
+            max_tokens=CHAT_MAX_TOKENS, cost_label="chat",
             system=system_prompt,
             tools=TOOLS,
             messages=messages
@@ -413,6 +437,33 @@ async def _maybe_summarize_and_trim(
         return recent_messages, None
 
 
+async def _stream_round(idle_timeout_seconds: int, **kwargs):
+    """One model call, streamed: yields ("text", chunk) as the answer is written, then ("final", message). The SDK
+    client is synchronous, so the stream runs in a worker thread and hands chunks over through a queue. The timeout is
+    on silence (no new text and no finish for idle_timeout_seconds), so a long answer that keeps arriving is not cut off."""
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def on_text(chunk):
+        loop.call_soon_threadsafe(queue.put_nowait, chunk)
+
+    fut = loop.run_in_executor(None, lambda: stream_with_defaults(on_text, **kwargs))
+    last = time.monotonic()
+    while True:
+        try:
+            chunk = await asyncio.wait_for(queue.get(), timeout=0.25)
+            last = time.monotonic()
+            yield ("text", chunk)
+            continue
+        except asyncio.TimeoutError:
+            pass
+        if fut.done() and queue.empty():
+            break
+        if time.monotonic() - last > idle_timeout_seconds:
+            raise asyncio.TimeoutError(f"no reply for {idle_timeout_seconds}s")
+    yield ("final", await fut)
+
+
 async def chat_with_analyst_stream(
     db: AsyncSession,
     conversation_history: list,
@@ -451,15 +502,18 @@ async def chat_with_analyst_stream(
         cached_tools = get_cached_tools()
         turn_start = time.monotonic()
 
-        # Non-streaming tool loop phase
-        response = await _create_with_timeout(
-            timeout_seconds=timeout_seconds,
-            model="claude-sonnet-5-5",
-            max_tokens=2048,
-            system=system_prompt,
-            tools=cached_tools,
-            messages=messages
-        )
+        # Every round is streamed: answer text reaches the user as it is written (it used to wait for the whole answer,
+        # then replay it in 15-character pieces). Text between tool calls comes back as thinking blocks with
+        # between-tools thinking, so what streams is the answer.
+        streamed_any = False
+        response = None
+        async for kind, item in _stream_round(timeout_seconds, model="claude-sonnet-5-5", max_tokens=CHAT_MAX_TOKENS,
+                                              system=system_prompt, tools=cached_tools, messages=messages, cost_label="chat"):
+            if kind == "text":
+                streamed_any = True
+                yield f"data: {json.dumps({'type': 'text', 'content': item})}\n\n"
+            else:
+                response = item
 
         # Capped for the same reason as chat_with_analyst — without this, a
         # model that never settles on a final answer left the chat hanging
@@ -484,11 +538,9 @@ async def chat_with_analyst_stream(
             # a single Claude response can pack in a dozen-plus tool_use blocks
             # (seen live: ~18 sequential get_player_season_stats calls for a
             # "team of the season" question), and that alone can blow the whole
-            # budget within one round, before the between-rounds check below
-            # ever gets a chance to run. Once over budget, stop EXECUTING more
+            # budget within one round. Once over budget, stop EXECUTING more
             # tools but still provide a tool_result for every remaining
-            # tool_use block — Anthropic's API requires one-to-one correspondence,
-            # so skipping the entry entirely would make the next call malformed.
+            # tool_use block — the API requires one-to-one correspondence.
             budget_exceeded = False
             for block in response.content:
                 if block.type == "tool_use":
@@ -539,7 +591,8 @@ async def chat_with_analyst_stream(
             messages.append({"role": "user", "content": tool_results})
 
             elapsed = time.monotonic() - turn_start
-            if budget_exceeded or elapsed > TOTAL_STREAM_BUDGET_SECONDS:
+            wrap_up = budget_exceeded or elapsed > TOTAL_STREAM_BUDGET_SECONDS
+            if wrap_up:
                 logger.warning(
                     f"chat_with_analyst_stream: time budget exceeded ({elapsed:.0f}s) after "
                     f"tool round {iterations} — forcing a text-only wrap-up (session {session_id})"
@@ -551,53 +604,34 @@ async def chat_with_analyst_stream(
                         "information already gathered above. Do not call any more tools.)"
                     ),
                 })
-                # The wrap-up call itself can still fail — a context swollen by a
-                # dozen-plus tool results can be too much for even a no-tools
-                # call to finish inside WRAPUP_CALL_TIMEOUT_SECONDS. That
-                # failure used to propagate all the way to the outer except
-                # block below with nothing yielded but an empty-message error
-                # event — no text, so nothing ever got persisted, and a page
-                # reload showed the question with no answer at all. Falling
-                # back to a plain apology here guarantees SOMETHING real is
-                # always yielded (and therefore saved) for this turn.
-                try:
-                    response = await _create_with_timeout(
-                        timeout_seconds=WRAPUP_CALL_TIMEOUT_SECONDS,
-                        model="claude-sonnet-5-5",
-                        max_tokens=2048,
-                        system=system_prompt,
-                        messages=messages,
-                    )
-                except Exception as wrapup_err:
-                    logger.warning(f"chat_with_analyst_stream: wrap-up call also failed: {wrapup_err} (session {session_id})")
-                    yield f"data: {json.dumps({'type': 'text', 'content': TIMEOUT_FALLBACK_MESSAGE})}\n\n"
-                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                    return
+
+            # The wrap-up call itself can still fail; falling back to a plain apology guarantees SOMETHING real is
+            # always yielded (and therefore saved) for this turn.
+            try:
+                round_kwargs = dict(model="claude-sonnet-5-5", max_tokens=CHAT_MAX_TOKENS, system=system_prompt,
+                                    messages=messages, cost_label="chat")
+                if not wrap_up:
+                    round_kwargs["tools"] = cached_tools
+                async for kind, item in _stream_round(WRAPUP_CALL_TIMEOUT_SECONDS if wrap_up else timeout_seconds, **round_kwargs):
+                    if kind == "text":
+                        streamed_any = True
+                        yield f"data: {json.dumps({'type': 'text', 'content': item})}\n\n"
+                    else:
+                        response = item
+            except Exception as round_err:
+                if not wrap_up:
+                    raise
+                logger.warning(f"chat_with_analyst_stream: wrap-up call also failed: {round_err} (session {session_id})")
+                yield f"data: {json.dumps({'type': 'text', 'content': TIMEOUT_FALLBACK_MESSAGE})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+            if wrap_up:
                 break
 
-            response = await _create_with_timeout(
-                timeout_seconds=timeout_seconds,
-                model="claude-sonnet-5-5",
-                max_tokens=2048,
-                system=system_prompt,
-                tools=cached_tools,
-                messages=messages
-            )
-
-        # Extract final text and stream it in chunks
-        final_text = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                final_text += block.text
-
-        if not final_text:
-            final_text = TIMEOUT_FALLBACK_MESSAGE
-
-        # Chunk the text (~15 chars each) for typing effect
-        chunk_size = 15
-        for i in range(0, len(final_text), chunk_size):
-            chunk = final_text[i:i + chunk_size]
-            yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+        if not streamed_any:
+            yield f"data: {json.dumps({'type': 'text', 'content': TIMEOUT_FALLBACK_MESSAGE})}\n\n"
+        elif response is not None and response.stop_reason == "max_tokens":
+            yield f"data: {json.dumps({'type': 'text', 'content': chr(10) + chr(10) + '_(The answer hit the length limit — ask me to continue.)_'})}\n\n"
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

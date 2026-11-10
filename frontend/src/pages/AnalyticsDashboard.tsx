@@ -773,11 +773,12 @@ export default function AnalyticsDashboard() {
                       <div className="text-white/75 text-xs font-semibold uppercase tracking-wide mb-2 pr-8">{card.label}</div>
                       <div className={`text-4xl font-bold leading-none tabular-nums ${valueColor}`}>{displayValue}</div>
                       {card.trend && card.trend.direction !== 'stable' && (
-                        <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${card.trend.direction === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
+                        <div className={`flex items-center gap-1 mt-2 text-xs font-medium ${(card.trend.good ?? card.trend.direction === 'up') ? 'text-emerald-400' : 'text-red-400'}`}
+                          title={`Last ${card.trend.window} matches ${card.trend.recent} vs season ${card.trend.season} — ${(card.trend.good ?? card.trend.direction === 'up') ? 'better' : 'worse'}`}>
                           {card.trend.direction === 'up'
                             ? <TrendingUp size={12} />
                             : <TrendingDown size={12} />}
-                          <span>Last {card.trend.window}</span>
+                          <span>Last {card.trend.window}: {card.trend.recent}</span>
                         </div>
                       )}
                       {card.trend && card.trend.direction === 'stable' && (
