@@ -1315,10 +1315,10 @@ TOOLS = [
             "player and/or event type — e.g. 'show me Conor Greene's wides this season'. Call search_players "
             "FIRST if given a name, then pass its player_id here — never guess a player_id. This is NOT "
             "instant: it starts a background job that can take a few minutes (re-encoding video is the "
-            "slow part, not finding the clips) and the requester gets notified in the app once the file is "
-            "ready to download from their Video Compilations list — don't tell the user to wait here in "
-            "chat, tell them you've started it and they'll be notified when it's ready, not that it's ready "
-            "now. If zero tagged clips match, say so plainly and do NOT start a job — never fabricate or "
+            "slow part, not finding the clips). When it is ready it plays right in this chat reply (with full "
+            "screen and download), the requester is notified, and it is kept in their Video Compilations "
+            "library: tell them you've started it, not that it's ready now. Describe what is in it from the "
+            "result's breakdown (two-pointers are points flagged in tagging, already counted in it). If zero tagged clips match, say so plainly and do NOT start a job — never fabricate or "
             "guess at footage that doesn't exist. Capped at "
             f"{20} clips per compilation (most-recent-match-first) — mention if the real match count was "
             "larger so the user knows the video isn't exhaustive."
@@ -1332,7 +1332,7 @@ TOOLS = [
                 },
                 "event_type": {
                     "type": "string",
-                    "description": "Optional — one of the tagged video event types (e.g. WIDE, POINT_SCORED, GOAL_SCORED, TURNOVER_WON, INTERCEPTION, BLOCK_SHOT). Omit to include every event type for the given player."
+                    "description": "Optional — one of the tagged video event types (e.g. WIDE, POINT_SCORED, GOAL_SCORED, TURNOVER_WON, INTERCEPTION, BLOCK_SHOT), or SCORES (points and goals) or TWO_POINTER (two-pointers only). There is no separate two-pointer event type: a two-pointer is a POINT_SCORED flagged as a two-pointer, so POINT_SCORED and SCORES already include them, and the result's breakdown says how many. Omit to include every event type for the given player."
                 },
                 "match_id": {
                     "type": "string",
@@ -7164,6 +7164,13 @@ async def create_video_compilation(
         "compilation_id": str(compilation.id),
         "title": title,
         "clip_count": len(matches),
+        # what is in the reel, so the reply describes it from the clips (a two-pointer is a point flagged in tagging)
+        "breakdown": {
+            "by_event_type": {t: sum(1 for m in matches if m.event_type == t) for t in sorted({m.event_type for m in matches})},
+            "two_pointers": sum(1 for m in matches if m.is_two_pointer),
+            "from_frees": sum(1 for m in matches if (m.source or "").upper() in ("FREE", "FROM_FREE", "FREE_KICK")),
+            "matches": sorted({f"{m.opponent} ({m.match_date})" for m in matches}),
+        },
         "message": (
             f"Started building a {len(matches)}-clip compilation titled '{title}'. This runs in the "
             "background (about 10 s a clip) — tell the user it's processing now; it will play right here in "

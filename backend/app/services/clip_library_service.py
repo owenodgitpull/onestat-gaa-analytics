@@ -31,6 +31,15 @@ class ClipMatch:
     opponent: str
     match_date: Optional[str]
     suggested_label: str
+    is_two_pointer: bool = False
+    source: Optional[str] = None      # FROM_PLAY / FREE / MARK / PENALTY ... (scoring_context.source)
+
+
+# Names that are not stored event types: a two-pointer is a POINT_SCORED tagged with scoring_context.is_two_pointer
+# (there is no TWO_POINT event type, so a search for one found nothing and the agent said there were no two-pointer
+# clips although 3 were in the reel); "scores" means points (two-pointers included) and goals.
+TWO_POINTER_ALIASES = {"TWO_POINTER", "TWO_POINTERS", "TWO_POINT_SCORED", "TWO_POINT", "2_POINTER", "TWO_POINTER_SCORED"}
+SCORE_ALIASES = {"SCORE", "SCORES", "SCORED", "ALL_SCORES"}
 
 
 async def search_clips(
@@ -53,8 +62,14 @@ async def search_clips(
     )
     if player_id:
         query = query.where(VideoEvent.player_id == player_id)
-    if event_type:
-        query = query.where(VideoEvent.event_type == event_type)
+    et = (event_type or "").strip().upper().replace(" ", "_").replace("-", "_") or None
+    if et in TWO_POINTER_ALIASES:
+        query = query.where(VideoEvent.event_type == "POINT_SCORED",
+                            VideoEvent.scoring_context["is_two_pointer"].as_boolean().is_(True))
+    elif et in SCORE_ALIASES:
+        query = query.where(VideoEvent.event_type.in_(("POINT_SCORED", "GOAL_SCORED")))
+    elif et:
+        query = query.where(VideoEvent.event_type == et)
     if match_id:
         query = query.where(VideoEvent.match_id == match_id)
     if search:
@@ -84,5 +99,7 @@ async def search_clips(
             opponent=opponent,
             match_date=match_date.strftime('%d %b %Y') if match_date else None,
             suggested_label=" ".join(label_bits),
+            is_two_pointer=bool((ve.scoring_context or {}).get("is_two_pointer")) if isinstance(ve.scoring_context, dict) else False,
+            source=(ve.scoring_context or {}).get("source") if isinstance(ve.scoring_context, dict) else None,
         ))
     return matches

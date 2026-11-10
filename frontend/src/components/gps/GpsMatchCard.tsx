@@ -15,19 +15,27 @@ export default function GpsMatchCard({ matchId }: { matchId: string }) {
   const sumQ = useQuery({ queryKey: ['gps-timeseries', matchId], queryFn: () => api.matchGpsTimeseries.getSummary(matchId), retry: false, staleTime: 60000 })
   const synced = sumQ.data?.sync && (sumQ.data.sync.status === 'auto' || sumQ.data.sync.status === 'confirmed')
   const aQ = useQuery({ queryKey: ['gps-analysis', matchId], queryFn: () => gpsAnalysisApi.analysis(matchId), enabled: !!synced, retry: false, staleTime: 5 * 60 * 1000 })
-  if (!synced) return null
+  // shown at once with a loading state (it used to appear only after the check, so people scrolled past it); hidden
+  // only once we know the match has no synced GPS
+  if (!sumQ.isLoading && !synced) return null
   const s = aQ.data?.summary
+  const loadingText = sumQ.isLoading ? 'Checking for GPS data…' : 'Working out the GPS numbers…'
   return (
     <div className="glass-card p-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-white font-semibold"><Activity size={16} className="text-emerald-400" /> GPS</div>
         <div className="flex gap-1.5">
-          <Link to={`/results/${matchId}/gps?tab=replay`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"><Play size={13} /> Replay</Link>
+          <Link to={`/results/${matchId}/gps?tab=replay`} aria-disabled={!synced} onClick={e => { if (!synced) e.preventDefault() }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"><Play size={13} /> Replay</Link>
           <Link to={`/results/${matchId}/gps?tab=overview`} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-white text-xs font-medium">All GPS views</Link>
         </div>
       </div>
-      {aQ.isLoading ? (
-        <div role="status" className="flex items-center gap-2 text-sm text-white/60"><Loader2 size={14} className="animate-spin" /> Working out the GPS numbers…</div>
+      {sumQ.isLoading || aQ.isLoading ? (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2" aria-hidden="true">
+            {[0, 1, 2, 3].map(i => <div key={i} className="h-[74px] rounded-xl bg-white/5 border border-white/10 animate-pulse" />)}
+          </div>
+          <div role="status" className="flex items-center gap-2 text-sm text-white/60"><Loader2 size={14} className="animate-spin" /> {loadingText}</div>
+        </>
       ) : aQ.isError ? (
         <div role="status" className="text-sm text-red-300">GPS numbers not available: {(aQ.error as Error)?.message}</div>
       ) : s && (

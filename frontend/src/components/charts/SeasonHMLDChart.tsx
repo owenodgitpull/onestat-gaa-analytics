@@ -101,7 +101,16 @@ export default function SeasonHMLDChart({ data }: Props) {
   const yMax = vals.length ? Math.ceil(Math.max(...vals) * 1.18) : 10
   const yMin = vals.length ? Math.floor(Math.min(...vals) * 0.85) : 0
 
-  const { trend_pct, peak_match } = data
+  // Peak and trend follow the selected measure (the server's peak_match / trend_pct are for HMLD density only, so the
+  // Peak tile stayed on 25.3 m/min while the tabs changed). Trend: last 3 matches vs the earlier ones, as the server does.
+  const withVal = data.per_match.filter(m => m[metric] != null)
+  const peak_match = withVal.length ? withVal.reduce((a, b) => ((b[metric] as number) > (a[metric] as number) ? b : a)) : null
+  const trend_pct = (() => {
+    if (withVal.length < 4) return null
+    const mean = (xs: typeof withVal) => xs.reduce((t, m) => t + (m[metric] as number), 0) / xs.length
+    const recent = mean(withVal.slice(-3)), prior = mean(withVal.slice(0, -3))
+    return Math.round((recent - prior) / Math.max(prior, 0.01) * 1000) / 10
+  })()
 
   const TrendIcon = trend_pct == null
     ? Minus
@@ -152,10 +161,10 @@ export default function SeasonHMLDChart({ data }: Props) {
         <div className="bg-white/5 rounded-xl px-3 py-2.5 text-center">
           <p className="text-[10px] text-white/40 uppercase tracking-wide mb-0.5">Peak</p>
           <p className="text-xl font-bold text-emerald-400 leading-none">
-            {peak_match ? peak_match.hmld_density.toFixed(1) : '-'}
+            {peak_match ? fmt(peak_match[metric] as number, metricCfg.decimals) : '-'}
           </p>
           <p className="text-[10px] text-white/30 mt-0.5 truncate">
-            {peak_match ? abbrev(peak_match.opponent) : 'm/min'}
+            {peak_match ? abbrev(peak_match.opponent) : metricCfg.unit}
           </p>
         </div>
         <div className="bg-white/5 rounded-xl px-3 py-2.5 text-center">

@@ -158,7 +158,9 @@ class NotificationService:
                         vapid_claims=VAPID_CLAIMS,
                     )
                 except WebPushException as e:
-                    if e.response and e.response.status_code in (404, 410):
+                    # `e.response is not None`, not truthiness: a requests Response is falsy for a 4xx, so expired
+                    # subscriptions (410 Gone) were never removed and every push re-tried them
+                    if e.response is not None and e.response.status_code in (404, 410):
                         # Subscription expired — remove it
                         await db.delete(sub)
                         await db.commit()
