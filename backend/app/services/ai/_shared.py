@@ -56,7 +56,7 @@ _create_unwrapped = client.messages.create
 
 # List prices per million tokens: (input, output, cache write 5 min, cache read). Used only for the cost log line.
 _PRICES = {
-    "claude-sonnet-5-5": (2.0, 10.0, 2.5, 0.2),
+    "claude-sonnet-5-5": (2.0, 10.0, 2.5, 0.10),     # cache read $0.10 (pricing page, fetched 2026-11-10)
     "claude-haiku-5-5": (0.10, 0.50, 0.125, 0.01),   # prompts up to 100K tokens
     "claude-haiku-4-5": (1.0, 5.0, 1.25, 0.1),
 }

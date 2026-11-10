@@ -22,6 +22,6 @@ def test_one_moving_breakpoint_and_caller_list_untouched():
 
 def test_cost_and_text():
     u = SimpleNamespace(input_tokens=1_000_000, output_tokens=100_000, cache_creation_input_tokens=0, cache_read_input_tokens=1_000_000)
-    assert round(call_cost("claude-sonnet-5-5", u), 2) == 3.2     # $2 + $1 + $0.20
+    assert round(call_cost("claude-sonnet-5-5", u), 2) == 3.1     # $2 + $1 + $0.10 (cache read, pricing page 2026-11-10)
     r = SimpleNamespace(content=[SimpleNamespace(type="thinking", thinking=""), SimpleNamespace(type="text", text="hi")])
     assert text_of(r) == "hi"
