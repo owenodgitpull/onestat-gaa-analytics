@@ -1584,6 +1584,8 @@ const analyticsAPI = {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** reels the Analyst built in this reply (UI only, never sent back as history) */
+  videos?: { compilation_id: string; title?: string | null; clip_count?: number | null }[];
 }
 
 export interface AnalysisResponse {
@@ -1891,7 +1893,7 @@ export interface ChatSessionDetail {
   messages: Array<{
     role: string;
     content: string;
-    visualizations?: Array<{ kind: 'chart' | 'table'; data: any }>;
+    visualizations?: Array<{ kind: 'chart' | 'table' | 'video'; data: any }>;
     created_at: string;
   }>;
   created_at: string;
@@ -1905,6 +1907,7 @@ export interface StreamChatCallbacks {
   onError: (message: string) => void;
   onChart?: (chart: AIChartSpec) => void;
   onTable?: (table: DataTable) => void;
+  onVideo?: (video: { compilation_id: string; title?: string | null; clip_count?: number | null }) => void;
   onSessionCreated?: (sessionId: string) => void;
   onSessionTitle?: (title: string) => void;
 }
@@ -1925,7 +1928,7 @@ const aiAPI = {
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        conversation_history: conversationHistory,
+        conversation_history: conversationHistory.map(m => ({ role: m.role, content: m.content })),
         message,
         ...(sessionId && { session_id: sessionId }),
       }),
@@ -1977,6 +1980,9 @@ const aiAPI = {
               break;
             case 'table':
               callbacks.onTable?.(payload.table);
+              break;
+            case 'video':
+              callbacks.onVideo?.(payload.video);
               break;
             case 'session_created':
               callbacks.onSessionCreated?.(payload.session_id);

@@ -7166,7 +7166,8 @@ async def create_video_compilation(
         "clip_count": len(matches),
         "message": (
             f"Started building a {len(matches)}-clip compilation titled '{title}'. This runs in the "
-            "background — tell the user it's processing now and they'll get a notification (and find it "
-            "in their Video Compilations list) once it's ready to download. Don't imply it's ready yet."
+            "background (about 10 s a clip) — tell the user it's processing now; it will play right here in "
+            "the chat when it's ready (with download and full screen), and is also saved in their Video "
+            "Compilations library. Don't imply it's ready yet."
         ),
     })

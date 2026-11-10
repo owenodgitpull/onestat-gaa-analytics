@@ -26,8 +26,9 @@ export const videoCompilationsAPI = {
 
   get: (id: string) => fetchAPI<VideoCompilationItem>(`/video-compilations/${id}`),
 
-  getDownloadUrl: (id: string) =>
-    fetchAPI<{ download_url: string }>(`/video-compilations/${id}/download-url`),
+  /** to play (default) or, with download, a URL that saves the file */
+  getDownloadUrl: (id: string, download = false) =>
+    fetchAPI<{ download_url: string }>(`/video-compilations/${id}/download-url${download ? '?download=true' : ''}`),
 
   remove: (id: string) => fetchAPI<void>(`/video-compilations/${id}`, { method: 'DELETE' }),
 };

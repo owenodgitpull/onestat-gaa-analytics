@@ -7,6 +7,7 @@ import DynamicChart from '@/components/DynamicChart'
 import DataTableCard from '@/components/DataTableCard'
 import ChatSessionSidebar from '@/components/ChatSessionSidebar'
 import FeatureGate from '@/components/FeatureGate'
+import ChatVideoCard, { type ChatVideo } from '@/components/ChatVideoCard'
 
 // Friendly labels for tool names shown during thinking phase
 const TOOL_LABELS: Record<string, string> = {
@@ -24,6 +25,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_pitch_paths: 'pitch paths',
   generate_chart: 'chart',
   create_data_table: 'table',
+  create_video_compilation: 'clips for your video',
 }
 
 function friendlyToolName(tool: string): string {
@@ -126,7 +128,8 @@ function AIAnalystPageInner() {
       const loadedVizs: VizItem[] = []
 
       for (const msg of detail.messages) {
-        loadedMessages.push({ role: msg.role as 'user' | 'assistant', content: msg.content })
+        const vids = (msg.visualizations || []).filter(v => v.kind === 'video').map(v => v.data as ChatVideo)
+        loadedMessages.push({ role: msg.role as 'user' | 'assistant', content: msg.content, ...(vids.length ? { videos: vids } : {}) })
         if (msg.visualizations) {
           for (const viz of msg.visualizations) {
             if (viz.kind === 'chart') {
@@ -208,6 +211,7 @@ function AIAnalystPageInner() {
 
     try {
       let accumulated = ''
+      const videos: ChatVideo[] = []
 
       await api.ai.streamChat(messages, userMessage.content, {
         onThinking: (tool) => {
@@ -233,6 +237,7 @@ function AIAnalystPageInner() {
           setVisualizations(prev => [...prev, vizItem])
           setMobileView(prev => prev === 'chat' ? 'viz' : prev)
         },
+        onVideo: (video) => { videos.push(video) },
         onSessionCreated: (newSessionId) => {
           setCurrentSessionId(newSessionId)
           navigate(`/analyst/${newSessionId}`, { replace: true })
@@ -248,7 +253,7 @@ function AIAnalystPageInner() {
           })
         },
         onDone: () => {
-          setMessages(prev => [...prev, { role: 'assistant', content: accumulated }])
+          setMessages(prev => [...prev, { role: 'assistant', content: accumulated, ...(videos.length ? { videos: [...videos] } : {}) }])
           setStreamingContent('')
           setIsStreaming(false)
           setLoading(false)
@@ -414,7 +419,10 @@ function AIAnalystPageInner() {
               } : undefined}
             >
               {msg.role === 'assistant' ? (
-                <div className="text-sm">{renderAnalysisText(msg.content)}</div>
+                <>
+                  <div className="text-sm">{renderAnalysisText(msg.content)}</div>
+                  {msg.videos?.map(v => <ChatVideoCard key={v.compilation_id} video={v} />)}
+                </>
               ) : (
                 <p className="text-sm">{msg.content}</p>
               )}

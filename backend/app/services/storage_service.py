@@ -411,8 +411,10 @@ class StorageService:
             logger.error(f"Failed to stream download from R2: {e}")
             return False
 
-    def get_download_url(self, key: str, expires_in: int = 3600, club_id: Optional[str] = None) -> Optional[str]:
-        """Generate a pre-signed download URL with club access validation."""
+    def get_download_url(self, key: str, expires_in: int = 3600, club_id: Optional[str] = None,
+                         attachment_name: Optional[str] = None) -> Optional[str]:
+        """Generate a pre-signed download URL with club access validation. attachment_name: the browser saves the
+        file under that name instead of playing it (Content-Disposition: attachment)."""
         if not self.is_configured:
             return None
 
@@ -423,7 +425,8 @@ class StorageService:
                 'get_object',
                 Params={
                     'Bucket': self.bucket_name,
-                    'Key': key
+                    'Key': key,
+                    **({'ResponseContentDisposition': f'attachment; filename="{attachment_name}"'} if attachment_name else {}),
                 },
                 ExpiresIn=expires_in
             )

@@ -67,9 +67,11 @@ async def get_compilation(
 @router.get("/{compilation_id}/download-url")
 async def get_download_url(
     compilation_id: UUID,
+    download: bool = False,
     user: AuthenticatedUser = Depends(require_admin_or_viewer),
     db: AsyncSession = Depends(get_db),
 ):
+    """A signed URL for the reel: to play (default) or, with download=true, to save as a file."""
     result = await db.execute(
         select(VideoCompilation).where(VideoCompilation.id == compilation_id, VideoCompilation.club_id == user.club_id)
     )
@@ -80,7 +82,10 @@ async def get_download_url(
         raise HTTPException(status_code=400, detail=f"Compilation is not ready (status: {compilation.status.value})")
 
     from app.services.storage_service import storage
-    url = storage.get_download_url(compilation.output_r2_key, expires_in=3600, club_id=str(user.club_id))
+    import re as _re
+    fname = (_re.sub(r"[^A-Za-z0-9 _-]+", "", compilation.title or "reel").strip().replace(" ", "_") or "reel") + ".mp4"
+    url = storage.get_download_url(compilation.output_r2_key, expires_in=3600, club_id=str(user.club_id),
+                                   attachment_name=fname if download else None)
     if not url:
         raise HTTPException(status_code=500, detail="Failed to generate download URL")
     return {"download_url": url}

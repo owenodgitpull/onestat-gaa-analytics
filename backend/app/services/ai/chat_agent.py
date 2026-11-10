@@ -516,6 +516,15 @@ async def chat_with_analyst_stream(
                                 yield f"data: {json.dumps({'type': 'chart', 'chart': parsed['chart']})}\n\n"
                         except (json.JSONDecodeError, TypeError):
                             pass
+                    elif block.name == "create_video_compilation":
+                        # the reel plays in the chat once built (and stays in Video Compilations)
+                        try:
+                            parsed = json.loads(tool_result)
+                            if parsed.get("compilation_id"):
+                                video = {k: parsed.get(k) for k in ("compilation_id", "title", "clip_count")}
+                                yield f"data: {json.dumps({'type': 'video', 'video': video})}\n\n"
+                        except (json.JSONDecodeError, TypeError):
+                            pass
                     elif block.name == "create_data_table":
                         try:
                             parsed = json.loads(tool_result)

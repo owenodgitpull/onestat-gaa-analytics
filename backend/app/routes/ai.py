@@ -493,6 +493,8 @@ async def chat_stream_endpoint(
                             collected_vizs.append({"kind": "chart", "data": payload["chart"]})
                         elif payload.get("type") == "table" and payload.get("table"):
                             collected_vizs.append({"kind": "table", "data": payload["table"]})
+                        elif payload.get("type") == "video" and payload.get("video"):
+                            collected_vizs.append({"kind": "video", "data": payload["video"]})
                     except (json.JSONDecodeError, TypeError):
                         pass
         except Exception as e:

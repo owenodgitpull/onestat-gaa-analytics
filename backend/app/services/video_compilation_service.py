@@ -35,6 +35,25 @@ CLIP_LEAD_MS = 6000
 # Per event type, from the GPS-measured tap lag (docs/gps-build-handover.md): only types that need more than 6 s.
 CLIP_LEAD_BY_TYPE_MS = {"FOUL_COMMITTED": 10000}
 CLIP_TAIL_MS = 4000
+# Lead from the player's own carry: start this long before he got the ball, never more than CLIP_LEAD_MAX_MS before the tap.
+CARRY_LEAD_PAD_MS = 2000
+CLIP_LEAD_MAX_MS = 15000
+
+
+async def _carry_lead_ms(db, event) -> int:
+    """How far before the tap the clip should open so it shows the player receiving the ball: his latest tagged carry
+    that started before the tap (within the max), plus a pad. 0 when there is no such carry."""
+    if not event.player_id and not getattr(event, "opposition_player_id", None) or event.video_timestamp_ms is None:
+        return 0
+    from sqlalchemy import text as _text
+    col, pid = ("player_id", event.player_id) if event.player_id else ("opposition_player_id", event.opposition_player_id)
+    row = (await db.execute(_text(
+        f"select max(video_timestamp_ms) from ball_carrier_segments where match_id = :m and {col} = :p "
+        "and video_timestamp_ms <= :t and video_timestamp_ms >= :t - :mx"),
+        {"m": event.match_id, "p": pid, "t": event.video_timestamp_ms, "mx": CLIP_LEAD_MAX_MS - CARRY_LEAD_PAD_MS})).scalar()
+    if row is None:
+        return 0
+    return int(min(CLIP_LEAD_MAX_MS, event.video_timestamp_ms - row + CARRY_LEAD_PAD_MS))
 
 # Cost/scope guard. Empirically measured against real production video
 # (2026-09-18): 2 clips from a single 2.4GB source, including deep-seek
@@ -113,8 +132,12 @@ async def run_compilation(compilation_id: UUID) -> None:
                         logger.warning(f"Compilation {compilation_id}: no download URL for clip {i}, skipping")
                         continue
 
-                    # taps land after the action; fouls are tapped 5-8 s late (GPS-measured), so they get a longer lead
+                    # taps land after the action; fouls are tapped 5-8 s late (GPS-measured), so they get a longer lead.
+                    # A fixed lead missed the kick when the tap came late (Langan v Kerry 29 Mar: kicked 6.5 s and
+                    # 8.2 s before the tap, clip opened on the ball in the air), so the clip opens before the player
+                    # got the ball when his tagged carry says so.
                     lead_ms = max(CLIP_LEAD_MS, CLIP_LEAD_BY_TYPE_MS.get(event.event_type or "", 0))
+                    lead_ms = max(lead_ms, await _carry_lead_ms(db, event))
                     start_sec = max(0, event.video_timestamp_ms - lead_ms) / 1000
                     duration_sec = (lead_ms + CLIP_TAIL_MS) / 1000
                     clip_path = str(Path(tmpdir) / f"clip_{i:03d}.mp4")
