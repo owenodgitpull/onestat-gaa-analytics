@@ -36,28 +36,28 @@ logger = logging.getLogger(__name__)
 
 # Tools available to the season agent (dashboard/KPI tasks)
 SEASON_TOOLS = [
-    "get_team_season_stats",
-    "get_squad_season_stats",
+    "get_team_season_totals",
+    "get_all_players_season_stats",
     "get_player_season_stats",
-    "get_scoring_patterns",
-    "get_turnover_analysis",
+    "get_season_scoring_zones",
+    "get_season_turnover_breakdown",
     "get_attendance_data",
-    "get_team_gps_summary",
+    "get_team_gps_averages",
     "get_player_gps_stats",
-    "get_match_events",
+    "get_match_event_log",
     "get_match_summary",
-    "get_stats_by_half",
+    "get_season_stats_by_half",
     "search_players",
     "get_recent_lineup_history",
     "display_starting_lineup",
-    "get_ball_carrier_data",
+    "get_match_ball_carrying_and_passing",
     "get_formation_snapshots",
     "get_man_marking_history",
     "get_fitness_tests",
-    "get_performance_correlations",
+    "get_gps_metric_vs_results",
     "get_player_form_trajectory",
-    "get_fitness_match_link",
-    "get_contextual_patterns",
+    "get_fitness_tests_vs_match_gps",
+    "get_results_by_weather_venue_rest",
     "get_workload_risk_assessment",
     "get_tactical_tags",
     "get_sleep_data",
@@ -70,8 +70,8 @@ SEASON_TOOLS = [
     "create_video_compilation",
     "get_phase_summary",
     "get_season_phase_profile",
-    "get_gps_match_analysis",
-    "get_gps_season_trends",
+    "get_match_gps_positional_analysis",
+    "get_gps_shape_trends_by_match",
 ]
 
 # Tools for player-level tasks (season story, insights, challenges)
@@ -80,11 +80,11 @@ PLAYER_TOOLS = [
     "get_player_season_stats",
     "get_player_gps_stats",
     "get_attendance_data",
-    "get_match_events",
+    "get_match_event_log",
     "get_match_summary",
-    "get_scoring_patterns",
+    "get_season_scoring_zones",
     "get_fitness_tests",
-    "get_performance_correlations",
+    "get_gps_metric_vs_results",
     "get_workload_risk_assessment",
     "get_sleep_data",
     "search_knowledge_base",   # the prompt tells every season task to ground advice in the knowledge base
@@ -93,7 +93,7 @@ PLAYER_TOOLS = [
 # Tools for training session tasks
 TRAINING_TOOLS = [
     "get_training_session_gps",
-    "get_team_gps_summary",
+    "get_team_gps_averages",
     "get_attendance_data",
     "search_players",
     "get_sleep_data",
@@ -1001,12 +1001,12 @@ class SeasonAgent:
                 db, "weekly_brief", context, club_id=club_id,
                 model="claude-sonnet-5-5", max_turns=5,
                 tool_names=[
-                    "get_team_season_stats", "get_team_gps_summary",
+                    "get_team_season_totals", "get_team_gps_averages",
                     "get_attendance_data", "search_players",
                     "get_player_season_stats", "get_player_gps_stats",
                     "get_match_summary", "get_fitness_tests",
-                    "get_performance_correlations", "get_workload_risk_assessment",
-                    "get_player_form_trajectory", "get_contextual_patterns",
+                    "get_gps_metric_vs_results", "get_workload_risk_assessment",
+                    "get_player_form_trajectory", "get_results_by_weather_venue_rest",
                 ],
             )
             brief = result.get("brief", {})
@@ -1312,14 +1312,14 @@ Return ONLY a valid JSON array. If nothing noteworthy, return [].
 Generate actual Recharts-compatible chart specifications.
 
 ## CRITICAL DATA INTEGRITY RULES — READ BEFORE CALLING ANY TOOL
-1. Call get_team_season_stats FIRST to establish how many completed matches exist.
+1. Call get_team_season_totals FIRST to establish how many completed matches exist.
 2. The number of matches returned by that tool is THE ONLY correct count. Do not infer match count from anything else.
-3. get_stats_by_half returns HALF-TIME records (one row per half per match). Two rows = ONE match with two halves — NOT two separate games.
+3. get_season_stats_by_half returns HALF-TIME records (one row per half per match). Two rows = ONE match with two halves — NOT two separate games.
 4. NEVER write phrases like "after X scoreless games", "two scoreless draws", "opening loss", "winning streak of X" unless the tool data explicitly shows X distinct completed matches with those results.
 5. If there is only 1 completed match, write all insights in the context of that single match. Do not fabricate a season narrative.
 
 ## ACTUAL SEASON DATA (Use these exact numbers!)
-### Matches Played: {len(matches)} (completed only — call get_team_season_stats to verify the real count)
+### Matches Played: {len(matches)} (completed only — call get_team_season_totals to verify the real count)
 ### Match Results:
 {json.dumps(match_results, indent=2)}
 
@@ -1334,7 +1334,7 @@ These charts appear in the "AI Insights" tab — they must show things the manag
 
 Focus on these HIGH-VALUE insight categories:
 
-### MANDATORY: At least 1 player-specific chart (use get_player_season_stats, get_ball_carrier_data, search_players tools)
+### MANDATORY: At least 1 player-specific chart (use get_player_season_stats, get_match_ball_carrying_and_passing, search_players tools)
 - Player form trajectory: who's scoring/assisting more in recent matches vs earlier?
 - Ball carrier involvement: which players appear most in productive possession chains?
 - Workload distribution: who's doing the heavy lifting? Any over-reliance risks?
@@ -1574,7 +1574,7 @@ CRITICAL — do not present stale data as current:
 - Never imply a match or session happened "this week" unless the freshness data above confirms it did.
 
 CRITICAL — competition context, don't cross-contaminate form narratives:
-- `get_team_season_stats` returns every match's `competition` and `date` in `match_results`. Before citing ANY specific past result as context for current form ("that heavy defeat remains a nagging outlier," etc.), check both: is it the SAME competition as the matches you're actually discussing, and is it RECENT relative to them?
+- `get_team_season_totals` returns every match's `competition` and `date` in `match_results`. Before citing ANY specific past result as context for current form ("that heavy defeat remains a nagging outlier," etc.), check both: is it the SAME competition as the matches you're actually discussing, and is it RECENT relative to them?
 - A league result has no bearing on early-championship form once the league is finished and a new competition has started — leagues and championships are different competitions with different squads-in-form, different stakes, sometimes played months apart. Don't weigh a league loss against "3 games into the championship" as if it's still live pressure. Confirmed live 2026-09-08: the brief cited an old league defeat as a "nagging outlier" while discussing current championship form — the two competitions weren't even related, and the loss was months old.
 - The reverse IS valid: if the most recent league match was, say, 2 weeks before the first championship game, that recency and proximity make it fair, relevant context ("carrying momentum/concern from the league into the championship opener").
 - When in doubt, only reference results from the SAME competition as whatever run of form you're describing, unless the older result is genuinely recent (days, not months) relative to it.
@@ -1650,10 +1650,10 @@ def _build_season_user_message(task: str, context: dict) -> str:
         return (
             "Generate the weekly brief. First check the Data Freshness block in the system prompt — "
             "if there's been no match or training recently, say so plainly instead of describing old data as current. "
-            "1) Call get_team_season_stats first — it returns per-match results with actual scores AND season totals. "
+            "1) Call get_team_season_totals first — it returns per-match results with actual scores AND season totals. "
             "Use the match_results array for individual game scores; do NOT use season_scoring_totals as a match score. "
             "2) Call get_match_summary with the most recent match_id for detailed stats (possession, turnovers, shots). "
-            "3) Call get_team_gps_summary and get_workload_risk_assessment for physical state. "
+            "3) Call get_team_gps_averages and get_workload_risk_assessment for physical state. "
             "4) Investigate standout individual players if needed. "
             "Return JSON."
         )

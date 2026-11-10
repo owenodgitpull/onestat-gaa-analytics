@@ -321,7 +321,7 @@ async def generate_opposition_briefing(
     prompt = (
         f"Generate a concise PRE-MATCH OPPOSITION BRIEFING for our upcoming {competition} "
         f"match against {opponent} on {match_date} ({venue}).\n\n"
-        f"Use web_search to research {opponent}. Run multiple searches — e.g.:\n"
+        f"Use search_web_gaa_news to research {opponent}. Run multiple searches — e.g.:\n"
         f"- \"{opponent} GAA results 2026\"\n"
         f"- \"{opponent} GAA senior football\"\n"
         f"- \"{opponent} GAA key players\"\n"

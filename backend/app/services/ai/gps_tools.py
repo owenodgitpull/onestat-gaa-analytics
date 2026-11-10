@@ -173,7 +173,7 @@ async def get_gps_season_trends(db, club_id=None) -> str:
 
 TOOL_DEFS = [
     {
-        "name": "get_gps_match_analysis",
+        "name": "get_match_gps_positional_analysis",
         "description": (
             "Raw-GPS OFF-THE-BALL analysis of one match (only matches with a synced GPS time series): where our players were, not just "
             "what the ball did. Sections: summary (team running by half, shape in/out of possession, transition summary, drop-off, support, "
@@ -205,7 +205,7 @@ TOOL_DEFS = [
         },
     },
     {
-        "name": "get_gps_season_trends",
+        "name": "get_gps_shape_trends_by_match",
         "description": (
             "One row per match with a synced GPS time series: result, compactness and length out of possession, median seconds to "
             "get back behind the ball after a turnover, forward runners after winning it, running per player-minute, kickout push-up, "

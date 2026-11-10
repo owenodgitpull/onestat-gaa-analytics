@@ -11,21 +11,28 @@ import ChatVideoCard, { type ChatVideo } from '@/components/ChatVideoCard'
 
 // Friendly labels for tool names shown during thinking phase
 const TOOL_LABELS: Record<string, string> = {
-  get_match_events: 'match events',
+  get_match_event_log: 'match events',
   get_match_summary: 'match summary',
   search_players: 'players',
   get_player_season_stats: 'player stats',
-  get_team_season_stats: 'team stats',
-  get_stats_by_half: 'per-half stats',
-  get_scoring_patterns: 'scoring patterns',
-  get_turnover_analysis: 'turnover data',
+  get_team_season_totals: 'team stats',
+  get_season_stats_by_half: 'per-half stats',
+  get_season_scoring_zones: 'scoring patterns',
+  get_season_turnover_breakdown: 'turnover data',
   get_player_gps_stats: 'GPS data',
-  get_team_gps_summary: 'team GPS',
+  get_team_gps_averages: 'team GPS',
   get_attendance_data: 'attendance records',
   get_pitch_paths: 'pitch paths',
   generate_chart: 'chart',
   create_data_table: 'table',
   create_video_compilation: 'clips for your video',
+  get_match_ball_carrying_and_passing: 'ball carrying and passing',
+  get_match_gps_running_totals: 'match GPS',
+  get_match_gps_positional_analysis: 'GPS positions',
+  get_all_players_season_stats: 'squad stats',
+  get_match_player_impact: 'player impact',
+  search_knowledge_base: 'knowledge base',
+  search_web_gaa_news: 'the web',
 }
 
 function friendlyToolName(tool: string): string {

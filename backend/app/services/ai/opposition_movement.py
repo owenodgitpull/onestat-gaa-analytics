@@ -6,7 +6,7 @@ position and duration). That is enough to describe their possessions without tra
 held it, how far up the pitch they got, how often they reached our defensive third and down which channel. It is
 coarse (ball ticks every few seconds plus dragged paths; no players, no passes) so it is labelled as such — the
 agents quote it with that caveat. When the opposition's carriers are tracked (inter-county lineups), the richer
-`opposition` section of get_ball_carrier_data (pass network, chains, tempo) is used alongside it.
+`opposition` section of get_match_ball_carrying_and_passing (pass network, chains, tempo) is used alongside it.
 
 Pure and cheap: one indexed query, everything in OUR attacking frame via the shared helpers.
 """

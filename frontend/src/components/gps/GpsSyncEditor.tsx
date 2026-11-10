@@ -48,7 +48,8 @@ function ShiftRow({ label, hint, value, range, onChange, describeAs }: {
   )
 }
 
-export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift, savedTagShift, onDotShift, onTagShift, onReset, onSaved, onClose }: {
+export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift, savedTagShift, onDotShift, onTagShift, onReset, onSaved, onClose, tagNote, onJumpToTag }: {
+  tagNote?: string | null; onJumpToTag?: () => void
   matchId: string; ctx: GpsReplayContext; half: number
   dotShifts: Record<number, number>; tagShift: number; savedTagShift: number
   onDotShift: (ms: number) => void; onTagShift: (ms: number) => void; onReset: () => void; onSaved: () => void; onClose: () => void
@@ -93,6 +94,15 @@ export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift,
       <ShiftRow label="Ball and tags · whole match" describeAs="tags"
         hint="The ring, their ball and the event pop-ups are already drawn earlier than your tap by your measured tap delay. Fine-tune if the ball still arrives before or after the player."
         value={tagShift} range={TAG_RANGE_MS} onChange={v => { onTagShift(v); setState({ kind: 'idle' }) }} />
+      {tagNote && (
+        <div role="status" className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-white/70">
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-white border border-slate-900 shrink-0" aria-hidden="true" />
+          <span className="min-w-0">{tagNote}</span>
+          {onJumpToTag && (
+            <button type="button" onClick={onJumpToTag} className="h-8 px-2.5 rounded-lg bg-white/10 hover:bg-white/20 text-white">Go to next carry</button>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={save} disabled={!dirty || state.kind === 'saving'}
           className="flex items-center gap-1.5 h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600 text-sm font-medium text-white">

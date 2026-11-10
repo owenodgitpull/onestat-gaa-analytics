@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # get_ball_carrier_data: if ball-carrier tracking was active, shows passing patterns live
 # get_formation_snapshots: if formation snapshots were captured
 # get_tactical_tags: if tactical tags were logged (high press, formation switch, etc.)
-LIVE_TOOLS = ["get_live_match_stats", "get_match_events", "get_ball_carrier_data", "get_formation_snapshots", "get_tactical_tags"]
+LIVE_TOOLS = ["get_live_match_stats", "get_match_event_log", "get_match_ball_carrying_and_passing", "get_formation_snapshots", "get_tactical_tags"]
 
 MAX_LIVE_TURNS = 3
 # Live 5-minute insight model. Runs in the background every 5 minutes, so quality matters more than speed.
@@ -183,7 +183,7 @@ async def _fact_check_live_insight(insight_text: str, evidence: str):
 
 OFF_BALL_BLOCK = """
 ## OFF THE BALL - GPS tracking for this match (REQUIRED section)
-This match has every one of OUR outfielders' GPS positions synced to the video, 10 times a second. get_gps_match_analysis
+This match has every one of OUR outfielders' GPS positions synced to the video, 10 times a second. get_match_gps_positional_analysis
 (match_id {match_id}) turns that into what the tracking screens show: team shape with and without the ball, average
 positions (the shape actually played), getting back after turnovers, kickout push-up, support at passes, and - for every
 one of their scores and missed shots, our shots, our turnovers and the frees we gave away - where our players were.
@@ -362,7 +362,7 @@ PRECISION: the brief gives EXACT positions in metres (accurate to about 1-3m). Q
 Never replace an exact position with a vague band ("20-40m out in the centre") when the exact line is in the brief.
 STEP 1 — Call get_live_match_stats(match_id) for the per-player breakdown, kickout battle and scoring run.
 STEP 2 — Read the LIVE TACTICAL BRIEF above (spatial patterns, last five minutes, ball movement) — it is the main source for the WHERE.
-STEP 3 — Only call get_match_events / get_ball_carrier_data if you need a detail the brief and snapshot do not give.
+STEP 3 — Only call get_match_event_log / get_match_ball_carrying_and_passing if you need a detail the brief and snapshot do not give.
 
 TRIGGERS TO WATCH — check the snapshot for these:
 - 3+ consecutive own scores → name who scored, note the momentum
@@ -530,20 +530,20 @@ Reference knowledge base context when relevant to a specific trigger.
 {off_ball_block}
 INSTRUCTIONS:
 1. You MUST use tools to gather match data BEFORE providing any analysis.
-2. ALWAYS call get_match_summary and get_match_events first with the match ID provided. Then call get_ball_carrier_data with the same match ID to retrieve ball carrying, passing network, and possession chain data — this is REQUIRED, not optional.
+2. ALWAYS call get_match_summary and get_match_event_log first with the match ID provided. Then call get_match_ball_carrying_and_passing with the same match ID to retrieve ball carrying, passing network, and possession chain data — this is REQUIRED, not optional.
 3. Do NOT ask the user for match IDs or clarification — you already have the match ID.
 4. Structure: follow the numbered section list in the request exactly - it is the one list of sections and their order. Phase Analysis and How the Game Was Won / Lost are always in it{", and so is Off the Ball" if has_tracking else ""}.
 5. Reference knowledge base context: compare to tactical documents, GPS benchmarks, and rules when available.
 6. Be specific — cite player names, minutes, and events from the tool results.
 7. Be constructive but honest about weaknesses.
-7a. NEVER analyse or mention players who did not play in this match. Only discuss players with match events, or players present in get_match_gps's "players" list — that list already excludes unused subs (bench players whose GPS device recorded warm-up/bench activity but who never came on), so GPS data existing is NOT proof a player featured. Do not speculate about players absent from the data. If get_match_gps returns a non-empty "bench_players_not_used" list, you may add ONE short footnote sentence at the very end of the GPS section acknowledging a standout among them (e.g. "Note: [Name] logged strong bench-session output (Xkm) despite not featuring") — but never fold them into Top Performers, stats, or any analysis of the match itself.
+7a. NEVER analyse or mention players who did not play in this match. Only discuss players with match events, or players present in get_match_gps_running_totals's "players" list — that list already excludes unused subs (bench players whose GPS device recorded warm-up/bench activity but who never came on), so GPS data existing is NOT proof a player featured. Do not speculate about players absent from the data. If get_match_gps_running_totals returns a non-empty "bench_players_not_used" list, you may add ONE short footnote sentence at the very end of the GPS section acknowledging a standout among them (e.g. "Note: [Name] logged strong bench-session output (Xkm) despite not featuring") — but never fold them into Top Performers, stats, or any analysis of the match itself.
 7a2. PLAYER-LEVEL DETAIL — REQUIRED: The get_match_summary response includes a "player_breakdown" list — use it to name specific players in your analysis. For each player with unforced_errors > 0, name them AND their error sub-type (e.g. "Gallagher had 2 unforced errors — both stray passes in the midfield third"). For players with turnovers_won >= 2, highlight them by name in Top Performers. For players with fouls_committed >= 4, note it as a discipline watch (referee-discretion flag — GAA has no rule tying a foul tally to a card, so never phrase this as an automatic sin-bin). For players with wides >= 2, name them in shooting analysis. Do NOT describe error/turnover patterns without naming the players responsible.
-7b. SPATIAL ANALYSIS — REQUIRED: The get_match_events tool returns a zone_summary block. You MUST use it to make specific territorial observations in your Tactical Analysis section. For example:
+7b. SPATIAL ANALYSIS — REQUIRED: The get_match_event_log tool returns a zone_summary block. You MUST use it to make specific territorial observations in your Tactical Analysis section. For example:
     - Scoring: "X scored Y/Z shots from the inside-45 left channel (N%) — their most productive zone"
     - Shooting wastage: "0 conversions from outside-45 right — avoid speculative shots from there"
     - Turnover battle: "won the midfield center channel convincingly (4 won vs 1 lost) but struggled in the defensive left (0 won, 3 lost — sustained pressure from opposition press)"
     Always name the specific zone (e.g. "inside-45 center", "defensive left channel", "midfield right") not vague references to "certain areas".
-7c. BALL CARRY & PASSING ANALYSIS — REQUIRED: Use the get_ball_carrier_data tool results as follows:
+7c. BALL CARRY & PASSING ANALYSIS — REQUIRED: Use the get_match_ball_carrying_and_passing tool results as follows:
     - In Top Performers: cite each key player's carry count, passes made/received, and primary carry zones. e.g. "carried 9 times (primarily midfield-right), made 6 passes — the main distributor in the recorded data".
     - In Tactical Analysis: reference chain effectiveness (scoring vs turnover chain ratio), top passing connections, and tempo. Do NOT describe passes as forward / lateral / backward or say the team "circulated the ball" - we do not track where a pass went, only who held the ball next. To describe forward-carrying as a team pattern, summarise the spread of avg_gain_x_metres across carrier_stats instead (e.g. "most carriers made positive ground, led by X and Y").
     - In player event analysis: use player_consequences data to state consequences explicitly. e.g. "lost possession 3 times in the defensive third — 2 of those turnovers led directly to opposition scores within 3 minutes". Name the zone where each turnover occurred.
@@ -558,7 +558,7 @@ INSTRUCTIONS:
 7e. POSITION CONTEXT — REQUIRED: Check the "position" field in player_breakdown before judging any player's output, and apply the standard for THAT position, not a generic outfield one.
     - Goalkeepers: NEVER criticise a goalkeeper for lacking scores "from play" or having a low scoring return — that is not their job. If a goalkeeper scored via frees/45s (player_breakdown will show a "scoring_note" of "all from frees/45s — none from open play" on their entry), treat that as a genuine, valued contribution and praise the free-taking, not a shortfall to fix. Never suggest a goalkeeper "work on adding scores from play" or similar.
     - More generally: don't hold a defender to a forward's scoring expectations, or a forward to a defender's tackle-count expectations. Judge each player against what their position is actually asked to do.
-7f. HOW THE OPPOSITION MOVED THE BALL — REQUIRED when present: get_ball_carrier_data can return two sections about the opposition.
+7f. HOW THE OPPOSITION MOVED THE BALL — REQUIRED when present: get_match_ball_carrying_and_passing can return two sections about the opposition.
     - "opposition_ball_path" (every match): their possessions from the ball-path log — how many, how long they held it (avg/median seconds, short vs sustained), where they won/started their possessions (started_in), how often they worked it into our defensive third and down which channel (built_into_our_defensive_third, entered_our_third_via). Describe their DIRECTNESS and TEMPO from these numbers, and connect it to the scoreboard (where their scores came from, what our turnovers and kickouts fed). It is coarse and has no players or passes — say "from the ball path" and never invent passing detail from it.
     - "opposition" (inter-county lineups only): their carriers, pass network, chains and tempo, same shape as ours (avg_gain_x is positive when they gained ground towards OUR goal; zones are from our perspective). When present, name their key carriers/links and compare their chain length and transition speed with ours. Respect its own data_confidence tier.
     Put this in the Tactical Analysis section alongside our own ball-movement analysis — a report that only describes our movement is incomplete.
@@ -649,7 +649,7 @@ INSTRUCTIONS:
       mention is in a new period and its clock number is lower ("2nd half 70+1'" then "extra time 1 70'"), write "in the first minute
       of extra time" so the story never seems to go backwards. Cards and substitutions get their period too.
     - PLAYER FIGURES are copied from the player's own row, never restated from memory or from another measure: turnovers lost/won,
-      stray passes, fouls and cards from get_match_summary player_breakdown; minutes and spells on the pitch from get_match_gps
+      stray passes, fouls and cards from get_match_summary player_breakdown; minutes and spells on the pitch from get_match_gps_running_totals
       (playing_minutes, on_the_pitch); scores and assists from the events. When a row has minutes_note, say his minutes are not
       known. A player who started is never "came on", and a player is "came on" only at the spell start the tool gives. A
       starter whose minutes_note says his exit was never logged: "started, his substitution off was not logged, and he came
@@ -741,9 +741,9 @@ INSTRUCTIONS:
 """
 
         # Always include tool instruction with the match_id
-        tool_instruction = f"First, use get_match_summary and get_match_events tools with match_id '{match_id}' to retrieve all match data."
+        tool_instruction = f"First, use get_match_summary and get_match_event_log tools with match_id '{match_id}' to retrieve all match data."
         if has_tracking:
-            tool_instruction += (f" This match has GPS tracking of our players: also call get_gps_match_analysis with match_id '{match_id}', "
+            tool_instruction += (f" This match has GPS tracking of our players: also call get_match_gps_positional_analysis with match_id '{match_id}', "
                                  "sections ['summary', 'situations', 'positions', 'pressure', 'transitions', 'kickouts', 'support'] and limit 10, "
                                  "and write the Off the Ball section from it.")
 
@@ -964,7 +964,7 @@ INSTRUCTIONS:
         gps_hint = ""
         if has_gps_data:
             gps_hint = (
-                "\n\nIMPORTANT: GPS data is available for this match. Use the get_match_gps tool "
+                "\n\nIMPORTANT: GPS data is available for this match. Use the get_match_gps_running_totals tool "
                 "to retrieve physical performance data and include a detailed GPS & Physical Performance "
                 "Analysis section covering: team intensity assessment, individual standout performers, "
                 "concerning metrics, recovery recommendations, and how physical output impacted the result."
@@ -986,7 +986,7 @@ INSTRUCTIONS:
                 "close to the full match duration) significantly below position benchmarks"
             )
 
-        ball_carry_note = "\n\nIMPORTANT: Do NOT use the get_ball_carrier_data tool — ball carry data has been excluded from this report by the analyst. Do not mention passes, carries, or ball-carrying chains." if exclude_ball_carry else ""
+        ball_carry_note = "\n\nIMPORTANT: Do NOT use the get_match_ball_carrying_and_passing tool — ball carry data has been excluded from this report by the analyst. Do not mention passes, carries, or ball-carrying chains." if exclude_ball_carry else ""
 
         # Score-swing fact, computed deterministically rather than asked of
         # the model — a report described a match as "held on comfortably in
@@ -1106,7 +1106,7 @@ INSTRUCTIONS:
                 "\n\nPRE-MATCH PLAN (set up by the coach in Match Prep - context, not computed fact; treat positions named here as the intended "
                 "roles when the lineup alone would mislead, and judge the plan against what the event data shows):\n- "
                 + "\n- ".join(plan_lines)
-                + "\nFor each man-marking job, use get_match_events / get_match_player_impact to say how the marked player actually fared (shots, scores, turnovers) and whether the job held."
+                + "\nFor each man-marking job, use get_match_event_log / get_match_player_impact to say how the marked player actually fared (shots, scores, turnovers) and whether the job held."
             )
 
         # Lineup-change facts — computed deterministically (same rationale as
@@ -1232,7 +1232,7 @@ INSTRUCTIONS:
             f"""Generate a detailed post-match report including, IN THIS EXACT ORDER — always start with Match Summary, never lead with any other section:{ball_carry_note}
             1. Match Summary (2-3 sentences, opening with "What mattered most": three points a manager takes in within 20 seconds)
             1b. How the Game Was Won / Lost (see 7j)
-            2. Top Performers (with ratings 1-10; after our players, name the opposition's one or two standout performers using get_match_player_impact, with the numbers that earned it) — include each key player's carries, passes made/received, and primary carry zones from ball carrier data. For players who lost possession, state how many turnovers led to opposition scores and in which zone. Goals/points from get_match_events may include an "assist" field — when present, credit the assisting player by name (e.g. "Bonner's goal, set up by Greene's fisted knockdown").{" GPS IS REQUIRED HERE, NOT OPTIONAL: call get_match_gps and, for every single player written up in this section, work their GPS figures (distance covered, and sprint count or max speed where notable) directly into their own write-up — never leave it for the separate GPS section to cover instead. A player profiled here with no GPS line is a mistake, not a stylistic choice, unless get_match_gps genuinely has no record for them (e.g. they were an unused substitute, which shouldn't be in Top Performers anyway)." if has_gps_data else ""}
+            2. Top Performers (with ratings 1-10; after our players, name the opposition's one or two standout performers using get_match_player_impact, with the numbers that earned it) — include each key player's carries, passes made/received, and primary carry zones from ball carrier data. For players who lost possession, state how many turnovers led to opposition scores and in which zone. Goals/points from get_match_event_log may include an "assist" field — when present, credit the assisting player by name (e.g. "Bonner's goal, set up by Greene's fisted knockdown").{" GPS IS REQUIRED HERE, NOT OPTIONAL: call get_match_gps_running_totals and, for every single player written up in this section, work their GPS figures (distance covered, and sprint count or max speed where notable) directly into their own write-up — never leave it for the separate GPS section to cover instead. A player profiled here with no GPS line is a mistake, not a stylistic choice, unless get_match_gps_running_totals genuinely has no record for them (e.g. they were an unused substitute, which shouldn't be in Top Performers anyway)." if has_gps_data else ""}
             3. Tactical Analysis — include ball carry chain effectiveness, territory progression, and possession tempo from ball carrier data. Mention the most productive passing connection (the pair who linked up most/best) in a sentence or two of prose — e.g. "Sweeney and Bonner linked up well down the right, combining for three scoring chains." Do NOT render passing connections as a table.
             KNOWLEDGE-BASE GROUNDING FOR THIS SECTION (required): run search_knowledge_base two to four times on the match's main tactical themes as the data shows them (e.g. where the forwards picked the ball up and whether they dropped deep to link play, kickout strategy and where kickouts were won, how possession was lost and how it was won back, shot selection). Then write each tactical point as: what the data shows, followed by the principle from the retrieved passage, cited inline as (Source name, p.N). Use only passages that genuinely fit; if a search returns nothing relevant, say nothing about it rather than forcing a citation. Never let a passage change a number.
             3b. Phase Analysis (see 7g: the scorecard table pasted unchanged, then at most four short paragraphs){chr(10) + "            3c. Off the Ball (see OFF THE BALL)" if has_tracking else ""}

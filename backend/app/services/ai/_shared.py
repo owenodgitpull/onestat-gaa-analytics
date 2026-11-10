@@ -244,7 +244,7 @@ second-half pattern was a team chasing or protecting a lead rather than a real c
 7. Personnel or position moves, only with the before/after figures and their sample caveat.
 8. Where and by whom frees are being given away (a discipline watch, never an automatic card).
 9. Speed of transition, only where median seconds is given.
-10. ONLY for a match with a synced GPS time series (get_gps_match_analysis returns data): OUR off-the-ball play - team shape
+10. ONLY for a match with a synced GPS time series (get_match_gps_positional_analysis returns data): OUR off-the-ball play - team shape
     and distances between lines, getting players goal-side after a turnover, support around the ball carrier, cover between
     the ball and our goal when they shoot, who closes down their receiver, running drop-off - each tied to a figure from that tool.
 Nothing outside this list: no pressing, no line height, no shape, no instructions to players off the ball unless they come
@@ -283,7 +283,7 @@ GAA_ESSENTIALS = """
 - Everything spatial is in OUR attacking frame (our left/right as we face their goal). A team's score by half and the length
   of each half come from the tool's own figures - never add scores up or work out minutes yourself.
 - Pressing and defensive shape are not tagged as events. They are measured ONLY where a match has a synced GPS time series
-  (get_gps_match_analysis): that shows where OUR outfielders were (not the opposition's, not our goalkeeper). Without it, say
+  (get_match_gps_positional_analysis): that shows where OUR outfielders were (not the opposition's, not our goalkeeper). Without it, say
   "not recorded" rather than inventing them.
 
 ## Everyday language (coaches do not talk like a data sheet)
@@ -521,7 +521,7 @@ When asked to suggest a starting 15, a team, or where a specific player should l
 ## Comparing Many Players — CRITICAL
 Any question touching more than a couple of players at once — "team of the season", "who are our top
 performers", a full-squad shortlist, ranking the whole panel by some stat — MUST use
-get_squad_season_stats (one call, every player). NEVER call get_player_season_stats in a loop, once per
+get_all_players_season_stats (one call, every player). NEVER call get_player_season_stats in a loop, once per
 player, to answer this kind of question: doing that for ~15-20 players is slow enough on its own to blow
 the chat turn's response-time budget and can cause the whole reply to fail to come back. Reserve
 get_player_season_stats for a genuine single-player deep-dive after the squad-wide view has narrowed
@@ -593,7 +593,7 @@ async def get_club_context(db: AsyncSession, club_id) -> tuple:
 
 TOOLS = [
     {
-        "name": "get_match_events",
+        "name": "get_match_event_log",
         "description": "Retrieve events from a specific match including scores, turnovers, fouls. Use this to analyze what happened in a match. A whole match is large (thousands of rows): filter by player_id, event_types, team or half whenever the question is narrower than the whole match.",
         "input_schema": {
             "type": "object",
@@ -741,7 +741,7 @@ TOOLS = [
         },
     },
     {
-        "name": "get_squad_season_stats",
+        "name": "get_all_players_season_stats",
         "description": (
             "Every active player's season stats (goals, points, 2-pointers, assists, turnovers, "
             "shooting accuracy, blocks, matches played) in ONE call. ALWAYS use this instead of "
@@ -782,7 +782,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_team_season_stats",
+        "name": "get_team_season_totals",
         "description": "Get aggregated team statistics for the entire season. Supports a competition filter for narrowing to 'championship'/'league'/etc.",
         "input_schema": {
             "type": "object",
@@ -795,7 +795,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_stats_by_half",
+        "name": "get_season_stats_by_half",
         "description": "Get per-half statistics broken down by match. Returns first half vs second half possession, scoring, turnovers for each match. Essential for half-specific analysis like '2nd half possession trend'.",
         "input_schema": {
             "type": "object",
@@ -812,7 +812,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_scoring_patterns",
+        "name": "get_season_scoring_zones",
         "description": "Analyze scoring patterns - where goals/points come from, conversion rates by zone. Shots from open play only — frees, 45s and two-point frees are deliberately excluded (dead-ball attempts are far easier to convert than the same range from play, so mixing them in would inflate a zone's apparent shooting quality). State this scope when quoting a zone's conversion rate.",
         "input_schema": {
             "type": "object",
@@ -843,7 +843,7 @@ TOOLS = [
         "input_schema": {"type": "object", "properties": {"last_n": {"type": "integer", "description": "How many recent matches to pool (default 10, max 30)"}, "exclude_match_id": {"type": "string", "description": "The match being analysed - left out so the baseline is the matches BEFORE it"}}}
     },
     {
-        "name": "get_turnover_analysis",
+        "name": "get_season_turnover_breakdown",
         "description": "Analyze turnover patterns - where ball is lost/won, by player",
         "input_schema": {
             "type": "object",
@@ -879,7 +879,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_team_gps_summary",
+        "name": "get_team_gps_averages",
         "description": "Get team-wide GPS averages across recent matches and/or training sessions. Useful for benchmarking individual players against team norms.",
         "input_schema": {
             "type": "object",
@@ -914,7 +914,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_match_gps",
+        "name": "get_match_gps_running_totals",
         "description": "Get GPS/physical performance data for a specific match. Returns per-player distance, HSR, sprints, max speed, HMLD, player load with position tags, substitution info, and outlier flags. Also includes team totals and outfield averages.",
         "input_schema": {
             "type": "object",
@@ -955,6 +955,10 @@ TOOLS = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Filter by outcome types: goal, point, two_point, wide, short, saved, point_free, two_point_free, wide_free, forty_five. Defaults to all scoring events."
+                },
+                "player_id": {
+                    "type": "string",
+                    "description": "Optional: only this player's shots / scores (UUID from search_players), e.g. 'where did X score from'."
                 }
             }
         }
@@ -1018,7 +1022,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_ball_carrier_data",
+        "name": "get_match_ball_carrying_and_passing",
         "description": "Get ball carrier tracking + PASSING NETWORK data for a match. When the analyst switches carrier from Player A to Player B (same team), that is a confirmed pass A→B. Returns: carrier_stats (carries per player), pass_network (who passed to whom with frequency), pass_leaders (top distributors), chain_effectiveness (scoring chains vs turnovers, avg chain length), tempo_analysis (avg seconds between carrier transitions), and raw possession chains. IMPORTANT: This data is manually logged — it represents LOGGED carries/passes, not all of them. Frame insights as 'the data shows' or 'from logged possessions' rather than definitive totals. If no carrier data exists, returns empty — gracefully skip.",
         "input_schema": {
             "type": "object",
@@ -1064,7 +1068,7 @@ TOOLS = [
         }
     },
     {
-        "name": "web_search",
+        "name": "search_web_gaa_news",
         "description": "Search the web for GAA results, team form, player stats, news. Use this to research opposition teams, find recent county results, check league tables, etc. Returns a mix of dated news results and general web snippets — always read each result's \"date\" field (when present) before using it, and say what season/year a stat is from rather than presenting it as current. Undated general-web results can surface old (even prior-season) pages ranked purely by relevance, so prefer the dated news results for anything about current form, a recent result, or an upcoming fixture.",
         "input_schema": {
             "type": "object",
@@ -1105,7 +1109,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_performance_correlations",
+        "name": "get_gps_metric_vs_results",
         "description": "Analyze correlation between a GPS metric and match results. Shows win rate when the team is above vs below median for that metric. Use this to answer questions like 'Does more running lead to more wins?'",
         "input_schema": {
             "type": "object",
@@ -1138,7 +1142,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_fitness_match_link",
+        "name": "get_fitness_tests_vs_match_gps",
         "description": "Link fitness test results to match performance. Splits players by fitness quartile and shows average match GPS/performance per quartile. Use this to see if fitter players perform better.",
         "input_schema": {
             "type": "object",
@@ -1153,7 +1157,7 @@ TOOLS = [
         }
     },
     {
-        "name": "get_contextual_patterns",
+        "name": "get_results_by_weather_venue_rest",
         "description": "Analyze performance patterns split by context: weather conditions, venue (home/away), or rest days between matches. Shows win rate, average score, and GPS per group.",
         "input_schema": {
             "type": "object",
@@ -1399,6 +1403,25 @@ def get_tools_subset(tool_names: list[str]) -> list[dict]:
 # TOOL EXECUTION
 # =============================================================================
 
+OLD_TOOL_NAMES = {
+    "get_match_gps": "get_match_gps_running_totals",
+    "get_gps_match_analysis": "get_match_gps_positional_analysis",
+    "get_team_gps_summary": "get_team_gps_averages",
+    "get_gps_season_trends": "get_gps_shape_trends_by_match",
+    "get_team_season_stats": "get_team_season_totals",
+    "get_squad_season_stats": "get_all_players_season_stats",
+    "get_match_events": "get_match_event_log",
+    "get_ball_carrier_data": "get_match_ball_carrying_and_passing",
+    "get_scoring_patterns": "get_season_scoring_zones",
+    "get_stats_by_half": "get_season_stats_by_half",
+    "get_turnover_analysis": "get_season_turnover_breakdown",
+    "get_contextual_patterns": "get_results_by_weather_venue_rest",
+    "get_performance_correlations": "get_gps_metric_vs_results",
+    "get_fitness_match_link": "get_fitness_tests_vs_match_gps",
+    "web_search": "search_web_gaa_news",
+}
+
+
 async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None, user_id=None) -> str:
     """Execute a tool and return the result as a string. user_id is only
     threaded through from the ChatAgent entrypoint (routes/ai.py) — SeasonAgent/
@@ -1406,12 +1429,15 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
     create_video_compilation currently uses it (to notify the requester
     when their job finishes); every other tool ignores it."""
 
+    # Tool names were made descriptive on 2026-11-10 (the model picks tools by name first); an old name still works
+    tool_name = OLD_TOOL_NAMES.get(tool_name, tool_name)
+
     # Tenant isolation: every tool filters by club only `if club_id:`, so a missing club would mean
     # "all clubs". Fail closed instead — no club, no data.
-    if not club_id and tool_name not in ("web_search", "display_starting_lineup", "create_data_table"):
+    if not club_id and tool_name not in ("search_web_gaa_news", "display_starting_lineup", "create_data_table"):
         return safe_json({"error": "No club context for this request; refusing to read data."})
 
-    if tool_name == "get_match_events":
+    if tool_name == "get_match_event_log":
         return await get_match_events(db, **tool_input, club_id=club_id)
     elif tool_name == "get_match_summary":
         return await get_match_summary(db, **tool_input, club_id=club_id)
@@ -1421,15 +1447,15 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_recent_lineup_history(db, **tool_input, club_id=club_id)
     elif tool_name == "display_starting_lineup":
         return display_starting_lineup(**tool_input)
-    elif tool_name == "get_squad_season_stats":
+    elif tool_name == "get_all_players_season_stats":
         return await get_squad_season_stats(db, **tool_input, club_id=club_id)
     elif tool_name == "get_player_season_stats":
         return await get_player_season_stats(db, **tool_input, club_id=club_id)
-    elif tool_name == "get_team_season_stats":
+    elif tool_name == "get_team_season_totals":
         return await get_team_season_stats(db, **tool_input, club_id=club_id)
-    elif tool_name == "get_stats_by_half":
+    elif tool_name == "get_season_stats_by_half":
         return await get_stats_by_half(db, tool_input.get("match_id"), tool_input.get("half"), club_id=club_id)
-    elif tool_name == "get_scoring_patterns":
+    elif tool_name == "get_season_scoring_zones":
         return await get_scoring_patterns(db, tool_input.get("match_id"), club_id=club_id)
     elif tool_name == "get_phase_summary":
         from app.services.ai.phase_report import get_phase_summary
@@ -1442,15 +1468,15 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         from app.services.ai.phase_report import get_season_phase_profile
         return await get_season_phase_profile(db, club_id, last_n=tool_input.get("last_n", 10),
                                               exclude_match_id=tool_input.get("exclude_match_id"))
-    elif tool_name == "get_turnover_analysis":
+    elif tool_name == "get_season_turnover_breakdown":
         return await get_turnover_analysis(db, tool_input.get("match_id"), club_id=club_id)
     elif tool_name == "get_player_gps_stats":
         return await get_player_gps_stats(db, **tool_input, club_id=club_id)
-    elif tool_name == "get_team_gps_summary":
+    elif tool_name == "get_team_gps_averages":
         return await get_team_gps_summary(db, **tool_input, club_id=club_id)
     elif tool_name == "get_attendance_data":
         return await get_attendance_data(db, **tool_input, club_id=club_id)
-    elif tool_name == "get_match_gps":
+    elif tool_name == "get_match_gps_running_totals":
         return await get_match_gps(db, **tool_input, club_id=club_id)
     elif tool_name == "get_training_session_gps":
         return await get_training_session_gps(db, **tool_input, club_id=club_id)
@@ -1462,23 +1488,23 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await _execute_generate_chart(db, tool_input.get("query", ""), club_id=club_id)
     elif tool_name == "create_data_table":
         return safe_json(tool_input)  # pass-through — frontend renders it
-    elif tool_name == "get_ball_carrier_data":
+    elif tool_name == "get_match_ball_carrying_and_passing":
         return await get_ball_carrier_data(db, **tool_input, club_id=club_id)
     elif tool_name == "get_formation_snapshots":
         return await get_formation_snapshots_tool(db, **tool_input, club_id=club_id)
     elif tool_name == "get_man_marking_history":
         return await get_man_marking_history(db, **tool_input, club_id=club_id)
-    elif tool_name == "web_search":
+    elif tool_name == "search_web_gaa_news":
         return await web_search_tool(tool_input.get("query", ""), tool_input.get("recency", "month"))
     elif tool_name == "get_fitness_tests":
         return await get_fitness_tests(db, **tool_input, club_id=club_id)
-    elif tool_name == "get_performance_correlations":
+    elif tool_name == "get_gps_metric_vs_results":
         return await get_performance_correlations(db, **tool_input, club_id=club_id)
     elif tool_name == "get_player_form_trajectory":
         return await get_player_form_trajectory(db, **tool_input, club_id=club_id)
-    elif tool_name == "get_fitness_match_link":
+    elif tool_name == "get_fitness_tests_vs_match_gps":
         return await get_fitness_match_link(db, **tool_input, club_id=club_id)
-    elif tool_name == "get_contextual_patterns":
+    elif tool_name == "get_results_by_weather_venue_rest":
         return await get_contextual_patterns(db, **tool_input, club_id=club_id)
     elif tool_name == "get_workload_risk_assessment":
         return await get_workload_risk_assessment(db, **tool_input, club_id=club_id)
@@ -1490,11 +1516,11 @@ async def execute_tool(tool_name: str, tool_input: dict, db: AsyncSession, club_
         return await get_sleep_data(db, **tool_input, club_id=club_id)
     elif tool_name == "get_ball_recovery_time":
         return await get_ball_recovery_time(db, **tool_input, club_id=club_id)
-    elif tool_name == "get_gps_match_analysis":
+    elif tool_name == "get_match_gps_positional_analysis":
         from app.services.ai.gps_tools import get_gps_match_analysis
         return await get_gps_match_analysis(db, tool_input.get("match_id"), tool_input.get("sections"), tool_input.get("limit", 8), club_id=club_id,
                                             situation=tool_input.get("situation"), full_positions=tool_input.get("full_positions", False))
-    elif tool_name == "get_gps_season_trends":
+    elif tool_name == "get_gps_shape_trends_by_match":
         from app.services.ai.gps_tools import get_gps_season_trends
         return await get_gps_season_trends(db, club_id=club_id)
     elif tool_name == "get_turnover_to_shot_time":
@@ -2006,7 +2032,7 @@ async def get_kickout_targets(db: AsyncSession, match_id: str = None, club_id=No
     })
 
 
-async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list = None, club_id=None) -> str:
+async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list = None, club_id=None, player_id: str = None) -> str:
     """
     Build pitch path visualizations directly from events — no LLM call needed.
     Traces full possession chains backwards from each outcome event to the start
@@ -2093,6 +2119,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
     # Get match info for labels + attacking direction
     match_ids_in_events = list(set(str(e.match_id) for e in all_events))
     match_info = {}
+    match_dates = {}   # two matches against the same county need telling apart (Kerry x2)
     match_attacking_right = {}
     match_dir = {}   # match id -> (attacking_right_first_half or None, half_duration_mins)
     match_dims = {}  # match id -> (pitch_length_m or None, pitch_width_m or None): None = calibration default
@@ -2100,6 +2127,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
         mr = await db.execute(select(Match).where(Match.id.in_(match_ids_in_events)))
         for m in mr.scalars().all():
             match_info[str(m.id)] = m.opponent
+            match_dates[str(m.id)] = m.match_date.strftime('%d %b %Y') if m.match_date else None
             _atk = getattr(m, 'attacking_right_first_half', None)
             match_dir[str(m.id)] = (_atk, getattr(m, 'half_duration_mins', None) or 30)
             match_dims[str(m.id)] = (getattr(m, 'pitch_length_m', None), getattr(m, 'pitch_width_m', None))
@@ -2200,6 +2228,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
             if e.team == Team.OWN
             and (e.event_type.value if hasattr(e.event_type, 'value') else str(e.event_type)) in target_outcomes
             and e.pitch_x is not None and e.pitch_y is not None
+            and (not player_id or str(e.player_id) == str(player_id))
         ]
 
         for oe in outcome_events:
@@ -2346,6 +2375,7 @@ async def get_pitch_paths(db: AsyncSession, match_id: str = None, outcomes: list
                 "half": getattr(oe, "half", None),
                 "player": player_name,
                 "opponent": opponent,
+                "match_date": match_dates.get(mid),
                 "started_by": started_by,
                 "started_with": started_with,
                 "points": points,
@@ -2494,7 +2524,7 @@ async def get_match_events(db: AsyncSession, match_id: str, event_types: list = 
             else:
                 return safe_json({"error": "No completed matches found"})
         else:
-            return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use get_team_season_stats for season-wide data, or provide a specific match UUID."})
+            return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use get_team_season_totals for season-wide data, or provide a specific match UUID."})
 
     query = select(MatchEvent).where(MatchEvent.match_id == match_id)
     if player_id:
@@ -2974,7 +3004,7 @@ async def get_match_summary(db: AsyncSession, match_id, club_id=None) -> str:
             else:
                 return safe_json({"error": "No completed matches found"})
         else:
-            return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use get_team_season_stats for season-wide data, or provide a specific match UUID."})
+            return safe_json({"error": f"'{match_id}' is not a valid match UUID. Use get_team_season_totals for season-wide data, or provide a specific match UUID."})
 
     # Get match details
     match_conditions = [Match.id == match_id]
@@ -5688,13 +5718,15 @@ async def get_fitness_match_link(db: AsyncSession, metric: str, club_id=None) ->
         .subquery()
     )
 
+    # FitnessTest has no club_id (the tool always failed with an AttributeError): scope through the player's club
     ft_conditions = []
     if club_id:
-        ft_conditions.append(FitnessTest.club_id == club_id)
+        ft_conditions.append(Player.club_id == club_id)
 
     ft_query = (
         select(FitnessTest)
         .join(latest_date_sq, (FitnessTest.player_id == latest_date_sq.c.player_id) & (FitnessTest.test_date == latest_date_sq.c.max_date))
+        .join(Player, Player.id == FitnessTest.player_id)
     )
     if ft_conditions:
         ft_query = ft_query.where(*ft_conditions)

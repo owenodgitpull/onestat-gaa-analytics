@@ -33,8 +33,48 @@ CHAT_MAX_TOKENS = 8000
 # "Langan's scores on the pitch" question pulled get_match_events for five whole matches, ~283,000 tokens in one call
 # ($0.73), and the answer never arrived. ~60k characters is ~15k tokens.
 CHAT_TOOL_RESULT_MAX_CHARS = 60000
+# Tools that draw something on the user's screen: the whole result goes to the screen, the model gets a short summary
+# (a season of pitch paths is ~800k characters, which the model does not need to see to talk about the picture)
+VIZ_TOOLS = ("generate_chart", "get_pitch_paths", "display_starting_lineup")
+
+
+def _for_model(tool_name: str, result: str) -> str:
+    if tool_name == "get_pitch_paths":
+        # each path, minus its drawing points (nodes / points / carriers are for the picture): outcome, minute, match,
+        # start and end location, origin. A whole season stays readable instead of "too large to read".
+        try:
+            d = json.loads(result)
+            chart = d.get("chart") or {}
+            items = [{k: v for k, v in it.items() if k not in ("nodes", "points", "carriers") and len(json.dumps(v, default=str)) < 300}
+                     for it in (chart.get("data") or []) if isinstance(it, dict)]
+            out = {"success": d.get("success"), "chart_shown_to_user": True, "title": chart.get("title"),
+                   "insight": chart.get("insight"), "paths": items}
+            text = json.dumps(out, default=str)
+            if len(text) > CHAT_TOOL_RESULT_MAX_CHARS:
+                keep = max(1, int(len(items) * CHAT_TOOL_RESULT_MAX_CHARS / len(text)))
+                out["paths"] = items[:keep]
+                out["note"] = f"{len(items)} paths drawn; the first {keep} are listed. Filter by match_id, outcomes or player_id for the rest."
+                text = json.dumps(out, default=str)
+            return text
+        except (json.JSONDecodeError, TypeError, AttributeError):
+            pass
+    if tool_name not in VIZ_TOOLS or len(result or "") <= CHAT_TOOL_RESULT_MAX_CHARS:
+        return result
+    try:
+        d = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return result[:CHAT_TOOL_RESULT_MAX_CHARS]
+    chart = d.get("chart") or {}
+    keep = {k: v for k, v in d.items() if k != "chart" and len(json.dumps(v, default=str)) < 4000}
+    paths = chart.get("paths") or chart.get("data") or []
+    return json.dumps({**keep, "chart_shown_to_user": True, "chart_title": chart.get("title"),
+                       "items_drawn": len(paths) if isinstance(paths, list) else None,
+                       "note": "The full chart is on the user's screen. It was too large to include here; describe it from "
+                               "these figures, or call the tool again with filters (match_id, outcomes, player_id) for detail."})
+
+
 NARROWING_HINTS = {
-    "get_match_events": "pass player_id (from search_players), event_types (e.g. [\"POINT\", \"GOAL\", \"TWO_POINT\"]), team or half, one match at a time",
+    "get_match_event_log": "pass player_id (from search_players), event_types (e.g. [\"POINT\", \"GOAL\", \"TWO_POINT\"]), team or half, one match at a time",
     "get_pitch_paths": "filter by match_id and outcome",
 }
 
@@ -98,36 +138,83 @@ TIMEOUT_FALLBACK_MESSAGE = (
 )
 
 
-async def _execute_tool_with_timeout(tool_name: str, tool_input: dict, db: AsyncSession, club_id=None, user_id=None) -> str:
+
+def _block_param(block):
+    """A response content block as a request block. The streaming helper returns parsed blocks with SDK-only fields
+    (text blocks carry parsed_output), which the API rejects when the assistant turn is sent back: "messages.1.content.0.
+    text.parsed_output: Extra inputs are not permitted" - every chat question that used a tool failed."""
+    d = block.model_dump(exclude_none=True) if hasattr(block, "model_dump") else dict(block)
+    d.pop("parsed_output", None)
+    return d
+
+class ToolSessions:
+    """The database sessions the chat's tools run on - never the request's own session, which saves the answer.
+    A tool that times out is abandoned with its session (a cancelled query can take many minutes to let go - seen on
+    2026-11-10: 17 minutes, which froze the chat); the next tool gets a fresh session. close() ends them all."""
+
+    def __init__(self, first=None):
+        self._own = first is None
+        self.db = first
+        self._opened = []
+
+    async def get(self):
+        if self.db is None:
+            from app.database import async_session_maker
+            self.db = async_session_maker()
+            self._opened.append(self.db)
+        return self.db
+
+    def abandon(self):
+        self.db = None
+
+    async def close(self):
+        for s_ in self._opened:
+            try:
+                await asyncio.wait_for(s_.close(), timeout=5)
+            except BaseException:
+                pass
+
+
+async def _execute_tool_with_timeout(tool_name: str, tool_input: dict, sessions: "ToolSessions", club_id=None, user_id=None) -> str:
     t0 = time.monotonic()
-    try:
-        result = await asyncio.wait_for(
-            execute_tool(tool_name, tool_input, db, club_id=club_id, user_id=user_id),
-            timeout=TOOL_EXECUTION_TIMEOUT_SECONDS,
-        )
-        size = len(result or "")
-        logger.info(f"chat tool {tool_name}: {size} chars in {time.monotonic() - t0:.1f}s, input {json.dumps(tool_input, default=str)[:200]}")
-        if size > CHAT_TOOL_RESULT_MAX_CHARS:
-            hint = NARROWING_HINTS.get(tool_name, "use the tool's filters, or a summary tool")
-            logger.warning(f"chat tool {tool_name}: result of {size} chars withheld (cap {CHAT_TOOL_RESULT_MAX_CHARS})")
-            return json.dumps({
-                "error": f"'{tool_name}' returned too much data to read ({size:,} characters). Call it again narrowed down: {hint}. "
-                         "Prefer the summary tools (get_match_summary, get_player_season_stats, get_scoring_patterns) for totals.",
-            })
-        return result
-    except asyncio.TimeoutError:
-        logger.warning(f"Tool '{tool_name}' timed out after {TOOL_EXECUTION_TIMEOUT_SECONDS}s")
+    db = await sessions.get()
+    task = asyncio.ensure_future(execute_tool(tool_name, tool_input, db, club_id=club_id, user_id=user_id))
+    # asyncio.wait, not wait_for: wait_for waits for the cancelled task to finish, and a stuck query never does
+    done, _ = await asyncio.wait({task}, timeout=TOOL_EXECUTION_TIMEOUT_SECONDS)
+    if not done:
+        task.cancel()
+        sessions.abandon()
+        logger.warning(f"Tool '{tool_name}' timed out after {TOOL_EXECUTION_TIMEOUT_SECONDS}s; its session is abandoned")
         return json.dumps({
             "error": f"'{tool_name}' timed out — answer using whatever other data is already available "
                      "rather than retrying this same tool call again this turn.",
         })
+    try:
+        result = task.result()
+    except Exception as e:
+        logger.warning(f"Tool '{tool_name}' failed: {e}")
+        try:
+            await asyncio.wait_for(db.rollback(), timeout=5)
+        except BaseException:
+            sessions.abandon()
+        return json.dumps({"error": f"'{tool_name}' failed: {str(e)[:200]}. Answer from the other data, or try a narrower call."})
+    size = len(result or "")
+    logger.info(f"chat tool {tool_name}: {size} chars in {time.monotonic() - t0:.1f}s, input {json.dumps(tool_input, default=str)[:200]}")
+    if size > CHAT_TOOL_RESULT_MAX_CHARS and tool_name not in VIZ_TOOLS:
+        hint = NARROWING_HINTS.get(tool_name, "use the tool's filters, or a summary tool")
+        logger.warning(f"chat tool {tool_name}: result of {size} chars withheld (cap {CHAT_TOOL_RESULT_MAX_CHARS})")
+        return json.dumps({
+            "error": f"'{tool_name}' returned too much data to read ({size:,} characters). Call it again narrowed down: {hint}. "
+                     "Prefer the summary tools (get_match_summary, get_player_season_stats, get_season_scoring_zones) for totals.",
+        })
+    return result
 
 
 async def _create_with_timeout(timeout_seconds: int = CLAUDE_CALL_TIMEOUT_SECONDS, **kwargs):
     """client.messages.create, off the event loop, with a hard timeout so a
     stuck call can never hang the chat indefinitely. Callers with a
     research-heavy tool loop (e.g. the opposition briefing, which fans a
-    single web_search call out across ~7 search engines and feeds all of it
+    single search_web_gaa_news call out across ~7 search engines and feeds all of it
     back as tool-result context) can pass a longer timeout_seconds — the
     default stays tight for the live chat UI, where "never hang" is the point."""
     return await asyncio.wait_for(
@@ -189,6 +276,8 @@ Use the available tools to look up specific data when needed.
 {weather_context}
 
 INSTRUCTIONS:
+- Call tools without commentary: no text before or between tool calls ("I'll start by...", "Now I'll pull..."). The user sees a progress line while you look things up and reads everything you write as the answer, so write only the answer, once you have the data.
+- To find a player, call search_players, then pass his player_id to the tools that take one (get_match_event_log, get_pitch_paths, get_player_season_stats).
 - Use knowledge base context to reference GPS/fitness data, rules, and tactical documents.
 - Cite sources from the knowledge base when relevant (e.g., "According to the GPS report from the Ballyshannon match...").
 - Compare current data to benchmarks from the knowledge base.
@@ -196,7 +285,7 @@ INSTRUCTIONS:
 - Reference recent AI insight alerts when relevant to the conversation.
 - You know about upcoming fixtures and opponent form — reference these when the user asks about preparation, training plans, or upcoming games.
 - You have weather data from past matches — use this to identify performance patterns in different conditions (e.g., wet weather scoring, windy day kickout strategy).
-- When asked about a player's performance or role in a match → call get_ball_carrier_data(match_id) to get their carries, passes, carry zones, and whether their turnovers led to opposition scores. Quote specific numbers.
+- When asked about a player's performance or role in a match → call get_match_ball_carrying_and_passing(match_id) to get their carries, passes, carry zones, and whether their turnovers led to opposition scores. Quote specific numbers.
 {insight_alerts_text}
 """
 
@@ -225,7 +314,7 @@ INSTRUCTIONS:
         tool_results = []
         # Convert content blocks to plain dicts to avoid Pydantic re-serialization issues
         assistant_content = [
-            block.model_dump() if hasattr(block, 'model_dump') else block
+            _block_param(block)
             for block in response.content
         ]
 
@@ -239,7 +328,7 @@ INSTRUCTIONS:
                         "content": json.dumps({"error": "Skipped — response time budget exceeded this turn."}),
                     })
                     continue
-                tool_result = await _execute_tool_with_timeout(block.name, block.input, db, club_id=club_id, user_id=user_id)
+                tool_result = await _execute_tool_with_timeout(block.name, block.input, ToolSessions(db), club_id=club_id, user_id=user_id)
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -356,6 +445,8 @@ Use the available tools to look up specific data when needed.
 {weather_context}
 {summary_section}
 INSTRUCTIONS:
+- Call tools without commentary: no text before or between tool calls ("I'll start by...", "Now I'll pull..."). The user sees a progress line while you look things up and reads everything you write as the answer, so write only the answer, once you have the data.
+- To find a player, call search_players, then pass his player_id to the tools that take one (get_match_event_log, get_pitch_paths, get_player_season_stats).
 - Use knowledge base context to reference GPS/fitness data, rules, and tactical documents.
 - Cite sources from the knowledge base when relevant (e.g., "According to the GPS report from the Ballyshannon match...").
 - Compare current data to benchmarks from the knowledge base.
@@ -370,9 +461,9 @@ INSTRUCTIONS:
 - Only use create_data_table when the user specifically asks for a ranking, leaderboard, or table format.
 - You can combine text + charts + tables in a single response.
 - Do NOT try to describe paths/movement in text — always generate the pitch visual.
-- When asked about HOW A PLAYER PERFORMED, their ROLE, BALL CARRYING, DISTRIBUTION, or PASSING in a specific match → call get_ball_carrier_data(match_id) to get carrying stats, passing network, and chain data. Quote specific numbers: e.g. "carried 8 times (primarily midfield-right channel), made 5 passes, received 3 — the main link player in the first half". Use avg_gain_x to describe their style: positive = forward-carrying, negative = recycling/holding.
-- When a player had turnovers or negative events → use player_consequences from get_ball_carrier_data to state consequences explicitly: "lost possession 3 times in the defensive left — 2 of those led to opposition scores within 3 minutes". This is a critical insight managers care about — always include it if data is available.
-- NEVER describe a player's match performance without first checking get_ball_carrier_data if a match_id is known. Ball carry data is captured for ~80-90% of possessions and is the richest source of player role and contribution data.
+- When asked about HOW A PLAYER PERFORMED, their ROLE, BALL CARRYING, DISTRIBUTION, or PASSING in a specific match → call get_match_ball_carrying_and_passing(match_id) to get carrying stats, passing network, and chain data. Quote specific numbers: e.g. "carried 8 times (primarily midfield-right channel), made 5 passes, received 3 — the main link player in the first half". Use avg_gain_x to describe their style: positive = forward-carrying, negative = recycling/holding.
+- When a player had turnovers or negative events → use player_consequences from get_match_ball_carrying_and_passing to state consequences explicitly: "lost possession 3 times in the defensive left — 2 of those led to opposition scores within 3 minutes". This is a critical insight managers care about — always include it if data is available.
+- NEVER describe a player's match performance without first checking get_match_ball_carrying_and_passing if a match_id is known. Ball carry data is captured for ~80-90% of possessions and is the richest source of player role and contribution data.
 {insight_alerts_text}
 """
 
@@ -437,6 +528,34 @@ async def _maybe_summarize_and_trim(
         return recent_messages, None
 
 
+NARRATION_MAX_CHARS = 300
+
+
+async def _answer_round(idle_timeout_seconds: int, **kwargs):
+    """_stream_round, passing on only answer text. Text is held until it passes NARRATION_MAX_CHARS (then streamed live);
+    if the round ends in a tool call while still short, it was narration ("I'll start by finding his record") and is
+    dropped - the user sees the progress line instead. The prompt asks for no narration; this enforces it."""
+    buf, live = "", False
+    async for kind, item in _stream_round(idle_timeout_seconds, **kwargs):
+        if kind == "text":
+            if live:
+                yield ("text", item)
+            else:
+                buf += item
+                if len(buf) > NARRATION_MAX_CHARS:
+                    live = True
+                    yield ("text", buf)
+                    buf = ""
+            continue
+        if not live and buf:
+            if item.stop_reason == "tool_use":
+                logger.info(f"chat: dropped {len(buf)} chars of narration before a tool call")
+            else:
+                yield ("text", buf)
+                live = True
+        yield ("final", (item, live))
+
+
 async def _stream_round(idle_timeout_seconds: int, **kwargs):
     """One model call, streamed: yields ("text", chunk) as the answer is written, then ("final", message). The SDK
     client is synchronous, so the stream runs in a worker thread and hands chunks over through a queue. The timeout is
@@ -484,6 +603,7 @@ async def chat_with_analyst_stream(
       data: {"type":"done"}
       data: {"type":"error","message":"..."}
     """
+    tool_sessions = None
     try:
         # Apply sliding window if we have a session
         conversation_summary = None
@@ -501,19 +621,21 @@ async def chat_with_analyst_stream(
 
         cached_tools = get_cached_tools()
         turn_start = time.monotonic()
+        tool_sessions = ToolSessions()
 
         # Every round is streamed: answer text reaches the user as it is written (it used to wait for the whole answer,
         # then replay it in 15-character pieces). Text between tool calls comes back as thinking blocks with
         # between-tools thinking, so what streams is the answer.
         streamed_any = False
         response = None
-        async for kind, item in _stream_round(timeout_seconds, model="claude-sonnet-5-5", max_tokens=CHAT_MAX_TOKENS,
+        round_streamed = False
+        async for kind, item in _answer_round(timeout_seconds, model="claude-sonnet-5-5", max_tokens=CHAT_MAX_TOKENS,
                                               system=system_prompt, tools=cached_tools, messages=messages, cost_label="chat"):
             if kind == "text":
                 streamed_any = True
                 yield f"data: {json.dumps({'type': 'text', 'content': item})}\n\n"
             else:
-                response = item
+                response, round_streamed = item
 
         # Capped for the same reason as chat_with_analyst — without this, a
         # model that never settles on a final answer left the chat hanging
@@ -530,7 +652,7 @@ async def chat_with_analyst_stream(
             tool_results = []
             # Convert content blocks to plain dicts to avoid Pydantic re-serialization issues
             assistant_content = [
-                block.model_dump() if hasattr(block, 'model_dump') else block
+                _block_param(block)
                 for block in response.content
             ]
 
@@ -553,15 +675,15 @@ async def chat_with_analyst_stream(
                         continue
 
                     yield f"data: {json.dumps({'type': 'thinking', 'tool': block.name})}\n\n"
-                    tool_result = await _execute_tool_with_timeout(block.name, block.input, db, club_id=club_id, user_id=user_id)
+                    tool_result = await _execute_tool_with_timeout(block.name, block.input, tool_sessions, club_id=club_id, user_id=user_id)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": tool_result
+                        "content": _for_model(block.name, tool_result)
                     })
 
                     # Emit viz SSE events for chart/table tools
-                    if block.name in ("generate_chart", "get_pitch_paths", "display_starting_lineup"):
+                    if block.name in VIZ_TOOLS:
                         try:
                             parsed = json.loads(tool_result)
                             if parsed.get("success") and parsed.get("chart"):
@@ -589,6 +711,8 @@ async def chat_with_analyst_stream(
 
             messages.append({"role": "assistant", "content": assistant_content})
             messages.append({"role": "user", "content": tool_results})
+            if round_streamed:      # keep the next round's text apart from text already shown
+                yield f"data: {json.dumps({'type': 'text', 'content': chr(10) + chr(10)})}\n\n"
 
             elapsed = time.monotonic() - turn_start
             wrap_up = budget_exceeded or elapsed > TOTAL_STREAM_BUDGET_SECONDS
@@ -612,12 +736,13 @@ async def chat_with_analyst_stream(
                                     messages=messages, cost_label="chat")
                 if not wrap_up:
                     round_kwargs["tools"] = cached_tools
-                async for kind, item in _stream_round(WRAPUP_CALL_TIMEOUT_SECONDS if wrap_up else timeout_seconds, **round_kwargs):
+                round_streamed = False
+                async for kind, item in _answer_round(WRAPUP_CALL_TIMEOUT_SECONDS if wrap_up else timeout_seconds, **round_kwargs):
                     if kind == "text":
                         streamed_any = True
                         yield f"data: {json.dumps({'type': 'text', 'content': item})}\n\n"
                     else:
-                        response = item
+                        response, round_streamed = item
             except Exception as round_err:
                 if not wrap_up:
                     raise
@@ -638,3 +763,6 @@ async def chat_with_analyst_stream(
     except Exception as e:
         logger.error(f"Streaming chat failed: {e}", exc_info=True)
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    finally:
+        if tool_sessions is not None:
+            await tool_sessions.close()

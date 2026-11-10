@@ -167,6 +167,22 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     return now < end ? { ...c, end } : null
   }, [ownCarries, now])
 
+  const name = (pid: string | null | undefined) => (pid && ctx.players[pid]?.name) || 'Unknown'
+  // "Edit sync" feedback for the ball-and-tags slider: who has the ball now, or how far away the next tagged carry is
+  // (paused between carries, moving the slider changes nothing on the pitch, which read as "it does nothing")
+  const nextCarry = useMemo(() => {
+    const k = lastIndexAtOrBefore(ownCarries, now)
+    return ownCarries[k + 1] ?? null
+  }, [ownCarries, now])
+  const tagNote = useMemo(() => {
+    if (!editOpen) return null
+    const who = (c: typeof ownCarries[number]) => c.team === 'own' ? `${name(c.player_id)} (${team})` : `${c.opposition_player || ctx.opponent || 'Opposition'} (${ctx.opponent || 'opposition'})`
+    if (carry) return `Ball now: ${who(carry)}. Drag to move when the ball reaches him.`
+    if (nextCarry) return `No tagged carry at this moment. Next: ${who(nextCarry)} in ${((nextCarry.video_ms - now) / 1000).toFixed(1)} s.`
+    return 'No tagged carry near this moment.'
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editOpen, carry, nextCarry, now, team, ctx.opponent])
+
   // a kickout being taken now: nobody may be inside the arc at the kicking end (display only, see gpsKickoutArc)
   const kickout = useMemo(() => {
     const evs = ctx.events
@@ -239,7 +255,6 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     .filter(e => e.video_ms <= now + 300 && e.video_ms > now - 3000 && e.pitch_x != null && e.pitch_y != null && e.event_type !== 'SUB_ON'), [ctx.events, now, lag])
 
   const jumpList = useMemo(() => ctx.events.filter(e => /KICKOUT|POINT_SCORED|GOAL_SCORED|TURNOVER|WIDE/.test(e.event_type)), [ctx.events])
-  const name = (pid: string | null | undefined) => (pid && ctx.players[pid]?.name) || 'Unknown'
   const jersey = (pid: string) => ctx.players[pid]?.jersey
 
   const seek = (ms: number) => { player.current?.seekTo(ms); setNow(ms) }
@@ -283,6 +298,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
         </div>
         {editOpen && (
           <GpsSyncEditor matchId={matchId} ctx={ctx} half={halfNow} dotShifts={dotShift} tagShift={tagShift} savedTagShift={savedTagShift}
+            tagNote={tagNote} onJumpToTag={nextCarry ? () => { player.current?.pause(); seek(Math.max(0, nextCarry.video_ms - 2000)) } : undefined}
             onDotShift={v => setDotShift(d => ({ ...d, [halfNow]: v }))} onTagShift={setTagShift}
             onReset={() => { setDotShift({}); setTagShift(savedTagShift) }}
             onSaved={() => { setDotShift({}); setWindows({}); queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === 'string' && (q.queryKey[0] as string).startsWith('gps') }) }}
@@ -350,6 +366,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                   return (
                     <g key={d.pid}>
                       {isCarrier && <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={50} fill="none" stroke="#fff" strokeWidth={6} />}
+                      {isCarrier && <circle cx={sc.x(d.x) + 40} cy={sc.y(d.y) - 40} r={16} fill="#ffffff" stroke="#0b1226" strokeWidth={4} />}
                       <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={34} fill="url(#gpsDotOurs)" stroke={isCarrier ? '#ffffff' : 'rgba(255,255,255,0.75)'} strokeWidth={3} />
                       <text x={sc.x(d.x)} y={sc.y(d.y) + 12} textAnchor="middle" fontSize={34} fontWeight={800} fill="#fff" stroke="rgba(4,40,28,0.55)" strokeWidth={3} paintOrder="stroke" style={{ fontVariantNumeric: 'tabular-nums' }}>{n ?? ''}</text>
                       {(showNames || isCarrier) && (

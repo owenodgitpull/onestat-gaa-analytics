@@ -279,7 +279,7 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
     except Exception:
         pass
     try:
-        gps = json.loads(await execute_tool("get_match_gps", {"match_id": match_id}, db, club_id=club_id))
+        gps = json.loads(await execute_tool("get_match_gps_running_totals", {"match_id": match_id}, db, club_id=club_id))
         sp = [(p["name"], p.get("max_speed_ms") or 0) for p in gps.get("players", [])]
         if sp:
             facts["max_speed"] = max(sp, key=lambda r: r[1])
@@ -289,7 +289,7 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
     except Exception:
         pass
     try:
-        bc = json.loads(await execute_tool("get_ball_carrier_data", {"match_id": match_id}, db, club_id=club_id))
+        bc = json.loads(await execute_tool("get_match_ball_carrying_and_passing", {"match_id": match_id}, db, club_id=club_id))
         links, seen = {}, {}
         for c in (bc.get("pass_network") or []):
             k = (_surname(c["from_name"]), _surname(c["to_name"]))
@@ -318,7 +318,7 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
     except Exception:
         pass
     try:
-        ga = json.loads(await execute_tool("get_gps_match_analysis", {"match_id": match_id}, db, club_id=club_id))
+        ga = json.loads(await execute_tool("get_match_gps_positional_analysis", {"match_id": match_id}, db, club_id=club_id))
         sup = ((ga.get("summary") or {}).get("support") or {})
         facts["means"] = [v for v in (sup.get("mean_within_15m"),) if v is not None]
     except Exception:
