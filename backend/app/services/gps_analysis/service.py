@@ -82,6 +82,14 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
         "situations": si, "positions": ap, "pressure": pr,
         "computed_in_s": round(time.time() - t0, 1),
     }
+    # each carry's start lined up from GPS, for the replay's ball (10 Hz grid); the tag shift saved with the sync is in it
+    al = g10.carry_align or {}
+    cs = [c for c in inp.carries if c.team in ("own", "opponent")]
+    from .lag import manual_shift_ms
+    out["carry_times"] = {k: al.get(k) for k in ("median_delay_ms", "matched", "total")}
+    out["carry_times"]["saved_shift_ms"] = manual_shift_ms(inp.sync.get("tag_lag"))
+    out["carry_times"]["carries"] = [{"video_ms": c.video_ms, "start_ms": s_, "how": h}
+                                     for c, s_, h in zip(cs, al.get("starts") or [], al.get("how") or [])]
     return out, g1
 
 

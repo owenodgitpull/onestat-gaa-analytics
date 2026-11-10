@@ -67,6 +67,7 @@ class Grid:
     ballX: np.ndarray        # (T,) metres, nan unknown
     ballY: np.ndarray
     set_piece: Optional[np.ndarray] = None   # (T,) bool: a stoppage until the next carry (possession v2)
+    carry_align: Optional[dict] = None       # each carry's start on the video clock, lined up from GPS (align_carry_starts)
 
     def idx(self, video_ms: float) -> int:
         return int(np.clip(np.searchsorted(self.t, video_ms), 0, len(self.t) - 1))
@@ -125,7 +126,55 @@ CARRY_CAP_MS = 20000
 SET_PIECE_CAP_MS = 90000
 
 
-def possession_series(inp: MatchInputs, t: np.ndarray, bounds, with_set_pieces: bool = False):
+CARRY_MATCH_RADIUS_M = 10.0      # tagged spots are 5-7 m out (median 5.9 m on Dublin): 5 m matched 38%, 10 m 73%
+CARRY_SEARCH_BEFORE_MS = 8000
+CARRY_SEARCH_AFTER_MS = 2000
+CARRY_DEFAULT_DELAY_MS = 2000
+
+
+def align_carry_starts(inp: MatchInputs, t: np.ndarray, pids, X: np.ndarray, Y: np.ndarray) -> dict:
+    """When each tagged carry really started, on the video clock. Taps come a varying time after the action (Dublin:
+    median 2.0 s, middle half -0.1 to 4.4 s), so one global delay put most carries early or late.
+    - Our carries: the moment the carrier's GPS is nearest the tagged start spot, between 8 s before and 2 s after the
+      tap, if he comes within 10 m ("gps").
+    - Our other carries, and theirs (no opposition GPS): the tap less this match's median delay from the matched ones
+      ("median").
+    - Starts are kept in tag order; the user's Edit sync tag shift is applied on top.
+    Returns {"starts": [ms per carry, in inp.carries own/opponent order], "how": [...], "median_delay_ms", "matched", "total"}."""
+    from .lag import manual_shift_ms
+    cs = [c for c in inp.carries if c.team in ("own", "opponent")]
+    row = {p: i for i, p in enumerate(pids)}
+    L, W = inp.pitch_length_m, inp.pitch_width_m
+    found = [None] * len(cs)
+    for k, c in enumerate(cs):
+        if c.team != "own" or c.player_id not in row or not len(t):
+            continue
+        sx, sy = frame_point(c.start_x, c.start_y, c.half, inp.attacking_right_first_half, L, W)
+        if sx is None:
+            continue
+        a = int(np.searchsorted(t, c.video_ms - CARRY_SEARCH_BEFORE_MS))
+        b = int(np.searchsorted(t, c.video_ms + CARRY_SEARCH_AFTER_MS))
+        if b <= a:
+            continue
+        i = row[c.player_id]
+        d = np.hypot(X[i, a:b] - sx, Y[i, a:b] - sy)
+        if np.all(np.isnan(d)) or np.nanmin(d) > CARRY_MATCH_RADIUS_M:
+            continue
+        found[k] = float(t[a + int(np.nanargmin(d))])
+    delays = [c.video_ms - f for c, f in zip(cs, found) if f is not None]
+    med = float(np.median(delays)) if len(delays) >= 5 else float(CARRY_DEFAULT_DELAY_MS)
+    med = min(6000.0, max(0.0, med))
+    shift = manual_shift_ms(inp.sync.get("tag_lag"))
+    starts, how, prev = [], [], -1e18
+    for c, f in zip(cs, found):
+        s = (f if f is not None else c.video_ms - med) + shift
+        s = max(s, prev + 200)                 # keep the tagged order
+        starts.append(int(s)); how.append("gps" if f is not None else "median"); prev = s
+    return {"starts": starts, "how": how, "median_delay_ms": int(med), "matched": len(delays),
+            "total": sum(1 for c in cs if c.team == "own"), "carries": len(cs)}
+
+
+def possession_series(inp: MatchInputs, t: np.ndarray, bounds, with_set_pieces: bool = False, starts=None):
     """+1 we have the ball / -1 they have it / 0 dead or unknown, per sample. With with_set_pieces, also a bool mask of
     the set-piece samples (a stoppage until the next carry)."""
     if not POSSESSION_V2:
@@ -136,7 +185,8 @@ def possession_series(inp: MatchInputs, t: np.ndarray, bounds, with_set_pieces: 
     setp = np.zeros(len(t), dtype=bool)
     l_carry = lag_ms(inp, "PASS_HAND")
     cs = [c for c in inp.carries if c.team in ("own", "opponent")]
-    starts = [c.video_ms - l_carry for c in cs]
+    if starts is None or len(starts) != len(cs):
+        starts = [c.video_ms - l_carry for c in cs]
     stops = sorted(e.video_ms - lag_ms(inp, e.event_type) for e in inp.events if e.event_type in STOP_TYPES)
     restarts = sorted(e.video_ms - lag_ms(inp, e.event_type) for e in inp.events if e.event_type in RESTART_TYPES)
 
@@ -231,22 +281,25 @@ def build_grid(inp: MatchInputs, hz: float = 1.0) -> Grid:
         for a, b in iv.get(pid, []):
             on[i, np.searchsorted(t, a):np.searchsorted(t, b)] = True
 
-    poss, setp = possession_series(inp, t, bounds, with_set_pieces=True)
-    ballX, ballY = ball_series(inp, t, half, pids, X, Y, L, W)
-    return Grid(hz, t, half, pids, X, Y, S, on, poss, ballX, ballY, setp)
+    align = align_carry_starts(inp, t, pids, X, Y)
+    poss, setp = possession_series(inp, t, bounds, with_set_pieces=True, starts=align["starts"])
+    ballX, ballY = ball_series(inp, t, half, pids, X, Y, L, W, starts=align["starts"])
+    return Grid(hz, t, half, pids, X, Y, S, on, poss, ballX, ballY, setp, align)
 
 
-def ball_series(inp: MatchInputs, t, half, pids, X, Y, L, W):
+def ball_series(inp: MatchInputs, t, half, pids, X, Y, L, W, starts=None):
     """Best estimate of the ball per sample: our carrier's GPS position while we carry; for their carries the tagged
     start -> end line (no opposition GPS). nan when nobody is carrying."""
     bx = np.full(len(t), np.nan); by = np.full(len(t), np.nan)
     row = {pid: i for i, pid in enumerate(pids)}
     cs = [c for c in inp.carries if c.team in ("own", "opponent")]
     arfh = inp.attacking_right_first_half
+    st = starts if starts is not None and len(starts) == len(cs) else [c.video_ms for c in cs]
     for k, c in enumerate(cs):
-        nxt = cs[k + 1].video_ms if k + 1 < len(cs) else c.video_ms + 8000
-        end = min(nxt, (c.end_video_ms or nxt), c.video_ms + 20000)
-        a, b = np.searchsorted(t, c.video_ms), np.searchsorted(t, end)
+        s0 = st[k]
+        nxt = st[k + 1] if k + 1 < len(cs) else s0 + 8000
+        end = min(nxt, (c.end_video_ms or nxt), s0 + 20000)
+        a, b = np.searchsorted(t, s0), np.searchsorted(t, end)
         if b <= a:
             continue
         if c.team == "own" and c.player_id in row:

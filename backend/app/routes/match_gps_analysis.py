@@ -45,6 +45,16 @@ async def match_analysis(match_id: UUID, user: AuthenticatedUser = Depends(requi
         raise HTTPException(status_code=409, detail=str(e))
 
 
+@router.get("/{match_id}/gps/analysis/carry-times")
+async def carry_times(match_id: UUID, user: AuthenticatedUser = Depends(require_admin_or_viewer), db: AsyncSession = Depends(get_db)):
+    """When each tagged carry really started (lined up from our players' GPS), for the replay's ball."""
+    try:
+        res, _, _ = await service.analyse(db, await _match(db, match_id, user))
+    except NotReady as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return res.get("carry_times") or {}
+
+
 @router.get("/{match_id}/gps/analysis/shape-series")
 async def shape_series(match_id: UUID, step_s: int = Query(2, ge=1, le=30), user: AuthenticatedUser = Depends(require_admin_or_viewer), db: AsyncSession = Depends(get_db)):
     try:

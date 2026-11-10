@@ -103,6 +103,8 @@ export interface GpsSeason { matches: GpsSeasonRow[]; load_alerts: GpsLoadAlert[
 
 export const gpsAnalysisApi = {
   context: (matchId: string) => fetchAPI<GpsReplayContext>(`/matches/${matchId}/gps/analysis/context`),
+  /** each carry's start lined up from GPS (start_ms includes the tag shift saved with the sync) */
+  carryTimes: (matchId: string) => fetchAPI<{ median_delay_ms: number; matched: number; total: number; saved_shift_ms: number; carries: { video_ms: number; start_ms: number; how: 'gps' | 'median' }[] }>(`/matches/${matchId}/gps/analysis/carry-times`, { timeoutMs: 60000 }),
   analysis: (matchId: string) => fetchAPI<GpsMatchAnalysis>(`/matches/${matchId}/gps/analysis`, { timeoutMs: 60000 }),
   shapeSeries: (matchId: string, stepS = 2) => fetchAPI<GpsShapeSeries>(`/matches/${matchId}/gps/analysis/shape-series?step_s=${stepS}`, { timeoutMs: 60000 }),
   heatmap: (matchId: string, opts: { playerId?: string; half?: number; state?: 'all' | 'in' | 'out' }) => {

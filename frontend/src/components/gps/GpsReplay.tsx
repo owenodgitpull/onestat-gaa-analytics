@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, AlertCircle, Tag, Users, Camera, SlidersHorizontal } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import GpsSyncEditor from './GpsSyncEditor'
 import VideoPlayer, { type VideoPlayerHandle } from '../video/VideoPlayer'
 import { useVideoSession } from '../../hooks/useVideoSessions'
@@ -18,7 +18,7 @@ import { api, type GpsWindow } from '../../services/api'
 import { pointInSideFrame, ownAttacksRight } from '../../utils/attackDirection'
 import { humanEventType } from '../../utils/eventLabels'
 import { seekTimeForEvent } from '../../utils/videoSeek'
-import { type GpsReplayContext, periodClock, COLOR_OURS, COLOR_THEIRS } from '../../services/gpsAnalysisApi'
+import { type GpsReplayContext, periodClock, COLOR_OURS, COLOR_THEIRS, gpsAnalysisApi } from '../../services/gpsAnalysisApi'
 import GpsPitch, { PitchFrameCaption } from './GpsPitch'
 import { insideArc, pullOutOfArc } from '../../utils/gpsKickoutArc'
 
@@ -128,12 +128,25 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
 
   const lag = useMemo(() => makeLag(ctx.sync?.tag_lag, tagShift), [ctx.sync, tagShift])
 
-  // carries on the video clock, pulled earlier by the tap lag: starts by the pass lag, ends by the lag of what ended them
+  // Each carry's real start, lined up from our players' GPS by the analysis (the tap delay varies a lot carry to
+  // carry, so one fixed delay left the ball behind). Until it arrives, or where a carry does not match, the fixed delay.
+  const alignQ = useQuery({ queryKey: ['gps-carry-times', matchId], queryFn: () => gpsAnalysisApi.carryTimes(matchId), retry: false, staleTime: 10 * 60 * 1000 })
+  const aligned = useMemo(() => {
+    const d = alignQ.data
+    const cs = ctx.carries.filter(c => c.team === 'own' || c.team === 'opponent')
+    if (!d?.carries || d.carries.length !== cs.length || d.carries.some((a, i) => a.video_ms !== cs[i].video_ms)) return null
+    // the analysis includes the tag shift saved with the sync; the slider's current value replaces it
+    return d.carries.map(a => a.start_ms - (d.saved_shift_ms || 0))
+  }, [alignQ.data, ctx.carries])
+
+  // carries on the video clock: started when the GPS says (or the tap less the delay); a pass end moves with its carry,
+  // a score or wide end by the lag of that tag
   const ownCarries = useMemo(() => {
     const cs = ctx.carries.filter(c => c.team === 'own' || c.team === 'opponent')
     const scoring = ctx.events.filter(e => /POINT_SCORED|GOAL_SCORED|WIDE/.test(e.event_type))
+    const startOf = (i: number) => aligned ? aligned[i] + tagShift : cs[i].video_ms - lag('PASS_HAND')
     return cs.map((c, i) => {
-      const start = c.video_ms - lag('PASS_HAND')
+      const start = startOf(i)
       let endRaw = c.end_video_ms
       let endType = END_TYPE[c.ended_by ?? ''] ?? 'PASS_HAND'
       if (endRaw == null && (c.ended_by === 'score' || c.ended_by === 'wide')) {
@@ -141,11 +154,12 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
         const ev = scoring.find(e => e.team === want && e.video_ms >= c.video_ms && e.video_ms <= c.video_ms + 20000)
         if (ev) { endRaw = ev.video_ms; endType = ev.event_type }
       }
-      const nextStart = cs[i + 1] ? cs[i + 1].video_ms - lag('PASS_HAND') : Infinity
-      const end = endRaw != null ? endRaw - lag(endType) : null
+      const nextStart = cs[i + 1] ? startOf(i + 1) : Infinity
+      const shot = endType !== 'PASS_HAND' && endType !== 'TURNOVER_LOST'
+      const end = endRaw != null ? (aligned && !shot ? endRaw - (c.video_ms - start) : endRaw - lag(endType)) : null
       return { ...c, video_ms: start, end_video_ms: end != null ? Math.max(start + 300, end) : null, next_ms: nextStart }
     })
-  }, [ctx.carries, ctx.events, lag])
+  }, [ctx.carries, ctx.events, lag, aligned, tagShift])
 
   /** raw 0-100 -> svg-ready metres in the chosen frame */
   const toM = useCallback((x: number, y: number, h: number) => {

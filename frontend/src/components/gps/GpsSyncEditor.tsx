@@ -17,9 +17,10 @@ const PERIOD: Record<number, string> = { 1: '1st half', 2: '2nd half', 3: 'Extra
 const DOT_RANGE_MS = 10000
 const TAG_RANGE_MS = 3000
 
+/** ms here is "ahead" (positive = drawn ahead of where they were, i.e. earlier) */
 function describe(ms: number, what: string) {
   if (Math.abs(ms) < 50) return `${what} as synced`
-  return `${what} ${(Math.abs(ms) / 1000).toFixed(1)} s ${ms > 0 ? 'later' : 'earlier'}`
+  return `${what} ${(Math.abs(ms) / 1000).toFixed(1)} s ${ms > 0 ? 'ahead' : 'behind'}`
 }
 
 function ShiftRow({ label, hint, value, range, onChange, describeAs }: {
@@ -36,13 +37,15 @@ function ShiftRow({ label, hint, value, range, onChange, describeAs }: {
       </div>
       <div className="text-xs text-white/50 mt-0.5 mb-2">{hint}</div>
       <div className="flex items-center gap-1.5">
-        <button type="button" className={btn} onClick={() => step(-1000)} aria-label={`${label}: 1 second earlier`}>−1s</button>
-        <button type="button" className={btn} onClick={() => step(-100)} aria-label={`${label}: 0.1 second earlier`}>−0.1</button>
+        <button type="button" className={btn} onClick={() => step(-1000)} aria-label={`${label}: 1 second behind`}>−1s</button>
+        <button type="button" className={btn} onClick={() => step(-100)} aria-label={`${label}: 0.1 second behind`}>−0.1</button>
         <input type="range" min={-range} max={range} step={100} value={value} onChange={e => onChange(clamp(Number(e.target.value)))}
           className="flex-1 min-w-0 accent-emerald-400 h-10" aria-label={label}
           aria-valuetext={describe(value, describeAs)} />
-        <button type="button" className={btn} onClick={() => step(100)} aria-label={`${label}: 0.1 second later`}>+0.1</button>
-        <button type="button" className={btn} onClick={() => step(1000)} aria-label={`${label}: 1 second later`}>+1s</button>
+        <button type="button" className={btn} onClick={() => step(100)} aria-label={`${label}: 0.1 second ahead`}>+0.1</button>
+        <button type="button" className={btn} onClick={() => step(1000)} aria-label={`${label}: 1 second ahead`}>+1s</button>
+      </div>
+      <div className="flex justify-between text-[10px] text-white/40 mt-0.5 px-1" aria-hidden="true"><span>← behind</span><span>ahead →</span>
       </div>
     </div>
   )
@@ -89,11 +92,11 @@ export default function GpsSyncEditor({ matchId, ctx, half, dotShifts, tagShift,
         <button type="button" onClick={onClose} aria-label="Close edit sync" className="p-2 -m-1 rounded-lg hover:bg-white/10"><X size={16} className="text-white/60" /></button>
       </div>
       <ShiftRow label={`Player dots · ${PERIOD[half] || `period ${half}`}`} describeAs="dots"
-        hint="If the dots move before the players on the video, move them later; if they trail, earlier. Set each half on its own."
-        value={dot} range={DOT_RANGE_MS} onChange={v => { onDotShift(v); setState({ kind: 'idle' }) }} />
+        hint="If the dots trail the players on the video, drag right; if they run ahead, drag left. Set each half on its own."
+        value={-dot} range={DOT_RANGE_MS} onChange={v => { onDotShift(-v); setState({ kind: 'idle' }) }} />
       <ShiftRow label="Ball and tags · whole match" describeAs="tags"
-        hint="The ring, their ball and the event pop-ups are already drawn earlier than your tap by your measured tap delay. Fine-tune if the ball still arrives before or after the player."
-        value={tagShift} range={TAG_RANGE_MS} onChange={v => { onTagShift(v); setState({ kind: 'idle' }) }} />
+        hint="Each carry already starts when the GPS shows the player reaching the ball (or by your usual tap delay where it cannot tell). If the ball still trails the video, drag right; if it runs ahead, drag left."
+        value={-tagShift} range={TAG_RANGE_MS} onChange={v => { onTagShift(-v); setState({ kind: 'idle' }) }} />
       {tagNote && (
         <div role="status" className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-white/70">
           <span className="inline-block w-2.5 h-2.5 rounded-full bg-white border border-slate-900 shrink-0" aria-hidden="true" />
