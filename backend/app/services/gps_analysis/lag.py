@@ -36,7 +36,8 @@ def lag_for(tag_lag: Optional[dict], event_type: Optional[str]) -> int:
     m = tl.get(key)
     ms = -float(m["median_s"]) * 1000 if isinstance(m, dict) and (m.get("n") or 0) >= 4 and m.get("median_s") is not None else DEFAULT_LAG_MS.get(key, 0)
     base = min(6000, max(0, ms))
-    return int(max(0, base - manual_shift_ms(tl)))
+    # no floor after the user's shift (same as the replay): later than the measured delay draws the tag after the tap
+    return int(base - manual_shift_ms(tl))
 
 
 def lag_ms(inp, event_type: Optional[str]) -> int:

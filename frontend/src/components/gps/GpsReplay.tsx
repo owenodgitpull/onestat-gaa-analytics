@@ -48,7 +48,9 @@ function makeLag(tagLag: GpsReplayContext['sync']['tag_lag'] | undefined, shiftM
     if (!type) return 0
     const m = type.startsWith('_') ? undefined : tagLag?.[type]
     const ms = m && m.n >= 4 ? -m.median_s * 1000 : (DEFAULT_LAG_MS[type] ?? 0)
-    return Math.max(0, Math.min(6000, Math.max(0, ms)) - shiftMs)
+    // no floor after the shift: moving tags later than the measured delay must keep moving them (it stopped at 0, so
+    // past ~1.2 s for a carry the ball stayed put); a negative value draws the tag after the tap
+    return Math.min(6000, Math.max(0, ms)) - shiftMs
   }
 }
 
