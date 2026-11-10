@@ -15,7 +15,7 @@ export interface GpsReplayContext {
   attacking_right_first_half: boolean | null
   own_attacks_right_by_half: Record<string, boolean>
   periods: { half: number; video_start_ms: number; video_end_ms: number }[]
-  sync: { status: string; periods: any[]; tag_lag: Record<string, { n: number; median_s: number; p25_s: number; p75_s: number }>; computed_at: string | null; confirmed_at: string | null }
+  sync: { status: string; periods: any[]; tag_lag: Record<string, { n: number; median_s: number; p25_s: number; p75_s: number }> & { _manual?: { shift_ms: number } }; computed_at: string | null; confirmed_at: string | null }
   pitch_length_m: number
   pitch_width_m: number
   players: Record<string, { name: string | null; jersey: number | null }>
@@ -65,13 +65,13 @@ export interface GpsMatchAnalysis {
   pitch_length_m: number; pitch_width_m: number; sync_status: string
   summary: {
     by_half: Record<string, { team_distance_m: number; team_hsr_m: number; compactness_in: number | null; compactness_out: number | null; length_out: number | null }>
-    shape: { in: ShapeStats; out: ShapeStats }
-    shape_by_half: Record<string, { in: ShapeStats; out: ShapeStats }>
+    shape: { in: ShapeStats; out: ShapeStats; set_piece?: ShapeStats }
+    shape_by_half: Record<string, { in: ShapeStats; out: ShapeStats; set_piece?: ShapeStats }>
     transitions: { n_lost: number; n_won: number; already_back: number; caught_short: number; median_recovery_s: number | null; not_recovered_in_15s: number; median_retreat_10s_m: number | null; median_forward_runners: number | null; lost_led_to_score: number; won_led_to_score: number }
     fastest_recoveries: { video_ms: number; half: number | null; recovery_s: number; lost_by: string | null; outcome: string }[]
     drop_off: { player_id: string; name: string | null; minutes: number | null; hsr_per_min_first10: number | null; hsr_per_min_last10: number | null; drop_off_pct: number | null }[]
     team_distance_m: number; team_hsr_m: number; players_tracked: number
-    possession_tagged_share_pct: number | null; in_possession_share_pct: number
+    possession_tagged_share_pct: number | null; in_possession_share_pct: number; set_piece_share_pct?: number | null
     kickout_push_up: Record<string, { n: number; team_mean_x: number | null; players_in_their_half: number | null }>
     tag_health: { checked: number; flagged: number }
     support: { n_passes: number; mean_within_15m: number | null; isolated_share_pct: number | null; further_option_share_pct: number | null }

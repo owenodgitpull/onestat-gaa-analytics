@@ -26,12 +26,12 @@ export const GPS_KPI_INFO: Record<string, KpiExplanation> = {
   'Compact without ball': {
     what: 'How tightly packed our team is when they have the ball. Smaller = a tighter unit, harder to play through.',
     how: 'Every second, the average distance of each of our outfielders from the team\'s centre point. Averaged over the seconds the opposition had the ball. The smaller figure underneath is the same thing when we had the ball.',
-    accuracy: 'Who has the ball comes from the tagged carries: a team "has the ball" from its carry until the other team\'s next carry. Stoppages (setting up for a free or a sideline) are still counted as play for now.',
+    accuracy: 'Who has the ball comes from the tagged carries: a team "has the ball" from its carry until the other team\'s next carry, or until play stops (a score, wide, foul, card, or the ball going out for a sideline or 45). Every edge is moved back by the measured tap delay. Set-piece time (a stoppage until the next carry) is left out and shown as its own row in the Shape tab.',
   },
   'Compactness': {
     what: 'How tightly packed our team is. Smaller = a tighter unit.',
     how: 'Every second, the average distance of each of our outfielders from the team\'s centre point, averaged over the seconds without (and with) the ball.',
-    accuracy: 'Possession comes from the tagged carries; stoppages are still counted as play for now.',
+    accuracy: 'Possession comes from the tagged carries, ended at stoppages and moved back by the measured tap delay. Set pieces are a separate row in the table below.',
   },
   'Length': {
     what: 'How long our team is from back to front, along the pitch.',

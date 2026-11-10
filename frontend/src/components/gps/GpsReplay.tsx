@@ -9,7 +9,9 @@
  * there is no opposition GPS). Tagged events pop up where they were tagged, for 3 s.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, AlertCircle, Tag, Users, Camera } from 'lucide-react'
+import { Loader2, AlertCircle, Tag, Users, Camera, SlidersHorizontal } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import GpsSyncEditor from './GpsSyncEditor'
 import VideoPlayer, { type VideoPlayerHandle } from '../video/VideoPlayer'
 import { useVideoSession } from '../../hooks/useVideoSessions'
 import { api, type GpsWindow } from '../../services/api'
@@ -36,16 +38,17 @@ function halfAt(periods: GpsReplayContext['periods'], ms: number): number {
  * from our own players' GPS (`tag_lag`, negative median = tapped after the action). The replay draws tag-based things
  * (the carrier ring, the opposition ball, event pop-ups) that much earlier so they keep up with the video.
  * Display only: the stored tags are never changed. Defaults are the Down-match measurements, used when a type has
- * fewer than 4 samples in this match.
+ * fewer than 4 samples in this match. `shiftMs` is the user's "Edit sync" tag shift (+ = drawn later), the same rule
+ * as the backend (gps_analysis/lag.py).
  */
 const DEFAULT_LAG_MS: Record<string, number> = { PASS_HAND: 1200, LONG_KICK_PASS: 1200, POINT_SCORED: 2200, GOAL_SCORED: 2200, TWO_POINT_SCORED: 2200, WIDE: 3400, TURNOVER_LOST: 1600, TURNOVER_WON: 1600, FOUL_COMMITTED: 5600, FREE_WON: 5600 }
 const END_TYPE: Record<string, string> = { score: 'POINT_SCORED', wide: 'WIDE', free: 'FOUL_COMMITTED', turnover: 'TURNOVER_LOST', pass: 'PASS_HAND' }
-function makeLag(tagLag: GpsReplayContext['sync']['tag_lag'] | undefined) {
+function makeLag(tagLag: GpsReplayContext['sync']['tag_lag'] | undefined, shiftMs: number) {
   return (type: string | null | undefined): number => {
     if (!type) return 0
-    const m = tagLag?.[type]
+    const m = type.startsWith('_') ? undefined : tagLag?.[type]
     const ms = m && m.n >= 4 ? -m.median_s * 1000 : (DEFAULT_LAG_MS[type] ?? 0)
-    return Math.min(6000, Math.max(0, ms))
+    return Math.max(0, Math.min(6000, Math.max(0, ms)) - shiftMs)
   }
 }
 
@@ -72,6 +75,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   }, [refetchSession])
 
   const player = useRef<VideoPlayerHandle>(null)
+  const queryClient = useQueryClient()
   const [now, setNow] = useState<number>(initialMs ?? ctx.periods[0]?.video_start_ms ?? 0)
   const [windows, setWindows] = useState<Record<number, WinState>>({})
   const [raw, setRawState] = useState(() => { try { return localStorage.getItem('gpsReplayFrame') !== 'attack' } catch { return true } })
@@ -95,8 +99,17 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   }, [])
   useEffect(() => { onTimeChange?.(now) }, [now, onTimeChange])
 
+  // "Edit sync": unsaved shifts. dotShift[half] = player dots drawn this many ms later; tagShift = every tag drawn later
+  const savedTagShift = ctx.sync?.tag_lag?._manual?.shift_ms ?? 0
+  const [editOpen, setEditOpen] = useState(false)
+  const [dotShift, setDotShift] = useState<Record<number, number>>({})
+  const [tagShift, setTagShift] = useState<number>(savedTagShift)
+  useEffect(() => { setTagShift(savedTagShift) }, [savedTagShift])
+  const halfNow = halfAt(ctx.periods, now)
+  const posMs = now - (dotShift[halfNow] ?? 0)   // the video time whose positions are drawn now
+
   // Fetch the window under the playhead and the next one
-  const winIdx = Math.floor(now / WINDOW_MS)
+  const winIdx = Math.floor(posMs / WINDOW_MS)
   useEffect(() => {
     for (const k of [winIdx, winIdx + 1]) {
       if (k < 0 || windows[k] !== undefined) continue
@@ -111,9 +124,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
   const half = halfAt(ctx.periods, now)
   const arfh = ctx.attacking_right_first_half
 
-  const [lagOn, setLagOn] = useState(true)
-  const lagRaw = useMemo(() => makeLag(ctx.sync?.tag_lag), [ctx.sync])
-  const lag = useCallback((t: string | null | undefined) => (lagOn ? lagRaw(t) : 0), [lagOn, lagRaw])
+  const lag = useMemo(() => makeLag(ctx.sync?.tag_lag, tagShift), [ctx.sync, tagShift])
 
   // carries on the video clock, pulled earlier by the tap lag: starts by the pass lag, ends by the lag of what ended them
   const ownCarries = useMemo(() => {
@@ -186,7 +197,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
     const out: { pid: string; x: number; y: number; speed: number | null; pulled?: boolean }[] = []
     for (const [pid, pw] of Object.entries(cur.players)) {
       if (!onPitchNow(pid)) continue
-      const f = (now - pw.t0_video_ms) / 1000 * pw.hz
+      const f = (posMs - pw.t0_video_ms) / 1000 * pw.hz
       const i = Math.floor(f), w = f - i
       const xa = pw.x[i], ya = pw.y[i], xb = pw.x[i + 1], yb = pw.y[i + 1]
       let x: number | null = null, y: number | null = null
@@ -204,7 +215,7 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
       out.push({ pid, x: m.x, y: m.y, speed: pw.speed[i] ?? null, pulled })
     }
     return out
-  }, [cur, now, onPitchNow, toM, half, kickout, L, W])
+  }, [cur, posMs, onPitchNow, toM, half, kickout, L, W])
 
   const missing = useMemo(() => {
     const have = new Set(dots.map(d => d.pid))
@@ -270,6 +281,13 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             ))}
           </select>
         </div>
+        {editOpen && (
+          <GpsSyncEditor matchId={matchId} ctx={ctx} half={halfNow} dotShifts={dotShift} tagShift={tagShift} savedTagShift={savedTagShift}
+            onDotShift={v => setDotShift(d => ({ ...d, [halfNow]: v }))} onTagShift={setTagShift}
+            onReset={() => { setDotShift({}); setTagShift(savedTagShift) }}
+            onSaved={() => { setDotShift({}); setWindows({}); queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === 'string' && (q.queryKey[0] as string).startsWith('gps') }) }}
+            onClose={() => setEditOpen(false)} />
+        )}
       </div>
 
       <div className="min-w-0">
@@ -279,9 +297,9 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
             <button onClick={() => setShowNames(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${showNames ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={showNames}>
               <Users size={13} /> Names
             </button>
-            <button onClick={() => setLagOn(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${lagOn ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={lagOn}
-              title={lagOn ? 'Tagged ball and events are drawn earlier by your usual tap delay (about 2 s for a score) so they keep up with the video. Click to show them at the exact tap time.' : 'Showing tags at the exact tap time. Click to correct for your usual tap delay.'}>
-              <Tag size={13} /> Tap delay fixed
+            <button onClick={() => setEditOpen(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${editOpen ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-expanded={editOpen}
+              title="Line the dots and the ball up with the video, then save">
+              <SlidersHorizontal size={13} /> Edit sync
             </button>
             <button onClick={() => setRaw(v => !v)} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border ${!raw ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/70'}`} aria-pressed={!raw}
               title={raw ? 'Showing the pitch as filmed. Switch so we always attack left to right' : 'Showing us always attacking left to right. Switch back to the pitch as filmed'}>
@@ -293,14 +311,28 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
           <GpsPitch lengthM={L} widthM={W} label="Player positions">
             {(sc) => (
               <>
+                {/* look: one blurred halo layer under crisp dots (a single filter for all halos, cheap enough to animate on a tablet) */}
+                <defs>
+                  <filter id="gpsGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14" /></filter>
+                  <radialGradient id="gpsDotOurs" cx="38%" cy="32%" r="75%"><stop offset="0%" stopColor="#3fd39d" /><stop offset="100%" stopColor={COLOR_OURS} /></radialGradient>
+                  <radialGradient id="gpsDotTheirs" cx="38%" cy="32%" r="75%"><stop offset="0%" stopColor="#ff9a52" /><stop offset="100%" stopColor={COLOR_THEIRS} /></radialGradient>
+                </defs>
+                <g filter="url(#gpsGlow)" aria-hidden="true">
+                  {dots.map(d => {
+                    const isCarrier = carry?.team === 'own' && carry.player_id === d.pid
+                    return <circle key={d.pid} cx={sc.x(d.x)} cy={sc.y(d.y)} r={isCarrier ? 60 : 44} fill={isCarrier ? '#ffffff' : COLOR_OURS} opacity={isCarrier ? 0.55 : 0.5} />
+                  })}
+                  {theirBall && <circle cx={sc.x(theirBall.x)} cy={sc.y(theirBall.y)} r={36} fill={COLOR_THEIRS} opacity={0.7} />}
+                  {recentEvents.map(e => { const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half); return <circle key={e.id} cx={sc.x(p.x)} cy={sc.y(p.y)} r={26} fill={e.team === 'team_a' ? COLOR_OURS : COLOR_THEIRS} opacity={0.45 * Math.max(0, 1 - Math.max(0, (now - e.video_ms) / 3000))} /> })}
+                </g>
                 {recentEvents.map(e => {
                   const p = toM(e.pitch_x!, e.pitch_y!, e.half ?? half)
                   const age = (now - e.video_ms) / 3000
                   const ours = e.team === 'team_a'
                   return (
                     <g key={e.id} opacity={Math.max(0.25, 1 - Math.max(0, age))}>
-                      <rect x={sc.x(p.x) - 14} y={sc.y(p.y) - 14} width={28} height={28} transform={`rotate(45 ${sc.x(p.x)} ${sc.y(p.y)})`} fill="none" stroke={ours ? COLOR_OURS : COLOR_THEIRS} strokeWidth={6} />
-                      <text x={sc.x(p.x)} y={sc.y(p.y) - 34} textAnchor="middle" fontSize={34} fontWeight={700} fill="#fff" stroke="#000" strokeWidth={6} paintOrder="stroke">
+                      <rect x={sc.x(p.x) - 14} y={sc.y(p.y) - 14} width={28} height={28} transform={`rotate(45 ${sc.x(p.x)} ${sc.y(p.y)})`} fill="none" stroke={ours ? '#5ee6b4' : '#ffa463'} strokeWidth={5} strokeLinejoin="round" />
+                      <text x={sc.x(p.x)} y={sc.y(p.y) - 34} textAnchor="middle" fontSize={32} fontWeight={700} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">
                         {humanEventType(e.event_type)}{ours && e.player_id ? ` · ${name(e.player_id)}` : ''}
                       </text>
                     </g>
@@ -308,8 +340,8 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                 })}
                 {theirBall && (
                   <g>
-                    <circle cx={sc.x(theirBall.x)} cy={sc.y(theirBall.y)} r={22} fill={COLOR_THEIRS} stroke="#0b1226" strokeWidth={4} />
-                    <text x={sc.x(theirBall.x)} y={sc.y(theirBall.y) + 58} textAnchor="middle" fontSize={30} fill="#fff" stroke="#000" strokeWidth={5} paintOrder="stroke">{showNames && carry?.opposition_player ? carry.opposition_player : `${ctx.opponent || 'Opposition'} ball`}</text>
+                    <circle cx={sc.x(theirBall.x)} cy={sc.y(theirBall.y)} r={22} fill="url(#gpsDotTheirs)" stroke="rgba(255,255,255,0.9)" strokeWidth={3} />
+                    <text x={sc.x(theirBall.x)} y={sc.y(theirBall.y) + 58} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{showNames && carry?.opposition_player ? carry.opposition_player : `${ctx.opponent || 'Opposition'} ball`}</text>
                   </g>
                 )}
                 {dots.map(d => {
@@ -317,11 +349,11 @@ export default function GpsReplay({ matchId, ctx, initialMs, seekRequest, team, 
                   const n = jersey(d.pid)
                   return (
                     <g key={d.pid}>
-                      {isCarrier && <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={52} fill="none" stroke="#fff" strokeWidth={8} />}
-                      <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={34} fill={COLOR_OURS} stroke="#0b1226" strokeWidth={4} />
-                      <text x={sc.x(d.x)} y={sc.y(d.y) + 12} textAnchor="middle" fontSize={34} fontWeight={700} fill="#fff">{n ?? ''}</text>
+                      {isCarrier && <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={50} fill="none" stroke="#fff" strokeWidth={6} />}
+                      <circle cx={sc.x(d.x)} cy={sc.y(d.y)} r={34} fill="url(#gpsDotOurs)" stroke={isCarrier ? '#ffffff' : 'rgba(255,255,255,0.75)'} strokeWidth={3} />
+                      <text x={sc.x(d.x)} y={sc.y(d.y) + 12} textAnchor="middle" fontSize={34} fontWeight={800} fill="#fff" stroke="rgba(4,40,28,0.55)" strokeWidth={3} paintOrder="stroke" style={{ fontVariantNumeric: 'tabular-nums' }}>{n ?? ''}</text>
                       {(showNames || isCarrier) && (
-                        <text x={sc.x(d.x)} y={sc.y(d.y) + 78} textAnchor="middle" fontSize={30} fill="#fff" stroke="#000" strokeWidth={5} paintOrder="stroke">{name(d.pid).split(' ').slice(-1)[0]}</text>
+                        <text x={sc.x(d.x)} y={sc.y(d.y) + 78} textAnchor="middle" fontSize={30} fontWeight={600} fill="#fff" stroke="rgba(5,10,20,0.85)" strokeWidth={8} strokeLinejoin="round" paintOrder="stroke">{name(d.pid).split(' ').slice(-1)[0]}</text>
                       )}
                     </g>
                   )

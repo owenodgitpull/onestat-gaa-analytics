@@ -99,7 +99,7 @@ export function OverviewView({ a, periods, onOpen }: { a: GpsMatchAnalysis; peri
         </Section>
       </div>
       <p className="text-xs text-white/45">
-        Possession (with / without the ball) comes from the tagged carries: {n1(s.possession_tagged_share_pct, '%')} of the match is covered by a tagged carry. Only our outfielders wear a unit: no goalkeeper, no opposition.
+        Possession (with / without the ball) comes from the tagged carries, moved back by the measured tap delay: {n1(s.possession_tagged_share_pct, '%')} of the match is live play with a tagged carry{s.set_piece_share_pct != null ? `, ${n1(s.set_piece_share_pct, '%')} is set pieces (a stoppage until the next carry), left out of the with / without figures` : ''}. Only our outfielders wear a unit: no goalkeeper, no opposition.
       </p>
     </div>
   )
@@ -179,9 +179,9 @@ export function ShapeView({ matchId, a, periods, onOpen }: { matchId: string; a:
       )}
       <Section title="By half, with and without the ball" note="Team height and deepest 6 are measured from our own goal line.">
         <Table head={['Period', 'Ball', 'Compactness', 'Length', 'Width', 'Deepest 6', 'Team height', 'Minutes']} align={['l', 'l', 'r', 'r', 'r', 'r', 'r', 'r']}
-          rows={Object.entries(a.summary.shape_by_half || {}).flatMap(([h, v]) => (['out', 'in'] as const).map(st => [
-            st === 'out' ? (PERIOD[h] || h) : '', st === 'out' ? 'they have it' : 'we have it',
-            n1(v[st].compactness, ' m'), n1(v[st].length, ' m'), n1(v[st].width, ' m'), n1(v[st].deep6, ' m'), n1(v[st].centroid_x, ' m'), n0(v[st].seconds / 60),
+          rows={Object.entries(a.summary.shape_by_half || {}).flatMap(([h, v]) => (['out', 'in', 'set_piece'] as const).filter(st => v[st] && v[st]!.seconds > 0).map(st => [
+            st === 'out' ? (PERIOD[h] || h) : '', st === 'out' ? 'they have it' : st === 'in' ? 'we have it' : 'set piece (either side)',
+            n1(v[st]!.compactness, ' m'), n1(v[st]!.length, ' m'), n1(v[st]!.width, ' m'), n1(v[st]!.deep6, ' m'), n1(v[st]!.centroid_x, ' m'), n0(v[st]!.seconds / 60),
           ]))} />
       </Section>
     </div>
