@@ -149,7 +149,10 @@ async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSS
         if p["half"] in old:
             p["offset_ms"] = old[p["half"]]["offset_ms"]; p["rate"] = old[p["half"]].get("rate", 1.0); p["source"] = "manual"
     out["calibration"] = await refit_pitch_ends(db, match, tracks, out["calibration"], out["periods"], log) or out["calibration"]
-    row.calibration = out["calibration"]; row.periods = out["periods"]; row.tag_lag = out["tag_lag"]; row.quality = out["quality"]
+    row.calibration = out["calibration"]; row.periods = out["periods"]
+    # keep the user's tag shift (replay "Edit sync") through a re-sync
+    manual = (row.tag_lag or {}).get("_manual")
+    row.tag_lag = {**(out["tag_lag"] or {}), **({"_manual": manual} if manual else {})}; row.quality = out["quality"]
     row.status = "confirmed" if row.status == "confirmed" else "auto"; row.error = None; row.computed_at = datetime.utcnow()
     for r, _ in loaded:
         q = out["quality"].get(str(r.player_id))
@@ -159,10 +162,20 @@ async def run_sync(db: AsyncSession, match: Match, log=logger.info) -> MatchGPSS
     return row
 
 
-async def set_manual_periods(db: AsyncSession, match: Match, overrides: list, user_id=None, confirm=True) -> MatchGPSSync:
+async def set_manual_periods(db: AsyncSession, match: Match, overrides: list, user_id=None, confirm=True,
+                             tag_shift_ms: Optional[int] = None) -> MatchGPSSync:
     row = await db.get(MatchGPSSync, match.id)
     if row is None or not row.periods:
         raise ValueError("run the automatic sync first")
+    if tag_shift_ms is not None:
+        from app.services.gps_analysis.lag import MAX_SHIFT_MS
+        v = int(max(-MAX_SHIFT_MS, min(MAX_SHIFT_MS, tag_shift_ms)))
+        tl = dict(row.tag_lag or {})
+        if v:
+            tl["_manual"] = {"shift_ms": v, "set_at": datetime.utcnow().isoformat(), "by": str(user_id) if user_id else None}
+        else:
+            tl.pop("_manual", None)
+        row.tag_lag = tl
     periods = list(row.periods)
     for o in overrides:
         for p in periods:

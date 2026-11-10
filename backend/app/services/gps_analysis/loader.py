@@ -81,6 +81,9 @@ class MatchInputs:
         for e in self.events:
             h.update(repr((e.id, e.team, e.event_type, e.sub_type, e.half, e.video_ms, e.pitch_x, e.pitch_y, e.player_id, e.sub_in_player_id, e.opposition_player_id)).encode())
         h.update(repr((sorted(self.starters), sorted(self.bench), self.man_marking, self.attacking_right_first_half)).encode())
+        from .frame import POSSESSION_V2
+        from .lag import manual_shift_ms
+        h.update(repr(("poss-v2" if POSSESSION_V2 else "poss-v1", manual_shift_ms(self.sync.get("tag_lag")))).encode())
         return f"{self.match_id}|{self.sync.get('computed_at')}|{self.sync.get('confirmed_at')}|{offs}|{h.hexdigest()}"
 
 

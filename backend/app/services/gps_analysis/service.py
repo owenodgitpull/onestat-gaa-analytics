@@ -65,6 +65,7 @@ def _compute(inp: MatchInputs) -> Tuple[dict, Grid]:
         "players_tracked": len(it["players"]),
         "possession_tagged_share_pct": round(100 * float((g1.poss != 0).mean()), 1) if len(g1.poss) else None,
         "in_possession_share_pct": round(100 * in_poss, 1),
+        "set_piece_share_pct": round(100 * float(g1.set_piece.mean()), 1) if g1.set_piece is not None and len(g1.t) else None,
         "kickout_push_up": ko["push_up_on_their_kickouts"],
         "tag_health": {"checked": th["checked"], "flagged": th["n_flagged"]},
         "support": {k: sp[k] for k in ("n_passes", "mean_within_15m", "isolated_share_pct", "further_option_share_pct")},

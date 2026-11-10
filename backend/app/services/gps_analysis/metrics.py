@@ -95,7 +95,8 @@ def shape_summary(g: Grid, sh) -> dict:
     for h in sorted(set(g.half.tolist())) + [0]:
         hm = (g.half == h) if h else np.ones(len(g.t), bool)
         row = {}
-        for state, sm in (("in", g.poss == 1), ("out", g.poss == -1)):
+        sp = g.set_piece if g.set_piece is not None else np.zeros(len(g.t), bool)
+        for state, sm in (("in", g.poss == 1), ("out", g.poss == -1), ("set_piece", sp)):
             m = hm & sm & ~np.isnan(sh["length"])
             row[state] = {k: r1(np.nanmean(sh[k][m])) if m.any() else None for k in ("length", "width", "compactness", "area", "centroid_x", "deep6")}
             row[state]["seconds"] = int(m.sum() / g.hz)
@@ -139,7 +140,7 @@ def transitions(inp: MatchInputs, g: Grid) -> dict:
         if i0 < len(dead) and dead[i0] <= b.video_ms:
             continue
         # the moment of the loss, less the measured tap delay (taps land a second or more after the moment)
-        from .situations import lag_ms as _lag
+        from .lag import lag_ms as _lag
         t0 = (tev.video_ms - _lag(inp, tev.event_type)) if tev is not None else (b.video_ms - _lag(inp, "TURNOVER_LOST"))
         j0 = g.idx(t0)
         spot = frame_point(tev.pitch_x, tev.pitch_y, tev.half, arfh, L, W) if tev is not None and tev.pitch_x is not None else (None, None)
@@ -479,7 +480,7 @@ def support(inp: MatchInputs, g: Grid) -> dict:
 def marking(inp: MatchInputs, g: Grid) -> dict:
     L, W = inp.pitch_length_m, inp.pitch_width_m
     V = g.valid()
-    lag = {k: v.get("median_s") for k, v in (inp.sync.get("tag_lag") or {}).items()}
+    from .lag import lag_ms
     assigned = {}
     for mm in inp.man_marking:
         assigned.setdefault((mm["opponent_name"] or "").strip().lower(), []).append(mm["player_id"])
@@ -490,7 +491,7 @@ def marking(inp: MatchInputs, g: Grid) -> dict:
         sx, sy = frame_point(e.pitch_x, e.pitch_y, e.half, inp.attacking_right_first_half, L, W)
         if sx is None:
             continue
-        t = e.video_ms + 1000 * (lag.get(e.event_type) if lag.get(e.event_type) is not None else -2.5)
+        t = e.video_ms - lag_ms(inp, e.event_type)   # same tap-delay rule as everywhere else (incl. the user's sync shift)
         j = g.idx(t)
         if V[:, j].sum() < 8:
             continue

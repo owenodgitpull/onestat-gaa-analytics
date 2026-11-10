@@ -66,6 +66,7 @@ class Grid:
     poss: np.ndarray         # (T,) +1 we have the ball, -1 they have it, 0 dead / unknown
     ballX: np.ndarray        # (T,) metres, nan unknown
     ballY: np.ndarray
+    set_piece: Optional[np.ndarray] = None   # (T,) bool: a stoppage until the next carry (possession v2)
 
     def idx(self, video_ms: float) -> int:
         return int(np.clip(np.searchsorted(self.t, video_ms), 0, len(self.t) - 1))
@@ -115,9 +116,65 @@ def on_pitch_intervals(inp: MatchInputs, bounds) -> Dict[str, List[Tuple[float, 
     return iv
 
 
-def possession_series(inp: MatchInputs, t: np.ndarray, bounds) -> np.ndarray:
-    """+1 / -1 / 0 per sample from the tagged carries: the team of the latest carry, until a score / wide ends it, a
-    period ends, or 20 s pass without a new carry (dead ball)."""
+# Possession v2 (2026-11-10): possession ends at stoppages and every edge is moved back by the measured tap delay. The
+# time between a stoppage and the next carry is its own "set piece" state. False = the original rule below (revert switch).
+POSSESSION_V2 = True
+STOP_TYPES = ("POINT_SCORED", "GOAL_SCORED", "WIDE", "FOUL_COMMITTED", "YELLOW_CARD", "BLACK_CARD", "RED_CARD")  # ball dead at the tag
+RESTART_TYPES = ("SIDELINE_KICK", "SIDELINE_BALL", "FORTY_FIVE", "FREE_KICK", "THROW_IN")                    # ball restarted at the tag
+CARRY_CAP_MS = 20000
+SET_PIECE_CAP_MS = 90000
+
+
+def possession_series(inp: MatchInputs, t: np.ndarray, bounds, with_set_pieces: bool = False):
+    """+1 we have the ball / -1 they have it / 0 dead or unknown, per sample. With with_set_pieces, also a bool mask of
+    the set-piece samples (a stoppage until the next carry)."""
+    if not POSSESSION_V2:
+        p = _possession_v1(inp, t, bounds)
+        return (p, np.zeros(len(t), dtype=bool)) if with_set_pieces else p
+    from .lag import lag_ms
+    out = np.zeros(len(t), dtype=np.int8)
+    setp = np.zeros(len(t), dtype=bool)
+    l_carry = lag_ms(inp, "PASS_HAND")
+    cs = [c for c in inp.carries if c.team in ("own", "opponent")]
+    starts = [c.video_ms - l_carry for c in cs]
+    stops = sorted(e.video_ms - lag_ms(inp, e.event_type) for e in inp.events if e.event_type in STOP_TYPES)
+    restarts = sorted(e.video_ms - lag_ms(inp, e.event_type) for e in inp.events if e.event_type in RESTART_TYPES)
+
+    def period_end(ms):
+        for _, ps, pe in bounds:
+            if ps <= ms < pe:
+                return pe
+        return ms
+
+    for i, c in enumerate(cs):
+        s0 = starts[i]
+        nxt = starts[i + 1] if i + 1 < len(cs) else s0 + CARRY_CAP_MS
+        end = min(nxt, s0 + CARRY_CAP_MS, period_end(c.video_ms))
+        if c.ended_by in ("score", "wide") and c.end_video_ms:
+            end = min(end, c.end_video_ms - lag_ms(inp, "POINT_SCORED" if c.ended_by == "score" else "WIDE"))
+        # the first stoppage after the carry starts ends the possession
+        k = int(np.searchsorted(stops, s0 + 1))
+        stop_at = stops[k] if k < len(stops) and stops[k] < end else None
+        # a restart (sideline, 45, free) before the next carry: the ball was dead before it; ended when the carry's tagged
+        # end says, else at the restart itself (when it went out is not tagged)
+        r = int(np.searchsorted(restarts, s0 + 1))
+        restart_at = restarts[r] if r < len(restarts) and restarts[r] < end else None
+        if restart_at is not None and (stop_at is None or restart_at < stop_at):
+            stop_at = min(restart_at, (c.end_video_ms - l_carry) if c.end_video_ms else restart_at)
+        live_end = max(s0, stop_at) if stop_at is not None else end
+        a, b = np.searchsorted(t, s0), np.searchsorted(t, live_end)
+        out[a:b] = 1 if c.team == "own" else -1
+        if stop_at is not None:
+            # set piece: from the stoppage until play restarts with the next carry (capped, and never across a period end)
+            sp_end = min(nxt, stop_at + SET_PIECE_CAP_MS, period_end(c.video_ms))
+            setp[np.searchsorted(t, live_end):np.searchsorted(t, sp_end)] = True
+    out[setp] = 0
+    return (out, setp) if with_set_pieces else out
+
+
+def _possession_v1(inp: MatchInputs, t: np.ndarray, bounds) -> np.ndarray:
+    """The original rule: the team of the latest carry, until a score / wide ends it, a period ends, or 20 s pass
+    without a new carry (dead ball). Stoppages counted as play; no tap-delay correction."""
     out = np.zeros(len(t), dtype=np.int8)
     cs = [c for c in inp.carries if c.team in ("own", "opponent")]
     for i, c in enumerate(cs):
@@ -174,9 +231,9 @@ def build_grid(inp: MatchInputs, hz: float = 1.0) -> Grid:
         for a, b in iv.get(pid, []):
             on[i, np.searchsorted(t, a):np.searchsorted(t, b)] = True
 
-    poss = possession_series(inp, t, bounds)
+    poss, setp = possession_series(inp, t, bounds, with_set_pieces=True)
     ballX, ballY = ball_series(inp, t, half, pids, X, Y, L, W)
-    return Grid(hz, t, half, pids, X, Y, S, on, poss, ballX, ballY)
+    return Grid(hz, t, half, pids, X, Y, S, on, poss, ballX, ballY, setp)
 
 
 def ball_series(inp: MatchInputs, t, half, pids, X, Y, L, W):

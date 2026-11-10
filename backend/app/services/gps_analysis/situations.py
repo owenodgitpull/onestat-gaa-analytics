@@ -19,9 +19,7 @@ from .frame import Grid, frame_point
 from .loader import MatchInputs
 from .metrics import HSR, SHOT_TYPES, PERIOD_NAME, name_of, r1
 
-DEFAULT_LAG_MS = {"PASS_HAND": 1200, "LONG_KICK_PASS": 1200, "POINT_SCORED": 2200, "GOAL_SCORED": 2200, "WIDE": 3400,
-                  "TURNOVER_LOST": 1600, "TURNOVER_WON": 1600, "FOUL_COMMITTED": 5600}
-SHOT_LAG_FALLBACK = "POINT_SCORED"   # saves, shorts, posts: no measurement of their own, closest is a point
+from .lag import DEFAULT_LAG_MS, SHOT_LAG_FALLBACK, lag_ms  # noqa: F401  (moved; re-exported)
 FORTY_FIVE_M = 45.0                  # the 45 m line, measured from the goal line
 
 # what a moment is, for the agent: (team, event types)
@@ -34,18 +32,6 @@ SITUATION_GROUPS = {
     "our_turnovers": ("team_a", ("TURNOVER_LOST", "OUR_UNFORCED_ERROR")),
     "fouls_we_conceded": ("team_a", ("FOUL_COMMITTED",)),
 }
-
-
-def lag_ms(inp: MatchInputs, event_type: Optional[str]) -> int:
-    if not event_type:
-        return 0
-    tl = inp.sync.get("tag_lag") or {}
-    key = event_type
-    if event_type in SHOT_TYPES and event_type not in tl and event_type not in DEFAULT_LAG_MS:
-        key = SHOT_LAG_FALLBACK
-    m = tl.get(key)
-    ms = -float(m["median_s"]) * 1000 if m and (m.get("n") or 0) >= 4 and m.get("median_s") is not None else DEFAULT_LAG_MS.get(key, 0)
-    return int(min(6000, max(0, ms)))
 
 
 def _when(e, hdm=None) -> str:

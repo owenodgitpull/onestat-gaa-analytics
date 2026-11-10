@@ -82,8 +82,10 @@ class PeriodOverride(BaseModel):
 
 
 class SyncOverride(BaseModel):
-    periods: List[PeriodOverride]
+    periods: List[PeriodOverride] = []
     confirm: bool = True
+    # replay "Edit sync": every tag drawn this much later (+) or earlier (-) than the measured tap delay puts it; 0 clears
+    tag_shift_ms: Optional[int] = Field(None, ge=-5000, le=5000)
 
 
 class PlayerWindow(BaseModel):
