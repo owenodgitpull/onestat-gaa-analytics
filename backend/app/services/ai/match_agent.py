@@ -744,12 +744,15 @@ INSTRUCTIONS:
    - SMALL COUNTS: a percentage from fewer than 60 events carries its count ("10.5% of 57 receptions"); do not compare two small percentages as a trend.
    - DIRECTION WORDS: say plainly which way to go ("training load reduced", "more recovery"), never "recovery should be reduced" when you mean the opposite.
    - LISTS AGREE: if you say a group all played the full match, never later describe only some of them as playing "into extra time".
-   - THEIR GOAL: for a Dublin player's distances write "from the goal they were attacking".
+   - THEIR GOAL: for an opposition player's distances write "from the goal they were attacking".
    - RATINGS on one scale: more scoring involvement (scores, two-pointers, assists) is rated at least as high as less, unless a sentence says why (cards, errors). Never write an instruction to yourself into the report ("no criticism applies").
    - Every one of our scorers is named with his score at least once.
    - Top Performers: every player gets a rating out of 10 on his heading line ("**Peadar Mogan (left corner back) – 8/10.**"). Never drop the ratings.
    - Never compare with other teams' typical figures ("the usual 7-10 km", "elite teams"): compare only with this team's own figures.
    - "X for Y" means X came on and Y went off; copy the direction from the substitution log.
+   - TRAINING RECOMMENDATIONS use only the advice allowed above. No conditioning blocks, no named routines (a
+     "break-ball unit", "specialists"), no drills the data does not show. If a drill is named, it must come from a
+     knowledge-base passage cited inline and fit one of the allowed advice types.
 
 8a. NEVER narrate your own process. Do not write things like "Now I have all the data needed, let me compile the report" or "Let me put together the analysis" — go straight into the report content itself, starting with the first section heading. The user only ever sees your final answer, not your intermediate reasoning, so any sentence about what you're about to do is dead weight that must never appear.
 8. At the very end of your response, include chart insights as a tagged JSON block:
@@ -986,7 +989,7 @@ INSTRUCTIONS:
                 "\n\nIMPORTANT: GPS data is available for this match. Use the get_match_gps_running_totals tool "
                 "to retrieve physical performance data and include a detailed GPS & Physical Performance "
                 "Analysis section covering: team intensity assessment, individual standout performers, "
-                "concerning metrics, recovery recommendations, and how physical output impacted the result."
+                "concerning metrics, recovery flags for named players (lever 11), and how physical output impacted the result."
                 "\n\nGPS ANALYSIS RULES:"
                 "\n- NEVER flag the goalkeeper for low distance — GKs typically cover 2-4km"
                 "\n- Players with subbed_off_minute were DEFINITELY substituted off — state as fact"
