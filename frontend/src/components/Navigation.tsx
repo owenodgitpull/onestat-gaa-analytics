@@ -30,6 +30,7 @@ import NewMatchModal from './NewMatchModal'
 import AIAnalyst from './AIAnalyst'
 import ConfirmationModal from './ConfirmationModal'
 import TeamSwitcher from './TeamSwitcher'
+import NotificationBell from './NotificationBell'
 
 export default function Navigation() {
   const location = useLocation()
@@ -295,6 +296,9 @@ export default function Navigation() {
                 <span className="hidden sm:inline">{isCreatingMatch ? 'Creating...' : 'New Match'}</span>
               </button>
             )}
+
+            {/* Notifications (reel ready, report ready, GPS uploaded...) */}
+            <NotificationBell />
 
             {/* Profile Dropdown */}
             <div className="relative">
