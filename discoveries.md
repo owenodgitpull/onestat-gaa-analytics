@@ -115,3 +115,9 @@ Entry format:
 - Roarty off (tag ET1 72:03) and Sean Martin off (tag ET1 71:27): GPS has both off from the ET1 throw-in, so the tags are about 1.5-2 minutes late. Left as tagged.
 - `frame.on_pitch_intervals`: a SUB_ON for a player the log still has on the pitch overwrites his open spell, so his earlier minutes are dropped from the GPS replay/metrics. Only matters while an exit is untagged.
 - Raw zip check: J. McGee and E. McHugh units both stop at 12:56 (about a minute after half-time); no other file in the export carries their data.
+
+## 2026-11-11 Report check and batch scripts
+- report_check full-match check (minutes): "Shane O'Donnell ... played the full 94 minutes" is flagged as "O'Donnell 73 min" because the
+  surname lookup takes Conor's minutes. Two players share the surname; match on first name + surname (as add_missing_scorers does).
+- Loading a second match's GPS analysis in the same Python process segfaults (seen locally and on Fly via ssh: a 4-report batch stopped
+  silently after the first). Run one match per process in scripts. The web app is unaffected (one match per request) - not checked further.
