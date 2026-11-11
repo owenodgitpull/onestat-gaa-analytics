@@ -242,3 +242,12 @@ def test_per_carry_superlative_is_not_a_carry_count():
     f = dict(R7, impact_own={"mcgonagle": {"carries": 15}, "langan": {"carries": 42}})
     assert not [i for i in find_issues("He carried 15 times for 15.9 m per carry, the highest on our side, McGonagle.", f)
                 if "most carries" in i["problem"]]
+
+
+def test_shared_surname_positions_are_skipped():
+    f = dict(R7, shared_surnames={"o'donnell"})
+    assert not _problems_f("Shane O'Donnell (right half forward) ran. Conor O'Donnell (right corner forward) scored.", f)
+
+
+def _problems_f(text, f):
+    return [i["problem"] for i in find_issues(text, f) if "listed as" in i["problem"]]

@@ -616,7 +616,7 @@ _POSITIONS = (r"goalkeeper|(?:left |right )?corner[- ]back|centre[- ]half[- ]bac
 def _position_issues(text: str, facts: dict) -> List[dict]:
     """One listed position per player across the report: 'Mogan (left corner back)' here and 'Mogan (left half back)'
     there. A player who changed position in the match is skipped."""
-    moved = facts.get("moved") or set()
+    moved = (facts.get("moved") or set()) | (facts.get("shared_surnames") or set())     # two O'Donnells: cannot tell apart
     seen: dict = {}
     multi = set()
     for m in re.finditer(r"\b([A-Z][\w'’\-]+)\**\s*\(([^)]{3,80})\)", text):
@@ -755,6 +755,8 @@ async def gather_facts(db, match_id: str, club_id) -> dict:
                     dup_.add(k)          # two players share a surname: cannot check by surname
                 rows_[k] = r
             facts[key] = {k: v for k, v in rows_.items() if k and k not in dup_}
+        _all = [_surname(r.get("player", "")) for side in ("own", "opposition") for r in (imp.get(side) or [])]
+        facts["shared_surnames"] = {k for k in _all if k and _all.count(k) > 1}
     except Exception:
         pass
     try:
